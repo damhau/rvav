@@ -67,6 +67,24 @@ func TestCustomizationSpecDHCP(t *testing.T) {
 	}
 }
 
+// A first adapter with an IPv6 address gets it beside its IPv4 one, with
+// its own gateway (ADR-0039).
+func TestCustomizationSpecIPv6(t *testing.T) {
+	spec := CustomizationSpec(Customization{OSFamily: "linux", Hostname: "web-dev-app01", Domain: "corp.example",
+		IP: "10.31.10.5", PrefixLength: 24, Gateway: "10.31.10.1", IP6: "2001:db8:310::5", PrefixLength6: 64, Gateway6: "2001:db8:310::1"}, nil)
+	first := spec.NicSettingMap[0].Adapter
+	if ip, ok := first.Ip.(*types.CustomizationFixedIp); !ok || ip.IpAddress != "10.31.10.5" || first.IpV6Spec == nil {
+		t.Fatalf("first adapter = %+v", first)
+	}
+	v6, ok := first.IpV6Spec.Ip[0].(*types.CustomizationFixedIpV6)
+	if !ok || v6.IpAddress != "2001:db8:310::5" || v6.SubnetMask != 64 || first.IpV6Spec.Gateway[0] != "2001:db8:310::1" {
+		t.Fatalf("IPv6 = %+v", first.IpV6Spec)
+	}
+	if spec := CustomizationSpec(Customization{OSFamily: "linux", Hostname: "web-dev-app01", IP: "10.31.10.5", PrefixLength: 24}, nil); spec.NicSettingMap[0].Adapter.IpV6Spec != nil {
+		t.Fatal("an IPv4 adapter has IPv6")
+	}
+}
+
 func TestCustomizationSpecLinux(t *testing.T) {
 	base := &types.CustomizationSpec{Identity: &types.CustomizationLinuxPrep{TimeZone: "UTC", Domain: "old.example"}}
 	lp := CustomizationSpec(Customization{OSFamily: "linux", Hostname: "web-dev-app01", Domain: "corp.example", IP: "10.0.0.2"}, base).

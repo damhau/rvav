@@ -149,7 +149,7 @@ func (a *Activities) renameDNS(ctx context.Context, in OpInput) (string, error) 
 		_ = json.Unmarshal(r.Properties, &p)
 		next := p
 		switch {
-		case p.Type == "A" && renames[p.FQDN] != "":
+		case (p.Type == "A" || p.Type == "AAAA") && renames[p.FQDN] != "":
 			next.FQDN = renames[p.FQDN]
 		case p.Type == "PTR" && renames[p.Value] != "":
 			next.Value = renames[p.Value]

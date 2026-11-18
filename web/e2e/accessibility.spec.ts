@@ -221,6 +221,19 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "a Windows template with cloudbase-init (refused)");
     });
 
+    // A network with an IPv6 subnet, and the mapping sheet's IPv6 fields
+    // (ADR-0039).
+    test("axe: a network's IPv6 subnet", async ({ page }) => {
+      await page.goto("/admin/infrastructure");
+      await loaded(page);
+      await page.getByRole("tab", { name: "Networks" }).click();
+      await expect(page.getByRole("row", { name: /dvpg-app-dev-vl310/ })).toContainText("2001:db8:310::/64");
+      await page.getByRole("button", { name: "Map a network" }).click();
+      const sheet = page.getByRole("dialog", { name: "Map a network" });
+      await expect(sheet.getByRole("textbox", { name: "IPv6 subnet" })).toBeVisible();
+      await scan(page, "a network's IPv6 subnet");
+    });
+
     test("axe: an approval's menu, then the approval in its side panel", async ({ page }) => {
       await page.goto("/approvals");
       await loaded(page);

@@ -120,7 +120,8 @@ func (s *Store) PlacementRules(ctx context.Context, projectID, environment strin
 	return pgx.CollectRows(rows, pgx.RowToStructByName[PlacementRule])
 }
 
-const subnetColumns = `network, subnet, gateway, dns_zone, dns_servers, efficientip_subnet_id, subnet_name, source, synced_at`
+const subnetColumns = `network, subnet, gateway, dns_zone, dns_servers, efficientip_subnet_id, subnet_name, source, synced_at,
+	subnet6, gateway6, efficientip_subnet6_id`
 
 // SyncNetworkSubnets replaces the mappings found in EfficientIP with these:
 // rows set by hand are kept, and get the subnet's ID when their CIDR is
@@ -131,11 +132,14 @@ func (s *Store) SyncNetworkSubnets(ctx context.Context, found []NetworkSubnet, h
 		for i, n := range found {
 			networks[i] = n.Network
 			tag, err := tx.Exec(ctx, `insert into network_subnets (network, subnet, gateway, dns_zone, dns_servers,
-				efficientip_subnet_id, subnet_name, source, synced_at) values ($1, $2, $3, $4, $5, $6, $7, 'efficientip', now())
+				efficientip_subnet_id, subnet_name, source, synced_at, subnet6, gateway6, efficientip_subnet6_id)
+				values ($1, $2, $3, $4, $5, $6, $7, 'efficientip', now(), $8, $9, $10)
 				on conflict (network) do update set subnet = excluded.subnet, gateway = excluded.gateway, dns_zone = excluded.dns_zone,
 					dns_servers = excluded.dns_servers, efficientip_subnet_id = excluded.efficientip_subnet_id,
-					subnet_name = excluded.subnet_name, synced_at = now()
-				where network_subnets.source = 'efficientip'`, n.Network, n.Subnet, n.Gateway, n.DNSZone, n.DNSServers, n.EfficientIPSubnetID, n.SubnetName)
+					subnet_name = excluded.subnet_name, synced_at = now(), subnet6 = excluded.subnet6, gateway6 = excluded.gateway6,
+					efficientip_subnet6_id = excluded.efficientip_subnet6_id
+				where network_subnets.source = 'efficientip'`, n.Network, n.Subnet, n.Gateway, n.DNSZone, n.DNSServers, n.EfficientIPSubnetID, n.SubnetName,
+				n.Subnet6, n.Gateway6, n.EfficientIPSubnet6ID)
 			if err != nil {
 				return err
 			}

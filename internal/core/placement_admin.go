@@ -356,6 +356,9 @@ func presentNetworkMapping(n store.NetworkSubnet) api.NetworkMapping {
 	if n.SubnetName != "" {
 		out.SubnetName = &n.SubnetName
 	}
+	if n.Subnet6 != "" {
+		out.Subnet6, out.Gateway6 = &n.Subnet6, &n.Gateway6
+	}
 	return out
 }
 
@@ -449,8 +452,20 @@ func (s *Service) SetNetworkMapping(ctx context.Context, p *auth.Principal, netw
 	}
 	var errs []api.FieldError
 	prefix, err := netip.ParsePrefix(w.Subnet)
-	if err != nil || prefix.Masked() != prefix {
+	if err != nil || prefix.Masked() != prefix || !prefix.Addr().Is4() {
 		errs = append(errs, fieldErr("/subnet", "invalid", "A subnet such as 10.31.10.0/24."))
+	}
+	subnet6, gateway6 := strings.TrimSpace(deref(w.Subnet6)), strings.TrimSpace(deref(w.Gateway6))
+	if subnet6 != "" || gateway6 != "" {
+		prefix6, err := netip.ParsePrefix(subnet6)
+		if err != nil || prefix6.Masked() != prefix6 || !prefix6.Addr().Is6() {
+			errs = append(errs, fieldErr("/subnet6", "invalid", "An IPv6 subnet such as 2001:db8:310::/64."))
+		}
+		if gw, err := netip.ParseAddr(gateway6); err != nil || !gw.Is6() {
+			errs = append(errs, fieldErr("/gateway6", "invalid", "An IPv6 address."))
+		} else if prefix6.IsValid() && !prefix6.Contains(gw) {
+			errs = append(errs, fieldErr("/gateway6", "outside", "The gateway must be in the IPv6 subnet."))
+		}
 	}
 	if gw, err := netip.ParseAddr(w.Gateway); err != nil {
 		errs = append(errs, fieldErr("/gateway", "invalid", "An IP address."))
@@ -477,7 +492,7 @@ func (s *Service) SetNetworkMapping(ctx context.Context, p *auth.Principal, netw
 		return api.NetworkMapping{}, &ConflictError{Msg: network + " is the port group of an NSX segment rvav made for a deployment: its subnet is the segment's, and goes with the deployment."}
 	}
 	n := store.NetworkSubnet{Network: network, Subnet: w.Subnet, Gateway: w.Gateway, DNSZone: strings.TrimSpace(w.DnsZone),
-		DNSServers: servers, Source: "manual"}
+		DNSServers: servers, Source: "manual", Subnet6: subnet6, Gateway6: gateway6}
 	if err := s.Store.SetManualMapping(ctx, n); err != nil {
 		return api.NetworkMapping{}, err
 	}

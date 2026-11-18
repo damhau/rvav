@@ -121,7 +121,7 @@ func NewFakeEfficientIP(ctx context.Context, st *store.Store) (*efficientip.Fake
 	for _, network := range slices.Sorted(maps.Keys(networks)) {
 		n := networks[network]
 		if err := fake.AddNetwork(efficientip.FakeNetwork{Network: n.Network, CIDR: n.Subnet, Gateway: n.Gateway,
-			Zone: n.DNSZone, DNSServers: n.DNSServers}); err != nil {
+			Zone: n.DNSZone, DNSServers: n.DNSServers, CIDR6: n.Subnet6, Gateway6: n.Gateway6}); err != nil {
 			return nil, err
 		}
 	}

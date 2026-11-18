@@ -40,6 +40,20 @@ func TestCloudInit(t *testing.T) {
 		t.Fatalf("metadata = %s", raw)
 	}
 
+	raw, err = cloudInitMetadata("dep_1/web01", "web01", "corp.example", []ciNIC{
+		{MAC: "00:50:56:aa:00:01", IP: "10.31.10.5", PrefixLength: 24, Gateway: "10.31.10.1",
+			IP6: "2001:db8:310::5", PrefixLength6: 64, Gateway6: "2001:db8:310::1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Network.Ethernets = nil
+	_ = json.Unmarshal(raw, &m)
+	if nic0 := m.Network.Ethernets["nic0"]; strings.Join(nic0.Addresses, " ") != "10.31.10.5/24 2001:db8:310::5/64" || len(nic0.Routes) != 2 ||
+		nic0.Routes[1]["to"] != "::/0" || nic0.Routes[1]["via"] != "2001:db8:310::1" {
+		t.Fatalf("dual-stack metadata = %s", raw)
+	}
+
 	secret := func(name string) (string, error) {
 		if name == "app-pw" {
 			return `p"w: 1`, nil

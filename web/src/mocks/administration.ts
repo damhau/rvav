@@ -291,6 +291,7 @@ export function adminState(db: Db): AdminState {
       source: "efficientip" as const,
       subnet_name: n.name.replace("dvpg-", ""),
       synced_at: ago(0.01),
+      ...(n.name === "dvpg-app-dev-vl310" ? { subnet6: "2001:db8:310::/64", gateway6: "2001:db8:310::1" } : {}),
     })),
     templates: [
       {
@@ -1518,11 +1519,19 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (!/^\d+\.\d+\.\d+\.\d+\/\d+$/.test(w.subnet))
         return invalid([err("/subnet", "A subnet such as 10.31.10.0/24.")]);
       if (!w.dns_zone.trim()) return invalid([err("/dns_zone", "The DNS zone VMs on this network are named in.")]);
+      const subnet6 = w.subnet6?.trim() ?? "";
+      const gateway6 = w.gateway6?.trim() ?? "";
+      if ((subnet6 || gateway6) && !/^[0-9a-f:]+\/\d+$/i.test(subnet6))
+        return invalid([err("/subnet6", "An IPv6 subnet such as 2001:db8:310::/64.")]);
+      if (subnet6 && !gateway6.includes(":")) return invalid([err("/gateway6", "An IPv6 address.")]);
       const m: S["NetworkMapping"] = {
         network: String(params.network),
-        ...w,
+        subnet: w.subnet,
+        gateway: w.gateway,
+        dns_zone: w.dns_zone,
         dns_servers: w.dns_servers ?? [],
         source: "manual",
+        ...(subnet6 ? { subnet6, gateway6 } : {}),
       };
       const list = st().mappings;
       const i = list.findIndex((x) => x.network === m.network);

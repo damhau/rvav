@@ -277,7 +277,8 @@ func deployments(ctx context.Context, db store.DB, where, arg string) ([]map[str
 			'deployment_id', r.deployment_id, 'moref', r.properties#>>'{vm,moref}',
 			'fqdn', coalesce(r.properties#>>'{vm,fqdn}', r.properties->>'fqdn'),
 			'ip', case when r.type = 'vsphere.vm' then (select a.name from resources a where a.deployment_id = r.deployment_id
-				and a.type = 'ipam.address' and a.properties->>'hostname' = r.name order by a.created_at limit 1) end))
+				and a.type = 'ipam.address' and a.properties->>'hostname' = r.name and strpos(a.name, ':') = 0
+				order by a.created_at limit 1) end))
 		from resources r where r.deployment_id = any($1) order by r.created_at, r.id`, depIDs)
 	if err != nil {
 		return nil, nil, err

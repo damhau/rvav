@@ -29,6 +29,7 @@ join catalog_item_versions v on v.id = d.version_id
 join users u on u.id = d.owner_id
 left join lateral (select r.properties->>'address' as ip, r.properties->>'fqdn' as fqdn
                    from resources r where r.deployment_id = d.id and r.type = 'ipam.address'
+                   and strpos(r.name, ':') = 0
                    order by r.created_at limit 1) pa on true
 left join lateral (select max_days, max_extensions, grace_days from lease_policies lp
                    where lp.environment = d.environment and (lp.project_id = d.project_id or lp.project_id is null)
@@ -388,7 +389,7 @@ func (s *Store) InventoryHosts(ctx context.Context) ([]InventoryHost, error) {
 	rows, _ := s.Pool.Query(ctx, `select r.name, r.properties->'vm' as vm,
 		coalesce((select a.properties->>'address' from resources a where a.deployment_id = d.id and a.type = 'ipam.address'
 			and (a.properties->>'hostname' = r.name or a.properties->>'fqdn' = r.properties->'vm'->>'fqdn')
-			and coalesce(a.properties->>'nic', '') = ''
+			and coalesce(a.properties->>'nic', '') = '' and strpos(a.name, ':') = 0
 			order by a.name limit 1),
 			case when (r.properties->'vm'->>'dhcp')::boolean then r.properties->'vm'->'nics'->0->'ip_addresses'->>0 end) as address,
 		d.id as deployment_id, d.name as deployment_name, d.status, d.environment, p.code as project, i.slug as item, i.tags,

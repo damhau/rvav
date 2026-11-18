@@ -126,6 +126,11 @@ type Customization struct {
 	// DHCP: the first adapter gets its address, gateway and DNS servers
 	// from DHCP; IP, PrefixLength, Gateway and DNSServers are unused.
 	DHCP bool
+	// IP6 is the first adapter's IPv6 address beside its IPv4 one, "" for
+	// none (ADR-0039).
+	IP6           string
+	PrefixLength6 int
+	Gateway6      string
 	// Extra are the added adapters, in order; OtherNICs the template's own
 	// after its first, which keep DHCP.
 	Extra     []NICSetting
@@ -1307,6 +1312,13 @@ func CustomizationSpec(cu Customization, base *types.CustomizationSpec) types.Cu
 	}
 	if cu.DHCP {
 		first = types.CustomizationIPSettings{Ip: &types.CustomizationDhcpIpGenerator{}, DnsDomain: cu.Domain}
+	}
+	if cu.IP6 != "" {
+		first.IpV6Spec = &types.CustomizationIPSettingsIpV6AddressSpec{
+			Ip: []types.BaseCustomizationIpV6Generator{&types.CustomizationFixedIpV6{IpAddress: cu.IP6, SubnetMask: int32(cu.PrefixLength6)}}}
+		if cu.Gateway6 != "" {
+			first.IpV6Spec.Gateway = []string{cu.Gateway6}
+		}
 	}
 	spec.NicSettingMap = []types.CustomizationAdapterMapping{{Adapter: first}}
 	for range cu.OtherNICs {

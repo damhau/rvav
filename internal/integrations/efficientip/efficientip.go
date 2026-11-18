@@ -65,8 +65,9 @@ type Client interface {
 	Zones(ctx context.Context) ([]string, error)
 	// Managed lists the addresses and records tagged rvav_managed=1.
 	Managed(ctx context.Context) ([]Address, []Record, error)
-	// Existing reports which of these address and record IDs EfficientIP has.
-	Existing(ctx context.Context, addressIDs, recordIDs []string) (addresses, records map[string]bool, err error)
+	// Existing reports which of these addresses (by ID, keyed by Key) and
+	// record IDs EfficientIP has.
+	Existing(ctx context.Context, addresses []Address, recordIDs []string) (map[string]bool, map[string]bool, error)
 	// AllocateSubnet returns the subnet named name in a block (its name or
 	// range), or carves the first free one of prefix bits from it, for an
 	// NSX segment made for a deployment (ADR-0028). DeleteSubnet deletes

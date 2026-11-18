@@ -290,6 +290,9 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	if part.segment != "" && plan.DHCP {
 		add(field("network"), "not_allowed", "A segment made for the deployment has no DHCP: its VMs get their addresses from EfficientIP.")
 	}
+	if part.segment != "" && plan.IPv6 {
+		add(field("network"), "not_allowed", "A segment made for the deployment has IPv4 only: its subnet is carved from an IPv4 block.")
+	}
 	// Where a missing placement rule for segments is said: the first adapter
 	// on one.
 	needsSegments, segmentAt := part.segment != "", field("network")
@@ -539,10 +542,10 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		}
 	}
 	if placed.Network != "" && !plan.DHCP {
-		if sn, ok := pl.subnets[plan.Network]; ok {
-			part.subnet = &sn
-		} else {
+		if sn, ok := pl.subnets[plan.Network]; !ok {
 			add(field("network"), "no_subnet", "No EfficientIP subnet is linked to "+plan.Network+". Ask an administrator to link one.")
+		} else if part.subnet = &sn; plan.IPv6 && sn.Subnet6 == "" {
+			add(field("network"), "no_subnet6", "No EfficientIP IPv6 subnet is linked to "+plan.Network+". Ask an administrator to link one.")
 		}
 	}
 	// Added disks and adapters are placed with the VM (ADR-0024).
@@ -809,6 +812,9 @@ func (ev *Evaluation) previewComponents() []api.PreviewComponent {
 		}
 		if p.subnet != nil {
 			first.Subnet = str(p.subnet.Subnet)
+			if p.vm.IPv6 {
+				first.Subnet = str(p.subnet.Subnet + " and " + p.subnet.Subnet6)
+			}
 		}
 		if p.segment != "" {
 			first.Network = "A new NSX segment (" + p.segment + ")"
@@ -920,6 +926,9 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 		vm.FQDN = name + "." + sn.DNSZone
 		vm.Subnet, vm.SubnetID, vm.Gateway = sn.Subnet, sn.EfficientIPSubnetID, sn.Gateway
 		vm.PrefixLength, vm.DNSZone, vm.DNSServers = prefixLength(sn.Subnet), sn.DNSZone, sn.DNSServers
+		if p.vm.IPv6 {
+			vm.Subnet6, vm.Subnet6ID, vm.Gateway6, vm.PrefixLength6 = sn.Subnet6, sn.EfficientIPSubnet6ID, sn.Gateway6, prefixLength(sn.Subnet6)
+		}
 	}
 	for _, d := range p.vm.Disks {
 		d.Datastore = cmp.Or(d.Datastore, p.vm.Datastore)

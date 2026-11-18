@@ -273,7 +273,7 @@ type Client interface {
     Subnets(ctx context.Context) ([]SubnetInfo, error)
     Zones(ctx context.Context) ([]string, error)
     Managed(ctx context.Context) ([]Address, []Record, error)
-    Existing(ctx context.Context, addressIDs, recordIDs []string) (addresses, records map[string]bool, err error)
+    Existing(ctx context.Context, addresses []Address, recordIDs []string) (map[string]bool, map[string]bool, error)
 }
 ```
 
@@ -285,7 +285,12 @@ type Client interface {
 - The mapping between vSphere networks and EfficientIP subnets comes from the
   subnet class parameters `vsphere_network`, `gateway`, `domain` and
   `dns_servers`, read by the sync service; mappings set by an administrator
-  win (ADR-0015).
+  win (ADR-0015). An IPv6 subnet (`ip6_*` services) with `vsphere_network`
+  and `gateway` gives a mapped network its IPv6 subnet, for blueprints with
+  `ipv6: true` ([ADR-0039](adr/0039-guest-access-and-networking.md)). The
+  client picks the IPv4 or IPv6 services from the address or subnet it is
+  given; a SOLIDserver that turns the IPv6 services down with a 4xx is used
+  for IPv4 only.
 - VM names are checked free in DNS and IPAM as well as in vCenter.
 
 ### Contract tests
@@ -310,6 +315,14 @@ RVAV_EFFICIENTIP_TEST_REVERSE_ZONE=0.99.10.in-addr.arpa \
   after itself. Its objects carry `rvav_instance=rvav-contract`.
 - **When to run it:** in the lab before 1.0, on each SOLIDserver upgrade,
   and when the fake changes.
+
+`TestContractIPv6` checks the same for an IPv6 subnet, with an AAAA
+record and no PTR. The fake's IPv6 services follow SOLIDserver's
+documented names (`ip6_block6_subnet6_list`, `ip6_address6_add`,
+`hostaddr6`, `ip6_name`); to check them against a real one, set
+`RVAV_EFFICIENTIP_TEST_SUBNET6` (such as `2001:db8:99::/64`) as well as
+the variables above and run `go test -run TestContractIPv6 -v
+./internal/integrations/efficientip/`.
 
 ### Onboarding lookups
 Adopting existing VMs ([ADR-0026](adr/0026-onboarding.md)) only reads

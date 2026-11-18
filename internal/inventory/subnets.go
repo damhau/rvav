@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
@@ -67,13 +69,21 @@ func (s *SubnetSync) SyncOnce(ctx context.Context) error {
 // describe: vsphere_network (one network, or several separated by commas),
 // gateway, domain and dns_servers. A network claimed by two subnets is left
 // out, and so is a subnet without a gateway or a DNS zone; those networks
-// are held: their mapping stays as it is.
+// are held: their mapping stays as it is. An IPv6 subnet gives a mapped
+// network its IPv6 subnet (ADR-0039); one that can't is said why.
 func Mappings(subnets []efficientip.SubnetInfo) (found []store.NetworkSubnet, held, problems []string) {
 	byNetwork := map[string][]store.NetworkSubnet{}
+	six := map[string][]efficientip.SubnetInfo{}
 	var order []string
 	for _, sn := range subnets {
 		networks := splitList(sn.Params.Get(efficientip.ParamNetwork))
 		if len(networks) == 0 {
+			continue
+		}
+		if p, err := netip.ParsePrefix(sn.CIDR); err == nil && p.Addr().Is6() {
+			for _, n := range networks {
+				six[n] = append(six[n], sn)
+			}
 			continue
 		}
 		gateway, zone := sn.Params.Get(efficientip.ParamGateway), sn.Params.Get(efficientip.ParamZone)
@@ -108,6 +118,20 @@ func Mappings(subnets []efficientip.SubnetInfo) (found []store.NetworkSubnet, he
 		found = append(found, byNetwork[n][0])
 	}
 	found = slices.DeleteFunc(found, func(n store.NetworkSubnet) bool { return slices.Contains(held, n.Network) })
+	for _, n := range slices.Sorted(maps.Keys(six)) {
+		claims := six[n]
+		i := slices.IndexFunc(found, func(m store.NetworkSubnet) bool { return m.Network == n })
+		switch {
+		case i < 0:
+			problems = append(problems, fmt.Sprintf("IPv6 subnet %s (%s): network %s has no IPv4 subnet in EfficientIP", claims[0].CIDR, claims[0].Name, n))
+		case len(claims) > 1:
+			problems = append(problems, fmt.Sprintf("network %s is claimed by several IPv6 subnets (%s, %s)", n, claims[0].CIDR, claims[1].CIDR))
+		case claims[0].Params.Get(efficientip.ParamGateway) == "":
+			problems = append(problems, fmt.Sprintf("IPv6 subnet %s (%s) has no %s class parameter", claims[0].CIDR, claims[0].Name, efficientip.ParamGateway))
+		default:
+			found[i].Subnet6, found[i].Gateway6, found[i].EfficientIPSubnet6ID = claims[0].CIDR, claims[0].Params.Get(efficientip.ParamGateway), claims[0].ID
+		}
+	}
 	return found, held, problems
 }
 

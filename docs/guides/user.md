@@ -160,7 +160,8 @@ guests, take a snapshot, or delete them. A deployment's page shows its status
 and owner at the top, and:
 - **Overview:** its VMs, their addresses and DNS records, and their state
   in vCenter, live; its details, lease and placement. A VM whose address
-  comes from DHCP shows the address it reports, once it has one;
+  comes from DHCP shows the address it reports, once it has one, and a VM
+  with an IPv6 address lists it beside its IPv4 one;
 - **History:** the day-2 actions that ran on it (the request that created it
   is under **Details**);
 - **Inputs:** what it was requested with.

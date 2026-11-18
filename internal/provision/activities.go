@@ -159,7 +159,11 @@ type VMInput struct {
 	// Guest is the VM's: its secrets by name only, read when customizing.
 	Guest blueprint.Guest `json:"guest"`
 	IP    string          `json:"ip,omitempty"`
-	Moref string          `json:"moref,omitempty"`
+	// IP6 is the VM's IPv6 address (ADR-0039): the activities that need it
+	// set it from the request's resources, so workflows' inputs, and their
+	// histories, stay as they were.
+	IP6   string `json:"-"`
+	Moref string `json:"moref,omitempty"`
 	// HostIndex spreads a component's VMs kept apart over the hosts.
 	HostIndex int `json:"host_index,omitempty"`
 	// Components are what the components its tags and cloud-init read
@@ -178,10 +182,14 @@ func (in VMInput) address() string {
 
 // addressing says how the first adapter is addressed, for a step's detail.
 func (in VMInput) addressing() string {
+	s := fmt.Sprintf("static IP %s/%d", in.IP, in.VM.PrefixLength)
 	if in.VM.DHCP {
-		return "DHCP"
+		s = "DHCP"
 	}
-	return fmt.Sprintf("static IP %s/%d", in.IP, in.VM.PrefixLength)
+	if in.IP6 != "" {
+		s += fmt.Sprintf(" and %s/%d", in.IP6, in.VM.PrefixLength6)
+	}
+	return s
 }
 
 // RuleInput is a component's DRS rule: its VMs by name and moref.
@@ -358,8 +366,8 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 				} `json:"vm"`
 			}
 			_ = json.Unmarshal(res.Properties, &p)
-			if p.NIC != "" {
-				continue // an added adapter's: found again by its VM's steps
+			if p.NIC != "" || isIPv6(p.Address) {
+				continue // an added adapter's, or IPv6: found again by its VM's steps
 			}
 			if info.Built == nil {
 				info.Built, info.BuiltVMs = map[string]Built{}, map[string]Built{}
@@ -500,11 +508,49 @@ func (a *Activities) addressOf(ctx context.Context, requestID string, vm VMUnit,
 			NIC      string `json:"nic"`
 		}
 		_ = json.Unmarshal(r.Properties, &p)
-		if r.Type == "ipam.address" && r.DeploymentID == vm.DeploymentID && p.NIC == nic && p.Hostname == vm.Name {
+		if r.Type == "ipam.address" && r.DeploymentID == vm.DeploymentID && p.NIC == nic && p.Hostname == vm.Name && !isIPv6(p.Address) {
 			return p.Address
 		}
 	}
 	return ""
+}
+
+// address6Of is the IPv6 address the request reserved for a VM's first
+// adapter, or "" (ADR-0039).
+func (a *Activities) address6Of(ctx context.Context, requestID string, vm VMUnit) string {
+	list, err := a.Store.ResourcesForRequest(ctx, requestID)
+	if err != nil {
+		return ""
+	}
+	for _, r := range list {
+		var p struct {
+			Address  string `json:"address"`
+			Hostname string `json:"hostname"`
+			NIC      string `json:"nic"`
+		}
+		_ = json.Unmarshal(r.Properties, &p)
+		if r.Type == "ipam.address" && r.DeploymentID == vm.DeploymentID && p.NIC == "" && p.Hostname == vm.Name && isIPv6(p.Address) {
+			return p.Address
+		}
+	}
+	return ""
+}
+
+func isIPv6(ip string) bool {
+	a, err := netip.ParseAddr(ip)
+	return err == nil && a.Is6() && !a.Is4In6()
+}
+
+// withIPv6 sets the VM's IPv6 address, when it has one, from what the
+// request reserved.
+func (a *Activities) withIPv6(ctx context.Context, in *VMInput) error {
+	if in.VM.Subnet6 == "" {
+		return nil
+	}
+	if in.IP6 = a.address6Of(ctx, in.RequestID, in.VM); in.IP6 == "" {
+		return fmt.Errorf("no IPv6 address reserved for %s", in.VM.Name)
+	}
+	return nil
 }
 
 // reserve reserves an address for one of a VM's adapters and records it.
@@ -552,6 +598,17 @@ func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) 
 			}
 			ips, subnets = []string{ip}, []string{in.VM.Subnet}
 		}
+		if in.VM.Subnet6 != "" {
+			ip6 := a.address6Of(ctx, in.RequestID, in.VM)
+			if ip6 == "" {
+				var err error
+				sn := efficientip.Subnet{ID: in.VM.Subnet6ID, CIDR: in.VM.Subnet6, Gateway: in.VM.Gateway6}
+				if ip6, err = a.reserve(ctx, in, sn, in.VM.Subnet6, cmp.Or(in.VM.FQDN, in.VM.Name), ""); err != nil {
+					return "", "", err
+				}
+			}
+			ips, subnets = append(ips, ip6), append(subnets, in.VM.Subnet6)
+		}
 		for _, n := range in.VM.Addressed() {
 			nip := a.addressOf(ctx, in.RequestID, in.VM, n.Key)
 			if nip == "" {
@@ -578,6 +635,12 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 			records = append(records,
 				efficientip.Record{FQDN: in.VM.FQDN, Type: "A", Value: in.IP, Zone: in.VM.DNSZone},
 				efficientip.Record{FQDN: efficientip.PTRName(in.IP), Type: "PTR", Value: in.VM.FQDN, Zone: "in-addr.arpa"})
+		}
+		if err := a.withIPv6(ctx, &in); err != nil {
+			return "", "", err
+		}
+		if in.IP6 != "" {
+			records = append(records, efficientip.Record{FQDN: in.VM.FQDN, Type: "AAAA", Value: in.IP6, Zone: in.VM.DNSZone})
 		}
 		// Each added adapter's address has its own name (ADR-0024).
 		for _, n := range in.VM.Addressed() {
@@ -610,10 +673,14 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 			}
 			a.Events.Resource(ctx, in.ProjectID, res)
 		}
-		if len(records) > 2 {
-			return "Created A and PTR records", fmt.Sprintf("%s → %s and %d more", records[0].FQDN, records[0].Value, len(records)/2-1), nil
+		title := "Created A and PTR records"
+		if in.IP6 != "" {
+			title = "Created A, AAAA and PTR records"
 		}
-		return "Created A and PTR records", records[0].FQDN + " → " + records[0].Value, nil
+		if len(records) > 2 {
+			return title, fmt.Sprintf("%s → %s and %d more", records[0].FQDN, records[0].Value, len(records)-2), nil
+		}
+		return title, records[0].FQDN + " → " + records[0].Value, nil
 	})
 }
 
@@ -718,6 +785,9 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 
 func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
+		if err := a.withIPv6(ctx, &in); err != nil {
+			return "", "", err
+		}
 		var extra []vsphere.NICSetting
 		for _, n := range in.VM.NICs {
 			if n.IPAM != blueprint.IPAMEfficientIP {
@@ -740,6 +810,7 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 		cu := vsphere.Customization{
 			OSFamily: in.Guest.OSFamily, Hostname: in.VM.Name, Domain: in.Guest.Domain, TimeZone: in.Guest.TimeZone,
 			IP: in.address(), DHCP: in.VM.DHCP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers,
+			IP6: in.IP6, PrefixLength6: in.VM.PrefixLength6, Gateway6: in.VM.Gateway6,
 			Spec: in.Guest.CustomizationSpec, Extra: extra,
 		}
 		detail := fmt.Sprintf("Hostname %s, %s", in.VM.Name, in.addressing())
@@ -844,7 +915,8 @@ func (a *Activities) guestNICs(ctx context.Context, in VMInput, extra []vsphere.
 	if len(vm.NICs) < 1+len(extra) {
 		return nil, nil, permanent("%s has %d network adapters, %d were planned", in.VM.Name, len(vm.NICs), 1+len(extra))
 	}
-	nics := []ciNIC{{MAC: vm.NICs[0].MAC, IP: in.address(), PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers}}
+	nics := []ciNIC{{MAC: vm.NICs[0].MAC, IP: in.address(), PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers,
+		IP6: in.IP6, PrefixLength6: in.VM.PrefixLength6, Gateway6: in.VM.Gateway6}}
 	added := len(vm.NICs) - len(extra)
 	for _, n := range vm.NICs[1:added] {
 		nics = append(nics, ciNIC{MAC: n.MAC})
@@ -884,7 +956,7 @@ func (a *Activities) guestData(ctx context.Context, in VMInput, nics []ciNIC) (g
 		ips = append(ips, n.IP)
 	}
 	vars := map[string]any{
-		"vm": map[string]any{"name": in.VM.Name, "fqdn": in.VM.FQDN, "ip": in.address(), "ips": ips, "domain": in.Guest.Domain,
+		"vm": map[string]any{"name": in.VM.Name, "fqdn": in.VM.FQDN, "ip": in.address(), "ip6": in.IP6, "ips": ips, "domain": in.Guest.Domain,
 			"component": in.VM.Component, "deployment_id": in.VM.DeploymentID, "index": in.VM.Index},
 		"components": integers(in.Components),
 		"inputs":     inputs, "project": r.ProjectCode, "environment": r.Environment,

@@ -74,10 +74,12 @@ func (s *Store) NetworkMappings(ctx context.Context) ([]NetworkSubnet, error) {
 // SetManualMapping sets a network's subnet by hand; the EfficientIP sync
 // leaves it alone from then on.
 func (s *Store) SetManualMapping(ctx context.Context, n NetworkSubnet) error {
-	_, err := s.Pool.Exec(ctx, `insert into network_subnets (network, subnet, gateway, dns_zone, dns_servers, source)
-		values ($1, $2, $3, $4, $5, 'manual')
+	_, err := s.Pool.Exec(ctx, `insert into network_subnets (network, subnet, gateway, dns_zone, dns_servers, source, subnet6, gateway6)
+		values ($1, $2, $3, $4, $5, 'manual', $6, $7)
 		on conflict (network) do update set subnet = excluded.subnet, gateway = excluded.gateway, dns_zone = excluded.dns_zone,
-		dns_servers = excluded.dns_servers, source = 'manual'`, n.Network, n.Subnet, n.Gateway, n.DNSZone, nonNil(n.DNSServers))
+		dns_servers = excluded.dns_servers, source = 'manual', subnet6 = excluded.subnet6, gateway6 = excluded.gateway6,
+		efficientip_subnet6_id = case when network_subnets.subnet6 = excluded.subnet6 then network_subnets.efficientip_subnet6_id else '' end`,
+		n.Network, n.Subnet, n.Gateway, n.DNSZone, nonNil(n.DNSServers), n.Subnet6, n.Gateway6)
 	return err
 }
 

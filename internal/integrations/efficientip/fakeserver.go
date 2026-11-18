@@ -43,9 +43,13 @@ type FakeServer struct {
 	servers   map[string]string // DNS server name -> ID
 	subnets   []row
 	addresses []row
-	zones     []row
-	records   []row
-	deleting  map[string]time.Time // record ID -> when it was deleted
+	// IPv6 subnets and addresses, with their own services and fields
+	// (ADR-0039); their addresses written in full, as SOLIDserver does.
+	subnets6   []row
+	addresses6 []row
+	zones      []row
+	records    []row
+	deleting   map[string]time.Time // record ID -> when it was deleted
 }
 
 // What the development stack's fake uses.
@@ -120,6 +124,40 @@ func (f *FakeServer) AddSubnet(space, cidr, name string, params map[string]strin
 		"end_hostaddr": end.String(), "subnet_size": strconv.Itoa(1 << (32 - p.Bits())), "subnet_prefix": strconv.Itoa(p.Bits()),
 		"is_terminal": "1", "subnet_level": "1", "site_id": f.site(space), "site_name": space,
 		"subnet_class_name": "", "subnet_class_parameters": cp.Encode()})
+	return id, nil
+}
+
+// AddSubnet6 adds a terminal IPv6 subnet to an IPAM space, with its class
+// parameters, and returns its ID (ADR-0039).
+func (f *FakeServer) AddSubnet6(space, cidr, name string, params map[string]string) (string, error) {
+	p, err := netip.ParsePrefix(cidr)
+	if err != nil {
+		return "", err
+	}
+	if !p.Addr().Is6() {
+		return "", fmt.Errorf("%s is not an IPv6 subnet", cidr)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p = p.Masked()
+	start := p.Addr().StringExpanded()
+	for _, s := range f.subnets6 {
+		if s["start_hostaddr"] == start && s["site_name"] == space {
+			return s["subnet6_id"], nil
+		}
+	}
+	end := p.Addr().As16()
+	for i := p.Bits(); i < 128; i++ {
+		end[i/8] |= 1 << (7 - i%8)
+	}
+	cp := url.Values{}
+	for k, v := range params {
+		cp.Set(k, v)
+	}
+	id := f.id()
+	f.subnets6 = append(f.subnets6, row{"subnet6_id": id, "subnet6_name": name, "start_hostaddr": start,
+		"end_hostaddr": netip.AddrFrom16(end).StringExpanded(), "subnet6_prefix": strconv.Itoa(p.Bits()),
+		"is_terminal": "1", "site_id": f.site(space), "site_name": space, "subnet6_class_parameters": cp.Encode()})
 	return id, nil
 }
 
@@ -264,10 +302,12 @@ func (f *FakeServer) AddZone(server, zone string) {
 		"dns_id": f.servers[server], "dnszone_type": "master", "dnszone_is_reverse": reverse, "dnsview_name": ""})
 }
 
-// FakeNetwork is a vSphere network and the subnet it is on.
+// FakeNetwork is a vSphere network and the subnet it is on, and its IPv6
+// one when CIDR6 is set.
 type FakeNetwork struct {
 	Network, CIDR, Gateway, Zone string
 	DNSServers                   []string
+	CIDR6, Gateway6              string
 }
 
 // AddNetwork adds the network's subnet to FakeSpace, with the class
@@ -277,6 +317,11 @@ func (f *FakeServer) AddNetwork(n FakeNetwork) error {
 	if _, err := f.AddSubnet(FakeSpace, n.CIDR, n.Network, map[string]string{ParamNetwork: n.Network,
 		ParamGateway: n.Gateway, ParamZone: n.Zone, ParamDNSServers: strings.Join(n.DNSServers, ",")}); err != nil {
 		return err
+	}
+	if n.CIDR6 != "" {
+		if _, err := f.AddSubnet6(FakeSpace, n.CIDR6, n.Network+"-v6", map[string]string{ParamNetwork: n.Network, ParamGateway: n.Gateway6}); err != nil {
+			return err
+		}
 	}
 	f.AddZone(FakeDNSServer, n.Zone)
 	f.AddZone(FakeDNSServer, "in-addr.arpa")
@@ -361,15 +406,25 @@ func (f *FakeServer) serve(ctx context.Context, method, path string, q url.Value
 	f.purge()
 	switch method + " " + path {
 	case "OPTIONS /rpc/ip_find_free_address":
-		return f.findFree(ctx, q)
+		return f.findFree(ctx, ipv4, q)
 	case "GET /rest/ip_block_subnet_list":
 		return listRows(f.subnets, q)
 	case "GET /rest/ip_address_list":
 		return listRows(f.addresses, q)
 	case "POST /rest/ip_add", "PUT /rest/ip_add":
-		return f.addAddress(method, q)
+		return f.addAddress(ipv4, method, q)
 	case "DELETE /rest/ip_delete":
-		return f.deleteAddress(q)
+		return f.deleteAddress(ipv4, q)
+	case "OPTIONS /rpc/ip6_find_free_address6":
+		return f.findFree(ctx, ipv6, q)
+	case "GET /rest/ip6_block6_subnet6_list":
+		return listRows(f.subnets6, q)
+	case "GET /rest/ip6_address6_list":
+		return listRows(f.addresses6, q)
+	case "POST /rest/ip6_address6_add", "PUT /rest/ip6_address6_add":
+		return f.addAddress(ipv6, method, q)
+	case "DELETE /rest/ip6_address6_delete":
+		return f.deleteAddress(ipv6, q)
 	case "OPTIONS /rpc/ip_find_free_subnet":
 		return f.findFreeSubnet(q)
 	case "POST /rest/ip_subnet_add":
@@ -438,22 +493,41 @@ func (f *FakeServer) subnetByID(id string) row {
 
 func cidrOf(s row) string { return s["start_hostaddr"] + "/" + s["subnet_prefix"] }
 
-func (f *FakeServer) findFree(ctx context.Context, q url.Values) ([]row, *fakeError) {
-	s := f.subnetByID(q.Get("subnet_id"))
+// space is where the fake keeps a family's subnets and addresses.
+func (f *FakeServer) space(fam family) (subnets, addresses *[]row) {
+	if fam.v6 {
+		return &f.subnets6, &f.addresses6
+	}
+	return &f.subnets, &f.addresses
+}
+
+func (f *FakeServer) subnetOf(fam family, id string) row {
+	subnets, _ := f.space(fam)
+	for _, s := range *subnets {
+		if s[fam.subnetID] == id {
+			return s
+		}
+	}
+	return nil
+}
+
+func (f *FakeServer) findFree(ctx context.Context, fam family, q url.Values) ([]row, *fakeError) {
+	s := f.subnetOf(fam, q.Get(fam.subnetID))
 	if s == nil {
-		return nil, failf(http.StatusBadRequest, "-1", "subnet_id %q not found", q.Get("subnet_id"))
+		return nil, failf(http.StatusBadRequest, "-1", "%s %q not found", fam.subnetID, q.Get(fam.subnetID))
 	}
 	n, err := strconv.Atoi(q.Get("max_find"))
 	if err != nil || n < 1 {
 		n = 1
 	}
+	_, addresses := f.space(fam)
 	taken := map[string]bool{}
-	for _, a := range f.addresses {
-		if a["subnet_id"] == s["subnet_id"] {
-			taken[a["hostaddr"]] = true
+	for _, a := range *addresses {
+		if a[fam.addressSubnetID] == s[fam.subnetID] {
+			taken[canonical(a[fam.hostaddr])] = true
 		}
 	}
-	if f.InUse != nil {
+	if f.InUse != nil && !fam.v6 {
 		used, err := f.InUse(ctx, cidrOf(s))
 		if err != nil {
 			return nil, failf(http.StatusInternalServerError, "-1", "%v", err)
@@ -462,13 +536,13 @@ func (f *FakeServer) findFree(ctx context.Context, q url.Values) ([]row, *fakeEr
 			taken[ip] = true
 		}
 	}
-	p := netip.MustParsePrefix(cidrOf(s))
+	p := netip.MustParsePrefix(fam.cidr(s))
 	var out []row
 	addr := p.Addr()
 	for i := 0; p.Contains(addr) && len(out) < n; i++ {
 		next := addr.Next()
 		if i >= max(f.FirstHost, 1) && p.Contains(next) && !taken[addr.String()] { // not the network or broadcast address
-			out = append(out, row{"hostaddr": addr.String(), "subnet_id": s["subnet_id"], "site_id": s["site_id"]})
+			out = append(out, row{fam.hostaddr: fam.asStored(addr.String()), fam.subnetID: s[fam.subnetID], "site_id": s["site_id"]})
 		}
 		addr = next
 	}
@@ -482,68 +556,73 @@ func (f *FakeServer) siteID(q url.Values) string {
 	return f.sites[q.Get("site_name")]
 }
 
-func (f *FakeServer) addAddress(method string, q url.Values) ([]row, *fakeError) {
+func (f *FakeServer) addAddress(fam family, method string, q url.Values) ([]row, *fakeError) {
+	subnets, addresses := f.space(fam)
 	flag := cmp.Or(q.Get("add_flag"), "new_edit")
 	var existing row
-	if id := q.Get("ip_id"); id != "" {
-		for _, a := range f.addresses {
-			if a["ip_id"] == id {
+	if id := q.Get(fam.addressID); id != "" {
+		for _, a := range *addresses {
+			if a[fam.addressID] == id {
 				existing = a
 			}
 		}
 		if existing == nil {
-			return nil, failf(http.StatusBadRequest, "-1", "ip_id %s not found", id)
+			return nil, failf(http.StatusBadRequest, "-1", "%s %s not found", fam.addressID, id)
 		}
 	} else {
-		if q.Get("hostaddr") == "" || f.siteID(q) == "" {
-			return nil, failf(http.StatusBadRequest, "-1", "mandatory parameters: hostaddr and site_id or site_name")
+		if q.Get(fam.hostaddr) == "" || f.siteID(q) == "" {
+			return nil, failf(http.StatusBadRequest, "-1", "mandatory parameters: %s and site_id or site_name", fam.hostaddr)
 		}
-		for _, a := range f.addresses {
-			if a["hostaddr"] == q.Get("hostaddr") && a["site_id"] == f.siteID(q) {
+		for _, a := range *addresses {
+			if sameValue(a[fam.hostaddr], q.Get(fam.hostaddr)) && a["site_id"] == f.siteID(q) {
 				existing = a
 			}
 		}
 	}
 	switch {
 	case existing != nil && flag == "new_only":
-		return nil, failf(http.StatusBadRequest, "-1", "address %s already exists", existing["hostaddr"])
+		return nil, failf(http.StatusBadRequest, "-1", "address %s already exists", existing[fam.hostaddr])
 	case existing == nil && flag == "edit_only":
-		return nil, failf(http.StatusBadRequest, "-1", "address %s not found", q.Get("hostaddr"))
+		return nil, failf(http.StatusBadRequest, "-1", "address %s not found", q.Get(fam.hostaddr))
 	case existing != nil:
-		if q.Has("name") {
-			existing["name"] = q.Get("name")
+		if q.Has(fam.name) {
+			existing[fam.name] = q.Get(fam.name)
 		}
-		if q.Has("ip_class_parameters") {
-			existing["ip_class_parameters"] = q.Get("ip_class_parameters")
+		if q.Has(fam.params) {
+			existing[fam.params] = q.Get(fam.params)
 		}
-		return []row{{"ret_oid": existing["ip_id"]}}, nil
+		return []row{{"ret_oid": existing[fam.addressID]}}, nil
 	}
-	ip, err := netip.ParseAddr(q.Get("hostaddr"))
-	if err != nil {
-		return nil, failf(http.StatusBadRequest, "-1", "hostaddr %q is not an IPv4 address", q.Get("hostaddr"))
+	ip, err := netip.ParseAddr(q.Get(fam.hostaddr))
+	if err != nil || ip.Is6() != fam.v6 {
+		return nil, failf(http.StatusBadRequest, "-1", "%s %q is not an address of the service's family", fam.hostaddr, q.Get(fam.hostaddr))
 	}
 	var subnet row
-	for _, s := range f.subnets {
-		if s["site_id"] == f.siteID(q) && netip.MustParsePrefix(cidrOf(s)).Contains(ip) {
+	for _, s := range *subnets {
+		if s["site_id"] == f.siteID(q) && netip.MustParsePrefix(fam.cidr(s)).Contains(ip) {
 			subnet = s
 		}
 	}
 	if subnet == nil {
 		return nil, failf(http.StatusBadRequest, "-1", "no subnet holds %s in this space", ip)
 	}
-	a := row{"ip_id": f.id(), "hostaddr": ip.String(), "name": q.Get("name"), "subnet_id": subnet["subnet_id"],
-		"subnet_name": subnet["subnet_name"], "subnet_start_hostaddr": subnet["start_hostaddr"], "subnet_size": subnet["subnet_size"],
-		"site_id": subnet["site_id"], "site_name": subnet["site_name"],
-		"ip_class_parameters": q.Get("ip_class_parameters"), "mac_addr": q.Get("mac_addr")}
-	f.addresses = append(f.addresses, a)
-	return []row{{"ret_oid": a["ip_id"]}}, nil
+	a := row{fam.addressID: f.id(), fam.hostaddr: fam.asStored(ip.String()), fam.name: q.Get(fam.name),
+		fam.addressSubnetID: subnet[fam.subnetID], fam.addressSubnetName: subnet[fam.subnetName],
+		"site_id": subnet["site_id"], "site_name": subnet["site_name"], fam.params: q.Get(fam.params)}
+	if !fam.v6 {
+		a["subnet_start_hostaddr"], a["subnet_size"], a["mac_addr"] = subnet["start_hostaddr"], subnet["subnet_size"], q.Get("mac_addr")
+	}
+	*addresses = append(*addresses, a)
+	return []row{{"ret_oid": a[fam.addressID]}}, nil
 }
 
-func (f *FakeServer) deleteAddress(q url.Values) ([]row, *fakeError) {
-	for i, a := range f.addresses {
-		if a["ip_id"] == q.Get("ip_id") || q.Get("ip_id") == "" && a["hostaddr"] == q.Get("hostaddr") && a["site_id"] == f.siteID(q) {
-			f.addresses = slices.Delete(f.addresses, i, i+1)
-			return []row{{"ret_oid": a["ip_id"]}}, nil
+func (f *FakeServer) deleteAddress(fam family, q url.Values) ([]row, *fakeError) {
+	_, addresses := f.space(fam)
+	id := q.Get(fam.addressID)
+	for i, a := range *addresses {
+		if a[fam.addressID] == id || id == "" && sameValue(a[fam.hostaddr], q.Get(fam.hostaddr)) && a["site_id"] == f.siteID(q) {
+			*addresses = slices.Delete(*addresses, i, i+1)
+			return []row{{"ret_oid": a[fam.addressID]}}, nil
 		}
 	}
 	return nil, failf(http.StatusBadRequest, "-1", "address not found")

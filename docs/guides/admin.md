@@ -65,7 +65,10 @@ opening by itself once every step is done.
    - **Networks:** each vSphere network's subnet. The subnets come from
      EfficientIP's class parameters; set one by hand where EfficientIP has
      none. A network that only items on DHCP use (`ipam: dhcp`) needs no
-     subnet.
+     subnet. For items with `ipv6: true`, a network also needs an IPv6
+     subnet: an IPv6 subnet in EfficientIP whose `vsphere_network` and
+     `gateway` class parameters name the network and its gateway, or one
+     set by hand with the mapping (**IPv6 subnet**, **IPv6 gateway**).
    - **Placement:** which cluster and datastore serve which environment and
      project.
 4. **Projects:**

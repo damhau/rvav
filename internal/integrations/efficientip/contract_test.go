@@ -111,8 +111,8 @@ func TestContract(t *testing.T) {
 		!slices.ContainsFunc(recs, func(x Record) bool { return x.ID == r.ID }) {
 		t.Fatalf("managed: %d addresses, %d records, %v; ours missing", len(addrs), len(recs), err)
 	}
-	ea, er, err := c.Existing(ctx, []string{a.ID}, []string{r.ID})
-	if err != nil || !ea[a.ID] || !er[r.ID] {
+	ea, er, err := c.Existing(ctx, []Address{a}, []string{r.ID})
+	if err != nil || !ea[a.Key()] || !er[r.ID] {
 		t.Fatalf("existing = %v %v %v", ea, er, err)
 	}
 	fa, fr, err := c.Find(ctx, []string{a.IP}, nil)
@@ -149,16 +149,105 @@ func TestContract(t *testing.T) {
 	}
 	deadline := time.Now().Add(time.Minute)
 	for {
-		ea, er, err := c.Existing(ctx, []string{a.ID}, []string{r.ID})
+		ea, er, err := c.Existing(ctx, []Address{a}, []string{r.ID})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !ea[a.ID] && !er[r.ID] {
+		if !ea[a.Key()] && !er[r.ID] {
 			break
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("still there a minute after deleting: address %v, record %v", ea[a.ID], er[r.ID])
 		}
 		time.Sleep(2 * time.Second)
+	}
+}
+
+// TestContractIPv6 checks an IPv6 address and its AAAA record (ADR-0039):
+// against the fake, and against a real SOLIDserver when
+// RVAV_EFFICIENTIP_TEST_SUBNET6 names a terminal IPv6 subnet the tests may
+// use, with the variables above.
+func TestContractIPv6(t *testing.T) {
+	var c *HTTPClient
+	var s Subnet
+	var zone string
+	if os.Getenv("RVAV_EFFICIENTIP_TEST_URL") == "" {
+		l := newLab(t)
+		if _, err := l.fake.AddSubnet6("lab", "2001:db8:310::/64", "app-dev-v6",
+			map[string]string{"gateway": "2001:db8:310::1", "vsphere_network": "dvpg-app-dev-vl310"}); err != nil {
+			t.Fatal(err)
+		}
+		c, s, zone = l.client(t, AuthNative, "rvav", "s3cret"), Subnet{CIDR: "2001:db8:310::/64", Gateway: "2001:db8:310::1"}, "corp.example"
+	} else {
+		cidr := os.Getenv("RVAV_EFFICIENTIP_TEST_SUBNET6")
+		if cidr == "" {
+			t.Skip("RVAV_EFFICIENTIP_TEST_SUBNET6 is not set")
+		}
+		c, _, zone, _ = contractEnv(t)
+		s = Subnet{CIDR: cidr}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	prefix := netip.MustParsePrefix(s.CIDR)
+	in := func(ip string) bool {
+		a, err := netip.ParseAddr(ip)
+		return err == nil && prefix.Contains(a) && a.String() == ip
+	}
+	name := fmt.Sprintf("rvav-contract6-%d.%s", time.Now().UnixNano()%1_000_000_000, zone)
+	owner := "dep_contract"
+
+	// The subnet is listed with the others, its address written as rvav does.
+	subnets, err := c.Subnets(ctx)
+	if err != nil || !slices.ContainsFunc(subnets, func(x SubnetInfo) bool { return x.CIDR == prefix.Masked().String() }) {
+		t.Fatalf("subnets = %+v, %v; want %s among them", subnets, err, s.CIDR)
+	}
+
+	a, err := c.Reserve(ctx, s, name, owner)
+	if err != nil || !in(a.IP) || a.ID == "" || a.IP == s.Gateway {
+		t.Fatalf("reserve = %+v, %v", a, err)
+	}
+	t.Cleanup(func() { _ = c.Release(context.Background(), a) })
+	if again, err := c.Reserve(ctx, s, name, owner); err != nil || again.ID != a.ID || again.IP != a.IP {
+		t.Fatalf("reserved again = %+v, %v; want %+v", again, err, a)
+	}
+	if _, err := c.Reserve(ctx, s, name, "dep_other"); !errors.Is(err, ErrNameTaken) {
+		t.Fatalf("the name reserved for another owner = %v", err)
+	}
+
+	r, err := c.CreateRecord(ctx, Record{FQDN: name, Type: "AAAA", Value: a.IP})
+	if err != nil || r.ID == "" {
+		t.Fatalf("AAAA record = %+v, %v", r, err)
+	}
+	t.Cleanup(func() { _ = c.DeleteRecord(context.Background(), r) })
+	if again, err := c.CreateRecord(ctx, Record{FQDN: name, Type: "AAAA", Value: prefix.Addr().String()}); err == nil {
+		t.Fatalf("an AAAA record pointing elsewhere = %+v", again)
+	}
+
+	addrs, _, err := c.Managed(ctx)
+	if err != nil || !slices.ContainsFunc(addrs, func(x Address) bool { return x.ID == a.ID && x.IP == a.IP }) {
+		t.Fatalf("managed: %+v, %v; ours missing", addrs, err)
+	}
+	if ea, _, err := c.Existing(ctx, []Address{a}, nil); err != nil || !ea[a.Key()] || ea[Address{ID: a.ID}.Key()] {
+		t.Fatalf("existing = %v %v", ea, err)
+	}
+
+	renamed := "rvav-contract-renamed-" + name
+	if err := c.RenameAddress(ctx, a, renamed); err != nil {
+		t.Fatalf("rename address: %v", err)
+	}
+	// Found again by its address alone, under its new name.
+	if err := c.Release(ctx, Address{IP: a.IP, Subnet: s.CIDR, Hostname: renamed}); err != nil {
+		t.Fatalf("release by address: %v", err)
+	}
+	for range 2 {
+		if err := c.DeleteRecord(ctx, r); err != nil {
+			t.Fatalf("delete AAAA record: %v", err)
+		}
+		if err := c.Release(ctx, a); err != nil {
+			t.Fatalf("release: %v", err)
+		}
+	}
+	if ea, _, err := c.Existing(ctx, []Address{a}, nil); err != nil || ea[a.Key()] {
+		t.Fatalf("still there after release: %v %v", ea, err)
 	}
 }

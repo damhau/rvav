@@ -6141,12 +6141,22 @@ export interface components {
             subnet_name?: string;
             /** Format: date-time */
             synced_at?: string;
+            /**
+             * @description The network's IPv6 subnet in EfficientIP, for VMs whose blueprint says `ipv6: true` (ADR-0039): from an IPv6 subnet's `vsphere_network` class parameter, or set by hand. Absent when it has none.
+             * @example 2001:db8:310::/64
+             */
+            subnet6?: string;
+            /** @description The IPv6 subnet's gateway. */
+            gateway6?: string;
         };
         NetworkMappingWrite: {
             subnet: string;
             gateway: string;
             dns_zone: string;
             dns_servers?: string[];
+            /** @description An IPv6 subnet in EfficientIP (ADR-0039), with `gateway6`; empty or absent for none. */
+            subnet6?: string;
+            gateway6?: string;
         };
         NetworkMappingList: {
             items: components["schemas"]["NetworkMapping"][];

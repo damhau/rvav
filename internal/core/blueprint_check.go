@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"fmt"
 	"regexp"
 	"slices"
@@ -74,6 +75,7 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 	errs = append(errs, checkProvisioning(ptr, b.Provisioning)...)
 	errs = append(errs, checkPropertiesAndFolder(ptr, b.Properties, b.Folder)...)
 	errs = append(errs, checkIPAM(ptr, b.IPAM)...)
+	errs = append(errs, checkIPv6(ptr, b.IPAM, b.IPv6)...)
 
 	// NSX segments made for each deployment (ADR-0028).
 	segKeys := map[string]bool{}
@@ -135,6 +137,9 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 		errs = append(errs, checkProvisioning(at, c.Provisioning)...)
 		errs = append(errs, checkPropertiesAndFolder(at, c.Properties, c.Folder)...)
 		errs = append(errs, checkIPAM(at, c.IPAM)...)
+		if c.IPAM != "" || c.IPv6 != nil {
+			errs = append(errs, checkIPv6(at, cmp.Or(c.IPAM, b.IPAM), cmp.Or(c.IPv6, b.IPv6))...)
+		}
 	}
 	if total > blueprint.MaxVMs {
 		add(ptr+"/components", "out_of_range", fmt.Sprintf("A request builds at most %d VMs; these components have %d.", blueprint.MaxVMs, total))
@@ -334,6 +339,17 @@ func checkIPAM(ptr, ipam string) []api.FieldError {
 		return nil
 	}
 	return []api.FieldError{fieldErr(ptr+"/ipam", "enum", "efficientip (an address and DNS records) or dhcp.")}
+}
+
+// checkIPv6 refuses an IPv6 address beside DHCP: rvav reserves the IPv6
+// address in the subnets EfficientIP links to the network, as the IPv4 one
+// (ADR-0039).
+func checkIPv6(ptr, ipam string, ipv6 *bool) []api.FieldError {
+	if ipv6 != nil && *ipv6 && ipam == blueprint.IPAMDHCP {
+		return []api.FieldError{fieldErr(ptr+"/ipv6", "not_allowed",
+			"IPv6 needs the first adapter's IPv4 address from EfficientIP too (ipam: efficientip).")}
+	}
+	return nil
 }
 
 // checkPropertiesAndFolder checks a blueprint's or a component's custom

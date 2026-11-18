@@ -164,6 +164,15 @@ func TestIPAMInherits(t *testing.T) {
 	if vm, _, _ := single.EvaluateComponent(single.ComponentList()[0], nil); !vm.DHCP {
 		t.Fatal("a single VM isn't on DHCP")
 	}
+
+	b, _ = Parse(json.RawMessage(`{"kind": "vm", "template": "tpl", "ipv6": true,
+		"components": [{"key": "web"}, {"key": "db", "ipv6": false}]}`))
+	cs = b.ComponentList()
+	web, _, _ = b.EvaluateComponent(cs[0], nil)
+	db, _, _ = b.EvaluateComponent(cs[1], nil)
+	if !web.IPv6 || db.IPv6 {
+		t.Fatalf("web on IPv6: %v, db: %v", web.IPv6, db.IPv6)
+	}
 }
 
 func TestCheckUserData(t *testing.T) {

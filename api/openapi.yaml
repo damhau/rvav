@@ -8108,6 +8108,11 @@ components:
           description: "nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand."
         subnet_name: { type: string, description: The subnet's name in EfficientIP. }
         synced_at: { type: string, format: date-time }
+        subnet6:
+          type: string
+          examples: ["2001:db8:310::/64"]
+          description: "The network's IPv6 subnet in EfficientIP, for VMs whose blueprint says `ipv6: true` (ADR-0039): from an IPv6 subnet's `vsphere_network` class parameter, or set by hand. Absent when it has none."
+        gateway6: { type: string, description: The IPv6 subnet's gateway. }
     NetworkMappingWrite:
       type: object
       required: [subnet, gateway, dns_zone]
@@ -8117,6 +8122,8 @@ components:
         gateway: { type: string }
         dns_zone: { type: string }
         dns_servers: { type: array, items: { type: string } }
+        subnet6: { type: string, description: "An IPv6 subnet in EfficientIP (ADR-0039), with `gateway6`; empty or absent for none." }
+        gateway6: { type: string }
     NetworkMappingList:
       type: object
       required: [items]

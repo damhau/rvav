@@ -37,7 +37,7 @@ func (n NotSet) NameExists(context.Context, string) (bool, error)     { return f
 func (n NotSet) Subnets(context.Context) ([]SubnetInfo, error)        { return nil, n.err() }
 func (n NotSet) Zones(context.Context) ([]string, error)              { return nil, n.err() }
 func (n NotSet) Managed(context.Context) ([]Address, []Record, error) { return nil, nil, n.err() }
-func (n NotSet) Existing(context.Context, []string, []string) (map[string]bool, map[string]bool, error) {
+func (n NotSet) Existing(context.Context, []Address, []string) (map[string]bool, map[string]bool, error) {
 	return nil, nil, n.err()
 }
 func (n NotSet) AllocateSubnet(context.Context, string, int, string, map[string]string) (SubnetInfo, error) {

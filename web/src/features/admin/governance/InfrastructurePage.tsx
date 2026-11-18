@@ -732,6 +732,8 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
     gateway: mapping?.gateway ?? "",
     dns_zone: mapping?.dns_zone ?? "",
     dns_servers: (mapping?.dns_servers ?? []).join(", "),
+    subnet6: mapping?.subnet6 ?? "",
+    gateway6: mapping?.gateway6 ?? "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useMutation({
@@ -800,6 +802,29 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
           />
         </Field>
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field
+          label="IPv6 subnet"
+          htmlFor="map-subnet6"
+          hint="Optional, for blueprints with ipv6"
+          error={errors["/subnet6"]}
+        >
+          <Input
+            id="map-subnet6"
+            className="font-mono"
+            value={f.subnet6}
+            onChange={(e) => setF({ ...f, subnet6: e.target.value })}
+          />
+        </Field>
+        <Field label="IPv6 gateway" htmlFor="map-gateway6" error={errors["/gateway6"]}>
+          <Input
+            id="map-gateway6"
+            className="font-mono"
+            value={f.gateway6}
+            onChange={(e) => setF({ ...f, gateway6: e.target.value })}
+          />
+        </Field>
+      </div>
       <Field label="DNS zone" htmlFor="map-zone" error={errors["/dns_zone"]}>
         <Input id="map-zone" value={f.dns_zone} onChange={(e) => setF({ ...f, dns_zone: e.target.value })} />
       </Field>
@@ -843,6 +868,11 @@ function Networks({ canEdit }: { canEdit: boolean }) {
       cell: (m) => (
         <span className="font-mono text-secondary">
           {m.subnet} <span className="text-muted">via {m.gateway}</span>
+          {m.subnet6 && (
+            <span className="block">
+              {m.subnet6} <span className="text-muted">via {m.gateway6}</span>
+            </span>
+          )}
         </span>
       ),
     },

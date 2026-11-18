@@ -30,6 +30,10 @@ type ciNIC struct {
 	PrefixLength int
 	Gateway      string
 	DNSServers   []string
+	// IP6 is an IPv6 address beside IP or DHCP (ADR-0039).
+	IP6           string
+	PrefixLength6 int
+	Gateway6      string
 }
 
 // cloudInitMetadata is the metadata document: the instance, its host name
@@ -38,18 +42,32 @@ func cloudInitMetadata(instanceID, hostname, domain string, nics []ciNIC) ([]byt
 	ethernets := map[string]any{}
 	for i, n := range nics {
 		eth := map[string]any{"match": map[string]any{"macaddress": strings.ToLower(n.MAC)}, "set-name": fmt.Sprintf("eth%d", i)}
+		var addresses []string
+		var routes []any
 		if n.IP == "" {
 			eth["dhcp4"] = true
 		} else {
-			eth["addresses"] = []string{fmt.Sprintf("%s/%d", n.IP, n.PrefixLength)}
+			addresses = append(addresses, fmt.Sprintf("%s/%d", n.IP, n.PrefixLength))
 			if n.Gateway != "" {
-				eth["routes"] = []any{map[string]any{"to": "default", "via": n.Gateway}}
+				routes = append(routes, map[string]any{"to": "default", "via": n.Gateway})
 			}
 			ns := map[string]any{"addresses": nonNil(n.DNSServers)}
 			if domain != "" {
 				ns["search"] = []string{domain}
 			}
 			eth["nameservers"] = ns
+		}
+		if n.IP6 != "" {
+			addresses = append(addresses, fmt.Sprintf("%s/%d", n.IP6, n.PrefixLength6))
+			if n.Gateway6 != "" {
+				routes = append(routes, map[string]any{"to": "::/0", "via": n.Gateway6})
+			}
+		}
+		if addresses != nil {
+			eth["addresses"] = addresses
+		}
+		if routes != nil {
+			eth["routes"] = routes
 		}
 		ethernets[fmt.Sprintf("nic%d", i)] = eth
 	}

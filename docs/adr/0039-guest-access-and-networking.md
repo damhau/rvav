@@ -153,3 +153,41 @@ rvav's always had a static IPv4 address from EfficientIP (parity C23).
   page shows it under **Network and addresses**, and AWX's inventory
   falls back to it. The deployment has no `ipam.address` or `dns.record`
   for the first adapter, so deleting it releases nothing in EfficientIP.
+
+### IPv6 dual stack
+- `ipv6: true` on the blueprint or a component (a component's wins)
+  gives the first adapter an IPv6 address beside its IPv4 one. It needs
+  the IPv4 address from EfficientIP too: `ipv6` with `ipam: dhcp` is
+  refused when the item is saved. Added adapters stay IPv4.
+- A network's IPv6 subnet is a SOLIDserver IPv6 subnet (`ip6_*`
+  services) whose `vsphere_network` class parameter names it, with a
+  `gateway` parameter; the sync sets it on the network's mapping when
+  the network has an IPv4 subnet and only one IPv6 subnet claims it, and
+  says why otherwise. An administrator can set it by hand on the mapping
+  too (`subnet6`, `gateway6`).
+- At request time a VM with `ipv6` on a network without an IPv6 subnet is
+  refused (`no_subnet6`), and so is one on a segment made for the
+  deployment: its subnet is carved from an IPv4 block.
+- The plan's VM carries the IPv6 subnet, its ID, gateway and prefix
+  length, all omitted when empty, so old plans replay as before. No
+  activity or workflow command is added: `ReserveIP` reserves the IPv6
+  address too, under the same FQDN, as an `ipam.address` resource of its
+  own; `CreateDNS` adds an AAAA record; `Customize` reads the address
+  back from the request's resources. The activity inputs don't carry it,
+  so histories stay as they were.
+- rvav makes no IPv6 PTR record: reverse zones for IPv6 are rarely
+  delegated per subnet, and SOLIDserver's DNS rules can make them.
+- vCenter's customization gives the first adapter a fixed IPv6 address
+  with its prefix length and gateway (`ipV6Spec`); cloud-init and
+  cloudbase-init network data list both addresses and add a `::/0` route
+  through the IPv6 gateway. User data reads `.vm.ip6`.
+- The VM's address stays its IPv4 one wherever rvav names one address:
+  the deployment's, AWX's inventory, components' references. The
+  deployment's page lists both under **Network and addresses**.
+- Renaming the VM renames its IPv6 address and AAAA record with the rest;
+  deleting it releases both. SOLIDserver numbers IPv4 and IPv6 addresses
+  apart, so the IPAM reconciliation keys an address by its family and
+  ID.
+- A SOLIDserver without the IPv6 module, or an account without the right
+  to it, answers the `ip6_*` services with a 4xx: the sync, the
+  reconciliation and the listings go on with IPv4 only.

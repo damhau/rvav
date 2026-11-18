@@ -9,6 +9,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/present"
 )
 
@@ -42,11 +43,11 @@ func (s *Service) ReconcileIPAM(ctx context.Context, p *auth.Principal) (api.Ipa
 		Value   string `json:"value"`
 	}
 	recordKey := func(typ, fqdn, value string) string { return typ + " " + normalize(fqdn) + " " + normalize(value) }
-	idKey := func(resourceType, id string) string {
+	idKey := func(resourceType string, pr props) string {
 		if resourceType == "ipam.address" {
-			return "ip:" + id
+			return efficientip.Address{ID: pr.ID, IP: pr.Address}.Key()
 		}
-		return "rr:" + id
+		return "rr:" + pr.ID
 	}
 	ownedIDs, ownedIPs, ownedRecords := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	parsed := make([]props, len(owned))
@@ -54,7 +55,7 @@ func (s *Service) ReconcileIPAM(ctx context.Context, p *auth.Principal) (api.Ipa
 		_ = json.Unmarshal(r.Properties, &parsed[i])
 		pr := parsed[i]
 		if pr.ID != "" {
-			ownedIDs[idKey(r.Type, pr.ID)] = true
+			ownedIDs[idKey(r.Type, pr)] = true
 		}
 		if r.Type == "ipam.address" {
 			ownedIPs[pr.Address] = true
@@ -65,8 +66,8 @@ func (s *Service) ReconcileIPAM(ctx context.Context, p *auth.Principal) (api.Ipa
 
 	managed := map[string]bool{}
 	for _, a := range addresses {
-		managed["ip:"+a.ID] = true
-		if !ownedIDs["ip:"+a.ID] && !ownedIPs[a.IP] {
+		managed[a.Key()] = true
+		if !ownedIDs[a.Key()] && !ownedIPs[a.IP] {
 			report.OrphanAddresses = append(report.OrphanAddresses, api.IpamOrphanAddress{EfficientipId: a.ID, Ip: a.IP, Name: a.Hostname, Subnet: a.Subnet})
 		}
 	}
@@ -79,27 +80,28 @@ func (s *Service) ReconcileIPAM(ctx context.Context, p *auth.Principal) (api.Ipa
 
 	// Owned objects not among the tagged ones may still exist (a record
 	// adopted from SOLIDserver has no tag): ask for them by ID.
-	var addressIDs, recordIDs []string
+	var ownedAddresses []efficientip.Address
+	var recordIDs []string
 	for i, r := range owned {
-		id := parsed[i].ID
+		pr := parsed[i]
 		switch {
-		case id == "" || managed[idKey(r.Type, id)]:
+		case pr.ID == "" || managed[idKey(r.Type, pr)]:
 		case r.Type == "ipam.address":
-			addressIDs = append(addressIDs, id)
+			ownedAddresses = append(ownedAddresses, efficientip.Address{ID: pr.ID, IP: pr.Address})
 		default:
-			recordIDs = append(recordIDs, id)
+			recordIDs = append(recordIDs, pr.ID)
 		}
 	}
-	haveAddresses, haveRecords, err := s.IPAM.Existing(ctx, addressIDs, recordIDs)
+	haveAddresses, haveRecords, err := s.IPAM.Existing(ctx, ownedAddresses, recordIDs)
 	if err != nil {
 		return report, &UpstreamError{System: "EfficientIP", Err: err}
 	}
 	for i, r := range owned {
 		id := parsed[i].ID
-		if id == "" || managed[idKey(r.Type, id)] {
+		if id == "" || managed[idKey(r.Type, parsed[i])] {
 			continue
 		}
-		if (r.Type == "ipam.address" && !haveAddresses[id]) || (r.Type == "dns.record" && !haveRecords[id]) {
+		if (r.Type == "ipam.address" && !haveAddresses[idKey(r.Type, parsed[i])]) || (r.Type == "dns.record" && !haveRecords[id]) {
 			report.Missing = append(report.Missing, api.IpamMissing{ResourceId: r.ID, DeploymentId: r.DeploymentID,
 				DeploymentName: r.DeploymentName, Type: api.IpamMissingType(r.Type), Name: r.Name, EfficientipId: present.Ptr(id)})
 		}

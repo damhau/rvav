@@ -104,6 +104,11 @@ type NetworkSubnet struct {
 	SubnetName          string     `db:"subnet_name"`
 	Source              string     `db:"source"` // manual or efficientip
 	SyncedAt            *time.Time `db:"synced_at"`
+	// Subnet6 is its IPv6 subnet, for VMs given an IPv6 address too
+	// (ADR-0039); "" when it has none.
+	Subnet6              string `db:"subnet6"`
+	Gateway6             string `db:"gateway6"`
+	EfficientIPSubnet6ID string `db:"efficientip_subnet6_id"`
 }
 
 // LeasePolicy is the lease policy of an environment, or a project's

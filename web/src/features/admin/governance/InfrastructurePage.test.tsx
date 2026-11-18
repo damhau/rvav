@@ -200,6 +200,40 @@ describe("Templates and networks", () => {
     expect(await items(synced)).toEqual(["Map by hand"]);
   });
 
+  it("maps a network's IPv6 subnet by hand", async () => {
+    adminState(db).mappings.push({
+      network: "dvpg-by-hand",
+      subnet: "10.89.0.0/24",
+      gateway: "10.89.0.1",
+      dns_zone: "corp.example",
+      dns_servers: [],
+      source: "manual",
+    });
+    const user = userEvent.setup();
+    renderApp("/admin/infrastructure");
+    await user.click(await screen.findByRole("tab", { name: "Networks" }));
+    const region = await screen.findByRole("region", { name: "Network mappings" });
+    expect(await within(region).findByRole("row", { name: /dvpg-app-dev-vl310/ })).toHaveTextContent(
+      "2001:db8:310::/64 via 2001:db8:310::1",
+    );
+
+    await user.click(within(region).getByRole("button", { name: "Actions for dvpg-by-hand" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+    const sheet = await screen.findByRole("dialog", { name: "Map dvpg-by-hand by hand" });
+    await user.type(within(sheet).getByRole("textbox", { name: "IPv6 subnet" }), "2001:db8:89::1");
+    await user.click(within(sheet).getByRole("button", { name: "Save mapping" }));
+    expect(await within(sheet).findByText("An IPv6 subnet such as 2001:db8:310::/64.")).toBeInTheDocument();
+
+    await user.clear(within(sheet).getByRole("textbox", { name: "IPv6 subnet" }));
+    await user.type(within(sheet).getByRole("textbox", { name: "IPv6 subnet" }), "2001:db8:89::/64");
+    await user.type(within(sheet).getByRole("textbox", { name: "IPv6 gateway" }), "2001:db8:89::1");
+    await user.click(within(sheet).getByRole("button", { name: "Save mapping" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(within(region).getByRole("row", { name: /dvpg-by-hand/ })).toHaveTextContent(
+      "10.89.0.0/24 via 10.89.0.12001:db8:89::/64 via 2001:db8:89::1",
+    );
+  });
+
   it("lists vCenter objects with their tags, by name, kind or tag", async () => {
     const user = userEvent.setup();
     renderApp("/admin/infrastructure");

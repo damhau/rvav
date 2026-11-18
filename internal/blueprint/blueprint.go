@@ -62,6 +62,9 @@ type Blueprint struct {
 	// IPAM is how the VMs' first adapter gets its address: efficientip
 	// (the default: reserved, with DNS records) or dhcp (ADR-0039).
 	IPAM string `json:"ipam,omitempty"`
+	// IPv6 gives the first adapter an IPv6 address from its network's
+	// IPv6 subnet too, with an AAAA record (ADR-0039).
+	IPv6 *bool `json:"ipv6,omitempty"`
 	// Components are the groups of VMs of a multi-VM blueprint, built as
 	// one deployment named by DeploymentName.
 	Components []Component `json:"components,omitempty"`
@@ -214,8 +217,10 @@ type Component struct {
 	Properties    map[string]string `json:"properties,omitempty"`
 	Folder        string            `json:"folder,omitempty"`
 	PreventDelete *bool             `json:"prevent_delete,omitempty"`
-	// IPAM is its first adapter's, over the blueprint's (ADR-0039).
+	// IPAM and IPv6 are its first adapter's, over the blueprint's
+	// (ADR-0039).
 	IPAM string `json:"ipam,omitempty"`
+	IPv6 *bool  `json:"ipv6,omitempty"`
 	// AntiAffinity keeps its VMs on separate hosts.
 	AntiAffinity bool `json:"anti_affinity,omitempty"`
 	// Groups are the NSX security groups its VMs are in (ADR-0028).
@@ -275,7 +280,7 @@ func (b Blueprint) ComponentList() []Component {
 		return []Component{{Key: SingleKey, Naming: b.Naming, Template: b.Template, Library: b.Library, Guest: &b.Guest,
 			Bindings: b.Bindings, Disks: b.Disks, NICs: b.NICs, Tags: b.Tags, StoragePolicy: b.StoragePolicy, Groups: b.Groups,
 			Constraints: b.Constraints, Provisioning: b.Provisioning, LinkedClone: b.LinkedClone,
-			Properties: b.Properties, Folder: b.Folder, PreventDelete: &b.PreventDelete, IPAM: b.IPAM}}
+			Properties: b.Properties, Folder: b.Folder, PreventDelete: &b.PreventDelete, IPAM: b.IPAM, IPv6: b.IPv6}}
 	}
 	out := make([]Component, len(b.Components))
 	for i, c := range b.Components {
@@ -327,6 +332,9 @@ func (b Blueprint) ComponentList() []Component {
 		}
 		if r.IPAM == "" {
 			r.IPAM = b.IPAM
+		}
+		if r.IPv6 == nil {
+			r.IPv6 = b.IPv6
 		}
 		out[i] = r
 	}
@@ -395,8 +403,10 @@ type VMPlan struct {
 	Properties    map[string]string `json:"properties,omitempty"`
 	Folder        string            `json:"folder,omitempty"`
 	PreventDelete bool              `json:"prevent_delete,omitempty"`
-	// DHCP: its first adapter gets its address from DHCP (ADR-0039).
+	// DHCP: its first adapter gets its address from DHCP; IPv6: an IPv6
+	// one too (ADR-0039).
 	DHCP bool `json:"dhcp,omitempty"`
+	IPv6 bool `json:"ipv6,omitempty"`
 }
 
 // StorageGB is the VM's storage: its first disk and those added.
@@ -532,6 +542,7 @@ func (b Blueprint) EvaluateComponent(c Component, inputs map[string]any) (plan V
 	plan.Template, plan.Library, plan.StoragePolicy, plan.Provisioning = c.Template, c.Library, c.StoragePolicy, c.Provisioning
 	plan.PreventDelete = c.PreventDelete != nil && *c.PreventDelete
 	plan.DHCP = c.IPAM == IPAMDHCP
+	plan.IPv6 = c.IPv6 != nil && *c.IPv6
 	for _, k := range slices.Sorted(maps.Keys(c.Properties)) {
 		v, err := Interpolate(c.Properties[k], vars)
 		if err != nil {
