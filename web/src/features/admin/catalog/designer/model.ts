@@ -514,7 +514,7 @@ export function updateUi(def: Def, name: string, patch: Partial<UiField>): Def {
 export function setRule(
   def: Def,
   name: string,
-  rule: "visible" | "required" | "read_only" | "value",
+  rule: "visible" | "required" | "read_only" | "default" | "value",
   expr: string,
 ): Def {
   return edit(def, (d) => {

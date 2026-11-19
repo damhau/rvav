@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { singleSource } from "@/forms/defaults";
 import { uploadImage } from "@/forms/image";
 import { isApiError } from "@/lib/api/client";
 import type { FieldStates, FieldValues, UiColumn, UiWidget, ValueSource } from "@/lib/api/types";
@@ -241,6 +242,9 @@ function SourceEditor({
   };
   const others = Object.keys(def.ui_schema.fields).filter((f) => f !== name);
   const deps = ui.depends_on ?? [];
+  // A field that takes one value gets it from the source: a default, or a computed field's value.
+  const one = singleSource({ ...ui, value_source: { kind: "cel" } });
+  const gives = ui.widget === "computed" ? "value" : "default";
   return (
     <fieldset className="flex flex-col gap-2.5 border-t border-line pt-3">
       <legend className="sr-only">Value source</legend>
@@ -274,8 +278,13 @@ function SourceEditor({
                     : k === "builtin"
                       ? { kind: "builtin", name: builtinSources[0] }
                       : k === "rest"
-                        ? { kind: "rest", params: { url: "https://", items: "$[*]", value: "$.id", label: "$.name" } }
-                        : { kind: "cel", params: { options: '["a", "b"]' } },
+                        ? {
+                            kind: "rest",
+                            params: one
+                              ? { url: "https://", value: "$.id" }
+                              : { url: "https://", items: "$[*]", value: "$.id", label: "$.name" },
+                          }
+                        : { kind: "cel", params: one ? { value: '""' } : { options: '["a", "b"]' } },
                 )
               }
               options={[
@@ -288,7 +297,12 @@ function SourceEditor({
           </Field>
           <ProblemList
             id="prop-src-problems"
-            list={at("kind").concat(at("params").filter((p) => p.at === "value_source/params"))}
+            list={problems
+              .filter((p) => p.at === "value_source")
+              .concat(
+                at("kind"),
+                at("params").filter((p) => p.at === "value_source/params"),
+              )}
           />
           {src?.kind === "builtin" && (
             <>
@@ -306,6 +320,13 @@ function SourceEditor({
           )}
         </>
       )}
+      {one && (src?.kind === "rest" || src?.kind === "cel") && (
+        <p className="text-secondary text-muted">
+          {gives === "value"
+            ? "The source gives the field its value, which the server works out again on submit."
+            : "The source gives the field its default, which the requester can change."}
+        </p>
+      )}
       {src?.kind === "rest" && (
         <>
           {param("url", "URL", "A host of RVAV_REST_SOURCE_HOSTS; ${inputs.x} is escaped.")}
@@ -322,15 +343,29 @@ function SourceEditor({
           </Field>
           {params.method === "POST" && param("body", "Body (JSON)")}
           {param("secret", "Secret", "A stored secret's name, sent as bearer, basic or header.", false)}
-          {param("items", "Items (JSONPath)")}
-          {param("value", "Value (JSONPath in an item)")}
-          {param("label", "Label (JSONPath in an item)")}
-          {param("meta", "Detail (JSONPath in an item)")}
+          {one ? (
+            <>
+              {param(
+                "items",
+                "Item (JSONPath)",
+                "Its first match holds the value. Empty: the answer, or its first item.",
+              )}
+              {param("value", "Value (JSONPath in the item)", `The field's ${gives}. Empty: the item itself.`)}
+            </>
+          ) : (
+            <>
+              {param("items", "Items (JSONPath)")}
+              {param("value", "Value (JSONPath in an item)")}
+              {param("label", "Label (JSONPath in an item)")}
+              {param("meta", "Detail (JSONPath in an item)")}
+            </>
+          )}
           {ui.widget === "tree" &&
             param("parent", "Parent (JSONPath in an item)", "The value of the item it sits under.")}
         </>
       )}
-      {src?.kind === "cel" && (
+      {src?.kind === "cel" && one && param("value", "Value", `The field's ${gives}, from the other inputs.`)}
+      {src?.kind === "cel" && !one && (
         <>
           {param(
             "options",
@@ -417,8 +452,22 @@ const rules = [
   { key: "visible", label: "Shown when", hint: 'For example environment == "prd". Empty: always.' },
   { key: "required", label: "Required when", hint: "Empty: as the Required box says." },
   { key: "read_only", label: "Read only when", hint: "" },
+  {
+    key: "default",
+    label: "Default",
+    hint: "Fills the field from other inputs until the requester changes it. It stays editable.",
+  },
   { key: "value", label: "Computed value", hint: "The field shows this and can't be changed." },
 ] as const;
+
+/** What the preview's error for a field says failed, and what the field was left with. */
+function failedRule(error: string, gives: string): string {
+  if (error.startsWith("default: "))
+    return `In the preview, the default rule failed, so the field has no default: ${error.slice(9)}`;
+  if (error.startsWith("value source: "))
+    return `In the preview, the value source failed, so the field has no ${gives}: ${error.slice(14)}`;
+  return `In the preview, a rule failed and its default was used: ${error}`;
+}
 
 function FieldProperties({
   def,
@@ -708,26 +757,32 @@ function FieldProperties({
         </p>
         {ruleError && (
           <p role="note" className="text-secondary text-warn">
-            In the preview, a rule failed and its default was used: {ruleError}
+            {failedRule(ruleError, ui.widget === "computed" ? "value" : "default")}
           </p>
         )}
-        {rules.map((r) => {
-          const id = `prop-rule-${r.key}`;
-          const list = at(`rules/${r.key}`);
-          return (
-            <Field key={r.key} label={r.label} htmlFor={id} hint={r.hint || undefined}>
-              <CommitInput
-                id={id}
-                className={mono}
-                value={ui.rules?.[r.key] ?? ""}
-                invalid={list.length > 0}
-                describedBy={list.length ? `${id}-problems` : undefined}
-                onCommit={(v) => onChange(setRule(def, name, r.key, v))}
-              />
-              <ProblemList id={`${id}-problems`} list={list} />
-            </Field>
-          );
-        })}
+        {rules
+          .filter(
+            (r) =>
+              r.key !== "default" ||
+              !(ui.widget === "computed" || ui.widget === "file" || shownWidgets.includes(ui.widget)),
+          )
+          .map((r) => {
+            const id = `prop-rule-${r.key}`;
+            const list = at(`rules/${r.key}`);
+            return (
+              <Field key={r.key} label={r.label} htmlFor={id} hint={r.hint || undefined}>
+                <CommitInput
+                  id={id}
+                  className={mono}
+                  value={ui.rules?.[r.key] ?? ""}
+                  invalid={list.length > 0}
+                  describedBy={list.length ? `${id}-problems` : undefined}
+                  onCommit={(v) => onChange(setRule(def, name, r.key, v))}
+                />
+                <ProblemList id={`${id}-problems`} list={list} />
+              </Field>
+            );
+          })}
       </fieldset>
       {prop && (
         <fieldset className="flex flex-col gap-1.5 border-t border-line pt-3 text-secondary">
