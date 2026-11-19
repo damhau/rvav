@@ -143,9 +143,8 @@ func (s *Server) GetRequestForm(w http.ResponseWriter, r *http.Request, itemID a
 		s.fail(w, r, err)
 		return
 	}
-	if err := json.Unmarshal(ver.InitialValues, &out.InitialValues); err != nil || out.InitialValues == nil {
-		out.InitialValues = map[string]any{}
-	}
+	_ = json.Unmarshal(ver.InitialValues, &out.InitialValues)
+	out.InitialValues = core.StartValues(out.Schema, out.InitialValues)
 	out.OneDeployment = core.OneDeployment(ver.Blueprint)
 	out.Topology = core.Topology(ver.Blueprint)
 	names, err := s.Core.MakesDeployments(r.Context(), ver.Blueprint)

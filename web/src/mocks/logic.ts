@@ -654,6 +654,29 @@ export const managers: Record<string, string> = {
 };
 
 /**
+ * As the server's withStart (ADR-0055): an input left out takes the value
+ * the form starts with, its initial value else its schema's default; one
+ * emptied (null) is dropped, unless the field has a default that
+ * applyStates keeps from it.
+ */
+export function withStart(
+  form: Pick<RequestForm, "schema" | "ui_schema" | "initial_values"> | undefined,
+  given: Inputs,
+): Inputs {
+  const inputs = { ...given };
+  const props = (form?.schema as { properties?: Record<string, { default?: unknown }> } | undefined)?.properties ?? {};
+  const start: Inputs = {};
+  for (const [name, p] of Object.entries(props)) if (p.default !== undefined) start[name] = p.default;
+  Object.assign(start, form?.initial_values);
+  for (const [name, v] of Object.entries(start)) {
+    const ui = form?.ui_schema.fields[name];
+    if (!Object.hasOwn(inputs, name)) inputs[name] = structuredClone(v);
+    else if (inputs[name] === null && !(ui && defaulted(ui))) delete inputs[name];
+  }
+  return inputs;
+}
+
+/**
  * What the server's applyStates does with the rule results: a hidden input
  * is dropped, a read-only one is its computed value, its default or its
  * initial value, one without an input takes its default and one emptied
@@ -706,7 +729,7 @@ const varsOf = (db: Db, project: Project, draft: RequestDraft) => ({
 });
 
 export function ruled(db: Db, item: StoredItem, project: Project, draft: RequestDraft) {
-  const inputs = { ...draft.inputs };
+  const inputs = withStart(db.forms[item.id], draft.inputs);
   const fields = settledStates(db, db.forms[item.id], inputs, varsOf(db, project, draft));
   const errors = applyStates(db.forms[item.id], fields, inputs, (x) => validateInputs(db, item, x));
   return { inputs, fields, errors };

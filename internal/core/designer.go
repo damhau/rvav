@@ -70,15 +70,14 @@ func (s *Service) PreviewCatalogItemVersion(ctx context.Context, p *auth.Princip
 	if err := json.Unmarshal(v.UISchema, &out.Form.UiSchema); err != nil {
 		return out, err
 	}
-	if json.Unmarshal(v.InitialValues, &out.Form.InitialValues) != nil || out.Form.InitialValues == nil {
-		out.Form.InitialValues = map[string]any{}
-	}
+	out.Form.InitialValues = startOf(v.FormSchema, v.InitialValues)
 	out.Form.OneDeployment = OneDeployment(v.Blueprint)
 	out.Form.Topology = Topology(v.Blueprint)
 	inputs := map[string]any{}
 	for k, val := range q.Inputs {
 		inputs[k] = val
 	}
+	withStart(out.Form.UiSchema, out.Form.InitialValues, inputs)
 	env := ""
 	if q.Environment != nil {
 		env = *q.Environment

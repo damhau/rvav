@@ -5179,7 +5179,11 @@ export interface components {
                 [key: string]: unknown;
             };
             ui_schema: components["schemas"]["UiSchema"];
-            /** @description Defaults, including values computed for this user and project. */
+            /**
+             * @description What the form starts with: the version's initial values and, for
+             *     an input without one, the `default` its schema gives. A request
+             *     that leaves an input out gets this value (ADR-0055).
+             */
             initial_values: {
                 [key: string]: unknown;
             };
@@ -5529,7 +5533,11 @@ export interface components {
             environment?: components["schemas"]["EnvironmentKey"];
             /** @description Input name. */
             field: string;
-            /** @description Current form values. */
+            /**
+             * @description Current form values. An input left out takes the value the form
+             *     starts with, as on a request (`RequestDraft.inputs`); one sent
+             *     as `null` stays empty.
+             */
             inputs: {
                 [key: string]: unknown;
             };
@@ -5569,10 +5577,14 @@ export interface components {
             project_id: string;
             environment: components["schemas"]["EnvironmentKey"];
             /**
-             * @description The form's values by input name. An input left out takes its
-             *     field's default, from a `default` rule or a value source; `null`
-             *     for a field with a default means it was emptied, and it gets
-             *     none.
+             * @description The form's values by input name: send the ones you choose. An
+             *     input left out takes the value
+             *     the form starts with (`RequestForm.initial_values`: the
+             *     version's initial value, else its schema's `default`), else its
+             *     field's default, from a `default` rule or a value source, as the
+             *     web app shows the form (ADR-0055). `null` for an input with a
+             *     default or a start value means it was emptied: it gets none.
+             *     Submit and `previewRequest` fill the inputs in alike.
              */
             inputs: {
                 [key: string]: unknown;
@@ -6124,6 +6136,11 @@ export interface components {
                 [key: string]: unknown;
             };
             ui_schema: components["schemas"]["UiSchema"];
+            /**
+             * @description What the form starts with on its target: its initial values and,
+             *     for an input without one, the `default` its schema gives. A run
+             *     that leaves an input out gets this value (ADR-0055).
+             */
             initial_values: {
                 [key: string]: unknown;
             };
@@ -6139,7 +6156,10 @@ export interface components {
             action: string;
             /** @description The VM it runs on; absent for an action on the whole deployment. */
             resource_id?: string;
-            /** @description The form's values so far. */
+            /**
+             * @description The form's values so far. Those left out, and those sent as
+             *     `null`, are worked out as on a run (`Day2Draft.inputs`).
+             */
             inputs: {
                 [key: string]: unknown;
             };
@@ -6150,7 +6170,11 @@ export interface components {
             resource_id?: string;
             /** @description Input name. */
             field: string;
-            /** @description Current form values. */
+            /**
+             * @description Current form values. An input left out takes the value the form
+             *     starts with (`ActionForm.initial_values`); one sent as `null`
+             *     stays empty.
+             */
             inputs: {
                 [key: string]: unknown;
             };
@@ -6240,6 +6264,16 @@ export interface components {
         Day2Draft: {
             action: string;
             resource_id?: string;
+            /**
+             * @description The values of the action's form (`Day2Action.form`) by input
+             *     name: send the ones you choose. An input left out takes the
+             *     value the form starts with on the target
+             *     (`ActionForm.initial_values`) and, in a designed form, the
+             *     default its rules work out there, as `previewDeploymentAction`
+             *     shows (ADR-0055). `null` for an input with a default or a start
+             *     value means it was emptied: it gets none. An action without a
+             *     form takes no inputs.
+             */
             inputs: {
                 [key: string]: unknown;
             };
@@ -6272,7 +6306,8 @@ export interface components {
              */
             version_id: string;
             /**
-             * @description Every input, as on a new request; the deployment's are in
+             * @description Every input: unlike a new request's, an input left out doesn't
+             *     take the form's initial value (ADR-0055). The deployment's are in
              *     `getDeployment`. Secret fields are given again.
              */
             inputs: {

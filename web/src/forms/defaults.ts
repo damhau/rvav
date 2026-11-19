@@ -54,15 +54,20 @@ export function withDefaults(
 }
 
 /**
- * The inputs to send: those given, a field with a default the requester
- * emptied as null, so the server gives it none. The others the server
- * fills with their defaults.
+ * The inputs to send: those given, and as null a field the requester
+ * emptied that has a default or a value the form starts with (`initial`),
+ * so the server gives it none. The server fills the others in with those
+ * (ADR-0055).
  */
-export function sentInputs(fields: Record<string, UiField>, values: Record<string, unknown>): Record<string, unknown> {
+export function sentInputs(
+  fields: Record<string, UiField>,
+  values: Record<string, unknown>,
+  initial: Record<string, unknown> = {},
+): Record<string, unknown> {
   let out = values;
   for (const [name, v] of Object.entries(values)) {
     const ui = fields[name];
-    if (v !== undefined || !ui || !defaulted(ui)) continue;
+    if (v !== undefined || !(Object.hasOwn(initial, name) || (ui && defaulted(ui)))) continue;
     if (out === values) out = { ...values };
     out[name] = null;
   }

@@ -75,4 +75,15 @@ describe("defaults", () => {
     const untouched = { app: "web" };
     expect(sentInputs(fields, untouched)).toBe(untouched);
   });
+
+  it("sends a field the requester emptied of the value the form starts with as null", () => {
+    const fields: Record<string, UiField> = {
+      size: { widget: "select", label: "Size" },
+      note: { widget: "text", label: "Note" },
+    };
+    expect(sentInputs(fields, { size: undefined, note: undefined }, { size: "M" })).toEqual({
+      size: null,
+      note: undefined,
+    });
+  });
 });

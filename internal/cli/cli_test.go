@@ -72,11 +72,6 @@ func TestInputs(t *testing.T) {
 	if got, _ := (inputFlags{file: "-"}).read(strings.NewReader(""), schema); got == nil {
 		t.Fatal("an empty file is no inputs, not nil")
 	}
-
-	merged := withInitial(map[string]any{"cpu": 2, "memory": 8}, map[string]any{"cpu": int64(4)})
-	if !reflect.DeepEqual(merged, map[string]any{"cpu": int64(4), "memory": 8}) {
-		t.Fatalf("withInitial = %v", merged)
-	}
 }
 
 func TestFormInputs(t *testing.T) {

@@ -3286,7 +3286,11 @@ type ActionForm struct {
 	// sources work as a request form's, so its field states come from
 	// `previewDeploymentAction` and its sources from
 	// `resolveDeploymentActionValues`. Absent for the other forms.
-	Designed      *bool                  `json:"designed,omitempty"`
+	Designed *bool `json:"designed,omitempty"`
+
+	// InitialValues What the form starts with on its target: its initial values and,
+	// for an input without one, the `default` its schema gives. A run
+	// that leaves an input out gets this value (ADR-0055).
 	InitialValues map[string]interface{} `json:"initial_values"`
 
 	// Schema JSON Schema of `inputs`.
@@ -4778,11 +4782,20 @@ type Day2Draft struct {
 	// finds a warning not in it, such as a policy added since the
 	// preview, the request is refused (422) at `/accept_warnings`,
 	// with every warning found. Send it empty to be told of any.
-	AcceptedWarnings *[]string              `json:"accepted_warnings,omitempty"`
-	Action           string                 `json:"action"`
-	Inputs           map[string]interface{} `json:"inputs"`
-	Justification    *string                `json:"justification,omitempty"`
-	ResourceId       *string                `json:"resource_id,omitempty"`
+	AcceptedWarnings *[]string `json:"accepted_warnings,omitempty"`
+	Action           string    `json:"action"`
+
+	// Inputs The values of the action's form (`Day2Action.form`) by input
+	// name: send the ones you choose. An input left out takes the
+	// value the form starts with on the target
+	// (`ActionForm.initial_values`) and, in a designed form, the
+	// default its rules work out there, as `previewDeploymentAction`
+	// shows (ADR-0055). `null` for an input with a default or a start
+	// value means it was emptied: it gets none. An action without a
+	// form takes no inputs.
+	Inputs        map[string]interface{} `json:"inputs"`
+	Justification *string                `json:"justification,omitempty"`
+	ResourceId    *string                `json:"resource_id,omitempty"`
 }
 
 // Day2FieldValuesQuery defines model for Day2FieldValuesQuery.
@@ -4792,7 +4805,9 @@ type Day2FieldValuesQuery struct {
 	// Field Input name.
 	Field string `json:"field"`
 
-	// Inputs Current form values.
+	// Inputs Current form values. An input left out takes the value the form
+	// starts with (`ActionForm.initial_values`); one sent as `null`
+	// stays empty.
 	Inputs map[string]interface{} `json:"inputs"`
 
 	// ResourceId The VM it runs on; absent for an action on the whole deployment.
@@ -4885,7 +4900,8 @@ type Day2FormPreview struct {
 type Day2FormQuery struct {
 	Action string `json:"action"`
 
-	// Inputs The form's values so far.
+	// Inputs The form's values so far. Those left out, and those sent as
+	// `null`, are worked out as on a run (`Day2Draft.inputs`).
 	Inputs map[string]interface{} `json:"inputs"`
 
 	// ResourceId The VM it runs on; absent for an action on the whole deployment.
@@ -5471,7 +5487,9 @@ type FieldValuesQuery struct {
 	// Field Input name.
 	Field string `json:"field"`
 
-	// Inputs Current form values.
+	// Inputs Current form values. An input left out takes the value the form
+	// starts with, as on a request (`RequestDraft.inputs`); one sent
+	// as `null` stays empty.
 	Inputs    map[string]interface{} `json:"inputs"`
 	ProjectId string                 `json:"project_id"`
 
@@ -7966,10 +7984,14 @@ type RequestDraft struct {
 	// Environment Examples: dev, tst, prd
 	Environment EnvironmentKey `json:"environment"`
 
-	// Inputs The form's values by input name. An input left out takes its
-	// field's default, from a `default` rule or a value source; `null`
-	// for a field with a default means it was emptied, and it gets
-	// none.
+	// Inputs The form's values by input name: send the ones you choose. An
+	// input left out takes the value
+	// the form starts with (`RequestForm.initial_values`: the
+	// version's initial value, else its schema's `default`), else its
+	// field's default, from a `default` rule or a value source, as the
+	// web app shows the form (ADR-0055). `null` for an input with a
+	// default or a start value means it was emptied: it gets none.
+	// Submit and `previewRequest` fill the inputs in alike.
 	Inputs map[string]interface{} `json:"inputs"`
 
 	// Justification Shown to approvers.
@@ -7992,7 +8014,9 @@ type RequestDraft struct {
 
 // RequestForm defines model for RequestForm.
 type RequestForm struct {
-	// InitialValues Defaults, including values computed for this user and project.
+	// InitialValues What the form starts with: the version's initial values and, for
+	// an input without one, the `default` its schema gives. A request
+	// that leaves an input out gets this value (ADR-0055).
 	InitialValues map[string]interface{} `json:"initial_values"`
 	ItemId        string                 `json:"item_id"`
 
@@ -9046,7 +9070,8 @@ type UpdateDraft struct {
 	// with every warning found. Send it empty to be told of any.
 	AcceptedWarnings *[]string `json:"accepted_warnings,omitempty"`
 
-	// Inputs Every input, as on a new request; the deployment's are in
+	// Inputs Every input: unlike a new request's, an input left out doesn't
+	// take the form's initial value (ADR-0055). The deployment's are in
 	// `getDeployment`. Secret fields are given again.
 	Inputs        map[string]interface{} `json:"inputs"`
 	Justification *string                `json:"justification,omitempty"`

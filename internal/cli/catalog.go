@@ -229,7 +229,7 @@ them as you would to rvavctl catalog request.`,
 				return err
 			}
 			r, err := c.ResolveFieldValuesWithResponse(ctx, rvavclient.FieldValuesQuery{VersionId: fr.JSON200.VersionId,
-				ProjectId: pid, Environment: optional(env), Field: args[1], Inputs: withInitial(fr.JSON200.InitialValues, given)})
+				ProjectId: pid, Environment: optional(env), Field: args[1], Inputs: given})
 			if err != nil {
 				return err
 			}
@@ -327,7 +327,7 @@ func (a *app) request(ctx context.Context, item string, f requestFlags) error {
 		return err
 	}
 	d := rvavclient.RequestDraft{CatalogItemId: ir.JSON200.Id, VersionId: fr.JSON200.VersionId, ProjectId: pid,
-		Environment: f.env, Inputs: withInitial(fr.JSON200.InitialValues, given)}
+		Environment: f.env, Inputs: given}
 	if f.count > 0 {
 		d.Count = &f.count
 	}

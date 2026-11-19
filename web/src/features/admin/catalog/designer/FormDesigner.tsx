@@ -87,7 +87,7 @@ function Preview({
   const inputs = useDebounced(ctx.values, 300);
   const standIns = useSecretStandIns(fields);
   // Keyed on the server's revision of the draft: the same revision is the same form.
-  const previewOf = (given: Record<string, unknown>, values = sentInputs(fields, given)) => ({
+  const previewOf = (given: Record<string, unknown>, values = sentInputs(fields, given, initialValues)) => ({
     queryKey: [
       ...keys.catalogAdmin.all,
       "designer-preview",

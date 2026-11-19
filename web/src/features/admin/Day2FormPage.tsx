@@ -124,7 +124,7 @@ function Preview({
   const onDeployment = design.types.includes("deployment");
   const onVM = design.types.includes("vsphere.vm");
   const inputs = useDebounced(ctx.values, 300);
-  const sent = sentInputs(def.ui_schema.fields, inputs);
+  const sent = sentInputs(def.ui_schema.fields, inputs, def.initial_values);
   // Keyed on the server's revision of the form: the same revision is the same form.
   const preview = useQuery({
     queryKey: [...keys.day2Form(design.action), "preview", revision, target.deploymentId, target.resourceId, sent],

@@ -58,19 +58,6 @@ func (f inputFlags) read(stdin io.Reader, schema map[string]any) (map[string]any
 	return inputs, nil
 }
 
-// withInitial are the inputs to send: the form's initial values, as the
-// web app starts it with, under those given. rvav checks what it gets.
-func withInitial(initial, given map[string]any) map[string]any {
-	out := make(map[string]any, len(initial)+len(given))
-	for k, v := range initial {
-		out[k] = v
-	}
-	for k, v := range given {
-		out[k] = v
-	}
-	return out
-}
-
 func property(schema map[string]any, name string) map[string]any {
 	props, _ := schema["properties"].(map[string]any)
 	p, _ := props[name].(map[string]any)

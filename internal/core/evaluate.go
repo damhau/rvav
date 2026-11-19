@@ -249,8 +249,12 @@ func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.
 	// Rules first: computed values are inputs like any other.
 	var ui api.UiSchema
 	_ = json.Unmarshal(ev.Version.UISchema, &ui)
-	var initial map[string]any
-	_ = json.Unmarshal(ev.Version.InitialValues, &initial)
+	initial := startOf(ev.Version.FormSchema, ev.Version.InitialValues)
+	// An approver's edit and an update give every input (ADR-0055).
+	fresh := !ofRequest && kept == nil
+	if fresh {
+		withStart(ui, initial, ev.Inputs)
+	}
 	ev.Fields = s.settledStates(ctx, p, ev.Project, ev.Env.Key, ev.Version, ui, initial, ev.Inputs)
 	ruleErrs := applyStates(ev.Fields, ui, initial, ev.Inputs)
 	if err := s.evaluateFiles(ctx, p, ev, ui, ofRequest); err != nil {
@@ -326,7 +330,7 @@ func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.
 	// Only a new request makes deployments: a composite's steps count with
 	// it, and an approver's edits and updates (kept) keep the deployments
 	// counted already, an update's growth checked on its own.
-	if !ofRequest && ev.kept == nil {
+	if fresh {
 		if err := s.evaluateLimits(ctx, ev, p); err != nil {
 			return nil, err
 		}

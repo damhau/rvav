@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
@@ -159,7 +160,12 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 	if q.Environment != nil {
 		env = *q.Environment
 	}
-	return s.sourceValues(ctx, p, proj, env, ver, q.Field, field, q.Inputs, deref(q.Search))
+	inputs := maps.Clone(q.Inputs)
+	if inputs == nil {
+		inputs = map[string]any{}
+	}
+	withStart(ui, startOf(ver.FormSchema, ver.InitialValues), inputs)
+	return s.sourceValues(ctx, p, proj, env, ver, q.Field, field, inputs, deref(q.Search))
 }
 
 // sourceValues resolves a field's value source for a principal requesting

@@ -27,7 +27,7 @@ import {
   testEntry,
   type StoredEntry,
 } from "./formLibrary";
-import { applyStates, settledStates, userGroups, validateInputs } from "./logic";
+import { applyStates, settledStates, userGroups, validateInputs, withStart } from "./logic";
 import { assignable, builtinRoles, customRoles } from "./roles";
 import type { Db, StoredItem } from "./seed";
 
@@ -1763,12 +1763,12 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       if (!found) return problem(404, "Not found");
       if (!found.member) return notMember(db, found.user.id);
       const env = q.environment ?? "dev";
-      const fields = settledStates(db, found.form, q.inputs, {
+      const inputs = withStart(found.form, q.inputs);
+      const fields = settledStates(db, found.form, inputs, {
         environment: env,
         project: { id: project.id, code: project.code, name: project.name },
         user: found.user,
       });
-      const inputs = { ...q.inputs };
       const errors = applyStates(found.form, fields, inputs, (x) => validateInputs(db, found.item, x, found.form));
       return HttpResponse.json({ form: found.form, fields, errors } satisfies S["DesignerPreview"]);
     }),

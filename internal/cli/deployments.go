@@ -326,15 +326,15 @@ func (a *app) run(ctx context.Context, deployment, key string, f runFlags) error
 		}
 		return fmt.Errorf("%s\nAdd --yes to go on", why)
 	}
-	var schema, initial map[string]any
+	var schema map[string]any
 	if action.Form != nil {
-		schema, initial = action.Form.Schema, action.Form.InitialValues
+		schema = action.Form.Schema
 	}
 	given, err := f.inputs.read(a.In, schema)
 	if err != nil {
 		return err
 	}
-	d := rvavclient.Day2Draft{Action: action.Key, ResourceId: action.ResourceId, Inputs: withInitial(initial, given),
+	d := rvavclient.Day2Draft{Action: action.Key, ResourceId: action.ResourceId, Inputs: given,
 		Justification: optional(f.justification)}
 	if f.acceptWarnings {
 		d.AcceptWarnings = ptr(true)

@@ -68,8 +68,8 @@ func init() {
 			}
 			fields := []field{number("size_gb", "Size (GB)", help, 1, maxDiskGB, 50)}
 			if len(c.Datastores) > 0 {
-				// Optional: a request without one puts the disk on the
-				// VM's datastore, as before the choice existed.
+				// Optional: a run that empties it (null) puts the disk
+				// on the VM's datastore, as before the choice existed.
 				ds := choice("datastore", "Datastore", c.Datastores, firstDatastore(t, c))
 				ds.optional = true
 				fields = append(fields, ds)

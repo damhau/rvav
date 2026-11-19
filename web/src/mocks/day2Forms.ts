@@ -7,7 +7,7 @@ import type { ActionForm, DeploymentDetail, FieldError, RequestForm, UiField, Vm
 import { formProblems } from "./catalogAdmin";
 import { workflowRegistrations } from "./extensibility";
 import { validationErrors } from "./formLibrary";
-import { applyStates, resolveField, settledStates, userGroups, validateInputs } from "./logic";
+import { applyStates, resolveField, settledStates, userGroups, validateInputs, withStart } from "./logic";
 import type { Db } from "./seed";
 
 type S = components["schemas"];
@@ -117,8 +117,8 @@ export function designedInputs(
 ) {
   const rf = requestForm(key, form);
   const vars = formVars(db, d, vm);
-  const fields = settledStates(db, rf, given, vars);
-  const inputs = { ...given };
+  const inputs = withStart(rf, given);
+  const fields = settledStates(db, rf, inputs, vars);
   const errors = applyStates(rf, fields, inputs, (x) => validateInputs(db, itemOf(db, d), x, rf));
   if (run && errors.length === 0) errors.push(...validationErrors(db, rf, { ...vars, inputs }));
   return { fields, inputs, errors };

@@ -2,7 +2,7 @@
 // (internal/core/validate.go and locateNested in formfields.go).
 import { describe, expect, it } from "vitest";
 import type { RequestForm } from "@/lib/api/types";
-import { validateInputs } from "./logic";
+import { validateInputs, withStart } from "./logic";
 import type { Db, StoredItem } from "./seed";
 
 const form = {
@@ -51,5 +51,24 @@ describe("the mocks' collection checks", () => {
     expect(check({ labels: { "": "x" } })).toEqual(["/inputs/labels key: Give every pair a key."]);
     expect(check({ tags: ["a", "a"] })).toEqual(["/inputs/tags unique: The same value is in the list twice."]);
     expect(check({ tags: ["a", "b"], labels: { app: "billing" }, disks: [{ size_gb: 10 }] })).toEqual([]);
+  });
+});
+
+describe("the mocks' inputs left out", () => {
+  it("take the value the form starts with, as the server's withStart", () => {
+    const started = {
+      schema: { type: "object", properties: { size: { type: "string" }, port: { type: "integer", default: 9100 } } },
+      ui_schema: {
+        layout: { kind: "page", sections: [] },
+        fields: {
+          size: { widget: "select", label: "Size" },
+          port: { widget: "number", label: "Port" },
+          host: { widget: "text", label: "Host", rules: { default: "'web'" } },
+        },
+      },
+      initial_values: { size: "M", host: "db" },
+    } as unknown as RequestForm;
+    expect(withStart(started, {})).toEqual({ size: "M", port: 9100, host: "db" });
+    expect(withStart(started, { size: null, port: 80, host: null })).toEqual({ port: 80, host: null });
   });
 });

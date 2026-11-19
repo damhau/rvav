@@ -193,7 +193,7 @@ func presentAction(a *day2.Action, t day2.Target, c day2.Choices, dec decision, 
 		out.Confirm = &c
 	}
 	if a.Form != nil && reason == "" {
-		out.Form = a.Form(t, c)
+		out.Form = startForm(a.Form(t, c))
 	}
 	if len(dec.Warnings) > 0 && reason == "" {
 		out.Warnings = &dec.Warnings

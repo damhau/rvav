@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -98,7 +99,9 @@ func TestDiskProvisioning(t *testing.T) {
 		r := d.succeed("tnguyen", "disk_add", map[string]any{"size_gb": 20, "provisioning": "thick_eager_zeroed"})
 		var steps struct{ Items []api.Step }
 		h.json("GET", "/api/v1/requests/"+r.Id+"/steps", "tnguyen", nil, 200, &steps)
-		if !slices.ContainsFunc(steps.Items, func(s api.Step) bool { return s.Title == "Add a 20 GB disk" }) {
+		// The datastore left out is the one the form starts with (ADR-0055).
+		want := fmt.Sprint("Add a 20 GB disk on ", form.InitialValues["datastore"])
+		if !slices.ContainsFunc(steps.Items, func(s api.Step) bool { return s.Title == want }) {
 			t.Fatalf("Add a disk steps = %+v", steps.Items)
 		}
 

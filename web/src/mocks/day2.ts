@@ -28,7 +28,7 @@ import {
   takenName,
 } from "./deploymentNames";
 import { type LimitAsk, limitCheck } from "./limits";
-import { userGroups } from "./logic";
+import { userGroups, withStart } from "./logic";
 import { designedForm, designedInputs } from "./day2Forms";
 import { deploymentUsage, quotaCheck, type QuotaScope } from "./quotas";
 import type { Db, StoredRequest } from "./seed";
@@ -1318,7 +1318,7 @@ export function runAction(
   // A designed form's states apply first: the job gets the inputs they leave.
   const designed = designedForm(db, a.key);
   const ruled = designed && designedInputs(db, d, vm, a.key, designed, inputs, true);
-  if (ruled) inputs = ruled.inputs;
+  inputs = ruled ? ruled.inputs : withStart(a.form?.(vm, d, db), inputs);
   const required = (a.form?.(vm, d, db).schema as { required?: string[] } | undefined)?.required ?? [];
   const missing = ruled
     ? ruled.errors

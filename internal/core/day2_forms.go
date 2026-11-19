@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -195,13 +196,16 @@ func actionVersion(key string, form *api.ActionForm, d store.DeploymentRow, t da
 	return v
 }
 
-// formInputs checks inputs against an action's form. A designed one is
+// formInputs checks inputs against an action's form, each input left out
+// given its start value first (ADR-0055). A designed one is
 // worked out as a request's form is (ADR-0019): its defaults and rules
 // apply to inputs, as a run sends them, then its schema, the values picked
 // from its sources and, on a run, its validations are checked. fields are
 // its states (none for the other forms).
 func (s *Service) formInputs(ctx context.Context, p *auth.Principal, d store.DeploymentRow, t day2.Target, key string,
 	form *api.ActionForm, inputs map[string]any, run bool) (api.FieldStates, []api.FieldError, error) {
+	start := StartValues(form.Schema, form.InitialValues)
+	withStart(form.UiSchema, start, inputs)
 	if !isDesigned(form) {
 		schema, _ := json.Marshal(form.Schema)
 		sum := sha256.Sum256(schema)
@@ -217,8 +221,8 @@ func (s *Service) formInputs(ctx context.Context, p *auth.Principal, d store.Dep
 		return nil, nil, err
 	}
 	ev := &Evaluation{Project: proj, Env: env, Item: store.CatalogItem{ID: d.ItemID}, Version: actionVersion(key, form, d, t), Inputs: inputs}
-	ev.Fields = s.settledStates(ctx, p, proj, env.Key, ev.Version, form.UiSchema, form.InitialValues, inputs)
-	ruleErrs := applyStates(ev.Fields, form.UiSchema, form.InitialValues, inputs)
+	ev.Fields = s.settledStates(ctx, p, proj, env.Key, ev.Version, form.UiSchema, start, inputs)
+	ruleErrs := applyStates(ev.Fields, form.UiSchema, start, inputs)
 	errs, err := validateInputs(ev.Version.ID, ev.Version.FormSchema, inputs)
 	if err != nil {
 		return nil, nil, err
@@ -339,7 +343,7 @@ func (s *Service) previewForm(ctx context.Context, p *auth.Principal, d store.De
 	if err != nil {
 		return api.Day2FormPreview{}, err
 	}
-	return api.Day2FormPreview{Form: *form, Fields: fields, Errors: nonNilErrors(errs)}, nil
+	return api.Day2FormPreview{Form: *startForm(form), Fields: fields, Errors: nonNilErrors(errs)}, nil
 }
 
 func nonNilErrors(errs []api.FieldError) []api.FieldError {
@@ -373,6 +377,11 @@ func (s *Service) formValues(ctx context.Context, p *auth.Principal, d store.Dep
 	if err != nil {
 		return api.FieldValues{Field: name}, err
 	}
+	inputs = maps.Clone(inputs)
+	if inputs == nil {
+		inputs = map[string]any{}
+	}
+	withStart(form.UiSchema, StartValues(form.Schema, form.InitialValues), inputs)
 	return s.sourceValues(ctx, p, proj, d.Environment, actionVersion(key, form, d, t), name, field, inputs, search)
 }
 

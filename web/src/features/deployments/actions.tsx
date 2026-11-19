@@ -138,8 +138,8 @@ export function ActionDialog({
   const designed = Boolean(action.form?.designed);
   const [values, setValues] = useState<Record<string, unknown>>(() => ({ ...form?.initial_values }));
   const sent = useMemo(
-    () => (form && designed ? sentInputs(form.ui_schema.fields, values) : values),
-    [form, designed, values],
+    () => (form ? sentInputs(form.ui_schema.fields, values, form.initial_values) : values),
+    [form, values],
   );
   const preview = useActionPreview(deployment.id, action, designed ? sent : null);
   // A field's live problems show once it was left, as a request form's do.
