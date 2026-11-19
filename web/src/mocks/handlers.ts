@@ -60,6 +60,7 @@ import { extensibilityHandlers } from "./extensibility";
 import { resourceTypeHandlers } from "./resourceTypes";
 import { variableHandlers } from "./variables";
 import { scheduleHandlers, type DraftCheck } from "./schedules";
+import { auditForwardingHandlers } from "./auditForwarding";
 import { notificationHandlers } from "./notifications";
 import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
@@ -512,6 +513,7 @@ export const handlers = [
   ...resourceTypeHandlers(db, base, wait),
   ...variableHandlers(db, base, wait),
   ...scheduleHandlers(db, base, wait, scheduleCheck),
+  ...auditForwardingHandlers(db, base, wait),
   ...notificationHandlers(db, base, wait),
   ...signInHandlers(base, wait),
   ...draftHandlers(db, base, wait),

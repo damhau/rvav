@@ -20,6 +20,7 @@ import { Route as SchedulesRouteImport } from "./routes/schedules"
 import { Route as TokensRouteImport } from "./routes/tokens"
 import { Route as AdminIndexRouteImport } from "./routes/admin/index"
 import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
+import { Route as AdminAuditForwardingRouteImport } from "./routes/admin/audit-forwarding"
 import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-actions"
 import { Route as AdminFormLibraryRouteImport } from "./routes/admin/form-library"
 import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastructure"
@@ -109,6 +110,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const AdminAuditRoute = AdminAuditRouteImport.update({
   id: "/audit",
   path: "/audit",
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminAuditForwardingRoute = AdminAuditForwardingRouteImport.update({
+  id: "/audit-forwarding",
+  path: "/audit-forwarding",
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminDay2ActionsRoute = AdminDay2ActionsRouteImport.update({
@@ -302,6 +308,7 @@ export interface FileRoutesByFullPath {
   "/schedules": typeof SchedulesRoute
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
+  "/admin/audit-forwarding": typeof AdminAuditForwardingRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
@@ -349,6 +356,7 @@ export interface FileRoutesByTo {
   "/schedules": typeof SchedulesRoute
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
+  "/admin/audit-forwarding": typeof AdminAuditForwardingRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
@@ -398,6 +406,7 @@ export interface FileRoutesById {
   "/schedules": typeof SchedulesRoute
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
+  "/admin/audit-forwarding": typeof AdminAuditForwardingRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
@@ -448,6 +457,7 @@ export interface FileRouteTypes {
     | "/schedules"
     | "/tokens"
     | "/admin/audit"
+    | "/admin/audit-forwarding"
     | "/admin/day2-actions"
     | "/admin/form-library"
     | "/admin/infrastructure"
@@ -495,6 +505,7 @@ export interface FileRouteTypes {
     | "/schedules"
     | "/tokens"
     | "/admin/audit"
+    | "/admin/audit-forwarding"
     | "/admin/day2-actions"
     | "/admin/form-library"
     | "/admin/infrastructure"
@@ -543,6 +554,7 @@ export interface FileRouteTypes {
     | "/schedules"
     | "/tokens"
     | "/admin/audit"
+    | "/admin/audit-forwarding"
     | "/admin/day2-actions"
     | "/admin/form-library"
     | "/admin/infrastructure"
@@ -680,6 +692,13 @@ declare module "@tanstack/react-router" {
       path: "/audit"
       fullPath: "/admin/audit"
       preLoaderRoute: typeof AdminAuditRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    "/admin/audit-forwarding": {
+      id: "/admin/audit-forwarding"
+      path: "/audit-forwarding"
+      fullPath: "/admin/audit-forwarding"
+      preLoaderRoute: typeof AdminAuditForwardingRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     "/admin/day2-actions": {
@@ -932,6 +951,7 @@ declare module "@tanstack/react-router" {
 
 interface AdminRouteRouteChildren {
   AdminAuditRoute: typeof AdminAuditRoute
+  AdminAuditForwardingRoute: typeof AdminAuditForwardingRoute
   AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
   AdminFormLibraryRoute: typeof AdminFormLibraryRoute
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
@@ -962,6 +982,7 @@ interface AdminRouteRouteChildren {
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminAuditRoute: AdminAuditRoute,
+  AdminAuditForwardingRoute: AdminAuditForwardingRoute,
   AdminDay2ActionsRoute: AdminDay2ActionsRoute,
   AdminFormLibraryRoute: AdminFormLibraryRoute,
   AdminInfrastructureRoute: AdminInfrastructureRoute,

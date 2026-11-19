@@ -49,6 +49,7 @@ const pages = [
   "/admin/vra-import",
   "/admin/subscriptions",
   "/admin/audit",
+  "/admin/audit-forwarding",
   "/admin/system",
   "/no-such-page",
 ];

@@ -16,6 +16,7 @@ import {
   Scale,
   ScanSearch,
   ScrollText,
+  Send,
   Server,
   Shapes,
   ShieldUser,
@@ -180,6 +181,13 @@ export const adminGroups: AdminGroup[] = [
         show: (me) => can(me, "system.manage"),
       },
       { to: "/admin/audit", label: "Audit log", icon: ScrollText, show: (me) => canAnywhere(me, "audit.read") },
+      {
+        to: "/admin/audit-forwarding",
+        label: "Audit forwarding",
+        icon: Send,
+        keywords: ["syslog", "siem", "webhook"],
+        show: (me) => can(me, "integrations.manage") || can(me, "audit.read"),
+      },
       {
         to: "/admin/system",
         label: "System",
