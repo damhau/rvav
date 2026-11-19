@@ -141,7 +141,7 @@ func (s *Server) GetProjectQuota(w http.ResponseWriter, r *http.Request, project
 		env = *params.Environment
 	}
 	ctx := r.Context()
-	limits, err := s.Store.QuotaLimits(ctx, pr.ID, env)
+	limits, err := s.Store.QuotaLimits(ctx, s.Store.Pool, pr.ID, env)
 	if err != nil {
 		s.fail(w, r, err)
 		return

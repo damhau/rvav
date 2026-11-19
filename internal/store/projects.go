@@ -57,8 +57,8 @@ func (s *Store) ProjectsByID(ctx context.Context, idList []string) (map[string]P
 }
 
 // QuotaLimits returns the limits for one environment (” for project-wide).
-func (s *Store) QuotaLimits(ctx context.Context, projectID, environment string) ([]QuotaLimit, error) {
-	rows, _ := s.Pool.Query(ctx, `select environment, resource, limit_value, enforcement
+func (s *Store) QuotaLimits(ctx context.Context, db DB, projectID, environment string) ([]QuotaLimit, error) {
+	rows, _ := db.Query(ctx, `select environment, resource, limit_value, enforcement
 		from quotas where project_id = $1 and environment = $2 order by resource`, projectID, environment)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[QuotaLimit])
 }
@@ -66,14 +66,14 @@ func (s *Store) QuotaLimits(ctx context.Context, projectID, environment string) 
 // QuotaUsed sums what live deployments allocate. Deployments still being
 // provisioned are counted as reserved by their request instead.
 func (s *Store) QuotaUsed(ctx context.Context, projectID, environment string) (QuotaAmounts, error) {
-	return s.QuotaUsedBy(ctx, QuotaFilter{ProjectID: projectID, Environment: environment})
+	return s.QuotaUsedBy(ctx, s.Pool, QuotaFilter{ProjectID: projectID, Environment: environment})
 }
 
 // QuotaReserved sums the planned amounts of requests not finished yet,
 // including those waiting for approval: approving them must not take a
 // project over a limit that others counted on.
 func (s *Store) QuotaReserved(ctx context.Context, projectID, environment string) (QuotaAmounts, error) {
-	return s.QuotaReservedBy(ctx, QuotaFilter{ProjectID: projectID, Environment: environment})
+	return s.QuotaReservedBy(ctx, s.Pool, QuotaFilter{ProjectID: projectID, Environment: environment})
 }
 
 // QuotaFilter is whose use a quota counts: a project's or all of rvav's,
@@ -84,9 +84,9 @@ type QuotaFilter struct {
 }
 
 // QuotaUsedBy is QuotaUsed for any scope.
-func (s *Store) QuotaUsedBy(ctx context.Context, f QuotaFilter) (QuotaAmounts, error) {
+func (s *Store) QuotaUsedBy(ctx context.Context, db DB, f QuotaFilter) (QuotaAmounts, error) {
 	var vcpu, memMB, storage, vms int
-	err := s.Pool.QueryRow(ctx, `
+	err := db.QueryRow(ctx, `
 		select coalesce(sum((r.properties->'vm'->>'cpu_count')::int), 0),
 		       coalesce(sum((r.properties->'vm'->>'memory_mb')::int), 0),
 		       coalesce(sum((select coalesce(sum((d->>'capacity_gb')::int), 0)
@@ -104,15 +104,22 @@ func (s *Store) QuotaUsedBy(ctx context.Context, f QuotaFilter) (QuotaAmounts, e
 }
 
 // QuotaReservedBy is QuotaReserved for any scope: a request counts for
-// its owner, who owns what it builds or changes.
-func (s *Store) QuotaReservedBy(ctx context.Context, f QuotaFilter) (QuotaAmounts, error) {
+// its owner, who owns what it builds or changes. A move counts in its new
+// project and a handover for its new owner, only where that changes what
+// is held and until their deployment is there.
+func (s *Store) QuotaReservedBy(ctx context.Context, db DB, f QuotaFilter) (QuotaAmounts, error) {
 	out := QuotaAmounts{}
-	rows, err := s.Pool.Query(ctx, `
+	rows, err := db.Query(ctx, `
 		select q.key, coalesce(sum(q.value::int), 0)
-		from requests r, jsonb_each_text(case when jsonb_typeof(r.plan->'quota') = 'object'
-		                                      then r.plan->'quota' else '{}' end) q
-		where ($1 = '' or r.project_id = $1) and ($2 = '' or r.environment = $2) and ($3 = '' or r.owner_id = $3)
+		from requests r
+		left join deployments d on d.id = r.deployment_id and r.plan ? 'quota_to',
+		jsonb_each_text(case when jsonb_typeof(r.plan->'quota') = 'object' then r.plan->'quota' else '{}' end) q
+		where ($1 = '' or coalesce(r.plan->'quota_to'->>'project_id', r.project_id) = $1) and ($2 = '' or r.environment = $2)
+		  and ($3 = '' or coalesce(r.plan->'quota_to'->>'owner_id', r.owner_id) = $3)
 		  and r.status in ('pending_approval', 'queued', 'scheduled', 'running')
+		  and (not r.plan ? 'quota_to'
+		       or ($1 <> '' and r.plan->'quota_to'->>'project_id' <> d.project_id)
+		       or ($3 <> '' and r.plan->'quota_to'->>'owner_id' <> d.owner_id))
 		group by q.key`, f.ProjectID, f.Environment, f.OwnerID)
 	if err != nil {
 		return nil, err

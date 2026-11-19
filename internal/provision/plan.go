@@ -16,6 +16,14 @@ import (
 	"github.com/damhau/rvav/internal/integrations/nsx"
 )
 
+// QuotaTo is where a day-2 request's Quota counts while it waits and
+// runs: a move's new project, or a handover's new owner (ADR-0047). The
+// deployment counts there once it is done.
+type QuotaTo struct {
+	ProjectID string `json:"project_id,omitempty"`
+	OwnerID   string `json:"owner_id,omitempty"`
+}
+
 // Plan is everything the workflow needs, computed when the request is
 // submitted and stored on the request.
 type Plan struct {
@@ -33,6 +41,9 @@ type Plan struct {
 	Context      map[string]any  `json:"context,omitempty"`
 	// Day2 is set on day-2 requests instead of VMs or AWX.
 	Day2 *Day2 `json:"day2,omitempty"`
+	// QuotaTo is set when Quota counts somewhere else than the request's
+	// project and owner.
+	QuotaTo *QuotaTo `json:"quota_to,omitempty"`
 	// Update is set on update requests (ADR-0042); VMs and Components are
 	// then the VMs it adds.
 	Update *Update `json:"update,omitempty"`

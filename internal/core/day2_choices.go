@@ -9,6 +9,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -116,7 +117,7 @@ func (s *Service) cannotMove(ctx context.Context, p *auth.Principal, proj store.
 	if err != nil {
 		return "", err
 	}
-	q, err := s.quotaCheck(ctx, ownerScope(p, proj, env, d, movedLevels), "It", add)
+	q, err := s.quotaCheck(ctx, s.Store.Pool, ownerScope(p, proj, env, d, movedLevels), "It", add)
 	if err != nil || len(q.Hard) == 0 {
 		return "", err
 	}
@@ -172,35 +173,42 @@ func ownerScope(p *auth.Principal, proj store.Project, env store.Environment, d 
 		You: d.OwnerID == p.User.ID, Levels: levels}
 }
 
-// day2Quota checks what the action adds to a quota: resizing and disks add
-// to the deployment's project, moving adds the deployment to the new one,
-// and handing it over to its new owner. A hard limit passed refuses it; it
-// returns the resources over a soft one.
-func (s *Service) day2Quota(ctx context.Context, p *auth.Principal, a *day2.Action, d store.DeploymentRow, t day2.Target,
-	inputs map[string]any) ([]string, error) {
-	proj, err := s.Store.GetProject(ctx, d.ProjectID)
-	if err != nil {
-		return nil, err
-	}
-	var add map[string]int
+// day2Change is what a day-2 action counts against the quotas and the
+// deployment limits (ADR-0047): resizing and disks add to the deployment's
+// project, moving adds the deployment to the new one, and handing it over
+// to its new owner. The limits check a resize against the size of each
+// deployment, a move against the new project's limits, and a handover
+// against the new owner's count. It is nil when the action counts nowhere.
+func (s *Service) day2Change(ctx context.Context, p *auth.Principal, a *day2.Action, d store.DeploymentRow, t day2.Target,
+	inputs map[string]any) (*quotaChange, error) {
+	projectID := d.ProjectID
+	now := deploymentUsage(t)
+	ch := &quotaChange{what: "The change", quotaField: "/inputs/size_gb"}
+	ask := &limitAsk{VCPU: now["vcpu"], MemoryGB: now["memory_gb"]}
 	var levels []api.QuotaLevel
-	what := "The change"
 	switch a.Key {
 	case "disk_add", "disk_extend":
-		add = day2Add(a, t, inputs)
-		what = "The disk"
+		ch.add, ch.what, ask = day2Add(a, t, inputs), "The disk", nil
 	case "resize":
-		cpu, _ := inputs["cpu_count"].(float64)
-		mem, _ := inputs["memory_gb"].(float64)
-		add = map[string]int{"vcpu": max(int(cpu)-t.VM.CpuCount, 0), "memory_gb": max(int(mem)-t.VM.MemoryMb/1024, 0)}
-		what = "The new size"
-	case "change_project":
-		id, _ := inputs["project"].(string)
-		if proj, err = s.Store.GetProject(ctx, id); err != nil {
-			return nil, err
+		ch.add, ch.what, ch.quotaField = day2Add(a, t, inputs), "The new size", "/inputs/cpu_count"
+		if cpu, ok := inputs["cpu_count"].(float64); ok {
+			ask.AddVCPU = int(cpu) - t.VM.CpuCount
 		}
-		add, levels = deploymentUsage(t), movedLevels
-		what = "Moving it"
+		if mem, ok := inputs["memory_gb"].(float64); ok {
+			ask.AddMemory = int(mem) - t.VM.MemoryMb/1024
+		}
+		ask.VCPU, ask.MemoryGB = ask.VCPU+ask.AddVCPU, ask.MemoryGB+ask.AddMemory
+		ch.limitField = func(k api.DeploymentLimitKind) string {
+			if k == api.MemoryGbPerDeployment {
+				return "/inputs/memory_gb"
+			}
+			return "/inputs/cpu_count"
+		}
+	case "change_project":
+		projectID, _ = inputs["project"].(string)
+		ch.add, levels, ch.what, ch.quotaField = now, movedLevels, "Moving it", "/inputs/project"
+		ask.ToOwner, ask.ToProject, ask.AddVCPU, ask.AddMemory = 1, 1, ask.VCPU, ask.MemoryGB
+		ch.limitField = func(api.DeploymentLimitKind) string { return "/inputs/project" }
 	case "change_owner":
 		id, _ := inputs["owner"].(string)
 		owner, err := s.Store.GetUser(ctx, id)
@@ -208,31 +216,41 @@ func (s *Service) day2Quota(ctx context.Context, p *auth.Principal, a *day2.Acti
 			return nil, err
 		}
 		d.OwnerID, d.OwnerName = owner.ID, owner.Name
-		add, levels = deploymentUsage(t), handedLevels
-		what = "Handing it over"
+		ch.add, levels, ch.what, ch.quotaField = now, handedLevels, "Handing it over", "/inputs/owner"
+		ask.ToOwner, ask.VCPU, ask.MemoryGB = 1, 0, 0
+		ch.limitField = func(api.DeploymentLimitKind) string { return "/inputs/owner" }
 	default:
 		return nil, nil
+	}
+	proj, err := s.Store.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, err
 	}
 	env, err := s.Store.GetEnvironment(ctx, d.Environment)
 	if err != nil {
 		return nil, err
 	}
-	q, err := s.quotaCheck(ctx, ownerScope(p, proj, env, d, levels), what, add)
-	if err != nil {
-		return nil, err
+	ch.scope = ownerScope(p, proj, env, d, levels)
+	if ask != nil {
+		ask.quotaScope = ownerScope(p, proj, env, d, nil)
 	}
-	if len(q.Hard) > 0 {
-		field := map[string]string{"resize": "/inputs/cpu_count", "change_project": "/inputs/project", "change_owner": "/inputs/owner"}[a.Key]
-		if field == "" {
-			field = "/inputs/size_gb"
-		}
-		errs := make([]api.FieldError, len(q.Hard))
-		for i, m := range q.Hard {
-			errs[i] = fieldErr(field, "quota_exceeded", m)
-		}
-		return nil, &ValidationError{Errors: errs}
+	ch.limits = ask
+	return ch, nil
+}
+
+// day2Reserve is what a day-2 request holds while it waits and runs, and
+// where: a move holds its deployment in the new project and a handover
+// with the new owner, until it is done.
+func day2Reserve(a *day2.Action, t day2.Target, inputs map[string]any) (map[string]int, *provision.QuotaTo) {
+	switch a.Key {
+	case "change_project":
+		id, _ := inputs["project"].(string)
+		return deploymentUsage(t), &provision.QuotaTo{ProjectID: id}
+	case "change_owner":
+		id, _ := inputs["owner"].(string)
+		return deploymentUsage(t), &provision.QuotaTo{OwnerID: id}
 	}
-	return q.OverSoft, nil
+	return day2Add(a, t, inputs), nil
 }
 
 // checkAction runs the checks of an action that need vCenter's inventory,

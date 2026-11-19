@@ -226,7 +226,7 @@ func (s *Service) quotaLines(ctx context.Context, f store.ReportFilter) ([]api.R
 			scopes = append(scopes, pr.Environments...)
 		}
 		for _, scope := range scopes {
-			limits, err := s.Store.QuotaLimits(ctx, pr.ID, scope)
+			limits, err := s.Store.QuotaLimits(ctx, s.Store.Pool, pr.ID, scope)
 			if err != nil {
 				return nil, err
 			}

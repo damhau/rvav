@@ -153,7 +153,12 @@ func (s *Service) checkDay2Retry(ctx context.Context, p *auth.Principal, r store
 	}
 	inputs := map[string]any{}
 	_ = json.Unmarshal(r.Inputs, &inputs)
-	overSoft, err := s.day2Quota(ctx, p, a, d, *target, inputs)
+	change, err := s.day2Change(ctx, p, a, d, *target, inputs)
+	if err != nil {
+		return err
+	}
+	// Its requester accepted the soft limits when they asked.
+	overSoft, _, err := s.checkChange(ctx, s.Store.Pool, change)
 	if err != nil {
 		return err
 	}

@@ -784,16 +784,21 @@ func (s *Service) facts(ctx context.Context, l loadedLevel) ([]fact, error) {
 	if l.req.LeaseDays != nil {
 		out = append(out, fact{"Lease", fmt.Sprintf("%d days", *l.req.LeaseDays)})
 	}
-	if plan.Quota["vcpu"] > 0 || plan.Quota["memory_gb"] > 0 {
-		limits, err := s.Store.QuotaLimits(ctx, l.req.ProjectID, "")
+	// A move counts in its new project; a handover leaves the project's as is.
+	projectID := l.req.ProjectID
+	if plan.QuotaTo != nil {
+		projectID = plan.QuotaTo.ProjectID
+	}
+	if projectID != "" && (plan.Quota["vcpu"] > 0 || plan.Quota["memory_gb"] > 0) {
+		limits, err := s.Store.QuotaLimits(ctx, s.Store.Pool, projectID, "")
 		if err != nil {
 			return out, err
 		}
-		used, err := s.Store.QuotaUsed(ctx, l.req.ProjectID, "")
+		used, err := s.Store.QuotaUsed(ctx, projectID, "")
 		if err != nil {
 			return out, err
 		}
-		reserved, err := s.Store.QuotaReserved(ctx, l.req.ProjectID, "")
+		reserved, err := s.Store.QuotaReserved(ctx, projectID, "")
 		if err != nil {
 			return out, err
 		}

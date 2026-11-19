@@ -30,8 +30,8 @@ const limitColumns = `id, name, project_id, environment, priority, enabled, enfo
 
 // DeploymentLimitPolicies lists the policies in the order they are tried:
 // by priority, global ones first on a tie, then by name.
-func (s *Store) DeploymentLimitPolicies(ctx context.Context) ([]DeploymentLimitPolicy, error) {
-	rows, _ := s.Pool.Query(ctx, `select `+limitColumns+` from deployment_limit_policies
+func (s *Store) DeploymentLimitPolicies(ctx context.Context, db DB) ([]DeploymentLimitPolicy, error) {
+	rows, _ := db.Query(ctx, `select `+limitColumns+` from deployment_limit_policies
 		order by priority, project_id nulls first, name, id`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[DeploymentLimitPolicy])
 }
@@ -73,10 +73,20 @@ type DeploymentCount struct {
 
 // DeploymentCounts counts a project's deployments not deleted, by
 // environment, and those ownerID owns: failed ones and those of requests
-// not done yet count, since they hold their place (ADR-0047).
-func (s *Store) DeploymentCounts(ctx context.Context, projectID, ownerID string) ([]DeploymentCount, error) {
-	rows, _ := s.Pool.Query(ctx, `select environment, count(*) as all_count,
-		count(*) filter (where owner_id = $2) as owned
-		from deployments where project_id = $1 and status <> 'deleted' group by environment`, projectID, ownerID)
+// not done yet count, since they hold their place (ADR-0047). So do the
+// deployments a move not done yet brings to the project, and those a
+// handover not done yet gives ownerID.
+func (s *Store) DeploymentCounts(ctx context.Context, db DB, projectID, ownerID string) ([]DeploymentCount, error) {
+	rows, _ := db.Query(ctx, `select environment, sum(n)::int as all_count, sum(o)::int as owned from (
+		  select environment, 1 as n, (owner_id = $2)::int as o
+		  from deployments where project_id = $1 and status <> 'deleted'
+		  union all
+		  select d.environment, case when r.plan->'quota_to'->>'project_id' = $1 then 1 else 0 end,
+		         case when coalesce(r.plan->'quota_to'->>'owner_id', d.owner_id) = $2 then 1 else 0 end
+		  from requests r join deployments d on d.id = r.deployment_id
+		  where r.status in ('pending_approval', 'queued', 'scheduled', 'running') and d.status <> 'deleted'
+		    and ((r.plan->'quota_to'->>'project_id' = $1 and d.project_id <> $1)
+		         or (r.plan->'quota_to'->>'owner_id' = $2 and d.owner_id <> $2 and d.project_id = $1))
+		) c group by environment`, projectID, ownerID)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[DeploymentCount])
 }

@@ -49,6 +49,8 @@ type updatePlan struct {
 	same bool
 	// vms are the IDs of the deployment's VMs it was planned on.
 	vms []string
+	// change is what the update counts against the quotas and the limits.
+	change *quotaChange
 	componentPlan
 }
 
@@ -207,6 +209,9 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 			Ops: u.ops, Remove: u.remove, Kept: u.kept, Jobs: u.jobs, VMs: u.vms}}
 
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+		if err := s.holdChange(ctx, tx, u.change, ev.OverSoft, draft.AcceptWarnings, draft.AcceptedWarnings); err != nil {
+			return err
+		}
 		if err := s.Store.LockDeployment(ctx, tx, d.ID); err != nil {
 			return err
 		}
@@ -344,8 +349,9 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 	u.same = d.Status != "failed" && ev.Version.ID == d.VersionID && sameInputs(ev.Version.UISchema, d.Inputs, ev.Inputs)
 
 	// Quota on the net change; approval policies see the update.
-	q, err := s.quotaCheck(ctx, quotaScope{Project: ev.Project, Env: ev.Env.Key, EnvName: ev.Env.Name, OwnerID: d.OwnerID,
-		OwnerName: d.OwnerName, You: d.OwnerID == p.User.ID}, "This update", u.delta)
+	u.change = &quotaChange{scope: ownerScope(p, ev.Project, ev.Env, d, nil), what: "This update", add: u.delta,
+		limits: updateAsk(p, ev, d, u)}
+	q, err := s.quotaCheck(ctx, s.Store.Pool, u.change.scope, u.change.what, u.change.add)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +362,7 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 	for _, msg := range q.Hard {
 		ev.Errors = append(ev.Errors, fieldErr("", "quota_exceeded", msg))
 	}
-	limits, err := s.updateLimits(ctx, p, ev, d, u)
+	limits, err := s.updateLimits(ctx, ev, u)
 	if err != nil {
 		return nil, err
 	}

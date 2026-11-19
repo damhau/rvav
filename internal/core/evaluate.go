@@ -772,7 +772,7 @@ func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, p *auth.Pri
 			}
 		}
 	}
-	q, err := s.quotaCheck(ctx, ev.ownerScope(p), "This request", ev.QuotaAdd)
+	q, err := s.quotaCheck(ctx, s.Store.Pool, ev.ownerScope(p), "This request", ev.QuotaAdd)
 	if err != nil {
 		return err
 	}

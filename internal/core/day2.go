@@ -353,11 +353,11 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	if errs = append(errs, justificationErrs(draft.Justification)...); len(errs) > 0 {
 		return store.RequestRow{}, &ValidationError{Errors: errs}
 	}
-	overSoft, err := s.day2Quota(ctx, p, a, d, *target, inputs)
+	change, err := s.day2Change(ctx, p, a, d, *target, inputs)
 	if err != nil {
 		return store.RequestRow{}, err
 	}
-	limited, err := s.day2Limits(ctx, p, a, d, *target, inputs)
+	overSoft, limited, err := s.checkChange(ctx, s.Store.Pool, change)
 	if err != nil {
 		return store.RequestRow{}, err
 	}
@@ -407,14 +407,18 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			op.Args["rvav"] = rvavContext(req.ID, p, d, *target)
 		}
 	}
-	plan := provision.Plan{Kind: "day2", ApprovalRequired: req.ApprovalRequired, Quota: day2Add(a, *target, inputs), Day2: &provision.Day2{
+	plan := provision.Plan{Kind: "day2", ApprovalRequired: req.ApprovalRequired, Day2: &provision.Day2{
 		Action: a.Key, Name: a.Name, DeploymentID: d.ID, ResourceID: target.ResourceID, Moref: target.VM.Moref,
 		Ops: ops, Before: d.Status, During: orDefault(a.During, "updating"), After: orDefault(a.After, "ready"),
 	}}
+	plan.Quota, plan.QuotaTo = day2Reserve(a, *target, inputs)
 	req.Plan, _ = json.Marshal(plan)
 	req.Inputs, _ = json.Marshal(inputs)
 
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+		if err := s.holdChange(ctx, tx, change, overSoft, draft.AcceptWarnings, draft.AcceptedWarnings); err != nil {
+			return err
+		}
 		if err := s.Store.LockDeployment(ctx, tx, d.ID); err != nil {
 			return err
 		}

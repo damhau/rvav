@@ -761,6 +761,12 @@ message says so, for example "Thomas Nguyen's quota in Web Platform has 2
 left". Handing a deployment over checks the new owner's quotas; moving it
 to another project checks that project's.
 
+rvav checks requests sent at the same time one after the other, so they
+can't all take the last of a quota or of a deployment limit: one fits,
+and the others are refused. A handover or a move that isn't done yet,
+waiting for approval included, counts for the new owner or in the new
+project, both for quotas and for deployment limits.
+
 The request form and the update's summary show one meter per resource:
 the level that refuses, else the one with the least left, named after its
 level ("vCPU · per member").

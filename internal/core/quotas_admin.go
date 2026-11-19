@@ -45,7 +45,7 @@ func (s *Service) UserQuotas(ctx context.Context, p *auth.Principal, projectID s
 	if !p.In(auth.ProjectSettingsRead, proj.ID) {
 		return nil, ErrForbidden
 	}
-	list, err := s.Store.UserQuotas(ctx, &proj.ID)
+	list, err := s.Store.UserQuotas(ctx, s.Store.Pool, &proj.ID)
 	return presentUserQuotas(list), err
 }
 
@@ -62,11 +62,11 @@ func (s *Service) SetUserQuotas(ctx context.Context, p *auth.Principal, projectI
 	if !admin && !p.In(auth.ProjectPolicies, proj.ID) {
 		return nil, ErrForbidden
 	}
-	old, err := s.Store.UserQuotas(ctx, &proj.ID)
+	old, err := s.Store.UserQuotas(ctx, s.Store.Pool, &proj.ID)
 	if err != nil {
 		return nil, err
 	}
-	project, err := s.Store.QuotaLimits(ctx, proj.ID, "")
+	project, err := s.Store.QuotaLimits(ctx, s.Store.Pool, proj.ID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (s *Service) SetUserQuotas(ctx context.Context, p *auth.Principal, projectI
 		return nil, err
 	}
 	s.audit(ctx, p, "policy.quota.user.set", "project", proj.ID, &proj.ID, items)
-	list, err := s.Store.UserQuotas(ctx, &proj.ID)
+	list, err := s.Store.UserQuotas(ctx, s.Store.Pool, &proj.ID)
 	return presentUserQuotas(list), err
 }
 
@@ -131,11 +131,11 @@ func (s *Service) GlobalQuotas(ctx context.Context, p *auth.Principal) ([]api.Gl
 }
 
 func (s *Service) globalQuotas(ctx context.Context) ([]api.GlobalQuota, error) {
-	whole, err := s.Store.GlobalQuotas(ctx)
+	whole, err := s.Store.GlobalQuotas(ctx, s.Store.Pool)
 	if err != nil {
 		return nil, err
 	}
-	each, err := s.Store.UserQuotas(ctx, nil)
+	each, err := s.Store.UserQuotas(ctx, s.Store.Pool, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -190,18 +190,18 @@ func (s *Service) explainQuota(ctx context.Context, as *auth.Principal, proj sto
 	out := []api.PolicyQuotaLine{}
 	sc := quotaScope{Project: proj, Env: env.Key, EnvName: env.Name, OwnerID: as.User.ID, OwnerName: as.User.Name}
 	for _, level := range quotaLevels {
-		lv, err := s.quotaLevel(ctx, sc, level)
+		lv, err := s.quotaLevel(ctx, s.Store.Pool, sc, level)
 		if err != nil {
 			return nil, err
 		}
 		if len(lv.limits) == 0 {
 			continue
 		}
-		used, err := s.Store.QuotaUsedBy(ctx, lv.filter)
+		used, err := s.Store.QuotaUsedBy(ctx, s.Store.Pool, lv.filter)
 		if err != nil {
 			return nil, err
 		}
-		reserved, err := s.Store.QuotaReservedBy(ctx, lv.filter)
+		reserved, err := s.Store.QuotaReservedBy(ctx, s.Store.Pool, lv.filter)
 		if err != nil {
 			return nil, err
 		}

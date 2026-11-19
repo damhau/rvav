@@ -65,8 +65,13 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 		Quota: ev.QuotaAdd, Guest: ev.Blueprint.Guest, Rollback: ev.Blueprint.RollbackOnFailure}
 	var deployments []store.Deployment
 
+	change := &quotaChange{scope: ev.ownerScope(p), what: "This request", add: ev.QuotaAdd, limits: ev.requestAsk(p)}
+
 	defer s.prefetchNames(ctx, ev)()
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+		if err := s.holdChange(ctx, tx, change, ev.OverSoft, d.AcceptWarnings, d.AcceptedWarnings); err != nil {
+			return err
+		}
 		number, err := s.Store.NextRequestNumber(ctx, tx)
 		if err != nil {
 			return err

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
@@ -55,29 +57,29 @@ type quotaLevel struct {
 	where, whom string
 }
 
-func (s *Service) quotaLevel(ctx context.Context, sc quotaScope, level api.QuotaLevel) (quotaLevel, error) {
+func (s *Service) quotaLevel(ctx context.Context, db store.DB, sc quotaScope, level api.QuotaLevel) (quotaLevel, error) {
 	var out quotaLevel
 	var err error
 	proj := sc.Project
 	switch level {
 	case api.QuotaLevelProject:
-		out.limits, err = s.Store.QuotaLimits(ctx, proj.ID, "")
+		out.limits, err = s.Store.QuotaLimits(ctx, db, proj.ID, "")
 		out.filter, out.where, out.whom = store.QuotaFilter{ProjectID: proj.ID}, proj.Name, "a project admin"
 	case api.QuotaLevelEnvironment:
 		if sc.Env != "" {
-			out.limits, err = s.Store.QuotaLimits(ctx, proj.ID, sc.Env)
+			out.limits, err = s.Store.QuotaLimits(ctx, db, proj.ID, sc.Env)
 		}
 		out.filter = store.QuotaFilter{ProjectID: proj.ID, Environment: sc.Env}
 		out.where, out.whom = proj.Name+" in "+sc.EnvName, "a project admin"
 	case api.QuotaLevelProjectUser:
-		out.limits, err = userLimits(s.Store.UserQuotas(ctx, &proj.ID))
+		out.limits, err = userLimits(s.Store.UserQuotas(ctx, db, &proj.ID))
 		out.filter = store.QuotaFilter{ProjectID: proj.ID, OwnerID: sc.OwnerID}
 		out.where, out.whom = sc.possessive()+" quota in "+proj.Name, "a project admin"
 	case api.QuotaLevelGlobal:
-		out.limits, err = s.Store.GlobalQuotas(ctx)
+		out.limits, err = s.Store.GlobalQuotas(ctx, db)
 		out.where, out.whom = "rvav", "an administrator"
 	case api.QuotaLevelGlobalUser:
-		out.limits, err = userLimits(s.Store.UserQuotas(ctx, nil))
+		out.limits, err = userLimits(s.Store.UserQuotas(ctx, db, nil))
 		out.filter = store.QuotaFilter{OwnerID: sc.OwnerID}
 		out.where, out.whom = sc.possessive()+" quota across rvav", "an administrator"
 	}
@@ -92,9 +94,9 @@ func userLimits(list []store.UserQuota, err error) ([]store.QuotaLimit, error) {
 	return out, err
 }
 
-// quotaCheck checks adding to the levels of sc; what names the change in
-// messages ("This request").
-func (s *Service) quotaCheck(ctx context.Context, sc quotaScope, what string, add map[string]int) (QuotaCheck, error) {
+// quotaCheck checks adding to the levels of sc, reading through db; what
+// names the change in messages ("This request").
+func (s *Service) quotaCheck(ctx context.Context, db store.DB, sc quotaScope, what string, add map[string]int) (QuotaCheck, error) {
 	var out QuotaCheck
 	out.Impacts = []api.QuotaImpact{}
 	levels := sc.Levels
@@ -102,7 +104,7 @@ func (s *Service) quotaCheck(ctx context.Context, sc quotaScope, what string, ad
 		levels = quotaLevels
 	}
 	for _, level := range levels {
-		lv, err := s.quotaLevel(ctx, sc, level)
+		lv, err := s.quotaLevel(ctx, db, sc, level)
 		if err != nil {
 			return out, err
 		}
@@ -110,11 +112,11 @@ func (s *Service) quotaCheck(ctx context.Context, sc quotaScope, what string, ad
 		if level != api.QuotaLevelProject && len(lv.limits) == 0 {
 			continue
 		}
-		used, err := s.Store.QuotaUsedBy(ctx, lv.filter)
+		used, err := s.Store.QuotaUsedBy(ctx, db, lv.filter)
 		if err != nil {
 			return out, err
 		}
-		reserved, err := s.Store.QuotaReservedBy(ctx, lv.filter)
+		reserved, err := s.Store.QuotaReservedBy(ctx, db, lv.filter)
 		if err != nil {
 			return out, err
 		}
@@ -157,4 +159,75 @@ func quotaAmount(res string, n int) string {
 		return "1 VM"
 	}
 	return fmt.Sprintf("%d %s", n, quotaLabel(res))
+}
+
+// quotaChange is what a request counts against the quotas and the
+// deployment limits, checked when it is asked for and again under its
+// locks.
+type quotaChange struct {
+	scope      quotaScope
+	add        map[string]int
+	what       string
+	quotaField string
+	// limits is nil when the deployment limits don't check the change.
+	limits     *limitAsk
+	limitField func(api.DeploymentLimitKind) string
+}
+
+// checkChange checks a change against the quotas and the deployment
+// limits, reading through db. A hard limit passed refuses it; it returns
+// the resources over a soft quota and the soft limits' warnings.
+func (s *Service) checkChange(ctx context.Context, db store.DB, ch *quotaChange) ([]string, []api.PolicyWarning, error) {
+	if ch == nil {
+		return nil, nil, nil
+	}
+	q, err := s.quotaCheck(ctx, db, ch.scope, ch.what, ch.add)
+	if err != nil {
+		return nil, nil, err
+	}
+	errs := make([]api.FieldError, len(q.Hard))
+	for i, m := range q.Hard {
+		errs[i] = fieldErr(ch.quotaField, "quota_exceeded", m)
+	}
+	var c limitCheck
+	if ch.limits != nil {
+		if c, err = s.checkLimits(ctx, db, *ch.limits); err != nil {
+			return nil, nil, err
+		}
+		field := ch.limitField
+		if field == nil {
+			field = anywhere
+		}
+		errs = append(errs, c.errors(field)...)
+	}
+	if len(errs) > 0 {
+		return nil, nil, &ValidationError{Errors: errs}
+	}
+	return q.OverSoft, c.Soft, nil
+}
+
+// holdChange holds the change's project and owner until the transaction
+// ends, then checks it again through tx: a request asked for at the same
+// time may have taken what this one counted on. It must come before the
+// transaction's other locks.
+func (s *Service) holdChange(ctx context.Context, tx pgx.Tx, ch *quotaChange, overSoft []string, acceptAll *bool,
+	listed *[]string) error {
+	if ch == nil {
+		return nil
+	}
+	if err := s.Store.LockQuotas(ctx, tx, []string{ch.scope.Project.ID}, []string{ch.scope.OwnerID}); err != nil {
+		return err
+	}
+	again, warnings, err := s.checkChange(ctx, tx, ch)
+	if err != nil {
+		return err
+	}
+	for _, res := range again {
+		if !slices.Contains(overSoft, res) {
+			// Who approves it was decided without this soft quota.
+			return &ConflictError{Msg: "A request asked for at the same time took what this one counted on: " +
+				"it now goes over a soft quota, which needs approval. Ask for it again."}
+		}
+	}
+	return accepted(warnings, acceptAll, listed)
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
-	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
@@ -41,7 +40,7 @@ func (s *Service) DeploymentLimitPolicies(ctx context.Context, p *auth.Principal
 	if !readsPolicies(p) {
 		return nil, ErrForbidden
 	}
-	list, err := s.Store.DeploymentLimitPolicies(ctx)
+	list, err := s.Store.DeploymentLimitPolicies(ctx, s.Store.Pool)
 	if err != nil {
 		return nil, err
 	}
@@ -250,9 +249,11 @@ type limitCheck struct {
 	Soft []api.PolicyWarning
 }
 
-func (s *Service) checkLimits(ctx context.Context, ask limitAsk) (limitCheck, error) {
+// checkLimits checks a change against the deployment limits, reading
+// through db.
+func (s *Service) checkLimits(ctx context.Context, db store.DB, ask limitAsk) (limitCheck, error) {
 	out := limitCheck{Hard: map[api.DeploymentLimitKind]string{}}
-	all, err := s.Store.DeploymentLimitPolicies(ctx)
+	all, err := s.Store.DeploymentLimitPolicies(ctx, db)
 	if err != nil || len(all) == 0 {
 		return out, err
 	}
@@ -260,7 +261,7 @@ func (s *Service) checkLimits(ctx context.Context, ask limitAsk) (limitCheck, er
 	if len(held) == 0 {
 		return out, nil
 	}
-	counts, err := s.Store.DeploymentCounts(ctx, ask.Project.ID, ask.OwnerID)
+	counts, err := s.Store.DeploymentCounts(ctx, db, ask.Project.ID, ask.OwnerID)
 	if err != nil {
 		return out, err
 	}
@@ -409,17 +410,27 @@ func (ev *Evaluation) largestDeployment() (vcpu, memoryGB int) {
 	return vcpu, memoryGB
 }
 
-// evaluateLimits checks the deployments a new request makes against the
-// deployment limits (ADR-0047): a hard limit passed is an error, a soft
-// one a warning the requester accepts.
-func (s *Service) evaluateLimits(ctx context.Context, ev *Evaluation, p *auth.Principal) error {
+// requestAsk is what the deployments a new request makes ask of the
+// deployment limits (ADR-0047); nil when it makes none.
+func (ev *Evaluation) requestAsk(p *auth.Principal) *limitAsk {
 	n := ev.deploymentCount()
 	if n == 0 {
 		return nil
 	}
 	vcpu, mem := ev.largestDeployment()
-	c, err := s.checkLimits(ctx, limitAsk{quotaScope: ev.ownerScope(p), ToOwner: n, ToProject: n, VCPU: vcpu, MemoryGB: mem,
-		AddVCPU: vcpu, AddMemory: mem, Many: n > 1})
+	return &limitAsk{quotaScope: ev.ownerScope(p), ToOwner: n, ToProject: n, VCPU: vcpu, MemoryGB: mem,
+		AddVCPU: vcpu, AddMemory: mem, Many: n > 1}
+}
+
+// evaluateLimits checks the deployments a new request makes against the
+// deployment limits: a hard limit passed is an error, a soft one a warning
+// the requester accepts.
+func (s *Service) evaluateLimits(ctx context.Context, ev *Evaluation, p *auth.Principal) error {
+	ask := ev.requestAsk(p)
+	if ask == nil {
+		return nil
+	}
+	c, err := s.checkLimits(ctx, s.Store.Pool, *ask)
 	if err != nil {
 		return err
 	}
@@ -445,18 +456,23 @@ func (c limitCheck) errors(field func(api.DeploymentLimitKind) string) []api.Fie
 // updateLimits checks what an update leaves its deployment with against
 // the vCPU and memory limits of each deployment: only an update that grows
 // it can go over one (ADR-0047). It returns the soft limits' warnings.
-func (s *Service) updateLimits(ctx context.Context, p *auth.Principal, ev *Evaluation, d store.DeploymentRow,
-	u *updatePlan) ([]api.PolicyWarning, error) {
-	now := deploymentUsage(u.target)
-	c, err := s.checkLimits(ctx, limitAsk{quotaScope: ownerScope(p, ev.Project, ev.Env, d, nil),
-		VCPU: now["vcpu"] + u.delta["vcpu"], MemoryGB: now["memory_gb"] + u.delta["memory_gb"],
-		AddVCPU: u.delta["vcpu"], AddMemory: u.delta["memory_gb"]})
+func (s *Service) updateLimits(ctx context.Context, ev *Evaluation, u *updatePlan) ([]api.PolicyWarning, error) {
+	c, err := s.checkLimits(ctx, s.Store.Pool, *u.change.limits)
 	if err != nil {
 		return nil, err
 	}
 	ev.Limits = c.Lines
 	ev.Errors = append(ev.Errors, c.errors(anywhere)...)
 	return c.Soft, nil
+}
+
+// updateAsk is what an update asks of the vCPU and memory limits of each
+// deployment.
+func updateAsk(p *auth.Principal, ev *Evaluation, d store.DeploymentRow, u *updatePlan) *limitAsk {
+	now := deploymentUsage(u.target)
+	return &limitAsk{quotaScope: ownerScope(p, ev.Project, ev.Env, d, nil),
+		VCPU: now["vcpu"] + u.delta["vcpu"], MemoryGB: now["memory_gb"] + u.delta["memory_gb"],
+		AddVCPU: u.delta["vcpu"], AddMemory: u.delta["memory_gb"]}
 }
 
 // editLimits checks an approver's edits against the vCPU and memory
@@ -467,7 +483,7 @@ func (s *Service) editLimits(ctx context.Context, requester *auth.Principal, ev 
 	if vcpu == 0 && mem == 0 {
 		return nil
 	}
-	c, err := s.checkLimits(ctx, limitAsk{quotaScope: ev.ownerScope(requester), VCPU: vcpu, MemoryGB: mem, AddVCPU: vcpu,
+	c, err := s.checkLimits(ctx, s.Store.Pool, limitAsk{quotaScope: ev.ownerScope(requester), VCPU: vcpu, MemoryGB: mem, AddVCPU: vcpu,
 		AddMemory: mem, Many: ev.deploymentCount() > 1})
 	if err != nil {
 		return err
@@ -476,78 +492,18 @@ func (s *Service) editLimits(ctx context.Context, requester *auth.Principal, ev 
 	return nil
 }
 
-// day2Limits checks a day-2 action against the deployment limits: a
-// resize against the size of each deployment, a move against the new
-// project's limits, and handing it over against its new owner's count. A
-// hard limit passed refuses it; it returns the soft limits' warnings.
-func (s *Service) day2Limits(ctx context.Context, p *auth.Principal, a *day2.Action, d store.DeploymentRow, t day2.Target,
-	inputs map[string]any) ([]api.PolicyWarning, error) {
-	now := deploymentUsage(t)
-	ask := limitAsk{VCPU: now["vcpu"], MemoryGB: now["memory_gb"]}
-	projectID := d.ProjectID
-	var field func(api.DeploymentLimitKind) string
-	switch a.Key {
-	case "resize":
-		if cpu, ok := inputs["cpu_count"].(float64); ok {
-			ask.AddVCPU = int(cpu) - t.VM.CpuCount
-		}
-		if mem, ok := inputs["memory_gb"].(float64); ok {
-			ask.AddMemory = int(mem) - t.VM.MemoryMb/1024
-		}
-		ask.VCPU, ask.MemoryGB = ask.VCPU+ask.AddVCPU, ask.MemoryGB+ask.AddMemory
-		field = func(k api.DeploymentLimitKind) string {
-			if k == api.MemoryGbPerDeployment {
-				return "/inputs/memory_gb"
-			}
-			return "/inputs/cpu_count"
-		}
-	case "change_project":
-		projectID, _ = inputs["project"].(string)
-		ask.ToOwner, ask.ToProject, ask.AddVCPU, ask.AddMemory = 1, 1, ask.VCPU, ask.MemoryGB
-		field = func(api.DeploymentLimitKind) string { return "/inputs/project" }
-	case "change_owner":
-		id, _ := inputs["owner"].(string)
-		owner, err := s.Store.GetUser(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		d.OwnerID, d.OwnerName = owner.ID, owner.Name
-		ask.ToOwner, ask.VCPU, ask.MemoryGB = 1, 0, 0
-		field = func(api.DeploymentLimitKind) string { return "/inputs/owner" }
-	default:
-		return nil, nil
-	}
-	proj, err := s.Store.GetProject(ctx, projectID)
-	if err != nil {
-		return nil, err
-	}
-	env, err := s.Store.GetEnvironment(ctx, d.Environment)
-	if err != nil {
-		return nil, err
-	}
-	ask.quotaScope = ownerScope(p, proj, env, d, nil)
-	c, err := s.checkLimits(ctx, ask)
-	if err != nil {
-		return nil, err
-	}
-	if errs := c.errors(field); len(errs) > 0 {
-		return nil, &ValidationError{Errors: errs}
-	}
-	return c.Soft, nil
-}
-
 // explainLimits says which policy decides each deployment limit in a
 // project and environment, counting what as owns there: of the limits
 // held, the one with the least room left.
 func (s *Service) explainLimits(ctx context.Context, as *auth.Principal, proj store.Project, env store.Environment,
 	full bool) (api.PolicyLimits, error) {
 	out := api.PolicyLimits{Lines: []api.PolicyLimitLine{}, Considered: []api.PolicyConsidered{}}
-	all, err := s.Store.DeploymentLimitPolicies(ctx)
+	all, err := s.Store.DeploymentLimitPolicies(ctx, s.Store.Pool)
 	if err != nil || len(all) == 0 {
 		return out, err
 	}
 	held := limitsHere(all, proj.ID, env.Key)
-	counts, err := s.Store.DeploymentCounts(ctx, proj.ID, as.User.ID)
+	counts, err := s.Store.DeploymentCounts(ctx, s.Store.Pool, proj.ID, as.User.ID)
 	if err != nil {
 		return out, err
 	}

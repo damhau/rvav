@@ -122,6 +122,32 @@ applies to each project on its own: its deployment count is per project.
   count the explained user, or the project, has now
   (`PolicyExplanation.limits`).
 
+### Requests asked for at the same time
+A request, an update or a day-2 action that counts against a quota or a
+deployment limit is checked when it's asked for, and again in the
+transaction that records it:
+
+- **Locks first.** Before its other locks, the transaction takes an
+  advisory lock for each project and each owner the change counts in:
+  the new project for a move, the new owner for a handover. It takes
+  one for all of rvav too while a `global` quota is set. The keys sort
+  rvav first, then projects, then owners, so two holders never deadlock.
+- **Then the checks again,** through the transaction's connection: a
+  query through the pool while holding the lock could wait for a
+  connection that a waiter for the lock holds (S14.7). Of the requests
+  asked for at the same time, those that no longer fit are refused, as
+  at preview.
+- **Deployment counts are per project,** under a global policy too: the
+  project's and owner's locks cover them. The lock for all of rvav is
+  for the `global` level only.
+- **A new soft quota passed is a conflict.** A change that the second
+  check finds over a soft quota it wasn't over is refused with 409: who
+  approves it was decided without it. The requester asks again.
+- **A move or a handover not done yet holds its place** in the new
+  project, or with the new owner, as a request's reservation does. Its
+  plan records where (`quota_to`), and it counts only at the levels it
+  changes, until the deployment is there.
+
 ### Storage
 Migration 00081 adds `user_quotas` (a project, or null for rvav) and
 `global_quotas`. The project's own limits stay in `quotas`, unchanged.
@@ -137,6 +163,10 @@ Migration 00083 adds `deployment_limit_policies`.
   and a limit on deployments differ for multi-VM items.
 - A soft deployment limit warns and lets the requester go on; one that
   should hold for approval is a soft quota, or an approval policy.
+- Until C2.4 (#160), requests sent at the same time all passed the
+  checks, and a move or a handover waiting for approval counted nowhere
+  until done. Changes that count in one project, or for one owner, now
+  wait for each other's transaction.
 - Until C2.4 (#160), a hard global limit held over a project's policy
   only when its number was lower: a project admin's soft policy, or one
   for a single environment, loosened it. Each hard global limit now holds
