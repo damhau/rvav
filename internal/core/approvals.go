@@ -17,6 +17,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
@@ -358,6 +359,15 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 			}
 			if !ok {
 				return &ConflictError{Msg: "This level was decided meanwhile."}
+			}
+			if lv.StepKey == nil {
+				now, err := s.Store.GetApproval(ctx, tx, id)
+				if err != nil {
+					return err
+				}
+				if err := outbox.ForApproval(ctx, tx, outbox.ApprovalDecided, now, p.User.ID, comment); err != nil {
+					return err
+				}
 			}
 		}
 		action := "approval.voted"

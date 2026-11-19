@@ -42,19 +42,32 @@ const (
 	ComputeRemovalPost   = "compute.removal.post"
 )
 
-// Topics lists them in the order of a deployment's life.
-var Topics = []string{RequestSubmitted, ProvisioningPre, ComputeAllocationPre, NetworkConfigure,
+// A request's approval levels, and projects (ADR-0049).
+const (
+	ApprovalRequested = "approval.requested"
+	ApprovalDecided   = "approval.decided"
+	ProjectCreated    = "project.created"
+	ProjectUpdated    = "project.updated"
+)
+
+// Topics lists them in the order of a deployment's life, then projects'.
+var Topics = []string{RequestSubmitted, ApprovalRequested, ApprovalDecided, ProvisioningPre, ComputeAllocationPre, NetworkConfigure,
 	ComputeProvisionPre, ComputeProvisionPost, ProvisioningPost, Day2Pre, Day2Post,
-	DeletePre, ComputeRemovalPre, ComputeRemovalPost, DeletePost, LeaseExpiring, LeaseExpired}
+	DeletePre, ComputeRemovalPre, ComputeRemovalPost, DeletePost, LeaseExpiring, LeaseExpired, ProjectCreated, ProjectUpdated}
 
 // Group says what a topic's events are about: a request, one of its VMs
-// (data.machine), or a deployment's lease.
+// (data.machine), one of its approval levels (data.approval), a
+// deployment's lease, or a project.
 func Group(topic string) string {
 	switch topic {
 	case ComputeAllocationPre, NetworkConfigure, ComputeProvisionPre, ComputeProvisionPost, ComputeRemovalPre, ComputeRemovalPost:
 		return "machine"
+	case ApprovalRequested, ApprovalDecided:
+		return "approval"
 	case LeaseExpiring, LeaseExpired:
 		return "lease"
+	case ProjectCreated, ProjectUpdated:
+		return "project"
 	}
 	return "request"
 }
@@ -181,11 +194,18 @@ func Sample(topic string) Event {
 	case LeaseExpiring, LeaseExpired:
 		data["request"] = nil
 	}
-	if Group(topic) == "machine" {
+	switch Group(topic) {
+	case "machine":
 		data["machine"] = sampleMachine(topic)
 		if topic == ComputeAllocationPre || topic == NetworkConfigure || topic == ComputeProvisionPre {
 			data["resources"] = []any{}
 		}
+	case "approval":
+		data["request"].(map[string]any)["status"] = "pending_approval"
+		data["approval"] = sampleApproval(topic)
+		data["deployment"], data["deployments"], data["resources"] = nil, []any{}, []any{}
+	case "project":
+		data = sampleProject(topic)
 	}
 	return Event{ID: "evt_sample", Topic: topic, Contract: Contract, OccurredAt: time.Now().UTC(), Data: data}
 }

@@ -40,27 +40,23 @@ func (s *Store) GetAdminProject(ctx context.Context, idOrCode string) (AdminProj
 	return p, notFound(err)
 }
 
-// CreateProject creates a project with its first project admins (ErrInUse
-// when the code is taken).
-func (s *Store) CreateProject(ctx context.Context, p Project, admins []string) error {
-	err := s.Tx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `insert into projects (id, code, name, description, cost_center, environments, properties)
-			values ($1, $2, $3, $4, $5, $6, $7)`, p.ID, p.Code, p.Name, p.Description, p.CostCenter, nonNilStrings(p.Environments),
-			nonNilProperties(p.Properties)); err != nil {
+// CreateProject creates a project with its first project admins, in the
+// caller's transaction (ErrInUse when the code is taken).
+func (s *Store) CreateProject(ctx context.Context, tx pgx.Tx, p Project, admins []string) error {
+	if _, err := tx.Exec(ctx, `insert into projects (id, code, name, description, cost_center, environments, properties)
+		values ($1, $2, $3, $4, $5, $6, $7)`, p.ID, p.Code, p.Name, p.Description, p.CostCenter, nonNilStrings(p.Environments),
+		nonNilProperties(p.Properties)); IsUniqueViolation(err) {
+		return ErrInUse
+	} else if err != nil {
+		return err
+	}
+	for _, u := range admins {
+		if _, err := tx.Exec(ctx, `insert into project_members (project_id, user_id, role) values ($1, $2, 'project-admin')
+			on conflict do nothing`, p.ID, u); err != nil {
 			return err
 		}
-		for _, u := range admins {
-			if _, err := tx.Exec(ctx, `insert into project_members (project_id, user_id, role) values ($1, $2, 'project-admin')
-				on conflict do nothing`, p.ID, u); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if IsUniqueViolation(err) {
-		return ErrInUse
 	}
-	return err
+	return nil
 }
 
 // ProjectUpdate changes a project; nil fields stay as they are.
@@ -71,7 +67,7 @@ type ProjectUpdate struct {
 	Properties                    *map[string]string
 }
 
-func (s *Store) UpdateProject(ctx context.Context, id string, u ProjectUpdate) error {
+func (s *Store) UpdateProject(ctx context.Context, db DB, id string, u ProjectUpdate) error {
 	var envs []string
 	if u.Environments != nil {
 		envs = nonNilStrings(*u.Environments)
@@ -81,7 +77,7 @@ func (s *Store) UpdateProject(ctx context.Context, id string, u ProjectUpdate) e
 		m := nonNilProperties(*u.Properties)
 		props = &m
 	}
-	tag, err := s.Pool.Exec(ctx, `update projects set name = coalesce($2, name), description = coalesce($3, description),
+	tag, err := db.Exec(ctx, `update projects set name = coalesce($2, name), description = coalesce($3, description),
 		cost_center = coalesce($4, cost_center), environments = coalesce($5, environments),
 		archived_at = case when $6::bool is null then archived_at when $6 then coalesce(archived_at, now()) end,
 		properties = coalesce($7::jsonb, properties)

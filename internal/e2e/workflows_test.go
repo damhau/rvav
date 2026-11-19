@@ -167,6 +167,13 @@ func TestCustomWorkflows(t *testing.T) {
 		if len(approvals.Items) != 1 || approvals.Items[0].Status != api.ApprovalStatusApproved {
 			t.Fatalf("the request's approvals = %+v", approvals.Items)
 		}
+		// The workflow's approval has the events of a policy's (ADR-0049).
+		var kinds []string
+		_ = h.store.Pool.QueryRow(ctx, `select array_agg(topic || ':' || (payload#>>'{data,approval,kind}') order by seq)
+			from integration_events where request_id = $1 and topic like 'approval.%'`, done.Id).Scan(&kinds)
+		if !slices.Equal(kinds, []string{"approval.requested:workflow", "approval.decided:workflow"}) {
+			t.Fatalf("the workflow approval's events = %v", kinds)
+		}
 		var result []byte
 		if err := h.store.Pool.QueryRow(ctx, `select result from workflow_runs where request_id = $1 and status = 'succeeded'`,
 			done.Id).Scan(&result); err != nil || !strings.Contains(string(result), `"archived": "billing"`) ||

@@ -1,6 +1,6 @@
 // Event subscriptions (S10, ADR-0021): webhooks, AWX templates and custom
-// workflows that hear about requests, each VM they build or delete (ADR-0049),
-// day-2 actions, deletions and leases; blocking ones may stop a request.
+// workflows that hear about requests, their approvals, each VM they build or
+// delete (ADR-0049), day-2 actions, leases and projects; blocking ones may stop a request.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Webhook } from "lucide-react";
@@ -51,8 +51,10 @@ export const runsText = (s: Subscription) =>
 
 const topicGroups: Record<S["EventTopicGroup"], string> = {
   request: "Requests",
+  approval: "A request's approval levels",
   machine: "A request's VMs, one event each",
   lease: "Leases",
+  project: "Projects",
 };
 
 const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
@@ -460,7 +462,7 @@ export function SubscriptionsPage() {
     <Page>
       <PageHeader
         title="Subscriptions"
-        description="Webhooks, AWX templates and custom workflows that hear about requests, each VM a request builds or deletes, day-2 actions and leases. A blocking one may stop a request."
+        description="Webhooks, AWX templates and custom workflows that hear about requests, their approvals, each VM a request builds or deletes, day-2 actions, leases and projects. A blocking one may stop a request."
         actions={subs.data?.items.length ? create : undefined}
       />
       <Panel title="All subscriptions" flush>

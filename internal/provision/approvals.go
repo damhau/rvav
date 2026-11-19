@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -54,6 +55,11 @@ func (a *Activities) OpenApproval(ctx context.Context, approvalID string) (Level
 	title := "Waiting for approval"
 	if _, err := a.Store.UpdateStep(ctx, a.Store.Pool, r.ID, KeyPolicy, store.StepUpdate{Status: "running", Title: &title, Detail: &detail}); err != nil {
 		return LevelState{}, err
+	}
+	if lv.StepKey == nil {
+		if err := outbox.ForApproval(ctx, a.Store.Pool, outbox.ApprovalRequested, lv, "", ""); err != nil {
+			return LevelState{}, err
+		}
 	}
 	recipients := a.approvers(ctx, lv, r.RequesterID)
 	if opened {
@@ -124,6 +130,9 @@ func (a *Activities) rejectUnanswerable(ctx context.Context, lv store.Approval, 
 		if ok, err := a.Store.FinishApproval(ctx, tx, lv.ID, "rejected", outcome); err != nil || !ok {
 			return err
 		}
+		if err := a.approvalDecided(ctx, tx, lv); err != nil {
+			return err
+		}
 		return a.Store.Audit(ctx, tx, store.AuditEvent{Action: "approval.unanswerable", TargetType: "approval", TargetID: lv.ID,
 			ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "level": lv.Name, "roles": lv.Roles,
 				"manager": lv.Manager, "outcome": outcome}})
@@ -138,6 +147,19 @@ func (a *Activities) rejectUnanswerable(ctx context.Context, lv store.Approval, 
 	a.Events.Approval(ctx, []string{r.RequesterID}, lv.ID, r.ID, now.Status)
 	a.publishAll(ctx, r.ProjectID, r.ID)
 	return LevelState{Status: now.Status, DueAt: now.DueAt}, nil
+}
+
+// approvalDecided writes a policy level's approval.decided once rvav
+// decided it (ADR-0049); a composite step's question has no such event.
+func (a *Activities) approvalDecided(ctx context.Context, tx pgx.Tx, lv store.Approval) error {
+	if lv.StepKey != nil {
+		return nil
+	}
+	now, err := a.Store.GetApproval(ctx, tx, lv.ID)
+	if err != nil {
+		return err
+	}
+	return outbox.ForApproval(ctx, tx, outbox.ApprovalDecided, now, "", "")
 }
 
 // isUser says whether a manager claim names this user.
@@ -220,6 +242,16 @@ func (a *Activities) ApprovalTimedOut(ctx context.Context, approvalID string) (L
 		default:
 			st.Status = "rejected"
 			_, err = a.Store.FinishApproval(ctx, tx, lv.ID, "rejected", rejected)
+		}
+		if err != nil {
+			return err
+		}
+		switch {
+		case lv.StepKey != nil:
+		case st.Status == "pending":
+			err = outbox.ForApproval(ctx, tx, outbox.ApprovalRequested, lv, "", "")
+		default:
+			err = a.approvalDecided(ctx, tx, lv)
 		}
 		if err != nil {
 			return err

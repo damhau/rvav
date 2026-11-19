@@ -91,6 +91,20 @@ func TestSubscriptions(t *testing.T) {
 		if fields := fieldsOf(problem.Errors); !slices.Contains(fields, "/target/webhook/url") || !slices.Contains(fields, "/target/webhook/secret") {
 			t.Fatalf("a webhook elsewhere = %v", fields)
 		}
+		// A VM's topics don't block yet, and only theirs have a machine
+		// (ADR-0049).
+		onMachine := check
+		onMachine.Topic, onMachine.Condition = api.ComputeProvisionPre, new(`machine.placement.cluster == "GVA-DEV-CL01"`)
+		h.json("POST", "/api/v1/admin/subscriptions", admin, onMachine, 422, &problem)
+		if fields := fieldsOf(problem.Errors); !slices.Equal(fields, []string{"/blocking"}) {
+			t.Fatalf("a blocking machine subscription = %v", fields)
+		}
+		onMachine.Topic, onMachine.Blocking = api.ProvisioningPost, nil
+		h.json("POST", "/api/v1/admin/subscriptions", admin, onMachine, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/condition" ||
+			!strings.Contains(problem.Errors[0].Message, "the event has no machine: only a VM's topics") {
+			t.Fatalf("a machine condition on provisioning.post = %+v", problem.Errors)
+		}
 		var sub api.Subscription
 		h.json("POST", "/api/v1/admin/subscriptions", admin, check, 201, &sub)
 

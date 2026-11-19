@@ -56,6 +56,13 @@ describe("Subscriptions", () => {
       "compute.removal.pre",
       "compute.removal.post",
     ]);
+    for (const [group, keys] of [
+      ["A request's approval levels", ["approval.requested", "approval.decided"]],
+      ["Projects", ["project.created", "project.updated"]],
+    ] as const) {
+      const options = within(screen.getByRole("group", { name: group })).getAllByRole("option");
+      expect(options.map((o) => o.textContent)).toEqual(keys);
+    }
     await user.click(within(machines).getByRole("option", { name: "compute.provision.pre" }));
 
     expect(within(sheet).getByText("A VM is about to be cloned.")).toBeInTheDocument();

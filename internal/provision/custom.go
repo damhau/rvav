@@ -337,8 +337,8 @@ func (c *Contract) RequestApproval(ctx context.Context, in RequestApprovalInput)
 	info := activity.GetInfo(ctx)
 	sum := sha256.Sum256([]byte(*run.RequestID + "|" + info.WorkflowExecution.ID + "|" + info.WorkflowExecution.RunID + "|" + info.ActivityID))
 	id := "apr_" + hex.EncodeToString(sum[:13])
-	if _, err := c.A.Store.GetApproval(ctx, c.A.Store.Pool, id); err == nil {
-		return RequestApprovalOutput{ApprovalID: id}, nil
+	if lv, err := c.A.Store.GetApproval(ctx, c.A.Store.Pool, id); err == nil {
+		return RequestApprovalOutput{ApprovalID: id}, outbox.ForApproval(ctx, c.A.Store.Pool, outbox.ApprovalRequested, lv, "", "")
 	}
 	lv := store.Approval{ID: id, RequestID: *run.RequestID, Name: title, ApproverIDs: in.Approvers, Mode: mode,
 		Reasons: []string{in.Reason}, WorkflowID: &run.WorkflowID}
@@ -361,6 +361,9 @@ func (c *Contract) RequestApproval(ctx context.Context, in RequestApprovalInput)
 	}
 	_ = c.A.Store.Audit(ctx, c.A.Store.Pool, store.AuditEvent{Action: "approval.opened", TargetType: "approval", TargetID: id,
 		ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "level": title, "workflow": run.WorkflowID}})
+	if err := outbox.ForApproval(ctx, c.A.Store.Pool, outbox.ApprovalRequested, stored, "", ""); err != nil {
+		return RequestApprovalOutput{}, err
+	}
 	recipients := c.A.approvers(ctx, stored, r.RequesterID)
 	for _, uid := range recipients {
 		c.A.Events.Notify(ctx, store.NewNotification{UserID: uid, Kind: "approval_needed", Title: "Approval needed: " + r.Title,

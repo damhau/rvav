@@ -24,6 +24,12 @@ const webhookHosts = ["cmdb.corp.example", "hooks.corp.example", "servicenow.cor
 const topics: { key: S["EventTopicKey"]; group: S["EventTopicGroup"]; description: string }[] = [
   { key: "request.submitted", group: "request", description: "A request was submitted, before any approval." },
   {
+    key: "approval.requested",
+    group: "approval",
+    description: "An approval level of a request waits for a decision.",
+  },
+  { key: "approval.decided", group: "approval", description: "An approval level was approved or rejected." },
+  {
     key: "provisioning.pre",
     group: "request",
     description: "A catalog request is about to build: a blocking subscription may stop it.",
@@ -57,6 +63,8 @@ const topics: { key: S["EventTopicKey"]; group: S["EventTopicGroup"]; descriptio
   { key: "delete.post", group: "request", description: "A deployment was deleted, or its deletion failed." },
   { key: "lease.expiring", group: "lease", description: "A deployment's lease ends in a few days." },
   { key: "lease.expired", group: "lease", description: "A deployment's lease ended." },
+  { key: "project.created", group: "project", description: "A project was created." },
+  { key: "project.updated", group: "project", description: "A project's settings changed." },
 ];
 
 /** The topics a blocking subscription may hear, as the server says. */
@@ -110,7 +118,67 @@ function sampleMachine(topic: S["EventTopicKey"]) {
   };
 }
 
+const sampleAdmin = { id: "usr_admin", name: "Marc Keller", email: "mkeller@corp.example" };
+
+/** An approval level as its events have it, decided or not. */
+function sampleApproval(topic: S["EventTopicKey"]) {
+  const decided = topic === "approval.decided";
+  return {
+    id: "apr_sample",
+    name: "Production change",
+    level: 1,
+    kind: "policy",
+    mode: "any",
+    reasons: ["Production environment"],
+    roles: [],
+    manager: false,
+    groups: ["rvav-approvers-web"],
+    approvers: [sampleAdmin],
+    escalated: false,
+    status: decided ? "approved" : "pending",
+    due_at: decided ? null : new Date(Date.now() + 48 * 3_600_000).toISOString(),
+    decided_at: decided ? now() : null,
+    outcome: decided ? "Approved by Marc Keller" : null,
+    decided_by: decided ? sampleAdmin : null,
+    comment: decided ? "Fine for this sprint." : null,
+  };
+}
+
 function sample(topic: S["EventTopicKey"]): S["IntegrationEvent"] {
+  const group = topics.find((t) => t.key === topic)?.group;
+  if (group === "project")
+    return {
+      id: "evt_sample",
+      topic,
+      contract: "rvav.event.v1",
+      occurred_at: now(),
+      data: {
+        request: null,
+        item: null,
+        project: {
+          id: "prj_web",
+          code: "WEB",
+          name: "Web Platform",
+          description: "The web shop's servers.",
+          cost_center: "CC-4410",
+          environments: ["dev", "prd"],
+          properties: {},
+          archived: false,
+          deployment_sharing: "all_members",
+          admins: [sampleAdmin],
+        },
+        environment: "",
+        production: false,
+        requester: null,
+        owner: null,
+        inputs: {},
+        deployment: null,
+        deployments: [],
+        resources: [],
+        actor: sampleAdmin,
+        changes: topic === "project.updated" ? ["cost_center"] : [],
+      },
+    };
   return {
     id: "evt_sample",
     topic,
@@ -126,7 +194,8 @@ function sample(topic: S["EventTopicKey"]): S["IntegrationEvent"] {
       inputs: { role: "web", size: "M" },
       deployment: null,
       lease: null,
-      ...(topics.find((t) => t.key === topic)?.group === "machine" ? { machine: sampleMachine(topic) } : {}),
+      ...(group === "machine" ? { machine: sampleMachine(topic) } : {}),
+      ...(group === "approval" ? { approval: sampleApproval(topic) } : {}),
     },
   };
 }

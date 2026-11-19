@@ -25,8 +25,8 @@ func (s *Store) ProjectIDs(ctx context.Context) ([]string, error) {
 }
 
 // SetDeploymentSharing sets who sees a project's deployments.
-func (s *Store) SetDeploymentSharing(ctx context.Context, projectID, sharing string) error {
-	tag, err := s.Pool.Exec(ctx, `update projects set deployment_sharing = $2 where id = $1`, projectID, sharing)
+func (s *Store) SetDeploymentSharing(ctx context.Context, db DB, projectID, sharing string) error {
+	tag, err := db.Exec(ctx, `update projects set deployment_sharing = $2 where id = $1`, projectID, sharing)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}

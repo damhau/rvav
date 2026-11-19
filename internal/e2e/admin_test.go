@@ -115,6 +115,42 @@ func TestProjectAdministration(t *testing.T) {
 		if !archived.Archived || archived.ArchivedAt == nil {
 			t.Fatalf("archived = %+v", archived)
 		}
+		// Its events (ADR-0049): created with its admin, then archived; an
+		// update that changes nothing has none.
+		h.json("PATCH", "/api/v1/admin/projects/"+pay.Id, admin, api.AdminProjectUpdate{Archived: new(true), Name: new("Payments")}, 200, nil)
+		rows, err := h.store.Pool.Query(ctx, `select payload from integration_events
+			where payload->'data'->'project'->>'id' = $1 and request_id is null order by seq`, pay.Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		type projectEvent struct {
+			Topic string
+			Data  struct {
+				Project struct {
+					Code     string
+					Archived bool
+					Admins   []struct{ ID string }
+				}
+				Actor   struct{ ID string }
+				Changes []string
+			}
+		}
+		var projectEvents []projectEvent
+		for rows.Next() {
+			var b []byte
+			_ = rows.Scan(&b)
+			var ev projectEvent
+			_ = json.Unmarshal(b, &ev)
+			projectEvents = append(projectEvents, ev)
+		}
+		rows.Close()
+		if len(projectEvents) != 2 || projectEvents[0].Topic != "project.created" || projectEvents[0].Data.Project.Code != "pay" ||
+			len(projectEvents[0].Data.Project.Admins) != 1 || projectEvents[0].Data.Project.Admins[0].ID != seed.UserID("sbrunner") ||
+			projectEvents[0].Data.Actor.ID != seed.UserID(admin) || projectEvents[0].Data.Changes == nil || len(projectEvents[0].Data.Changes) != 0 ||
+			projectEvents[1].Topic != "project.updated" || !projectEvents[1].Data.Project.Archived ||
+			!slices.Equal(projectEvents[1].Data.Changes, []string{"archived"}) {
+			t.Fatalf("the project's events = %+v", projectEvents)
+		}
 		var tls api.CatalogItem
 		h.json("GET", "/api/v1/catalog/items/tls-cert?project_id=prj_web", "tnguyen", nil, 200, &tls)
 		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: tls.Id, VersionId: tls.Version.Id, ProjectId: pay.Id,

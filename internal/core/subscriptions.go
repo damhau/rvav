@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"slices"
 	"strconv"
@@ -25,8 +26,10 @@ import (
 // read them.
 
 var topicDescriptions = map[string]string{
-	outbox.RequestSubmitted: "A request, catalog or day-2, is accepted, before any approval.",
-	outbox.ProvisioningPre:  "A catalog request is approved and about to build.",
+	outbox.RequestSubmitted:  "A request, catalog or day-2, is accepted, before any approval.",
+	outbox.ApprovalRequested: "An approval level of a request waits for a decision: it opened, or nobody decided in time and it went to the escalation approvers.",
+	outbox.ApprovalDecided:   "An approval level was approved or rejected: by someone, at its timeout, or because nobody could decide it.",
+	outbox.ProvisioningPre:   "A catalog request is approved and about to build.",
 	outbox.ComputeAllocationPre: "A VM of the request is placed and sized, before anything of it is built: " +
 		"its vCenter, cluster, datastore and folder, as the request planned them.",
 	outbox.NetworkConfigure:     "A VM's networks are known, before its address is reserved: each adapter's network, subnet, gateway and DNS zone.",
@@ -41,6 +44,16 @@ var topicDescriptions = map[string]string{
 	outbox.DeletePost:           "The deletion ended.",
 	outbox.LeaseExpiring:        "The reminder before a lease ends.",
 	outbox.LeaseExpired:         "A lease ended and rvav acts on it.",
+	outbox.ProjectCreated:       "A project was created.",
+	outbox.ProjectUpdated:       "A project's settings changed: its name, description, cost center, environments, properties, deployment sharing, or archived.",
+}
+
+// onlyIn says which topics' events have a key the others don't (ADR-0049).
+var onlyIn = map[string]string{
+	"machine":  "a VM's topics, compute.* and network.configure,",
+	"approval": "approval.requested and approval.decided",
+	"actor":    "project.created and project.updated",
+	"changes":  "project.created and project.updated",
 }
 
 func asEvent(ev outbox.Event) api.IntegrationEvent {
@@ -131,8 +144,10 @@ func checkEventCondition(topic, expr string) error {
 	}
 	if _, key, ok := strings.Cut(err.Error(), "no such key: "); ok {
 		key = strings.TrimSpace(key)
-		if _, ok := sample.Data["machine"]; !ok && strings.Contains(expr, "machine") {
-			return errors.New("the event has no machine: only a VM's topics, compute.* and network.configure, have it")
+		for _, k := range slices.Sorted(maps.Keys(onlyIn)) {
+			if _, ok := sample.Data[k]; !ok && strings.Contains(expr, k) {
+				return fmt.Errorf("the event has no %s: only %s have it", k, onlyIn[k])
+			}
 		}
 		// Inputs and deployment properties differ from item to item.
 		for _, m := range []string{"inputs", "properties"} {

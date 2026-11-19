@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -52,7 +55,13 @@ func (s *Service) SetDeploymentSharing(ctx context.Context, p *auth.Principal, p
 			"Choose all_members or owner_only.")}}
 	}
 	if sharing != proj.DeploymentSharing {
-		if err := s.Store.SetDeploymentSharing(ctx, proj.ID, sharing); err != nil {
+		err := s.Store.Tx(ctx, func(tx pgx.Tx) error {
+			if err := s.Store.SetDeploymentSharing(ctx, tx, proj.ID, sharing); err != nil {
+				return err
+			}
+			return outbox.ForProject(ctx, tx, outbox.ProjectUpdated, proj.ID, p.User.ID, []string{"deployment_sharing"})
+		})
+		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return api.Project{}, ErrNotFound
 			}

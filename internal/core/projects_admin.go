@@ -9,12 +9,14 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -187,7 +189,13 @@ func (s *Service) CreateProject(ctx context.Context, p *auth.Principal, c api.Ad
 	if c.Properties != nil {
 		pr.Properties = *c.Properties
 	}
-	if err := s.Store.CreateProject(ctx, pr, admins); errors.Is(err, store.ErrInUse) {
+	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+		if err := s.Store.CreateProject(ctx, tx, pr, admins); err != nil {
+			return err
+		}
+		return outbox.ForProject(ctx, tx, outbox.ProjectCreated, pr.ID, p.User.ID, nil)
+	})
+	if errors.Is(err, store.ErrInUse) {
 		return api.AdminProject{}, &ConflictError{Msg: "A project has the code " + c.Code + "."}
 	} else if err != nil {
 		return api.AdminProject{}, err
@@ -227,8 +235,17 @@ func (s *Service) UpdateProject(ctx context.Context, p *auth.Principal, id strin
 	if len(errs) > 0 {
 		return api.AdminProject{}, &ValidationError{Errors: errs}
 	}
-	if err := s.Store.UpdateProject(ctx, pr.ID, store.ProjectUpdate{Name: u.Name, Description: u.Description, CostCenter: u.CostCenter,
-		Environments: u.Environments, Archived: u.Archived, Properties: (*map[string]string)(u.Properties)}); err != nil {
+	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+		if err := s.Store.UpdateProject(ctx, tx, pr.ID, store.ProjectUpdate{Name: u.Name, Description: u.Description, CostCenter: u.CostCenter,
+			Environments: u.Environments, Archived: u.Archived, Properties: (*map[string]string)(u.Properties)}); err != nil {
+			return err
+		}
+		if changes := projectChanges(pr, u); len(changes) > 0 {
+			return outbox.ForProject(ctx, tx, outbox.ProjectUpdated, pr.ID, p.User.ID, changes)
+		}
+		return nil
+	})
+	if err != nil {
 		return api.AdminProject{}, err
 	}
 	action := "project.update"
@@ -237,6 +254,25 @@ func (s *Service) UpdateProject(ctx context.Context, p *auth.Principal, id strin
 	}
 	s.audit(ctx, p, action, "project", pr.ID, &pr.ID, u)
 	return s.writtenProject(ctx, p, pr.ID)
+}
+
+// projectChanges are the settings an update changes, as project.updated
+// names them (ADR-0049): one that sets a value it already has changes
+// nothing.
+func projectChanges(pr store.Project, u api.AdminProjectUpdate) []string {
+	var out []string
+	changed := func(name string, ok bool) {
+		if ok {
+			out = append(out, name)
+		}
+	}
+	changed("name", u.Name != nil && strings.TrimSpace(*u.Name) != pr.Name)
+	changed("description", u.Description != nil && *u.Description != pr.Description)
+	changed("cost_center", u.CostCenter != nil && *u.CostCenter != pr.CostCenter)
+	changed("environments", u.Environments != nil && !slices.Equal(*u.Environments, pr.Environments))
+	changed("properties", u.Properties != nil && !maps.Equal(*u.Properties, pr.Properties))
+	changed("archived", u.Archived != nil && *u.Archived != (pr.ArchivedAt != nil))
+	return out
 }
 
 var roleRank = map[string]int{"viewer": 1, "member": 2, "project-admin": 3}

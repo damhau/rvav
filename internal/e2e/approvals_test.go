@@ -13,6 +13,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/provision"
+	"github.com/damhau/rvav/internal/seed"
 )
 
 // TestApprovals runs the S3 acceptance scenario and the approval rules on a
@@ -150,6 +151,40 @@ func TestApprovals(t *testing.T) {
 		}
 		decide("mkeller", lvl, approve("again"), 409)
 		h.waitStatus(big.Id, "tnguyen", api.RequestStatusSucceeded)
+		// Its level's events (ADR-0049): asked of the group, then decided by
+		// Marc with his comment, before the build.
+		levelEvents := func(requestID string) []map[string]any {
+			t.Helper()
+			rows, err := h.store.Pool.Query(ctx, `select payload->'data'->'approval' || jsonb_build_object('topic', topic)
+				from integration_events where request_id = $1 and topic like 'approval.%' order by seq`, requestID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			var out []map[string]any
+			for rows.Next() {
+				var b []byte
+				_ = rows.Scan(&b)
+				var m map[string]any
+				_ = json.Unmarshal(b, &m)
+				out = append(out, m)
+			}
+			return out
+		}
+		var firstTopics []string
+		_ = h.store.Pool.QueryRow(ctx, `select array_agg(topic order by seq) from integration_events where request_id = $1 and seq <= (
+			select seq from integration_events where request_id = $1 and topic = 'provisioning.pre')`, big.Id).Scan(&firstTopics)
+		if !slices.Equal(firstTopics, []string{"request.submitted", "approval.requested", "approval.decided", "provisioning.pre"}) {
+			t.Fatalf("events before the build = %v", firstTopics)
+		}
+		evs := levelEvents(big.Id)
+		if len(evs) != 2 || evs[0]["id"] != lvl || evs[0]["status"] != "pending" || evs[0]["due_at"] == nil ||
+			!slices.Contains(evs[0]["groups"].([]any), any("rvav-infra-leads")) || evs[0]["decided_by"] != nil ||
+			evs[1]["status"] != "approved" || evs[1]["outcome"] != "Approved by Marc Keller" ||
+			evs[1]["comment"] != "32 GB is enough for the JVM; page cache can wait." ||
+			evs[1]["decided_by"].(map[string]any)["id"] != seed.UserID("mkeller") {
+			t.Fatalf("the level's events = %v", evs)
+		}
 		row, err := h.store.GetRequest(ctx, big.Id)
 		if err != nil {
 			t.Fatal(err)
@@ -256,6 +291,20 @@ func TestApprovals(t *testing.T) {
 		h.waitStatus(slow.Id, "lmartin", api.RequestStatusRejected)
 		if s := policyStep("lmartin", slow.Id); !strings.HasPrefix(s.Title, "Rejected automatically: no answer within 1s") {
 			t.Fatalf("timed-out step = %q", s.Title)
+		}
+		// Asked again once escalated, then rejected by rvav.
+		approvers := func(ev map[string]any) []string {
+			var out []string
+			for _, a := range ev["approvers"].([]any) {
+				out = append(out, a.(map[string]any)["id"].(string))
+			}
+			return out
+		}
+		if evs := levelEvents(slow.Id); len(evs) != 3 || evs[0]["escalated"] != false || evs[1]["topic"] != "approval.requested" ||
+			evs[1]["escalated"] != true || !slices.Contains(approvers(evs[1]), seed.UserID("cdubois")) ||
+			evs[2]["topic"] != "approval.decided" || evs[2]["status"] != "rejected" || evs[2]["decided_by"] != nil ||
+			!strings.HasSuffix(evs[2]["outcome"].(string), "even after escalation") {
+			t.Fatalf("an escalated level's events = %v", evs)
 		}
 
 		// ── An infrastructure lead's own production VM approves itself ────────

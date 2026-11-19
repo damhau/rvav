@@ -16,10 +16,13 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vra"
@@ -807,7 +810,13 @@ func (s *Service) vraProjectProperties(ctx context.Context, p *auth.Principal, p
 		if len(added) == 0 {
 			continue
 		}
-		if err := s.Store.UpdateProject(ctx, id, store.ProjectUpdate{Properties: &props}); err != nil {
+		err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+			if err := s.Store.UpdateProject(ctx, tx, id, store.ProjectUpdate{Properties: &props}); err != nil {
+				return err
+			}
+			return outbox.ForProject(ctx, tx, outbox.ProjectUpdated, id, p.User.ID, []string{"properties"})
+		})
+		if err != nil {
 			return nil, err
 		}
 		s.audit(ctx, p, "project.update", "project", id, &id, map[string]any{"properties_added": added, "by": "vra import"})
