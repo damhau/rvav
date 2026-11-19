@@ -985,7 +985,8 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				} `json:"sections"`
 			} `json:"pages"`
 		} `json:"layout"`
-		Schema map[string]map[string]any `json:"schema"`
+		Schema  map[string]map[string]any `json:"schema"`
+		Options json.RawMessage           `json:"options"`
 	}
 	if err := json.Unmarshal([]byte(f.Form), &def); err != nil {
 		note(Unmapped, "form", "The custom form can't be read: "+err.Error())
@@ -995,8 +996,8 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 		"checkbox": "toggle", "integerField": "number", "decimalField": "number", "passwordField": "secret", "datetime": "datetime",
 		"multiSelect": "multiselect", "multiValuePicker": "multiselect", "dualList": "dual_list", "tagField": "tags",
 		"datagrid": "datagrid", "objectField": "object"}
-	// vRA's widgets whose rvav equivalent searches a value source, which the
-	// import can't give.
+	// vRA's widgets whose rvav equivalent searches a value source: a search
+	// field once the import gives it one.
 	searched := map[string]string{"valuePicker": "a search field"}
 	var sections []map[string]any
 	seen := map[string]bool{}
@@ -1042,10 +1043,7 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				} else if ok {
 					note(Warning, where, fmt.Sprintf("Shown as %s in vRA, which doesn't fit an input of type %v in rvav: shown as %v.",
 						fd.Display, prop["type"], field["widget"]))
-				} else if like, ok := searched[fd.Display]; ok {
-					note(Unmapped, where, fmt.Sprintf("Shown as %s in vRA: rvav's equivalent is %s, which needs a value source that searches "+
-						"(REST or CEL). Shown as %v until you give it one.", fd.Display, like, field["widget"]))
-				} else if fd.Display != "" {
+				} else if _, picker := searched[fd.Display]; !picker && fd.Display != "" {
 					note(Unmapped, where, "Shown as "+fd.Display+" in vRA, which rvav has no widget for: shown as "+fmt.Sprint(field["widget"])+".")
 				}
 				readOnly := false
@@ -1069,7 +1067,7 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				if h, _ := sch["signpost"].(string); h != "" {
 					field["help"] = h
 				}
-				worked := false
+				worked, listed := false, false
 				if d, ok := sch["default"]; ok && field["secret"] == true {
 					noDefault()
 				} else if ok {
@@ -1107,6 +1105,7 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				case map[string]any:
 					mapped, why := takeLibrary(lib, vl, false, props, field, where, note)
 					if mapped {
+						listed = true
 						break
 					}
 					text := fmt.Sprintf("Its choices come from %s %v in vRA: give the field an rvav value source (REST or CEL), or an AWX inventory.",
@@ -1132,6 +1131,14 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 							}
 						}
 					}
+				}
+				if like, ok := searched[fd.Display]; ok && listed && prop["type"] == "string" {
+					field["widget"] = "search"
+					note(Info, where, fmt.Sprintf("Shown as %s in vRA: %s in rvav, which keeps the choices of its value source that hold "+
+						"the text typed.", fd.Display, like))
+				} else if ok {
+					note(Unmapped, where, fmt.Sprintf("Shown as %s in vRA: rvav's equivalent is %s, which needs a value source that searches "+
+						"(REST or CEL). Shown as %v until you give it one.", fd.Display, like, field["widget"]))
 				}
 				if _, ok := sch["valueList"]; !ok {
 					if _, ok := sch["$data"]; ok {
@@ -1186,7 +1193,38 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 		note(Info, "form", "Its pages are tabs, as in vRA: one per page. To show them one after the other, choose the wizard layout in the form designer.")
 	}
 	ui["layout"] = map[string]any{"kind": kind, "sections": sections}
+	noteValidations(def.Options, note)
 	note(Info, "form", "The custom form's labels, help, choices, defaults and order are the item's.")
+}
+
+// noteValidations reports the external validations of vRA's form: vRO
+// actions it runs on submit, which rvav doesn't run.
+func noteValidations(raw json.RawMessage, note func(level, where, text string)) {
+	var opts struct {
+		External []map[string]any `json:"externalValidations"`
+	}
+	if json.Unmarshal(raw, &opts) != nil {
+		return
+	}
+	for _, v := range opts.External {
+		label, _ := v["label"].(string)
+		src, _ := v["source"].(map[string]any)
+		id, _ := src["id"].(string)
+		var on []string
+		if targets, ok := v["target"].([]any); ok {
+			for _, t := range targets {
+				if s, ok := t.(string); ok {
+					on = append(on, s)
+				}
+			}
+		}
+		text := fmt.Sprintf("vRA's form checks %q on submit with action %s, which rvav doesn't run: write the check as one of "+
+			"the form's validations (CEL, REST or a form library entry), in the form designer.", label, id)
+		if len(on) > 0 {
+			text += " Its messages show on " + strings.Join(on, ", ") + "."
+		}
+		note(Unmapped, "form.validations", text)
+	}
 }
 
 // placementUI is rvav's own placement fields, as its VM items have them.

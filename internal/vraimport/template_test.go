@@ -434,3 +434,46 @@ func TestMapFormPages(t *testing.T) {
 		t.Errorf("notes = %v", notes)
 	}
 }
+
+// TestMapValuePicker: vRA's value picker whose choices come from an action
+// the import makes an entry of is a search field, rvav keeping the entry's
+// choices that hold the text typed; without an entry, it is reported. The
+// form's external validations, vRO actions vRA runs on submit, are
+// reported (F1.6).
+func TestMapValuePicker(t *testing.T) {
+	form := &vra.Form{Form: `{"layout":{"pages":[{"id":"p","title":"App","sections":[{"id":"s","fields":[
+ {"id":"app","display":"valuePicker"},{"id":"other","display":"valuePicker"}]}]}]},
+"schema":{"app":{"label":"Application","valueList":{"id":"com.corp.cmdb/findApps","type":"scriptAction","parameters":[]}},
+ "other":{"label":"Other","valueList":{"id":"com.corp.cmdb/unknown","type":"scriptAction","parameters":[]}}},
+"options":{"externalValidations":[{"label":"Gold disks","source":{"id":"com.corp.storage/checkGold","type":"scriptAction",
+ "parameters":[{"$type":"field","value":"app"}]},"target":["app"]}]}}`}
+	props := map[string]any{"app": map[string]any{"type": "string"}, "other": map[string]any{"type": "string"}}
+	fields := map[string]any{"app": map[string]any{"widget": "text", "label": "app"}, "other": map[string]any{"widget": "text", "label": "other"}}
+	ui := map[string]any{"fields": fields, "layout": map[string]any{"kind": "page", "sections": []map[string]any{
+		{"key": "inputs", "title": "Request", "columns": 2, "fields": []string{"app", "other"}}}}}
+	lib := map[string]LibraryImport{"com.corp.cmdb/findApps": {VROAction: "com.corp.cmdb/findApps", Key: "findApps", Action: ActionCreate,
+		Version: 1, Parameters: []string{}, Notes: []Note{}}}
+	var notes []string
+	applyForm(form, props, fields, &[]string{}, map[string]any{}, ui, lib, func(level, where, text string) {
+		notes = append(notes, level+" "+where+": "+text)
+	})
+	app, other := fields["app"].(map[string]any), fields["other"].(map[string]any)
+	if src, _ := app["value_source"].(map[string]any); app["widget"] != "search" || src["name"] != "findApps" {
+		t.Errorf("app = %v", app)
+	}
+	if other["widget"] != "text" || other["value_source"] != nil {
+		t.Errorf("other = %v", other)
+	}
+	for _, want := range []string{
+		"info form.app: Shown as valuePicker in vRA: a search field in rvav",
+		"unmapped form.other: Shown as valuePicker in vRA: rvav's equivalent is a search field",
+		`unmapped form.validations: vRA's form checks "Gold disks" on submit with action com.corp.storage/checkGold`,
+	} {
+		if !slices.ContainsFunc(notes, func(n string) bool { return strings.HasPrefix(n, want) }) {
+			t.Errorf("no note %q: %v", want, notes)
+		}
+	}
+	if slices.ContainsFunc(notes, func(n string) bool { return strings.HasPrefix(n, "unmapped form.app:") }) {
+		t.Errorf("app is reported: %v", notes)
+	}
+}
