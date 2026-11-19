@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeploymentDetail, Resource, VmNic, VmResource } from "@/lib/api/types";
+import { layoutGraph } from "@/components/canvas/layout";
 import { db } from "@/mocks/seed";
 import { deploymentGraph, ONE_BY_ONE } from "./topology";
 
@@ -69,6 +70,15 @@ describe("a deployment's topology", () => {
       description: "web-dev-app001: adapter 2 on network dvpg-db-dev-vl320, by DHCP",
     });
     expect(first.relations).toContain("Adapter 1 on network dvpg-app-dev-vl310");
+  });
+
+  it("lays a component's VMs out in name order, its first on top", () => {
+    const g = deploymentGraph(base);
+    const { boxes } = layoutGraph(g);
+    const vms = g.nodes.filter((n) => n.kind === "vm");
+    expect(vms.map((n) => n.title)).toEqual(["web-prd-front001", "web-prd-front002", "web-prd-front003"]);
+    const tops = vms.map((n) => boxes.get(n.id)!.y);
+    expect(tops).toEqual([...tops].sort((a, b) => a - b));
   });
 
   it(`draws a component of more than ${ONE_BY_ONE} VMs as one node with their count`, () => {

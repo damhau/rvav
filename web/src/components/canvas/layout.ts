@@ -120,7 +120,11 @@ export function layoutGraph(graph: CanvasGraph): CanvasLayout {
     const label = e.label ? { width: room * 6.5 + 12, height: 18, labelpos: "c" as const } : {};
     g.setEdge(v, w, label, e.id);
   }
-  dagre.layout(g);
+  // Dagre breaks ties between nodes of a layer either way: VMs drawn on
+  // their own keep their reading order, a component's first above its next.
+  const alone = graph.nodes.filter((n) => n.kind === "vm" && !parentOf.has(n.id));
+  const constraints = alone.slice(1).map((n, i) => ({ left: alone[i]!.id, right: n.id }));
+  dagre.layout(g, { constraints });
 
   const groups = new Map<string, Box>();
   const boxes = new Map<string, Box>();
