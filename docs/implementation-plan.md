@@ -43,9 +43,9 @@ shop relies on them (H = 3, M = 2, L = 1). Coverage is the weighted share of
 features delivered in 1.0.
 
 This table credits a feature once its slice is built. The finer count,
-129 features checked in the code on 2026-11-18, is in
-[vra-parity.md](vra-parity.md): 65% with a partial feature counted as
-half, 78% counted as three quarters.
+129 features checked in the code on 2026-11-18 and counted again after
+each parity milestone, is in [vra-parity.md](vra-parity.md): 69% after T1
+with a partial feature counted as half, 80% counted as three quarters.
 
 **Result: 83% in the core 1.0 scope, 86% with the four stretch items
 (all built); 88% (97 / 110) with P2's importer and half of NSX (N1, load
@@ -530,6 +530,7 @@ Decided 2026-11-18, from [vra-parity.md](vra-parity.md), which counted
 65% of vRA (a partial feature counted as half): an overhaul of the web
 app first, then a milestone per theme of that page's gaps. 80% is passed
 after G1; the milestones after it take rvav to every feature in scope.
+After T1 (2026-11-19), that page counts 69%.
 
 | Milestone | What it covers | Parity rows |
 |---|---|---|
