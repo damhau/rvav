@@ -751,6 +751,9 @@ projects' own, and **What applies here** for their projects. They change
 only their projects' policies: the others have no menu. A project admin:
 - picks one of their projects in the side panel's **Project**: a policy
   for all projects needs `policies.manage`, which administrators hold;
+- reads, but doesn't change or remove, a policy of their project that an
+  administrator wrote last: its row says **Set by an administrator** and
+  has no menu;
 - doesn't see the **Naming** tab: naming policies and quotas stay
   administrators';
 - sets a policy's priority instead of moving it up or down, which
@@ -763,6 +766,11 @@ only their projects' policies: the others have no menu. A project admin:
 
 Every change is in the audit log with its project, as `policy.approval.*`,
 `policy.day2.*` or `policy.lease.*`.
+
+When you change a project's policy with `policies.manage`, it becomes
+yours: the project's admins can no longer change or remove it. A project
+policy written before G1.4, by anyone, is an administrator's. To give one
+back to the project's admins, remove it and let them write it again.
 
 Project and global policies combine as follows:
 - **Approval:** every policy that matches adds its levels. A project's

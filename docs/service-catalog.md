@@ -1351,8 +1351,8 @@ warnings it went on despite, and the audit log has them.
 
 ### Approval
 - Multi-level (sequential), with any-of or all-of approvers per level.
-- Approvers: users, groups, the project admin, the requester's manager (from an
-  OIDC claim).
+- Approvers: users, OIDC groups, project roles (such as Supervisor) and the
+  requester's manager (from an OIDC claim).
 - Conditions, for example `inputs.memoryGB > 32 || inputs.environment == "prod"`.
 - Auto-approve rules, delegation (out of office), timeout → auto-approve,
   auto-reject or escalate.

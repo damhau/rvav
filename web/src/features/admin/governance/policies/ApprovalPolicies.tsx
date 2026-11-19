@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -23,8 +23,10 @@ import {
   movesEveryone,
   OrderedMenu,
   PriorityDialog,
+  SetByAdmin,
   useOrderedPolicies,
   useProjects,
+  useRefreshPolicies,
   type PolicyRights,
 } from "./shared";
 
@@ -39,16 +41,16 @@ const itemTypes: { value: S["CatalogItemType"] | "all"; label: string }[] = [
   { value: "composite", label: "Composite" },
 ];
 
-const put = ({ id, ...body }: Policy) =>
+const put = ({ id, set_by_admin: _set, ...body }: Policy) =>
   call(api.PUT("/admin/approval-policies/{id}", { params: { path: { id } }, body }));
 
 function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => void }) {
-  const qc = useQueryClient();
+  const refresh = useRefreshPolicies("approval-policies");
   const projects = useProjects();
   const listed = useQuery(adm.approvals());
   const [f, setF] = useState<S["ApprovalPolicyWrite"]>(
     policy
-      ? writable(policy, "id")
+      ? writable(policy, "id", "set_by_admin")
       : {
           name: "",
           reason: "",
@@ -71,7 +73,7 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
         : call(api.POST("/admin/approval-policies", { body }));
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["admin", "approval-policies"] });
+      refresh();
       toast.success(`${f.name} saved`);
       onClose();
     },
@@ -165,7 +167,7 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
 }
 
 export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
-  const qc = useQueryClient();
+  const refresh = useRefreshPolicies("approval-policies");
   const policies = useQuery(adm.approvals());
   const approversText = (p: Policy) => p.levels.map((l) => askedText(l, policies.data?.level_roles ?? [])).join(" → ");
   const projects = useProjects();
@@ -176,7 +178,7 @@ export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
   const remove = useMutation({
     mutationFn: (p: Policy) => call(api.DELETE("/admin/approval-policies/{id}", { params: { path: { id: p.id } } })),
     onSuccess: (_, p) => {
-      void qc.invalidateQueries({ queryKey: ["admin", "approval-policies"] });
+      refresh();
       toast.success(`${p.name} removed`);
     },
     onError: (e) => failed(e, "Not removed"),
@@ -203,6 +205,7 @@ export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
             {p.project_id ? projects.name(p.project_id) : "Every project"}
             {p.item_type && `, ${itemTypes.find((t) => t.value === p.item_type)?.label ?? p.item_type}`}
           </div>
+          <SetByAdmin policy={p} />
         </>
       ),
     },
@@ -247,7 +250,7 @@ export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
         rowMenu={
           rights.any && items
             ? (p) =>
-                rights.writes(p.project_id) ? (
+                rights.changes(p) ? (
                   <OrderedMenu
                     policy={p}
                     items={items}

@@ -1,8 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
+import { adminState } from "@/mocks/administration";
 import { server } from "@/mocks/node";
-import { resetDb } from "@/mocks/seed";
+import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
 const rows = (region: HTMLElement) =>
@@ -235,5 +236,80 @@ describe("Policies as a project admin", () => {
     const up = await screen.findByRole("menuitem", { name: /^Move up/ });
     expect(up).toHaveAttribute("aria-disabled", "true");
     expect(up).toHaveTextContent("It renumbers the policies of every project: set its priority instead");
+  });
+
+  it("reads the policies an administrator set for their project, and keeps an override within the environment's", async () => {
+    localStorage.setItem("rvav.mock.as", "project-admin");
+    resetDb();
+    adminState(db).day2.push({
+      id: "d2p_web_snapshots",
+      name: "Snapshots in Web Platform",
+      reason: "Ask the infrastructure team.",
+      priority: 40,
+      actions: ["snapshot_revert"],
+      roles: ["member"],
+      condition: "true",
+      effect: "deny",
+      project_id: "prj_web",
+      enabled: true,
+      set_by_admin: true,
+    });
+    adminState(db).leases.push({
+      environment: "tst",
+      project_id: "prj_web",
+      default_days: 14,
+      max_days: 60,
+      max_extensions: 1,
+      grace_days: 7,
+      expiry_action: "power_off_then_delete",
+      set_by_admin: true,
+    });
+    const user = userEvent.setup();
+    renderApp("/admin/policies?tab=day2");
+    const day2 = await screen.findByRole("region", { name: "Day-2 policies" });
+    const set = await within(day2).findByRole("row", { name: /Snapshots in Web Platform/ });
+    expect(set).toHaveTextContent("Set by an administrator");
+    expect(within(set).queryByRole("button", { name: /^Actions for/ })).toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "Lease" }));
+    const leases = await screen.findByRole("region", { name: "Lease policies" });
+    const override = await within(leases).findByRole("row", { name: /tst.*Web Platform/ });
+    expect(override).toHaveTextContent("Set by an administrator");
+    expect(within(override).queryByRole("button", { name: /^Actions for/ })).toBeNull();
+
+    await user.click(within(leases).getByRole("button", { name: "New lease policy" }));
+    const sheet = await screen.findByRole("dialog", { name: "New lease policy" });
+    const fill = async (name: string, value: string) => {
+      const box = within(sheet).getByRole("spinbutton", { name });
+      await user.clear(box);
+      await user.type(box, value);
+    };
+    await fill("Extensions", "5");
+    await fill("Grace, in days", "30");
+    await user.click(within(sheet).getByRole("combobox", { name: "When it expires" }));
+    await user.click(await screen.findByRole("option", { name: "Only tell the owner" }));
+    await user.click(within(sheet).getByRole("button", { name: "Save lease policy" }));
+    expect(await within(sheet).findByText("Development allows 2 extensions at most.")).toBeInTheDocument();
+    expect(within(sheet).getByText("Development gives 7 grace days at most.")).toBeInTheDocument();
+    expect(within(sheet).getByText("Development's leases end with power off then delete.")).toBeInTheDocument();
+  });
+});
+
+// An auditor who is also a project admin reads every project's policies,
+// and writes their projects' own only.
+describe("Policies as an auditor and a project admin", () => {
+  afterEach(() => localStorage.removeItem("rvav.mock.as"));
+
+  it("offers only the projects whose policies they write", async () => {
+    localStorage.setItem("rvav.mock.as", "auditor");
+    resetDb();
+    db.me.projects.find((p) => p.project.id === "prj_web")!.permissions.push("project.policies.manage");
+    const user = userEvent.setup();
+    renderApp("/admin/policies?tab=day2");
+    const region = await screen.findByRole("region", { name: "Day-2 policies" });
+    await user.click(await within(region).findByRole("button", { name: "New day-2 policy" }));
+    const sheet = await screen.findByRole("dialog", { name: "New day-2 policy" });
+    await user.click(within(sheet).getByRole("combobox", { name: "Project" }));
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Web Platform"]);
   });
 });

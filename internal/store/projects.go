@@ -181,7 +181,7 @@ func (s *Store) NetworkSubnets(ctx context.Context) (map[string]NetworkSubnet, e
 // the environment's.
 func (s *Store) LeasePolicy(ctx context.Context, projectID, environment string) (LeasePolicy, error) {
 	rows, _ := s.Pool.Query(ctx, `select environment, project_id, default_days, max_days, max_extensions, grace_days, expiry_action,
-		enforcement from lease_policies where environment = $1 and (project_id = $2 or project_id is null)
+		enforcement, set_by_admin from lease_policies where environment = $1 and (project_id = $2 or project_id is null)
 		order by project_id nulls last limit 1`, environment, projectID)
 	p, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[LeasePolicy])
 	if err == pgx.ErrNoRows {

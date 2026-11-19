@@ -1461,6 +1461,7 @@ export function createDb(now = Date.now()): Db {
     out.seedDay2 = [
       {
         id: "d2p_web_power_off",
+        set_by_admin: false,
         name: "Powering off web VMs",
         reason: "Web Platform's VMs serve the checkout: tell the on-call team before you power one off.",
         priority: 30,

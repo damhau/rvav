@@ -122,7 +122,8 @@ Subscription (event → awx template | webhook)
 - **PolicyDefinition**: `type`, `scope` (global | project | catalog item),
   `condition` (CEL), `priority`, `enforcement` (`hard` | `soft`), `spec` (JSONB,
   depends on type). A project's policies are written by its project admins
-  (`project.policies.manage`); a hard global one still wins. Soft lease and
+  (`project.policies.manage`), except those an administrator wrote last
+  (`set_by_admin`); a hard global one still wins. Soft lease and
   day-2 policies warn, and a request that goes on keeps its warnings
   ([ADR-0045](adr/0045-deployment-sharing-and-project-policies.md)). Types:
   - `approval`: levels, approvers, auto-approve conditions, timeout behaviour.

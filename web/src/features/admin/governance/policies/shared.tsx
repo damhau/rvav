@@ -24,28 +24,52 @@ export const list = (s: string) =>
     .filter(Boolean);
 
 /**
- * The projects the page names and picks: every one for those who read
- * every policy, else those whose own policies the caller writes (ADR-0045).
+ * The projects the page names: every one for those who read every policy,
+ * else those whose own policies the caller writes. A policy is written for
+ * the latter only, unless the caller writes every policy (ADR-0045).
  */
 export function useProjects() {
   const { me } = useCurrentProject();
   const everyone = can(me, "policies.read");
   const global = can(me, "policies.manage");
   const projects = useQuery({ ...adm.projectNames(), enabled: everyone });
-  const items = everyone
-    ? (projects.data?.items ?? [])
-    : me.projects.filter((p) => p.permissions.includes("project.policies.manage")).map((p) => p.project);
+  const own = me.projects.filter((p) => p.permissions.includes("project.policies.manage")).map((p) => p.project);
+  const items = everyone ? (projects.data?.items ?? []) : own;
+  const writable = global ? items : own;
   return {
     items,
     name: (id: string) => items.find((p) => p.id === id)?.name ?? id,
     /** The projects a policy may be written for, every project first when the caller writes those. */
     options: (all: string) => [
       ...(global ? [{ value: "all", label: all }] : []),
-      ...items.map((p) => ({ value: p.id, label: p.name })),
+      ...writable.map((p) => ({ value: p.id, label: p.name })),
     ],
     /** The project a new policy is for: every project, or the caller's first. */
-    initial: global ? null : (items[0]?.id ?? null),
+    initial: global ? null : (writable[0]?.id ?? null),
   };
+}
+
+/**
+ * Refreshes a kind of policy and what policies decide elsewhere: deployments'
+ * actions and update previews, and request previews.
+ */
+export function useRefreshPolicies(key: string) {
+  const qc = useQueryClient();
+  return () => {
+    for (const queryKey of [["admin", key], ["deployments"], ["requests", "preview"]])
+      void qc.invalidateQueries({ queryKey });
+  };
+}
+
+interface Owned {
+  project_id?: string | null;
+  set_by_admin?: boolean;
+}
+
+/** Under a project's policy: that an administrator set it, so the project's admins leave it alone (ADR-0045). */
+export function SetByAdmin({ policy }: { policy: Owned }) {
+  if (!policy.project_id || !policy.set_by_admin) return null;
+  return <div className="text-caption text-faint">Set by an administrator</div>;
 }
 
 /** A soft policy warns where a hard one refuses or asks for approval (ADR-0045). */
@@ -58,14 +82,17 @@ export const enforcementOptions = [
 export function usePolicyRights() {
   const { me } = useCurrentProject();
   const global = can(me, "policies.manage");
+  const writes = (projectId?: string | null) =>
+    global || (Boolean(projectId) && can(me, "project.policies.manage", projectId ?? undefined));
   return {
     /** Writes the policies of every project. */
     global,
     /** Writes some policy. */
     any: global || canAnywhere(me, "project.policies.manage"),
     /** Writes the policy of this project, or of every project for null. */
-    writes: (projectId?: string | null) =>
-      global || (Boolean(projectId) && can(me, "project.policies.manage", projectId ?? undefined)),
+    writes,
+    /** Changes this policy: a project admin leaves alone those an administrator set. */
+    changes: (p: Owned) => global || (!p.set_by_admin && writes(p.project_id)),
   };
 }
 
@@ -89,8 +116,7 @@ interface Ordered {
  * changes.
  */
 export function useOrderedPolicies<T extends Ordered>(key: string, put: (p: T) => Promise<unknown>) {
-  const qc = useQueryClient();
-  const refresh = () => void qc.invalidateQueries({ queryKey: ["admin", key] });
+  const refresh = useRefreshPolicies(key);
   const move = useMutation({
     mutationFn: async ({ items, from, to }: { items: T[]; from: number; to: number }) => {
       const order = [...items];

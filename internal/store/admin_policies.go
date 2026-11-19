@@ -14,9 +14,12 @@ import (
 type AdminApprovalPolicy struct {
 	ApprovalPolicy
 	Enabled bool `db:"enabled"`
+	// SetByAdmin: an administrator wrote it last, and a project's admins
+	// leave it alone (ADR-0045).
+	SetByAdmin bool `db:"set_by_admin"`
 }
 
-const approvalPolicyCols = `id, name, reason, condition, item_type, project_id, levels, priority, auto_approve, enabled`
+const approvalPolicyCols = `id, name, reason, condition, item_type, project_id, levels, priority, auto_approve, enabled, set_by_admin`
 
 // AllApprovalPolicies lists every approval policy in the order they are tried.
 func (s *Store) AllApprovalPolicies(ctx context.Context) ([]AdminApprovalPolicy, error) {
@@ -32,11 +35,12 @@ func (s *Store) GetApprovalPolicy(ctx context.Context, id string) (AdminApproval
 
 func (s *Store) SaveApprovalPolicy(ctx context.Context, p AdminApprovalPolicy) error {
 	_, err := s.Pool.Exec(ctx, `insert into approval_policies (id, name, reason, condition, item_type, project_id, levels, priority,
-		auto_approve, enabled) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		auto_approve, enabled, set_by_admin) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		on conflict (id) do update set name = excluded.name, reason = excluded.reason, condition = excluded.condition,
 		item_type = excluded.item_type, project_id = excluded.project_id, levels = excluded.levels, priority = excluded.priority,
-		auto_approve = excluded.auto_approve, enabled = excluded.enabled`,
-		p.ID, p.Name, p.Reason, p.Condition, p.ItemType, p.ProjectID, jsonOr(p.Levels, "[]"), p.Priority, p.AutoApprove, p.Enabled)
+		auto_approve = excluded.auto_approve, enabled = excluded.enabled, set_by_admin = excluded.set_by_admin`,
+		p.ID, p.Name, p.Reason, p.Condition, p.ItemType, p.ProjectID, jsonOr(p.Levels, "[]"), p.Priority, p.AutoApprove, p.Enabled,
+		p.SetByAdmin)
 	return err
 }
 
@@ -51,10 +55,12 @@ func (s *Store) DeleteApprovalPolicy(ctx context.Context, id string) error {
 // AdminDay2Policy is a day-2 policy, enabled or not.
 type AdminDay2Policy struct {
 	Day2Policy
-	Enabled bool `db:"enabled"`
+	Enabled    bool `db:"enabled"`
+	SetByAdmin bool `db:"set_by_admin"`
 }
 
-const day2PolicyCols = `id, name, reason, priority, actions, roles, condition, effect, levels, project_id, enabled, enforcement`
+const day2PolicyCols = `id, name, reason, priority, actions, roles, condition, effect, levels, project_id, enabled, enforcement,
+	set_by_admin`
 
 func (s *Store) AllDay2Policies(ctx context.Context) ([]AdminDay2Policy, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+day2PolicyCols+` from day2_policies order by priority, id`)
@@ -69,12 +75,13 @@ func (s *Store) GetDay2Policy(ctx context.Context, id string) (AdminDay2Policy, 
 
 func (s *Store) SaveDay2Policy(ctx context.Context, p AdminDay2Policy) error {
 	_, err := s.Pool.Exec(ctx, `insert into day2_policies (id, name, reason, priority, actions, roles, condition, effect, levels,
-		project_id, enabled, enforcement) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		project_id, enabled, enforcement, set_by_admin) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		on conflict (id) do update set name = excluded.name, reason = excluded.reason, priority = excluded.priority,
 		actions = excluded.actions, roles = excluded.roles, condition = excluded.condition, effect = excluded.effect,
-		levels = excluded.levels, project_id = excluded.project_id, enabled = excluded.enabled, enforcement = excluded.enforcement`,
+		levels = excluded.levels, project_id = excluded.project_id, enabled = excluded.enabled, enforcement = excluded.enforcement,
+		set_by_admin = excluded.set_by_admin`,
 		p.ID, p.Name, p.Reason, p.Priority, nonNil(p.Actions), nonNil(p.Roles), p.Condition, p.Effect, jsonOr(p.Levels, "[]"),
-		p.ProjectID, p.Enabled, cmp.Or(p.Enforcement, EnforcementHard))
+		p.ProjectID, p.Enabled, cmp.Or(p.Enforcement, EnforcementHard), p.SetByAdmin)
 	return err
 }
 
@@ -89,19 +96,27 @@ func (s *Store) DeleteDay2Policy(ctx context.Context, id string) error {
 // LeasePolicies lists environments' policies and projects' overrides.
 func (s *Store) LeasePolicies(ctx context.Context) ([]LeasePolicy, error) {
 	rows, _ := s.Pool.Query(ctx, `select environment, project_id, default_days, max_days, max_extensions, grace_days, expiry_action,
-		enforcement from lease_policies order by environment, project_id nulls first`)
+		enforcement, set_by_admin from lease_policies order by environment, project_id nulls first`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[LeasePolicy])
+}
+
+// LeaseOverride returns a project's override of an environment's policy.
+func (s *Store) LeaseOverride(ctx context.Context, environment, projectID string) (LeasePolicy, error) {
+	rows, _ := s.Pool.Query(ctx, `select environment, project_id, default_days, max_days, max_extensions, grace_days, expiry_action,
+		enforcement, set_by_admin from lease_policies where environment = $1 and project_id = $2`, environment, projectID)
+	p, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[LeasePolicy])
+	return p, notFound(err)
 }
 
 // SetLeasePolicy sets an environment's policy or a project's override.
 func (s *Store) SetLeasePolicy(ctx context.Context, l LeasePolicy) error {
 	_, err := s.Pool.Exec(ctx, `insert into lease_policies (environment, project_id, default_days, max_days, max_extensions,
-		grace_days, expiry_action, enforcement) values ($1, $2, $3, $4, $5, $6, $7, $8)
+		grace_days, expiry_action, enforcement, set_by_admin) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		on conflict (environment, (coalesce(project_id, ''))) do update set default_days = excluded.default_days,
 		max_days = excluded.max_days, max_extensions = excluded.max_extensions, grace_days = excluded.grace_days,
-		expiry_action = excluded.expiry_action, enforcement = excluded.enforcement`,
+		expiry_action = excluded.expiry_action, enforcement = excluded.enforcement, set_by_admin = excluded.set_by_admin`,
 		l.Environment, l.ProjectID, l.DefaultDays, l.MaxDays, l.MaxExtensions, l.GraceDays, l.ExpiryAction,
-		cmp.Or(l.Enforcement, EnforcementHard))
+		cmp.Or(l.Enforcement, EnforcementHard), l.SetByAdmin)
 	return err
 }
 

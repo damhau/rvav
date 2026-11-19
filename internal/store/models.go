@@ -127,6 +127,7 @@ type LeasePolicy struct {
 	GraceDays     int     `db:"grace_days"`
 	ExpiryAction  string  `db:"expiry_action"`
 	Enforcement   string  `db:"enforcement"`
+	SetByAdmin    bool    `db:"set_by_admin"`
 }
 
 type Category struct {

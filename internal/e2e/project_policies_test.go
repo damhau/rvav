@@ -141,3 +141,103 @@ func TestProjectPolicies(t *testing.T) {
 		}
 	})
 }
+
+// TestAdminSetProjectPolicies: a project policy an administrator wrote
+// last, or one written before G1.4, is the administrators': the
+// project's admins read it, marked so, and don't change or remove it
+// (ADR-0045).
+func TestAdminSetProjectPolicies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, projectAdmin = "mkeller", "lmartin"
+		web := "prj_web"
+		deny := api.Day2PolicyWrite{Name: "No snapshots", Actions: &[]string{"snapshot_create"},
+			Effect: api.Day2PolicyWriteEffectDeny, ProjectId: &web}
+		day2 := func(user, method, id string, want int) api.Day2Policy {
+			t.Helper()
+			var out api.Day2Policy
+			path := "/api/v1/admin/day2-policies"
+			if id != "" {
+				path += "/" + id
+			}
+			h.json(method, path, user, deny, want, &out)
+			return out
+		}
+		listed := func(id string) api.Day2Policy {
+			t.Helper()
+			var list api.Day2PolicyList
+			h.json("GET", "/api/v1/admin/day2-policies", projectAdmin, nil, 200, &list)
+			for _, p := range list.Items {
+				if p.Id == id {
+					return p
+				}
+			}
+			t.Fatalf("a project admin doesn't list %s", id)
+			return api.Day2Policy{}
+		}
+
+		byAdmin := day2(admin, "POST", "", 201)
+		if !byAdmin.SetByAdmin || !listed(byAdmin.Id).SetByAdmin {
+			t.Fatalf("an administrator's project policy = %+v", byAdmin)
+		}
+		day2(projectAdmin, "PUT", byAdmin.Id, 403)
+		h.json("DELETE", "/api/v1/admin/day2-policies/"+byAdmin.Id, projectAdmin, nil, 403, nil)
+
+		own := day2(projectAdmin, "POST", "", 201)
+		if own.SetByAdmin || listed(own.Id).SetByAdmin {
+			t.Fatalf("a project admin's own policy = %+v", own)
+		}
+		day2(projectAdmin, "PUT", own.Id, 200)
+		day2(admin, "PUT", own.Id, 200)
+		day2(projectAdmin, "PUT", own.Id, 403)
+
+		if _, err := h.store.Pool.Exec(ctx, `insert into day2_policies (id, name, reason, priority, actions, roles, condition,
+			effect, levels, project_id) values ('d2p_before', 'Before', '', 100, '{*}', '{}', 'true', 'allow', '[]', $1)`, web); err != nil {
+			t.Fatal(err)
+		}
+		if !listed("d2p_before").SetByAdmin {
+			t.Fatal("a project policy written before G1.4 isn't the administrators'")
+		}
+		h.json("DELETE", "/api/v1/admin/day2-policies/d2p_before", projectAdmin, nil, 403, nil)
+
+		var approval api.ApprovalPolicy
+		write := api.ApprovalPolicyWrite{Name: "Web production", Condition: `environment == "prd"`, ProjectId: &web,
+			Levels: []api.ApprovalLevel{{Name: "Web leads", Group: strPtr("rvav-web-admins")}}}
+		h.json("POST", "/api/v1/admin/approval-policies", admin, write, 201, &approval)
+		if !approval.SetByAdmin {
+			t.Fatalf("an administrator's approval policy = %+v", approval)
+		}
+		h.json("PUT", "/api/v1/admin/approval-policies/"+approval.Id, projectAdmin, write, 403, nil)
+		h.json("DELETE", "/api/v1/admin/approval-policies/"+approval.Id, projectAdmin, nil, 403, nil)
+
+		lease := api.LeasePolicy{Environment: "dev", ProjectId: &web, DefaultDays: new(14), MaxDays: new(60), MaxExtensions: 1,
+			GraceDays: 7, ExpiryAction: api.PowerOffThenDelete}
+		leaseOf := func() api.LeasePolicy {
+			t.Helper()
+			var list api.LeasePolicyList
+			h.json("GET", "/api/v1/admin/lease-policies", projectAdmin, nil, 200, &list)
+			for _, l := range list.Items {
+				if l.Environment == "dev" && l.ProjectId != nil && *l.ProjectId == web {
+					return l
+				}
+			}
+			t.Fatal("no override of dev for Web Platform")
+			return api.LeasePolicy{}
+		}
+		h.json("PUT", "/api/v1/admin/lease-policies", admin, lease, 200, nil)
+		if s := leaseOf().SetByAdmin; s == nil || !*s {
+			t.Fatal("an administrator's lease override isn't marked")
+		}
+		h.json("PUT", "/api/v1/admin/lease-policies", projectAdmin, lease, 403, nil)
+		h.json("DELETE", "/api/v1/admin/lease-policies?environment=dev&project_id="+web, projectAdmin, nil, 403, nil)
+		h.json("DELETE", "/api/v1/admin/lease-policies?environment=dev&project_id="+web, admin, nil, 204, nil)
+		h.json("PUT", "/api/v1/admin/lease-policies", projectAdmin, lease, 200, nil)
+		if s := leaseOf().SetByAdmin; s == nil || *s {
+			t.Fatal("a project admin's own lease override is marked as an administrator's")
+		}
+		h.json("DELETE", "/api/v1/admin/lease-policies?environment=dev&project_id="+web, projectAdmin, nil, 204, nil)
+	})
+}

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Wrench } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -24,8 +24,10 @@ import {
   movesEveryone,
   OrderedMenu,
   PriorityDialog,
+  SetByAdmin,
   useOrderedPolicies,
   useProjects,
+  useRefreshPolicies,
   type PolicyRights,
 } from "./shared";
 
@@ -35,15 +37,16 @@ type Policy = S["Day2Policy"];
 const effectTone = { allow: "ok", deny: "bad", approval: "warn" } as const;
 const effectLabel = { allow: "Allow", deny: "Deny", approval: "Needs approval" } as const;
 
-const put = ({ id, ...body }: Policy) => call(api.PUT("/admin/day2-policies/{id}", { params: { path: { id } }, body }));
+const put = ({ id, set_by_admin: _set, ...body }: Policy) =>
+  call(api.PUT("/admin/day2-policies/{id}", { params: { path: { id } }, body }));
 
 function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }) {
-  const qc = useQueryClient();
+  const refresh = useRefreshPolicies("day2-policies");
   const projects = useProjects();
   const listed = useQuery(adm.day2());
   const [f, setF] = useState<S["Day2PolicyWrite"]>(
     policy
-      ? writable(policy, "id")
+      ? writable(policy, "id", "set_by_admin")
       : {
           name: "",
           reason: "",
@@ -76,7 +79,7 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
         : call(api.POST("/admin/day2-policies", { body }));
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["admin", "day2-policies"] });
+      refresh();
       toast.success(`${f.name} saved`);
       onClose();
     },
@@ -213,7 +216,7 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
 }
 
 export function Day2Policies({ rights }: { rights: PolicyRights }) {
-  const qc = useQueryClient();
+  const refresh = useRefreshPolicies("day2-policies");
   const policies = useQuery(adm.day2());
   const projects = useProjects();
   const [editing, setEditing] = useState<Policy | "new" | null>(null);
@@ -223,7 +226,7 @@ export function Day2Policies({ rights }: { rights: PolicyRights }) {
   const remove = useMutation({
     mutationFn: (p: Policy) => call(api.DELETE("/admin/day2-policies/{id}", { params: { path: { id: p.id } } })),
     onSuccess: (_, p) => {
-      void qc.invalidateQueries({ queryKey: ["admin", "day2-policies"] });
+      refresh();
       toast.success(`${p.name} removed`);
     },
     onError: (e) => failed(e, "Not removed"),
@@ -249,6 +252,7 @@ export function Day2Policies({ rights }: { rights: PolicyRights }) {
           <div className="text-secondary text-muted">
             {p.project_id ? projects.name(p.project_id) : "Every project"}
           </div>
+          <SetByAdmin policy={p} />
         </>
       ),
     },
@@ -310,7 +314,7 @@ export function Day2Policies({ rights }: { rights: PolicyRights }) {
         rowMenu={
           rights.any && items
             ? (p) =>
-                rights.writes(p.project_id) ? (
+                rights.changes(p) ? (
                   <OrderedMenu
                     policy={p}
                     items={items}

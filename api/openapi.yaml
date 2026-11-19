@@ -3668,8 +3668,8 @@ paths:
         override, that or `project.policies.manage` in the project: a
         project admin's override can't give more than the environment's
         lease (more days, more extensions or grace days, no lease, a
-        gentler end), each refused with the code `looser` (ADR-0045).
-        Audited.
+        gentler end), each refused with the code `looser` (ADR-0045), and
+        can't replace an override an administrator set (403). Audited.
       requestBody:
         required: true
         content:
@@ -3688,7 +3688,9 @@ paths:
       tags: [admin]
       operationId: deleteLeasePolicy
       summary: Remove a project's override (an environment's own policy stays)
-      description: "`policies.manage`, or `project.policies.manage` in the project."
+      description: |
+        `policies.manage`, or `project.policies.manage` in the project for
+        an override a project admin set.
       parameters:
         - name: environment
           in: query
@@ -3724,8 +3726,9 @@ paths:
       summary: Add an approval policy
       description: |
         A global policy needs `policies.manage`. A project's, that or
-        `project.policies.manage` in the project (project admins); anything
-        else is refused (403). Audited.
+        `project.policies.manage` in the project (project admins), unless
+        an administrator set it (`set_by_admin`); anything else is refused
+        (403). Audited.
       requestBody:
         required: true
         content:
@@ -3750,8 +3753,9 @@ paths:
       summary: Change an approval policy
       description: |
         A global policy needs `policies.manage`. A project's, that or
-        `project.policies.manage` in the project (project admins); anything
-        else is refused (403). Audited.
+        `project.policies.manage` in the project (project admins), unless
+        an administrator set it (`set_by_admin`); anything else is refused
+        (403). Audited.
       requestBody:
         required: true
         content:
@@ -3771,6 +3775,10 @@ paths:
       tags: [admin]
       operationId: deleteApprovalPolicy
       summary: Remove an approval policy (approvals it started go on)
+      description: |
+        As changing it: `policies.manage`, or `project.policies.manage` in
+        its project unless an administrator set it (`set_by_admin`);
+        anything else is refused (403). Audited.
       responses:
         "204": { description: Removed }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -3800,8 +3808,9 @@ paths:
       summary: Add a day-2 policy
       description: |
         A global policy needs `policies.manage`. A project's, that or
-        `project.policies.manage` in the project (project admins); anything
-        else is refused (403). Audited. Policies are tried by priority, the
+        `project.policies.manage` in the project (project admins), unless
+        an administrator set it (`set_by_admin`); anything else is refused
+        (403). Audited. Policies are tried by priority, the
         global and the project's together; when a project's policy matches
         first, the first global one that matches still decides if it is
         hard and stricter (deny over approval over allow): a project's
@@ -3830,8 +3839,9 @@ paths:
       summary: Change a day-2 policy
       description: |
         A global policy needs `policies.manage`. A project's, that or
-        `project.policies.manage` in the project (project admins); anything
-        else is refused (403). Audited.
+        `project.policies.manage` in the project (project admins), unless
+        an administrator set it (`set_by_admin`); anything else is refused
+        (403). Audited.
       requestBody:
         required: true
         content:
@@ -3851,6 +3861,10 @@ paths:
       tags: [admin]
       operationId: deleteDay2Policy
       summary: Remove a day-2 policy
+      description: |
+        As changing it: `policies.manage`, or `project.policies.manage` in
+        its project unless an administrator set it (`set_by_admin`);
+        anything else is refused (403). Audited.
       responses:
         "204": { description: Removed }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -10385,6 +10399,13 @@ components:
             an extension beyond it or `max_extensions` asks the project's
             approvers. Soft: both warn the requester, who may go on. A
             project admin's override of a hard policy stays hard.
+        set_by_admin:
+          type: boolean
+          readOnly: true
+          description: |
+            An administrator (`policies.manage`) wrote it last: a project's
+            admins read the override but don't change or remove it
+            (ADR-0045).
     PolicyEnforcement:
       type: string
       enum: [hard, soft]
@@ -10463,9 +10484,15 @@ components:
       allOf:
         - $ref: "#/components/schemas/ApprovalPolicyWrite"
         - type: object
-          required: [id, priority, enabled, reason]
+          required: [id, priority, enabled, reason, set_by_admin]
           properties:
             id: { type: string }
+            set_by_admin:
+              type: boolean
+              description: |
+                An administrator (`policies.manage`) wrote it last: a
+                project's admins read it but don't change or remove it
+                (ADR-0045). False for a project admin's own.
     ApprovalPolicyList:
       type: object
       required: [items, level_roles]
@@ -10508,9 +10535,15 @@ components:
       allOf:
         - $ref: "#/components/schemas/Day2PolicyWrite"
         - type: object
-          required: [id, priority, actions, roles, condition, enabled, reason]
+          required: [id, priority, actions, roles, condition, enabled, reason, set_by_admin]
           properties:
             id: { type: string }
+            set_by_admin:
+              type: boolean
+              description: |
+                An administrator (`policies.manage`) wrote it last: a
+                project's admins read it but don't change or remove it
+                (ADR-0045). False for a project admin's own.
     Day2PolicyList:
       type: object
       required: [items, level_roles]

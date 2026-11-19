@@ -590,10 +590,13 @@ it.
   day-2 action, lease and naming for a project and environment, with the
   quota lines. Day-2 and lease policies have an **Enforcement**; soft rows
   say so. A project admin (`project.policies.manage`) gets the page
-  without the Naming tab: rows they may not write have no menu, the side
-  panel's **Project** offers only their projects, and moving is off, as it
-  renumbers every project's policies (`usePolicyRights` in
-  `policies/shared.tsx`; ADR-0045).
+  without the Naming tab: rows they may not change have no menu, a
+  project's row an administrator set says so (`SetByAdmin`), the side
+  panel's **Project** offers only the projects whose policies they write
+  (an auditor's too), and moving is off, as it renumbers every project's
+  policies (`usePolicyRights` in `policies/shared.tsx`; ADR-0045). Saving
+  or removing a policy also refreshes deployments' actions and request
+  previews (`useRefreshPolicies`).
 - **Soft warnings** (`components/common/warnings.tsx`): `PolicyWarnings`
   is a `note` listing what soft policies warn about, in the request form's
   summary, the day-2 dialog, the update's review and a request's page

@@ -291,6 +291,7 @@ describe("what the mocks tell a member of an owners-only project", () => {
     as("member");
     adminState(db).day2.push({
       id: "d2p_prd_power",
+      set_by_admin: true,
       name: "No power-off in production",
       reason: "Production VMs stay on: ask the on-call team.",
       priority: 5,
@@ -321,6 +322,7 @@ describe("the mocks' approval levels", () => {
   it("ask a saved policy's project role holders and the requester's manager", async () => {
     adminState(db).approvals.push({
       id: "pol_dev_web",
+      set_by_admin: true,
       name: "Web Platform in development",
       reason: "Development requests in Web Platform need a look",
       condition: 'environment == "dev"',

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Timer } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,8 +15,8 @@ import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
-import { failed, fieldErrors } from "../common";
-import { enforcementOptions, useProjects, type PolicyRights } from "./shared";
+import { failed, fieldErrors, writable } from "../common";
+import { enforcementOptions, SetByAdmin, useProjects, useRefreshPolicies, type PolicyRights } from "./shared";
 
 type S = components["schemas"];
 type Lease = S["LeasePolicy"];
@@ -28,25 +28,27 @@ const expiryLabels: Record<S["LeaseExpiryAction"], string> = {
 };
 
 function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) {
-  const qc = useQueryClient();
   const envs = useQuery(q.environments());
   const projects = useProjects();
+  const refresh = useRefreshPolicies("leases");
   const [f, setF] = useState<Lease>(
-    lease ?? {
-      environment: "dev",
-      project_id: projects.initial,
-      default_days: 30,
-      max_days: 90,
-      max_extensions: 2,
-      grace_days: 7,
-      expiry_action: "power_off_then_delete",
-    },
+    lease
+      ? writable(lease, "set_by_admin")
+      : {
+          environment: "dev",
+          project_id: projects.initial,
+          default_days: 30,
+          max_days: 90,
+          max_extensions: 2,
+          grace_days: 7,
+          expiry_action: "power_off_then_delete",
+        },
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useMutation({
     mutationFn: () => call(api.PUT("/admin/lease-policies", { body: f })),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["admin", "leases"] });
+      refresh();
       toast.success("Lease policy saved");
       onClose();
     },
@@ -80,7 +82,7 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
       }}
     >
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Environment" htmlFor="lease-env">
+        <Field label="Environment" htmlFor="lease-env" error={errors["/environment"]}>
           <Select
             id="lease-env"
             value={f.environment}
@@ -124,7 +126,7 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
           />
         </Field>
       </div>
-      <Field label="When it expires" htmlFor="lease-action">
+      <Field label="When it expires" htmlFor="lease-action" error={errors["/expiry_action"]}>
         <Select
           id="lease-action"
           value={f.expiry_action}
@@ -150,7 +152,7 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
 }
 
 export function LeasePolicies({ rights }: { rights: PolicyRights }) {
-  const qc = useQueryClient();
+  const refresh = useRefreshPolicies("leases");
   const leases = useQuery(adm.leases());
   const projects = useProjects();
   const [editing, setEditing] = useState<Lease | "new" | null>(null);
@@ -164,7 +166,7 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
         }),
       ),
     onSuccess: (_, l) => {
-      void qc.invalidateQueries({ queryKey: ["admin", "leases"] });
+      refresh();
       toast.success(`The lease in ${where(l)} removed`);
     },
     onError: (e) => failed(e, "Not removed"),
@@ -186,6 +188,7 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
           <div className="text-secondary text-muted">
             {l.project_id ? projects.name(l.project_id) : "Every project"}
           </div>
+          <SetByAdmin policy={l} />
         </>
       ),
     },
@@ -244,7 +247,7 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
         rowMenu={
           rights.any
             ? (l) =>
-                rights.writes(l.project_id) ? (
+                rights.changes(l) ? (
                   <>
                     <MenuItem onSelect={() => setEditing(l)}>Change</MenuItem>
                     {l.project_id && (

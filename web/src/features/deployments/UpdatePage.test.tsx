@@ -42,6 +42,7 @@ describe("the update page against the mock API", () => {
   it("asks again, with the focus on the warning, when a soft policy changed since Review", async () => {
     const policy = {
       id: "d2p_update_soft",
+      set_by_admin: true,
       name: "Updates in office hours",
       reason: "Tell the team before you update.",
       priority: 1,

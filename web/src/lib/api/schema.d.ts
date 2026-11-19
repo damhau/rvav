@@ -2787,14 +2787,15 @@ export interface paths {
          *     override, that or `project.policies.manage` in the project: a
          *     project admin's override can't give more than the environment's
          *     lease (more days, more extensions or grace days, no lease, a
-         *     gentler end), each refused with the code `looser` (ADR-0045).
-         *     Audited.
+         *     gentler end), each refused with the code `looser` (ADR-0045), and
+         *     can't replace an override an administrator set (403). Audited.
          */
         put: operations["setLeasePolicy"];
         post?: never;
         /**
          * Remove a project's override (an environment's own policy stays)
-         * @description `policies.manage`, or `project.policies.manage` in the project.
+         * @description `policies.manage`, or `project.policies.manage` in the project for
+         *     an override a project admin set.
          */
         delete: operations["deleteLeasePolicy"];
         options?: never;
@@ -2820,8 +2821,9 @@ export interface paths {
         /**
          * Add an approval policy
          * @description A global policy needs `policies.manage`. A project's, that or
-         *     `project.policies.manage` in the project (project admins); anything
-         *     else is refused (403). Audited.
+         *     `project.policies.manage` in the project (project admins), unless
+         *     an administrator set it (`set_by_admin`); anything else is refused
+         *     (403). Audited.
          */
         post: operations["createApprovalPolicy"];
         delete?: never;
@@ -2843,12 +2845,18 @@ export interface paths {
         /**
          * Change an approval policy
          * @description A global policy needs `policies.manage`. A project's, that or
-         *     `project.policies.manage` in the project (project admins); anything
-         *     else is refused (403). Audited.
+         *     `project.policies.manage` in the project (project admins), unless
+         *     an administrator set it (`set_by_admin`); anything else is refused
+         *     (403). Audited.
          */
         put: operations["updateApprovalPolicy"];
         post?: never;
-        /** Remove an approval policy (approvals it started go on) */
+        /**
+         * Remove an approval policy (approvals it started go on)
+         * @description As changing it: `policies.manage`, or `project.policies.manage` in
+         *     its project unless an administrator set it (`set_by_admin`);
+         *     anything else is refused (403). Audited.
+         */
         delete: operations["deleteApprovalPolicy"];
         options?: never;
         head?: never;
@@ -2873,8 +2881,9 @@ export interface paths {
         /**
          * Add a day-2 policy
          * @description A global policy needs `policies.manage`. A project's, that or
-         *     `project.policies.manage` in the project (project admins); anything
-         *     else is refused (403). Audited. Policies are tried by priority, the
+         *     `project.policies.manage` in the project (project admins), unless
+         *     an administrator set it (`set_by_admin`); anything else is refused
+         *     (403). Audited. Policies are tried by priority, the
          *     global and the project's together; when a project's policy matches
          *     first, the first global one that matches still decides if it is
          *     hard and stricter (deny over approval over allow): a project's
@@ -2900,12 +2909,18 @@ export interface paths {
         /**
          * Change a day-2 policy
          * @description A global policy needs `policies.manage`. A project's, that or
-         *     `project.policies.manage` in the project (project admins); anything
-         *     else is refused (403). Audited.
+         *     `project.policies.manage` in the project (project admins), unless
+         *     an administrator set it (`set_by_admin`); anything else is refused
+         *     (403). Audited.
          */
         put: operations["updateDay2Policy"];
         post?: never;
-        /** Remove a day-2 policy */
+        /**
+         * Remove a day-2 policy
+         * @description As changing it: `policies.manage`, or `project.policies.manage` in
+         *     its project unless an administrator set it (`set_by_admin`);
+         *     anything else is refused (403). Audited.
+         */
         delete: operations["deleteDay2Policy"];
         options?: never;
         head?: never;
@@ -7884,6 +7899,12 @@ export interface components {
              *     project admin's override of a hard policy stays hard.
              */
             enforcement?: components["schemas"]["PolicyEnforcement"];
+            /**
+             * @description An administrator (`policies.manage`) wrote it last: a project's
+             *     admins read the override but don't change or remove it
+             *     (ADR-0045).
+             */
+            readonly set_by_admin?: boolean;
         };
         /** @enum {string} */
         PolicyEnforcement: "hard" | "soft";
@@ -7965,6 +7986,12 @@ export interface components {
         };
         ApprovalPolicy: components["schemas"]["ApprovalPolicyWrite"] & {
             id: string;
+            /**
+             * @description An administrator (`policies.manage`) wrote it last: a
+             *     project's admins read it but don't change or remove it
+             *     (ADR-0045). False for a project admin's own.
+             */
+            set_by_admin: boolean;
         };
         ApprovalPolicyList: {
             items: components["schemas"]["ApprovalPolicy"][];
@@ -7997,6 +8024,12 @@ export interface components {
         };
         Day2Policy: components["schemas"]["Day2PolicyWrite"] & {
             id: string;
+            /**
+             * @description An administrator (`policies.manage`) wrote it last: a
+             *     project's admins read it but don't change or remove it
+             *     (ADR-0045). False for a project admin's own.
+             */
+            set_by_admin: boolean;
         };
         Day2PolicyList: {
             items: components["schemas"]["Day2Policy"][];

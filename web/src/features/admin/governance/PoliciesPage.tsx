@@ -31,7 +31,7 @@ export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
         description={
           naming
             ? "Who approves what, which day-2 actions are allowed, how long deployments live and how VMs are named."
-            : "Who approves what, which day-2 actions are allowed and how long deployments live in your projects. You read the policies of every project, and write your projects' own."
+            : "Who approves what, which day-2 actions are allowed and how long deployments live in your projects. You read the global policies and your projects', and write your projects' own unless an administrator set them."
         }
       />
       <Tabs

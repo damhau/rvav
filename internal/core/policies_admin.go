@@ -98,7 +98,7 @@ func (s *Service) SetProjectQuotas(ctx context.Context, p *auth.Principal, proje
 func presentLeasePolicy(l store.LeasePolicy) api.LeasePolicy {
 	return api.LeasePolicy{Environment: l.Environment, ProjectId: l.ProjectID, DefaultDays: l.DefaultDays, MaxDays: l.MaxDays,
 		MaxExtensions: l.MaxExtensions, GraceDays: l.GraceDays, ExpiryAction: api.LeaseExpiryAction(l.ExpiryAction),
-		Enforcement: present.Ptr(api.PolicyEnforcement(cmp.Or(l.Enforcement, store.EnforcementHard)))}
+		Enforcement: present.Ptr(api.PolicyEnforcement(cmp.Or(l.Enforcement, store.EnforcementHard))), SetByAdmin: &l.SetByAdmin}
 }
 
 // enforcement checks a policy's enforcement, hard when not given.
@@ -126,6 +126,12 @@ func showsPolicy(p *auth.Principal, projectID *string) bool {
 // project.policies.manage there.
 func writesPolicy(p *auth.Principal, projectID *string) bool {
 	return p.Everywhere(auth.PoliciesManage) || projectID != nil && p.In(auth.ProjectPolicies, *projectID)
+}
+
+// changesPolicy: writesPolicy, and a project admin leaves alone the
+// project's policies an administrator set (ADR-0045).
+func changesPolicy(p *auth.Principal, projectID *string, setByAdmin bool) bool {
+	return p.Everywhere(auth.PoliciesManage) || !setByAdmin && writesPolicy(p, projectID)
 }
 
 // policyProject resolves the project a policy is written for, and refuses
@@ -170,6 +176,11 @@ func (s *Service) SetLeasePolicy(ctx context.Context, p *auth.Principal, l api.L
 	} else if err != nil {
 		return api.LeasePolicy{}, err
 	} else if !p.Everywhere(auth.PoliciesManage) {
+		if old, err := s.Store.LeaseOverride(ctx, env.Key, *project); err == nil && old.SetByAdmin {
+			return api.LeasePolicy{}, ErrForbidden
+		} else if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return api.LeasePolicy{}, err
+		}
 		looser, err := s.looserLease(ctx, env, l)
 		if err != nil {
 			return api.LeasePolicy{}, err
@@ -197,7 +208,8 @@ func (s *Service) SetLeasePolicy(ctx context.Context, p *auth.Principal, l api.L
 		return api.LeasePolicy{}, &ValidationError{Errors: errs}
 	}
 	row := store.LeasePolicy{Environment: l.Environment, ProjectID: project, DefaultDays: l.DefaultDays, MaxDays: l.MaxDays,
-		MaxExtensions: l.MaxExtensions, GraceDays: l.GraceDays, ExpiryAction: string(l.ExpiryAction), Enforcement: enf}
+		MaxExtensions: l.MaxExtensions, GraceDays: l.GraceDays, ExpiryAction: string(l.ExpiryAction), Enforcement: enf,
+		SetByAdmin: p.Everywhere(auth.PoliciesManage)}
 	if err := s.Store.SetLeasePolicy(ctx, row); err != nil {
 		return api.LeasePolicy{}, err
 	}
@@ -242,6 +254,13 @@ func (s *Service) looserLease(ctx context.Context, env store.Environment, l api.
 
 func (s *Service) DeleteLeaseOverride(ctx context.Context, p *auth.Principal, environment, projectID string) error {
 	if !writesPolicy(p, &projectID) {
+		return ErrForbidden
+	}
+	if old, err := s.Store.LeaseOverride(ctx, environment, projectID); errors.Is(err, store.ErrNotFound) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	} else if !changesPolicy(p, &projectID, old.SetByAdmin) {
 		return ErrForbidden
 	}
 	if err := s.Store.DeleteLeaseOverride(ctx, environment, projectID); errors.Is(err, store.ErrNotFound) {
@@ -388,7 +407,7 @@ func (s *Service) projectRoles(ctx context.Context) ([]api.RoleRef, error) {
 
 func presentApprovalPolicy(pol store.AdminApprovalPolicy) api.ApprovalPolicy {
 	out := api.ApprovalPolicy{Id: pol.ID, Name: pol.Name, Reason: pol.Reason, Condition: pol.Condition, ProjectId: pol.ProjectID,
-		Priority: pol.Priority, Enabled: pol.Enabled, AutoApprove: pol.AutoApprove, Levels: []api.ApprovalLevel{}}
+		Priority: pol.Priority, Enabled: pol.Enabled, AutoApprove: pol.AutoApprove, Levels: []api.ApprovalLevel{}, SetByAdmin: pol.SetByAdmin}
 	if pol.ItemType != nil {
 		t := api.CatalogItemType(*pol.ItemType)
 		out.ItemType = &t
@@ -438,7 +457,7 @@ func (s *Service) SaveApprovalPolicy(ctx context.Context, p *auth.Principal, id 
 			return api.ApprovalPolicy{}, ErrNotFound
 		} else if err != nil {
 			return api.ApprovalPolicy{}, err
-		} else if !writesPolicy(p, old.ProjectID) {
+		} else if !changesPolicy(p, old.ProjectID, old.SetByAdmin) {
 			return api.ApprovalPolicy{}, ErrForbidden
 		}
 	}
@@ -471,7 +490,7 @@ func (s *Service) SaveApprovalPolicy(ctx context.Context, p *auth.Principal, id 
 		id, action = ids.New("pol"), "policy.approval.create"
 	}
 	levels, _ := json.Marshal(w.Levels)
-	pol := store.AdminApprovalPolicy{Enabled: w.Enabled == nil || *w.Enabled}
+	pol := store.AdminApprovalPolicy{Enabled: w.Enabled == nil || *w.Enabled, SetByAdmin: p.Everywhere(auth.PoliciesManage)}
 	pol.ID, pol.Name, pol.Reason, pol.Condition, pol.ProjectID = id, strings.TrimSpace(w.Name), deref(w.Reason), w.Condition, project
 	pol.Levels, pol.Priority, pol.AutoApprove = levels, 100, w.AutoApprove
 	if w.Priority != nil {
@@ -498,7 +517,7 @@ func (s *Service) DeleteApprovalPolicy(ctx context.Context, p *auth.Principal, i
 		return ErrNotFound
 	case err != nil:
 		return err
-	case !writesPolicy(p, old.ProjectID):
+	case !changesPolicy(p, old.ProjectID, old.SetByAdmin):
 		return ErrForbidden
 	}
 	if err := s.Store.DeleteApprovalPolicy(ctx, id); errors.Is(err, store.ErrNotFound) {
@@ -515,7 +534,8 @@ func (s *Service) DeleteApprovalPolicy(ctx context.Context, p *auth.Principal, i
 func presentDay2Policy(pol store.AdminDay2Policy) api.Day2Policy {
 	out := api.Day2Policy{Id: pol.ID, Name: pol.Name, Reason: pol.Reason, Priority: pol.Priority, Actions: nonNilStrings(pol.Actions),
 		Roles: nonNilStrings(pol.Roles), Condition: pol.Condition, Effect: api.Day2PolicyEffect(pol.Effect), ProjectId: pol.ProjectID,
-		Enabled: pol.Enabled, Enforcement: present.Ptr(api.PolicyEnforcement(cmp.Or(pol.Enforcement, store.EnforcementHard)))}
+		Enabled: pol.Enabled, Enforcement: present.Ptr(api.PolicyEnforcement(cmp.Or(pol.Enforcement, store.EnforcementHard))),
+		SetByAdmin: pol.SetByAdmin}
 	var levels []api.ApprovalLevel
 	if json.Unmarshal(pol.Levels, &levels) == nil && len(levels) > 0 {
 		out.Levels = &levels
@@ -550,7 +570,7 @@ func (s *Service) SaveDay2Policy(ctx context.Context, p *auth.Principal, id stri
 			return api.Day2Policy{}, ErrNotFound
 		} else if err != nil {
 			return api.Day2Policy{}, err
-		} else if !writesPolicy(p, old.ProjectID) {
+		} else if !changesPolicy(p, old.ProjectID, old.SetByAdmin) {
 			return api.Day2Policy{}, ErrForbidden
 		}
 	}
@@ -613,7 +633,7 @@ func (s *Service) SaveDay2Policy(ctx context.Context, p *auth.Principal, id stri
 	if levels == nil {
 		raw = []byte("[]")
 	}
-	pol := store.AdminDay2Policy{Enabled: w.Enabled == nil || *w.Enabled}
+	pol := store.AdminDay2Policy{Enabled: w.Enabled == nil || *w.Enabled, SetByAdmin: p.Everywhere(auth.PoliciesManage)}
 	pol.ID, pol.Name, pol.Reason, pol.Priority = id, strings.TrimSpace(w.Name), deref(w.Reason), 100
 	pol.Actions, pol.Roles, pol.Condition, pol.Effect, pol.Levels, pol.ProjectID = actions, roles, condition, string(w.Effect), raw, project
 	pol.Enforcement = enf
@@ -637,7 +657,7 @@ func (s *Service) DeleteDay2Policy(ctx context.Context, p *auth.Principal, id st
 		return ErrNotFound
 	case err != nil:
 		return err
-	case !writesPolicy(p, old.ProjectID):
+	case !changesPolicy(p, old.ProjectID, old.SetByAdmin):
 		return ErrForbidden
 	}
 	if err := s.Store.DeleteDay2Policy(ctx, id); errors.Is(err, store.ErrNotFound) {

@@ -7,7 +7,7 @@
   [ADR-0020](0020-administration.md). G1.3 (#155).
 - Amended by G1.4 (#156): how approvals combine across scopes; a
   deployment's owner reads its requests; a requester accepts the warnings
-  they saw, by ID.
+  they saw, by ID; a project policy an administrator set is theirs.
 
 ## Context
 A vRA project has a **Deployment sharing** setting: on, every member sees
@@ -64,6 +64,17 @@ didn't list the deployments its holder owned in the project (B4).
   **What applies here** for their projects; the policy lists leave out
   other projects' policies. Naming policies and quotas stay
   administrators'.
+- **A project policy an administrator wrote last is theirs** (G1.4).
+  `set_by_admin` marks it: the project's admins read it, marked **Set by
+  an administrator**, but changing or removing it is refused (403).
+  Writing a project's policy with `policies.manage` sets the mark, and a
+  project admin's write clears it. Otherwise a project admin could edit
+  away what an administrator required of the project, such as an
+  approval in production. Rows from before G1.4 are marked, whoever wrote
+  them: the column can't tell, and the stricter reading keeps an
+  administrator's rule. An administrator gives one back by removing it,
+  for the project's admins to write again. vRA's import only plans
+  policies: whoever recreates one owns it.
 - **Moving a policy up or down stays administrators':** it renumbers the
   policies of every project. A project admin sets a priority instead.
 - **Every change is audited** with the project: `policy.approval.*`,
@@ -142,7 +153,8 @@ didn't list the deployments its holder owned in the project (B4).
   policy, quota or allow is reported as having none. A project's soft
   lease override over a hard environment lease is reported as an
   administrator's to make. A policy for one project is reported as its
-  project admins' to write.
+  project admins' to write; recreated by an administrator, it stays the
+  administrators'.
 
 ## Consequences
 - An installation that turns `owner_only` on hides from members what they

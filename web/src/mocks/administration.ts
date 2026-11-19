@@ -360,22 +360,24 @@ export function adminState(db: Db): AdminState {
       {
         id: "pol_prd_vm", name: "Production VMs", reason: "Production VMs need sign-off", condition: 'environment == "prd"',
         item_type: "vm_blueprint", project_id: null, levels: [level("Infrastructure leads", "rvav-infra-leads")], priority: 100, enabled: true,
+        set_by_admin: true,
       },
     ], // prettier-ignore
     day2: [
       {
         id: "d2p_admins", name: "Administrators", reason: "", priority: 10, actions: ["*"], roles: ["admin"], condition: "true",
-        effect: "allow", project_id: null, enabled: true,
+        effect: "allow", project_id: null, enabled: true, set_by_admin: true,
       },
       {
         id: "d2p_prd_delete", name: "Deleting in production", reason: "Deleting a production deployment needs sign-off", priority: 20,
-        actions: ["delete"], roles: [], condition: "environment.production", effect: "approval", project_id: null, enabled: true,
+        actions: ["delete"], roles: [], condition: "environment.production", effect: "approval", project_id: null, enabled: true, set_by_admin: true,
         levels: [level("Infrastructure leads", "rvav-infra-leads")],
       },
       ...(db.seedDay2 ?? []),
       {
         id: "d2p_members", name: "Members operate their VMs", reason: "", priority: 50, actions: ["*"],
         roles: ["owner", "member", "project-admin"], condition: "true", effect: "allow", project_id: null, enabled: true,
+        set_by_admin: true,
       },
     ], // prettier-ignore
     vcenters: [],
@@ -937,6 +939,15 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     projectId
       ? forbidden(`you may not write the policies of ${project(projectId)?.name ?? projectId}`)
       : forbidden("you may not write the policies of every project");
+  /** As the server's changesPolicy: a project admin leaves alone what an administrator set (ADR-0045). */
+  const refusedChange = (p?: { project_id?: string | null; set_by_admin?: boolean }) =>
+    !p || policies.global()
+      ? undefined
+      : !policies.writes(p.project_id)
+        ? refusedPolicy(p.project_id)
+        : p.set_by_admin
+          ? forbidden("an administrator set this policy: ask one to change it")
+          : undefined;
   /** As the server's ExplainAccess: the grants that count, and what each permission is held through. */
   const explain = (u: S["UserRef"], p: Db["projects"][number] | null): S["AccessExplanation"] => {
     // The mock user's roles for all of rvav are its persona's: none of its groups gives it another.
@@ -1770,14 +1781,30 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     http.put(`${base}/admin/lease-policies`, async ({ request }) => {
       await wait();
       const w = (await request.json()) as S["LeasePolicy"];
-      const l = { ...w, enforcement: w.enforcement ?? "hard" };
+      const l = { ...w, enforcement: w.enforcement ?? "hard", set_by_admin: policies.global() };
       if (!policies.writes(l.project_id)) return refusedPolicy(l.project_id);
+      const same = (x: S["LeasePolicy"]) =>
+        x.environment === l.environment && (x.project_id ?? null) === (l.project_id ?? null);
+      const refused = l.project_id ? refusedChange(st().leases.find(same)) : undefined;
+      if (refused) return refused;
       const env = st().leases.find((x) => x.environment === l.environment && !x.project_id);
-      const name = db.environments.find((e) => e.key === l.environment)?.name ?? l.environment;
+      const environment = db.environments.find((e) => e.key === l.environment);
+      if (!environment) return invalid([err("/environment", `"${l.environment}" is not an environment.`)]);
+      const name = environment.name;
+      // As the server's looserLease: a project admin's override gives no more than the environment's.
       const looser: S["FieldError"][] = [];
       if (!policies.global() && env) {
+        if (env.default_days != null && l.default_days == null)
+          looser.push(err("/default_days", `Deployments in ${name} get a lease: give them one.`));
         if (env.max_days != null && (l.max_days == null || l.max_days > env.max_days))
           looser.push(err("/max_days", `${name} allows ${env.max_days} days at most.`));
+        if (l.max_extensions > env.max_extensions)
+          looser.push(err("/max_extensions", `${name} allows ${env.max_extensions} extensions at most.`));
+        if (l.grace_days > env.grace_days)
+          looser.push(err("/grace_days", `${name} gives ${env.grace_days} grace days at most.`));
+        const rank = { notify_only: 0, power_off_then_delete: 1, delete: 2 };
+        if (rank[l.expiry_action] < rank[env.expiry_action])
+          looser.push(err("/expiry_action", `${name}'s leases end with ${env.expiry_action.replaceAll("_", " ")}.`));
         if (l.enforcement === "soft" && env.enforcement !== "soft")
           looser.push(err("/enforcement", `${name}'s lease is hard: its overrides are too.`));
       }
@@ -1785,9 +1812,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (l.default_days != null && l.max_days != null && l.default_days > l.max_days)
         return invalid([err("/default_days", "The default can't be longer than the maximum.")]);
       const list = st().leases;
-      const i = list.findIndex(
-        (x) => x.environment === l.environment && (x.project_id ?? null) === (l.project_id ?? null),
-      );
+      const i = list.findIndex(same);
       if (i >= 0) list[i] = l;
       else list.push(l);
       audited(db, "policy.lease.set", "lease_policy", l.environment);
@@ -1802,7 +1827,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           x.environment === url.searchParams.get("environment") && x.project_id === url.searchParams.get("project_id"),
       );
       if (i < 0) return problem(404, "Not found");
-      if (!policies.writes(list[i]!.project_id)) return refusedPolicy(list[i]!.project_id);
+      const refused = refusedChange(list[i]);
+      if (refused) return refused;
       list.splice(i, 1);
       audited(db, "policy.lease.delete", "lease_policy", url.searchParams.get("environment") ?? "");
       return new HttpResponse(null, { status: 204 });
@@ -1818,11 +1844,14 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           id: string;
           priority: number;
           project_id?: string | null;
+          set_by_admin: boolean;
         }[];
       const save = (id: string, w: Record<string, unknown>, status: number) => {
         const was = list().find((x) => x.id === id);
         for (const pid of [was?.project_id, w.project_id as string | null | undefined])
           if (status === 200 || pid === w.project_id) if (!policies.writes(pid)) return refusedPolicy(pid);
+        const refused = refusedChange(was);
+        if (refused) return refused;
         const errors: S["FieldError"][] = [];
         if (kind === "day2" && w.enforcement === "soft" && w.effect === "allow")
           errors.push(err("/enforcement", "Only a deny or an approval policy can be soft: it warns instead."));
@@ -1861,6 +1890,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           ...(kind === "day2" ? { enforcement: w.enforcement ?? "hard" } : {}),
           id,
           priority: Number(w.priority ?? 100),
+          set_by_admin: policies.global(),
         };
         const i = list().findIndex((x) => x.id === id);
         if (i >= 0) list()[i] = pol;
@@ -1892,7 +1922,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           await wait();
           const i = list().findIndex((x) => x.id === params.id);
           if (i < 0) return problem(404, "Not found");
-          if (!policies.writes(list()[i]!.project_id)) return refusedPolicy(list()[i]!.project_id);
+          const refused = refusedChange(list()[i]);
+          if (refused) return refused;
           list().splice(i, 1);
           audited(db, `policy.${kind}.delete`, `${kind}_policy`, String(params.id));
           return new HttpResponse(null, { status: 204 });

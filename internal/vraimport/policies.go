@@ -83,7 +83,7 @@ func PlanPolicies(e *vra.Estate) []PolicyPlan {
 		soft := strings.EqualFold(p.EnforcementType, "SOFT")
 		if pl.VRAProject != "" && slices.Contains([]string{vra.PolicyApproval, vra.PolicyLease, vra.PolicyDay2}, p.TypeID) {
 			note(Info, "projectId", "For one project: its project admins can write it in rvav (Administration › Policies), "+
-				"and a global hard policy still wins over it.")
+				"unless an administrator does, and a global hard policy still wins over it.")
 		}
 		switch p.TypeID {
 		case vra.PolicyApproval:
