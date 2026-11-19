@@ -158,6 +158,9 @@ func (a *Activities) StartWorkflowRun(ctx context.Context, in StartRunInput) (ma
 	if err := a.Store.StartWorkflowRun(ctx, in.WorkflowID, reg.Key, &in.RequestID, &in.StepKey); err != nil {
 		return nil, err
 	}
+	if given, ok := rctx["inputs"].(map[string]any); ok {
+		a.recordInputs(ctx, in.RequestID, in.StepKey, given)
+	}
 	detail := reg.WorkflowType + " on " + reg.TaskQueue
 	a.update(ctx, in.RequestID, in.ProjectID, in.StepKey, store.StepUpdate{Status: "running", Detail: &detail,
 		ExternalKind: ptr("temporal_workflow"), ExternalID: &in.WorkflowID})
@@ -176,6 +179,11 @@ func (a *Activities) FinishWorkflowRun(ctx context.Context, in FinishRunInput) e
 	var result json.RawMessage
 	if in.Result != nil {
 		result, _ = json.Marshal(in.Result)
+		// A workflow item's result is its step's outputs (ADR-0057); a
+		// composite's step keeps the same when it finishes.
+		if err := a.Store.SetStepOutputs(ctx, in.RequestID, in.StepKey, result); err != nil {
+			return err
+		}
 	}
 	var errText *string
 	if in.Error != "" {

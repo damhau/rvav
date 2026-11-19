@@ -8776,8 +8776,11 @@ type Step struct {
 		Url  *string             `json:"url,omitempty"`
 	} `json:"external_ref,omitempty"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
-	HasLog     bool       `json:"has_log"`
-	Id         string     `json:"id"`
+
+	// HasData True when the step recorded inputs or outputs, read with `/requests/{requestId}/steps/{stepId}/data` (ADR-0057).
+	HasData *bool  `json:"has_data,omitempty"`
+	HasLog  bool   `json:"has_log"`
+	Id      string `json:"id"`
 
 	// Key Stable step type, for example `ipam.reserve`, `vsphere.clone`, `awx.job`, `awx.task`.
 	Key       string     `json:"key"`
@@ -8794,6 +8797,19 @@ type StepExternalRefKind string
 
 // StepSystem Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person, `wait` its wait for a time or a condition and `branch` its choice between sides (ADR-0033).
 type StepSystem string
+
+// StepData defines model for StepData.
+type StepData struct {
+	// Inputs What the step was given, as it ran with it; null when it records none.
+	Inputs *map[string]interface{} `json:"inputs"`
+
+	// Outputs What it gave later steps, as `steps.<key>` reads it; null before it finished, or when it gave nothing.
+	Outputs *map[string]interface{} `json:"outputs"`
+
+	// OutputsHidden True when the outputs are a person's answer that this reader may not read.
+	OutputsHidden bool   `json:"outputs_hidden"`
+	StepId        string `json:"step_id"`
+}
 
 // StepStatus defines model for StepStatus.
 type StepStatus string
@@ -15368,6 +15384,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /requests/{requestId}/steps (the `ListRequestSteps` operationId).
 	ListRequestSteps(ctx context.Context, requestId RequestIdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetStepData What a step was given and what it gave (ADR-0057)
+	//
+	// A step's inputs as it ran with them and its outputs, as later steps
+	// of a composite read them (`steps.<key>`). Secrets are masked: a
+	// secret input reads `••••`, a stored secret its `${secret.<name>}`,
+	// and a secret input's value inside a text reads `[removed]`. The
+	// answer of a wait for a person is read only by those it asks and
+	// those who read every approval; others get `outputs_hidden`. It
+	// needs `catalog.manage` for all of rvav, as a blueprint's literals
+	// do (ADR-0033): a requester reads the step's status, not its data.
+	//
+	// Corresponds with GET /requests/{requestId}/steps/{stepId}/data (the `GetStepData` operationId).
+	GetStepData(ctx context.Context, requestId RequestIdPath, stepId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetStepLog Output of a step, such as an AWX job's stdout, read incrementally
 	//
@@ -22066,6 +22096,30 @@ func (c *Client) RollbackRequest(ctx context.Context, requestId RequestIdPath, r
 // Corresponds with GET /requests/{requestId}/steps (the `ListRequestSteps` operationId).
 func (c *Client) ListRequestSteps(ctx context.Context, requestId RequestIdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListRequestStepsRequest(c.Server, requestId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetStepData What a step was given and what it gave (ADR-0057)
+//
+// A step's inputs as it ran with them and its outputs, as later steps
+// of a composite read them (`steps.<key>`). Secrets are masked: a
+// secret input reads `••••`, a stored secret its `${secret.<name>}`,
+// and a secret input's value inside a text reads `[removed]`. The
+// answer of a wait for a person is read only by those it asks and
+// those who read every approval; others get `outputs_hidden`. It
+// needs `catalog.manage` for all of rvav, as a blueprint's literals
+// do (ADR-0033): a requester reads the step's status, not its data.
+//
+// Corresponds with GET /requests/{requestId}/steps/{stepId}/data (the `GetStepData` operationId).
+func (c *Client) GetStepData(ctx context.Context, requestId RequestIdPath, stepId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetStepDataRequest(c.Server, requestId, stepId)
 	if err != nil {
 		return nil, err
 	}
@@ -33133,6 +33187,47 @@ func NewListRequestStepsRequest(server string, requestId RequestIdPath) (*http.R
 	return req, nil
 }
 
+// NewGetStepDataRequest constructs an http.Request for the GetStepData method
+func NewGetStepDataRequest(server string, requestId RequestIdPath, stepId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "requestId", requestId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "stepId", stepId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/requests/%s/steps/%s/data", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetStepLogRequest constructs an http.Request for the GetStepLog method
 func NewGetStepLogRequest(server string, requestId RequestIdPath, stepId string, params *GetStepLogParams) (*http.Request, error) {
 	var err error
@@ -37114,6 +37209,22 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /requests/{requestId}/steps (the `ListRequestSteps` operationId).
 	ListRequestStepsWithResponse(ctx context.Context, requestId RequestIdPath, reqEditors ...RequestEditorFn) (*ListRequestStepsResponse, error)
+
+	// GetStepDataWithResponse What a step was given and what it gave (ADR-0057)
+	//
+	// A step's inputs as it ran with them and its outputs, as later steps
+	// of a composite read them (`steps.<key>`). Secrets are masked: a
+	// secret input reads `••••`, a stored secret its `${secret.<name>}`,
+	// and a secret input's value inside a text reads `[removed]`. The
+	// answer of a wait for a person is read only by those it asks and
+	// those who read every approval; others get `outputs_hidden`. It
+	// needs `catalog.manage` for all of rvav, as a blueprint's literals
+	// do (ADR-0033): a requester reads the step's status, not its data.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /requests/{requestId}/steps/{stepId}/data (the `GetStepData` operationId).
+	GetStepDataWithResponse(ctx context.Context, requestId RequestIdPath, stepId string, reqEditors ...RequestEditorFn) (*GetStepDataResponse, error)
 
 	// GetStepLogWithResponse Output of a step, such as an AWX job's stdout, read incrementally
 	//
@@ -52887,6 +52998,68 @@ func (r ListRequestStepsResponse) ContentType() string {
 	return ""
 }
 
+type GetStepDataResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *StepData
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetStepDataResponse) GetJSON200() *StepData {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetStepDataResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetStepDataResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetStepDataResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetStepDataResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetStepDataResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetStepDataResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetStepDataResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetStepLogResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -58830,6 +59003,28 @@ func (c *ClientWithResponses) ListRequestStepsWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseListRequestStepsResponse(rsp)
+}
+
+// GetStepDataWithResponse What a step was given and what it gave (ADR-0057)
+//
+// A step's inputs as it ran with them and its outputs, as later steps
+// of a composite read them (`steps.<key>`). Secrets are masked: a
+// secret input reads `••••`, a stored secret its `${secret.<name>}`,
+// and a secret input's value inside a text reads `[removed]`. The
+// answer of a wait for a person is read only by those it asks and
+// those who read every approval; others get `outputs_hidden`. It
+// needs `catalog.manage` for all of rvav, as a blueprint's literals
+// do (ADR-0033): a requester reads the step's status, not its data.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /requests/{requestId}/steps/{stepId}/data (the `GetStepData` operationId).
+func (c *ClientWithResponses) GetStepDataWithResponse(ctx context.Context, requestId RequestIdPath, stepId string, reqEditors ...RequestEditorFn) (*GetStepDataResponse, error) {
+	rsp, err := c.GetStepData(ctx, requestId, stepId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetStepDataResponse(rsp)
 }
 
 // GetStepLogWithResponse Output of a step, such as an AWX job's stdout, read incrementally
@@ -71002,6 +71197,53 @@ func ParseListRequestStepsResponse(rsp *http.Response) (*ListRequestStepsRespons
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetStepDataResponse parses an HTTP response from a GetStepDataWithResponse call
+func ParseGetStepDataResponse(rsp *http.Response) (*GetStepDataResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetStepDataResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StepData
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound

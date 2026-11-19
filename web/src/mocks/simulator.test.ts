@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ApprovalPage, ServiceRequest, Step } from "@/lib/api/types";
+import type { ApprovalPage, ServiceRequest, Step, StepData } from "@/lib/api/types";
 import { bus } from "./events";
 import { db } from "./seed";
 
@@ -176,5 +176,46 @@ describe("a composite's run in the mocks", () => {
     expect(steps["step:choose"]).toMatchObject({ status: "done", branch_case: 1, detail: "Took: Reads" });
     expect(steps["step:no"]!.status).toBe("done");
     expect(steps["step:other"]).toMatchObject({ status: "skipped", detail: "Its side of the branch wasn't taken." });
+  });
+
+  it("keeps what each step was given and gave (ADR-0057)", async () => {
+    const bp = {
+      kind: "composite",
+      steps: [
+        {
+          key: "register",
+          rest: {
+            method: "POST",
+            url: "https://cmdb.corp.example/api/ci?name=${inputs.name}",
+            secret: "cmdb-token",
+            body: '{"name": inputs.name}',
+          },
+        },
+        {
+          key: "agent",
+          awx: { job_template: "monitoring-agent" },
+          with: { target: "inputs.name", answered: "steps.register.status" },
+        },
+      ],
+    };
+    const req = await request(await published("run-data", bp));
+    const { r, steps } = await ended(req.id);
+    expect(r.status).toBe("succeeded");
+    expect(steps["step:register"]!.has_data).toBe(true);
+    const data = (s: Step) => api<StepData>("GET", `/requests/${req.id}/steps/${s.id}/data`);
+    expect(await data(steps["step:register"]!)).toMatchObject({
+      inputs: {
+        method: "POST",
+        url: "https://cmdb.corp.example/api/ci?name=web-01",
+        secret: "cmdb-token",
+        body: { name: "web-01" },
+      },
+      outputs: { status: 201 },
+      outputs_hidden: false,
+    });
+    const agent = await data(steps["step:agent"]!);
+    expect(agent.inputs).toEqual({ target: "web-01", answered: 201 });
+    expect(typeof agent.outputs?.job_id).toBe("number");
+    expect(steps["request.submit"]!.has_data).toBeUndefined();
   });
 });

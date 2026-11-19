@@ -15,6 +15,7 @@ import type {
   RequestForm,
   ServiceRequest,
   Step,
+  StepData,
   UserRef,
   VmResource,
 } from "@/lib/api/types";
@@ -32,6 +33,8 @@ export interface StoredRequest {
   logs: Record<string, LogLine[]>;
   /** The name and description its deployment takes once approved, when it gave them. */
   named?: { name?: string; description: string };
+  /** Seeded steps' data, by step ID (ADR-0057); the simulator works out its own steps'. */
+  data?: Record<string, StepData>;
 }
 
 export interface StoredItem extends CatalogItem {
@@ -1045,6 +1048,24 @@ export function createDb(now = Date.now()): Db {
     ],
     logs: { [ownerJob.id]: ownerLog },
   };
+  // What its steps were given and gave (ADR-0057): the owner's job failed, so gave nothing.
+  const pgVMs = pgNodes.map((vm, i) => ({
+    name: vm,
+    fqdn: `${vm}.${DOMAIN}`,
+    ip: `10.20.31.${41 + i}`,
+    moref: `vm-${7311 + i}`,
+  }));
+  const pgData = (key: string, inputs: StepData["inputs"], outputs: StepData["outputs"]) => {
+    const s = failedComposite.steps.find((x) => x.key === key)!;
+    s.has_data = true;
+    failedComposite.data = {
+      ...failedComposite.data,
+      [s.id]: { step_id: s.id, inputs, outputs, outputs_hidden: false },
+    };
+  };
+  pgData("step:nodes", null, { ...pgVMs[0], vms: pgVMs });
+  pgData("step:owner", { database: "orders", role_name: "orders_owner", privileges: "owner" }, null);
+  pgData("step:backups", { hosts: pgVMs, retention_days: 14 }, { job_id: 18235 });
 
   const requests: StoredRequest[] = [
     {

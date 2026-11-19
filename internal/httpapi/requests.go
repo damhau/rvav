@@ -188,6 +188,19 @@ func (s *Server) ListRequestSteps(w http.ResponseWriter, r *http.Request, reques
 	writeJSON(w, http.StatusOK, map[string]any{"items": present.StepTree(steps)})
 }
 
+func (s *Server) GetStepData(w http.ResponseWriter, r *http.Request, requestID api.RequestIdPath, stepID string) {
+	row, ok := s.visibleRequest(w, r, requestID)
+	if !ok {
+		return
+	}
+	data, err := s.Core.StepData(r.Context(), principal(r), row, stepID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, data)
+}
+
 // GetRequestTopology is what the requested version builds, as its form
 // draws it (ADR-0032): the request's page draws its run on it. A day-2
 // request runs an action, not its item's blueprint: it has none.

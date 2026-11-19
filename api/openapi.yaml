@@ -994,6 +994,36 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /requests/{requestId}/steps/{stepId}/data:
+    parameters:
+      - { $ref: "#/components/parameters/RequestIdPath" }
+      - name: stepId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [requests]
+      operationId: getStepData
+      summary: What a step was given and what it gave (ADR-0057)
+      description: |
+        A step's inputs as it ran with them and its outputs, as later steps
+        of a composite read them (`steps.<key>`). Secrets are masked: a
+        secret input reads `••••`, a stored secret its `${secret.<name>}`,
+        and a secret input's value inside a text reads `[removed]`. The
+        answer of a wait for a person is read only by those it asks and
+        those who read every approval; others get `outputs_hidden`. It
+        needs `catalog.manage` for all of rvav, as a blueprint's literals
+        do (ADR-0033): a requester reads the step's status, not its data.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StepData" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /requests/{requestId}/steps/{stepId}/log:
     parameters:
       - { $ref: "#/components/parameters/RequestIdPath" }
@@ -8718,10 +8748,30 @@ components:
             id: { type: string }
             url: { type: string, format: uri }
         has_log: { type: boolean }
+        has_data:
+          type: boolean
+          description: True when the step recorded inputs or outputs, read with `/requests/{requestId}/steps/{stepId}/data` (ADR-0057).
         children:
           type: array
           description: For AWX jobs, one child per task.
           items: { $ref: "#/components/schemas/Step" }
+
+    StepData:
+      type: object
+      required: [step_id, inputs, outputs, outputs_hidden]
+      properties:
+        step_id: { type: string }
+        inputs:
+          type: [object, "null"]
+          additionalProperties: true
+          description: What the step was given, as it ran with it; null when it records none.
+        outputs:
+          type: [object, "null"]
+          additionalProperties: true
+          description: What it gave later steps, as `steps.<key>` reads it; null before it finished, or when it gave nothing.
+        outputs_hidden:
+          type: boolean
+          description: True when the outputs are a person's answer that this reader may not read.
 
     LogChunk:
       type: object

@@ -225,6 +225,10 @@ test("an item of only REST calls, requested and run to its end", async ({ page }
   );
   await page.getByRole("button", { name: "Timeline" }).click();
   await expect(page.getByRole("region", { name: "Steps", exact: true })).toContainText("POST answered 201");
-  await expect(page.getByRole("main")).not.toContainText("cmdb.corp.example");
+  await expect(page.getByRole("region", { name: "Steps", exact: true })).not.toContainText("cmdb.corp.example");
+  // Its data, for those who manage the catalog (ADR-0057), has the call as made.
+  await expect(page.getByRole("region", { name: "Step data", exact: true })).toContainText(
+    "https://cmdb.corp.example/api/ci/web-01",
+  );
   expect(errors).toEqual([]);
 });

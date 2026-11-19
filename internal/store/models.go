@@ -297,6 +297,9 @@ type Step struct {
 	HasLog       bool       `db:"has_log"`
 	// Outputs are what a composite step gave (ADR-0022).
 	Outputs json.RawMessage `db:"outputs"`
+	// Inputs are what a step was given as it ran (ADR-0057): secret inputs
+	// as their markers, stored secrets by name.
+	Inputs json.RawMessage `db:"inputs"`
 	// DueAt is until when a composite step's wait waits (ADR-0033).
 	DueAt *time.Time `db:"due_at"`
 }

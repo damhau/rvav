@@ -61,10 +61,15 @@ export function Timeline({
   steps,
   onOpenLog,
   selectedLogStep,
+  onOpenData,
+  selectedDataStep,
 }: {
   steps: Step[];
   onOpenLog?: (step: Step) => void;
   selectedLogStep?: string | null;
+  /** Shows what a step was given and gave (ADR-0057). */
+  onOpenData?: (step: Step) => void;
+  selectedDataStep?: string | null;
 }) {
   return (
     <ol className="flex flex-col" aria-live="polite">
@@ -127,6 +132,17 @@ export function Timeline({
                 <span className="text-secondary text-muted">Until {fullDate(s.due_at)}</span>
               )}
               {s.error && <span className="text-secondary text-bad">{s.error}</span>}
+              {onOpenData && s.has_data && (
+                <button
+                  type="button"
+                  onClick={() => onOpenData(s)}
+                  aria-pressed={selectedDataStep === s.id}
+                  className="self-start text-secondary font-medium text-accent hover:underline"
+                >
+                  {selectedDataStep === s.id ? "Showing data" : "Show data"}
+                  <span className="sr-only"> of {s.title}</span>
+                </button>
+              )}
               {s.children.length > 0 && s.status !== "pending" && (
                 <div className="mt-2 rounded-md border border-line bg-sunken/60 px-3 py-2">
                   <ul className="flex flex-col gap-1">

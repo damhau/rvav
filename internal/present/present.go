@@ -218,6 +218,9 @@ func Step(s store.Step) api.Step {
 		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt, DueAt: s.DueAt, HasLog: s.HasLog,
 		Detail: strPtr(s.Detail), Error: s.Error, Children: []api.Step{},
 	}
+	if recorded(s.Inputs) || recorded(s.Outputs) {
+		out.HasData = Ptr(true)
+	}
 	if s.System != nil {
 		out.System = Ptr(api.StepSystem(*s.System))
 		if *s.System == string(api.StepSystemBranch) {
@@ -599,4 +602,10 @@ func nsxNames(paths []string) []string {
 		out[i] = p[strings.LastIndex(p, "/")+1:]
 	}
 	return out
+}
+
+// recorded says whether a step's inputs or outputs hold anything.
+func recorded(raw json.RawMessage) bool {
+	var m map[string]any
+	return json.Unmarshal(raw, &m) == nil && len(m) > 0
 }

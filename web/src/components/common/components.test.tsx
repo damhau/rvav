@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { ErrorState } from "./feedback";
 import { Meter } from "./meter";
@@ -92,5 +93,37 @@ describe("Timeline", () => {
     expect(screen.getByText("idm : join realm")).toHaveClass("text-bad");
     expect(screen.getByText("DNS discovery failed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show job output" })).toBeInTheDocument();
+  });
+
+  it("offers a step's data only where it has some, and says which step it shows", async () => {
+    const opened = vi.fn();
+    const step = (id: string, title: string, extra: object) => ({
+      id,
+      key: `step:${id}`,
+      title,
+      status: "done" as const,
+      children: [],
+      has_log: false,
+      ...extra,
+    });
+    const { rerender } = render(
+      <Timeline
+        steps={[step("register", "Register", { has_data: true }), step("notify", "Tell the team", {})]}
+        onOpenData={opened}
+      />,
+    );
+    const show = screen.getByRole("button", { name: "Show data of Register" });
+    expect(show).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    await userEvent.setup().click(show);
+    expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: "register" }));
+    rerender(
+      <Timeline
+        steps={[step("register", "Register", { has_data: true })]}
+        onOpenData={opened}
+        selectedDataStep="register"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Showing data of Register" })).toHaveAttribute("aria-pressed", "true");
   });
 });

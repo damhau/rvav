@@ -12,11 +12,14 @@ import type {
   Project,
   Resource,
   Step,
+  StepData,
   VmResource,
 } from "@/lib/api/types";
 import { goDuration, parseUrl } from "@/lib/composite";
+import { toText } from "@/lib/utils";
 import { maskLiterals } from "./blueprints";
-import type { StoredApproval } from "./approvals";
+import { isApproverOf, type StoredApproval } from "./approvals";
+import { can } from "@/lib/can";
 import { completeDay2Step, day2Finished } from "./day2";
 import { updateFinished } from "./update";
 import { publishedBlueprint, secretInputsOf } from "./catalogAdmin";
@@ -127,6 +130,74 @@ type Vars = { inputs: Rec; environment: EnvironmentKey; project: Rec; steps: Rec
 const branches = new WeakMap<Step, { cases: Rec[]; hasElse: boolean; sides: Step[][]; vars: Vars }>();
 /** What a message says, filled in when it is sent; its vars hold a secret input as a mark. */
 const messages = new WeakMap<Step, { template: string; vars: Vars; requester: boolean }>();
+/** What a composite step is given (ADR-0057): its bindings or its call, worked out when read. */
+const givens = new WeakMap<Step, { with?: Rec; rest?: Rec; vars: Vars }>();
+
+/** A secret input as the server shows it in a step's data. */
+const masked = "••••";
+const shown = (v: unknown): unknown =>
+  v === secretMark
+    ? masked
+    : Array.isArray(v)
+      ? v.map(shown)
+      : v && typeof v === "object"
+        ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shown(x)]))
+        : v;
+
+/** A REST call's URL with its values, escaped, as the server fills it; what it can't read stays empty. */
+function filledUrl(template: string, vars: Rec): string {
+  return parseUrl(template).parts.reduce((url, p) => {
+    if ("text" in p) return url + p.text;
+    try {
+      const v = celEval(p.expr, vars);
+      return url + encodeURIComponent(toText(v));
+    } catch {
+      return url;
+    }
+  }, "");
+}
+
+/** What a step was given and gave, as the server serves it (core.StepData). */
+export function stepData(r: StoredRequest, s: Step): StepData {
+  const seeded = r.data?.[s.id];
+  if (seeded) return seeded;
+  const g = givens.get(s);
+  let inputs: Rec | null = null;
+  if (g && s.status !== "pending") {
+    const vars = { ...g.vars, steps: stepsOf(r) };
+    const value = (e: unknown) => {
+      if (typeof e !== "string") return e;
+      try {
+        return shown(celEval(e, vars)) ?? null;
+      } catch {
+        return null;
+      }
+    };
+    if (g.with) inputs = Object.fromEntries(Object.entries(g.with).map(([k, v]) => [k, value(v)]));
+    if (g.rest) {
+      inputs = { method: text(g.rest.method), url: filledUrl(text(g.rest.url), vars) };
+      if (g.rest.secret) inputs.secret = text(g.rest.secret);
+      if (g.rest.body) inputs.body = value(g.rest.body);
+    }
+  }
+  let given: Rec | null = s.status === "done" ? (outputs.get(s) ?? null) : null;
+  if (!given && s.status === "done" && s.system === "awx" && s.external_ref)
+    given = { job_id: Number(s.external_ref.id) };
+  // An answer is for those it asks and those who read every approval (core.readsAnswer).
+  const hidden =
+    s.system === "person" &&
+    given !== null &&
+    !can(db.me, "approval.read_all") &&
+    !db.approvals.some((a) => a.request.id === r.request.id && a.step_key === s.key && isApproverOf(db, a));
+  return { step_id: s.id, inputs, outputs: hidden ? null : given, outputs_hidden: hidden };
+}
+
+/** Marks a step that now has data, as the server's has_data does. */
+function noteData(r: StoredRequest, s: Step) {
+  const d = stepData(r, s);
+  if (Object.keys(d.inputs ?? {}).length > 0 || Object.keys(d.outputs ?? {}).length > 0 || d.outputs_hidden)
+    s.has_data = true;
+}
 
 /** A message's text with its values, or why it can't have them (provision.fillMessage). */
 function fillMessage(template: string, vars: Rec): { text?: string; error?: string } {
@@ -245,9 +316,13 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
       out.push(step(key, title, "vcenter", { detail: `${target.name}: its VMs` }));
     } else if (awx || target?.source.kind === "awx") {
       const template = text(awx?.job_template) || target?.source.awx_template_name || target?.slug || "job";
-      out.push({ ...awxJob(template, "localhost", jobBase + out.length), key, title: `${title} · ${template}` });
+      const s = { ...awxJob(template, "localhost", jobBase + out.length), key, title: `${title} · ${template}` };
+      if (st.with) givens.set(s, { with: st.with as Rec, vars: messageVars });
+      out.push(s);
     } else if (st.rest) {
-      out.push(step(key, title, "rest", { detail: `REST call · ${text((st.rest as Rec).method)}` }));
+      const s = step(key, title, "rest", { detail: `REST call · ${text((st.rest as Rec).method)}` });
+      givens.set(s, { rest: st.rest as Rec, vars: messageVars });
+      out.push(s);
     } else if (st.ask) {
       const s = step(key, title, "person", { detail: "Waits for a person" });
       asks.set(s.id, st.ask as Rec);
@@ -267,7 +342,9 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
       waits.set(s.id, { poll, minutes: 0, last: 0, checks: 0, left: 0 });
       out.push(s);
     } else {
-      out.push(step(key, title, "rvav", { detail: `Custom workflow ${text(st.workflow) || target?.slug || ""}` }));
+      const s = step(key, title, "rvav", { detail: `Custom workflow ${text(st.workflow) || target?.slug || ""}` });
+      if (st.with) givens.set(s, { with: st.with as Rec, vars: messageVars });
+      out.push(s);
     }
   };
   groups.flatMap((g) => (Array.isArray(g.parallel) ? (g.parallel as Rec[]) : [g])).forEach(plan);
@@ -509,6 +586,7 @@ function complete(r: StoredRequest, s: Step) {
     if (c.status === "pending" || c.status === "running") Object.assign(c, { status: "done", finished_at: now() });
   const vm = s.key.split("@")[1];
   if (vm && !s.key.startsWith("vsphere.drs_rule") && !s.title.includes(vm)) s.title = `${s.title} · ${vm}`;
+  if (s.key.startsWith("step:")) noteData(r, s);
 }
 
 function completeStep(r: StoredRequest, s: Step) {
@@ -764,6 +842,7 @@ export function stepAnswered(r: StoredRequest, key: string, outcome: string, giv
   if (!s) return;
   complete(r, s);
   outputs.set(s, given);
+  noteData(r, s);
   s.detail = outcome;
   publishStep(r, s);
   schedule(r.request.id);

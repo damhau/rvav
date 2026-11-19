@@ -282,6 +282,31 @@ there's nobody to tell when it runs, it goes on and says so. Later steps read
 `steps.<key>.told`, how many it told, never what it said. The timeline says `Message
 sent.`, and a requester's form only whether the requester or the owner is told.
 
+#### A run's data
+A request's page shows what each step was given and what it gave
+([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)). To read a
+step's data, choose **Show data** on the step, in the timeline or in the
+selected node's details. The **Step data** panel lists the step's inputs and its
+outputs, which later steps read as `steps.<key>.<name>`.
+
+| Step | Its inputs |
+|---|---|
+| An AWX job, wherever it runs | Its extra variables, without rvav's `rvav` context |
+| A custom workflow | Its `inputs` |
+| A REST call, a poll's check, an undo's call | Its method, URL, secret's name and body |
+| A VM step, a wait, a branch, a message | None: the request shows what the form asked |
+
+You need `catalog.manage` for all of rvav to read a step's data, as you do to
+read a blueprint. A requester sees each step's status and error, not its data.
+Secrets stay masked: a secret input reads `••••`, a stored secret its
+`${secret.<name>}`, and a secret input's value repeated in a text, such as a
+REST answer, reads `[removed]`. A person's answer is shown only to those it
+asks and those who read every approval. A **Retry** clears the data of the
+steps it runs again.
+
+The API serves the same: `GET /requests/{requestId}/steps/{stepId}/data`, for
+the steps whose `has_data` is true.
+
 ### VM blueprints
 A `vm_blueprint` item's blueprint ([ADR-0024](adr/0024-multi-vm-blueprints.md)).
 Strings in `bindings` and `count`, a disk's `size_gb` and `datastore` and

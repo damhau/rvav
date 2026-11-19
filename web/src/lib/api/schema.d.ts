@@ -792,6 +792,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/requests/{requestId}/steps/{stepId}/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+                stepId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * What a step was given and what it gave (ADR-0057)
+         * @description A step's inputs as it ran with them and its outputs, as later steps
+         *     of a composite read them (`steps.<key>`). Secrets are masked: a
+         *     secret input reads `••••`, a stored secret its `${secret.<name>}`,
+         *     and a secret input's value inside a text reads `[removed]`. The
+         *     answer of a wait for a person is read only by those it asks and
+         *     those who read every approval; others get `outputs_hidden`. It
+         *     needs `catalog.manage` for all of rvav, as a blueprint's literals
+         *     do (ADR-0033): a requester reads the step's status, not its data.
+         */
+        get: operations["getStepData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/requests/{requestId}/steps/{stepId}/log": {
         parameters: {
             query?: never;
@@ -6500,8 +6531,23 @@ export interface components {
                 url?: string;
             };
             has_log: boolean;
+            /** @description True when the step recorded inputs or outputs, read with `/requests/{requestId}/steps/{stepId}/data` (ADR-0057). */
+            has_data?: boolean;
             /** @description For AWX jobs, one child per task. */
             children: components["schemas"]["Step"][];
+        };
+        StepData: {
+            step_id: string;
+            /** @description What the step was given, as it ran with it; null when it records none. */
+            inputs: {
+                [key: string]: unknown;
+            } | null;
+            /** @description What it gave later steps, as `steps.<key>` reads it; null before it finished, or when it gave nothing. */
+            outputs: {
+                [key: string]: unknown;
+            } | null;
+            /** @description True when the outputs are a person's answer that this reader may not read. */
+            outputs_hidden: boolean;
         };
         LogChunk: {
             step_id: string;
@@ -11013,6 +11059,33 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getStepData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+                stepId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepData"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };

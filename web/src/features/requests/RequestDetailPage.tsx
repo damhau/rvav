@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ExternalLink, SquareTerminal } from "lucide-react";
+import { Braces, ExternalLink, SquareTerminal } from "lucide-react";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { blueprintGraph } from "@/components/canvas/blueprint";
@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { FileDownload, isFileRef } from "@/forms/file";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, call, isApiError } from "@/lib/api/client";
-import type { RequestStatus, ServiceRequest } from "@/lib/api/types";
+import type { RequestStatus, ServiceRequest, Step } from "@/lib/api/types";
 import { useNow } from "@/lib/hooks";
 import { useRequestStream } from "@/lib/live/LiveProvider";
 import { can } from "@/lib/can";
@@ -29,6 +29,7 @@ import { duration, toText } from "@/lib/utils";
 import { AskPanel } from "./AskPanel";
 import { FailureActions } from "./FailureActions";
 import { LogViewer } from "./LogViewer";
+import { StepDataView } from "./StepDataView";
 import { failedNode, flatten, pickLogStep, rollbackOf, runSteps } from "./run";
 
 // A composite's run on its graph: React Flow loads with it, on its pages only.
@@ -107,6 +108,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   const asked = (approvals.data?.items ?? []).filter((a) => a.step_key);
   const mine = levels.find((a) => a.can_decide);
   const [chosenLog, setChosenLog] = useState<string | null>(null);
+  const [chosenData, setChosenData] = useState<string | null>(null);
   // A composite's run is drawn on what its version builds (ADR-0032).
   const composite = request.data?.kind === "provision" && request.data.catalog_item.type === "composite";
   const topology = useQuery({ ...q.requestTopology(id ?? ""), enabled: Boolean(id) && composite });
@@ -137,6 +139,14 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
     (chosenLog ? flatten(all).find((s) => s.id === chosenLog && s.has_log) : undefined) ??
     pickLogStep((selectedNode && byNode?.get(selectedNode)) || [], null) ??
     pickLogStep(all, null);
+  // The step chosen, else the selected node's own: its ID is its step's key.
+  // A step's data holds its blueprint's literals: for catalog managers (ADR-0057).
+  const readsData = can(me, "catalog.manage");
+  const withData = readsData ? flatten(all).filter((s) => s.has_data) : [];
+  const openData = readsData ? (s: Step) => setChosenData(s.id) : undefined;
+  const dataStep =
+    (chosenData ? withData.find((s) => s.id === chosenData) : undefined) ??
+    (selectedNode ? withData.find((s) => s.key === selectedNode) : undefined);
   const deploymentId = r?.deployment_ids?.[0];
   const running = r && ["running", "queued", "cancelling"].includes(r.status);
   const elapsed = r?.started_at ? duration(r.started_at, r.finished_at) : null;
@@ -253,9 +263,12 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 onSelect={(node) => {
                   setChosenNode(node);
                   setChosenLog(null);
+                  setChosenData(null);
                 }}
                 logStep={logStep?.id ?? null}
                 onOpenLog={(s) => setChosenLog(s.id)}
+                dataStep={dataStep?.id ?? null}
+                onOpenData={openData}
               />
             </Suspense>
           ) : (
@@ -264,6 +277,8 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 steps={steps.data.items}
                 onOpenLog={(s) => setChosenLog(s.id)}
                 selectedLogStep={logStep?.id ?? null}
+                onOpenData={openData}
+                selectedDataStep={dataStep?.id ?? null}
               />
               {r?.status === "failed" && r.error && (
                 <FailureActions request={r} rolledBack={rollbackOf(steps.data.items)} />
@@ -303,6 +318,23 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
               />
             )}
           </Panel>
+
+          {withData.length > 0 && (
+            <Panel
+              title="Step data"
+              description={dataStep && <span className="font-mono break-words">{dataStep.title}</span>}
+            >
+              {id && dataStep ? (
+                <StepDataView requestId={id} step={dataStep} />
+              ) : (
+                <EmptyState
+                  icon={Braces}
+                  title="No step chosen"
+                  body="Choose Show data on a step to read what it was given and what it gave."
+                />
+              )}
+            </Panel>
+          )}
 
           {asked.length > 0 && <AskPanel rows={asked} />}
 

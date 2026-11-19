@@ -37,7 +37,7 @@ func TestStepExpressionErrors(t *testing.T) {
 			return err
 		},
 		"a body": func(expr string) error {
-			_, err := (&Activities{}).restBody(context.Background(), "req", expr, vars)
+			_, _, err := (&Activities{}).restBody(context.Background(), "req", expr, vars)
 			return err
 		},
 		"a poll's condition": func(expr string) error {

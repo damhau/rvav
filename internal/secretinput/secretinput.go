@@ -82,3 +82,64 @@ func Open(box *secrets.Box, requestID string, sealed []store.SealedInput, v map[
 	walk(v)
 	return missing
 }
+
+// Values are a request's secret inputs as texts, each leaf of a map or a
+// list on its own: what a scrubber removes wherever one may be repeated.
+func Values(box *secrets.Box, requestID string, sealed []store.SealedInput) ([]string, error) {
+	if len(sealed) == 0 {
+		return nil, nil
+	}
+	vars := map[string]any{}
+	for _, s := range sealed {
+		vars[s.Field] = Marker(s.Field)
+	}
+	if err := Open(box, requestID, sealed, vars); err != nil {
+		return nil, err
+	}
+	var out []string
+	var walk func(any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case nil:
+		case string:
+			out = append(out, x)
+		case map[string]any:
+			for _, e := range x {
+				walk(e)
+			}
+		case []any:
+			for _, e := range x {
+				walk(e)
+			}
+		default:
+			if b, err := json.Marshal(x); err == nil {
+				out = append(out, string(b))
+			}
+		}
+	}
+	walk(vars)
+	return out, nil
+}
+
+// Mask replaces each marker in v, at any depth, with mask: what a reader
+// sees of a secret input. v itself is left as it is.
+func Mask(v any, mask string) any {
+	if IsMarker(v) {
+		return mask
+	}
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = Mask(e, mask)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = Mask(e, mask)
+		}
+		return out
+	}
+	return v
+}

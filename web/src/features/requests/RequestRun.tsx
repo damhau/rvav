@@ -26,9 +26,22 @@ export interface RequestRunProps {
   /** The AWX job whose output the page shows. */
   logStep: string | null;
   onOpenLog: (step: Step) => void;
+  /** The step whose data the page shows (ADR-0057); none for who may not read it. */
+  dataStep: string | null;
+  onOpenData?: (step: Step) => void;
 }
 
-export default function RequestRun({ request, graph, steps, selected, onSelect, logStep, onOpenLog }: RequestRunProps) {
+export default function RequestRun({
+  request,
+  graph,
+  steps,
+  selected,
+  onSelect,
+  logStep,
+  onOpenLog,
+  dataStep,
+  onOpenData,
+}: RequestRunProps) {
   const [view, setView] = useState<CanvasView>("graph");
   const byNode = useMemo(() => runSteps(graph, steps), [graph, steps]);
   const status = useMemo(() => runStatus(graph, byNode), [graph, byNode]);
@@ -62,7 +75,13 @@ export default function RequestRun({ request, graph, steps, selected, onSelect, 
           label: "Timeline",
           content: (
             <div>
-              <Timeline steps={steps} onOpenLog={onOpenLog} selectedLogStep={logStep} />
+              <Timeline
+                steps={steps}
+                onOpenLog={onOpenLog}
+                selectedLogStep={logStep}
+                onOpenData={onOpenData}
+                selectedDataStep={dataStep}
+              />
               {failure}
             </div>
           ),
@@ -74,6 +93,8 @@ export default function RequestRun({ request, graph, steps, selected, onSelect, 
             steps={byNode.get(node.id) ?? []}
             logStep={logStep}
             onOpenLog={onOpenLog}
+            dataStep={dataStep}
+            onOpenData={onOpenData}
           >
             {node.id === failed && failure}
           </RunDetails>
@@ -91,6 +112,8 @@ function RunDetails({
   steps,
   logStep,
   onOpenLog,
+  dataStep,
+  onOpenData,
   children,
 }: {
   node: CanvasNode;
@@ -98,6 +121,8 @@ function RunDetails({
   steps: Step[];
   logStep: string | null;
   onOpenLog: (step: Step) => void;
+  dataStep: string | null;
+  onOpenData?: (step: Step) => void;
   children?: React.ReactNode;
 }) {
   // The timeline offers the output of its own steps' jobs; these are deeper (a VM step's post-configuration).
@@ -127,7 +152,13 @@ function RunDetails({
         <NodeFacts node={node} />
       </div>
       {steps.length > 0 ? (
-        <Timeline steps={steps} onOpenLog={onOpenLog} selectedLogStep={logStep} />
+        <Timeline
+          steps={steps}
+          onOpenLog={onOpenLog}
+          selectedLogStep={logStep}
+          onOpenData={onOpenData}
+          selectedDataStep={dataStep}
+        />
       ) : (
         <p className="text-muted">Nothing has run here yet.</p>
       )}

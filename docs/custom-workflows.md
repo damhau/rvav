@@ -124,6 +124,10 @@ decode it leniently. The helpers do: Python keeps unknown fields in
 
 - The workflow's result, any JSON object, is kept on its step. It also
   becomes `steps.<key>` for later steps of a composite.
+- The request's page shows the step's inputs and result in its **Step data**
+  panel, to those who manage the catalog, with secret inputs masked
+  ([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)). Don't
+  return a secret in the result: it is shown and passed to later steps.
 - As a blocking subscription's target, the result is read as
   `{outcome: continue|stop, reason, properties}`.
 - An error fails the step and the request, with the error's message. Use

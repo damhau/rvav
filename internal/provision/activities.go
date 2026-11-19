@@ -1299,6 +1299,7 @@ func (a *Activities) RefreshInventoryStep(ctx context.Context, requestID, projec
 // copies the output to the step log.
 func (a *Activities) RunJob(ctx context.Context, in JobInput) error {
 	a.update(ctx, in.RequestID, in.ProjectID, in.StepKey, store.StepUpdate{Status: "running"})
+	a.recordInputs(ctx, in.RequestID, in.StepKey, jobInputs(in))
 	// Properties blocking subscriptions set (ADR-0021) reach the job in rvav.properties.
 	if ctxVars, ok := in.ExtraVars["rvav"].(map[string]any); ok {
 		if props, err := a.Store.RequestProperties(ctx, in.RequestID); err == nil && len(props) > 0 {

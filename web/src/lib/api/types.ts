@@ -49,6 +49,7 @@ export type ServiceRequest = S["Request"];
 export type RequestPage = S["RequestPage"];
 export type StepStatus = S["StepStatus"];
 export type Step = S["Step"];
+export type StepData = S["StepData"];
 export type LogChunk = S["LogChunk"];
 export type LogLine = S["LogChunk"]["lines"][number];
 export type DeploymentStatus = S["DeploymentStatus"];

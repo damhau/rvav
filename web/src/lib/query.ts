@@ -124,6 +124,9 @@ export const keys = {
     steps: (requestId: string) => ["requests", "steps", requestId] as const,
     topology: (requestId: string) => ["requests", "topology", requestId] as const,
     logHead: (requestId: string, stepId: string) => ["requests", "log-head", requestId, stepId] as const,
+    /** A step's data, read again whenever the step changes. */
+    stepData: (requestId: string, stepId: string, at: string) =>
+      ["requests", "step-data", requestId, stepId, at] as const,
   },
   approvals: {
     all: ["approvals"] as const,
@@ -546,6 +549,13 @@ export const q = {
       queryKey: keys.requests.steps(requestId),
       queryFn: ({ signal }) =>
         call(api.GET("/requests/{requestId}/steps", { params: { path: { requestId } }, signal })),
+    }),
+  /** What a step was given and gave (ADR-0057); `at` changes with the step, so a finished step is read again. */
+  stepData: (requestId: string, stepId: string, at: string) =>
+    queryOptions({
+      queryKey: keys.requests.stepData(requestId, stepId, at),
+      queryFn: ({ signal }) =>
+        call(api.GET("/requests/{requestId}/steps/{stepId}/data", { params: { path: { requestId, stepId } }, signal })),
     }),
   /** What the requested version builds (ADR-0032): it never changes, so it is read once. */
   requestTopology: (requestId: string) =>

@@ -11,7 +11,7 @@ import (
 )
 
 const stepCols = `id, request_id, parent_id, position, key, title, detail, system, status, started_at,
-	finished_at, error, external_kind, external_id, external_url, has_log, outputs, due_at`
+	finished_at, error, external_kind, external_id, external_url, has_log, outputs, inputs, due_at`
 
 // InsertSteps creates the pending top-level steps of a request.
 func (s *Store) InsertSteps(ctx context.Context, db DB, steps []Step) error {
@@ -213,7 +213,7 @@ func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all 
 		return err
 	}
 	if _, err := db.Exec(ctx, `update request_steps set status = 'pending', started_at = null, finished_at = null, error = null,
-		external_kind = null, external_id = null, external_url = null, has_log = false, outputs = null, due_at = null where `+reset, requestID); err != nil {
+		external_kind = null, external_id = null, external_url = null, has_log = false, outputs = null, inputs = null, due_at = null where `+reset, requestID); err != nil {
 		return err
 	}
 	_, err := db.Exec(ctx, `update requests set status = 'queued', error_step_id = null, error_message = null, finished_at = null
@@ -272,6 +272,12 @@ func (s *Store) InsertStepBeforePending(ctx context.Context, db DB, requestID, k
 // SetStepOutputs keeps what a composite step gave.
 func (s *Store) SetStepOutputs(ctx context.Context, requestID, key string, outputs json.RawMessage) error {
 	_, err := s.Pool.Exec(ctx, `update request_steps set outputs = $3 where request_id = $1 and key = $2`, requestID, key, outputs)
+	return err
+}
+
+// SetStepInputs keeps what a step was given as it ran (ADR-0057).
+func (s *Store) SetStepInputs(ctx context.Context, requestID, key string, inputs json.RawMessage) error {
+	_, err := s.Pool.Exec(ctx, `update request_steps set inputs = $3 where request_id = $1 and key = $2`, requestID, key, inputs)
 	return err
 }
 

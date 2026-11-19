@@ -14,6 +14,7 @@ import type {
   RequestDraft,
   RequestStatus,
   ServiceRequest,
+  Step,
 } from "@/lib/api/types";
 import {
   canDecide,
@@ -86,6 +87,7 @@ import {
   rememberHost,
   start,
   stepAnswered,
+  stepData,
   stepRejected,
 } from "./simulator";
 
@@ -901,6 +903,21 @@ export const handlers = [
     },
   ),
 
+  http.get<{ requestId: string; stepId: string }>(
+    `${base}/requests/:requestId/steps/:stepId/data`,
+    async ({ params }) => {
+      await wait();
+      const r = requestByKey(params.requestId);
+      if (!r || !visibleRequest(r.request)) return notFound("Request");
+      if (!can(db.me, "catalog.manage"))
+        return problem(403, "forbidden", "Not allowed", "A step's data is for those who manage the catalog.");
+      const all = (steps: Step[]): Step[] => steps.flatMap((s) => [s, ...all(s.children)]);
+      const s = all(r.steps).find((x) => x.id === params.stepId);
+      if (!s) return notFound("Step");
+      return json<S["StepData"]>(stepData(r, s));
+    },
+  ),
+
   http.post<{ requestId: string }>(`${base}/requests/:requestId/retry`, async ({ params }) => {
     await wait();
     const r = requestByKey(params.requestId);
@@ -948,6 +965,9 @@ export const handlers = [
         if (step.detail === "Undone." || step.detail === "Its side of the branch wasn't taken.")
           step.detail = undefined;
         Object.assign(step, { status: "pending", started_at: null, finished_at: null, error: undefined, due_at: null });
+        // What it was given and gave goes with it (ADR-0057).
+        if (r.data) delete r.data[step.id];
+        delete step.has_data;
         // Rolled back, a branch chooses again and a message is sent again (ADR-0033).
         if (step.system === "branch") Object.assign(step, { branch_case: null, detail: "Chooses which side runs" });
         if (step.detail === "Message sent.") step.detail = "Sends a message";

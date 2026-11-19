@@ -107,11 +107,18 @@ func (a *Activities) callREST(ctx context.Context, in RESTInput) (map[string]any
 		sensitive = append(sensitive, req.Credential.Sensitive()...)
 	}
 	scrub := restcall.NewScrubber(sensitive...)
+	given := map[string]any{"method": call.Method, "url": target}
+	if call.Secret != "" {
+		given["secret"] = call.Secret
+	}
 	if call.Body != "" {
-		if req.Body, err = a.restBody(ctx, in.RequestID, call.Body, vars); err != nil {
+		var body any
+		if req.Body, body, err = a.restBody(ctx, in.RequestID, call.Body, vars); err != nil {
 			return nil, permanent("%s", scrub.Text(err.Error()))
 		}
+		given["body"] = body
 	}
+	a.recordInputs(ctx, in.RequestID, in.StepKey, given)
 	answer, err := a.REST.Do(ctx, req)
 	switch {
 	case errors.Is(err, restcall.ErrTooLarge):
@@ -176,60 +183,37 @@ func restTarget(ctx context.Context, caller *restcall.Caller, tpl string, vars p
 	return target, u.Host, nil
 }
 
-// restBody evaluates a call's body and opens the secret inputs in it.
-func (a *Activities) restBody(ctx context.Context, requestID, expr string, vars policy.Vars) ([]byte, error) {
+// restBody evaluates a call's body and opens the secret inputs in it. It
+// gives the body sent, and as evaluated, a secret input still its marker.
+func (a *Activities) restBody(ctx context.Context, requestID, expr string, vars policy.Vars) ([]byte, any, error) {
 	v, err := stepEval(expr, vars)
 	if err != nil {
-		return nil, fmt.Errorf("The call wasn't made: its body: %v", err)
+		return nil, nil, fmt.Errorf("The call wasn't made: its body: %v", err)
 	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, nil, fmt.Errorf("The call wasn't made: its body isn't JSON: %v", err)
+	}
+	var evaluated any
+	_ = json.Unmarshal(b, &evaluated)
 	opened, err := a.openSecretInputs(ctx, requestID, map[string]any{"body": v})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	b, err := json.Marshal(opened["body"])
-	if err != nil {
-		return nil, fmt.Errorf("The call wasn't made: its body isn't JSON: %v", err)
+	if b, err = json.Marshal(opened["body"]); err != nil {
+		return nil, nil, fmt.Errorf("The call wasn't made: its body isn't JSON: %v", err)
 	}
-	return b, nil
+	return b, evaluated, nil
 }
 
 // secretInputValues are the values of a request's secret inputs: an API may
 // echo them, so they don't stay in an answer either.
 func (a *Activities) secretInputValues(ctx context.Context, requestID string) ([]string, error) {
 	sealed, err := a.Store.RequestSecrets(ctx, requestID)
-	if err != nil || len(sealed) == 0 {
+	if err != nil {
 		return nil, err
 	}
-	vars := map[string]any{}
-	for _, s := range sealed {
-		vars[s.Field] = secretinput.Marker(s.Field)
-	}
-	if err := secretinput.Open(a.Secrets, requestID, sealed, vars); err != nil {
-		return nil, err
-	}
-	var out []string
-	var walk func(any)
-	walk = func(v any) {
-		switch x := v.(type) {
-		case nil:
-		case string:
-			out = append(out, x)
-		case map[string]any:
-			for _, e := range x {
-				walk(e)
-			}
-		case []any:
-			for _, e := range x {
-				walk(e)
-			}
-		default:
-			if b, err := json.Marshal(x); err == nil {
-				out = append(out, string(b))
-			}
-		}
-	}
-	walk(vars)
-	return out, nil
+	return secretinput.Values(a.Secrets, requestID, sealed)
 }
 
 // accepted says whether a status is a success: one of those listed, or by
