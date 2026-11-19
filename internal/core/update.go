@@ -333,7 +333,7 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 		keepEmptied(ui, had, inputs)
 	}
 	ev, err := s.evaluateKeeping(ctx, p, api.RequestDraft{CatalogItemId: d.ItemID, VersionId: draft.VersionId, ProjectId: d.ProjectID,
-		Environment: d.Environment, Inputs: inputs, Justification: draft.Justification}, strict, false, strict, filesOf(d.Inputs))
+		Environment: d.Environment, Inputs: inputs, Justification: draft.Justification}, strict, false, strict, filesOf(d.Inputs), nil)
 	if errors.Is(err, ErrNotFound) {
 		return nil, &ConflictError{Msg: d.ItemName + " is no longer offered in " + d.ProjectName + ": its deployments can't be updated."}
 	}

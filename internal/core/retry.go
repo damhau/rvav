@@ -86,6 +86,17 @@ func (s *Service) rolledBackChange(ctx context.Context, p *auth.Principal, r sto
 	}
 	sc := quotaScope{Project: proj, Env: env.Key, EnvName: env.Name, OwnerID: owner.ID, OwnerName: owner.Name, You: owner.ID == p.User.ID}
 	ch := &quotaChange{scope: sc, what: "This request", add: plan.Quota}
+	if n := len(plannedSizes(plan)); n > 0 {
+		ask := &limitAsk{quotaScope: sc, ToOwner: deleted, ToProject: deleted, Many: n > 1}
+		ask.VCPU, ask.MemoryGB = largestPlanned(plan)
+		ask.AddVCPU, ask.AddMemory = ask.VCPU, ask.MemoryGB
+		ch.limits = ask
+	}
+	return ch, nil
+}
+
+// plannedSizes are the vCPU and memory of each deployment a plan builds.
+func plannedSizes(plan provision.Plan) map[string][2]int {
 	vms := plan.VMs
 	for _, c := range plan.Composite {
 		vms = append(vms, c.VMs...)
@@ -95,15 +106,16 @@ func (s *Service) rolledBackChange(ctx context.Context, p *auth.Principal, r sto
 		sz := sizes[vm.DeploymentID]
 		sizes[vm.DeploymentID] = [2]int{sz[0] + vm.VCPU, sz[1] + vm.MemoryGB}
 	}
-	if len(sizes) > 0 {
-		ask := &limitAsk{quotaScope: sc, ToOwner: deleted, ToProject: deleted, Many: len(sizes) > 1}
-		for _, sz := range sizes {
-			ask.VCPU, ask.MemoryGB = max(ask.VCPU, sz[0]), max(ask.MemoryGB, sz[1])
-		}
-		ask.AddVCPU, ask.AddMemory = ask.VCPU, ask.MemoryGB
-		ch.limits = ask
+	return sizes
+}
+
+// largestPlanned is the size of the largest deployment a plan builds, as
+// the deployment limits read it.
+func largestPlanned(plan provision.Plan) (vcpu, memoryGB int) {
+	for _, sz := range plannedSizes(plan) {
+		vcpu, memoryGB = max(vcpu, sz[0]), max(memoryGB, sz[1])
 	}
-	return ch, nil
+	return vcpu, memoryGB
 }
 
 // reclaimNames holds again the names of the deployments a rollback

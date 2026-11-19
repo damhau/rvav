@@ -759,7 +759,11 @@ A limit is the same for every member, or every user: rvav has no limit
 for one named person. A request made for someone counts for them, and its
 message says so, for example "Thomas Nguyen's quota in Web Platform has 2
 left". Handing a deployment over checks the new owner's quotas; moving it
-to another project checks that project's.
+to another project checks that project's. When an approver changes a
+request's inputs, the change is checked against the quotas of whoever
+owns the request, for what it adds to the request's size: a smaller size
+always fits. The approval's **Quota after** line shows, for vCPU and
+memory, the quota with the least room left once the request is done.
 
 rvav checks requests sent at the same time one after the other, so they
 can't all take the last of a quota or of a deployment limit: one fits,
@@ -834,7 +838,8 @@ rvav checks the limits:
 - when a deployment moves to another project, against that project's
   limits;
 - when a deployment is handed over, against the new owner's count;
-- when an approver changes a request's inputs, against the size limits.
+- when an approver changes a request's inputs, against the size limits,
+  only when the change grows the request's vCPU or memory.
 
 A hard limit refuses, and says how to go on, for example "Deployments in
 Web Platform may have at most 8 vCPU under Web limits, and this one would

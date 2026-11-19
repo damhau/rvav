@@ -483,8 +483,8 @@ func (s *Service) editLimits(ctx context.Context, requester *auth.Principal, ev 
 	if vcpu == 0 && mem == 0 {
 		return nil
 	}
-	c, err := s.checkLimits(ctx, s.Store.Pool, limitAsk{quotaScope: ev.ownerScope(requester), VCPU: vcpu, MemoryGB: mem, AddVCPU: vcpu,
-		AddMemory: mem, Many: ev.deploymentCount() > 1})
+	c, err := s.checkLimits(ctx, s.Store.Pool, limitAsk{quotaScope: ev.ownerScope(requester), VCPU: vcpu, MemoryGB: mem,
+		AddVCPU: max(vcpu-ev.edit.vcpu, 0), AddMemory: max(mem-ev.edit.memoryGB, 0), Many: ev.deploymentCount() > 1})
 	if err != nil {
 		return err
 	}

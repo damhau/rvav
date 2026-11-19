@@ -58,32 +58,45 @@ type quotaLevel struct {
 }
 
 func (s *Service) quotaLevel(ctx context.Context, db store.DB, sc quotaScope, level api.QuotaLevel) (quotaLevel, error) {
-	var out quotaLevel
+	out := quotaLevel{where: sc.where(level), whom: "a project admin"}
 	var err error
 	proj := sc.Project
 	switch level {
 	case api.QuotaLevelProject:
 		out.limits, err = s.Store.QuotaLimits(ctx, db, proj.ID, "")
-		out.filter, out.where, out.whom = store.QuotaFilter{ProjectID: proj.ID}, proj.Name, "a project admin"
+		out.filter = store.QuotaFilter{ProjectID: proj.ID}
 	case api.QuotaLevelEnvironment:
 		if sc.Env != "" {
 			out.limits, err = s.Store.QuotaLimits(ctx, db, proj.ID, sc.Env)
 		}
 		out.filter = store.QuotaFilter{ProjectID: proj.ID, Environment: sc.Env}
-		out.where, out.whom = proj.Name+" in "+sc.EnvName, "a project admin"
 	case api.QuotaLevelProjectUser:
 		out.limits, err = userLimits(s.Store.UserQuotas(ctx, db, &proj.ID))
 		out.filter = store.QuotaFilter{ProjectID: proj.ID, OwnerID: sc.OwnerID}
-		out.where, out.whom = sc.possessive()+" quota in "+proj.Name, "a project admin"
 	case api.QuotaLevelGlobal:
 		out.limits, err = s.Store.GlobalQuotas(ctx, db)
-		out.where, out.whom = "rvav", "an administrator"
+		out.whom = "an administrator"
 	case api.QuotaLevelGlobalUser:
 		out.limits, err = userLimits(s.Store.UserQuotas(ctx, db, nil))
 		out.filter = store.QuotaFilter{OwnerID: sc.OwnerID}
-		out.where, out.whom = sc.possessive()+" quota across rvav", "an administrator"
+		out.whom = "an administrator"
 	}
 	return out, err
+}
+
+// where names a level of sc in a message.
+func (sc quotaScope) where(level api.QuotaLevel) string {
+	switch level {
+	case api.QuotaLevelEnvironment:
+		return sc.Project.Name + " in " + sc.EnvName
+	case api.QuotaLevelProjectUser:
+		return sc.possessive() + " quota in " + sc.Project.Name
+	case api.QuotaLevelGlobal:
+		return "rvav"
+	case api.QuotaLevelGlobalUser:
+		return sc.possessive() + " quota across rvav"
+	}
+	return sc.Project.Name
 }
 
 func userLimits(list []store.UserQuota, err error) ([]store.QuotaLimit, error) {

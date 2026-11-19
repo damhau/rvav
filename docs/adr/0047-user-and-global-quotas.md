@@ -51,6 +51,12 @@ each level that has a limit, and every one must hold:
   holds across rvav doesn't change. **Handing it over checks the new
   owner's levels** (`project_user`, `global_user`), so a handover can't
   get around a user's quota.
+- **An approver's edit counts for the request's owner,** for what it adds
+  to what the request holds already, per resource: the request's
+  reservation counts once, and a smaller size always fits. Its message
+  names the owner ("This change needs 2 vCPU but Thomas Nguyen's quota in
+  Web Platform has 0 left"). The approval's **Quota after** fact shows,
+  for vCPU and memory, the level with the least room left.
 - **Previews list every limited line,** with its `level`
   (`QuotaImpact.level`). The request form shows the tightest line of
   each resource: the one with the least left.
@@ -108,7 +114,8 @@ applies to each project on its own: its deployment count is per project.
   lowered since can still be updated; moving a deployment to another
   project, against that project's limits; handing it over, against the
   new owner's count; an approver's edits, against the size limits as
-  they are now.
+  they are now, and only when they grow the request's largest
+  deployment, as for an update.
 - **Hard refuses, soft warns.** A hard limit passed is an error with the
   code `limit_exceeded`, saying the limit, the policy and what the change
   would make. A soft one is a warning (`PolicyWarning`) the requester
@@ -177,6 +184,10 @@ Migration 00083 adds `deployment_limit_policies`.
   checks, and a move or a handover waiting for approval counted nowhere
   until done. Changes that count in one project, or for one owner, now
   wait for each other's transaction.
+- Until C2.4 (#160), an approver's edit was checked against the
+  requester's levels, not the owner's, and counted the request's own
+  reservation as well as its new size; its fact showed the project's
+  quota only.
 - Until C2.4 (#160), a retry after a rollback took neither its quota, its
   place in the deployment limits, nor its names again: it could go over a
   hard limit, or build a second deployment with a name another took.

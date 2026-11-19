@@ -92,6 +92,21 @@ type Evaluation struct {
 	// kept are the files of the deployment an update evaluates: its
 	// inputs may name them again, and they stay its first request's.
 	kept map[string]bool
+	// edit is set when an approver's edit evaluates a request again.
+	edit *requestEdit
+}
+
+// requestEdit is the request an approver's edit evaluates again. It counts
+// for its owner, and it holds its quota and its deployments' size
+// already: the edit is checked for what it adds.
+type requestEdit struct {
+	ownerID, ownerName string
+	// by is the approver who edits it.
+	by string
+	// held is the request's quota as planned before the edit.
+	held map[string]int
+	// vcpu and memoryGB are its largest deployment's size before the edit.
+	vcpu, memoryGB int
 }
 
 type LeaseInfo struct {
@@ -137,7 +152,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 // evaluateWith is evaluate; with validate, the form's validations run once
 // its inputs pass its own checks.
 func (s *Service) evaluateWith(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest, validate bool) (*Evaluation, error) {
-	return s.evaluateKeeping(ctx, p, d, strict, ofRequest, validate, nil)
+	return s.evaluateKeeping(ctx, p, d, strict, ofRequest, validate, nil, nil)
 }
 
 // maxJustification is the most characters of the reason a requester
@@ -152,10 +167,10 @@ func justificationErrs(j *string) []api.FieldError {
 }
 
 // evaluateKeeping is evaluateWith for an update, whose inputs may name
-// the deployment's files, kept.
+// the deployment's files, kept, or for an approver's edit.
 func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest, validate bool,
-	kept map[string]bool) (*Evaluation, error) {
-	ev := &Evaluation{Inputs: map[string]any{}, validate: validate, kept: kept}
+	kept map[string]bool, edit *requestEdit) (*Evaluation, error) {
+	ev := &Evaluation{Inputs: map[string]any{}, validate: validate, kept: kept, edit: edit}
 	for k, v := range d.Inputs {
 		ev.Inputs[k] = v
 	}
@@ -751,12 +766,23 @@ func (s *Service) previewHolders(ctx context.Context, projectID string, roles []
 // ownerScope is where a request's deployments count: its project and
 // environment, and whoever will own them.
 func (ev *Evaluation) ownerScope(p *auth.Principal) quotaScope {
-	owner := p.User
-	if ev.OnBehalfOf != nil {
-		owner = *ev.OnBehalfOf
+	sc := quotaScope{Project: ev.Project, Env: ev.Env.Key, EnvName: ev.Env.Name, OwnerID: p.User.ID, OwnerName: p.User.Name, You: true}
+	switch {
+	case ev.edit != nil:
+		sc.OwnerID, sc.OwnerName, sc.You = ev.edit.ownerID, ev.edit.ownerName, ev.edit.ownerID == ev.edit.by
+	case ev.OnBehalfOf != nil:
+		sc.OwnerID, sc.OwnerName, sc.You = ev.OnBehalfOf.ID, ev.OnBehalfOf.Name, ev.OnBehalfOf.ID == p.User.ID
 	}
-	return quotaScope{Project: ev.Project, Env: ev.Env.Key, EnvName: ev.Env.Name, OwnerID: owner.ID, OwnerName: owner.Name,
-		You: owner.ID == p.User.ID}
+	return sc
+}
+
+// growth is what an edit adds to what its request held.
+func growth(now, held map[string]int) map[string]int {
+	out := map[string]int{}
+	for k, v := range now {
+		out[k] = max(v-held[k], 0)
+	}
+	return out
 }
 
 func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, p *auth.Principal) error {
@@ -772,7 +798,11 @@ func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, p *auth.Pri
 			}
 		}
 	}
-	q, err := s.quotaCheck(ctx, s.Store.Pool, ev.ownerScope(p), "This request", ev.QuotaAdd)
+	what, add := "This request", ev.QuotaAdd
+	if ev.edit != nil {
+		what, add = "This change", growth(ev.QuotaAdd, ev.edit.held)
+	}
+	q, err := s.quotaCheck(ctx, s.Store.Pool, ev.ownerScope(p), what, add)
 	if err != nil {
 		return err
 	}

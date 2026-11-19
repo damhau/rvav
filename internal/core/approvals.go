@@ -303,7 +303,7 @@ func (s *Service) DecideApproval(ctx context.Context, p *auth.Principal, id stri
 		var newInputs, newPlan json.RawMessage
 		var newSteps []store.Step
 		if len(edits) > 0 {
-			if changes, newInputs, newPlan, newSteps, err = s.applyEdits(ctx, tx, req, edits); err != nil {
+			if changes, newInputs, newPlan, newSteps, err = s.applyEdits(ctx, tx, p, req, edits); err != nil {
 				return err
 			}
 		}
@@ -440,7 +440,8 @@ func (l loadedLevel) isEscalationApprover(p *auth.Principal) bool {
 
 // applyEdits checks approver changes against the form and evaluates the
 // request again as its requester, keeping its names and deployments.
-func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRow, edits map[string]any) ([]inputChange, json.RawMessage, json.RawMessage, []store.Step, error) {
+func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, by *auth.Principal, req store.RequestRow,
+	edits map[string]any) ([]inputChange, json.RawMessage, json.RawMessage, []store.Step, error) {
 	switch req.Kind {
 	case "day2":
 		return nil, nil, nil, nil, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "not_editable",
@@ -494,6 +495,16 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRo
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	owner, err := s.Store.GetUser(ctx, req.OwnerID)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	var plan provision.Plan
+	if err := json.Unmarshal(req.Plan, &plan); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	edit := &requestEdit{ownerID: owner.ID, ownerName: owner.Name, by: by.User.ID, held: plan.Quota}
+	edit.vcpu, edit.memoryGB = largestPlanned(plan)
 	draft := api.RequestDraft{CatalogItemId: req.ItemID, VersionId: req.VersionID, ProjectId: req.ProjectID,
 		Environment: api.EnvironmentKey(req.Environment), Inputs: inputs, Count: present.Ptr(req.Count),
 		Justification: present.Ptr(req.Justification)}
@@ -502,7 +513,7 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRo
 	}
 	// The request keeps the version it was submitted with, even if the item
 	// was republished or withdrawn since.
-	ev, err := s.evaluateKeeping(ctx, requester, draft, true, true, true, filesOf(req.Inputs))
+	ev, err := s.evaluateKeeping(ctx, requester, draft, true, true, true, filesOf(req.Inputs), edit)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -511,10 +522,6 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRo
 	}
 	if len(ev.Errors) > 0 {
 		return nil, nil, nil, nil, &ValidationError{Errors: ev.Errors}
-	}
-	var plan provision.Plan
-	if err := json.Unmarshal(req.Plan, &plan); err != nil {
-		return nil, nil, nil, nil, err
 	}
 	switch ev.Blueprint.Kind {
 	case blueprint.KindVM:
@@ -784,42 +791,64 @@ func (s *Service) facts(ctx context.Context, l loadedLevel) ([]fact, error) {
 	if l.req.LeaseDays != nil {
 		out = append(out, fact{"Lease", fmt.Sprintf("%d days", *l.req.LeaseDays)})
 	}
-	// A move counts in its new project; a handover leaves the project's as is.
-	projectID := l.req.ProjectID
-	if plan.QuotaTo != nil {
-		projectID = plan.QuotaTo.ProjectID
+	after, err := s.quotaAfter(ctx, l.req, plan)
+	if err != nil {
+		return out, err
 	}
-	if projectID != "" && (plan.Quota["vcpu"] > 0 || plan.Quota["memory_gb"] > 0) {
-		limits, err := s.Store.QuotaLimits(ctx, s.Store.Pool, projectID, "")
-		if err != nil {
-			return out, err
-		}
-		used, err := s.Store.QuotaUsed(ctx, projectID, "")
-		if err != nil {
-			return out, err
-		}
-		reserved, err := s.Store.QuotaReserved(ctx, projectID, "")
-		if err != nil {
-			return out, err
-		}
-		var parts []string
-		for _, q := range limits {
-			if q.Limit == nil || (q.Resource != "vcpu" && q.Resource != "memory_gb") {
-				continue
-			}
-			// The request itself is among the reserved while it waits.
-			after := used[q.Resource] + reserved[q.Resource]
-			unit := " vCPU"
-			if q.Resource == "memory_gb" {
-				unit = " GB"
-			}
-			parts = append(parts, fmt.Sprintf("%d / %d%s", after, *q.Limit, unit))
-		}
-		if len(parts) > 0 {
-			out = append(out, fact{"Project quota after", strings.Join(parts, " · ")})
-		}
+	if after != "" {
+		out = append(out, fact{"Quota after", after})
 	}
 	return out, nil
+}
+
+// quotaAfter says, for vCPU and memory, how much of the quota with the
+// least room left the request's owner holds once it is done. The request
+// itself is among the reserved while it waits.
+func (s *Service) quotaAfter(ctx context.Context, req store.RequestRow, plan provision.Plan) (string, error) {
+	if req.ProjectID == "" || (plan.Quota["vcpu"] <= 0 && plan.Quota["memory_gb"] <= 0) {
+		return "", nil
+	}
+	projectID, ownerID, levels := req.ProjectID, req.OwnerID, []api.QuotaLevel(nil)
+	if to := plan.QuotaTo; to != nil && to.ProjectID != "" {
+		projectID, levels = to.ProjectID, movedLevels
+	} else if to != nil {
+		ownerID, levels = to.OwnerID, handedLevels
+	}
+	proj, err := s.Store.GetProject(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	env, err := s.Store.GetEnvironment(ctx, req.Environment)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return "", err
+	}
+	owner, err := s.Store.GetUser(ctx, ownerID)
+	if err != nil {
+		return "", err
+	}
+	sc := quotaScope{Project: proj, Env: env.Key, EnvName: env.Name, OwnerID: owner.ID, OwnerName: owner.Name, Levels: levels}
+	q, err := s.quotaCheck(ctx, s.Store.Pool, sc, "", nil)
+	if err != nil {
+		return "", err
+	}
+	var parts []string
+	for _, res := range []string{"vcpu", "memory_gb"} {
+		var tight *api.QuotaImpact
+		for _, im := range q.Impacts {
+			if string(im.Resource) == res && im.Limit != nil && (tight == nil || *im.Limit-im.Used < *tight.Limit-tight.Used) {
+				tight = &im
+			}
+		}
+		if tight == nil {
+			continue
+		}
+		unit := " vCPU"
+		if res == "memory_gb" {
+			unit = " GB"
+		}
+		parts = append(parts, fmt.Sprintf("%d / %d%s (%s)", tight.Used, *tight.Limit, unit, sc.where(tight.Level)))
+	}
+	return strings.Join(parts, " · "), nil
 }
 
 // editableFields lists the inputs approvers may change, with their limits.
