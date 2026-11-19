@@ -75,6 +75,9 @@ func TestCompositeSignalThroughTemporal(t *testing.T) {
 		until("the wait didn't begin", func() bool { return rig.steps(req.Id, requester)["step:go"].DueAt != nil })
 		first := runOf(req.Id)
 		until("the wait didn't continue as new", func() bool { return runOf(req.Id) != first })
+		// An activity the stopped worker drops is tried again only after its
+		// heartbeat timeout, two minutes: stop it between rechecks.
+		settle(t, ctx, tc, req.Id)
 		w.Stop()
 		w = provision.NewWorker(tc, queue, h.acts)
 		if err := w.Start(); err != nil {
