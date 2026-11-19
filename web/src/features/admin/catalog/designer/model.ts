@@ -84,6 +84,24 @@ export const widgetLabels: Record<UiWidget, string> = {
   deployment: "Deployment",
 };
 
+/**
+ * Where the form shows: a catalog item's request, or a day-2 action's
+ * dialog (ADR-0050), which isn't a wizard and takes no file or secret.
+ */
+export type FormScope = "item" | "action";
+
+const notInActions: UiWidget[] = ["file", "secret"];
+
+export function layoutChoices(scope: FormScope) {
+  return layouts.filter((l) => scope === "item" || l.value !== "wizard");
+}
+
+export function widgetChoices(scope: FormScope) {
+  return Object.entries(widgetLabels)
+    .filter(([w]) => scope === "item" || !notInActions.includes(w as UiWidget))
+    .map(([value, label]) => ({ value, label }));
+}
+
 export const builtinSources = [
   "vsphere.clusters",
   "vsphere.datastores",

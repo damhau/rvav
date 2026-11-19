@@ -53,7 +53,9 @@ export function Select({
           className,
         )}
       >
-        <span className="truncate">
+        {/* Radix drops the value's className: as a block, it is cut off at the
+            trigger's edge and reaches no further in a 320 px window. */}
+        <span className="truncate [&>span]:block [&>span]:truncate">
           {loading ? <span className="text-faint">Loading…</span> : <S.Value placeholder={placeholder} />}
         </span>
         {loading ? (

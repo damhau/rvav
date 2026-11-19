@@ -51,13 +51,12 @@ import {
   updateProp,
   updateSection,
   updateUi,
-  widgetLabels,
+  widgetChoices,
   type Def,
+  type FormScope,
   type Problem,
   type Problems,
 } from "./model";
-
-const widgetOptions = Object.entries(widgetLabels).map(([value, label]) => ({ value, label }));
 const mono = "font-mono text-secondary";
 
 /** A problem the server found, under the control it is about. */
@@ -890,6 +889,7 @@ function FieldProperties({
   problems,
   ruleError,
   test,
+  scope,
 }: {
   def: Def;
   name: string;
@@ -899,6 +899,7 @@ function FieldProperties({
   /** A rule that failed in the preview. */
   ruleError?: string;
   test: SourceTest;
+  scope: FormScope;
 }) {
   const ui = def.ui_schema.fields[name];
   const prop = props(def)[name];
@@ -917,7 +918,11 @@ function FieldProperties({
       <Field
         label="Name"
         htmlFor="prop-name"
-        hint={"The input's key: inputs." + name + " in rules and the blueprint, which a rename doesn't change."}
+        hint={
+          scope === "action"
+            ? "The input's key: inputs." + name + " in rules, and the variable the job or the workflow gets."
+            : "The input's key: inputs." + name + " in rules and the blueprint, which a rename doesn't change."
+        }
         error={nameError || undefined}
       >
         <CommitInput
@@ -950,7 +955,7 @@ function FieldProperties({
             id="prop-widget"
             value={ui.widget}
             onChange={(w) => onChange(setWidget(def, name, w as UiWidget))}
-            options={widgetOptions}
+            options={widgetChoices(scope)}
           />
         </Field>
         <Field label={partWord(def).One} htmlFor="prop-section">
@@ -1197,7 +1202,7 @@ function FieldProperties({
             );
           })}
       </fieldset>
-      {prop && (
+      {prop && scope === "item" && (
         <fieldset className="flex flex-col gap-1.5 border-t border-line pt-3 text-secondary">
           <legend className="sr-only">Handling</legend>
           {(
@@ -1636,6 +1641,7 @@ export function Properties({
   problems,
   states,
   test,
+  scope = "item",
 }: {
   def: Def;
   selection: Selection;
@@ -1645,6 +1651,7 @@ export function Properties({
   /** The preview's rule results. */
   states?: FieldStates;
   test: SourceTest;
+  scope?: FormScope;
 }) {
   const sectionIndex =
     selection?.kind === "section" ? def.ui_schema.layout.sections.findIndex((s) => s.key === selection.key) : -1;
@@ -1664,6 +1671,7 @@ export function Properties({
           problems={problems.fields[selection.name] ?? []}
           ruleError={states?.[selection.name]?.error}
           test={test}
+          scope={scope}
         />
       )}
       {selection?.kind === "section" && (

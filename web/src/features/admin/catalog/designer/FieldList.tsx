@@ -9,22 +9,22 @@ import { cn } from "@/lib/utils";
 import {
   addField,
   addSection,
+  layoutChoices,
   layoutOf,
-  layouts,
   moveField,
   moveSection,
   partWord,
   setLayout,
+  widgetChoices,
   widgetLabels,
   type Def,
+  type FormScope,
   type LayoutKind,
   type Problems,
 } from "./model";
 
 export type Selection =
   { kind: "field"; name: string } | { kind: "section"; key: string } | { kind: "validations" } | null;
-
-const widgetOptions = Object.entries(widgetLabels).map(([value, label]) => ({ value, label }));
 
 /** Focuses an element once React has drawn the change (a move or a removal remounts it). */
 export function focusLater(...ids: string[]) {
@@ -53,13 +53,16 @@ export function FieldList({
   onSelect,
   onChange,
   problems,
+  scope = "item",
 }: {
   def: Def;
   selection: Selection;
   onSelect: (s: Selection) => void;
   onChange: (d: Def) => void;
   problems: Problems;
+  scope?: FormScope;
 }) {
+  const layouts = layoutChoices(scope);
   const sections = def.ui_schema.layout.sections;
   const layout = layoutOf(def);
   const { one, One } = partWord(def);
@@ -229,7 +232,7 @@ export function FieldList({
                 onChange(added.def);
                 onSelect({ kind: "field", name: added.name });
               }}
-              options={widgetOptions}
+              options={widgetChoices(scope)}
             />
           </Field>
           <Button

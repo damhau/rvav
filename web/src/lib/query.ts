@@ -83,6 +83,8 @@ export const keys = {
   ipamReconcile: ["admin", "ipam", "reconcile"] as const,
   awxTemplates: ["admin", "awx", "templates"] as const,
   awxActions: ["admin", "awx", "actions"] as const,
+  day2Forms: ["admin", "day2-forms"] as const,
+  day2Form: (action: string) => ["admin", "day2-forms", action] as const,
   catalogAdmin: {
     all: ["admin", "catalog"] as const,
     items: (f: AdminItemFilters) => ["admin", "catalog", "items", f] as const,

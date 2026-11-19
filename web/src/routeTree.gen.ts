@@ -49,6 +49,7 @@ import { Route as AdminSubscriptionsSubscriptionIdRouteImport } from "./routes/a
 import { Route as CatalogItemIdIndexRouteImport } from "./routes/catalog/$itemId.index"
 import { Route as CatalogItemIdRequestRouteImport } from "./routes/catalog/$itemId.request"
 import { Route as DeploymentsDeploymentIdUpdateRouteImport } from "./routes/deployments/$deploymentId_.update"
+import { Route as AdminDay2ActionsKeyFormRouteImport } from "./routes/admin/day2-actions_.$key.form"
 import { Route as AdminOnboardingPlansPlanIdRouteImport } from "./routes/admin/onboarding/plans/$planId"
 import { Route as DeploymentsDeploymentIdConsoleResourceIdRouteImport } from "./routes/deployments/$deploymentId_.console.$resourceId"
 
@@ -254,6 +255,11 @@ const DeploymentsDeploymentIdUpdateRoute =
     path: "/deployments/$deploymentId/update",
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminDay2ActionsKeyFormRoute = AdminDay2ActionsKeyFormRouteImport.update({
+  id: "/day2-actions_/$key/form",
+  path: "/day2-actions/$key/form",
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminOnboardingPlansPlanIdRoute =
   AdminOnboardingPlansPlanIdRouteImport.update({
     id: "/onboarding/plans/$planId",
@@ -308,6 +314,7 @@ export interface FileRoutesByFullPath {
   "/admin/roles/": typeof AdminRolesIndexRoute
   "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
   "/catalog/$itemId/": typeof CatalogItemIdIndexRoute
+  "/admin/day2-actions/$key/form": typeof AdminDay2ActionsKeyFormRoute
   "/admin/onboarding/plans/$planId": typeof AdminOnboardingPlansPlanIdRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
@@ -351,6 +358,7 @@ export interface FileRoutesByTo {
   "/admin/roles": typeof AdminRolesIndexRoute
   "/admin/subscriptions": typeof AdminSubscriptionsIndexRoute
   "/catalog/$itemId": typeof CatalogItemIdIndexRoute
+  "/admin/day2-actions/$key/form": typeof AdminDay2ActionsKeyFormRoute
   "/admin/onboarding/plans/$planId": typeof AdminOnboardingPlansPlanIdRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
@@ -396,6 +404,7 @@ export interface FileRoutesById {
   "/admin/roles/": typeof AdminRolesIndexRoute
   "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
   "/catalog/$itemId/": typeof CatalogItemIdIndexRoute
+  "/admin/day2-actions_/$key/form": typeof AdminDay2ActionsKeyFormRoute
   "/admin/onboarding/plans/$planId": typeof AdminOnboardingPlansPlanIdRoute
   "/deployments/$deploymentId_/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
@@ -442,6 +451,7 @@ export interface FileRouteTypes {
     | "/admin/roles/"
     | "/admin/subscriptions/"
     | "/catalog/$itemId/"
+    | "/admin/day2-actions/$key/form"
     | "/admin/onboarding/plans/$planId"
     | "/deployments/$deploymentId/console/$resourceId"
   fileRoutesByTo: FileRoutesByTo
@@ -485,6 +495,7 @@ export interface FileRouteTypes {
     | "/admin/roles"
     | "/admin/subscriptions"
     | "/catalog/$itemId"
+    | "/admin/day2-actions/$key/form"
     | "/admin/onboarding/plans/$planId"
     | "/deployments/$deploymentId/console/$resourceId"
   id:
@@ -529,6 +540,7 @@ export interface FileRouteTypes {
     | "/admin/roles/"
     | "/admin/subscriptions/"
     | "/catalog/$itemId/"
+    | "/admin/day2-actions_/$key/form"
     | "/admin/onboarding/plans/$planId"
     | "/deployments/$deploymentId_/console/$resourceId"
   fileRoutesById: FileRoutesById
@@ -836,6 +848,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof DeploymentsDeploymentIdUpdateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin/day2-actions_/$key/form": {
+      id: "/admin/day2-actions_/$key/form"
+      path: "/day2-actions/$key/form"
+      fullPath: "/admin/day2-actions/$key/form"
+      preLoaderRoute: typeof AdminDay2ActionsKeyFormRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     "/admin/onboarding/plans/$planId": {
       id: "/admin/onboarding/plans/$planId"
       path: "/onboarding/plans/$planId"
@@ -877,6 +896,7 @@ interface AdminRouteRouteChildren {
   AdminProjectsIndexRoute: typeof AdminProjectsIndexRoute
   AdminRolesIndexRoute: typeof AdminRolesIndexRoute
   AdminSubscriptionsIndexRoute: typeof AdminSubscriptionsIndexRoute
+  AdminDay2ActionsKeyFormRoute: typeof AdminDay2ActionsKeyFormRoute
   AdminOnboardingPlansPlanIdRoute: typeof AdminOnboardingPlansPlanIdRoute
 }
 
@@ -904,6 +924,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminProjectsIndexRoute: AdminProjectsIndexRoute,
   AdminRolesIndexRoute: AdminRolesIndexRoute,
   AdminSubscriptionsIndexRoute: AdminSubscriptionsIndexRoute,
+  AdminDay2ActionsKeyFormRoute: AdminDay2ActionsKeyFormRoute,
   AdminOnboardingPlansPlanIdRoute: AdminOnboardingPlansPlanIdRoute,
 }
 

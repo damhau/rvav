@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { Wrench } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Workflow, Wrench } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
@@ -16,8 +16,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
-import type { AwxAction, AwxActionUpdate } from "@/lib/api/types";
-import { keys, q } from "@/lib/query";
+import type { components } from "@/lib/api/schema";
+import type { AwxAction, AwxActionUpdate, Day2FormSummary } from "@/lib/api/types";
+import { adm, keys, q } from "@/lib/query";
 import { fullDate, relative } from "@/lib/utils";
 import { failed, fieldErrors } from "./governance/common";
 
@@ -30,6 +31,36 @@ function Status({ a }: { a: AwxAction }) {
   if (!a.enabled) return <Badge tone="neutral">Off</Badge>;
   if (a.warnings.length > 0) return <Badge tone="warn">Check settings</Badge>;
   return <Badge tone="ok">Offered</Badge>;
+}
+
+type WorkflowRegistration = components["schemas"]["WorkflowRegistration"];
+type Forms = Map<string, Day2FormSummary>;
+
+/** Which form an action asks for: its designed one once turned on, else its survey's or schema's. */
+function FormState({ f, base }: { f?: Day2FormSummary; base: string }) {
+  if (f?.active)
+    return (
+      <div className="text-secondary">
+        <div>Designed</div>
+        <div className="text-caption text-faint" title={fullDate(f.updated_at)}>
+          Saved {relative(f.updated_at)}
+        </div>
+      </div>
+    );
+  return (
+    <div className="text-secondary">
+      <div>{base}</div>
+      {f && <div className="text-caption text-faint">A designed form is a draft</div>}
+    </div>
+  );
+}
+
+function useForms() {
+  const forms = useQuery({
+    queryKey: keys.day2Forms,
+    queryFn: ({ signal }) => call(api.GET("/admin/day2-forms", { signal })),
+  });
+  return new Map((forms.data?.items ?? []).map((f) => [f.action, f]));
 }
 
 function usePatch() {
@@ -63,7 +94,7 @@ function ActionSheet({ a, onClose }: { a: AwxAction; onClose: () => void }) {
       description={
         <>
           AWX {a.workflow ? "workflow" : "job template"} <span className="font-mono">{a.template}</span>. Its survey is
-          the form people fill in.
+          the form people fill in, unless you design one.
         </>
       }
       submitLabel={patch.isPending ? "Saving…" : "Save action"}
@@ -141,7 +172,7 @@ function ActionSheet({ a, onClose }: { a: AwxAction; onClose: () => void }) {
   );
 }
 
-const columns: Column<AwxAction>[] = [
+const columnsOf = (forms: Forms): Column<AwxAction>[] => [
   {
     id: "action",
     header: "Action",
@@ -194,6 +225,11 @@ const columns: Column<AwxAction>[] = [
     ),
   },
   {
+    id: "form",
+    header: "Form",
+    cell: (a) => <FormState f={forms.get(a.key)} base="Survey" />,
+  },
+  {
     id: "synced",
     header: "Synced",
     align: "end",
@@ -206,9 +242,105 @@ const columns: Column<AwxAction>[] = [
   },
 ];
 
+const workflowKey = (w: WorkflowRegistration) => `wf.${w.key}`;
+
+const workflowColumnsOf = (forms: Forms): Column<WorkflowRegistration>[] => [
+  {
+    id: "action",
+    header: "Action",
+    sortValue: (w) => w.day2?.name ?? w.title,
+    cell: (w) => (
+      <>
+        <div className="font-medium">{w.day2?.name ?? w.title}</div>
+        <div className="font-mono text-caption text-faint">{workflowKey(w)}</div>
+      </>
+    ),
+  },
+  {
+    id: "workflow",
+    header: "Workflow",
+    sortValue: (w) => w.title,
+    cell: (w) => (
+      <>
+        <div className="text-secondary">{w.title}</div>
+        <div className="font-mono text-caption text-faint">{w.workflow_type}</div>
+      </>
+    ),
+  },
+  {
+    id: "offered",
+    header: "Offered on",
+    cell: (w) => (
+      <div className="text-secondary">
+        {w.day2?.offered && w.enabled ? (
+          <>
+            <div>{w.day2.types.map((t) => targetLabel[t]).join(", ")}</div>
+            <div className="mt-0.5 font-mono text-caption text-muted">{w.day2.condition || "Everywhere"}</div>
+          </>
+        ) : (
+          <Badge tone="neutral">Off</Badge>
+        )}
+      </div>
+    ),
+  },
+  {
+    id: "form",
+    header: "Form",
+    cell: (w) => <FormState f={forms.get(workflowKey(w))} base="Input schema" />,
+  },
+];
+
+function WorkflowActions({ forms }: { forms: Forms }) {
+  const navigate = useNavigate();
+  const workflows = useQuery(adm.workflows());
+  const rows = workflows.data?.items.filter((w) => w.usages.includes("day2_action") && w.day2);
+  return (
+    <Panel
+      title="From custom workflows"
+      description={
+        <>
+          Workflows registered for day-2 actions on the{" "}
+          <Link to="/admin/workflows" className="text-accent underline underline-offset-2">
+            Custom workflows
+          </Link>{" "}
+          page. Their input schema is the form people fill in, unless you design one.
+        </>
+      }
+      flush
+    >
+      <DataTable
+        label="Workflow day-2 actions"
+        columns={workflowColumnsOf(forms)}
+        rows={rows}
+        rowKey={workflowKey}
+        minWidth={720}
+        loading={workflows.isPending}
+        error={workflows.isError && <ErrorState error={workflows.error} onRetry={() => void workflows.refetch()} />}
+        empty={
+          <EmptyState
+            icon={Workflow}
+            title="No workflow actions"
+            body="Register a custom workflow for day-2 actions: it becomes an action here."
+          />
+        }
+        rowMenuLabel={(w) => `Actions for ${w.day2?.name ?? w.title}`}
+        rowMenu={(w) => (
+          <MenuItem
+            onSelect={() => void navigate({ to: "/admin/day2-actions/$key/form", params: { key: workflowKey(w) } })}
+          >
+            Design the form
+          </MenuItem>
+        )}
+      />
+    </Panel>
+  );
+}
+
 export function Day2ActionsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const actions = useQuery(q.awxActions());
+  const forms = useForms();
   const patch = usePatch();
   const [editing, setEditing] = useState<AwxAction | null>(null);
   const sync = useMutation({
@@ -241,16 +373,16 @@ export function Day2ActionsPage() {
       />
       <Panel
         title="From AWX"
-        description="Templates of rvav's AWX organisation with the day2 label become actions here, every few minutes or when you sync. Their survey is the form people fill in."
+        description="Templates of rvav's AWX organisation with the day2 label become actions here, every few minutes or when you sync. Their survey is the form people fill in, unless you design one."
         flush
         actions={actions.data?.items.length ? syncButton : undefined}
       >
         <DataTable
           label="AWX day-2 actions"
-          columns={columns}
+          columns={columnsOf(forms)}
           rows={actions.data?.items}
           rowKey={(a) => a.key}
-          minWidth={880}
+          minWidth={1000}
           loading={actions.isPending}
           error={actions.isError && <ErrorState error={actions.error} onRetry={() => void actions.refetch()} />}
           empty={
@@ -265,6 +397,9 @@ export function Day2ActionsPage() {
           rowMenu={(a) => (
             <>
               <MenuItem onSelect={() => setEditing(a)}>Change</MenuItem>
+              <MenuItem onSelect={() => void navigate({ to: "/admin/day2-actions/$key/form", params: { key: a.key } })}>
+                Design the form
+              </MenuItem>
               <MenuSeparator />
               <MenuItem
                 disabled={patch.isPending || (a.gone && !a.enabled)}
@@ -285,6 +420,7 @@ export function Day2ActionsPage() {
           )}
         />
       </Panel>
+      <WorkflowActions forms={forms} />
       {editing && <ActionSheet a={editing} onClose={() => setEditing(null)} />}
     </Page>
   );
