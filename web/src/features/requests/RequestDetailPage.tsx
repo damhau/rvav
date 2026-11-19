@@ -36,8 +36,17 @@ const RequestRun = lazy(() => import("./RequestRun"));
 
 const cancellable: RequestStatus[] = ["pending_approval", "scheduled", "queued", "running"];
 
+/** A row of a table, or an object's fields, as `key: value` pairs. */
+function formatItem(v: unknown): string {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return toText(v);
+  return Object.entries(v)
+    .map(([k, x]) => `${k}: ${toText(x)}`)
+    .join(", ");
+}
+
 function formatValue(v: unknown): string {
-  if (Array.isArray(v)) return v.join(", ") || "none";
+  if (Array.isArray(v))
+    return v.map(formatItem).join(v.some((x) => typeof x === "object" && x !== null) ? "; " : ", ") || "none";
   if (v === null || v === undefined || v === "") return "–";
   return toText(v);
 }

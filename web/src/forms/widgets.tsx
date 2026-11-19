@@ -394,7 +394,8 @@ function SourcedSelectWidget({
   const failed = Boolean(ui.value_source) && sourceFailed(sourced);
   const options = loaded ?? (failed && current ? [{ value: current, label: current }] : []);
   const valid = options.some((o) => o.value === current && !o.disabled);
-  const suggestion = sourced.data?.default;
+  // A default rule wins over the source's suggestion, as on the server.
+  const suggestion = ui.rules?.default ? undefined : sourced.data?.default;
   useApplySuggestion(value, suggestion, valid, onChange);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;

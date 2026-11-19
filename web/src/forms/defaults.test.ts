@@ -36,6 +36,17 @@ describe("defaults", () => {
     expect(withDefaults(values)).toBe(values);
   });
 
+  it("shows a read-only field's default, else its initial value, whatever the requester typed", () => {
+    const ro = { visible: true, required: false, read_only: true };
+    const states = { schema: { ...ro, default: "fixed" }, tier: ro, note: ro };
+    expect(withDefaults({ schema: "mine", tier: "gold", note: "typed" }, states, { tier: "bronze" })).toEqual({
+      schema: "fixed",
+      tier: "bronze",
+    });
+    const kept = { schema: "fixed" };
+    expect(withDefaults(kept, { schema: states.schema })).toBe(kept);
+  });
+
   it("sends a defaulted field the requester emptied as null, and leaves the others out", () => {
     const fields: Record<string, UiField> = {
       host: { widget: "text", label: "Host", rules: { default: "inputs.app" } },

@@ -18,6 +18,45 @@ import (
 	"github.com/damhau/rvav/internal/provision"
 )
 
+// TestDefaultRuleBeatsSuggestion: a dropdown whose source suggests an
+// option (the datastore with the most room) takes its default rule's
+// instead; one without a rule keeps the suggestion (F1.6).
+func TestDefaultRuleBeatsSuggestion(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		def := guestItem("tpl-rhel9.4-2026.10", map[string]any{"os_family": "linux", "domain": "corp.example"})
+		def.UiSchema.Fields["datastore"] = api.UiField{Widget: api.UiWidgetVsphereDatastore, Label: "Datastore",
+			DependsOn:   &[]string{"cluster"},
+			ValueSource: &api.ValueSource{Kind: api.Builtin, Name: new("vsphere.datastores"), Params: &map[string]any{"cluster": "${inputs.cluster}"}}}
+		plain := publishItem(h, "ds-suggested", def)
+		ruled := def.UiSchema.Fields["datastore"]
+		ruled.Rules = &api.UiRules{Default: new(`"chosen-by-rule"`)}
+		def.UiSchema.Fields["datastore"] = ruled
+		withRule := publishItem(h, "ds-ruled", def)
+		dev := api.EnvironmentKey("dev")
+		for _, c := range []struct {
+			item    api.AdminCatalogItem
+			suggest bool
+		}{{plain, true}, {withRule, false}} {
+			var out api.FieldValues
+			h.json("POST", "/api/v1/forms/values", "tnguyen", api.FieldValuesQuery{VersionId: c.item.DraftVersion.Id, ProjectId: "prj_web",
+				Environment: &dev, Field: "datastore", Inputs: map[string]any{"cluster": "GVA-DEV-CL01"}}, 200, &out)
+			if out.Options == nil || len(*out.Options) == 0 || (out.Default != nil) != c.suggest {
+				t.Errorf("%s: options %v, suggested %v", c.item.Slug, out.Options, out.Default)
+			}
+		}
+		var p api.RequestPreview
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", api.RequestDraft{CatalogItemId: withRule.Id, VersionId: withRule.DraftVersion.Id,
+			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"cluster": "GVA-DEV-CL01"}}, 200, &p)
+		if p.Fields == nil || (*p.Fields)["datastore"].Default != "chosen-by-rule" {
+			t.Errorf("the rule's default in the preview = %+v", p.Fields)
+		}
+	})
+}
+
 // TestFormDefaults: a default rule fills a field from the others while it
 // has no input, and stays editable; a request without the input gets the
 // default, and one that emptied it (null) none. A CEL source gives a

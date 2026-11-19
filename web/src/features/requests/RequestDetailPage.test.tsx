@@ -1,5 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
 describe("a request's page against the mock API", () => {
@@ -21,6 +22,22 @@ describe("a request's page against the mock API", () => {
     const asked = screen.getByRole("region", { name: "What was asked for" });
     expect(within(asked).getByText("role")).toBeVisible();
     expect(within(asked).getByText("Reason")).toBeVisible();
+  });
+
+  it("shows a table's rows and a list's items in what was asked for", async () => {
+    const r = db.requests.find((x) => x.request.number === "REQ-10477")!.request;
+    r.inputs = {
+      ...r.inputs,
+      disks: [
+        { size_gb: 50, tier: "gold" },
+        { size_gb: 20, tier: "silver" },
+      ],
+      tags: ["web", "prd"],
+    };
+    renderApp("/requests/REQ-10477");
+    const asked = await screen.findByRole("region", { name: "What was asked for" }, { timeout: 5000 });
+    expect(within(asked).getByText("size_gb: 50, tier: gold; size_gb: 20, tier: silver")).toBeVisible();
+    expect(within(asked).getByText("web, prd")).toBeVisible();
   });
 
   it("says whom a level asks besides the users it names", async () => {

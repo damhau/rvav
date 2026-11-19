@@ -23,13 +23,28 @@ export function defaulted(ui: UiField): boolean {
   return !computedBy(ui) && (Boolean(ui.rules?.default) || singleSource(ui));
 }
 
-/** The values with the defaults of the fields the requester hasn't given a value: what the form shows. */
-export function withDefaults(values: Record<string, unknown>, states?: FieldStates): Record<string, unknown> {
+/**
+ * What the form shows: the values with the defaults of the fields the
+ * requester hasn't given a value. A read-only field shows what the server
+ * gives it, as `applyStates` does: its default, else its initial value.
+ */
+export function withDefaults(
+  values: Record<string, unknown>,
+  states?: FieldStates,
+  initial?: Record<string, unknown>,
+): Record<string, unknown> {
   let out = values;
-  for (const [name, st] of Object.entries(states ?? {})) {
-    if (st.default === undefined || st.default === null || Object.hasOwn(values, name)) continue;
+  const set = (name: string, v: unknown) => {
     if (out === values) out = { ...values };
-    out[name] = st.default;
+    if (v === undefined) delete out[name];
+    else out[name] = v;
+  };
+  for (const [name, st] of Object.entries(states ?? {})) {
+    const def = st.default ?? undefined;
+    if (st.read_only) {
+      const v = def !== undefined ? def : initial?.[name];
+      if (values[name] !== v || Object.hasOwn(values, name) !== (v !== undefined)) set(name, v);
+    } else if (def !== undefined && !Object.hasOwn(values, name)) set(name, def);
   }
   return out;
 }

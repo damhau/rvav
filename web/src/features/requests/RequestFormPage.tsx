@@ -434,7 +434,8 @@ function RequestFormBody({
   const attentionRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<FormHandle>(null);
   // A wizard's page as Next checked it, and the debounced draft then: the check shows until the
-  // preview of a later draft arrives, as an older one would hide what the check showed.
+  // preview of a later draft arrives, as an older one would hide what the check showed. Then it
+  // goes: the previews that follow are all later than the check.
   const [checked, setChecked] = useState<{ since: RequestDraft; preview: RequestPreview }>();
   const [justification, setJustification] = useState(start?.justification ?? "");
   const [leaseDays, setLeaseDays] = useState<number | null>(start?.leaseDays ?? null);
@@ -487,8 +488,9 @@ function RequestFormBody({
     queryFn: ({ signal }) => call(api.POST("/requests/preview", { body: debounced, signal })),
     placeholderData: keepPreviousData,
   });
-  const shownPreview =
-    checked && (debounced === checked.since || preview.isPlaceholderData) ? checked.preview : preview.data;
+  const caughtUp = checked && debounced !== checked.since && preview.data && !preview.isPlaceholderData;
+  if (caughtUp) setChecked(undefined);
+  const shownPreview = checked && !caughtUp ? checked.preview : preview.data;
   // What the server warned about on submit, until the request changes.
   const [refusedWarn, setRefusedWarn] = useState<{ since: RequestDraft; warnings: PolicyWarning[] }>();
   const warnings = allWarnings(shownPreview?.warnings, refusedWarn?.since === draft ? refusedWarn.warnings : undefined);
@@ -606,8 +608,10 @@ function RequestFormBody({
     setChecked({ since, preview: checkedPreview });
     const inputs = inputsOf(checkedPreview.fields);
     setTouched((t) => new Set([...t, ...inputs]));
+    // A validation's message from the last check stays shown, but doesn't hold the page: what fixes
+    // it may be on a later one, and the review's check runs the validations again.
     const found = mapFieldErrors(checkedPreview.errors).fields;
-    return { problems: inputs.filter((n) => found[n] || serverErrors?.fields[n]), fields: checkedPreview.fields };
+    return { problems: inputs.filter((n) => found[n]), fields: checkedPreview.fields };
   };
   // Before a wizard's review: the form's validations, which refuse as submit would.
   const checkAll = async () => {
@@ -835,7 +839,7 @@ function RequestFormBody({
           previewError={preview.error}
           onRetryPreview={() => void preview.refetch()}
           fetching={preview.isFetching}
-          values={withDefaults(values, shownPreview?.fields)}
+          values={withDefaults(values, shownPreview?.fields, form.initial_values)}
           pending={submit.isPending}
           formErrors={formErrors}
           onSubmit={stepped ? undefined : submitDraft}

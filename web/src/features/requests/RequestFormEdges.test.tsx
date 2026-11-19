@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { UiSchema } from "@/lib/api/types";
+import { latency } from "@/mocks/handlers";
 import { server } from "@/mocks/node";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
@@ -69,6 +70,93 @@ function storedInputs(path: string) {
 }
 
 describe("Request form edges", () => {
+  it("keeps a field a later preview showed while a newer one loads, after Next", async () => {
+    form("wizard");
+    const user = userEvent.setup();
+    await openForm();
+    await user.type(screen.getByLabelText("Role name"), "app_ro");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^More/ })).toHaveFocus());
+    await user.click(screen.getByRole("checkbox", { name: "Extra" }));
+    const notes = await screen.findByLabelText("Notes", {}, { timeout: 3000 });
+    latency.ms = 1500;
+    try {
+      await user.type(notes, "abc");
+      await new Promise((r) => setTimeout(r, 700));
+      expect(screen.getByLabelText("Notes")).toHaveFocus();
+      expect(screen.getByLabelText("Notes")).toHaveValue("abc");
+    } finally {
+      latency.ms = 0;
+    }
+  }, 20_000);
+
+  it("shows a read-only field's default, which the request gets", async () => {
+    form("page");
+    const user = userEvent.setup();
+    const { router } = await openForm();
+    await user.type(screen.getByLabelText("Role name"), "app_ro");
+    const schema = screen.getByRole("textbox", { name: "Schema" });
+    await waitFor(() => expect(schema).toHaveValue("fixed_schema"));
+    await user.clear(schema);
+    await user.type(schema, "mine");
+    await user.click(screen.getByRole("checkbox", { name: "Lock" }));
+    await waitFor(() => expect(schema).toHaveAttribute("readonly"), { timeout: 3000 });
+    await waitFor(() => expect(schema).toHaveValue("fixed_schema"));
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/requests\/REQ-/));
+    expect(storedInputs(router.state.location.pathname).schema_name).toBe("fixed_schema");
+  }, 20_000);
+
+  it("goes past a page whose validation message a later page fixes", async () => {
+    form("wizard", {
+      validations: [
+        {
+          key: "pair",
+          kind: "cel",
+          params: {
+            check:
+              'inputs.role_name == "tmp_role" && inputs.extra != true ? {"role_name": "A temporary role needs Extra."} : {}',
+          },
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    await openForm();
+    await user.type(screen.getByLabelText("Role name"), "tmp_role");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^More/ })).toHaveFocus());
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(screen.getByLabelText("Role name")).toHaveFocus());
+    expect(screen.getByText("A temporary role needs Extra.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^More/ })).toHaveFocus());
+    await user.click(screen.getByRole("checkbox", { name: "Extra" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await screen.findByRole("button", { name: "Submit request" }, { timeout: 3000 });
+  }, 20_000);
+
+  it("gives a dropdown its default rule's option, not the one its source suggests", async () => {
+    form("page");
+    const f = db.forms.itm_dbuser!;
+    (f.schema as { properties: Record<string, unknown> }).properties.datastore = { type: "string" };
+    f.ui_schema.fields.datastore = {
+      widget: "vsphere_datastore",
+      label: "Datastore",
+      value_source: { kind: "builtin", name: "vsphere.datastores", params: { cluster: "GVA-DEV-CL01" } },
+      rules: { default: '"nfs-gva-bronze-01"' },
+    };
+    f.ui_schema.layout.sections[0]!.fields.push("datastore");
+    const user = userEvent.setup();
+    const { router } = await openForm();
+    await user.type(screen.getByLabelText("Role name"), "app_ro");
+    await waitFor(() => expect(screen.getByLabelText("Datastore")).toHaveTextContent("nfs-gva-bronze-01"));
+    await new Promise((r) => setTimeout(r, 500));
+    expect(screen.getByLabelText("Datastore")).toHaveTextContent("nfs-gva-bronze-01");
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/requests\/REQ-/));
+    expect(storedInputs(router.state.location.pathname).datastore).toBe("nfs-gva-bronze-01");
+  }, 20_000);
+
   it("waits for a file still sending before it submits", async () => {
     form("page");
     const f = db.forms.itm_dbuser!;

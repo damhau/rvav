@@ -879,7 +879,10 @@ An item's tabs:
   **Default** rule, in CEL, such as `inputs.app + "-" + environment`.
   The form shows the default until the requester changes the field, and
   updates it as the inputs it reads change. Once the requester changes
-  the field, even to empty it, the field keeps their value. A request
+  the field, even to empty it, the field keeps their value. A read-only
+  field always shows its default, which the request gets. On a cluster,
+  datastore or network dropdown, the default rule takes the place of the
+  option rvav suggests. A request
   that leaves the field out gets the default, and a wizard's review
   lists it. A **Computed value** rule instead gives a value the
   requester can't change. On a text, number, date or toggle field, a

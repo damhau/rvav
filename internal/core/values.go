@@ -169,6 +169,10 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 func (s *Service) sourceValues(ctx context.Context, p *auth.Principal, proj store.Project, env string, ver store.ItemVersion,
 	name string, field api.UiField, inputs map[string]any, search string) (api.FieldValues, error) {
 	out, itself, err := s.resolveSource(ctx, p, proj, env, ver, name, field, inputs, search)
+	if defaultRule(field) != "" {
+		// The field's default rule wins over the option the source suggests.
+		out.Default = nil
+	}
 	if err != nil || strings.TrimSpace(search) == "" || out.Options == nil || itself {
 		return out, err
 	}

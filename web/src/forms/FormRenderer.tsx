@@ -77,7 +77,10 @@ export function FormRenderer({
 }: FormRendererProps) {
   const kind = form.ui_schema.layout.kind || "page";
   const parts = formParts(form, fieldStates);
-  const shown = useMemo(() => withDefaults(values, fieldStates), [values, fieldStates]);
+  const shown = useMemo(
+    () => withDefaults(values, fieldStates, form.initial_values),
+    [values, fieldStates, form.initial_values],
+  );
   const grid: GridProps = { form, values: shown, onChange, onBlur, errors, ctx };
   // The page or tab shown; `n` renders again when it is shown anew, for what runs after.
   const [view, setView] = useState<{ key?: string; n: number }>({ key: showing && sectionOf(form, showing), n: 0 });

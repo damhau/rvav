@@ -351,9 +351,12 @@ the designer preview.
   is there to focus. A page or tab whose fields the rules all hide is
   left out. The wizard's Next calls the page's `check`: the request page
   and the designer's preview ask a fresh preview, mark the page's inputs
-  touched and show that preview until the debounced one catches up with
-  a later draft, so the next page follows the rules as they stand and an
-  older preview doesn't hide what the check showed. The review step
+  touched and show that preview until the preview of a later debounced
+  draft arrives, then drop it, so the next page follows the rules as
+  they stand and neither an older preview nor the check itself hides
+  what a later change showed. Next decides on that fresh preview alone:
+  a validation's message from the last check stays shown without
+  holding the page. The review step
   (`forms/review.tsx`) shows option labels from the fields' own queries
   and masks secrets; the request page puts its lease, reason, options and
   Submit on it. A `FormHandle` ref (`focus(name)`) opens the page or tab

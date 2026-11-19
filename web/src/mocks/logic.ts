@@ -130,8 +130,11 @@ export function resolveField(
   designer?: { form: RequestForm; user: Record<string, unknown> },
   search = "",
 ): FieldValues | null {
-  const out = resolveSource(db, item, project, env, field, inputs, designer, search);
-  const source = (designer?.form ?? db.forms[item.id])?.ui_schema.fields[field]?.value_source;
+  const found = resolveSource(db, item, project, env, field, inputs, designer, search);
+  const ui = (designer?.form ?? db.forms[item.id])?.ui_schema.fields[field];
+  const source = ui?.value_source;
+  // As the server: a default rule wins over the option the source suggests.
+  const out = found && ui?.rules?.default ? { ...found, default: undefined } : found;
   const text = search.trim().toLowerCase();
   // As the server: a source that doesn't search itself keeps what contains the text.
   if (!out?.options || !text || source?.search || source?.name === "rvav.users") return out;

@@ -116,11 +116,12 @@ function Preview({
     placeholderData: keepPreviousData,
   });
   // A wizard's page as Next checked it, and the preview's key then: the check shows until the
-  // preview of a later key arrives, as an older one would hide what the check showed.
+  // preview of a later key arrives, as an older one would hide what the check showed. Then it goes.
   const [checkedPage, setCheckedPage] = useState<{ since: string; data: NonNullable<typeof preview.data> }>();
   const previewKey = JSON.stringify(previewOf(inputs).queryKey);
-  const shown =
-    checkedPage && (previewKey === checkedPage.since || preview.isPlaceholderData) ? checkedPage.data : preview.data;
+  const caughtUp = checkedPage && previewKey !== checkedPage.since && preview.data && !preview.isPlaceholderData;
+  if (caughtUp) setCheckedPage(undefined);
+  const shown = checkedPage && !caughtUp ? checkedPage.data : preview.data;
   const states = shown?.fields;
   useEffect(() => onStates(states), [states, onStates]);
   const [checked, setChecked] = useState<Set<string>>(new Set());

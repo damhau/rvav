@@ -1100,7 +1100,11 @@ ui_schema:
   - The form shows the default as the field's value, and the default
     follows the inputs it reads. Once the requester changes the field,
     even to empty it, the field keeps their value: a later change to
-    those inputs leaves it alone.
+    those inputs leaves it alone. A read-only field shows what the
+    request gets: its default, else its initial value.
+  - On a dropdown whose source suggests an option (`vsphere.clusters`,
+    `vsphere.datastores`, `vsphere.networks`), the default rule wins:
+    the source gives no suggestion while the field has one.
   - The server works the defaults out on preview and submit, with the
     other rules. An input the request leaves out takes its field's
     default; `null` for a field with a default means the requester
