@@ -14,6 +14,7 @@ guides.
 | [observability.md](observability.md) | Metrics, the dashboard, alerts, traces, logs and their retention. |
 | [runbooks.md](runbooks.md) | What to do when an alert fires. |
 | [security.md](security.md) | Threat model, scanning, SBOMs, and the installation's part. |
+| [fips.md](fips.md) | FIPS 140-3 mode: turning it on, what it refuses, the module's certificate. |
 | [vra-import.md](vra-import.md) | Moving vRA's content and deployments to rvav: reading, mapping, importing. |
 | [vra-cutover.md](vra-cutover.md) | Moving projects from vRA one at a time, the parallel run, and switching vRA off. |
 | [load-test.md](load-test.md) | 200 people and 500 requests an hour: results and bottlenecks. |

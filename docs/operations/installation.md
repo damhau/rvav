@@ -67,6 +67,8 @@ applies the database migrations as it starts, one at a time.
      tls: { secretName: rvav-tls }
    ```
 
+   For FIPS 140-3 mode, add `fips: { mode: "on" }` ([fips.md](fips.md)).
+
 2. Install it:
 
    ```sh

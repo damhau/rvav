@@ -74,6 +74,16 @@ records as missing. Set
 `RVAV_FAKE_AWX_FAIL_TASK="idm : join realm"` to see how a failed AWX task
 looks in the timeline.
 
+To run rvav's processes in FIPS 140-3 mode, start with `RVAV_FIPS=on`, or
+`RVAV_FIPS=only` to also refuse every algorithm the module doesn't
+approve ([fips.md](../docs/operations/fips.md)). The stack works in both:
+its PostgreSQL signs rvav in with SCRAM-SHA-256, Mailpit asks for no
+password, and Keycloak's keys are read without their certificates.
+**Administration › System** shows each process's mode. A stack started
+before keeps the local administrator's argon2id hash: sign in once with
+`on` before `only`, or run
+`docker compose -f deploy/docker-compose.yml exec api rvav admin reset-password`.
+
 To use Keycloak sign-in instead of dev authentication, start with
 `RVAV_AUTH_MODE=oidc`. rvav's sign-in page then offers single sign-on
 (Keycloak) and the local administrator, `admin` (ADR-0030), whose first
