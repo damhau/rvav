@@ -58,6 +58,7 @@ import { quotaHandlers } from "./quotas";
 import { limitHandlers } from "./limits";
 import { extensibilityHandlers } from "./extensibility";
 import { resourceTypeHandlers } from "./resourceTypes";
+import { variableHandlers } from "./variables";
 import { notificationHandlers } from "./notifications";
 import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
@@ -476,6 +477,7 @@ export const handlers = [
   ...reportHandlers(db, base, wait),
   ...extensibilityHandlers(db, base, wait),
   ...resourceTypeHandlers(db, base, wait),
+  ...variableHandlers(db, base, wait),
   ...notificationHandlers(db, base, wait),
   ...signInHandlers(base, wait),
   ...draftHandlers(db, base, wait),

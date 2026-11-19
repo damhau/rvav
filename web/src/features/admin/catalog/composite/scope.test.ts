@@ -53,6 +53,19 @@ describe("what a step can bind to", () => {
     ]);
   });
 
+  it("the shared variables, a VM step's too, after what the request gives (ADR-0057)", () => {
+    const shared = [
+      { key: "network.dns_servers", description: "The resolvers every VM is given." },
+      { key: "cmdb.site", description: "" },
+    ];
+    for (const planned of [false, true])
+      expect(bindingSources(def(pg), { g: 1, planned }, targets, shared).slice(-3)).toEqual([
+        { value: "project.id", label: "The project's ID", group: "The request" },
+        { value: "vars.network.dns_servers", label: "The resolvers every VM is given.", group: "Shared variables" },
+        { value: "vars.cmdb.site", label: "cmdb.site", group: "Shared variables" },
+      ]);
+  });
+
   it("the outputs of the steps before its own, not of those beside it, and none for a VM step", () => {
     // The group after the nodes: the nodes' outputs, not the other step's in the group.
     const inGroup = values(pg, 1);

@@ -27,6 +27,7 @@ import { Route as AdminPropertyGroupsRouteImport } from "./routes/admin/property
 import { Route as AdminResourceTypesRouteImport } from "./routes/admin/resource-types"
 import { Route as AdminSetupRouteImport } from "./routes/admin/setup"
 import { Route as AdminSystemRouteImport } from "./routes/admin/system"
+import { Route as AdminVariablesRouteImport } from "./routes/admin/variables"
 import { Route as AdminVraImportRouteImport } from "./routes/admin/vra-import"
 import { Route as AdminWorkflowsRouteImport } from "./routes/admin/workflows"
 import { Route as ApprovalsApprovalIdRouteImport } from "./routes/approvals_.$approvalId"
@@ -142,6 +143,11 @@ const AdminSetupRoute = AdminSetupRouteImport.update({
 const AdminSystemRoute = AdminSystemRouteImport.update({
   id: "/system",
   path: "/system",
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminVariablesRoute = AdminVariablesRouteImport.update({
+  id: "/variables",
+  path: "/variables",
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminVraImportRoute = AdminVraImportRouteImport.update({
@@ -297,6 +303,7 @@ export interface FileRoutesByFullPath {
   "/admin/resource-types": typeof AdminResourceTypesRoute
   "/admin/setup": typeof AdminSetupRoute
   "/admin/system": typeof AdminSystemRoute
+  "/admin/variables": typeof AdminVariablesRoute
   "/admin/vra-import": typeof AdminVraImportRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals/$approvalId": typeof ApprovalsApprovalIdRoute
@@ -342,6 +349,7 @@ export interface FileRoutesByTo {
   "/admin/resource-types": typeof AdminResourceTypesRoute
   "/admin/setup": typeof AdminSetupRoute
   "/admin/system": typeof AdminSystemRoute
+  "/admin/variables": typeof AdminVariablesRoute
   "/admin/vra-import": typeof AdminVraImportRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals/$approvalId": typeof ApprovalsApprovalIdRoute
@@ -389,6 +397,7 @@ export interface FileRoutesById {
   "/admin/resource-types": typeof AdminResourceTypesRoute
   "/admin/setup": typeof AdminSetupRoute
   "/admin/system": typeof AdminSystemRoute
+  "/admin/variables": typeof AdminVariablesRoute
   "/admin/vra-import": typeof AdminVraImportRoute
   "/admin/workflows": typeof AdminWorkflowsRoute
   "/approvals_/$approvalId": typeof ApprovalsApprovalIdRoute
@@ -437,6 +446,7 @@ export interface FileRouteTypes {
     | "/admin/resource-types"
     | "/admin/setup"
     | "/admin/system"
+    | "/admin/variables"
     | "/admin/vra-import"
     | "/admin/workflows"
     | "/approvals/$approvalId"
@@ -482,6 +492,7 @@ export interface FileRouteTypes {
     | "/admin/resource-types"
     | "/admin/setup"
     | "/admin/system"
+    | "/admin/variables"
     | "/admin/vra-import"
     | "/admin/workflows"
     | "/approvals/$approvalId"
@@ -528,6 +539,7 @@ export interface FileRouteTypes {
     | "/admin/resource-types"
     | "/admin/setup"
     | "/admin/system"
+    | "/admin/variables"
     | "/admin/vra-import"
     | "/admin/workflows"
     | "/approvals_/$approvalId"
@@ -704,6 +716,13 @@ declare module "@tanstack/react-router" {
       path: "/system"
       fullPath: "/admin/system"
       preLoaderRoute: typeof AdminSystemRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    "/admin/variables": {
+      id: "/admin/variables"
+      path: "/variables"
+      fullPath: "/admin/variables"
+      preLoaderRoute: typeof AdminVariablesRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     "/admin/vra-import": {
@@ -901,6 +920,7 @@ interface AdminRouteRouteChildren {
   AdminResourceTypesRoute: typeof AdminResourceTypesRoute
   AdminSetupRoute: typeof AdminSetupRoute
   AdminSystemRoute: typeof AdminSystemRoute
+  AdminVariablesRoute: typeof AdminVariablesRoute
   AdminVraImportRoute: typeof AdminVraImportRoute
   AdminWorkflowsRoute: typeof AdminWorkflowsRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -930,6 +950,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminResourceTypesRoute: AdminResourceTypesRoute,
   AdminSetupRoute: AdminSetupRoute,
   AdminSystemRoute: AdminSystemRoute,
+  AdminVariablesRoute: AdminVariablesRoute,
   AdminVraImportRoute: AdminVraImportRoute,
   AdminWorkflowsRoute: AdminWorkflowsRoute,
   AdminIndexRoute: AdminIndexRoute,

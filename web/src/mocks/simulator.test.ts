@@ -218,4 +218,28 @@ describe("a composite's run in the mocks", () => {
     expect(typeof agent.outputs?.job_id).toBe("number");
     expect(steps["request.submit"]!.has_data).toBeUndefined();
   });
+
+  it("reads the shared variables as they are when it runs (ADR-0057)", async () => {
+    const bp = {
+      kind: "composite",
+      steps: [
+        {
+          key: "agent",
+          awx: { job_template: "monitoring-agent" },
+          when: 'vars.cmdb.site == "gva"',
+          with: { target: "inputs.name", dns: "vars.network.dns_servers" },
+        },
+      ],
+    };
+    const item = await published("shared-vars", bp);
+    const first = await ended((await request(item)).id);
+    const data = (id: string, s: Step) => api<StepData>("GET", `/requests/${id}/steps/${s.id}/data`);
+    expect((await data(first.r.id, first.steps["step:agent"]!)).inputs).toEqual({
+      target: "web-01",
+      dns: ["10.20.0.53", "10.20.0.54"],
+    });
+    await api("PUT", "/admin/variables/cmdb.site", { value: "zrh" });
+    const second = await ended((await request(item)).id);
+    expect(second.steps["step:agent"]!.status).toBe("skipped");
+  });
 });

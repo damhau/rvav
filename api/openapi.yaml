@@ -5384,6 +5384,100 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /admin/variables:
+    get:
+      tags: [admin]
+      operationId: listVariables
+      summary: Shared variables (ADR-0057)
+      description: |
+        Named values that aren't secret, which composite steps and conditions
+        read as `vars.<group>.<name>` each time they run, as vRO's
+        configuration elements. Each with the items that read it. Needs
+        `catalog.manage` for all of rvav.
+      responses:
+        "200":
+          description: The variables, by group and name
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VariableList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createVariable
+      summary: Add a shared variable
+      description: |
+        Not for passwords or tokens: a name that says it holds one is
+        refused, and those are stored as secrets. Audited with its value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VariableCreate" }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Variable" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/variables/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        description: The variable as `<group>.<name>`.
+        schema: { type: string, examples: [network.dns_servers] }
+    get:
+      tags: [admin]
+      operationId: getVariable
+      summary: One shared variable
+      responses:
+        "200":
+          description: The variable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Variable" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: updateVariable
+      summary: Change a shared variable's value (its group and name stay)
+      description: |
+        Steps that run from then on read the new value, in requests already
+        running too. Audited with the value it had.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VariableUpdate" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Variable" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteVariable
+      summary: Remove a shared variable no item reads
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /tokens:
     get:
       tags: [identity]
@@ -12676,6 +12770,54 @@ components:
           minLength: 1
           description: The custom workflow's key, or the AWX job template's name.
           examples: [lb-create, Create load balancer]
+    VariableValue:
+      description: Text, a number, true or false, a list or an object; never null.
+      examples: [["10.20.0.53", "10.20.0.54"]]
+    VariableCreate:
+      type: object
+      required: [group, name, value]
+      additionalProperties: false
+      properties:
+        group:
+          type: string
+          description: "Lower-case letters, digits and underscores, starting with a letter: steps read `vars.<group>.<name>`."
+          examples: [network]
+        name:
+          type: string
+          description: Lower-case letters, digits and underscores, starting with a letter.
+          examples: [dns_servers]
+        value: { $ref: "#/components/schemas/VariableValue" }
+        description: { type: string, maxLength: 500 }
+    VariableUpdate:
+      type: object
+      required: [value]
+      additionalProperties: false
+      properties:
+        value: { $ref: "#/components/schemas/VariableValue" }
+        description: { type: string, maxLength: 500 }
+    Variable:
+      type: object
+      required: [key, group, name, value, description, used_by, created_at, updated_at]
+      properties:
+        key: { type: string, description: "`<group>.<name>`, as the API names it.", examples: [network.dns_servers] }
+        group: { type: string, examples: [network] }
+        name: { type: string, examples: [dns_servers] }
+        value: { $ref: "#/components/schemas/VariableValue" }
+        description: { type: string }
+        used_by:
+          type: array
+          description: "The items whose draft or published version reads it (`item <slug>`): it can't be removed while one does."
+          items: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        updated_by: { type: string, description: Who changed it last. }
+    VariableList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Variable" }
     ResourceTypeWrite:
       type: object
       required: [title, create, delete]

@@ -4095,6 +4095,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shared variables (ADR-0057)
+         * @description Named values that aren't secret, which composite steps and conditions
+         *     read as `vars.<group>.<name>` each time they run, as vRO's
+         *     configuration elements. Each with the items that read it. Needs
+         *     `catalog.manage` for all of rvav.
+         */
+        get: operations["listVariables"];
+        put?: never;
+        /**
+         * Add a shared variable
+         * @description Not for passwords or tokens: a name that says it holds one is
+         *     refused, and those are stored as secrets. Audited with its value.
+         */
+        post: operations["createVariable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/variables/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The variable as `<group>.<name>`. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        /** One shared variable */
+        get: operations["getVariable"];
+        /**
+         * Change a shared variable's value (its group and name stay)
+         * @description Steps that run from then on read the new value, in requests already
+         *     running too. Audited with the value it had.
+         */
+        put: operations["updateVariable"];
+        post?: never;
+        /** Remove a shared variable no item reads */
+        delete: operations["deleteVariable"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens": {
         parameters: {
             query?: never;
@@ -9750,6 +9804,56 @@ export interface components {
              * @example Create load balancer
              */
             name: string;
+        };
+        /**
+         * @description Text, a number, true or false, a list or an object; never null.
+         * @example [
+         *       "10.20.0.53",
+         *       "10.20.0.54"
+         *     ]
+         */
+        VariableValue: unknown;
+        VariableCreate: {
+            /**
+             * @description Lower-case letters, digits and underscores, starting with a letter: steps read `vars.<group>.<name>`.
+             * @example network
+             */
+            group: string;
+            /**
+             * @description Lower-case letters, digits and underscores, starting with a letter.
+             * @example dns_servers
+             */
+            name: string;
+            value: components["schemas"]["VariableValue"];
+            description?: string;
+        };
+        VariableUpdate: {
+            value: components["schemas"]["VariableValue"];
+            description?: string;
+        };
+        Variable: {
+            /**
+             * @description `<group>.<name>`, as the API names it.
+             * @example network.dns_servers
+             */
+            key: string;
+            /** @example network */
+            group: string;
+            /** @example dns_servers */
+            name: string;
+            value: components["schemas"]["VariableValue"];
+            description: string;
+            /** @description The items whose draft or published version reads it (`item <slug>`): it can't be removed while one does. */
+            used_by: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @description Who changed it last. */
+            updated_by?: string;
+        };
+        VariableList: {
+            items: components["schemas"]["Variable"][];
         };
         ResourceTypeWrite: {
             /**
@@ -16722,6 +16826,138 @@ export interface operations {
             header?: never;
             path: {
                 key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listVariables: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The variables, by group and name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VariableList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariableCreate"];
+            };
+        };
+        responses: {
+            /** @description Added */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The variable as `<group>.<name>`. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The variable */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The variable as `<group>.<name>`. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariableUpdate"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The variable as `<group>.<name>`. */
+                key: string;
             };
             cookie?: never;
         };

@@ -5,7 +5,13 @@
 // those running at the same time, nor any for a VM step, which is planned
 // when the request is submitted); and what the server would refuse when the
 // item is requested, said on the step before then.
-import type { CatalogEntitlements, CompositeStepOutput, CompositeStepTarget, FieldError } from "@/lib/api/types";
+import type {
+  CatalogEntitlements,
+  CompositeStepOutput,
+  CompositeStepTarget,
+  FieldError,
+  Variable,
+} from "@/lib/api/types";
 import { secretInMessages } from "@/lib/composite";
 
 type Raw = Record<string, unknown>;
@@ -245,19 +251,20 @@ export interface Source {
   /** The CEL a binding to it is. */
   value: string;
   label: string;
-  group: "The form" | "Earlier steps" | "The request";
+  group: "The form" | "Earlier steps" | "The request" | "Shared variables";
 }
 
 /**
  * Where an input of the step at `at` can come from: the form's inputs, the
- * request's environment and project, and the outputs of the steps before it
+ * request's environment and project, the outputs of the steps before it
  * (earlierSteps; none for a planned step: its VMs are planned from the form
- * when the request is submitted).
+ * when the request is submitted) and the shared variables (ADR-0057).
  */
 export function bindingSources(
   def: Raw,
   at: StepPlace & { planned: boolean },
   targets: CompositeStepTarget[],
+  variables: Pick<Variable, "key" | "description">[] = [],
 ): Source[] {
   const out: Source[] = formInputsOf(def).map((i) => ({
     value: `inputs.${i.name}`,
@@ -273,6 +280,11 @@ export function bindingSources(
     { value: "project.code", label: "The project's code", group: "The request" },
     { value: "project.name", label: "The project's name", group: "The request" },
     { value: "project.id", label: "The project's ID", group: "The request" },
+    ...variables.map((v): Source => ({
+      value: `vars.${v.key}`,
+      label: v.description || v.key,
+      group: "Shared variables",
+    })),
   );
   return out;
 }

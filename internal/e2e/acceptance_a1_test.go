@@ -342,6 +342,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	lb := api.ResourceTypeDriver{Kind: api.ResourceDriverWorkflow, Name: "a1-lb"}
 	h.json("POST", "/api/v1/admin/resource-types", admin, api.ResourceTypeWrite{Key: new("a1-lb"), Title: "Load balancer",
 		Create: lb, Delete: lb}, 201, nil)
+	h.json("POST", "/api/v1/admin/variables", admin, api.VariableCreate{Group: "a1", Name: "site", Value: "gva"}, 201, nil)
 
 	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	t.Cleanup(hook.Close)
@@ -408,6 +409,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"subscription-runs/{id}":         run.Id,
 		"workflows/{key}":                "a1-report",
 		"resource-types/{key}":           "a1-lb",
+		"variables/{key}":                "a1.site",
 		"tokens/{id}":                    token.Id,
 		"files/{fileId}":                 attached,
 		"images/{imageId}":               picture,

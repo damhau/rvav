@@ -533,6 +533,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const runsFocus = useFocusAfterSelect();
   const [extra, setExtra] = useState<string[]>([]);
   const [undoExtra, setUndoExtra] = useState<string[]>([]);
+  const variables = useQuery({ ...adm.variables(), staleTime: 60_000 });
   const found = edits.readStep(text, node.id);
   if (!found) return <NodeDetails node={node} />;
   const { step, g, j, side, pointer } = found;
@@ -543,7 +544,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const planned = listed?.planned ?? false;
   const slots = Array.isArray(obj(def.blueprint).steps) ? (obj(def.blueprint).steps as unknown[]).length : 0;
   const place = side ? { g, side: { taken: side.taken, i: side.i } } : { g };
-  const sources = bindingSources(def, { ...place, planned }, targets);
+  const sources = bindingSources(def, { ...place, planned }, targets, variables.data?.items);
   const open = planned ? [] : openEarlier(def, place, targets);
   const withMap = obj(step.with);
   const rest = target?.kind === "rest";

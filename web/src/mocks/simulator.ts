@@ -29,6 +29,7 @@ import { clusters, DOMAIN, networks, sizes, templates, VCENTER, vsphereUrl, type
 import { multiName, multiParts } from "./components";
 import { reserveIp, summarize, vmNames } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
+import { variableValues } from "./variables";
 
 export const timing = { tickMs: 900 };
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -120,7 +121,7 @@ function stepsOf(r: StoredRequest): Rec {
   );
 }
 
-type Vars = { inputs: Rec; environment: EnvironmentKey; project: Rec; steps: Rec };
+type Vars = { inputs: Rec; environment: EnvironmentKey; project: Rec; steps: Rec; vars: Rec };
 
 /**
  * A branch's cases and the steps of each side, the last what runs otherwise.
@@ -269,6 +270,7 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
     environment: env,
     project: { id: project.id, code: project.code, name: project.name },
     steps: {},
+    vars: variableValues(db),
   };
   const secrets = secretInputsOf(db, item);
   const messageVars: Vars = {

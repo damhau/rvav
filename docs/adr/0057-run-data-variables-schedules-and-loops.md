@@ -68,9 +68,46 @@ names and values, a masked secret read out as such, and the
 `steps.<key>.<name>` later steps read. The mocks work a step's data out
 from its bindings when it runs.
 
+### Shared variables
+vRO's configuration elements are values workflows share: a site's DNS
+servers, a CMDB's site code, a backup bucket. rvav's property groups
+(ADR-0038) give an item constants too, but each item names a version of the
+group and keeps it: a new value reaches an item only once it is saved and
+published again. A shared variable is read as it is when the step runs.
+
+- A variable is a group and a name, `[a-z][a-z0-9_]*` each, and a JSON
+  value: text, a number, true or false, a list or an object, 16 KiB at
+  most. Composite steps and conditions read it as `vars.<group>.<name>`:
+  `with`, `when`, a REST call's URL and body, a wait's or a poll's `until`,
+  a branch's cases and a message's text. The VM steps planned at submit read
+  it then.
+- Each read takes the value of the moment: the `ResolveStep` activity, and
+  each activity that evaluates a step's CEL, loads the variables. A change
+  reaches the steps that haven't run yet, in requests already running too.
+  The workflow code is unchanged, so nothing needs `workflow.GetVersion`.
+- They aren't secret, and nothing masks them: they show in the run data
+  and in the audit log, with their values. A group or a name that says it
+  holds a password, a secret or a key is refused; those are stored as
+  secrets, which stay masked.
+- `catalog.manage` for all of rvav reads and changes them, as it does
+  property groups, under `/admin/variables`. Each change is audited with
+  its value, and an update with the value it replaced.
+- Publishing a version whose steps read a variable that doesn't exist is
+  refused (`unknown_variable`), as a resource type that doesn't exist is;
+  a draft may name one not added yet. A variable a draft or a published
+  version reads isn't removed, so a published item never reads one that
+  is gone.
+
+The **Variables** page, under Catalog in the administration menu, lists
+them with their values and the items that read them. The composite
+designer offers them among what an input can be bound to.
+
 ## Consequences
 - An author sees why a step failed from what it was given, without reading
   Temporal's history or the worker's logs.
+- A value several items share is changed in one place, without a new
+  version of each; an item's steps can read a different value from one
+  request to the next, so the run data is where to see what each read.
 - `request_steps.inputs` grows a run's rows by what its steps take, the
   size of their outputs; nothing new reaches Temporal's history.
 - A requester's view is unchanged: a blueprint's literals stay masked for

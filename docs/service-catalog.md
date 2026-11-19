@@ -341,6 +341,46 @@ steps it runs again.
 The API serves the same: `GET /requests/{requestId}/steps/{stepId}/data`, for
 the steps whose `has_data` is true.
 
+#### Shared variables
+A shared variable is a named value that isn't secret, which several items
+read from one place, such as a site's DNS servers
+([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)). A
+composite's steps and conditions read it as `vars.<group>.<name>`, wherever
+they read `inputs`: `with`, `when`, a REST call's URL and body, a wait's or
+a poll's `until`, a branch's cases and a message's text.
+
+```yaml
+steps:
+  - key: register
+    rest:
+      method: POST
+      url: https://cmdb.corp.example/api/ci/${inputs.name}?site=${vars.cmdb.site}
+      body: "{'name': inputs.name, 'dns': vars.network.dns_servers}"
+  - key: monitoring
+    awx: {job_template: monitoring-agent}
+    when: vars.monitoring.enabled
+    with: {target: inputs.name}
+```
+
+To add one, go to **Administration > Variables** and choose **New
+variable**. You need `catalog.manage` for all of rvav. A value is text, a
+number, true or false, or a list or an object written as JSON, 16 KiB at
+most.
+
+- A step reads the value as it is when the step runs. A change reaches the
+  steps that haven't run yet, in requests already running too. Unlike a
+  property group's constants, you don't publish the items again.
+- Nothing masks a variable: the run data and the audit log show its value.
+  Store a password, a token or a key as a secret instead. A group or a name
+  such as `admin_password` is refused.
+- To publish a version, every variable its steps read must exist; a draft
+  may read one you haven't added yet.
+- You can't remove a variable that a draft or a published version reads.
+  The page lists the items that read each one.
+
+The API is `/admin/variables`, with each variable at
+`/admin/variables/<group>.<name>`. Each change is audited with its value.
+
 ### VM blueprints
 A `vm_blueprint` item's blueprint ([ADR-0024](adr/0024-multi-vm-blueprints.md)).
 Strings in `bindings` and `count`, a disk's `size_gb` and `datastore` and

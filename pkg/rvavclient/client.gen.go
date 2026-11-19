@@ -9591,6 +9591,75 @@ type ValueSource struct {
 // library entry is `rest` or `cel`.
 type ValueSourceKind string
 
+// Variable defines model for Variable.
+type Variable struct {
+	CreatedAt   time.Time `json:"created_at"`
+	Description string    `json:"description"`
+
+	// Group Examples: network
+	Group string `json:"group"`
+
+	// Key `<group>.<name>`, as the API names it.
+	//
+	// Examples: network.dns_servers
+	Key string `json:"key"`
+
+	// Name Examples: dns_servers
+	Name      string    `json:"name"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// UpdatedBy Who changed it last.
+	UpdatedBy *string `json:"updated_by,omitempty"`
+
+	// UsedBy The items whose draft or published version reads it (`item <slug>`): it can't be removed while one does.
+	UsedBy []string `json:"used_by"`
+
+	// Value Text, a number, true or false, a list or an object; never null.
+	//
+	// Examples: ["10.20.0.53","10.20.0.54"]
+	Value VariableValue `json:"value"`
+}
+
+// VariableCreate defines model for VariableCreate.
+type VariableCreate struct {
+	Description *string `json:"description,omitempty"`
+
+	// Group Lower-case letters, digits and underscores, starting with a letter: steps read `vars.<group>.<name>`.
+	//
+	// Examples: network
+	Group string `json:"group"`
+
+	// Name Lower-case letters, digits and underscores, starting with a letter.
+	//
+	// Examples: dns_servers
+	Name string `json:"name"`
+
+	// Value Text, a number, true or false, a list or an object; never null.
+	//
+	// Examples: ["10.20.0.53","10.20.0.54"]
+	Value VariableValue `json:"value"`
+}
+
+// VariableList defines model for VariableList.
+type VariableList struct {
+	Items []Variable `json:"items"`
+}
+
+// VariableUpdate defines model for VariableUpdate.
+type VariableUpdate struct {
+	Description *string `json:"description,omitempty"`
+
+	// Value Text, a number, true or false, a list or an object; never null.
+	//
+	// Examples: ["10.20.0.53","10.20.0.54"]
+	Value VariableValue `json:"value"`
+}
+
+// VariableValue Text, a number, true or false, a list or an object; never null.
+//
+// Examples: ["10.20.0.53","10.20.0.54"]
+type VariableValue = interface{}
+
 // ViewList The list a saved view is of.
 type ViewList string
 
@@ -11241,6 +11310,12 @@ type CreateVmTemplateJSONRequestBody = VmTemplateWrite
 
 // UpdateVmTemplateJSONRequestBody defines body for UpdateVmTemplate for application/json ContentType.
 type UpdateVmTemplateJSONRequestBody = VmTemplateWrite
+
+// CreateVariableJSONRequestBody defines body for CreateVariable for application/json ContentType.
+type CreateVariableJSONRequestBody = VariableCreate
+
+// UpdateVariableJSONRequestBody defines body for UpdateVariable for application/json ContentType.
+type UpdateVariableJSONRequestBody = VariableUpdate
 
 // CreateVCenterJSONRequestBody defines body for CreateVCenter for application/json ContentType.
 type CreateVCenterJSONRequestBody = VCenterWrite
@@ -14331,6 +14406,66 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /admin/templates/{key} (the `UpdateVmTemplate` operationId).
 	UpdateVmTemplate(ctx context.Context, key KeyPath, body UpdateVmTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVariables Shared variables (ADR-0057)
+	//
+	// Named values that aren't secret, which composite steps and conditions
+	// read as `vars.<group>.<name>` each time they run, as vRO's
+	// configuration elements. Each with the items that read it. Needs
+	// `catalog.manage` for all of rvav.
+	//
+	// Corresponds with GET /admin/variables (the `ListVariables` operationId).
+	ListVariables(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateVariableWithBody Add a shared variable
+	//
+	// Not for passwords or tokens: a name that says it holds one is
+	// refused, and those are stored as secrets. Audited with its value.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/variables (the `CreateVariable` operationId).
+	CreateVariableWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateVariable Add a shared variable
+	//
+	// Not for passwords or tokens: a name that says it holds one is
+	// refused, and those are stored as secrets. Audited with its value.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/variables (the `CreateVariable` operationId).
+	CreateVariable(ctx context.Context, body CreateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteVariable Remove a shared variable no item reads
+	//
+	// Corresponds with DELETE /admin/variables/{key} (the `DeleteVariable` operationId).
+	DeleteVariable(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVariable One shared variable
+	//
+	// Corresponds with GET /admin/variables/{key} (the `GetVariable` operationId).
+	GetVariable(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateVariableWithBody Change a shared variable's value (its group and name stay)
+	//
+	// Steps that run from then on read the new value, in requests already
+	// running too. Audited with the value it had.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
+	UpdateVariableWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateVariable Change a shared variable's value (its group and name stay)
+	//
+	// Steps that run from then on read the new value, in requests already
+	// running too. Audited with the value it had.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
+	UpdateVariable(ctx context.Context, key string, body UpdateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListVCenters The vCenters rvav manages (ADR-0024); the first is the vCenter integration's
 	//
@@ -19805,6 +19940,136 @@ func (c *Client) UpdateVmTemplateWithBody(ctx context.Context, key KeyPath, cont
 // Corresponds with PUT /admin/templates/{key} (the `UpdateVmTemplate` operationId).
 func (c *Client) UpdateVmTemplate(ctx context.Context, key KeyPath, body UpdateVmTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateVmTemplateRequest(c.Server, key, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListVariables Shared variables (ADR-0057)
+//
+// Named values that aren't secret, which composite steps and conditions
+// read as `vars.<group>.<name>` each time they run, as vRO's
+// configuration elements. Each with the items that read it. Needs
+// `catalog.manage` for all of rvav.
+//
+// Corresponds with GET /admin/variables (the `ListVariables` operationId).
+func (c *Client) ListVariables(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVariablesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateVariableWithBody Add a shared variable
+//
+// Not for passwords or tokens: a name that says it holds one is
+// refused, and those are stored as secrets. Audited with its value.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/variables (the `CreateVariable` operationId).
+func (c *Client) CreateVariableWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateVariableRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateVariable Add a shared variable
+//
+// Not for passwords or tokens: a name that says it holds one is
+// refused, and those are stored as secrets. Audited with its value.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/variables (the `CreateVariable` operationId).
+func (c *Client) CreateVariable(ctx context.Context, body CreateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateVariableRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteVariable Remove a shared variable no item reads
+//
+// Corresponds with DELETE /admin/variables/{key} (the `DeleteVariable` operationId).
+func (c *Client) DeleteVariable(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteVariableRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVariable One shared variable
+//
+// Corresponds with GET /admin/variables/{key} (the `GetVariable` operationId).
+func (c *Client) GetVariable(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVariableRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateVariableWithBody Change a shared variable's value (its group and name stay)
+//
+// Steps that run from then on read the new value, in requests already
+// running too. Audited with the value it had.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
+func (c *Client) UpdateVariableWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateVariableRequestWithBody(c.Server, key, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateVariable Change a shared variable's value (its group and name stay)
+//
+// Steps that run from then on read the new value, in requests already
+// running too. Audited with the value it had.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
+func (c *Client) UpdateVariable(ctx context.Context, key string, body UpdateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateVariableRequest(c.Server, key, body)
 	if err != nil {
 		return nil, err
 	}
@@ -28932,6 +29197,188 @@ func NewUpdateVmTemplateRequestWithBody(server string, key KeyPath, contentType 
 	return req, nil
 }
 
+// NewListVariablesRequest constructs an http.Request for the ListVariables method
+func NewListVariablesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/variables")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateVariableRequest calls the generic CreateVariable builder with application/json body
+func NewCreateVariableRequest(server string, body CreateVariableJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateVariableRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateVariableRequestWithBody constructs an http.Request for the CreateVariable method, with any body, and a specified content type
+func NewCreateVariableRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/variables")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteVariableRequest constructs an http.Request for the DeleteVariable method
+func NewDeleteVariableRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/variables/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVariableRequest constructs an http.Request for the GetVariable method
+func NewGetVariableRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/variables/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateVariableRequest calls the generic UpdateVariable builder with application/json body
+func NewUpdateVariableRequest(server string, key string, body UpdateVariableJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateVariableRequestWithBody(server, key, "application/json", bodyReader)
+}
+
+// NewUpdateVariableRequestWithBody constructs an http.Request for the UpdateVariable method, with any body, and a specified content type
+func NewUpdateVariableRequestWithBody(server string, key string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/variables/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListVCentersRequest constructs an http.Request for the ListVCenters method
 func NewListVCentersRequest(server string) (*http.Request, error) {
 	var err error
@@ -36046,6 +36493,72 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /admin/templates/{key} (the `UpdateVmTemplate` operationId).
 	UpdateVmTemplateWithResponse(ctx context.Context, key KeyPath, body UpdateVmTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateVmTemplateResponse, error)
+
+	// ListVariablesWithResponse Shared variables (ADR-0057)
+	//
+	// Named values that aren't secret, which composite steps and conditions
+	// read as `vars.<group>.<name>` each time they run, as vRO's
+	// configuration elements. Each with the items that read it. Needs
+	// `catalog.manage` for all of rvav.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/variables (the `ListVariables` operationId).
+	ListVariablesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListVariablesResponse, error)
+
+	// CreateVariableWithBodyWithResponse Add a shared variable
+	//
+	// Not for passwords or tokens: a name that says it holds one is
+	// refused, and those are stored as secrets. Audited with its value.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/variables (the `CreateVariable` operationId).
+	CreateVariableWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateVariableResponse, error)
+
+	// CreateVariableWithResponse Add a shared variable
+	//
+	// Not for passwords or tokens: a name that says it holds one is
+	// refused, and those are stored as secrets. Audited with its value.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/variables (the `CreateVariable` operationId).
+	CreateVariableWithResponse(ctx context.Context, body CreateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateVariableResponse, error)
+
+	// DeleteVariableWithResponse Remove a shared variable no item reads
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /admin/variables/{key} (the `DeleteVariable` operationId).
+	DeleteVariableWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteVariableResponse, error)
+
+	// GetVariableWithResponse One shared variable
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/variables/{key} (the `GetVariable` operationId).
+	GetVariableWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetVariableResponse, error)
+
+	// UpdateVariableWithBodyWithResponse Change a shared variable's value (its group and name stay)
+	//
+	// Steps that run from then on read the new value, in requests already
+	// running too. Audited with the value it had.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
+	UpdateVariableWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateVariableResponse, error)
+
+	// UpdateVariableWithResponse Change a shared variable's value (its group and name stay)
+	//
+	// Steps that run from then on read the new value, in requests already
+	// running too. Audited with the value it had.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
+	UpdateVariableWithResponse(ctx context.Context, key string, body UpdateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateVariableResponse, error)
 
 	// ListVCentersWithResponse The vCenters rvav manages (ADR-0024); the first is the vCenter integration's
 	//
@@ -47606,6 +48119,323 @@ func (r UpdateVmTemplateResponse) ContentType() string {
 	return ""
 }
 
+type ListVariablesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VariableList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListVariablesResponse) GetJSON200() *VariableList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListVariablesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListVariablesResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListVariablesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListVariablesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListVariablesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListVariablesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateVariableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Variable
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateVariableResponse) GetJSON201() *Variable {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateVariableResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateVariableResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateVariableResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateVariableResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateVariableResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateVariableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateVariableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateVariableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteVariableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteVariableResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteVariableResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteVariableResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteVariableResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteVariableResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteVariableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteVariableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteVariableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVariableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Variable
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVariableResponse) GetJSON200() *Variable {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetVariableResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetVariableResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetVariableResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVariableResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVariableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVariableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVariableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateVariableResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Variable
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateVariableResponse) GetJSON200() *Variable {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateVariableResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateVariableResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateVariableResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateVariableResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateVariableResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateVariableResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateVariableResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateVariableResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListVCentersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -57098,6 +57928,114 @@ func (c *ClientWithResponses) UpdateVmTemplateWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseUpdateVmTemplateResponse(rsp)
+}
+
+// ListVariablesWithResponse Shared variables (ADR-0057)
+//
+// Named values that aren't secret, which composite steps and conditions
+// read as `vars.<group>.<name>` each time they run, as vRO's
+// configuration elements. Each with the items that read it. Needs
+// `catalog.manage` for all of rvav.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/variables (the `ListVariables` operationId).
+func (c *ClientWithResponses) ListVariablesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListVariablesResponse, error) {
+	rsp, err := c.ListVariables(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVariablesResponse(rsp)
+}
+
+// CreateVariableWithBodyWithResponse Add a shared variable
+//
+// Not for passwords or tokens: a name that says it holds one is
+// refused, and those are stored as secrets. Audited with its value.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/variables (the `CreateVariable` operationId).
+func (c *ClientWithResponses) CreateVariableWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateVariableResponse, error) {
+	rsp, err := c.CreateVariableWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateVariableResponse(rsp)
+}
+
+// CreateVariableWithResponse Add a shared variable
+//
+// Not for passwords or tokens: a name that says it holds one is
+// refused, and those are stored as secrets. Audited with its value.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/variables (the `CreateVariable` operationId).
+func (c *ClientWithResponses) CreateVariableWithResponse(ctx context.Context, body CreateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateVariableResponse, error) {
+	rsp, err := c.CreateVariable(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateVariableResponse(rsp)
+}
+
+// DeleteVariableWithResponse Remove a shared variable no item reads
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /admin/variables/{key} (the `DeleteVariable` operationId).
+func (c *ClientWithResponses) DeleteVariableWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteVariableResponse, error) {
+	rsp, err := c.DeleteVariable(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteVariableResponse(rsp)
+}
+
+// GetVariableWithResponse One shared variable
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/variables/{key} (the `GetVariable` operationId).
+func (c *ClientWithResponses) GetVariableWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetVariableResponse, error) {
+	rsp, err := c.GetVariable(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVariableResponse(rsp)
+}
+
+// UpdateVariableWithBodyWithResponse Change a shared variable's value (its group and name stay)
+//
+// Steps that run from then on read the new value, in requests already
+// running too. Audited with the value it had.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
+func (c *ClientWithResponses) UpdateVariableWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateVariableResponse, error) {
+	rsp, err := c.UpdateVariableWithBody(ctx, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateVariableResponse(rsp)
+}
+
+// UpdateVariableWithResponse Change a shared variable's value (its group and name stay)
+//
+// Steps that run from then on read the new value, in requests already
+// running too. Audited with the value it had.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/variables/{key} (the `UpdateVariable` operationId).
+func (c *ClientWithResponses) UpdateVariableWithResponse(ctx context.Context, key string, body UpdateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateVariableResponse, error) {
+	rsp, err := c.UpdateVariable(ctx, key, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateVariableResponse(rsp)
 }
 
 // ListVCentersWithResponse The vCenters rvav manages (ADR-0024); the first is the vCenter integration's
@@ -67067,6 +68005,251 @@ func ParseUpdateVmTemplateResponse(rsp *http.Response) (*UpdateVmTemplateRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest VmTemplate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListVariablesResponse parses an HTTP response from a ListVariablesWithResponse call
+func ParseListVariablesResponse(rsp *http.Response) (*ListVariablesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListVariablesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VariableList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateVariableResponse parses an HTTP response from a CreateVariableWithResponse call
+func ParseCreateVariableResponse(rsp *http.Response) (*CreateVariableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateVariableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Variable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteVariableResponse parses an HTTP response from a DeleteVariableWithResponse call
+func ParseDeleteVariableResponse(rsp *http.Response) (*DeleteVariableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteVariableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVariableResponse parses an HTTP response from a GetVariableWithResponse call
+func ParseGetVariableResponse(rsp *http.Response) (*GetVariableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVariableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Variable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateVariableResponse parses an HTTP response from a UpdateVariableWithResponse call
+func ParseUpdateVariableResponse(rsp *http.Response) (*UpdateVariableResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateVariableResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Variable
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

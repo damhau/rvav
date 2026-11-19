@@ -20,6 +20,7 @@ import {
   Shapes,
   ShieldUser,
   SquareCheckBig,
+  Variable,
   Webhook,
   Workflow,
   Wrench,
@@ -68,6 +69,13 @@ export const adminGroups: AdminGroup[] = [
         label: "Property groups",
         icon: Boxes,
         keywords: ["inputs", "constants", "propgroup"],
+        show: (me) => can(me, "catalog.manage"),
+      },
+      {
+        to: "/admin/variables",
+        label: "Variables",
+        icon: Variable,
+        keywords: ["configuration elements", "shared values", "vars"],
         show: (me) => can(me, "catalog.manage"),
       },
       {

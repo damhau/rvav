@@ -60,6 +60,7 @@ describe("sidebar", () => {
       Catalog: [
         "Catalog items",
         "Property groups",
+        "Variables",
         "Form library",
         "Day-2 actions",
         "Custom workflows",

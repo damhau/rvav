@@ -31,6 +31,7 @@ import {
 import { applyStates, settledStates, userGroups, validateInputs, withStart } from "./logic";
 import { assignable, builtinRoles, customRoles } from "./roles";
 import type { Db, StoredItem } from "./seed";
+import { unknownVariables } from "./variables";
 
 type S = components["schemas"];
 type Version = S["CatalogItemVersionDetail"];
@@ -689,6 +690,18 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
   return errors;
 }
 
+/** As the server's checkVariableRefs, to publish: the shared variables each step reads exist. */
+function variableProblems(db: Db, bp: unknown, ptr: string): S["FieldError"][] {
+  const steps = (bp as { steps?: unknown } | undefined)?.steps;
+  return (Array.isArray(steps) ? steps : []).flatMap((st, g) =>
+    unknownVariables(db, st).map((ref) => ({
+      field: `${ptr}/steps/${g}`,
+      code: "unknown_variable",
+      message: `There is no variable ${ref}: add it under Administration > Variables.`,
+    })),
+  );
+}
+
 function nextNumber(versions: Version[]): string {
   const last = versions[0]?.number ?? "0.9";
   const m = /^(\d+)\.(\d+)$/.exec(last);
@@ -1326,6 +1339,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         ...searchProblems(v.definition, "/definition", true),
         ...fileProblems(v.definition, "/definition", true),
         ...libraryRefProblems(db, v.definition.ui_schema, "/definition", true),
+        ...variableProblems(db, v.definition.blueprint, "/definition/blueprint"),
       ];
       if (incomplete.length) return problem(422, "Some inputs need attention", incomplete);
       if (!body.keep_published)

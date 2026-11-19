@@ -56,9 +56,9 @@ var library = &set{names: []string{"params", "environment", "project", "user", "
 var day2 = &set{names: []string{"action", "resource", "deployment", "project", "environment", "user", "inputs", "quota"}}
 
 // composite is for a composite item's bindings and step conditions
-// (ADR-0022): its inputs, the outputs of earlier steps and its property
-// groups' constants.
-var composite = &set{names: []string{"inputs", "steps", "environment", "project", "propgroup"}, strings: map[string]bool{"environment": true}}
+// (ADR-0022): its inputs, the outputs of earlier steps, its property
+// groups' constants and the shared variables (ADR-0057).
+var composite = &set{names: []string{"inputs", "steps", "environment", "project", "propgroup", "vars"}, strings: map[string]bool{"environment": true}}
 
 // custom is for the inputs of a blueprint's custom resources (ADR-0056),
 // worked out once the deployment's VMs are built: their components and the
