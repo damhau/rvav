@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { api, call } from "@/lib/api/client";
 import type { RequestDraft } from "@/lib/api/types";
 import { completeDay2Step, runAction } from "./day2";
+import { withSuffix } from "./deploymentNames";
 import { db } from "./seed";
 
 const web = () => db.projects.find((p) => p.code === "web")!;
@@ -108,5 +109,35 @@ describe("Edit deployment in the mocks", () => {
       "Routes the public API.",
       "From web-dev-api to API gateway, with a new description",
     ]);
+  });
+});
+
+// As core.adoptGroup and core.withSuffix: an adopted VM runs already, so a
+// name it can't have is numbered, not refused; a number never makes a name
+// longer than an edit accepts.
+describe("an onboarded deployment's name in the mocks", () => {
+  it("is numbered when a live deployment of the project has it, whatever the case", async () => {
+    const other = db.deployments.find((d) => d.project.id === web().id && d.status !== "deleted")!;
+    other.name = "APP-OLD01";
+    await call(
+      api.POST("/admin/onboarding", {
+        body: {
+          vms: [{ vcenter: "vc01.corp.example", moref: "vm-9152" }],
+          project_id: web().id,
+          environment: "dev",
+          owner_id: db.me.user.id,
+          catalog_item_id: db.items.find((i) => i.slug === "rhel9-server")!.id,
+        },
+      }),
+    );
+    expect(db.deployments.filter((d) => /^app-old01/i.test(d.name)).map((d) => d.name)).toEqual([
+      "app-old01 2",
+      "APP-OLD01",
+    ]);
+  });
+
+  it("is cut before its number to stay within 80 characters", () => {
+    expect(withSuffix(`${"a".repeat(79)} b`, "2")).toBe(`${"a".repeat(78)} 2`);
+    expect(withSuffix(`${"a".repeat(77)} bcd`, "")).toBe(`${"a".repeat(77)} bc`);
   });
 });

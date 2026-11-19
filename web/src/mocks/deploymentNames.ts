@@ -15,7 +15,7 @@ export function namesDeployments(item: StoredItem): boolean {
 
 /** As core.numbered: a name for one deployment, numbered for several. */
 export function numbered(name: string, n: number): string[] {
-  return n <= 1 ? [name] : Array.from({ length: n }, (_, i) => `${name} ${i + 1}`);
+  return n <= 1 ? [name] : Array.from({ length: n }, (_, i) => withSuffix(name, String(i + 1)));
 }
 
 const control = /\p{Cc}/u;
@@ -27,6 +27,22 @@ export function deploymentNameProblem(field: string, name: string): S["FieldErro
     return { field, code: "too_long", message: `${MAX_DEPLOYMENT_NAME} characters at most.` };
   if (control.test(name)) return { field, code: "invalid", message: "One line, without tabs." };
   return undefined;
+}
+
+/** As core.withSuffix: name, then a space and suffix, name cut so that the whole stays a name an edit accepts. */
+export function withSuffix(name: string, suffix: string): string {
+  const tail = suffix ? ` ${suffix}` : "";
+  const keep = Math.max(MAX_DEPLOYMENT_NAME - [...tail].length, 0);
+  const chars = [...name];
+  return (chars.length > keep ? chars.slice(0, keep).join("").trimEnd() : name) + tail;
+}
+
+/** As core.freeDeploymentName from 1: name if no live deployment of the project has it, whatever the case, else "name 2", "name 3"… */
+export function freeDeploymentName(db: Db, projectId: string, name: string): string {
+  for (let i = 1; ; i++) {
+    const candidate = i > 1 ? withSuffix(name, String(i)) : withSuffix(name, "");
+    if (!takenName(db, projectId, [candidate])) return candidate;
+  }
 }
 
 /** The name a live deployment of the project but except holds for one of names, whatever the case, as it holds it. */

@@ -6,6 +6,7 @@ import type { components } from "@/lib/api/schema";
 import type { DeploymentDetail, DnsRecordResource, IpAddressResource, Project, VmResource } from "@/lib/api/types";
 import { leasePolicyOf, rolesGiven } from "./administration";
 import { seededBlueprint } from "./blueprints";
+import { freeDeploymentName } from "./deploymentNames";
 import { clusters, datastores, networks } from "./inventory";
 import { heldIn } from "./roles";
 import type { Db, StoredItem } from "./seed";
@@ -268,7 +269,7 @@ function newDeployment(db: Db, d: Destination, name: string, group: Unmanaged[])
   const expires = d.days ? new Date(Date.now() + d.days * 86_400_000).toISOString() : null;
   const p = d.policy;
   const dep: DeploymentDetail = {
-    id: `dep_ob${first.moref.slice(3)}`, name, description: "", status: "ready",
+    id: `dep_ob${first.moref.slice(3)}`, name: freeDeploymentName(db, d.project.id, name), description: "", status: "ready",
     project: { id: d.project.id, code: d.project.code, name: d.project.name }, environment: d.environment,
     catalog_item: { id: d.item.id, slug: d.item.slug, name: d.item.name }, version: d.item.version, owner: d.owner,
     created_at: new Date().toISOString(),
