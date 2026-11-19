@@ -367,9 +367,11 @@ var errUnbound = errors.New("a required parameter has no value")
 
 // libraryBound gives the entry a form's reference names and the values
 // its bindings give the entry's parameters, CEL over vars. A binding that
-// fails, as one reading an input not given yet does, gives no value.
+// fails for want of an input not given yet gives no value; one that fails
+// otherwise (an input the form, of props, doesn't have, a type) is an
+// error.
 func (s *Service) libraryBound(ctx context.Context, key string, version int, use api.FormLibraryPurpose, bindings map[string]any,
-	vars policy.Vars) (store.LibraryEntry, map[string]any, error) {
+	vars policy.Vars, props map[string]any) (store.LibraryEntry, map[string]any, error) {
 	e, err := s.Store.GetLibraryEntry(ctx, key, version)
 	if errors.Is(err, store.ErrNotFound) || err == nil && e.Use != string(use) {
 		return e, nil, &BadRequestError{Msg: fmt.Sprintf("The form library has no %s %s version %d.", use, key, version)}
@@ -382,7 +384,10 @@ func (s *Service) libraryBound(ctx context.Context, key string, version int, use
 		expr, _ := bindings[prm.Name].(string)
 		var v any
 		if strings.TrimSpace(expr) != "" {
-			v, _ = policy.EvalSource(expr, vars)
+			var err error
+			if v, err = policy.EvalSource(expr, vars); err != nil && !awaited(expr, vars, props) {
+				return e, nil, &BadRequestError{Msg: fmt.Sprintf("The expression giving %s its parameter %s failed: %v.", key, prm.Name, err)}
+			}
 		}
 		if v == nil || v == "" {
 			if prm.Required != nil && *prm.Required {
@@ -393,6 +398,24 @@ func (s *Service) libraryBound(ctx context.Context, key string, version int, use
 		params[prm.Name] = v
 	}
 	return e, params, nil
+}
+
+// awaited says whether a binding that failed waits for an input: every
+// input it reads is the form's, of props, and one has no value yet.
+func awaited(expr string, vars policy.Vars, props map[string]any) bool {
+	rd, err := policy.ReadsOf(expr)
+	if err != nil || rd.AllInputs {
+		return false
+	}
+	inputs, _ := vars["inputs"].(map[string]any)
+	waits := false
+	for _, name := range rd.Inputs {
+		if _, ok := props[name]; !ok {
+			return false
+		}
+		waits = waits || inputs[name] == nil
+	}
+	return waits
 }
 
 // libraryVars are the CEL variables of a library entry's expressions.
@@ -466,8 +489,9 @@ func (s *Service) checkLibraryRefs(ctx context.Context, d api.CatalogVersionDefi
 }
 
 // checkLibraryBindings checks a reference to a library entry as written:
-// a key, a version, and a CEL expression per parameter.
-func checkLibraryBindings(name *string, version *int, params *map[string]any, ptr string) []api.FieldError {
+// a key, a version, and a CEL expression per parameter, which reads only
+// the form's inputs, those of props.
+func checkLibraryBindings(name *string, version *int, params *map[string]any, ptr string, props map[string]any) []api.FieldError {
 	var errs []api.FieldError
 	if deref(name) == "" {
 		errs = append(errs, fieldErr(ptr+"/name", "required", "Name the form library entry."))
@@ -486,6 +510,14 @@ func checkLibraryBindings(name *string, version *int, params *map[string]any, pt
 		}
 		if err := policy.CheckSource(expr); err != nil {
 			errs = append(errs, fieldErr(ptr+"/params/"+k, "invalid", "This expression is not valid CEL: "+err.Error()))
+			continue
+		}
+		rd, _ := policy.ReadsOf(expr)
+		for _, in := range rd.Inputs {
+			if _, ok := props[in]; !ok {
+				errs = append(errs, fieldErr(ptr+"/params/"+k, "unknown_input", fmt.Sprintf("%q is not an input of the form's schema.", in)))
+				break
+			}
 		}
 	}
 	return errs

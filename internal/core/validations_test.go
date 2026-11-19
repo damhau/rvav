@@ -27,7 +27,7 @@ func TestReadCheck(t *testing.T) {
 			[]checkMessage{{field: "owner", message: "Not you."}, {message: "Closed."}}, false},
 		{"valid that isn't a boolean", map[string]any{"valid": "yes"}, nil, true},
 	} {
-		got, err := readCheck(c.in, "$.valid", "$.message", "$.errors")
+		got, err := readCheck(c.in, "", "$.message", "$.errors")
 		if (err != nil) != c.err || !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: readCheck = %+v, %v; want %+v", c.name, got, err, c.want)
 		}
@@ -35,9 +35,47 @@ func TestReadCheck(t *testing.T) {
 	if _, err := readCheck(map[string]any{}, "$[", "$.message", "$.errors"); err == nil {
 		t.Error("a path that isn't JSONPath was read")
 	}
+	for _, answer := range []any{map[string]any{"status": "error", "detail": "database down"}, map[string]any{"result": map[string]any{}}, nil, []any{}} {
+		if msgs, err := readCheck(answer, "$.ok", "$.message", "$.errors"); err == nil {
+			t.Errorf("an answer without the valid path it names, %v, gave %v", answer, msgs)
+		}
+	}
+	if _, err := readCheck(nil, "", "$.message", "$.errors"); err == nil {
+		t.Error("an empty answer passed")
+	}
 	got, _ := readCheck(map[string]any{"result": map[string]any{"ok": false, "why": "Closed."}}, "$.result.ok", "$.result.why", "$.errors")
 	if !reflect.DeepEqual(got, []checkMessage{{message: "Closed."}}) {
 		t.Errorf("custom paths = %+v", got)
+	}
+}
+
+func TestAwaited(t *testing.T) {
+	props := map[string]any{"host": map[string]any{}, "cost-centre": map[string]any{}, "n": map[string]any{}}
+	vars := policy.Vars{"inputs": map[string]any{"n": 3.0, "cost-centre": nil}}
+	for expr, want := range map[string]bool{
+		`inputs.host + ".corp"`:        true,
+		`inputs["cost-centre"]`:        true,
+		`inputs.hostnme`:               false,
+		`inputs.n + "x"`:               false,
+		`inputs.host + inputs.typo`:    false,
+		`"host" in inputs ? 1 : 2`:     false,
+		`string(inputs.n) + "-" + "x"`: false,
+	} {
+		if got := awaited(expr, vars, props); got != want {
+			t.Errorf("awaited(%s) = %v, want %v", expr, got, want)
+		}
+	}
+}
+
+func TestCheckLibraryBindingsInputs(t *testing.T) {
+	props := map[string]any{"owner": map[string]any{}, "group-input": map[string]any{}}
+	params := map[string]any{"a": "inputs.owner", "b": `inputs["group-input"] + environment`, "c": "inputs.ownr", "d": `inputs["nope"]`}
+	var got []string
+	for _, e := range checkLibraryBindings(present.Ptr("x"), new(1), &params, "/v", props) {
+		got = append(got, e.Field+" "+deref(e.Code))
+	}
+	if want := []string{"/v/params/c unknown_input", "/v/params/d unknown_input"}; !slices.Equal(got, want) {
+		t.Errorf("errors %v, want %v", got, want)
 	}
 }
 

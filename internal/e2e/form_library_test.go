@@ -330,13 +330,37 @@ func TestFormValidations(t *testing.T) {
 			t.Errorf("cc's runs audited %v", got)
 		}
 
+		// A binding reads only the form's inputs. One that fails, other than
+		// for an input not given yet, refuses the request: the entry never
+		// passes unrun.
+		validations[2].Params = &map[string]any{"cc": "inputs.costCentr"}
+		def.UiSchema.Validations = &validations
+		h.json("POST", "/api/v1/admin/catalog/items/checked/versions", admin, api.CatalogItemVersionCreate{Definition: &def}, 422, &problem)
+		if len(problem.Errors) != 1 || !strings.HasSuffix(problem.Errors[0].Field, "/ui_schema/validations/2/params/cc") ||
+			deref(problem.Errors[0].Code) != "unknown_input" {
+			t.Fatalf("a binding reading an input the form doesn't have = %+v", problem.Errors)
+		}
+		validations[2].Params = &map[string]any{"cc": "inputs.costCentre + 1"}
+		var typed api.CatalogItemVersionDetail
+		h.json("POST", "/api/v1/admin/catalog/items/checked/versions", admin, api.CatalogItemVersionCreate{Definition: &def}, 201, &typed)
+		h.json("POST", "/api/v1/admin/catalog/items/checked/versions/"+typed.Id+"/publish", admin, nil, 200, nil)
+		d := draft(right)
+		d.VersionId = typed.Id
+		h.json("POST", "/api/v1/requests", requester, d, 422, &problem, "Idempotency-Key", uuid.NewString())
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/validations/cc" || deref(problem.Errors[0].Code) != "validation_failed" {
+			t.Fatalf("a binding that fails = %+v", problem.Errors)
+		}
+		delete(d.Inputs, "costCentre")
+		h.json("POST", "/api/v1/requests", requester, d, 202, &req, "Idempotency-Key", uuid.NewString())
+		validations[2].Params = &map[string]any{"cc": "inputs.costCentre"}
+
 		// A service that doesn't answer refuses the request: it never passes unchecked.
 		validations[0].Params = &map[string]any{"url": downURL + "/check", "method": "POST", "body": `{"budget": ${inputs.budget}}`}
 		def.UiSchema.Validations = &validations
 		var v2 api.CatalogItemVersionDetail
 		h.json("POST", "/api/v1/admin/catalog/items/checked/versions", admin, api.CatalogItemVersionCreate{Definition: &def}, 201, &v2)
 		h.json("POST", "/api/v1/admin/catalog/items/checked/versions/"+v2.Id+"/publish", admin, nil, 200, nil)
-		d := draft(right)
+		d = draft(right)
 		d.VersionId = v2.Id
 		h.json("POST", "/api/v1/requests", requester, d, 422, &problem, "Idempotency-Key", uuid.NewString())
 		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/validations/budget" || deref(problem.Errors[0].Code) != "validation_failed" ||

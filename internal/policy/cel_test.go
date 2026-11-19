@@ -101,6 +101,8 @@ func TestReadsOf(t *testing.T) {
 	for expr, want := range map[string]Reads{
 		`components.db.addresses[0] + inputs.x`:         {Idents: []string{"components", "inputs"}, Components: []string{"db"}, Inputs: []string{"x"}},
 		`inputs[inputs.which]`:                          {Idents: []string{"inputs"}, Inputs: []string{"which"}, AllInputs: true},
+		`inputs["cost-centre"] + inputs.x`:              {Idents: []string{"inputs"}, Inputs: []string{"cost-centre", "x"}},
+		`"x" in inputs`:                                 {Idents: []string{"inputs"}, AllInputs: true},
 		`'n' + string(self.index)`:                      {Idents: []string{"self"}},
 		`components.db.count + components.cache.count`:  {Idents: []string{"components"}, Components: []string{"db", "cache"}},
 		`components['db'].count`:                        {Idents: []string{"components"}, Loose: true},

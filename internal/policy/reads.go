@@ -6,17 +6,20 @@ import (
 	"strings"
 
 	"github.com/google/cel-go/common/ast"
+	"github.com/google/cel-go/common/operators"
 )
 
 // Reads is what a CEL expression reads: the identifiers it names, the
-// components it names as components.<key> and the inputs as inputs.<name>.
+// components it names as components.<key> and the inputs as inputs.<name>
+// or inputs["<name>"].
 type Reads struct {
 	Idents     []string
 	Components []string
 	Inputs     []string
 	// Loose is set when components is read other than as components.<key>
 	// (components['db'], or components alone): which ones it reads can't
-	// be told before it runs. AllInputs is the same of inputs.
+	// be told before it runs. AllInputs is the same of inputs, read other
+	// than by name.
 	Loose     bool
 	AllInputs bool
 }
@@ -40,6 +43,21 @@ func ReadsOf(expr string) (Reads, error) {
 	selected := map[int64]bool{}
 	ast.PreOrderVisit(parsed.NativeRep().Expr(), ast.NewExprVisitor(func(e ast.Expr) {
 		switch e.Kind() {
+		case ast.CallKind:
+			call := e.AsCall()
+			if call.FunctionName() != operators.Index || len(call.Args()) != 2 {
+				return
+			}
+			op, key := call.Args()[0], call.Args()[1]
+			if op.Kind() != ast.IdentKind || op.AsIdent() != "inputs" || key.Kind() != ast.LiteralKind {
+				return
+			}
+			if name, ok := key.AsLiteral().Value().(string); ok {
+				selected[op.ID()] = true
+				if !slices.Contains(r.Inputs, name) {
+					r.Inputs = append(r.Inputs, name)
+				}
+			}
 		case ast.SelectKind:
 			sel := e.AsSelect()
 			op := sel.Operand()

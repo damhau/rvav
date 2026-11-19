@@ -51,6 +51,9 @@ once it has been approved.
   for a source). A parameter is `required` or not; a required parameter
   whose expression gives nothing (an input not filled in yet) keeps the
   entry from running: a source gives no options, a validation isn't run.
+  An expression that fails for any other reason fails the source or the
+  validation, which refuses the request (F1.6). Saving an item refuses an
+  expression reading an input the form doesn't have.
 
 ### Naming an entry
 - A field: `value_source: {kind: library, name: <key>, version: <n>,

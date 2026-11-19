@@ -621,6 +621,15 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 		add("/form_schema", "invalid", "The JSON Schema doesn't compile: "+err.Error())
 	}
 	props, _ := d.FormSchema["properties"].(map[string]any)
+	declared := maps.Clone(props)
+	if declared == nil {
+		declared = map[string]any{}
+	}
+	for name := range groups {
+		if _, ok := declared[name]; !ok {
+			declared[name] = map[string]any{}
+		}
+	}
 	if d.FormSchema["type"] != "object" {
 		add("/form_schema/type", "invalid", `The form's schema must be of type "object".`)
 	}
@@ -677,7 +686,7 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 			}
 		}
 		if src := f.ValueSource; src != nil {
-			errs = append(errs, checkValueSource(*src, prefix+ptr+"/value_source")...)
+			errs = append(errs, checkValueSource(*src, prefix+ptr+"/value_source", declared)...)
 		}
 		prop, _ := props[name].(map[string]any)
 		errs = append(errs, checkFieldShape(name, f, prop, prefix)...)
@@ -691,7 +700,7 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 			add("/form_schema/properties/"+name, "no_ui_field", fmt.Sprintf("%q has no UI field, so nobody could fill it in.", name))
 		}
 	}
-	errs = append(errs, checkValidations(d.UiSchema, props, prefix)...)
+	errs = append(errs, checkValidations(d.UiSchema, declared, prefix)...)
 	for _, name := range sortedKeys(d.InitialValues) {
 		if _, ok := props[name]; !ok {
 			add("/initial_values/"+name, "unknown_input", fmt.Sprintf("%q is not an input of the form's schema.", name))
@@ -706,7 +715,9 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 	return errs
 }
 
-func checkValueSource(src api.ValueSource, ptr string) []api.FieldError {
+// checkValueSource checks a field's value source as written; props are the
+// form's inputs, its property groups' among them.
+func checkValueSource(src api.ValueSource, ptr string, props map[string]any) []api.FieldError {
 	switch src.Kind {
 	case api.Builtin:
 		if src.Name == nil || !slices.Contains(builtinSources, *src.Name) {
@@ -718,7 +729,7 @@ func checkValueSource(src api.ValueSource, ptr string) []api.FieldError {
 	case api.Rest, api.Cel:
 		return checkCustomSource(src, ptr)
 	case api.Library:
-		errs := checkLibraryBindings(src.Name, src.Version, src.Params, ptr)
+		errs := checkLibraryBindings(src.Name, src.Version, src.Params, ptr, props)
 		if src.Search != nil {
 			errs = append(errs, fieldErr(ptr+"/search", "invalid", "The library entry says whether it searches: leave search out."))
 		}

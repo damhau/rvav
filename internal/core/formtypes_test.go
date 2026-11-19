@@ -281,7 +281,7 @@ func TestSearchFields(t *testing.T) {
 		var got []string
 		errs := checkSearch("f", f, "", c.publish)
 		if c.src != nil {
-			errs = append(errs, checkValueSource(*c.src, "/ui_schema/fields/f/value_source")...)
+			errs = append(errs, checkValueSource(*c.src, "/ui_schema/fields/f/value_source", map[string]any{"f": map[string]any{}})...)
 		}
 		for _, e := range errs {
 			got = append(got, e.Field+" "+*e.Code)

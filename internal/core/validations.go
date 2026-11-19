@@ -36,7 +36,7 @@ func validationsOf(ui api.UiSchema) []api.FormValidation {
 }
 
 // checkValidations checks a form's validations as written; props are its
-// inputs.
+// inputs, its property groups' among them.
 func checkValidations(ui api.UiSchema, props map[string]any, prefix string) []api.FieldError {
 	var errs []api.FieldError
 	keys := map[string]bool{}
@@ -62,7 +62,7 @@ func checkValidations(ui api.UiSchema, props map[string]any, prefix string) []ap
 			}
 			errs = append(errs, checkCheckParams(v.Kind, derefMap(v.Params), at+"/params", "inputs")...)
 		case api.Library:
-			errs = append(errs, checkLibraryBindings(v.Name, v.Version, v.Params, at)...)
+			errs = append(errs, checkLibraryBindings(v.Name, v.Version, v.Params, at, props)...)
 		default:
 			add("/kind", "invalid", "A validation is rest, cel, or an entry of the form library (library).")
 		}
@@ -228,8 +228,15 @@ func messageText(v any) string {
 }
 
 // readCheck reads a REST validation's answer: it passes when valid is
-// true, or, without valid, when it has no message and no errors.
+// true, or, without valid, when it has no message and no errors. A valid
+// path the validation names must be in the answer; without one, it is
+// $.valid. An empty answer can't be read.
 func readCheck(data any, validPath, messagePath, errorsPath string) ([]checkMessage, error) {
+	if data == nil {
+		return nil, errors.New("the answer is empty")
+	}
+	named := validPath != ""
+	validPath = cmp.Or(validPath, "$.valid")
 	get := func(name, path string) (any, error) {
 		x, err := jp.ParseString(path)
 		if err != nil {
@@ -243,6 +250,9 @@ func readCheck(data any, validPath, messagePath, errorsPath string) ([]checkMess
 	valid, err := get("valid", validPath)
 	if err != nil {
 		return nil, err
+	}
+	if valid == nil && named {
+		return nil, fmt.Errorf("the answer has no %s", validPath)
 	}
 	if valid != nil {
 		ok, isBool := valid.(bool)
@@ -338,7 +348,7 @@ func (s *Service) runValidation(ctx context.Context, p *auth.Principal, ev *Eval
 	case api.Library:
 		detail["form_library"], detail["entry_version"] = deref(v.Name), derefInt(v.Version)
 		bindings := derefMap(v.Params)
-		e, params, err := s.libraryBound(ctx, deref(v.Name), derefInt(v.Version), api.Validation, bindings, vars)
+		e, params, err := s.libraryBound(ctx, deref(v.Name), derefInt(v.Version), api.Validation, bindings, vars, props)
 		switch {
 		case errors.Is(err, errUnbound):
 			detail["outcome"] = "not_run"

@@ -1209,12 +1209,15 @@ ui_schema:
     version. Until that draft is published, the item keeps the version it
     names.
   - Saving an item refuses an entry or version that doesn't exist, an
-    entry used for the wrong purpose, a parameter the entry doesn't have
-    and an expression that isn't valid CEL. Publishing also refuses a
-    required parameter the form doesn't give. While a required
-    parameter's expression gives nothing, such as an input not filled in
-    yet, the entry doesn't run: a source gives no options, and a
-    validation isn't run.
+    entry used for the wrong purpose, a parameter the entry doesn't have,
+    an expression that isn't valid CEL, and one that reads an input the
+    form (with its property groups) doesn't have. Publishing also refuses
+    a required parameter the form doesn't give. While a required
+    parameter's expression gives nothing, or fails because an input it
+    reads has no value yet, the entry doesn't run: a source gives no
+    options, and a validation isn't run. An expression that fails
+    otherwise, such as on a type, fails the source and refuses the
+    request.
   - An entry can't be deleted while a published, deprecated or retired
     version of an item names it. A draft that names a deleted entry is
     refused the next time it's saved.
@@ -1249,7 +1252,9 @@ ui_schema:
     (`$.valid` unless given), `message` (`$.message`) and `errors`
     (`$.errors`: a map of input to message, or a list of `{field,
     message}`). Without `valid`, an answer with no message and no errors
-    passes.
+    passes. A `valid` path the validation names must be in the answer,
+    and an empty answer (`null`) can't be read: either refuses the
+    request.
   - `library`: a validation entry of the form library, at `version`, its
     parameters in `params`. A message for a parameter shows on the input
     that the parameter's expression reads alone, such as `inputs.cc`.

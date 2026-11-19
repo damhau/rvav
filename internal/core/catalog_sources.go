@@ -300,7 +300,7 @@ func (r *RESTSources) Check(ctx context.Context, params map[string]any, refs Ref
 	}
 	p := func(k string) string { s, _ := params[k].(string); return s }
 	e, _, err := r.answer(ctx, params, refs, "", secret, "check", func(data any) (restEntry, error) {
-		msgs, err := readCheck(data, cmp.Or(p("valid"), "$.valid"), cmp.Or(p("message"), "$.message"), cmp.Or(p("errors"), "$.errors"))
+		msgs, err := readCheck(data, p("valid"), cmp.Or(p("message"), "$.message"), cmp.Or(p("errors"), "$.errors"))
 		return restEntry{check: msgs}, err
 	})
 	return e.check, err
