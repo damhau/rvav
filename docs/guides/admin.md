@@ -515,8 +515,15 @@ With an NSX Manager set in **Integrations**
   in use, select **Archived ones too**, then **Put back in use** in its
   menu.
 - **Environments:** where projects deploy, whether each is production,
-  and the snapshots kept per VM. You can't remove an environment that a
-  project deploys to or that has deployments in it.
+  the snapshots kept per VM, and **Tags users may change**: the vSphere
+  tag categories whose tags the users of the environment's VMs change
+  with **Edit tags**. The list offers vCenter's categories for VMs, with
+  their tags, as the last inventory sync read them. Edit tags never
+  touches the tags of other categories, so leave out those that rvav or
+  your tools rely on, such as the ones blueprints set. A new
+  environment allows none; the sample data allows `backup` in
+  Development, Test and Production. You can't remove an environment that
+  a project deploys to or that has deployments in it.
 - **Identity provider groups:** the roles that groups of the identity provider
   give ([Roles and permissions](#roles-and-permissions)).
 

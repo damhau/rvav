@@ -38,6 +38,7 @@ const vm = (over: Partial<VmResource["vm"]> = {}): VmResource => ({
     ],
     snapshots: [{ name: "Before patching", description: "July patches", created_at: "2026-11-17T08:00:00Z" }],
     iso: "[nfs-iso] rhel-9.4.iso",
+    tags: ["app/billing", "backup/daily"],
     cluster: "GVA-DEV-CL01",
     host: "esx-gva-dev-02.corp.example",
     resource_pool: "rvav/dev",
@@ -91,6 +92,12 @@ describe("a VM's properties sheet", () => {
     expect(value(placement, "Resource pool")).toHaveTextContent("rvav/dev");
     expect(value(placement, "Host")).toHaveTextContent("esx-gva-dev-02.corp.example");
     expect(value(placement, "Datastores")).toHaveTextContent("vsan-gva-dev-cl01, nfs-gva-dev-01");
+    const tags = within(dialog).getByRole("region", { name: "vSphere tags" });
+    expect(
+      within(tags)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["app/billing", "backup/daily"]);
 
     const props = within(dialog).getByRole("region", { name: "Custom properties" });
     expect(value(props, "costCenter")).toHaveTextContent("CC-1001");
@@ -113,8 +120,12 @@ describe("a VM's properties sheet", () => {
         resource_pool: undefined,
         snapshots: [],
         iso: undefined,
+        tags: undefined,
         disks: [{ label: "Hard disk 1", capacity_gb: 80, datastore: "vsan-gva-dev-cl01" }],
       }),
+    );
+    expect(within(dialog).getByRole("region", { name: "vSphere tags" })).toHaveTextContent(
+      "Not read yet: rvav reads them at its next inventory sync.",
     );
     expect(within(dialog).queryByRole("link")).not.toBeInTheDocument();
     expect(dialog).toHaveTextContent("No vSphere Client link yet: it needs the instance UUID of vc01.corp.example");

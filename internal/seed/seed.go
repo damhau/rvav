@@ -169,10 +169,13 @@ func Run(ctx context.Context, s *store.Store) error {
 			prod               bool
 			snapshots, maxDays int
 		}{{"dev", "Development", false, 3, 7}, {"tst", "Test", false, 3, 7}, {"prd", "Production", true, 2, 3}} {
-			if err := exec(`insert into environments (key, name, production, sort_order, snapshot_max_count, snapshot_max_age_days)
-				values ($1,$2,$3,$4,$5,$6)
+			// Their VMs' backup tags may be changed (X1.3), unless an
+			// administrator chose other categories.
+			if err := exec(`insert into environments (key, name, production, sort_order, snapshot_max_count, snapshot_max_age_days,
+				tag_categories) values ($1,$2,$3,$4,$5,$6,'{backup}')
 				on conflict (key) do update set name = excluded.name, production = excluded.production, sort_order = excluded.sort_order,
-				snapshot_max_count = excluded.snapshot_max_count, snapshot_max_age_days = excluded.snapshot_max_age_days`,
+				snapshot_max_count = excluded.snapshot_max_count, snapshot_max_age_days = excluded.snapshot_max_age_days,
+				tag_categories = case when environments.tag_categories = '{}' then excluded.tag_categories else environments.tag_categories end`,
 				e.key, e.name, e.prod, i, e.snapshots, e.maxDays); err != nil {
 				return err
 			}

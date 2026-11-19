@@ -5,6 +5,7 @@ package vmprops
 import (
 	"encoding/json"
 	"maps"
+	"slices"
 	"strconv"
 	"time"
 
@@ -144,6 +145,9 @@ func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int
 	}
 	p.SnapshotCount = present.Ptr(snapshots)
 	p.CpuHotAdd, p.MemoryHotAdd, p.Iso = present.Ptr(vm.CPUHotAdd), present.Ptr(vm.MemoryHotAdd), set(vm.ISO)
+	if vm.Tags != nil {
+		p.Tags = present.Ptr(slices.Clone(vm.Tags))
+	}
 	if len(vm.Snapshots) > 0 {
 		list := make([]struct {
 			CreatedAt   time.Time `json:"created_at"`

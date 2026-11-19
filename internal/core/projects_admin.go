@@ -567,7 +567,24 @@ func (s *Service) DeleteGroupMapping(ctx context.Context, p *auth.Principal, id 
 
 func presentAdminEnvironment(e store.AdminEnvironment) api.AdminEnvironment {
 	return api.AdminEnvironment{Key: e.Key, Name: e.Name, Production: e.Production, Order: e.SortOrder,
-		SnapshotMaxCount: e.SnapshotMaxCount, SnapshotMaxAgeDays: e.SnapshotMaxAgeDays, Projects: &e.Projects, Deployments: &e.Deployments}
+		SnapshotMaxCount: e.SnapshotMaxCount, SnapshotMaxAgeDays: e.SnapshotMaxAgeDays, Projects: &e.Projects, Deployments: &e.Deployments,
+		TagCategories: present.Ptr(nonNilStrings(e.TagCategories))}
+}
+
+// tagCategoryList is an environment's tag categories as sent: trimmed,
+// each once, sorted.
+func tagCategoryList(in *[]string) []string {
+	if in == nil {
+		return nil
+	}
+	out := []string{}
+	for _, c := range *in {
+		if c = strings.TrimSpace(c); c != "" && !slices.Contains(out, c) {
+			out = append(out, c)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 func (s *Service) AdminEnvironments(ctx context.Context, p *auth.Principal) ([]api.AdminEnvironment, error) {
@@ -619,7 +636,8 @@ func (s *Service) CreateEnvironment(ctx context.Context, p *auth.Principal, e ap
 		return api.AdminEnvironment{}, &ValidationError{Errors: errs}
 	}
 	if err := s.Store.CreateEnvironment(ctx, store.Environment{Key: e.Key, Name: strings.TrimSpace(e.Name), Production: e.Production,
-		SortOrder: e.Order, SnapshotMaxCount: e.SnapshotMaxCount, SnapshotMaxAgeDays: e.SnapshotMaxAgeDays}); errors.Is(err, store.ErrInUse) {
+		SortOrder: e.Order, SnapshotMaxCount: e.SnapshotMaxCount, SnapshotMaxAgeDays: e.SnapshotMaxAgeDays,
+		TagCategories: tagCategoryList(e.TagCategories)}); errors.Is(err, store.ErrInUse) {
 		return api.AdminEnvironment{}, &ConflictError{Msg: "An environment has the key " + e.Key + "."}
 	} else if err != nil {
 		return api.AdminEnvironment{}, err
@@ -635,7 +653,8 @@ func (s *Service) UpdateEnvironment(ctx context.Context, p *auth.Principal, key 
 	if u.Name != nil && strings.TrimSpace(*u.Name) == "" {
 		return api.AdminEnvironment{}, &ValidationError{Errors: []api.FieldError{fieldErr("/name", "required", "Give the environment a name.")}}
 	}
-	upd := store.EnvironmentUpdate{Name: u.Name, Production: u.Production, SortOrder: u.Order, SnapshotMaxCount: u.SnapshotMaxCount}
+	upd := store.EnvironmentUpdate{Name: u.Name, Production: u.Production, SortOrder: u.Order, SnapshotMaxCount: u.SnapshotMaxCount,
+		TagCategories: tagCategoryList(u.TagCategories)}
 	if u.SnapshotMaxAgeDays != nil {
 		if *u.SnapshotMaxAgeDays == 0 {
 			upd.ClearSnapshotMaxAge = true

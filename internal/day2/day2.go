@@ -36,6 +36,8 @@ type Target struct {
 	Resources []Resource
 	OwnerID   string
 	Lease     Lease
+	// TagCategories are those whose tags the VM's users may change.
+	TagCategories []TagCategory
 }
 
 // Lease is the deployment's lease now.

@@ -40,7 +40,7 @@ interface AdminState {
   groups: S["GroupMapping"][];
   /** Roles given for all of rvav: those with no id rvav set itself. */
   roleAssignments: S["RoleAssignment"][];
-  envs: Record<string, { snapshot_max_count: number; snapshot_max_age_days: number | null }>;
+  envs: Record<string, { snapshot_max_count: number; snapshot_max_age_days: number | null; tag_categories: string[] }>;
   rules: S["PlacementRule"][];
   mappings: S["NetworkMapping"][];
   templates: S["VmTemplate"][];
@@ -280,7 +280,12 @@ export function adminState(db: Db): AdminState {
               created_at: ago(30),
             },
       ),
-    envs: Object.fromEntries(db.environments.map((e) => [e.key, { snapshot_max_count: 3, snapshot_max_age_days: 7 }])),
+    envs: Object.fromEntries(
+      db.environments.map((e) => [
+        e.key,
+        { snapshot_max_count: 3, snapshot_max_age_days: 7, tag_categories: ["backup"] },
+      ]),
+    ),
     rules,
     mappings: networks.map((n) => ({
       network: n.name,
@@ -1272,7 +1277,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       return HttpResponse.json({
         items: db.environments.map((e) => ({
           ...e,
-          ...(st().envs[e.key] ?? { snapshot_max_count: 3, snapshot_max_age_days: 7 }),
+          ...(st().envs[e.key] ?? { snapshot_max_count: 3, snapshot_max_age_days: 7, tag_categories: [] }),
           projects: db.projects.filter((p) => p.environments.includes(e.key)).length,
           deployments: db.deployments.filter((d) => d.environment === e.key && d.status !== "deleted").length,
         })),
@@ -1289,9 +1294,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       st().envs[e.key] = {
         snapshot_max_count: e.snapshot_max_count,
         snapshot_max_age_days: e.snapshot_max_age_days ?? null,
+        tag_categories: e.tag_categories ?? [],
       };
       audited(db, "environment.create", "environment", e.key);
-      return HttpResponse.json({ ...e, projects: 0, deployments: 0 }, { status: 201 });
+      return HttpResponse.json({ ...e, ...st().envs[e.key], projects: 0, deployments: 0 }, { status: 201 });
     }),
     http.patch(`${base}/admin/environments/:key`, async ({ params, request }) => {
       await wait();
@@ -1301,9 +1307,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (u.name !== undefined) e.name = u.name;
       if (u.production !== undefined) e.production = u.production;
       if (u.order !== undefined) e.order = u.order;
-      const x = (st().envs[e.key] ??= { snapshot_max_count: 3, snapshot_max_age_days: 7 });
+      const x = (st().envs[e.key] ??= { snapshot_max_count: 3, snapshot_max_age_days: 7, tag_categories: [] });
       if (u.snapshot_max_count !== undefined) x.snapshot_max_count = u.snapshot_max_count;
       if (u.snapshot_max_age_days !== undefined) x.snapshot_max_age_days = u.snapshot_max_age_days || null;
+      if (u.tag_categories !== undefined) x.tag_categories = [...new Set(u.tag_categories)].sort();
       audited(db, "environment.update", "environment", e.key);
       return HttpResponse.json({ ...e, ...x });
     }),
@@ -1491,6 +1498,11 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           memory_limit_gb: p.memoryLimitGb ?? null,
           tags: tags[`${p.cluster}/${p.path}`] ?? [],
         })),
+        tag_categories: [
+          { vcenter: VCENTER, name: "app", single: false, tags: ["billing", "shop"] },
+          { vcenter: VCENTER, name: "backup", single: false, tags: ["daily", "weekly"] },
+          { vcenter: VCENTER, name: "tier", single: true, tags: ["gold", "silver"] },
+        ],
         datastore_clusters: datastoreClusters.map((p) => ({
           vcenter: VCENTER,
           name: p.name,

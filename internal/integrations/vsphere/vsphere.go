@@ -174,6 +174,9 @@ type VM struct {
 	Snapshots    []Snapshot
 	// ISO is the image mounted in the first CD-ROM drive, if any.
 	ISO string
+	// Tags are its vSphere tags, as category/tag; nil when they weren't
+	// read.
+	Tags []string
 }
 
 type Snapshot struct {
@@ -222,6 +225,10 @@ type Driver interface {
 	InventoryVM(ctx context.Context, moref string) (*InventoryVM, error)
 	// AttachTags attaches vSphere tags, category/tag (tags.go).
 	AttachTags(ctx context.Context, moref string, tags []string) error
+	// VMTags are a VM's tags (category/tag); SetTags gives it exactly the
+	// tags wanted within some categories (tags.go).
+	VMTags(ctx context.Context, moref string) ([]string, error)
+	SetTags(ctx context.Context, moref string, categories, want []string) error
 	// DRS rules keeping VMs apart (rules.go).
 	SetAntiAffinityRule(ctx context.Context, cluster, name string, morefs []string) error
 	DeleteRule(ctx context.Context, cluster, name string) error

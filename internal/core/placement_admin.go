@@ -407,8 +407,17 @@ func (s *Service) VsphereInventory(ctx context.Context, p *auth.Principal) (api.
 	if err != nil {
 		return api.VsphereInventory{}, err
 	}
+	tagCats, err := s.Store.InventoryTagCategories(ctx)
+	if err != nil {
+		return api.VsphereInventory{}, err
+	}
 	out := api.VsphereInventory{Clusters: []api.InventoryCluster{}, Datastores: []api.InventoryDatastore{}, Networks: []api.InventoryNetwork{},
-		Hosts: []api.InventoryHost{}, ResourcePools: []api.InventoryResourcePool{}, DatastoreClusters: []api.InventoryDatastoreCluster{}}
+		Hosts: []api.InventoryHost{}, ResourcePools: []api.InventoryResourcePool{}, DatastoreClusters: []api.InventoryDatastoreCluster{},
+		TagCategories: []api.InventoryTagCategory{}}
+	for _, c := range tagCats {
+		out.TagCategories = append(out.TagCategories, api.InventoryTagCategory{Vcenter: c.VCenter, Name: c.Name, Single: c.Single,
+			Tags: nonNilStrings(c.Tags)})
+	}
 	for _, h := range hosts {
 		out.Hosts = append(out.Hosts, api.InventoryHost{Vcenter: h.VCenter, Name: h.Name, Cluster: h.Cluster,
 			State: api.InventoryHostState(h.State), MemoryFreeGb: int((h.MemoryTotalMB - h.MemoryUsedMB) / 1024),

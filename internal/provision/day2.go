@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/damhau/rvav/internal/day2"
@@ -78,6 +79,8 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return "Grow the file system in the guest to use the space", v.ExtendDisk(ctx, in.Moref, argStr(args, "disk"), argInt(args, "size_gb"))
 	case "remove_disk":
 		return "", v.RemoveDisk(ctx, in.Moref, argStr(args, "disk"), argStr(args, "file"))
+	case "set_tags":
+		return "", v.SetTags(ctx, in.Moref, argStrs(args, "categories"), argStrs(args, "tags"))
 	case "add_nic":
 		return "", v.AddNIC(ctx, in.Moref, argStr(args, "network"))
 	case "set_nic_network":
@@ -174,7 +177,7 @@ var settles = map[string][]string{
 	"restart_guest": {vmprops.Power}, "shutdown_guest": {vmprops.Power},
 	"reconfigure": {vmprops.Size}, "add_disk": {vmprops.Disks}, "extend_disk": {vmprops.Disks}, "remove_disk": {vmprops.Disks},
 	"add_nic": {vmprops.Networks}, "set_nic_network": {vmprops.Networks}, "remove_nic": {vmprops.Networks},
-	"revert_snapshot": vmprops.All, "accept_changes": vmprops.All,
+	"set_tags": {vmprops.Tags}, "revert_snapshot": vmprops.Hardware, "accept_changes": vmprops.All,
 }
 
 // refreshVM stores what vCenter reports about the VM now, the aspects the
@@ -208,6 +211,16 @@ func (a *Activities) refreshVMOnce(ctx context.Context, in OpInput) error {
 	vm, err := vc.GetVM(ctx, in.Moref)
 	if err != nil {
 		return err
+	}
+	// GetVM doesn't read tags (the sync does): read them when the
+	// operation takes them as they are.
+	if slices.Contains(settles[in.Op.Op], vmprops.Tags) {
+		if vm.Tags, err = vc.VMTags(ctx, in.Moref); err != nil {
+			return err
+		}
+		if vm.Tags == nil {
+			vm.Tags = []string{}
+		}
 	}
 	// The sync writes the row too: replace it only if it is still what was
 	// read, else read it again.
@@ -249,6 +262,24 @@ func argInt(args map[string]any, key string) int {
 func argStr(args map[string]any, key string) string {
 	s, _ := args[key].(string)
 	return s
+}
+
+// argStrs reads a list of strings, as planned ([]string) or as the
+// workflow's history decodes it ([]any).
+func argStrs(args map[string]any, key string) []string {
+	switch v := args[key].(type) {
+	case []string:
+		return v
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, x := range v {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return []string{}
 }
 
 func isPermanent(err error) bool {

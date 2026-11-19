@@ -31,12 +31,21 @@ type Inventory struct {
 	TagsError error
 	// StoragePolicies are the vCenter's storage policies (ADR-0024).
 	StoragePolicies []StoragePolicy
+	// TagCategories are the tag categories for VMs, with their tags (X1.3).
+	TagCategories []TagCategory
 	// LibrariesError and PoliciesError say why content library items or
 	// storage policies are missing: they couldn't be read.
 	LibrariesError, PoliciesError error
 	// InstanceUUID is the vCenter's own (ServiceContent.About): with its
 	// host, it names a VM in the vSphere Client's links.
 	InstanceUUID string
+}
+
+type TagCategory struct {
+	Name string
+	// Single takes one tag per object.
+	Single bool
+	Tags   []string
 }
 
 type Cluster struct {

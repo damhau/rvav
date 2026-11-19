@@ -342,6 +342,42 @@ export const catalogue: MockAction[] = [
     ],
   },
   {
+    key: "tags_edit",
+    name: "Edit tags",
+    group: "configuration",
+    unavailable: (vm) =>
+      vm?.vm.tags ? null : "rvav hasn't read the VM's tags yet. Try again after the next inventory sync.",
+    form: (vm) => {
+      const offered = ["backup/daily", "backup/weekly"];
+      return form("Tags", [
+        [
+          "tags",
+          { type: "array", uniqueItems: true, items: { type: "string", enum: offered } },
+          {
+            label: "Tags",
+            widget: "checklist",
+            help: "Tags of other categories stay as they are.",
+            options: offered.map((t) => ({ value: t, label: t })),
+          },
+          (vm?.vm.tags ?? []).filter((t) => t.startsWith("backup/")),
+        ],
+      ]);
+    },
+    validate: (vm, i) => {
+      const now = (vm?.vm.tags ?? []).filter((t) => t.startsWith("backup/")).sort();
+      const picked = (Array.isArray(i.tags) ? i.tags.map(String) : []).sort();
+      return now.join() === picked.join() ? "The VM already has these tags." : null;
+    },
+    ops: (vm, i) => {
+      const picked = Array.isArray(i.tags) ? i.tags.map(String) : [];
+      return [
+        vcenter("vsphere.tags", `Change the tags of ${vm?.name}`, (_d, v) => {
+          if (v) v.vm.tags = [...(v.vm.tags ?? []).filter((t) => !t.startsWith("backup/")), ...picked].sort();
+        }),
+      ];
+    },
+  },
+  {
     key: "accept_changes",
     name: "Accept the changes made in vCenter",
     group: "configuration",

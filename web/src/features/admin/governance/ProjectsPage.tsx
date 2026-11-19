@@ -13,7 +13,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Field, Input } from "@/components/ui/input";
+import { Field, FieldNote, Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -421,16 +421,18 @@ function EnvironmentSheet({
     name: existing?.name ?? "",
     production: existing?.production ?? false,
     snapshots: String(existing?.snapshot_max_count ?? 3),
+    tagCategories: existing?.tag_categories ?? [],
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const snapshots = Number(f.snapshots);
+  const tag_categories = f.tagCategories;
   const save = useMutation({
     mutationFn: () =>
       existing
         ? call(
             api.PATCH("/admin/environments/{key}", {
               params: { path: { key: existing.key } },
-              body: { name: f.name, production: f.production, snapshot_max_count: snapshots },
+              body: { name: f.name, production: f.production, snapshot_max_count: snapshots, tag_categories },
             }),
           )
         : call(
@@ -441,6 +443,7 @@ function EnvironmentSheet({
                 production: f.production,
                 order: next,
                 snapshot_max_count: snapshots,
+                tag_categories,
               },
             }),
           ),
@@ -516,7 +519,70 @@ function EnvironmentSheet({
           onChange={(e) => setF({ ...f, snapshots: e.target.value })}
         />
       </Field>
+      <TagCategoriesField
+        value={f.tagCategories}
+        onChange={(tagCategories) => setF({ ...f, tagCategories })}
+        error={errors["/tag_categories"]}
+      />
     </Sheet>
+  );
+}
+
+/**
+ * The vSphere tag categories an environment's VMs' users may change with
+ * Edit tags (X1.3): those vCenter has for VMs, and any already chosen.
+ */
+function TagCategoriesField({
+  value,
+  onChange,
+  error,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  error?: string;
+}) {
+  const inventory = useQuery(adm.inventory());
+  const known = new Map<string, S["InventoryTagCategory"]>();
+  for (const c of inventory.data?.tag_categories ?? []) if (!known.has(c.name)) known.set(c.name, c);
+  const names = [...new Set([...known.keys(), ...value])].sort((a, b) => a.localeCompare(b));
+  const toggle = (name: string, on: boolean) =>
+    onChange(on ? [...value, name].sort((a, b) => a.localeCompare(b)) : value.filter((v) => v !== name));
+  return (
+    <fieldset className="flex flex-col gap-1.5" aria-describedby="env-tag-categories-note">
+      <legend className="mb-1 text-secondary font-medium">Tags users may change</legend>
+      {inventory.isPending ? (
+        <Skeleton className="h-5 w-40" />
+      ) : names.length === 0 ? (
+        <p className="text-secondary text-muted">
+          {inventory.isError
+            ? "Couldn't read vCenter's tag categories."
+            : "vCenter has no tag category for VMs yet: rvav reads them at its inventory sync."}
+        </p>
+      ) : (
+        names.map((name) => {
+          const c = known.get(name);
+          const id = `env-tag-category-${name.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+          return (
+            <div key={name} className="flex items-baseline gap-2 text-body">
+              <Checkbox id={id} checked={value.includes(name)} onChange={(on) => toggle(name, on)} />
+              <label htmlFor={id} className="font-mono text-secondary">
+                {name}
+              </label>
+              <span className="min-w-0 truncate text-caption text-faint">
+                {c
+                  ? [c.single && "one per VM", c.tags.join(", ") || "no tags yet"].filter(Boolean).join(" · ")
+                  : "not in vCenter"}
+              </span>
+            </div>
+          );
+        })
+      )}
+      <FieldNote
+        id="env-tag-categories-note"
+        error={error}
+        hint="Their tags are what Edit tags offers on this environment's VMs. Tags of other categories stay as they are."
+      />
+    </fieldset>
   );
 }
 
@@ -560,6 +626,16 @@ function EnvironmentsPanel({ canEdit }: { canEdit: boolean }) {
       cell: (e) => <span className="tabular-nums">{e.snapshot_max_count}</span>,
     },
     {
+      id: "tags",
+      header: "Tags users change",
+      cell: (e) =>
+        e.tag_categories?.length ? (
+          <span className="font-mono text-secondary">{e.tag_categories.join(", ")}</span>
+        ) : (
+          <span className="text-muted">None</span>
+        ),
+    },
+    {
       id: "used",
       header: "Used by",
       cell: (e) => (
@@ -592,7 +668,7 @@ function EnvironmentsPanel({ canEdit }: { canEdit: boolean }) {
         columns={columns}
         rows={list}
         rowKey={(e) => e.key}
-        minWidth={560}
+        minWidth={680}
         loading={envs.isPending}
         error={envs.isError && <ErrorState error={envs.error} onRetry={() => void envs.refetch()} />}
         empty={

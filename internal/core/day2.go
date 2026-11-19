@@ -132,6 +132,9 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 		if active[t.ResourceID], err = s.Store.ActiveDeploymentRequest(ctx, s.Store.Pool, d.ID, t.ResourceID, "", true); err != nil {
 			return nil, err
 		}
+		if err := s.tagCategories(ctx, d, &t); err != nil {
+			return nil, err
+		}
 		c, err := s.choices(ctx, p, d, t)
 		if err != nil {
 			return nil, err
@@ -222,6 +225,11 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		if t.ResourceID == deref(draft.ResourceId) && a.AppliesTo(t.Type) {
 			target = &t
 			break
+		}
+	}
+	if target != nil {
+		if err := s.tagCategories(ctx, d, target); err != nil {
+			return store.RequestRow{}, err
 		}
 	}
 	if target == nil {

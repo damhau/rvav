@@ -203,6 +203,7 @@ type AdminEnvironment struct {
 
 func (s *Store) AdminEnvironments(ctx context.Context) ([]AdminEnvironment, error) {
 	rows, _ := s.Pool.Query(ctx, `select e.key, e.name, e.production, e.sort_order, e.snapshot_max_count, e.snapshot_max_age_days,
+		e.tag_categories,
 		(select count(*) from projects p where e.key = any(p.environments) and p.archived_at is null)::int as projects,
 		(select count(*) from deployments d where d.environment = e.key and d.status <> 'deleted')::int as deployments
 		from environments e order by e.sort_order, e.key`)
@@ -211,8 +212,9 @@ func (s *Store) AdminEnvironments(ctx context.Context) ([]AdminEnvironment, erro
 
 // CreateEnvironment adds an environment (ErrInUse when the key exists).
 func (s *Store) CreateEnvironment(ctx context.Context, e Environment) error {
-	_, err := s.Pool.Exec(ctx, `insert into environments (key, name, production, sort_order, snapshot_max_count, snapshot_max_age_days)
-		values ($1, $2, $3, $4, $5, $6)`, e.Key, e.Name, e.Production, e.SortOrder, e.SnapshotMaxCount, e.SnapshotMaxAgeDays)
+	_, err := s.Pool.Exec(ctx, `insert into environments (key, name, production, sort_order, snapshot_max_count, snapshot_max_age_days,
+		tag_categories) values ($1, $2, $3, $4, $5, $6, $7)`, e.Key, e.Name, e.Production, e.SortOrder, e.SnapshotMaxCount,
+		e.SnapshotMaxAgeDays, nonNil(e.TagCategories))
 	if IsUniqueViolation(err) {
 		return ErrInUse
 	}
@@ -228,13 +230,16 @@ type EnvironmentUpdate struct {
 	SnapshotMaxCount    *int
 	SnapshotMaxAgeDays  *int
 	ClearSnapshotMaxAge bool
+	TagCategories       []string // nil: as they are
 }
 
 func (s *Store) UpdateEnvironment(ctx context.Context, key string, u EnvironmentUpdate) error {
 	tag, err := s.Pool.Exec(ctx, `update environments set name = coalesce($2, name), production = coalesce($3, production),
 		sort_order = coalesce($4, sort_order), snapshot_max_count = coalesce($5, snapshot_max_count),
-		snapshot_max_age_days = case when $7 then null else coalesce($6, snapshot_max_age_days) end
-		where key = $1`, key, u.Name, u.Production, u.SortOrder, u.SnapshotMaxCount, u.SnapshotMaxAgeDays, u.ClearSnapshotMaxAge)
+		snapshot_max_age_days = case when $7 then null else coalesce($6, snapshot_max_age_days) end,
+		tag_categories = coalesce($8, tag_categories)
+		where key = $1`, key, u.Name, u.Production, u.SortOrder, u.SnapshotMaxCount, u.SnapshotMaxAgeDays, u.ClearSnapshotMaxAge,
+		u.TagCategories)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}

@@ -23,6 +23,9 @@ type Environment struct {
 	// SnapshotMaxAgeDays (nil: kept).
 	SnapshotMaxCount   int  `db:"snapshot_max_count"`
 	SnapshotMaxAgeDays *int `db:"snapshot_max_age_days"`
+	// TagCategories are the vSphere tag categories whose tags the users of
+	// its VMs may change (X1.3).
+	TagCategories []string `db:"tag_categories"`
 }
 
 type Project struct {
@@ -425,6 +428,15 @@ type InvStoragePolicy struct {
 	Name    string `db:"name"`
 }
 
+// InvTagCategory is a vCenter's tag category for VMs, with its tags; a
+// single one takes one tag per VM.
+type InvTagCategory struct {
+	VCenter string   `db:"vcenter"`
+	Name    string   `db:"name"`
+	Single  bool     `db:"single"`
+	Tags    []string `db:"tags"`
+}
+
 type InvVM struct {
 	Moref         string   `db:"moref"`
 	InstanceUUID  string   `db:"instance_uuid"`
@@ -460,6 +472,7 @@ type Inventory struct {
 	ResourcePools     []InvResourcePool
 	DatastoreClusters []InvDatastoreCluster
 	Folders           []InvFolder
+	TagCategories     []InvTagCategory
 }
 
 type Event struct {

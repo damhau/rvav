@@ -155,6 +155,19 @@ export function VmPropertiesSheet({ resource, onClose }: { resource: VmResource;
       <Section id={id("placement")} title="Placement">
         <KeyValues items={placement} />
       </Section>
+      <Section id={id("tags")} title="vSphere tags">
+        {vm.tags === undefined ? (
+          <p className="text-secondary text-muted">Not read yet: rvav reads them at its next inventory sync.</p>
+        ) : vm.tags.length === 0 ? (
+          <p className="text-secondary text-muted">No tags.</p>
+        ) : (
+          <ul className="flex flex-wrap gap-x-3 gap-y-1">
+            {vm.tags.map((t) => (
+              <li key={t}>{mono(t)}</li>
+            ))}
+          </ul>
+        )}
+      </Section>
       <Section id={id("props")} title="Custom properties">
         {props.length === 0 ? (
           <p className="text-secondary text-muted">

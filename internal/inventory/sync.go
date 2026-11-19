@@ -546,6 +546,12 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(v
 		s.Log.Warn("inventory: storage policies not read; keeping the last ones", "err", inv.PoliciesError)
 		snap.StoragePolicies, _ = s.Store.InventoryStoragePoliciesOf(ctx, snap.VCenter)
 	}
+	for _, c := range inv.TagCategories {
+		snap.TagCategories = append(snap.TagCategories, store.InvTagCategory{Name: c.Name, Single: c.Single, Tags: c.Tags})
+	}
+	if inv.TagsError != nil {
+		snap.TagCategories, _ = s.Store.InventoryTagCategoriesOf(ctx, snap.VCenter)
+	}
 	byUUID := map[string]vsphere.InventoryVM{}
 	for _, v := range inv.VMs {
 		snap.VMs = append(snap.VMs, store.InvVM{Moref: v.Moref, InstanceUUID: v.InstanceUUID, Name: v.Name,

@@ -442,6 +442,7 @@ export function createDb(now = Date.now()): Db {
             app: s.name.split("-")[2]!,
           },
           vsphere_url: vsphereUrl(`vm-${moref}`),
+          tags: s.env === "prd" ? ["backup/daily"] : [],
           snapshot_count: s.snapshots ?? 0,
           snapshots: Array.from({ length: s.snapshots ?? 0 }, (_, i) => ({
             name: `Before change ${i + 1}`,

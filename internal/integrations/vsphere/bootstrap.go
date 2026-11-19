@@ -131,6 +131,9 @@ func DefaultLayout() Layout {
 			{Category: "env", Name: "tst", Objects: []string{"GVA-TST-CL01"}},
 			{Category: "env", Name: "prd", Objects: []string{"GVA-PRD-CL01", "GVA-PRD-CL02"}},
 			{Category: "net", Name: "app", Objects: []string{"dvpg-app-dev-vl310", "dvpg-app-tst-vl410", "dvpg-app-prd-vl220"}},
+			// Backup schedules VMs' users choose with Edit tags (X1.3).
+			{Category: "backup", Name: "daily"},
+			{Category: "backup", Name: "weekly"},
 		},
 	}
 }

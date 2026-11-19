@@ -271,7 +271,11 @@ requests, with their own steps:
     or a disk of a VM with snapshots. Unmount the disk's file systems in
     the guest first;
   - add, move or remove a network adapter;
-  - mount or unmount an ISO.
+  - mount or unmount an ISO;
+  - edit the VM's vSphere tags, among those of the categories its
+    environment lets you change. Its other tags stay as they are. A
+    category that takes one tag per VM takes one here too. The VM's
+    properties list its tags, as the last inventory sync read them.
 - **NSX security groups:** add the VM to a group its item offers, or
   remove it from one. A deployment's page shows its groups, the firewall
   rules into them, and a VM taken out of a group in NSX; adding it again
@@ -290,7 +294,8 @@ over a soft quota.
 - **Console:** opens the VM's screen in the browser, or in VMware Remote
   Console.
 - **Changed outside rvav:** a VM changed in vCenter (CPU, memory, disks,
-  networks) shows **drift**: what rvav made beside what vCenter has.
+  networks, tags) shows **drift**: what rvav made beside what vCenter has.
+  Tags you change with Edit tags are rvav's, not drift.
   Accept the changes to make them rvav's. Otherwise, change the VM back in
   vCenter.
 - **Leases:** you are told before a lease ends. Extend it, or let it end.

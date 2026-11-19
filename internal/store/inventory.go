@@ -9,7 +9,7 @@ import (
 
 // inventoryTables hold what the inventory sync reads of each vCenter.
 var inventoryTables = []string{"inv_clusters", "inv_datastores", "inv_networks", "inv_templates", "inv_vms", "inv_storage_policies",
-	"inv_hosts", "inv_resource_pools", "inv_datastore_clusters", "inv_folders", "inv_vcenters"}
+	"inv_hosts", "inv_resource_pools", "inv_datastore_clusters", "inv_folders", "inv_vcenters", "inv_tag_categories"}
 
 // ReplaceInventory swaps the cached inventory of one vCenter for a new snapshot.
 func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
@@ -62,6 +62,10 @@ func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 		}
 		for _, p := range inv.StoragePolicies {
 			b.Queue(`insert into inv_storage_policies (vcenter, id, name) values ($1,$2,$3)`, inv.VCenter, p.ID, p.Name)
+		}
+		for _, c := range inv.TagCategories {
+			b.Queue(`insert into inv_tag_categories (vcenter, name, single, tags) values ($1,$2,$3,$4)`,
+				inv.VCenter, c.Name, c.Single, nonNil(c.Tags))
 		}
 		for _, v := range inv.VMs {
 			b.Queue(`insert into inv_vms (vcenter, moref, instance_uuid, name, power_state, guest_state, ip_address, hostname,
@@ -150,6 +154,18 @@ func (s *Store) InventoryTemplatesOf(ctx context.Context, vcenter string) ([]Inv
 func (s *Store) InventoryStoragePoliciesOf(ctx context.Context, vcenter string) ([]InvStoragePolicy, error) {
 	rows, _ := s.Pool.Query(ctx, `select vcenter, id, name from inv_storage_policies where vcenter = $1`, vcenter)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InvStoragePolicy])
+}
+
+// InventoryTagCategories are every vCenter's tag categories for VMs, and
+// InventoryTagCategoriesOf one vCenter's.
+func (s *Store) InventoryTagCategories(ctx context.Context) ([]InvTagCategory, error) {
+	rows, _ := s.Pool.Query(ctx, `select vcenter, name, single, tags from inv_tag_categories order by name, vcenter`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[InvTagCategory])
+}
+
+func (s *Store) InventoryTagCategoriesOf(ctx context.Context, vcenter string) ([]InvTagCategory, error) {
+	rows, _ := s.Pool.Query(ctx, `select vcenter, name, single, tags from inv_tag_categories where vcenter = $1 order by name`, vcenter)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[InvTagCategory])
 }
 
 func (s *Store) InventoryStoragePolicies(ctx context.Context) ([]InvStoragePolicy, error) {

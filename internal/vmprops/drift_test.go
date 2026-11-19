@@ -80,6 +80,56 @@ func TestDrift(t *testing.T) {
 	}
 }
 
+// TestTagDrift: a VM's tags are taken as expected the first time they are
+// read; properties built without them keep the last read; a change in
+// vCenter is flagged per category, and an action that set the tags takes
+// them as they are (X1.3).
+func TestTagDrift(t *testing.T) {
+	// No tags: not read.
+	tagged := func(tags ...string) json.RawMessage {
+		return Build("vc01", vsphere.VM{Moref: "vm-1", InstanceUUID: "4219ab00-0000-4000-8000-000000000001", PowerState: "on",
+			GuestState: "unknown", CPUCount: 2, MemoryMB: 4096, Tags: tags}, Ours{}, nil, 0)
+	}
+	tagsOf := func(props json.RawMessage) []string {
+		var p struct {
+			VM struct {
+				Tags *[]string `json:"tags"`
+			} `json:"vm"`
+		}
+		_ = json.Unmarshal(props, &p)
+		if p.VM.Tags == nil {
+			return nil
+		}
+		return *p.VM.Tags
+	}
+
+	built, _ := Settle(nil, tagged(), All...)
+	first, drifted := Compare(built, tagged("app/shop"))
+	if drifted {
+		t.Fatalf("tags read the first time drift: %v", drift(t, first))
+	}
+	unread, drifted := Compare(first, tagged())
+	if drifted || !slices.Equal(tagsOf(unread), []string{"app/shop"}) {
+		t.Fatalf("properties without tags = %v, %v", tagsOf(unread), drift(t, unread))
+	}
+
+	changed, drifted := Compare(unread, tagged("app/shop", "backup/daily", "backup/weekly"))
+	want := []string{"backup tags: - → daily, weekly"}
+	if !drifted || !slices.Equal(drift(t, changed), want) {
+		t.Fatalf("drift = %v, want %v", drift(t, changed), want)
+	}
+	if gone, _ := Compare(changed, tagged("backup/daily", "backup/weekly")); !slices.Equal(drift(t, gone),
+		[]string{"app tags: shop → -", "backup tags: - → daily, weekly"}) {
+		t.Fatalf("a category's tags removed = %v", drift(t, gone))
+	}
+	if kept, _ := Settle(changed, tagged(), Hardware...); !slices.Equal(drift(t, kept), want) {
+		t.Fatalf("settling the hardware = %v", drift(t, kept))
+	}
+	if settled, drifted := Settle(changed, tagged("app/shop", "backup/daily", "backup/weekly"), Tags); drifted {
+		t.Fatalf("after setting the tags = %v", drift(t, settled))
+	}
+}
+
 // What rvav built a VM with comes back from its stored properties, so the
 // inventory sync keeps it: custom properties, and which adapters are on
 // DHCP (X1.1); a template's adapter after its first stays unknown.

@@ -5742,17 +5742,21 @@ export interface components {
             steps?: string[];
         };
         VmDrift: {
-            /** @enum {string} */
-            property: "power_state" | "cpu_count" | "memory_mb" | "disk" | "nic";
+            /**
+             * @description tag: the VM's tags of one category, its label.
+             * @enum {string}
+             */
+            property: "power_state" | "cpu_count" | "memory_mb" | "disk" | "nic" | "tag";
             /**
              * @description What differs, as people call it.
              * @example Memory
              * @example Hard disk 2
              * @example Network adapter 1
+             * @example backup tags
              */
             label: string;
             /**
-             * @description As rvav left it; absent for a disk or adapter added outside rvav.
+             * @description As rvav left it; absent for a disk or adapter added outside rvav, or a tag category the VM had none of.
              * @example 8 GB
              */
             rvav?: string;
@@ -5817,6 +5821,14 @@ export interface components {
             }[];
             /** @description The ISO image mounted in the CD-ROM drive, for example `[nfs-iso] rhel-9.4.iso`. */
             iso?: string;
+            /**
+             * @description The VM's vSphere tags, as category/tag; absent until rvav has read them.
+             * @example [
+             *       "backup/daily",
+             *       "app/shop"
+             *     ]
+             */
+            tags?: string[];
             fqdn?: string;
             cluster?: string;
             host?: string;
@@ -6373,6 +6385,7 @@ export interface components {
             snapshot_max_count: number;
             /** @description Snapshots older are deleted; null keeps them. */
             snapshot_max_age_days?: number | null;
+            tag_categories?: components["schemas"]["EnvironmentTagCategories"];
             /** @description Projects that deploy to it. */
             readonly projects?: number;
             /** @description Deployments in it, not deleted. */
@@ -6388,7 +6401,15 @@ export interface components {
             snapshot_max_count?: number;
             /** @description 0 keeps snapshots of any age. */
             snapshot_max_age_days?: number;
+            tag_categories?: components["schemas"]["EnvironmentTagCategories"];
         };
+        /**
+         * @description The vSphere tag categories whose tags the users of its VMs may change, with the day-2 action Edit tags; none when empty.
+         * @example [
+         *       "backup"
+         *     ]
+         */
+        EnvironmentTagCategories: string[];
         PlacementRule: {
             id: string;
             project: components["schemas"]["ProjectRef"];
@@ -6550,11 +6571,27 @@ export interface components {
         };
         VsphereInventory: {
             clusters: components["schemas"]["InventoryCluster"][];
+            tag_categories: components["schemas"]["InventoryTagCategory"][];
             datastores: components["schemas"]["InventoryDatastore"][];
             networks: components["schemas"]["InventoryNetwork"][];
             hosts: components["schemas"]["InventoryHost"][];
             resource_pools: components["schemas"]["InventoryResourcePool"][];
             datastore_clusters: components["schemas"]["InventoryDatastoreCluster"][];
+        };
+        /** @description A vCenter's tag category VMs can take, and its tags. */
+        InventoryTagCategory: {
+            vcenter: string;
+            /** @example backup */
+            name: string;
+            /** @description A VM takes one tag of it at most. */
+            single: boolean;
+            /**
+             * @example [
+             *       "daily",
+             *       "weekly"
+             *     ]
+             */
+            tags: string[];
         };
         /** @description A cluster's ESXi host (ADR-0036). */
         InventoryHost: {

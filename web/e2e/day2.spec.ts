@@ -172,6 +172,27 @@ test("suspend a VM and resume it, then add a disk and remove it (X1.3)", async (
   expect(errors).toEqual([]);
 });
 
+test("edit a VM's vSphere tags (X1.3)", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/deployments");
+  await page.getByRole("link", { name: "web-dev-api", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "web-dev-api" })).toBeVisible();
+  await page.getByRole("button", { name: "More actions for web-dev-api004" }).click();
+  await page.getByRole("menuitem", { name: /^Edit tags/ }).click();
+  const edit = page.getByRole("dialog", { name: "Edit tags · web-dev-api004" });
+  await expect(edit.getByText("Tags of other categories stay as they are.")).toBeVisible();
+  await expect(edit.getByRole("checkbox", { name: "backup/daily" })).not.toBeChecked();
+  await edit.getByRole("checkbox", { name: "backup/weekly" }).check();
+  await edit.getByRole("button", { name: "Edit tags" }).click();
+  await expect(edit).toBeHidden();
+
+  await page.getByRole("button", { name: "web-dev-api004 properties" }).click();
+  const props = page.getByRole("dialog", { name: "web-dev-api004" });
+  await expect(props.getByRole("region", { name: "vSphere tags" })).toHaveText(/backup\/weekly/, { timeout: 15_000 });
+  expect(errors).toEqual([]);
+});
+
 test("an auditor is offered no action on a VM, not even its console", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "auditor"));
   await page.goto("/deployments");

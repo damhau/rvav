@@ -12,6 +12,28 @@ import (
 	"github.com/damhau/rvav/internal/store"
 )
 
+// tagCategories puts on a VM target the tag categories its users may
+// change: those its environment allows that its vCenter has (X1.3).
+func (s *Service) tagCategories(ctx context.Context, d store.DeploymentRow, t *day2.Target) error {
+	if t.Type != "vsphere.vm" {
+		return nil
+	}
+	env, err := s.Store.GetEnvironment(ctx, d.Environment)
+	if err != nil || len(env.TagCategories) == 0 {
+		return err
+	}
+	cats, err := s.Store.InventoryTagCategoriesOf(ctx, t.VM.Vcenter)
+	if err != nil {
+		return err
+	}
+	for _, c := range cats {
+		if slices.Contains(env.TagCategories, c.Name) {
+			t.TagCategories = append(t.TagCategories, day2.TagCategory{Name: c.Name, Single: c.Single, Tags: c.Tags})
+		}
+	}
+	return nil
+}
+
 // memberChoices are who may own the deployment: its project's members.
 func (s *Service) memberChoices(ctx context.Context, d store.DeploymentRow) ([]api.Option, error) {
 	users, err := s.Store.ProjectMembers(ctx, d.ProjectID)

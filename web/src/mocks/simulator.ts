@@ -603,6 +603,7 @@ function completeStep(r: StoredRequest, s: Step) {
           template: template.name,
           snapshot_count: 0,
           vsphere_url: vsphereUrl(`vm-${db.seq.moref}`),
+          tags: [],
         },
       };
       if (multi) d.resources.push(vm);

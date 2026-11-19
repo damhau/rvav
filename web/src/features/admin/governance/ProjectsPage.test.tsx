@@ -112,4 +112,22 @@ describe("environments", () => {
     expect(await screen.findByText("Quality removed")).toBeInTheDocument();
     await waitFor(() => expect(within(envs).queryByRole("row", { name: /Quality/ })).toBeNull());
   });
+
+  it("choose the tag categories their VMs' users may change, among vCenter's", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects?tab=environments");
+    const envs = await screen.findByRole("region", { name: "Environments" });
+    expect(await within(envs).findByRole("row", { name: /Development/ })).toHaveTextContent("backup");
+    await user.click(within(envs).getByRole("button", { name: "Actions for Development" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+    const sheet = await screen.findByRole("dialog", { name: "Change Development" });
+    const tags = within(sheet).getByRole("group", { name: "Tags users may change" });
+    expect(await within(tags).findByRole("checkbox", { name: "backup" })).toBeChecked();
+    expect(within(tags).getByRole("checkbox", { name: "app" })).not.toBeChecked();
+    expect(tags).toHaveTextContent("one per VM · gold, silver");
+    await user.click(within(tags).getByRole("checkbox", { name: "tier" }));
+    await user.click(within(sheet).getByRole("button", { name: "Save environment" }));
+    expect(await screen.findByText("Development saved")).toBeInTheDocument();
+    expect(await within(envs).findByRole("row", { name: /Development/ })).toHaveTextContent("backup, tier");
+  });
 });

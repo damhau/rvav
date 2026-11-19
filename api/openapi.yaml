@@ -7720,14 +7720,15 @@ components:
       properties:
         property:
           type: string
-          enum: [power_state, cpu_count, memory_mb, disk, nic]
+          enum: [power_state, cpu_count, memory_mb, disk, nic, tag]
+          description: "tag: the VM's tags of one category, its label."
         label:
           type: string
           description: What differs, as people call it.
-          examples: [Memory, Hard disk 2, Network adapter 1]
+          examples: [Memory, Hard disk 2, Network adapter 1, backup tags]
         rvav:
           type: string
-          description: As rvav left it; absent for a disk or adapter added outside rvav.
+          description: As rvav left it; absent for a disk or adapter added outside rvav, or a tag category the VM had none of.
           examples: [8 GB]
         vcenter:
           type: string
@@ -7803,6 +7804,11 @@ components:
         iso:
           type: string
           description: The ISO image mounted in the CD-ROM drive, for example `[nfs-iso] rhel-9.4.iso`.
+        tags:
+          type: array
+          items: { type: string }
+          description: The VM's vSphere tags, as category/tag; absent until rvav has read them.
+          examples: [[backup/daily, app/shop]]
         fqdn: { type: string }
         cluster: { type: string }
         host: { type: string }
@@ -8513,6 +8519,8 @@ components:
               type: [integer, "null"]
               minimum: 1
               description: Snapshots older are deleted; null keeps them.
+            tag_categories:
+              $ref: "#/components/schemas/EnvironmentTagCategories"
             projects: { type: integer, readOnly: true, description: Projects that deploy to it. }
             deployments: { type: integer, readOnly: true, description: "Deployments in it, not deleted." }
     AdminEnvironmentList:
@@ -8531,6 +8539,17 @@ components:
         order: { type: integer }
         snapshot_max_count: { type: integer, minimum: 0 }
         snapshot_max_age_days: { type: integer, minimum: 0, description: 0 keeps snapshots of any age. }
+        tag_categories:
+          $ref: "#/components/schemas/EnvironmentTagCategories"
+    EnvironmentTagCategories:
+      type: array
+      uniqueItems: true
+      maxItems: 50
+      items: { type: string, minLength: 1, maxLength: 80 }
+      description: >-
+        The vSphere tag categories whose tags the users of its VMs may change, with the day-2 action Edit tags;
+        none when empty.
+      examples: [[backup]]
     PlacementRule:
       type: object
       required: [id, project, environment, priority, clusters, datastores, networks, folder, cluster_tags, datastore_tags, storage_policy, vcenter,
@@ -8717,11 +8736,14 @@ components:
           items: { $ref: "#/components/schemas/NetworkMapping" }
     VsphereInventory:
       type: object
-      required: [clusters, datastores, networks, hosts, resource_pools, datastore_clusters]
+      required: [clusters, datastores, networks, hosts, resource_pools, datastore_clusters, tag_categories]
       properties:
         clusters:
           type: array
           items: { $ref: "#/components/schemas/InventoryCluster" }
+        tag_categories:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryTagCategory" }
         datastores:
           type: array
           items: { $ref: "#/components/schemas/InventoryDatastore" }
@@ -8737,6 +8759,15 @@ components:
         datastore_clusters:
           type: array
           items: { $ref: "#/components/schemas/InventoryDatastoreCluster" }
+    InventoryTagCategory:
+      type: object
+      description: A vCenter's tag category VMs can take, and its tags.
+      required: [vcenter, name, single, tags]
+      properties:
+        vcenter: { type: string }
+        name: { type: string, examples: [backup] }
+        single: { type: boolean, description: A VM takes one tag of it at most. }
+        tags: { type: array, items: { type: string }, examples: [[daily, weekly]] }
     InventoryHost:
       type: object
       description: A cluster's ESXi host (ADR-0036).
