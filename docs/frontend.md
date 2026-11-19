@@ -893,7 +893,9 @@ navigates instead of opening a dialog) opens
 - The mock API plans in `mocks/update.ts`, as the server does: changes,
   in the server's order (each kept VM's in place, then the VMs added,
   those removed, the jobs), refusals, quota on the net change, names from
-  the counter on scale out.
+  the counter on scale out. Its VMs record their first disk as the
+  blueprint's (`blueprint_disk`), and only that disk grows; an onboarded
+  VM records none, so growing its disk is refused.
 
 ## Multi-VM items
 

@@ -143,7 +143,7 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   const had = new Map(componentsOf(item, before, vmCount).map((c) => [c.key, c]));
   const builds: { c: Component; vms: VmResource[]; add: number; remove: VmResource[]; jobs: string[] }[] = [];
   const resized: { vm: string; cpu: number; memGb: number }[] = [];
-  const grown: { vm: string; gb: number }[] = [];
+  const grown: { vm: string; disk: string; gb: number }[] = [];
   const removeVm = (component: string, vm: VmResource) => {
     changes.push({
       kind: "vm_remove",
@@ -183,8 +183,14 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
       if (n.diskGb < o.diskGb)
         refuse("disk_gb", `The first disk shrinks from ${o.diskGb} to ${n.diskGb} GB: vCenter can't shrink a disk.`);
       for (const vm of kept) {
-        const disk = vm.vm.disks[0];
-        if (n.diskGb > o.diskGb && disk && disk.capacity_gb < n.diskGb) {
+        // Only the disk rvav recorded as the blueprint's first grows, as on the server.
+        const disk = vm.vm.disks.find((x) => x.blueprint_disk === 0);
+        if (n.diskGb > o.diskGb && !disk)
+          refuse(
+            "disk_gb",
+            `${vm.name} was onboarded or built before rvav recorded which of its disks are the blueprint's, so rvav can't tell which disk to grow. Change its disks with the day-2 actions instead.`,
+          );
+        else if (n.diskGb > o.diskGb && disk && disk.capacity_gb < n.diskGb) {
           if ((vm.vm.snapshot_count ?? 0) > 0)
             refuse(
               "disks",
@@ -199,7 +205,7 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
               detail: `Was ${disk.capacity_gb} GB.`,
               destructive: false,
             });
-            grown.push({ vm: vm.name, gb: n.diskGb });
+            grown.push({ vm: vm.name, disk: disk.label, gb: n.diskGb });
             delta.storage_gb += n.diskGb - disk.capacity_gb;
           }
         }
@@ -289,10 +295,10 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
     for (const g of grown)
       out.push({
         key: `vsphere.disk_extend@${g.vm}`,
-        title: `Grow Hard disk 1 to ${g.gb} GB`,
+        title: `Grow ${g.disk} to ${g.gb} GB`,
         system: "vcenter",
         apply: (dep) => {
-          const disk = findVm(dep, g.vm)?.vm.disks[0];
+          const disk = findVm(dep, g.vm)?.vm.disks.find((x) => x.blueprint_disk === 0);
           if (disk) disk.capacity_gb = g.gb;
         },
       });
@@ -429,7 +435,15 @@ function addOps(db: Db, name: string, network: string, c: Component, template?: 
             guest_state: "running",
             cpu_count: size.vcpu,
             memory_mb: size.memoryGb * 1024,
-            disks: [{ label: "Hard disk 1", capacity_gb: size.diskGb, datastore: template?.vm.disks[0]?.datastore }],
+            disks: [
+              {
+                label: "Hard disk 1",
+                key: 2000,
+                blueprint_disk: 0,
+                capacity_gb: size.diskGb,
+                datastore: template?.vm.disks[0]?.datastore,
+              },
+            ],
             nics: [{ network: net, mac: "00:50:56:a1:7e:3c", ip_addresses: ip ? [ip] : [], dhcp: false }],
             fqdn,
             snapshot_count: 0,

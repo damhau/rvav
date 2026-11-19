@@ -594,7 +594,15 @@ function completeStep(r: StoredRequest, s: Step) {
           guest_os: template.os,
           cpu_count: size.vcpu,
           memory_mb: size.memoryGb * 1024,
-          disks: [{ label: "Hard disk 1", capacity_gb: size.diskGb, datastore: text(inputs.datastore) }],
+          disks: [
+            {
+              label: "Hard disk 1",
+              key: 2000,
+              blueprint_disk: 0,
+              capacity_gb: size.diskGb,
+              datastore: text(inputs.datastore),
+            },
+          ],
           nics: [{ network: text(inputs.network), mac: "00:50:56:a1:7e:3c", ip_addresses: [], dhcp: false }],
           fqdn: `${host}.${DOMAIN}`,
           cluster: text(inputs.cluster, clusters[0]!.name),

@@ -428,7 +428,15 @@ export function createDb(now = Date.now()): Db {
           guest_os: tpl.os,
           cpu_count: s.cpu ?? 4,
           memory_mb: (s.memGb ?? 16) * 1024,
-          disks: [{ label: "Hard disk 1", capacity_gb: s.diskGb ?? 80, datastore: dsFor(s.env) }],
+          disks: [
+            {
+              label: "Hard disk 1",
+              key: 2000,
+              blueprint_disk: 0,
+              capacity_gb: s.diskGb ?? 80,
+              datastore: dsFor(s.env),
+            },
+          ],
           nics: [
             {
               network: net,
@@ -703,7 +711,7 @@ export function createDb(now = Date.now()): Db {
     const legacy = deployments.find((d) => d.name === "web-dev-legacy")!;
     const vm = legacy.resources.find((r): r is VmResource => r.type === "vsphere.vm")!;
     vm.vm.memory_mb = 32 * 1024;
-    vm.vm.disks.push({ label: "Hard disk 2", capacity_gb: 200, datastore: vm.vm.disks[0]?.datastore });
+    vm.vm.disks.push({ label: "Hard disk 2", key: 2001, capacity_gb: 200, datastore: vm.vm.disks[0]?.datastore });
     vm.sync_state = legacy.sync_state = "drifted";
     vm.drift = [
       { property: "memory_mb", label: "Memory", rvav: "16 GB", vcenter: "32 GB" },

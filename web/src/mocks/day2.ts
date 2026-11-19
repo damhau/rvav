@@ -322,6 +322,7 @@ export const catalogue: MockAction[] = [
       vcenter("vsphere.disk_add", `Add a ${Number(i.size_gb)} GB disk on ${String(i.datastore)}`, (_d, v) => {
         v?.vm.disks.push({
           label: `Hard disk ${(v.vm.disks.length ?? 0) + 1}`,
+          key: Math.max(1999, ...v.vm.disks.map((x) => x.key ?? 1999)) + 1,
           capacity_gb: Number(i.size_gb),
           datastore: String(i.datastore),
         });

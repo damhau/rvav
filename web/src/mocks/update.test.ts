@@ -114,6 +114,13 @@ describe("the mocks' updates", () => {
     expect(p.changes).toEqual([]);
     const moved = await preview(d, { ...form.initial_values, cluster: "GVA-TST-CL01" });
     expect(moved.refused.map((x) => x.setting)).toEqual(["cluster"]);
+    // Its disks aren't recorded as the blueprint's: the server doesn't guess which one grows.
+    const larger = await preview(d, { ...form.initial_values, size: "L" });
+    expect(larger.refused.map((x) => x.setting)).toEqual(["disk_gb"]);
+    expect(larger.refused[0]!.reason).toMatch(
+      /^app-old01 was onboarded or built before rvav recorded which of its disks/,
+    );
+    expect(larger.changes.map((c) => c.kind)).toEqual(["resize"]);
   });
 
   it("offer no update of the PostgreSQL cluster's deployment, an item made of others", async () => {
