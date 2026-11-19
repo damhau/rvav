@@ -44,6 +44,9 @@ var ErrSubnetFull = errors.New("no free address in subnet")
 // this owner.
 var ErrNameTaken = errors.New("the name already has an address in EfficientIP")
 
+// ErrAddressTaken is an address someone else has, asked for by its IP.
+var ErrAddressTaken = errors.New("the address is taken in EfficientIP")
+
 // Client is what rvav needs from IPAM and DNS. Reserve, CreateRecord and
 // UpdateRecord are idempotent: calling them again returns what exists
 // (Reserve only what it reserved for the same owner). Release and
@@ -51,6 +54,10 @@ var ErrNameTaken = errors.New("the name already has an address in EfficientIP")
 type Client interface {
 	NextFree(ctx context.Context, s Subnet) (string, error)
 	Reserve(ctx context.Context, s Subnet, hostname, owner string) (Address, error)
+	// ReserveAddress reserves that address of the subnet (one a blocking
+	// subscription chose, ADR-0054); again, what it reserved for the same
+	// name and owner. One anyone else has is ErrAddressTaken.
+	ReserveAddress(ctx context.Context, s Subnet, ip, hostname, owner string) (Address, error)
 	Release(ctx context.Context, a Address) error
 	RenameAddress(ctx context.Context, a Address, hostname string) error
 	CreateRecord(ctx context.Context, r Record) (Record, error)

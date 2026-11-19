@@ -91,7 +91,8 @@ func TestSubscriptions(t *testing.T) {
 		if fields := fieldsOf(problem.Errors); !slices.Contains(fields, "/target/webhook/url") || !slices.Contains(fields, "/target/webhook/secret") {
 			t.Fatalf("a webhook elsewhere = %v", fields)
 		}
-		// A VM's topics don't block yet, and only theirs have a machine
+		// compute.provision.pre doesn't block: the VM's address and records
+		// are made by then (ADR-0054). Only a VM's topics have a machine
 		// (ADR-0049).
 		onMachine := check
 		onMachine.Topic, onMachine.Condition = api.ComputeProvisionPre, new(`machine.placement.cluster == "GVA-DEV-CL01"`)

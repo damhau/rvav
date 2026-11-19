@@ -2247,6 +2247,30 @@ func (e StepStatus) Valid() bool {
 	}
 }
 
+// Defines values for SubscriptionChange.
+const (
+	ChangeName       SubscriptionChange = "name"
+	ChangeNetworks   SubscriptionChange = "networks"
+	ChangePlacement  SubscriptionChange = "placement"
+	ChangeProperties SubscriptionChange = "properties"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionChange enum.
+func (e SubscriptionChange) Valid() bool {
+	switch e {
+	case ChangeName:
+		return true
+	case ChangeNetworks:
+		return true
+	case ChangePlacement:
+		return true
+	case ChangeProperties:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SubscriptionOnFailure.
 const (
 	ContinueRequest SubscriptionOnFailure = "continue_request"
@@ -5471,8 +5495,11 @@ type EventTopic struct {
 	// Key Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
 	Key EventTopicKey `json:"key"`
 
-	// MayBlock Whether blocking subscriptions are allowed: provisioning.pre, day2.pre and delete.pre.
+	// MayBlock Whether blocking subscriptions are allowed: provisioning.pre, compute.allocation.pre, network.configure, day2.pre and delete.pre (ADR-0054).
 	MayBlock bool `json:"may_block"`
+
+	// MayChange What a blocking subscription's answer may change besides stopping the request: the deployment's properties on provisioning.pre, the VM's name and placement on compute.allocation.pre, its adapters' networks and addresses on network.configure (ADR-0054).
+	MayChange []SubscriptionChange `json:"may_change"`
 
 	// Sample What subscribers receive (`rvav.event.v1`). Within v1, fields are only
 	// added: receivers ignore those they don't know. Webhooks get it as the
@@ -6461,6 +6488,27 @@ type LogChunk struct {
 
 // LogChunkLinesKind Hint for colouring Ansible output.
 type LogChunkLinesKind string
+
+// MachineChange What a blocking subscription's answer changed on its VM (ADR-0054), as
+// the answer's `machine` gave it: on compute.allocation.pre its name
+// and placement, on network.configure its adapters' networks and
+// addresses. rvav checks each change again before building.
+type MachineChange struct {
+	Name     *string `json:"name,omitempty"`
+	Networks *[]struct {
+		Address *string `json:"address,omitempty"`
+
+		// Index The adapter: 0 for the first, as in the event's `machine.networks`.
+		Index   int     `json:"index"`
+		Network *string `json:"network,omitempty"`
+	} `json:"networks,omitempty"`
+	Placement *struct {
+		Cluster      *string `json:"cluster,omitempty"`
+		Datastore    *string `json:"datastore,omitempty"`
+		Folder       *string `json:"folder,omitempty"`
+		ResourcePool *string `json:"resource_pool,omitempty"`
+	} `json:"placement,omitempty"`
+}
 
 // Me defines model for Me.
 type Me struct {
@@ -8833,7 +8881,7 @@ type SubnetResource struct {
 
 // Subscription defines model for Subscription.
 type Subscription struct {
-	// Blocking Only on `.pre` topics: the request waits for the answer and may be stopped.
+	// Blocking Only on the topics that may block (`EventTopic.may_block`): the request waits for the answer, which may stop it or change what `EventTopic.may_change` says.
 	Blocking bool `json:"blocking"`
 
 	// Condition A CEL expression over the event's data (`environment` is the key, `production` a boolean); empty: every event.
@@ -8847,11 +8895,14 @@ type Subscription struct {
 	LastRunAt   *time.Time `json:"last_run_at,omitempty"`
 	Name        string     `json:"name"`
 
-	// OnFailure What a blocking subscription does when its target fails or doesn't answer in time.
+	// OnFailure What a blocking subscription does when its target fails, doesn't answer in time, or answers with a change rvav refuses (ADR-0054).
 	OnFailure SubscriptionOnFailure `json:"on_failure"`
 
 	// Priority Lower first.
 	Priority int `json:"priority"`
+
+	// Recovery A blocking subscription's recovery target (ADR-0054): told once when the subscription fails, with the event and `recovery.reason`. Its answer's outcome, if it gives one, decides whether the request goes on; otherwise `on_failure` does.
+	Recovery *SubscriptionTarget `json:"recovery,omitempty"`
 
 	// Runs Its runs of the last 30 days, by status.
 	Runs struct {
@@ -8869,12 +8920,15 @@ type Subscription struct {
 	UpdatedAt *time.Time    `json:"updated_at,omitempty"`
 }
 
+// SubscriptionChange What a blocking answer may change: `properties` (`properties`), `name` and `placement` (`machine.name`, `machine.placement`), `networks` (`machine.networks`).
+type SubscriptionChange string
+
 // SubscriptionList defines model for SubscriptionList.
 type SubscriptionList struct {
 	Items []Subscription `json:"items"`
 }
 
-// SubscriptionOnFailure What a blocking subscription does when its target fails or doesn't answer in time.
+// SubscriptionOnFailure What a blocking subscription does when its target fails, doesn't answer in time, or answers with a change rvav refuses (ADR-0054).
 type SubscriptionOnFailure string
 
 // SubscriptionRun defines model for SubscriptionRun.
@@ -8892,6 +8946,9 @@ type SubscriptionRun struct {
 
 	// Reason Why it stopped the request, or why it failed.
 	Reason *string `json:"reason,omitempty"`
+
+	// Recovery A run of the subscription's recovery target, after the subscription failed on the same event (ADR-0054).
+	Recovery bool `json:"recovery"`
 
 	// Request The request it belongs to (blocking runs, and runs of request events).
 	Request *struct {
@@ -8932,8 +8989,14 @@ type SubscriptionRunAttempt struct {
 
 // SubscriptionRunDetail defines model for SubscriptionRunDetail.
 type SubscriptionRunDetail struct {
-	Attempts      int                      `json:"attempts"`
-	Blocking      bool                     `json:"blocking"`
+	Attempts int  `json:"attempts"`
+	Blocking bool `json:"blocking"`
+
+	// Changes What a blocking subscription's answer changed on its VM (ADR-0054), as
+	// the answer's `machine` gave it: on compute.allocation.pre its name
+	// and placement, on network.configure its adapters' networks and
+	// addresses. rvav checks each change again before building.
+	Changes       *MachineChange           `json:"changes,omitempty"`
 	CreatedAt     time.Time                `json:"created_at"`
 	EventId       string                   `json:"event_id"`
 	FinishedAt    *time.Time               `json:"finished_at,omitempty"`
@@ -8955,6 +9018,9 @@ type SubscriptionRunDetail struct {
 
 	// Reason Why it stopped the request, or why it failed.
 	Reason *string `json:"reason,omitempty"`
+
+	// Recovery A run of the subscription's recovery target, after the subscription failed on the same event (ADR-0054).
+	Recovery bool `json:"recovery"`
 
 	// Request The request it belongs to (blocking runs, and runs of request events).
 	Request *struct {
@@ -9008,7 +9074,7 @@ type SubscriptionTarget struct {
 
 // SubscriptionWrite defines model for SubscriptionWrite.
 type SubscriptionWrite struct {
-	// Blocking Only on `.pre` topics: the request waits for the answer and may be stopped.
+	// Blocking Only on the topics that may block (`EventTopic.may_block`): the request waits for the answer, which may stop it or change what `EventTopic.may_change` says.
 	Blocking *bool `json:"blocking,omitempty"`
 
 	// Condition A CEL expression over the event's data (`environment` is the key, `production` a boolean); empty: every event.
@@ -9019,11 +9085,14 @@ type SubscriptionWrite struct {
 	Enabled     *bool   `json:"enabled,omitempty"`
 	Name        string  `json:"name"`
 
-	// OnFailure What a blocking subscription does when its target fails or doesn't answer in time.
+	// OnFailure What a blocking subscription does when its target fails, doesn't answer in time, or answers with a change rvav refuses (ADR-0054).
 	OnFailure *SubscriptionOnFailure `json:"on_failure,omitempty"`
 
 	// Priority Lower first.
 	Priority *int `json:"priority,omitempty"`
+
+	// Recovery A blocking subscription's recovery target (ADR-0054): told once when the subscription fails, with the event and `recovery.reason`. Its answer's outcome, if it gives one, decides whether the request goes on; otherwise `on_failure` does.
+	Recovery *SubscriptionTarget `json:"recovery,omitempty"`
 
 	// Target Exactly one of `webhook`, `awx` and `workflow`.
 	Target         SubscriptionTarget `json:"target"`

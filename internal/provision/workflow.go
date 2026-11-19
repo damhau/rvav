@@ -307,7 +307,8 @@ func runChecks(ctx workflow.Context, info Info) (stepKey, reason string, err err
 		// Its own timeout, twice (a fast failure is tried once more); not
 		// retried by Temporal, which would ask the target again.
 		o := activityOptions
-		o.StartToCloseTimeout = 2*time.Duration(b.Timeout)*time.Second + 30*time.Second
+		// Its recovery target's too (ADR-0054).
+		o.StartToCloseTimeout = 4*time.Duration(b.Timeout)*time.Second + time.Minute
 		o.HeartbeatTimeout = 0
 		o.RetryPolicy = &temporal.RetryPolicy{MaximumAttempts: 1}
 		var out CheckOutcome
@@ -363,6 +364,9 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 	if err := machineEvents(ctx, info, outbox.ComputeAllocationPre, p.VMs); err != nil {
 		return "", err
 	}
+	if key, err := machineChecks(ctx, info, outbox.ComputeAllocationPre, "", p.VMs); err != nil {
+		return key, err
+	}
 	if key, err := makeSegments(ctx, info, p.Segments, p.VMs, p.SegmentKey); err != nil {
 		return key, err
 	}
@@ -372,6 +376,9 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 	// Once its segments have their subnets.
 	if err := machineEvents(ctx, info, outbox.NetworkConfigure, p.VMs); err != nil {
 		return "", err
+	}
+	if key, err := machineChecks(ctx, info, outbox.NetworkConfigure, "", p.VMs); err != nil {
+		return key, err
 	}
 
 	if len(p.Components) > 0 {

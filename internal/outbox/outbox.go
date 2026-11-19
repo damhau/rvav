@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -85,9 +86,49 @@ func Group(topic string) string {
 	return "request"
 }
 
-// MayBlock says whether blocking subscriptions are allowed on a topic.
+// MayBlock says whether blocking subscriptions are allowed on a topic: a
+// request's before it builds, acts or deletes, and a VM's before it is
+// placed and addressed (ADR-0054).
 func MayBlock(topic string) bool {
-	return topic == ProvisioningPre || topic == Day2Pre || topic == DeletePre
+	switch topic {
+	case ProvisioningPre, ComputeAllocationPre, NetworkConfigure, Day2Pre, DeletePre:
+		return true
+	}
+	return false
+}
+
+// MayBlockList names the topics that may block, in their order.
+func MayBlockList() string {
+	var list []string
+	for _, t := range Topics {
+		if MayBlock(t) {
+			list = append(list, t)
+		}
+	}
+	return strings.Join(list[:len(list)-1], ", ") + " and " + list[len(list)-1]
+}
+
+// Changes a blocking answer may make besides stopping the request
+// (ADR-0054): the deployment's properties, a VM's name, placement or
+// adapters.
+const (
+	ChangeProperties = "properties"
+	ChangeName       = "name"
+	ChangePlacement  = "placement"
+	ChangeNetworks   = "networks"
+)
+
+// MayChange is what a topic's blocking answers may change.
+func MayChange(topic string) []string {
+	switch topic {
+	case ProvisioningPre:
+		return []string{ChangeProperties}
+	case ComputeAllocationPre:
+		return []string{ChangeName, ChangePlacement}
+	case NetworkConfigure:
+		return []string{ChangeNetworks}
+	}
+	return nil
 }
 
 // Event is what subscribers receive.

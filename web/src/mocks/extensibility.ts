@@ -38,12 +38,14 @@ const topics: { key: S["EventTopicKey"]; group: S["EventTopicGroup"]; descriptio
   {
     key: "compute.allocation.pre",
     group: "machine",
-    description: "A VM of the request is placed and sized, before anything of it is built.",
+    description:
+      "A VM of the request is placed and sized, before anything of it is built. A blocking subscription may rename or move it.",
   },
   {
     key: "network.configure",
     group: "machine",
-    description: "A VM's networks are known, before its address is reserved.",
+    description:
+      "A VM's networks are known, before its address is reserved. A blocking subscription may change its networks or choose its addresses.",
   },
   { key: "compute.provision.pre", group: "machine", description: "A VM is about to be cloned." },
   { key: "compute.provision.post", group: "machine", description: "A VM is built and powered on." },
@@ -99,8 +101,15 @@ function sampleCustom(topic: S["EventTopicKey"]) {
   };
 }
 
-/** The topics a blocking subscription may hear, as the server says. */
-const mayBlock = (topic: string) => ["provisioning.pre", "day2.pre", "delete.pre"].includes(topic);
+/** The topics a blocking subscription may hear, as the server says, and what their answers may change (ADR-0054). */
+const blockable: Partial<Record<S["EventTopicKey"], S["SubscriptionChange"][]>> = {
+  "provisioning.pre": ["properties"],
+  "compute.allocation.pre": ["name", "placement"],
+  "network.configure": ["networks"],
+  "day2.pre": [],
+  "delete.pre": [],
+};
+const mayBlock = (topic: S["EventTopicKey"]) => topic in blockable;
 
 /** A VM as a machine topic's event has it: no address before the clone, no moref before it is on. */
 function sampleMachine(topic: S["EventTopicKey"]) {
@@ -284,6 +293,23 @@ function state(db: Db): ExtState {
       runs: { delivered: 37, failed: 1, pending: 0 },
       last_run_at: ago(12),
     },
+    {
+      id: "sub_cmdb_naming",
+      name: "CMDB naming",
+      description: "The CMDB names each VM and gives it its address range's placement.",
+      topic: "compute.allocation.pre",
+      condition: "",
+      blocking: true,
+      on_failure: "stop_request",
+      priority: 20,
+      timeout_seconds: 20,
+      enabled: true,
+      target: { webhook: { url: "https://cmdb.corp.example/rvav/name", secret: "webhook-signing" } },
+      recovery: { webhook: { url: "https://hooks.corp.example/rvav/cmdb-down", secret: "webhook-signing" } },
+      created_at: ago(60 * 24 * 3),
+      runs: { delivered: 1, failed: 1, pending: 0 },
+      last_run_at: ago(45),
+    },
   ];
   const event = (topic: S["EventTopicKey"], minutes: number): S["IntegrationEvent"] => ({
     ...sample(topic),
@@ -298,6 +324,7 @@ function state(db: Db): ExtState {
       topic: "provisioning.post",
       status: "failed",
       blocking: false,
+      recovery: false,
       test: false,
       request,
       attempts: 6,
@@ -317,6 +344,7 @@ function state(db: Db): ExtState {
       topic: "provisioning.post",
       status: "delivered",
       blocking: false,
+      recovery: false,
       test: false,
       request,
       attempts: 1,
@@ -332,6 +360,7 @@ function state(db: Db): ExtState {
       topic: "provisioning.pre",
       status: "delivered",
       blocking: true,
+      recovery: false,
       test: false,
       request,
       attempts: 1,
@@ -347,6 +376,78 @@ function state(db: Db): ExtState {
           status_code: 200,
           response: '{"decision":"continue","properties":{"cmdb_ci":"CI0098812"}}',
           duration_ms: 180,
+        },
+      ],
+    },
+    {
+      id: "run_naming_ok",
+      subscription_id: "sub_cmdb_naming",
+      event_id: "evt_45",
+      topic: "compute.allocation.pre",
+      status: "delivered",
+      blocking: true,
+      recovery: false,
+      test: false,
+      request,
+      attempts: 1,
+      outcome: "continue",
+      created_at: ago(45),
+      finished_at: ago(45),
+      payload: event("compute.allocation.pre", 45),
+      changes: { name: "web-dev-app742", placement: { datastore: "ds-gva-dev-02" } },
+      history: [
+        {
+          at: ago(45),
+          ok: true,
+          status_code: 200,
+          response: '{"machine":{"name":"web-dev-app742","placement":{"datastore":"ds-gva-dev-02"}}}',
+          duration_ms: 210,
+        },
+      ],
+    },
+    {
+      id: "run_naming_failed",
+      subscription_id: "sub_cmdb_naming",
+      event_id: "evt_70",
+      topic: "compute.allocation.pre",
+      status: "failed",
+      blocking: true,
+      recovery: false,
+      test: false,
+      request,
+      attempts: 2,
+      reason: "cmdb.corp.example answered 503",
+      created_at: ago(70),
+      finished_at: ago(70),
+      payload: event("compute.allocation.pre", 70),
+      history: [
+        { at: ago(70), ok: false, status_code: 503, response: "Service Unavailable", duration_ms: 95 },
+        { at: ago(70), ok: false, status_code: 503, response: "Service Unavailable", duration_ms: 90 },
+      ],
+    },
+    {
+      id: "run_naming_recovery",
+      subscription_id: "sub_cmdb_naming",
+      event_id: "evt_70",
+      topic: "compute.allocation.pre",
+      status: "blocked",
+      blocking: true,
+      recovery: true,
+      test: false,
+      request,
+      attempts: 1,
+      outcome: "stop",
+      reason: "The CMDB is down: try again in an hour.",
+      created_at: ago(70),
+      finished_at: ago(70),
+      payload: event("compute.allocation.pre", 70),
+      history: [
+        {
+          at: ago(70),
+          ok: true,
+          status_code: 200,
+          response: '{"outcome":"stop","reason":"The CMDB is down: try again in an hour."}',
+          duration_ms: 120,
         },
       ],
     },
@@ -438,7 +539,6 @@ function state(db: Db): ExtState {
 }
 
 function checkSubscription(db: Db, w: S["SubscriptionWrite"]): S["FieldError"][] {
-  const st = state(db);
   const errors: S["FieldError"][] = [];
   const err = (field: string, code: string, message: string) => errors.push({ field, code, message });
   if (!w.name?.trim()) err("/name", "required", "Name it.");
@@ -449,12 +549,33 @@ function checkSubscription(db: Db, w: S["SubscriptionWrite"]): S["FieldError"][]
     if (why) err("/condition", "invalid", `Not valid CEL: ${why}`);
   }
   if (w.blocking && topic && !mayBlock(topic.key))
-    err("/blocking", "not_pre", "Only provisioning.pre, day2.pre and delete.pre subscriptions may block.");
+    err(
+      "/blocking",
+      "not_pre",
+      "Only provisioning.pre, compute.allocation.pre, network.configure, day2.pre and delete.pre subscriptions may block.",
+    );
   if (w.timeout_seconds < 1 || w.timeout_seconds > 3600)
     err("/timeout_seconds", "range", "Between 1 and 3600 seconds.");
-  const t = w.target;
+  checkTarget(db, w.target, "/target", err);
+  if (w.recovery && !w.blocking)
+    err(
+      "/recovery",
+      "not_blocking",
+      "Only a blocking subscription has a recovery target: it is told when the subscription fails.",
+    );
+  else if (w.recovery) checkTarget(db, w.recovery, "/recovery", err);
+  return errors;
+}
+
+function checkTarget(
+  db: Db,
+  t: S["SubscriptionTarget"],
+  at: string,
+  err: (field: string, code: string, message: string) => void,
+) {
+  const st = state(db);
   const kinds = [t.webhook, t.awx, t.workflow].filter(Boolean).length;
-  if (kinds !== 1) err("/target", "one_of", "Choose one target: a webhook, an AWX template or a custom workflow.");
+  if (kinds !== 1) err(at, "one_of", "Choose one target: a webhook, an AWX template or a custom workflow.");
   if (t.webhook) {
     let host = "";
     try {
@@ -463,22 +584,21 @@ function checkSubscription(db: Db, w: S["SubscriptionWrite"]): S["FieldError"][]
     } catch {
       host = "";
     }
-    if (!host) err("/target/webhook/url", "invalid", "An https URL.");
+    if (!host) err(`${at}/webhook/url`, "invalid", "An https URL.");
     else if (!webhookHosts.includes(host))
-      err("/target/webhook/url", "not_allowed", `${host} is not an allowed webhook host (RVAV_WEBHOOK_HOSTS).`);
+      err(`${at}/webhook/url`, "not_allowed", `${host} is not an allowed webhook host (RVAV_WEBHOOK_HOSTS).`);
     const secrets = (db as Db & { catalogAdmin?: { secrets: S["Secret"][] } }).catalogAdmin?.secrets ?? [];
-    if (!t.webhook.secret) err("/target/webhook/secret", "required", "Choose the secret it is signed with.");
+    if (!t.webhook.secret) err(`${at}/webhook/secret`, "required", "Choose the secret it is signed with.");
     else if (secrets.length > 0 && !secrets.some((s) => s.name === t.webhook?.secret))
-      err("/target/webhook/secret", "unknown", `No secret is named ${t.webhook.secret}.`);
+      err(`${at}/webhook/secret`, "unknown", `No secret is named ${t.webhook.secret}.`);
   }
-  if (t.awx && !t.awx.job_template && !t.awx.template_id) err("/target/awx", "required", "Choose the AWX template.");
+  if (t.awx && !t.awx.job_template && !t.awx.template_id) err(`${at}/awx`, "required", "Choose the AWX template.");
   if (t.workflow) {
     const wf = st.workflows.find((x) => x.key === t.workflow?.key);
-    if (!wf) err("/target/workflow/key", "unknown", "Choose a registered workflow.");
+    if (!wf) err(`${at}/workflow/key`, "unknown", "Choose a registered workflow.");
     else if (!wf.usages.includes("subscription_target"))
-      err("/target/workflow/key", "not_allowed", `${wf.title} isn't registered as a subscription target.`);
+      err(`${at}/workflow/key`, "not_allowed", `${wf.title} isn't registered as a subscription target.`);
   }
-  return errors;
 }
 
 function checkWorkflow(w: S["WorkflowRegistrationWrite"], create: boolean, taken: boolean): S["FieldError"][] {
@@ -512,7 +632,12 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
     http.get(`${base}/admin/event-topics`, async () => {
       await wait();
       return HttpResponse.json({
-        items: topics.map((t) => ({ ...t, may_block: mayBlock(t.key), sample: sample(t.key) })),
+        items: topics.map((t) => ({
+          ...t,
+          may_block: mayBlock(t.key),
+          may_change: blockable[t.key] ?? [],
+          sample: sample(t.key),
+        })),
       });
     }),
     http.get(`${base}/admin/subscriptions`, async () => {
@@ -575,6 +700,7 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
         topic: sub.topic,
         status: ok ? "delivered" : "failed",
         blocking: sub.blocking,
+        recovery: false,
         test: true,
         attempts: 1,
         ...(sub.blocking && ok ? { outcome: "continue" } : {}),
@@ -606,7 +732,7 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
       const status = new URL(request.url).searchParams.get("status");
       const items = state(db)
         .runs.filter((r) => r.subscription_id === params.id && (!status || r.status === status))
-        .map(({ payload: _p, history: _h, properties: _x, ...run }) => run);
+        .map(({ payload: _p, history: _h, properties: _x, changes: _c, ...run }) => run);
       return HttpResponse.json({ items, next_cursor: null });
     }),
     http.get(`${base}/admin/subscription-runs/:id`, async ({ params }) => {
@@ -631,7 +757,7 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
         sub.runs.failed = Math.max(0, sub.runs.failed - 1);
         sub.runs.delivered++;
       }
-      const { payload: _p, history: _h, properties: _x, ...out } = run;
+      const { payload: _p, history: _h, properties: _x, changes: _c, ...out } = run;
       return HttpResponse.json(out);
     }),
 

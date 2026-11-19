@@ -548,7 +548,7 @@ func (a *App) RunWorker(ctx context.Context) error {
 	}
 	// Retention and lease policies start requests of their own.
 	svc := a.Core(&provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue})
-	acts.Housekeeper, acts.Onboarder = svc, svc
+	acts.Housekeeper, acts.Onboarder, acts.Changer = svc, svc, svc
 	// Stopped to apply newer settings, running activities finish first,
 	// within RVAV_DRAIN_TIMEOUT (ADR-0030).
 	w := provision.NewDrainingWorker(tc, a.Cfg.Temporal.TaskQueue, acts, a.Cfg.DrainTimeout)

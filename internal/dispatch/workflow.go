@@ -1,6 +1,7 @@
 package dispatch
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -42,7 +43,7 @@ func (w *Workflow) Deliver(ctx context.Context, d Delivery) Result {
 	data, _ := ev["data"].(map[string]any)
 	rctx := map[string]any{"contract": "rvav.v1", "rvav_task_queue": w.TaskQueue, "steps": map[string]any{}, "event": ev}
 	for _, k := range []string{"request", "item", "project", "environment", "production", "requester", "owner",
-		"deployment", "deployments", "resources", "inputs"} {
+		"deployment", "deployments", "resources", "inputs", "machine"} {
 		rctx[k] = data[k]
 	}
 	// A blocking run reports its steps under its check in the request's timeline.
@@ -51,7 +52,7 @@ func (w *Workflow) Deliver(ctx context.Context, d Delivery) Result {
 		if id, ok := req["id"].(string); ok && id != "req_sample" {
 			requestID = &id
 			if d.Blocking {
-				key := "check:" + d.Sub.ID
+				key := cmp.Or(d.StepKey, "check:"+d.Sub.ID)
 				stepKey = &key
 			}
 		}

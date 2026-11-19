@@ -623,3 +623,12 @@ func (s *Store) TakeConsoleToken(ctx context.Context, hash []byte) (json.RawMess
 		Scan(&ticket, &expires)
 	return ticket, expires, notFound(err)
 }
+
+// RenameRequestDeployment renames a deployment the request is creating
+// that still has the name old (a single VM's, named after it), and says
+// whether it did.
+func (s *Store) RenameRequestDeployment(ctx context.Context, db DB, id, requestID, old, name string) (bool, error) {
+	tag, err := db.Exec(ctx, `update deployments set name = $4 where id = $1 and created_by_request_id = $2 and name = $3`,
+		id, requestID, old, name)
+	return tag.RowsAffected() > 0, err
+}

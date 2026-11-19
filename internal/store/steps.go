@@ -269,6 +269,36 @@ func (s *Store) InsertStepBeforePending(ctx context.Context, db DB, requestID, k
 	return st, notFound(err)
 }
 
+// InsertChildBeforePending adds a step under another, just before its first
+// child still pending: the checks of blocking subscriptions on a composite
+// step's VMs (ADR-0054). One already there is set running again.
+func (s *Store) InsertChildBeforePending(ctx context.Context, db DB, requestID, parentKey, key, title, detail string) (Step, error) {
+	if _, err := db.Exec(ctx, `with p as (select id from request_steps where request_id = $1 and key = $2),
+		at as (select coalesce(min(c.position), (select count(*) from request_steps c where c.parent_id = (select id from p))) as n
+			from request_steps c where c.parent_id = (select id from p) and c.status = 'pending')
+		update request_steps set position = position + 1
+		where parent_id = (select id from p) and position >= (select n from at)
+			and not exists (select 1 from request_steps where request_id = $1 and key = $3)`, requestID, parentKey, key); err != nil {
+		return Step{}, err
+	}
+	rows, _ := db.Query(ctx, `insert into request_steps (id, request_id, parent_id, position, key, title, detail, system, status, started_at)
+		select $4, $1, p.id, coalesce((select min(c.position) - 1 from request_steps c where c.parent_id = p.id and c.status = 'pending'),
+			(select count(*) from request_steps c where c.parent_id = p.id)), $3, $5, $6, 'rvav', 'running', now()
+		from request_steps p where p.request_id = $1 and p.key = $2
+		on conflict (request_id, key) do update set status = 'running', error = null, finished_at = null
+		returning `+stepCols, requestID, parentKey, key, ids.New(ids.Step), title, detail)
+	st, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Step])
+	return st, notFound(err)
+}
+
+// ReplanPendingStep gives a step not started yet another key, title and
+// detail: one of a VM a blocking subscription renamed or moved (ADR-0054).
+func (s *Store) ReplanPendingStep(ctx context.Context, db DB, requestID, key, newKey, title, detail string) error {
+	_, err := db.Exec(ctx, `update request_steps set key = $3, title = $4, detail = $5
+		where request_id = $1 and key = $2 and status = 'pending'`, requestID, key, newKey, title, detail)
+	return err
+}
+
 // SetStepOutputs keeps what a composite step gave.
 func (s *Store) SetStepOutputs(ctx context.Context, requestID, key string, outputs json.RawMessage) error {
 	_, err := s.Pool.Exec(ctx, `update request_steps set outputs = $3 where request_id = $1 and key = $2`, requestID, key, outputs)

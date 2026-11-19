@@ -371,3 +371,10 @@ func (s *Store) RequestSecretsIn(ctx context.Context, db DB, requestID string) (
 	rows, _ := db.Query(ctx, `select field, key_id, nonce, ciphertext from request_secrets where request_id = $1`, requestID)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[SealedInput])
 }
+
+// SetRequestPlan stores a request's plan as its workflow changed it: a VM
+// a blocking subscription renamed, moved or addressed (ADR-0054).
+func (s *Store) SetRequestPlan(ctx context.Context, db DB, id string, plan json.RawMessage) error {
+	_, err := db.Exec(ctx, `update requests set plan = $2 where id = $1`, id, plan)
+	return err
+}

@@ -36,10 +36,11 @@ type Use struct {
 	// Disabled: it can't run (a disabled subscription).
 	Disabled bool `json:"disabled,omitempty"`
 
-	// A subscription's rvav topic, if rvav has one, and whether vRA waits
-	// for it.
+	// A subscription's rvav topic, if rvav has one, whether vRA waits for
+	// it, and whether it runs this when it fails rather than as its own.
 	topic    string
 	blocking bool
+	recovery bool
 }
 
 // TriageItem is one workflow or action: what it is, what uses it, and its
@@ -212,11 +213,11 @@ func TriageVRO(e *vra.Estate) Triage {
 			detail += ", blocking"
 		}
 		u := Use{Kind: "subscription", Name: s.Name, Detail: detail, Disabled: s.Disabled, topic: ev, blocking: s.Blocking}
-		switch s.RunnableType {
-		case "extensibility.vro":
-			add("workflow:"+s.RunnableID, u)
-		case "extensibility.abx":
-			add("abx:"+s.RunnableID, u)
+		addRunnable(add, s.RunnableType, s.RunnableID, u)
+		if s.Blocking && s.RecoverRunnableID != "" {
+			r := u
+			r.Detail, r.recovery = detail+", its recovery", true
+			addRunnable(add, s.RecoverRunnableType, s.RecoverRunnableID, r)
 		}
 	}
 	for _, ra := range e.ResourceActions {
@@ -643,19 +644,13 @@ func rvavEvent(topic string) string {
 	return ""
 }
 
-// mayBlock lists the topics whose subscriptions may hold a request, "a, b
-// and c".
-func mayBlock() string {
-	var topics []string
-	for _, t := range outbox.Topics {
-		if outbox.MayBlock(t) {
-			topics = append(topics, t)
-		}
+func addRunnable(add func(string, Use), kind, id string, u Use) {
+	switch kind {
+	case "extensibility.vro":
+		add("workflow:"+id, u)
+	case "extensibility.abx":
+		add("abx:"+id, u)
 	}
-	if len(topics) < 2 {
-		return strings.Join(topics, "")
-	}
-	return strings.Join(topics[:len(topics)-1], ", ") + " and " + topics[len(topics)-1]
 }
 
 // runsAlone says that a subscription or a day-2 action runs a workflow: what
@@ -680,9 +675,15 @@ func useReasons(used []Use) []string {
 			switch {
 			case u.topic == "":
 				out = append(out, "The subscription "+u.Name+" runs it ("+u.Detail+"): rvav has no such event, so this needs another trigger.")
+			case u.recovery && !outbox.MayBlock(u.topic):
+				out = append(out, "The subscription "+u.Name+" runs it when it fails ("+u.Detail+"): an rvav subscription on "+u.topic+
+					" doesn't block, so it has no recovery target; what replaces it needs another trigger.")
+			case u.recovery:
+				out = append(out, "The subscription "+u.Name+" runs it when it fails ("+u.Detail+"): the recovery target of a blocking rvav subscription on "+
+					u.topic+" runs what replaces it (ADR-0054).")
 			case u.blocking && !outbox.MayBlock(u.topic):
 				out = append(out, "The subscription "+u.Name+" runs it ("+u.Detail+"): an rvav subscription on "+u.topic+
-					" runs what replaces it, but doesn't hold the request: rvav waits for subscriptions only on "+mayBlock()+".")
+					" runs what replaces it, but doesn't hold the request: rvav waits for subscriptions only on "+outbox.MayBlockList()+".")
 			default:
 				out = append(out, "The subscription "+u.Name+" runs it ("+u.Detail+"): an rvav subscription on "+u.topic+" runs what replaces it.")
 			}

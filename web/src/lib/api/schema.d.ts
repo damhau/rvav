@@ -9498,8 +9498,10 @@ export interface components {
             key: components["schemas"]["EventTopicKey"];
             group: components["schemas"]["EventTopicGroup"];
             description: string;
-            /** @description Whether blocking subscriptions are allowed: provisioning.pre, day2.pre and delete.pre. */
+            /** @description Whether blocking subscriptions are allowed: provisioning.pre, compute.allocation.pre, network.configure, day2.pre and delete.pre (ADR-0054). */
             may_block: boolean;
+            /** @description What a blocking subscription's answer may change besides stopping the request: the deployment's properties on provisioning.pre, the VM's name and placement on compute.allocation.pre, its adapters' networks and addresses on network.configure (ADR-0054). */
+            may_change: components["schemas"]["SubscriptionChange"][];
             sample: components["schemas"]["IntegrationEvent"];
         };
         EventTopicList: {
@@ -9544,10 +9546,36 @@ export interface components {
             };
         };
         /**
-         * @description What a blocking subscription does when its target fails or doesn't answer in time.
+         * @description What a blocking subscription does when its target fails, doesn't answer in time, or answers with a change rvav refuses (ADR-0054).
          * @enum {string}
          */
         SubscriptionOnFailure: "stop_request" | "continue_request";
+        /**
+         * @description What a blocking answer may change: `properties` (`properties`), `name` and `placement` (`machine.name`, `machine.placement`), `networks` (`machine.networks`).
+         * @enum {string}
+         */
+        SubscriptionChange: "properties" | "name" | "placement" | "networks";
+        /**
+         * @description What a blocking subscription's answer changed on its VM (ADR-0054), as
+         *     the answer's `machine` gave it: on compute.allocation.pre its name
+         *     and placement, on network.configure its adapters' networks and
+         *     addresses. rvav checks each change again before building.
+         */
+        MachineChange: {
+            name?: string;
+            placement?: {
+                cluster?: string;
+                datastore?: string;
+                resource_pool?: string;
+                folder?: string;
+            };
+            networks?: {
+                /** @description The adapter: 0 for the first, as in the event's `machine.networks`. */
+                index: number;
+                network?: string;
+                address?: string;
+            }[];
+        };
         SubscriptionWrite: {
             name: string;
             description?: string;
@@ -9558,7 +9586,7 @@ export interface components {
              */
             condition?: string;
             /**
-             * @description Only on `.pre` topics: the request waits for the answer and may be stopped.
+             * @description Only on the topics that may block (`EventTopic.may_block`): the request waits for the answer, which may stop it or change what `EventTopic.may_change` says.
              * @default false
              */
             blocking: boolean;
@@ -9573,6 +9601,8 @@ export interface components {
             /** @default true */
             enabled: boolean;
             target: components["schemas"]["SubscriptionTarget"];
+            /** @description A blocking subscription's recovery target (ADR-0054): told once when the subscription fails, with the event and `recovery.reason`. Its answer's outcome, if it gives one, decides whether the request goes on; otherwise `on_failure` does. */
+            recovery?: components["schemas"]["SubscriptionTarget"];
         };
         Subscription: components["schemas"]["SubscriptionWrite"] & {
             id: string;
@@ -9604,6 +9634,8 @@ export interface components {
             topic: components["schemas"]["EventTopicKey"];
             status: components["schemas"]["SubscriptionRunStatus"];
             blocking: boolean;
+            /** @description A run of the subscription's recovery target, after the subscription failed on the same event (ADR-0054). */
+            recovery: boolean;
             /** @description Made with Test. */
             test: boolean;
             /** @description The request it belongs to (blocking runs, and runs of request events). */
@@ -9644,6 +9676,7 @@ export interface components {
             properties?: {
                 [key: string]: string;
             };
+            changes?: components["schemas"]["MachineChange"];
             history: components["schemas"]["SubscriptionRunAttempt"][];
         };
         SubscriptionRunPage: components["schemas"]["PageInfo"] & {

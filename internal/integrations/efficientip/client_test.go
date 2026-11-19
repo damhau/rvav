@@ -181,6 +181,55 @@ func TestAddresses(t *testing.T) {
 	}
 }
 
+// TestReserveAddress reserves the address a blocking subscription chose
+// (ADR-0054): again for the same host, never one someone else has.
+func TestReserveAddress(t *testing.T) {
+	ctx := context.Background()
+	l := newLab(t)
+	c := l.client(t, AuthNative, "rvav", "s3cret")
+
+	a, err := c.ReserveAddress(ctx, subnet, "10.31.10.50", "web-dev-app001.corp.example", "dep_1")
+	if err != nil || a.IP != "10.31.10.50" || a.ID == "" {
+		t.Fatalf("reserve = %+v, %v", a, err)
+	}
+	add := l.last("POST", "/rest/ip_add").Query
+	if add.Get("hostaddr") != "10.31.10.50" || add.Get("add_flag") != "new_only" ||
+		add.Get("ip_class_parameters") != "rvav_instance=rvav&rvav_managed=1&rvav_owner=dep_1" {
+		t.Fatalf("ip_add = %v", add)
+	}
+	if again, err := c.ReserveAddress(ctx, subnet, "10.31.10.50", "web-dev-app001.corp.example", "dep_1"); err != nil || again != a {
+		t.Fatalf("reserving it twice gave %+v then %+v (%v)", a, again, err)
+	}
+	if _, err := c.ReserveAddress(ctx, subnet, "10.31.10.50", "web-dev-app001.corp.example", "dep_2"); !errors.Is(err, ErrAddressTaken) {
+		t.Fatalf("the address reserved for another deployment = %v", err)
+	}
+	if _, err := c.ReserveAddress(ctx, subnet, "10.31.10.50", "web-dev-app002.corp.example", "dep_1"); !errors.Is(err, ErrAddressTaken) {
+		t.Fatalf("the address reserved under another name = %v", err)
+	}
+	if _, err := c.call(ctx, "POST", "ip_add", url.Values{"site_id": {add.Get("site_id")}, "hostaddr": {"10.31.10.90"},
+		"name": {"legacy.corp.example"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ReserveAddress(ctx, subnet, "10.31.10.90", "web-dev-app003.corp.example", "dep_3"); !errors.Is(err, ErrAddressTaken) {
+		t.Fatalf("an address rvav did not reserve = %v", err)
+	}
+	// Taken between the lookup and the add.
+	l.setBefore(func(w http.ResponseWriter, r *http.Request) bool {
+		if r.Method == "POST" && r.URL.Path == "/rest/ip_add" && r.URL.Query().Get("name") == "web-dev-app004.corp.example" {
+			l.setBefore(nil)
+			other := l.client(t, AuthNative, "rvav", "s3cret")
+			if _, err := other.call(r.Context(), "POST", "ip_add", url.Values{"site_id": {r.URL.Query().Get("site_id")},
+				"hostaddr": {"10.31.10.60"}, "name": {"someone-else"}}); err != nil {
+				t.Error(err)
+			}
+		}
+		return false
+	})
+	if _, err := c.ReserveAddress(ctx, subnet, "10.31.10.60", "web-dev-app004.corp.example", "dep_4"); !errors.Is(err, ErrAddressTaken) {
+		t.Fatalf("an address taken in a race = %v", err)
+	}
+}
+
 func TestSubnetLookup(t *testing.T) {
 	ctx := context.Background()
 	l := newLab(t)

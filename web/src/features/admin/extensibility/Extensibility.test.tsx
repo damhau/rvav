@@ -67,10 +67,72 @@ describe("Subscriptions", () => {
 
     expect(within(sheet).getByText("A VM is about to be cloned.")).toBeInTheDocument();
     expect(within(sheet).getByRole("checkbox", { name: /Blocking/ })).toBeDisabled();
-    expect(within(sheet).getByText("(only on provisioning.pre, day2.pre and delete.pre)")).toBeInTheDocument();
+    expect(
+      within(sheet).getByText(
+        "(only on provisioning.pre, compute.allocation.pre, network.configure, day2.pre and delete.pre)",
+      ),
+    ).toBeInTheDocument();
     await user.click(within(sheet).getByText("A sample compute.provision.pre event"));
     expect(within(sheet).getByText(/"machine": \{/)).toHaveTextContent('"address": "10.31.10.57"');
   });
+});
+
+describe("A blocking subscription on a VM's topic", () => {
+  it("says what its answer may change, and gives it a recovery target", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/subscriptions");
+    await user.click(await screen.findByRole("button", { name: "New subscription" }));
+    const sheet = await screen.findByRole("dialog", { name: "New subscription" });
+    await user.click(within(sheet).getByRole("textbox", { name: "Name" }));
+    await user.paste("IPAM address");
+    await user.click(within(sheet).getByRole("combobox", { name: "Topic" }));
+    await user.click(await screen.findByRole("option", { name: "network.configure" }));
+    await user.click(within(sheet).getByRole("textbox", { name: "URL" }));
+    await user.paste("https://cmdb.corp.example/rvav/ip");
+    await user.click(within(sheet).getByRole("combobox", { name: "Signing secret" }));
+    await user.click(await screen.findByRole("option", { name: "webhook-signing" }));
+    await user.click(within(sheet).getByRole("checkbox", { name: /Blocking/ }));
+    expect(
+      within(sheet).getByText(/Its answer may also change its adapters' networks and addresses/),
+    ).toBeInTheDocument();
+
+    await user.click(within(sheet).getByRole("checkbox", { name: "Tell a recovery target when it fails" }));
+    const recovery = within(sheet).getByRole("group", { name: "Recovery target" });
+    await user.click(within(recovery).getByRole("textbox", { name: "Recovery URL" }));
+    await user.paste("https://evil.example/x");
+    await user.click(within(recovery).getByRole("combobox", { name: "Recovery signing secret" }));
+    await user.click(await screen.findByRole("option", { name: "webhook-signing" }));
+    await user.click(within(sheet).getByRole("button", { name: "Save subscription" }));
+    expect(await within(recovery).findByText(/evil.example is not an allowed webhook host/)).toBeInTheDocument();
+
+    const url = within(recovery).getByRole("textbox", { name: "Recovery URL" });
+    await user.clear(url);
+    await user.click(url);
+    await user.paste("https://hooks.corp.example/rvav/ipam-down");
+    await user.click(within(sheet).getByRole("button", { name: "Save subscription" }));
+    expect(await screen.findByText("IPAM address saved")).toBeInTheDocument();
+  }, 15_000);
+
+  it("shows its recovery target, and what each run changed on the VM", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/subscriptions/sub_cmdb_naming");
+    await screen.findByRole("heading", { level: 1, name: "CMDB naming" });
+    expect(screen.getByText("Webhook to hooks.corp.example")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "the VM's name (machine.name) and its cluster, resource pool, datastore and folder (machine.placement)",
+      ),
+    ).toBeInTheDocument();
+
+    const runs = await screen.findByRole("table", { name: "Runs" });
+    expect(await within(runs).findByText("Recovery")).toBeInTheDocument();
+    const opens = await within(runs).findAllByRole("button", { name: /Open the run from/ });
+    await user.click(opens[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "Run" });
+    expect(
+      await within(dialog).findByText("renamed web-dev-app742; moved to datastore ds-gva-dev-02"),
+    ).toBeInTheDocument();
+  }, 15_000);
 });
 
 describe("A subscription's page", () => {

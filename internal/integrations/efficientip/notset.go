@@ -26,6 +26,9 @@ func (n NotSet) NextFree(context.Context, Subnet) (string, error) { return "", n
 func (n NotSet) Reserve(context.Context, Subnet, string, string) (Address, error) {
 	return Address{}, n.err()
 }
+func (n NotSet) ReserveAddress(context.Context, Subnet, string, string, string) (Address, error) {
+	return Address{}, n.err()
+}
 func (n NotSet) Release(context.Context, Address) error               { return n.err() }
 func (n NotSet) RenameAddress(context.Context, Address, string) error { return n.err() }
 func (n NotSet) CreateRecord(context.Context, Record) (Record, error) { return Record{}, n.err() }

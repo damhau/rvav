@@ -132,6 +132,9 @@ func runUpdate(ctx workflow.Context, info Info) (string, error) {
 		if err := machineEvents(ctx, info, topic, p.VMs); err != nil {
 			return "", err
 		}
+		if key, err := machineChecks(ctx, info, topic, "", p.VMs); err != nil {
+			return key, err
+		}
 	}
 	built := u.kept()
 	switch {

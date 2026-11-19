@@ -415,6 +415,9 @@ type VMUnit struct {
 	PrefixLength int      `json:"prefix_length"`
 	DNSZone      string   `json:"dns_zone"`
 	DNSServers   []string `json:"dns_servers"`
+	// Address is the address of its first adapter a blocking subscription
+	// chose (ADR-0054), reserved instead of the subnet's first free one.
+	Address string `json:"address,omitempty"`
 	// Disks and NICs are added after the template's, and Tags attached
 	// (ADR-0024).
 	Disks []blueprint.DiskPlan `json:"disks,omitempty"`
@@ -570,6 +573,8 @@ type NICUnit struct {
 	PrefixLength int      `json:"prefix_length,omitempty"`
 	DNSZone      string   `json:"dns_zone,omitempty"`
 	DNSServers   []string `json:"dns_servers,omitempty"`
+	// Address is the one a blocking subscription chose (ADR-0054).
+	Address string `json:"address,omitempty"`
 }
 
 func (vm VMUnit) cloneTitle() string {

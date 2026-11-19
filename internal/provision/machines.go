@@ -47,7 +47,7 @@ func (a *Activities) MachineEvents(ctx context.Context, in MachineEventsInput) e
 			continue
 		}
 		if err := outbox.ForMachine(ctx, a.Store.Pool, in.Topic, in.RequestID, machineKey(ctx, in.RequestID, in.Topic, vm.Name),
-			machineOf(vm, nil, "", "")); err != nil {
+			machineOf(vm, vm.chosenAddresses(), "", "")); err != nil {
 			return err
 		}
 	}

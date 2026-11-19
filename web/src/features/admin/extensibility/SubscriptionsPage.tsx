@@ -1,6 +1,7 @@
 // Event subscriptions (S10, ADR-0021): webhooks, AWX templates and custom
 // workflows that hear about requests, their approvals, each VM they build or
-// delete (ADR-0049), day-2 actions, leases and projects; blocking ones may stop a request.
+// delete (ADR-0049), day-2 actions, leases and projects; blocking ones may stop a
+// request, or change a VM it hasn't built (ADR-0054).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Webhook } from "lucide-react";
@@ -32,6 +33,7 @@ import { RunDialog } from "./runs";
 type S = components["schemas"];
 type Subscription = S["Subscription"];
 type TargetKind = "webhook" | "awx" | "workflow";
+type TargetDraft = { kind: TargetKind; url: string; secret: string; template: string; workflow: string };
 
 export function targetText(t: S["SubscriptionTarget"]): string {
   if (t.webhook) {
@@ -45,6 +47,33 @@ export function targetText(t: S["SubscriptionTarget"]): string {
   if (t.workflow) return "Custom workflow " + t.workflow.key;
   return "—";
 }
+
+const draftOf = (t?: S["SubscriptionTarget"]): TargetDraft => ({
+  kind: t?.awx ? "awx" : t?.workflow ? "workflow" : "webhook",
+  url: t?.webhook?.url ?? "",
+  secret: t?.webhook?.secret ?? "",
+  template: t?.awx?.job_template ?? "",
+  workflow: t?.workflow?.key ?? "",
+});
+
+const targetOf = (d: TargetDraft): S["SubscriptionTarget"] =>
+  d.kind === "webhook"
+    ? { webhook: { url: d.url, secret: d.secret } }
+    : d.kind === "awx"
+      ? { awx: { job_template: d.template } }
+      : { workflow: { key: d.workflow } };
+
+/** "a, b and c". */
+export const listText = (items: string[]) =>
+  items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+
+/** What a blocking answer may change, and where the answer says it. */
+export const changeText: Record<S["SubscriptionChange"], string> = {
+  properties: "the deployment's custom properties (properties)",
+  name: "the VM's name (machine.name)",
+  placement: "its cluster, resource pool, datastore and folder (machine.placement)",
+  networks: "its adapters' networks and addresses (machine.networks)",
+};
 
 export const runsText = (s: Subscription) =>
   `${s.runs.delivered} delivered, ${s.runs.failed} failed, ${s.runs.pending} waiting`;
@@ -63,12 +92,119 @@ const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
   void qc.invalidateQueries({ queryKey: ["admin", "subscription"] });
 };
 
-export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClose: () => void }) {
-  const qc = useQueryClient();
-  const topics = useQuery(adm.eventTopics());
+const targetLabels = {
+  target: {
+    kind: "Kind of target",
+    url: "URL",
+    secret: "Signing secret",
+    template: "Job template",
+    workflow: "Custom workflow",
+  },
+  recovery: {
+    kind: "Kind of recovery target",
+    url: "Recovery URL",
+    secret: "Recovery signing secret",
+    template: "Recovery job template",
+    workflow: "Recovery workflow",
+  },
+};
+
+/** A subscription's target, or its recovery target: a webhook, an AWX template or a custom workflow. */
+function TargetFields({
+  of,
+  value,
+  onChange,
+  errors,
+}: {
+  of: "target" | "recovery";
+  value: TargetDraft;
+  onChange: (d: TargetDraft) => void;
+  errors: Record<string, string>;
+}) {
   const secrets = useQuery(adm.secrets());
   const templates = useQuery(q.awxTemplates());
   const workflows = useQuery(adm.workflows());
+  const label = targetLabels[of];
+  const id = (field: string) => (of === "target" ? `sub-${field}` : `sub-recovery-${field}`);
+  const path = `/${of}`;
+  const set = (patch: Partial<TargetDraft>) => onChange({ ...value, ...patch });
+  return (
+    <>
+      <Field label={label.kind} htmlFor={id("kind")} error={errors[path]}>
+        <Select
+          id={id("kind")}
+          value={value.kind}
+          onChange={(v) => set({ kind: v as TargetKind })}
+          options={[
+            { value: "webhook", label: "Webhook" },
+            { value: "awx", label: "AWX template" },
+            { value: "workflow", label: "Custom workflow" },
+          ]}
+        />
+      </Field>
+      {value.kind === "webhook" && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
+          <Field
+            label={label.url}
+            htmlFor={id("url")}
+            error={errors[`${path}/webhook/url`]}
+            hint="On a host rvav may call, as Integrations sets"
+          >
+            <Input
+              id={id("url")}
+              className="font-mono text-secondary"
+              value={value.url}
+              onChange={(e) => set({ url: e.target.value })}
+            />
+          </Field>
+          <Field label={label.secret} htmlFor={id("secret")} error={errors[`${path}/webhook/secret`]}>
+            <Select
+              id={id("secret")}
+              value={value.secret}
+              onChange={(secret) => set({ secret })}
+              options={(secrets.data?.items ?? [])
+                .filter((s) => !s.project_id)
+                .map((s) => ({ value: s.name, label: s.name }))}
+            />
+          </Field>
+        </div>
+      )}
+      {value.kind === "awx" && (
+        <Field
+          label={label.template}
+          htmlFor={id("template")}
+          error={errorAt(errors, `${path}/awx`)}
+          hint="It gets the event as the extra variable rvav_event."
+        >
+          <Select
+            id={id("template")}
+            value={value.template}
+            onChange={(template) => set({ template })}
+            options={(templates.data?.items ?? [])
+              .filter((t) => !t.workflow)
+              .map((t) => ({ value: t.name, label: t.name }))}
+          />
+        </Field>
+      )}
+      {value.kind === "workflow" && (
+        <Field label={label.workflow} htmlFor={id("workflow")} error={errors[`${path}/workflow/key`]}>
+          <Select
+            id={id("workflow")}
+            value={value.workflow}
+            onChange={(workflow) => set({ workflow })}
+            options={(workflows.data?.items ?? [])
+              .filter((w) => w.usages.includes("subscription_target"))
+              .map((w) => ({ value: w.key ?? "", label: w.title }))}
+          />
+        </Field>
+      )}
+    </>
+  );
+}
+
+export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClose: () => void }) {
+  const qc = useQueryClient();
+  const topics = useQuery(adm.eventTopics());
   const [f, setF] = useState({
     name: sub?.name ?? "",
     description: sub?.description ?? "",
@@ -80,34 +216,29 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
     timeout: String(sub?.timeout_seconds ?? 30),
     enabled: sub?.enabled ?? true,
   });
-  const initialKind: TargetKind = sub?.target.awx ? "awx" : sub?.target.workflow ? "workflow" : "webhook";
-  const [kind, setKind] = useState<TargetKind>(initialKind);
-  const [url, setUrl] = useState(sub?.target.webhook?.url ?? "");
-  const [secret, setSecret] = useState(sub?.target.webhook?.secret ?? "");
-  const [template, setTemplate] = useState(sub?.target.awx?.job_template ?? "");
-  const [workflow, setWorkflow] = useState(sub?.target.workflow?.key ?? "");
+  const [target, setTarget] = useState(() => draftOf(sub?.target));
+  const [recovers, setRecovers] = useState(Boolean(sub?.recovery));
+  const [recovery, setRecovery] = useState(() => draftOf(sub?.recovery));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const topic = topics.data?.items.find((t) => t.key === f.topic);
   const mayBlock = topic?.may_block ?? false;
+  const blocks = mayBlock && f.blocking;
+  const blockable = (topics.data?.items ?? []).filter((t) => t.may_block).map((t) => t.key);
+  const changes = (topic?.may_change ?? []).map((c) => changeText[c]);
   const save = useMutation({
     mutationFn: () => {
-      const target: S["SubscriptionTarget"] =
-        kind === "webhook"
-          ? { webhook: { url, secret } }
-          : kind === "awx"
-            ? { awx: { job_template: template } }
-            : { workflow: { key: workflow } };
       const body: S["SubscriptionWrite"] = {
         name: f.name,
         description: f.description,
         topic: f.topic,
         condition: f.condition,
-        blocking: mayBlock && f.blocking,
+        blocking: blocks,
         on_failure: f.on_failure,
         priority: priorityOf(f.priority),
         timeout_seconds: Number(f.timeout) || 30,
         enabled: f.enabled,
-        target,
+        target: targetOf(target),
+        ...(blocks && recovers ? { recovery: targetOf(recovery) } : {}),
       };
       return sub
         ? call(api.PUT("/admin/subscriptions/{id}", { params: { path: { id: sub.id } }, body }))
@@ -188,74 +319,7 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
       )}
       <fieldset className="flex flex-col gap-3 rounded-md border border-line p-3">
         <legend className="px-1 text-secondary font-medium">Target</legend>
-        <Field label="Kind of target" htmlFor="sub-kind" error={errors["/target"]}>
-          <Select
-            id="sub-kind"
-            value={kind}
-            onChange={(v) => setKind(v as TargetKind)}
-            options={[
-              { value: "webhook", label: "Webhook" },
-              { value: "awx", label: "AWX template" },
-              { value: "workflow", label: "Custom workflow" },
-            ]}
-          />
-        </Field>
-        {kind === "webhook" && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
-            <Field
-              label="URL"
-              htmlFor="sub-url"
-              error={errors["/target/webhook/url"]}
-              hint="On a host rvav may call, as Integrations sets"
-            >
-              <Input
-                id="sub-url"
-                className="font-mono text-secondary"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-              />
-            </Field>
-            <Field label="Signing secret" htmlFor="sub-secret" error={errors["/target/webhook/secret"]}>
-              <Select
-                id="sub-secret"
-                value={secret}
-                onChange={setSecret}
-                options={(secrets.data?.items ?? [])
-                  .filter((s) => !s.project_id)
-                  .map((s) => ({ value: s.name, label: s.name }))}
-              />
-            </Field>
-          </div>
-        )}
-        {kind === "awx" && (
-          <Field
-            label="Job template"
-            htmlFor="sub-template"
-            error={errorAt(errors, "/target/awx")}
-            hint="It gets the event as the extra variable rvav_event."
-          >
-            <Select
-              id="sub-template"
-              value={template}
-              onChange={setTemplate}
-              options={(templates.data?.items ?? [])
-                .filter((t) => !t.workflow)
-                .map((t) => ({ value: t.name, label: t.name }))}
-            />
-          </Field>
-        )}
-        {kind === "workflow" && (
-          <Field label="Custom workflow" htmlFor="sub-workflow" error={errors["/target/workflow/key"]}>
-            <Select
-              id="sub-workflow"
-              value={workflow}
-              onChange={setWorkflow}
-              options={(workflows.data?.items ?? [])
-                .filter((w) => w.usages.includes("subscription_target"))
-                .map((w) => ({ value: w.key ?? "", label: w.title }))}
-            />
-          </Field>
-        )}
+        <TargetFields of="target" value={target} onChange={setTarget} errors={errors} />
       </fieldset>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Priority" htmlFor="sub-priority" hint="Lower first">
@@ -282,27 +346,55 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
           <Checkbox
             id="sub-blocking"
             disabled={!mayBlock}
-            checked={mayBlock && f.blocking}
+            checked={blocks}
             onChange={(blocking) => setF({ ...f, blocking })}
           />
           Blocking: the request waits for the answer, which may stop it
-          {!mayBlock && (
-            <span className="text-secondary text-faint">(only on provisioning.pre, day2.pre and delete.pre)</span>
+          {!mayBlock && blockable.length > 0 && (
+            <span className="text-secondary text-faint">(only on {listText(blockable)})</span>
           )}
         </label>
         {errors["/blocking"] && <p className="text-secondary text-bad">{errors["/blocking"]}</p>}
-        {mayBlock && f.blocking && (
-          <Field label="When it fails or doesn't answer" htmlFor="sub-on-failure" className="max-w-sm">
-            <Select
-              id="sub-on-failure"
-              value={f.on_failure}
-              onChange={(v) => setF({ ...f, on_failure: v as S["SubscriptionOnFailure"] })}
-              options={[
-                { value: "stop_request", label: "Stop the request" },
-                { value: "continue_request", label: "Let the request go on" },
-              ]}
-            />
-          </Field>
+        {blocks && (
+          <>
+            <p className="text-secondary text-muted">
+              {changes.length > 0
+                ? `Its answer may also change ${listText(changes)}; rvav checks the change again before building, as it checked the request. `
+                : ""}
+              A webhook answers with JSON, an AWX job with the rvav_answer artifact (set_stats), a custom workflow with
+              its result.
+            </p>
+            <Field
+              label="When it fails, doesn't answer or asks for a change rvav refuses"
+              htmlFor="sub-on-failure"
+              className="max-w-sm"
+            >
+              <Select
+                id="sub-on-failure"
+                value={f.on_failure}
+                onChange={(v) => setF({ ...f, on_failure: v as S["SubscriptionOnFailure"] })}
+                options={[
+                  { value: "stop_request", label: "Stop the request" },
+                  { value: "continue_request", label: "Let the request go on" },
+                ]}
+              />
+            </Field>
+            <label htmlFor="sub-recovers" className="flex items-center gap-1.5 text-body">
+              <Checkbox id="sub-recovers" checked={recovers} onChange={setRecovers} />
+              Tell a recovery target when it fails
+            </label>
+            {errors["/recovery"] && !recovers && <p className="text-secondary text-bad">{errors["/recovery"]}</p>}
+            {recovers && (
+              <fieldset className="flex flex-col gap-3 rounded-md border border-line p-3">
+                <legend className="px-1 text-secondary font-medium">Recovery target</legend>
+                <p className="text-secondary text-muted">
+                  Told once, with the event and why it failed (recovery.reason). If it answers stop or continue, that
+                  decides; otherwise the setting above does.
+                </p>
+                <TargetFields of="recovery" value={recovery} onChange={setRecovery} errors={errors} />
+              </fieldset>
+            )}
+          </>
         )}
         <label htmlFor="sub-enabled" className="flex items-center gap-1.5 text-body">
           <Checkbox id="sub-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />

@@ -352,6 +352,9 @@ type Subscription struct {
 	RunnableID   string `json:"runnableId"`
 	Blocking     bool   `json:"blocking,omitempty"`
 	Disabled     bool   `json:"disabled,omitempty"`
+	// What runs when a blocking one fails, if anything.
+	RecoverRunnableType string `json:"recoverRunnableType,omitempty"`
+	RecoverRunnableID   string `json:"recoverRunnableId,omitempty"`
 	// Constraints narrow it: to some projects (none: every project).
 	Constraints struct {
 		ProjectID []string `json:"projectId,omitempty"`

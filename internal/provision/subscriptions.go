@@ -1,6 +1,7 @@
 package provision
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -107,61 +108,200 @@ func (a *Activities) RunBlockingSubscription(ctx context.Context, requestID stri
 	}
 	in := JobInput{RequestID: requestID, ProjectID: r.ProjectID, StepKey: KeyChecks}
 	a.child(ctx, in, out.StepKey, sub.Name, "running", nil)
-	step, _ := a.Store.GetStepByKey(ctx, requestID, out.StepKey)
-	run := store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: sub.ID, EventID: b.EventID, Status: "delivering",
-		Blocking: true, RequestID: &requestID, StepID: &step.ID}
-	if err := a.Store.InsertRun(ctx, a.Store.Pool, run); err != nil {
-		return out, err
-	}
+	res, err := a.ask(ctx, asking{sub: sub, eventID: b.EventID, payload: payload, in: in, key: out.StepKey,
+		accept: func(res dispatch.Result) (taken, error) {
+			if len(res.Machine) > 0 {
+				return taken{problem: "Only compute.allocation.pre and network.configure subscriptions may change a VM."}, nil
+			}
+			if len(res.Properties) == 0 {
+				return taken{}, nil
+			}
+			if problem := checkProperties(sub.Topic, res.Properties); problem != "" {
+				return taken{problem: problem}, nil
+			}
+			if err := a.Store.SetDeploymentProperties(ctx, a.Store.Pool, requestID, res.Properties); err != nil {
+				return taken{}, err
+			}
+			props, _ := json.Marshal(res.Properties)
+			return taken{detail: "Went on, setting " + propertyList(res.Properties) + ".", properties: props}, nil
+		}})
+	out.Stop, out.Reason = res.stop, res.reason
+	return out, err
+}
 
-	// One more try within the timeout when the first fails fast.
-	start := time.Now()
-	deadline := start.Add(time.Duration(sub.TimeoutSeconds) * time.Second)
-	res := a.Subscriptions.Attempt(ctx, dispatch.Delivery{RunID: run.ID, Sub: sub, Event: payload, Blocking: true})
-	if !res.OK && time.Until(deadline) > time.Duration(sub.TimeoutSeconds)*time.Second/2 {
-		_ = a.Store.RecordAttempt(ctx, run.ID, dispatch.AttemptRow(start, time.Now(), res),
-			store.RunUpdate{Status: "delivering", Unclaimed: true})
-		start = time.Now()
-		res = a.Subscriptions.Attempt(ctx, dispatch.Delivery{RunID: run.ID, Sub: sub, Event: payload, Blocking: true})
+// asking is a blocking subscription asked about an event, under its
+// check's step, key, in the step in names.
+type asking struct {
+	sub     store.Subscription
+	eventID string
+	payload json.RawMessage
+	in      JobInput
+	key     string
+	// accept takes an answer letting the request go on and does what it
+	// asks: a problem says why rvav refuses it, an error that rvav couldn't
+	// tell.
+	accept func(dispatch.Result) (taken, error)
+}
+
+// taken is what an answer rvav took did, for the step and the run.
+type taken struct {
+	detail, problem     string
+	properties, changes json.RawMessage
+	// refused: the problem is a change rvav refused, not a malformed answer.
+	refused bool
+}
+
+// asked is what asking came to.
+type asked struct {
+	stop   bool
+	reason string
+}
+
+// ask delivers the event to a blocking subscription, once more within its
+// timeout when the first try fails fast, and records its run: a request
+// retried keeps one run per event. A failure, a timeout or an answer rvav
+// refuses tells its recovery target, and its answer or the subscription's
+// on_failure decides (ADR-0054).
+func (a *Activities) ask(ctx context.Context, q asking) (asked, error) {
+	requestID := q.in.RequestID
+	step, _ := a.Store.GetStepByKey(ctx, requestID, q.key)
+	runID, err := a.Store.StartBlockingRun(ctx, store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: q.sub.ID,
+		EventID: q.eventID, RequestID: &requestID, StepID: &step.ID})
+	if err != nil {
+		return asked{}, err
 	}
-	if res.OK && len(res.Properties) > 0 {
-		if problem := checkProperties(sub.Topic, res.Properties); problem != "" {
-			res.OK, res.Err = false, problem
+	start, res := a.deliverBlocking(ctx, dispatch.Delivery{RunID: runID, Sub: q.sub, Event: q.payload, Blocking: true, StepKey: q.key})
+	var took taken
+	if res.OK && res.Outcome != "stop" {
+		if took, err = q.accept(res); err != nil {
+			return asked{}, err
+		}
+		if took.problem != "" {
+			res.OK, res.Err = false, took.problem
 		}
 	}
-
 	u := store.RunUpdate{Unclaimed: true}
+	var out asked
 	switch {
-	case !res.OK && sub.OnFailure == "continue_request":
-		u.Status, u.Reason = "failed", &res.Err
-		detail := "Failed (" + res.Err + "); its setting lets the request go on."
-		a.childDetail(ctx, in, out.StepKey, "skipped", detail)
 	case !res.OK:
 		u.Status, u.Reason = "failed", &res.Err
-		out.Stop, out.Reason = true, sub.Name+" couldn't check the request: "+res.Err
-		a.child(ctx, in, out.StepKey, "", "failed", &out.Reason)
+		if err := a.Store.RecordAttempt(ctx, runID, dispatch.AttemptRow(start, time.Now(), res), u); err != nil {
+			return out, err
+		}
+		reason := q.sub.Name + " couldn't check the request: " + res.Err
+		if took.refused {
+			reason = q.sub.Name + " asked for a change rvav refuses: " + res.Err
+		}
+		return a.failed(ctx, q, runID, res.Err, reason)
 	case res.Outcome == "stop":
 		u.Status, u.Outcome, u.Reason = "blocked", &res.Outcome, &res.Reason
-		out.Stop, out.Reason = true, sub.Name+" stopped the request: "+res.Reason
-		a.child(ctx, in, out.StepKey, "", "failed", &out.Reason)
+		out.stop, out.reason = true, q.sub.Name+" stopped the request: "+res.Reason
+		a.child(ctx, q.in, q.key, "", "failed", &out.reason)
+	default:
+		cont := "continue"
+		u.Status, u.Outcome, u.Properties, u.Changes = "delivered", &cont, took.properties, took.changes
+		a.childDetail(ctx, q.in, q.key, "done", cmp.Or(took.detail, "Went on."))
+	}
+	return out, a.Store.RecordAttempt(ctx, runID, dispatch.AttemptRow(start, time.Now(), res), u)
+}
+
+// failed settles a blocking subscription that failed: its recovery
+// target's outcome, when it gives one, then its on_failure.
+func (a *Activities) failed(ctx context.Context, q asking, runID, why, reason string) (asked, error) {
+	var rec *dispatch.Result
+	if len(q.sub.Recovery) > 0 {
+		r, err := a.recover(ctx, q, runID, why)
+		if err != nil {
+			return asked{}, err
+		}
+		if r.OK && r.Decided {
+			rec = &r
+		}
+	}
+	switch {
+	case rec != nil && rec.Outcome == "stop":
+		out := asked{stop: true, reason: reason + " Its recovery stopped the request: " + rec.Reason}
+		a.child(ctx, q.in, q.key, "", "failed", &out.reason)
+		return out, nil
+	case rec != nil:
+		a.childDetail(ctx, q.in, q.key, "skipped", "Failed ("+why+"); its recovery let the request go on.")
+	case q.sub.OnFailure == "continue_request":
+		a.childDetail(ctx, q.in, q.key, "skipped", "Failed ("+why+"); its setting lets the request go on.")
+	default:
+		a.child(ctx, q.in, q.key, "", "failed", &reason)
+		return asked{stop: true, reason: reason}, nil
+	}
+	return asked{}, nil
+}
+
+// recover tells a failed subscription's recovery target, once, with the
+// event and why it failed (vRA's recover workflow, ADR-0054), as a run and
+// a step of its own under the subscription's.
+func (a *Activities) recover(ctx context.Context, q asking, runID, why string) (dispatch.Result, error) {
+	requestID := q.in.RequestID
+	in := JobInput{RequestID: requestID, ProjectID: q.in.ProjectID, StepKey: q.key}
+	key := q.key + "/recovery"
+	a.child(ctx, in, key, "Recovery", "running", nil)
+	step, _ := a.Store.GetStepByKey(ctx, requestID, key)
+	id, err := a.Store.StartBlockingRun(ctx, store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: q.sub.ID,
+		EventID: q.eventID, Recovery: true, RequestID: &requestID, StepID: &step.ID})
+	if err != nil {
+		return dispatch.Result{}, err
+	}
+	sub := q.sub
+	sub.Target = q.sub.Recovery
+	start, res := a.deliverBlocking(ctx, dispatch.Delivery{RunID: id, Sub: sub, Event: withRecovery(q.payload, why, runID),
+		Blocking: true, Recovery: true, StepKey: key})
+	u := store.RunUpdate{Unclaimed: true}
+	switch {
+	case !res.OK:
+		u.Status, u.Reason = "failed", &res.Err
+		a.childDetail(ctx, in, key, "failed", "Failed too: "+res.Err+".")
+	case res.Outcome == "stop":
+		u.Status, u.Outcome, u.Reason = "blocked", &res.Outcome, &res.Reason
+		a.childDetail(ctx, in, key, "done", "Stopped the request: "+res.Reason)
 	default:
 		cont := "continue"
 		u.Status, u.Outcome = "delivered", &cont
-		detail := "Went on."
-		if len(res.Properties) > 0 {
-			b, _ := json.Marshal(res.Properties)
-			u.Properties = b
-			if err := a.Store.SetDeploymentProperties(ctx, a.Store.Pool, requestID, res.Properties); err != nil {
-				return out, err
-			}
-			detail = "Went on, setting " + propertyList(res.Properties) + "."
+		detail := "Let the request go on."
+		if !res.Decided {
+			detail = "Answered without an outcome: the subscription's setting decides."
 		}
-		a.childDetail(ctx, in, out.StepKey, "done", detail)
+		a.childDetail(ctx, in, key, "done", detail)
 	}
-	if err := a.Store.RecordAttempt(ctx, run.ID, dispatch.AttemptRow(start, time.Now(), res), u); err != nil {
-		return out, err
+	return res, a.Store.RecordAttempt(ctx, id, dispatch.AttemptRow(start, time.Now(), res), u)
+}
+
+// withRecovery is the event a recovery target gets: the subscription's,
+// with why it failed and its run.
+func withRecovery(payload json.RawMessage, why, runID string) json.RawMessage {
+	var ev map[string]any
+	if json.Unmarshal(payload, &ev) != nil {
+		return payload
 	}
-	return out, nil
+	ev["recovery"] = map[string]any{"reason": why, "run_id": runID}
+	b, err := json.Marshal(ev)
+	if err != nil {
+		return payload
+	}
+	return b
+}
+
+// deliverBlocking delivers to a blocking target, once more within its
+// timeout when the first try fails fast; it returns when the last try
+// started and how it went.
+func (a *Activities) deliverBlocking(ctx context.Context, d dispatch.Delivery) (time.Time, dispatch.Result) {
+	start := time.Now()
+	timeout := time.Duration(d.Sub.TimeoutSeconds) * time.Second
+	deadline := start.Add(timeout)
+	res := a.Subscriptions.Attempt(ctx, d)
+	if !res.OK && time.Until(deadline) > timeout/2 {
+		_ = a.Store.RecordAttempt(ctx, d.RunID, dispatch.AttemptRow(start, time.Now(), res),
+			store.RunUpdate{Status: "delivering", Unclaimed: true})
+		start = time.Now()
+		res = a.Subscriptions.Attempt(ctx, d)
+	}
+	return start, res
 }
 
 // FinishChecks closes the checks step once every subscription let the

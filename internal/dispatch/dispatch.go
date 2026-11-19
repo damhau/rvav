@@ -29,11 +29,15 @@ type Result struct {
 	// Response is what came back, at most MaxResponse bytes.
 	Response string
 	Err      string
-	// A blocking target's answer: continue or stop, why, and the
-	// properties it sets on the deployment.
+	// A blocking target's answer: continue or stop, why, the properties it
+	// sets on the deployment, and what it changes on a VM (ADR-0054).
+	// Decided says the answer gave its outcome rather than taking
+	// continue by default: a recovery target's decides only then.
 	Outcome    string
 	Reason     string
 	Properties map[string]string
+	Machine    json.RawMessage
+	Decided    bool
 }
 
 // MaxResponse is how much of an answer a run keeps.
@@ -61,6 +65,12 @@ type Delivery struct {
 	Sub      store.Subscription
 	Event    json.RawMessage
 	Blocking bool
+	// Recovery: the blocking subscription failed and this is its recovery
+	// target (ADR-0054), whose failure decides nothing.
+	Recovery bool
+	// StepKey is the step a blocking custom workflow reports its steps
+	// under; check:<subscription> when empty.
+	StepKey string
 	// LastJobID is the AWX job an earlier attempt launched: it is followed
 	// rather than launched again.
 	LastJobID int

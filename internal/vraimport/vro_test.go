@@ -33,7 +33,7 @@ func TestTriageVRO(t *testing.T) {
 	if it := items["wf-tag-vm"]; it.Group != GroupNative || !slices.Equal(it.Systems, []string{"vCenter"}) ||
 		!used(it, "subscription", "Cost centre tag") || !used(it, "workflow", "Decommission application") ||
 		!reason(it, "only drives vCenter") ||
-		!reason(it, "(compute.provision.post in vRA and rvav, blocking): an rvav subscription on compute.provision.post runs what replaces it, but doesn't hold the request: rvav waits for subscriptions only on provisioning.pre, day2.pre and delete.pre.") {
+		!reason(it, "(compute.provision.post in vRA and rvav, blocking): an rvav subscription on compute.provision.post runs what replaces it, but doesn't hold the request: rvav waits for subscriptions only on provisioning.pre, compute.allocation.pre, network.configure, day2.pre and delete.pre.") {
 		t.Fatalf("tag = %+v", it)
 	}
 	if it := items["wf-ad-group"]; it.Group != GroupAWX || !reason(it, "microsoft.ad") || !used(it, "catalog_item", "Create AD group") ||
@@ -108,6 +108,39 @@ func ptr[T any](v T) *T { return &v }
 // and how many workflows need each.
 // TestRvavEvent: a VM's vRA topics are rvav's too (ADR-0049); a
 // deployment's are its request's, and rvav has no others.
+// TestTriageRecovery: a blocking vRA subscription's recovery workflow is
+// replaced by an rvav subscription's recovery target where rvav blocks too.
+func TestTriageRecovery(t *testing.T) {
+	e := vra.SampleEstate(time.Now())
+	e.Subscriptions = append(e.Subscriptions,
+		vra.Subscription{ID: "sub-name", Name: "CMDB naming", EventTopicID: "compute.allocation.pre", RunnableType: "extensibility.vro",
+			RunnableID: "wf-cmdb-register", Blocking: true, RecoverRunnableType: "extensibility.vro", RecoverRunnableID: "wf-tag-vm"},
+		vra.Subscription{ID: "sub-tag-rec", Name: "Tag check", EventTopicID: "compute.provision.post", RunnableType: "extensibility.vro",
+			RunnableID: "wf-tag-vm", Blocking: true, RecoverRunnableType: "extensibility.abx", RecoverRunnableID: "abx-backup-reg"},
+		vra.Subscription{ID: "sub-async", Name: "Async", EventTopicID: "compute.allocation.pre", RunnableType: "extensibility.vro",
+			RunnableID: "wf-cmdb-register", RecoverRunnableType: "extensibility.vro", RecoverRunnableID: "wf-decom"})
+	tr := TriageVRO(&e)
+	items := map[string]TriageItem{}
+	for _, it := range tr.Items {
+		items[it.ID] = it
+	}
+	has := func(id, text string) bool {
+		return slices.ContainsFunc(items[id].Reasons, func(r string) bool { return strings.Contains(r, text) })
+	}
+	if !has("wf-tag-vm", "The subscription CMDB naming runs it when it fails (compute.allocation.pre in vRA and rvav, blocking, its recovery): "+
+		"the recovery target of a blocking rvav subscription on compute.allocation.pre runs what replaces it (ADR-0054).") {
+		t.Fatalf("tag = %v", items["wf-tag-vm"].Reasons)
+	}
+	if !has("abx-backup-reg", "The subscription Tag check runs it when it fails (compute.provision.post in vRA and rvav, blocking, its recovery): "+
+		"an rvav subscription on compute.provision.post doesn't block, so it has no recovery target") {
+		t.Fatalf("backup = %v", items["abx-backup-reg"].Reasons)
+	}
+	// vRA runs a recovery only for a blocking subscription.
+	if has("wf-decom", "Async") {
+		t.Fatalf("decom = %v", items["wf-decom"].Reasons)
+	}
+}
+
 func TestRvavEvent(t *testing.T) {
 	for topic, want := range map[string]string{
 		"compute.allocation.pre": "compute.allocation.pre", "network.configure": "network.configure",

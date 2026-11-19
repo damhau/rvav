@@ -31,8 +31,9 @@ var topicDescriptions = map[string]string{
 	outbox.ApprovalDecided:   "An approval level was approved or rejected: by someone, at its timeout, or because nobody could decide it.",
 	outbox.ProvisioningPre:   "A catalog request is approved and about to build.",
 	outbox.ComputeAllocationPre: "A VM of the request is placed and sized, before anything of it is built: " +
-		"its vCenter, cluster, datastore and folder, as the request planned them.",
-	outbox.NetworkConfigure:     "A VM's networks are known, before its address is reserved: each adapter's network, subnet, gateway and DNS zone.",
+		"its vCenter, cluster, datastore and folder, as the request planned them. A blocking subscription may rename or move it.",
+	outbox.NetworkConfigure: "A VM's networks are known, before its address is reserved: each adapter's network, subnet, gateway and DNS zone. " +
+		"A blocking subscription may change its networks or choose its addresses.",
 	outbox.ComputeProvisionPre:  "A VM is about to be cloned: its address is reserved and its DNS records are made.",
 	outbox.ComputeProvisionPost: "A VM is built, customized and powered on, with its moref and address.",
 	outbox.CustomCreatePre:      "A custom resource is about to be made, its inputs worked out (ADR-0056).",
@@ -73,9 +74,18 @@ func (s *Service) EventTopics(ctx context.Context, p *auth.Principal) ([]api.Eve
 	out := make([]api.EventTopic, len(outbox.Topics))
 	for i, t := range outbox.Topics {
 		out[i] = api.EventTopic{Key: api.EventTopicKey(t), Group: api.EventTopicGroup(outbox.Group(t)), Description: topicDescriptions[t],
-			MayBlock: outbox.MayBlock(t), Sample: asEvent(outbox.Sample(t))}
+			MayBlock: outbox.MayBlock(t), MayChange: mayChange(t), Sample: asEvent(outbox.Sample(t))}
 	}
 	return out, nil
+}
+
+// mayChange is what a topic's blocking answers may change (ADR-0054).
+func mayChange(topic string) []api.SubscriptionChange {
+	out := []api.SubscriptionChange{}
+	for _, c := range outbox.MayChange(topic) {
+		out = append(out, api.SubscriptionChange(c))
+	}
+	return out
 }
 
 func presentSubscription(sub store.Subscription, counts map[string]int, last time.Time) api.Subscription {
@@ -86,6 +96,12 @@ func presentSubscription(sub store.Subscription, counts map[string]int, last tim
 		out.Description = &sub.Description
 	}
 	_ = json.Unmarshal(sub.Target, &out.Target)
+	if len(sub.Recovery) > 0 {
+		var r api.SubscriptionTarget
+		if json.Unmarshal(sub.Recovery, &r) == nil {
+			out.Recovery = &r
+		}
+	}
 	out.Runs.Delivered, out.Runs.Failed = counts["delivered"], counts["failed"]+counts["blocked"]
 	out.Runs.Pending = counts["queued"] + counts["delivering"]
 	if !last.IsZero() {
@@ -202,7 +218,7 @@ func (s *Service) SaveSubscription(ctx context.Context, p *auth.Principal, id st
 		errs = append(errs, fieldErr("/topic", "enum", "One of "+strings.Join(outbox.Topics, ", ")+"."))
 	}
 	if sub.Blocking && topicOK && !outbox.MayBlock(sub.Topic) {
-		errs = append(errs, fieldErr("/blocking", "not_pre", "Only provisioning.pre, day2.pre and delete.pre subscriptions may block."))
+		errs = append(errs, fieldErr("/blocking", "not_pre", "Only "+outbox.MayBlockList()+" subscriptions may block."))
 	}
 	if sub.Condition != "" && topicOK {
 		if err := checkEventCondition(sub.Topic, sub.Condition); err != nil {
@@ -219,7 +235,23 @@ func (s *Service) SaveSubscription(ctx context.Context, p *auth.Principal, id st
 	if err != nil {
 		return api.Subscription{}, err
 	}
-	if errs = append(errs, targetErrs...); len(errs) > 0 {
+	errs = append(errs, targetErrs...)
+	if w.Recovery != nil {
+		if !sub.Blocking {
+			errs = append(errs, fieldErr("/recovery", "not_blocking", "Only a blocking subscription has a recovery target: it is told when the subscription fails."))
+		} else {
+			recovery, recoveryErrs, err := s.checkTarget(ctx, *w.Recovery)
+			if err != nil {
+				return api.Subscription{}, err
+			}
+			for _, e := range recoveryErrs {
+				e.Field = "/recovery" + strings.TrimPrefix(e.Field, "/target")
+				errs = append(errs, e)
+			}
+			sub.Recovery = recovery
+		}
+	}
+	if len(errs) > 0 {
 		return api.Subscription{}, &ValidationError{Errors: errs}
 	}
 	sub.Target = target
@@ -301,7 +333,7 @@ func (s *Service) DeleteSubscription(ctx context.Context, p *auth.Principal, id 
 
 func presentRun(r store.SubscriptionRun) api.SubscriptionRun {
 	out := api.SubscriptionRun{Id: r.ID, SubscriptionId: r.SubscriptionID, EventId: r.EventID, Topic: api.EventTopicKey(r.Topic),
-		Status: api.SubscriptionRunStatus(r.Status), Blocking: r.Blocking, Test: r.Test, Attempts: r.Attempts,
+		Status: api.SubscriptionRunStatus(r.Status), Blocking: r.Blocking, Recovery: r.Recovery, Test: r.Test, Attempts: r.Attempts,
 		Outcome: r.Outcome, Reason: r.Reason, CreatedAt: r.CreatedAt, FinishedAt: r.FinishedAt}
 	if r.Status == "queued" {
 		out.NextAttemptAt = &r.NextAttemptAt
@@ -375,7 +407,7 @@ func (s *Service) subscriptionRun(ctx context.Context, id string) (api.Subscript
 	}
 	base := presentRun(run)
 	out := api.SubscriptionRunDetail{Id: base.Id, SubscriptionId: base.SubscriptionId, EventId: base.EventId, Topic: base.Topic,
-		Status: base.Status, Blocking: base.Blocking, Test: base.Test, Attempts: base.Attempts, NextAttemptAt: base.NextAttemptAt,
+		Status: base.Status, Blocking: base.Blocking, Recovery: base.Recovery, Test: base.Test, Attempts: base.Attempts, NextAttemptAt: base.NextAttemptAt,
 		Outcome: base.Outcome, Reason: base.Reason, Request: base.Request, CreatedAt: base.CreatedAt, FinishedAt: base.FinishedAt,
 		History: make([]api.SubscriptionRunAttempt, len(attempts))}
 	_ = json.Unmarshal(payload, &out.Payload)
@@ -383,6 +415,12 @@ func (s *Service) subscriptionRun(ctx context.Context, id string) (api.Subscript
 		var props map[string]string
 		if json.Unmarshal(run.Properties, &props) == nil {
 			out.Properties = &props
+		}
+	}
+	if len(run.Changes) > 0 {
+		var ch api.MachineChange
+		if json.Unmarshal(run.Changes, &ch) == nil {
+			out.Changes = &ch
 		}
 	}
 	for i, a := range attempts {
@@ -457,6 +495,10 @@ func (s *Service) TestSubscription(ctx context.Context, p *auth.Principal, id st
 		}
 		if len(res.Properties) > 0 {
 			u.Properties, _ = json.Marshal(res.Properties)
+		}
+		// What the answer would change on a VM: a test changes nothing.
+		if len(res.Machine) > 0 && json.Valid(res.Machine) {
+			u.Changes = res.Machine
 		}
 	}
 	if err := s.Store.RecordAttempt(context.WithoutCancel(ctx), run.ID, dispatch.AttemptRow(start, time.Now(), res), u); err != nil {

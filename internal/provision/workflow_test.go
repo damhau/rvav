@@ -51,6 +51,7 @@ func newEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 	var a *Activities
 	env.OnActivity(a.BlockingSubscriptions, mock.Anything, mock.Anything).Return([]BlockingSub(nil), nil).Maybe()
 	env.OnActivity(a.MachineEvents, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.MachineChecks, mock.Anything, mock.Anything).Return([]MachineCheck(nil), nil).Maybe()
 	t.Cleanup(func() { env.AssertExpectations(t) })
 	return env
 }

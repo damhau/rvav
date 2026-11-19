@@ -24,15 +24,18 @@ type Subscription struct {
 	TimeoutSeconds int             `db:"timeout_seconds"`
 	Enabled        bool            `db:"enabled"`
 	Target         json.RawMessage `db:"target"`
-	CreatedAt      time.Time       `db:"created_at"`
-	UpdatedAt      time.Time       `db:"updated_at"`
+	// Recovery is a blocking subscription's recovery target, told when it
+	// fails (ADR-0054); nil for none.
+	Recovery  json.RawMessage `db:"recovery"`
+	CreatedAt time.Time       `db:"created_at"`
+	UpdatedAt time.Time       `db:"updated_at"`
 	// AfterSeq is the outbox sequence when it was saved: it gets the events
 	// numbered after it.
 	AfterSeq int64 `db:"after_seq"`
 }
 
 const subscriptionCols = `id, name, description, topic, condition, blocking, on_failure, priority, timeout_seconds,
-	enabled, target, created_at, updated_at, after_seq`
+	enabled, target, recovery, created_at, updated_at, after_seq`
 
 // Subscriptions lists them by topic and priority.
 func (s *Store) Subscriptions(ctx context.Context) ([]Subscription, error) {
@@ -62,14 +65,14 @@ func (s *Store) SaveSubscription(ctx context.Context, sub Subscription) error {
 	// The sequence's last value counts events still being written: those
 	// were before it.
 	_, err := s.Pool.Exec(ctx, `insert into subscriptions (id, name, description, topic, condition, blocking, on_failure,
-			priority, timeout_seconds, enabled, target, after_seq) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+			priority, timeout_seconds, enabled, target, recovery, after_seq) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
 			coalesce(pg_sequence_last_value(pg_get_serial_sequence('integration_events', 'seq')), 0))
 		on conflict (id) do update set name = excluded.name, description = excluded.description, topic = excluded.topic,
 			condition = excluded.condition, blocking = excluded.blocking, on_failure = excluded.on_failure,
 			priority = excluded.priority, timeout_seconds = excluded.timeout_seconds, enabled = excluded.enabled,
-			target = excluded.target, updated_at = now()`,
+			target = excluded.target, recovery = excluded.recovery, updated_at = now()`,
 		sub.ID, sub.Name, sub.Description, sub.Topic, sub.Condition, sub.Blocking, sub.OnFailure, sub.Priority,
-		sub.TimeoutSeconds, sub.Enabled, sub.Target)
+		sub.TimeoutSeconds, sub.Enabled, sub.Target, nullJSON(sub.Recovery))
 	return err
 }
 
@@ -159,6 +162,7 @@ type SubscriptionRun struct {
 	Topic          string          `db:"topic"`
 	Status         string          `db:"status"`
 	Blocking       bool            `db:"blocking"`
+	Recovery       bool            `db:"recovery"`
 	Test           bool            `db:"test"`
 	RequestID      *string         `db:"request_id"`
 	RequestNumber  *string         `db:"request_number"`
@@ -168,13 +172,15 @@ type SubscriptionRun struct {
 	Outcome        *string         `db:"outcome"`
 	Reason         *string         `db:"reason"`
 	Properties     json.RawMessage `db:"properties"`
-	CreatedAt      time.Time       `db:"created_at"`
-	FinishedAt     *time.Time      `db:"finished_at"`
+	// Changes are what a blocking run's answer changed on its VM (ADR-0054).
+	Changes    json.RawMessage `db:"changes"`
+	CreatedAt  time.Time       `db:"created_at"`
+	FinishedAt *time.Time      `db:"finished_at"`
 }
 
-const runCols = `r.id, r.subscription_id, r.event_id, e.topic, r.status, r.blocking, r.test, r.request_id,
+const runCols = `r.id, r.subscription_id, r.event_id, e.topic, r.status, r.blocking, r.recovery, r.test, r.request_id,
 	q.number as request_number, r.step_id, r.attempts, r.next_attempt_at, r.outcome, r.reason, r.properties,
-	r.created_at, r.finished_at`
+	r.changes, r.created_at, r.finished_at`
 const runFrom = ` from subscription_runs r join integration_events e on e.id = r.event_id
 	left join requests q on q.id = r.request_id`
 
@@ -187,7 +193,7 @@ func (s *Store) InsertRun(ctx context.Context, db DB, r SubscriptionRun) error {
 	}
 	_, err := db.Exec(ctx, `insert into subscription_runs (id, subscription_id, event_id, status, blocking, test, request_id,
 			step_id, reason, finished_at, next_attempt_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-		on conflict (subscription_id, event_id) do nothing`,
+		on conflict (subscription_id, event_id, recovery) do nothing`,
 		r.ID, r.SubscriptionID, r.EventID, r.Status, r.Blocking, r.Test, r.RequestID, r.StepID, r.Reason, r.FinishedAt, next)
 	return err
 }
@@ -230,11 +236,11 @@ func (s *Store) ClaimRuns(ctx context.Context, limit int, now time.Time) ([]Clai
 	for rows.Next() {
 		var c ClaimedRun
 		sub := &c.Subscription
-		if err := rows.Scan(&c.ID, &c.SubscriptionID, &c.EventID, &c.Topic, &c.Status, &c.Blocking, &c.Test, &c.RequestID,
-			&c.RequestNumber, &c.StepID, &c.Attempts, &c.NextAttemptAt, &c.Outcome, &c.Reason, &c.Properties, &c.CreatedAt,
-			&c.FinishedAt, &c.LeaseUntil, &c.Payload, &sub.ID, &sub.Name, &sub.Description, &sub.Topic, &sub.Condition, &sub.Blocking,
-			&sub.OnFailure, &sub.Priority, &sub.TimeoutSeconds, &sub.Enabled, &sub.Target, &sub.CreatedAt, &sub.UpdatedAt, &sub.AfterSeq,
-			&c.LastJobID); err != nil {
+		if err := rows.Scan(&c.ID, &c.SubscriptionID, &c.EventID, &c.Topic, &c.Status, &c.Blocking, &c.Recovery, &c.Test,
+			&c.RequestID, &c.RequestNumber, &c.StepID, &c.Attempts, &c.NextAttemptAt, &c.Outcome, &c.Reason, &c.Properties,
+			&c.Changes, &c.CreatedAt, &c.FinishedAt, &c.LeaseUntil, &c.Payload, &sub.ID, &sub.Name, &sub.Description, &sub.Topic,
+			&sub.Condition, &sub.Blocking, &sub.OnFailure, &sub.Priority, &sub.TimeoutSeconds, &sub.Enabled, &sub.Target,
+			&sub.Recovery, &sub.CreatedAt, &sub.UpdatedAt, &sub.AfterSeq, &c.LastJobID); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -261,6 +267,7 @@ type RunUpdate struct {
 	Outcome     *string
 	Reason      *string
 	Properties  json.RawMessage
+	Changes     json.RawMessage
 	StepID      *string
 	// Lease, for a run the dispatcher claimed: the run moves on only while
 	// it still holds that lease (another worker may have taken it since).
@@ -281,10 +288,11 @@ func (s *Store) RecordAttempt(ctx context.Context, runID string, a Attempt, u Ru
 		_, err := tx.Exec(ctx, `update subscription_runs set status = $2, lease_until = null,
 				next_attempt_at = coalesce($3, next_attempt_at), outcome = coalesce($4, outcome), reason = $5,
 				properties = coalesce($6, properties), step_id = coalesce($7, step_id),
-				attempts = attempts + case when $9 then 1 else 0 end,
+				attempts = attempts + case when $9 then 1 else 0 end, changes = coalesce($10, changes),
 				finished_at = case when $2 in ('delivered', 'failed', 'blocked') then now() end
 			where id = $1 and ($8::timestamptz is null or lease_until = $8)`,
-			runID, u.Status, u.NextAttempt, u.Outcome, u.Reason, nullJSON(u.Properties), u.StepID, u.Lease, u.Unclaimed)
+			runID, u.Status, u.NextAttempt, u.Outcome, u.Reason, nullJSON(u.Properties), u.StepID, u.Lease, u.Unclaimed,
+			nullJSON(u.Changes))
 		return err
 	})
 }
@@ -438,4 +446,38 @@ func (s *Store) RequestProperties(ctx context.Context, requestID string) (map[st
 		}
 	}
 	return out, rows.Err()
+}
+
+// StartBlockingRun adds a blocking run, delivering, or starts again the one
+// an earlier run of the request made for the same subscription and event,
+// and returns its ID: a request's workflow retried keeps one run per event.
+func (s *Store) StartBlockingRun(ctx context.Context, r SubscriptionRun) (string, error) {
+	var id string
+	err := s.Pool.QueryRow(ctx, `insert into subscription_runs (id, subscription_id, event_id, status, blocking, recovery,
+			request_id, step_id) values ($1,$2,$3,'delivering',true,$4,$5,$6)
+		on conflict (subscription_id, event_id, recovery) do update set status = 'delivering', step_id = excluded.step_id,
+			outcome = null, reason = null, finished_at = null
+		returning id`, r.ID, r.SubscriptionID, r.EventID, r.Recovery, r.RequestID, r.StepID).Scan(&id)
+	return id, err
+}
+
+// AnsweredMachineCheck says whether a blocking subscription let one of a
+// request's VMs go on at a topic in an earlier run of the request: the VM
+// by its deployment, component and index, which a rename keeps.
+func (s *Store) AnsweredMachineCheck(ctx context.Context, requestID, subscriptionID, topic, deploymentID, component string, index int) (bool, error) {
+	var ok bool
+	err := s.Pool.QueryRow(ctx, `select exists (select 1 from subscription_runs r join integration_events e on e.id = r.event_id
+		where r.request_id = $1 and r.subscription_id = $2 and e.topic = $3 and r.blocking and not r.recovery
+			and r.status = 'delivered' and e.payload->'data'->'machine'->>'deployment_id' = $4
+			and coalesce(e.payload->'data'->'machine'->>'component', '') = $5
+			and coalesce((e.payload->'data'->'machine'->>'index')::int, 0) = $6)`,
+		requestID, subscriptionID, topic, deploymentID, component, index).Scan(&ok)
+	return ok, err
+}
+
+// EventIDByDedupe is the ID of the event written under a dedupe key.
+func (s *Store) EventIDByDedupe(ctx context.Context, key string) (string, error) {
+	var id string
+	err := s.Pool.QueryRow(ctx, `select id from integration_events where dedupe_key = $1`, key).Scan(&id)
+	return id, notFound(err)
 }

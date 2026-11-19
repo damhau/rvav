@@ -60,6 +60,9 @@ type Activities struct {
 	Onboarder Onboarder
 	// Subscriptions delivers to blocking subscriptions (ADR-0021).
 	Subscriptions *dispatch.Dispatcher
+	// Changer checks and applies what blocking subscriptions change on a
+	// VM (ADR-0054): the core service.
+	Changer MachineChanger
 	// TaskQueue is rvav's: custom workflows call the contract's activities
 	// on it (ADR-0022).
 	TaskQueue string
@@ -573,8 +576,18 @@ func (a *Activities) withIPv6(ctx context.Context, in *VMInput) error {
 }
 
 // reserve reserves an address for one of a VM's adapters and records it.
-func (a *Activities) reserve(ctx context.Context, in VMInput, sn efficientip.Subnet, subnet, fqdn, nic string) (string, error) {
-	addr, err := a.IPAM.Reserve(ctx, sn, fqdn, in.VM.DeploymentID)
+// A blocking subscription may have chosen it (ADR-0054).
+func (a *Activities) reserve(ctx context.Context, in VMInput, sn efficientip.Subnet, subnet, fqdn, nic, chosen string) (string, error) {
+	var addr efficientip.Address
+	var err error
+	if chosen != "" {
+		addr, err = a.IPAM.ReserveAddress(ctx, sn, chosen, fqdn, in.VM.DeploymentID)
+	} else {
+		addr, err = a.IPAM.Reserve(ctx, sn, fqdn, in.VM.DeploymentID)
+	}
+	if errors.Is(err, efficientip.ErrAddressTaken) {
+		return "", permanent("EfficientIP: %v, since a subscription chose it", err)
+	}
 	if errors.Is(err, efficientip.ErrSubnetFull) {
 		return "", permanent("Subnet %s has no free address", subnet)
 	}
@@ -608,7 +621,7 @@ func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) 
 		if !in.VM.DHCP {
 			if ip = a.addressOf(ctx, in.RequestID, in.VM, ""); ip == "" {
 				var err error
-				if ip, err = a.reserve(ctx, in, a.subnet(in.VM), in.VM.Subnet, cmp.Or(in.VM.FQDN, in.VM.Name), ""); err != nil {
+				if ip, err = a.reserve(ctx, in, a.subnet(in.VM), in.VM.Subnet, cmp.Or(in.VM.FQDN, in.VM.Name), "", in.VM.Address); err != nil {
 					return "", "", err
 				}
 			}
@@ -619,7 +632,7 @@ func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) 
 			if ip6 == "" {
 				var err error
 				sn := efficientip.Subnet{ID: in.VM.Subnet6ID, CIDR: in.VM.Subnet6, Gateway: in.VM.Gateway6}
-				if ip6, err = a.reserve(ctx, in, sn, in.VM.Subnet6, cmp.Or(in.VM.FQDN, in.VM.Name), ""); err != nil {
+				if ip6, err = a.reserve(ctx, in, sn, in.VM.Subnet6, cmp.Or(in.VM.FQDN, in.VM.Name), "", ""); err != nil {
 					return "", "", err
 				}
 			}
@@ -630,7 +643,7 @@ func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) 
 			if nip == "" {
 				var err error
 				sn := efficientip.Subnet{ID: n.SubnetID, CIDR: n.Subnet}
-				if nip, err = a.reserve(ctx, in, sn, n.Subnet, n.FQDN, n.Key); err != nil {
+				if nip, err = a.reserve(ctx, in, sn, n.Subnet, n.FQDN, n.Key, n.Address); err != nil {
 					return "", "", err
 				}
 			}

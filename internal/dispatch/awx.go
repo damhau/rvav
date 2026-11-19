@@ -18,6 +18,10 @@ type AWX struct {
 	Poll time.Duration
 }
 
+// AnswerArtifact is the artifact a blocking job answers with, as a
+// webhook's body: set_stats with data.rvav_answer.
+const AnswerArtifact = "rvav_answer"
+
 // AWXTarget is a subscription's AWX template.
 type AWXTarget struct {
 	TemplateID  int    `json:"template_id,omitempty"`
@@ -72,15 +76,22 @@ func (a *AWX) Deliver(ctx context.Context, d Delivery) Result {
 		switch {
 		case err == nil && job.Status == "successful":
 			res := Result{OK: true, JobID: jobID, Response: "Job " + fmt.Sprint(jobID) + " succeeded."}
-			if d.Blocking {
-				res.Outcome = "continue"
+			if !d.Blocking {
+				return res
 			}
+			// Its answer, if the playbook gives one with set_stats (ADR-0054).
+			if v, ok := job.Artifacts[AnswerArtifact]; ok {
+				b, _ := json.Marshal(v)
+				res.Response = string(b)
+				return answer(res)
+			}
+			res.Outcome = "continue"
 			return res
 		case err == nil && awx.Done(job.Status):
 			msg := fmt.Sprintf("AWX job %d ended %s.", jobID, job.Status)
-			if d.Blocking {
+			if d.Blocking && !d.Recovery {
 				// The check ran and said no: the request stops.
-				return Result{OK: true, JobID: jobID, Outcome: "stop", Reason: msg, Response: msg}
+				return Result{OK: true, JobID: jobID, Outcome: "stop", Reason: msg, Response: msg, Decided: true}
 			}
 			return Result{JobID: jobID, Err: msg}
 		}

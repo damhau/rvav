@@ -19,6 +19,8 @@ import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { RunsPanel } from "./runs";
 import {
+  changeText,
+  listText,
   RemoveSubscription,
   runsText,
   SubscriptionSheet,
@@ -30,6 +32,8 @@ import {
 type Subscription = components["schemas"]["Subscription"];
 
 function Settings({ s }: { s: Subscription }) {
+  const topics = useQuery(adm.eventTopics());
+  const changes = (topics.data?.items.find((t) => t.key === s.topic)?.may_change ?? []).map((c) => changeText[c]);
   return (
     <Panel title="Settings">
       <KeyValues
@@ -40,9 +44,11 @@ function Settings({ s }: { s: Subscription }) {
           {
             label: "Blocking",
             value: s.blocking
-              ? `Yes: ${s.on_failure === "continue_request" ? "the request goes on" : "the request stops"} when it fails or doesn't answer`
+              ? `Yes: ${s.on_failure === "continue_request" ? "the request goes on" : "the request stops"} when it fails, doesn't answer or asks for a change rvav refuses`
               : "No",
           },
+          ...(s.blocking && changes.length > 0 ? [{ label: "Its answer may change", value: listText(changes) }] : []),
+          ...(s.recovery ? [{ label: "Recovery target", value: targetText(s.recovery) }] : []),
           { label: "Priority", value: s.priority },
           { label: "Timeout", value: `${s.timeout_seconds} s` },
           { label: "Created", value: <Time iso={s.created_at} /> },

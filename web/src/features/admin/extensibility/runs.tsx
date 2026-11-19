@@ -43,6 +43,27 @@ export function RunStatus({ status }: { status: S["SubscriptionRunStatus"] }) {
   return <Badge tone={statusTone[status]}>{statusLabel[status]}</Badge>;
 }
 
+/** What a blocking answer changed on its VM, as rvav checked and applied it (ADR-0054). */
+export function changesText(c: S["MachineChange"]): string {
+  const parts: string[] = [];
+  if (c.name) parts.push(`renamed ${c.name}`);
+  const p = c.placement;
+  if (p) {
+    const where = [
+      p.cluster && `cluster ${p.cluster}`,
+      p.resource_pool && `resource pool ${p.resource_pool}`,
+      p.datastore && `datastore ${p.datastore}`,
+      p.folder && `folder ${p.folder}`,
+    ].filter(Boolean);
+    if (where.length > 0) parts.push(`moved to ${where.join(", ")}`);
+  }
+  for (const n of c.networks ?? []) {
+    const what = [n.network && `network ${n.network}`, n.address && `address ${n.address}`].filter(Boolean);
+    if (what.length > 0) parts.push(`adapter ${n.index}: ${what.join(", ")}`);
+  }
+  return parts.join("; ");
+}
+
 function attemptText(a: S["SubscriptionRunAttempt"]): string {
   const parts: string[] = [];
   if (a.status_code) parts.push(`HTTP ${a.status_code}`);
@@ -89,6 +110,9 @@ export function RunDialog({
                 items={[
                   { label: "Status", value: <RunStatus status={r.status} /> },
                   { label: "Topic", value: <Mono>{r.topic}</Mono> },
+                  ...(r.recovery
+                    ? [{ label: "Run of", value: "Its recovery target, after the subscription failed" }]
+                    : []),
                   ...(r.request
                     ? [
                         {
@@ -123,6 +147,9 @@ export function RunDialog({
                           ),
                         },
                       ]
+                    : []),
+                  ...(r.changes && changesText(r.changes)
+                    ? [{ label: "Changed on the VM", value: changesText(r.changes) }]
                     : []),
                 ]}
               />
@@ -195,6 +222,11 @@ export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string
           {r.test && (
             <Badge tone="outline" className="ml-2">
               Test
+            </Badge>
+          )}
+          {r.recovery && (
+            <Badge tone="outline" className="ml-2">
+              Recovery
             </Badge>
           )}
           <div className="text-secondary text-faint">{fullDate(r.created_at)}</div>

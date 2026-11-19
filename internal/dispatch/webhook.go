@@ -140,14 +140,19 @@ func answer(res Result) Result {
 		Outcome    string            `json:"outcome"`
 		Reason     string            `json:"reason"`
 		Properties map[string]string `json:"properties"`
+		Machine    json.RawMessage   `json:"machine"`
 	}
 	if err := json.Unmarshal([]byte(res.Response), &a); err != nil {
 		res.OK, res.Err = false, "The answer isn't JSON: "+err.Error()
 		return res
 	}
+	res.Decided = a.Outcome != ""
 	switch a.Outcome {
 	case "", "continue":
 		res.Properties = a.Properties
+		if m := bytes.TrimSpace(a.Machine); len(m) > 0 && !bytes.Equal(m, []byte("null")) {
+			res.Machine = m
+		}
 	case "stop":
 		res.Outcome, res.Reason = "stop", a.Reason
 		if res.Reason == "" {

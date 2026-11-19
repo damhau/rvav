@@ -139,6 +139,29 @@ func runGroup(ctx workflow.Context, info Info, group []CompositeStep, outputs ma
 	return "", nil
 }
 
+// beforeVMs runs what comes before a composite step's VMs are built: their
+// allocation events and checks, their deployments' NSX segments and groups
+// (ADR-0028), again on a retry since they give the VMs their subnet, then
+// their network events and checks.
+func beforeVMs(ctx workflow.Context, info Info, c CompositeStep, key string) (string, error) {
+	if err := machineEvents(ctx, info, outbox.ComputeAllocationPre, c.VMs); err != nil {
+		return key, err
+	}
+	if failed, err := machineChecks(ctx, info, outbox.ComputeAllocationPre, key, c.VMs); err != nil {
+		return failed, err
+	}
+	if failed, err := makeSegments(ctx, info, c.Segments, c.VMs, c.SegmentKey); err != nil {
+		return failed, err
+	}
+	if failed, err := makeSecurity(ctx, info, c.Security, c.SecurityKey); err != nil {
+		return failed, err
+	}
+	if err := machineEvents(ctx, info, outbox.NetworkConfigure, c.VMs); err != nil {
+		return key, err
+	}
+	return machineChecks(ctx, info, outbox.NetworkConfigure, key, c.VMs)
+}
+
 // runCompositeStep runs one step and returns its outputs. A step that waits
 // (for a person, a time or a condition) stops waiting when stop is cancelled.
 func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, outputs map[string]any) stepResult {
@@ -169,19 +192,7 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 			return stepResult{failed: key, err: err}
 		}
 		var vms []builtVM
-		var failed string
-		var err error
-		// Its deployments' NSX segments and groups first (ADR-0028), again
-		// on a retry: they give the VMs their subnet.
-		if err = machineEvents(ctx, info, outbox.ComputeAllocationPre, c.VMs); err != nil {
-			failed = key
-		} else if failed, err = makeSegments(ctx, info, c.Segments, c.VMs, c.SegmentKey); err == nil {
-			if failed, err = makeSecurity(ctx, info, c.Security, c.SecurityKey); err == nil {
-				if err = machineEvents(ctx, info, outbox.NetworkConfigure, c.VMs); err != nil {
-					failed = key
-				}
-			}
-		}
+		failed, err := beforeVMs(ctx, info, c, key)
 		switch {
 		case err != nil:
 		case len(c.Components) > 0:

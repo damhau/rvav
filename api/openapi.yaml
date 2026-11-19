@@ -12377,12 +12377,16 @@ components:
       enum: [request, approval, machine, custom, lease, project]
     EventTopic:
       type: object
-      required: [key, group, description, may_block, sample]
+      required: [key, group, description, may_block, may_change, sample]
       properties:
         key: { $ref: "#/components/schemas/EventTopicKey" }
         group: { $ref: "#/components/schemas/EventTopicGroup" }
         description: { type: string }
-        may_block: { type: boolean, description: "Whether blocking subscriptions are allowed: provisioning.pre, day2.pre and delete.pre." }
+        may_block: { type: boolean, description: "Whether blocking subscriptions are allowed: provisioning.pre, compute.allocation.pre, network.configure, day2.pre and delete.pre (ADR-0054)." }
+        may_change:
+          type: array
+          description: "What a blocking subscription's answer may change besides stopping the request: the deployment's properties on provisioning.pre, the VM's name and placement on compute.allocation.pre, its adapters' networks and addresses on network.configure (ADR-0054)."
+          items: { $ref: "#/components/schemas/SubscriptionChange" }
         sample: { $ref: "#/components/schemas/IntegrationEvent" }
     EventTopicList:
       type: object
@@ -12434,8 +12438,38 @@ components:
             key: { type: string, description: "A registered custom workflow allowed as a subscription target." }
     SubscriptionOnFailure:
       type: string
-      description: "What a blocking subscription does when its target fails or doesn't answer in time."
+      description: "What a blocking subscription does when its target fails, doesn't answer in time, or answers with a change rvav refuses (ADR-0054)."
       enum: [stop_request, continue_request]
+    SubscriptionChange:
+      type: string
+      description: "What a blocking answer may change: `properties` (`properties`), `name` and `placement` (`machine.name`, `machine.placement`), `networks` (`machine.networks`)."
+      enum: [properties, name, placement, networks]
+      x-enum-varnames: [ChangeProperties, ChangeName, ChangePlacement, ChangeNetworks]
+    MachineChange:
+      type: object
+      description: |
+        What a blocking subscription's answer changed on its VM (ADR-0054), as
+        the answer's `machine` gave it: on compute.allocation.pre its name
+        and placement, on network.configure its adapters' networks and
+        addresses. rvav checks each change again before building.
+      properties:
+        name: { type: string }
+        placement:
+          type: object
+          properties:
+            cluster: { type: string }
+            datastore: { type: string }
+            resource_pool: { type: string }
+            folder: { type: string }
+        networks:
+          type: array
+          items:
+            type: object
+            required: [index]
+            properties:
+              index: { type: integer, description: "The adapter: 0 for the first, as in the event's `machine.networks`." }
+              network: { type: string }
+              address: { type: string }
     SubscriptionWrite:
       type: object
       required: [name, topic, target]
@@ -12448,12 +12482,15 @@ components:
           type: string
           description: "A CEL expression over the event's data (`environment` is the key, `production` a boolean); empty: every event."
           examples: ['environment == "prd" && item.slug == "rhel9-server"']
-        blocking: { type: boolean, default: false, description: "Only on `.pre` topics: the request waits for the answer and may be stopped." }
+        blocking: { type: boolean, default: false, description: "Only on the topics that may block (`EventTopic.may_block`): the request waits for the answer, which may stop it or change what `EventTopic.may_change` says." }
         on_failure: { $ref: "#/components/schemas/SubscriptionOnFailure" }
         priority: { type: integer, default: 100, description: Lower first. }
         timeout_seconds: { type: integer, minimum: 1, maximum: 3600, default: 30 }
         enabled: { type: boolean, default: true }
         target: { $ref: "#/components/schemas/SubscriptionTarget" }
+        recovery:
+          $ref: "#/components/schemas/SubscriptionTarget"
+          description: "A blocking subscription's recovery target (ADR-0054): told once when the subscription fails, with the event and `recovery.reason`. Its answer's outcome, if it gives one, decides whether the request goes on; otherwise `on_failure` does."
     Subscription:
       allOf:
         - $ref: "#/components/schemas/SubscriptionWrite"
@@ -12485,7 +12522,7 @@ components:
       enum: [queued, delivering, delivered, failed, blocked]
     SubscriptionRun:
       type: object
-      required: [id, subscription_id, event_id, topic, status, blocking, test, attempts, created_at]
+      required: [id, subscription_id, event_id, topic, status, blocking, recovery, test, attempts, created_at]
       properties:
         id: { type: string }
         subscription_id: { type: string }
@@ -12493,6 +12530,7 @@ components:
         topic: { $ref: "#/components/schemas/EventTopicKey" }
         status: { $ref: "#/components/schemas/SubscriptionRunStatus" }
         blocking: { type: boolean }
+        recovery: { type: boolean, description: "A run of the subscription's recovery target, after the subscription failed on the same event (ADR-0054)." }
         test: { type: boolean, description: Made with Test. }
         request:
           type: object
@@ -12530,6 +12568,7 @@ components:
               type: object
               description: Properties a blocking run set on the deployment.
               additionalProperties: { type: string }
+            changes: { $ref: "#/components/schemas/MachineChange" }
             history:
               type: array
               items: { $ref: "#/components/schemas/SubscriptionRunAttempt" }

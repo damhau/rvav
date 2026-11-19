@@ -453,6 +453,37 @@ func (c *HTTPClient) Reserve(ctx context.Context, s Subnet, hostname, owner stri
 	return Address{}, fmt.Errorf("no address in %s could be reserved: %w", s.CIDR, last)
 }
 
+// ReserveAddress reserves the address ip of the subnet named hostname for
+// owner, or returns it when it already is.
+func (c *HTTPClient) ReserveAddress(ctx context.Context, s Subnet, ip, hostname, owner string) (Address, error) {
+	f := familyOf(s.CIDR)
+	ref, err := c.subnet(ctx, s)
+	if err != nil {
+		return Address{}, err
+	}
+	existing, err := c.call(ctx, http.MethodGet, f.addressList,
+		list(f.addressSubnetID+"="+quote(ref.ID)+" and "+f.hostaddr+"="+quote(f.asStored(ip)), 1))
+	if err != nil {
+		return Address{}, err
+	}
+	if len(existing) > 0 {
+		params, _ := url.ParseQuery(existing[0][f.params])
+		if !sameValue(existing[0][f.name], hostname) || params.Get(TagParam) != "1" || params.Get(OwnerParam) != owner {
+			return Address{}, fmt.Errorf("%s (%s): %w", ip, existing[0][f.name], ErrAddressTaken)
+		}
+		return Address{ID: existing[0][f.addressID], IP: ip, Subnet: s.CIDR, Hostname: hostname}, nil
+	}
+	res, err := c.call(ctx, http.MethodPost, f.addAddress, url.Values{"site_id": {ref.Site}, f.hostaddr: {ip},
+		f.name: {hostname}, f.params: {c.tags(url.Values{OwnerParam: {owner}})}, "add_flag": {"new_only"}})
+	if refused(err) {
+		return Address{}, fmt.Errorf("%s: %w: %v", ip, ErrAddressTaken, err)
+	}
+	if err != nil {
+		return Address{}, err
+	}
+	return Address{ID: first(res, "ret_oid"), IP: ip, Subnet: s.CIDR, Hostname: hostname}, nil
+}
+
 func first(rows []row, key string) string {
 	if len(rows) == 0 {
 		return ""
