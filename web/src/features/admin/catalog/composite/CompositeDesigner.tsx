@@ -19,7 +19,10 @@
 // inputs nor an undo: who it asks, what, and for how long. A branch has its cases
 // and the steps on each side, added from its details; those steps are selected
 // and edited as any other, and move within their side. A message says who it
-// tells and what (ADR-0033).
+// tells and what (ADR-0033). A step repeats over a list, waits for a signal or
+// an event, and has a catch path (its group's, in a parallel group), whose
+// steps are added from its details as a side's are; the error handler's are
+// added from Done's (ADR-0057).
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -37,7 +40,7 @@ import type {
   CompositeStepTarget,
   FieldError,
 } from "@/lib/api/types";
-import { maxStepMessage } from "@/lib/composite";
+import { eventTopics, loopRefused, maxStepMessage } from "@/lib/composite";
 import { adm, q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import DefinitionGraph from "../DefinitionGraph";
@@ -106,6 +109,7 @@ const kindGroup: Record<StepTarget["kind"], string> = {
   ask: "People",
   wait: "Waits",
   poll: "Waits",
+  signal: "Waits",
   branch: "The way it goes",
   notify: "People",
   resource: "Custom resources",
@@ -115,20 +119,32 @@ const restValue = targetValue({ kind: "rest", ref: "" });
 const askValue = targetValue({ kind: "ask", ref: "" });
 const waitValue = targetValue({ kind: "wait", ref: "" });
 const pollValue = targetValue({ kind: "poll", ref: "" });
+const signalValue = targetValue({ kind: "signal", ref: "" });
 const branchValue = targetValue({ kind: "branch", ref: "" });
 const notifyValue = targetValue({ kind: "notify", ref: "" });
 const restMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 // A poll repeats its call: only these may be repeated (ADR-0033).
 const pollMethods = ["GET", "PUT", "DELETE"];
 
-/** What a step can run, for a picker: grouped, the step's own first if it isn't listed. A branch only where it can go. */
-function targetOptions(targets: CompositeStepTarget[], current?: StepTarget, branchHere = false): Option[] {
-  const out: Option[] = targets.map((t) => ({
-    value: targetValue(listedTarget(t)),
-    label: t.title,
-    meta: t.awx_workflow ? `${t.ref} (workflow)` : t.ref,
-    group: kindGroup[t.kind],
-  }));
+/**
+ * What a step can run, for a picker: grouped, the step's own first if it
+ * isn't listed. A branch only where it can go; on a catch path, nothing that
+ * waits and no custom resource.
+ */
+function targetOptions(
+  targets: CompositeStepTarget[],
+  current?: StepTarget,
+  branchHere = false,
+  onCatch = false,
+): Option[] {
+  const out: Option[] = targets
+    .filter((t) => !onCatch || t.kind !== "resource")
+    .map((t) => ({
+      value: targetValue(listedTarget(t)),
+      label: t.title,
+      meta: t.awx_workflow ? `${t.ref} (workflow)` : t.ref,
+      group: kindGroup[t.kind],
+    }));
   if (current?.ref && !findTarget(targets, current))
     out.unshift({
       value: targetValue(current),
@@ -145,10 +161,13 @@ function targetOptions(targets: CompositeStepTarget[], current?: StepTarget, bra
     });
   out.push({ value: byName, label: "Another AWX template, by its name", group: kindGroup.awx });
   out.push({ value: restValue, label: "A REST call", group: kindGroup.rest });
-  out.push({ value: askValue, label: "A person", group: kindGroup.ask });
+  if (!onCatch) out.push({ value: askValue, label: "A person", group: kindGroup.ask });
   out.push({ value: notifyValue, label: "A message to people", group: kindGroup.notify });
-  out.push({ value: waitValue, label: "A wait for a time", group: kindGroup.wait });
-  out.push({ value: pollValue, label: "A wait for a condition, polling a REST API", group: kindGroup.poll });
+  if (!onCatch) {
+    out.push({ value: waitValue, label: "A wait for a time", group: kindGroup.wait });
+    out.push({ value: pollValue, label: "A wait for a condition, polling a REST API", group: kindGroup.poll });
+    out.push({ value: signalValue, label: "A wait for a signal or an event", group: kindGroup.signal });
+  }
   if (branchHere)
     out.push({ value: branchValue, label: "A branch: cases, each with its steps", group: kindGroup.branch });
   return out;
@@ -164,7 +183,15 @@ function parseTarget(value: string, targets: CompositeStepTarget[]): edits.Targe
     const t = targets.find((x) => x.kind === "awx" && x.ref === ref && Boolean(x.awx_workflow) === workflow);
     return { kind: "awx", ref, workflow, ...(t?.awx_id ? { templateId: t.awx_id } : {}) };
   }
-  if (kind === "rest" || kind === "ask" || kind === "wait" || kind === "poll" || kind === "branch" || kind === "notify")
+  if (
+    kind === "rest" ||
+    kind === "ask" ||
+    kind === "wait" ||
+    kind === "poll" ||
+    kind === "signal" ||
+    kind === "branch" ||
+    kind === "notify"
+  )
     return { kind, ref: "" };
   if (kind !== "item" && kind !== "workflow" && kind !== "resource") return undefined;
   return { kind, ref };
@@ -184,6 +211,7 @@ function newStep(key: string, title: string, target: edits.Target, inputs: Compo
   else if (target.kind === "ask") step.ask = {};
   else if (target.kind === "wait") step.wait = {};
   else if (target.kind === "poll") step.poll = edits.newPoll();
+  else if (target.kind === "signal") step.signal = edits.newSignal(key);
   else if (target.kind === "branch") step.branch = edits.newBranch();
   else if (target.kind === "notify") step.notify = {};
   else if (target.kind === "resource") step.resource = { type: target.ref };
@@ -210,10 +238,10 @@ export default function CompositeDesigner({
   const def = useMemo(() => parseDefinition(text), [text]);
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  /** The side of a branch the step being added goes on. */
-  const [addingTo, setAddingTo] = useState<SideRef | null>(null);
-  const addOnSide = useCallback((side: SideRef) => {
-    setAddingTo(side);
+  /** Where the step being added goes when it was added from a step's or Done's details. */
+  const [addingTo, setAddingTo] = useState<Into | null>(null);
+  const addInto = useCallback((into: Into) => {
+    setAddingTo(into);
     setAdding(true);
   }, []);
   /** What to focus once the selected node's details are drawn: they come with the graph, which follows the text a moment later. */
@@ -295,7 +323,7 @@ export default function CompositeDesigner({
     };
   }, []);
 
-  const ctx: PanelContext = { text, def: def ?? {}, targets, targetsQuery, apply, focusNext, setSelected, addOnSide };
+  const ctx: PanelContext = { text, def: def ?? {}, targets, targetsQuery, apply, focusNext, setSelected, addInto };
   const renderDetails = (node: CanvasNode): ReactNode => {
     if (!def)
       return (
@@ -360,7 +388,7 @@ export default function CompositeDesigner({
           def={def}
           targets={targets}
           loading={targetsQuery.isPending}
-          side={addingTo}
+          into={addingTo}
           selected={
             selectedStep
               ? flatten(obj(def.blueprint)).find((s) => s.key && edits.stepId(s.key) === selectedStep)
@@ -386,7 +414,7 @@ interface PanelContext {
   apply: (make: () => string, then?: { select?: string | null; focus?: string }) => void;
   focusNext: RefObject<string | null>;
   setSelected: (id: string | null) => void;
-  addOnSide: (side: SideRef) => void;
+  addInto: (into: Into) => void;
 }
 
 /** A side of a branch: its node's ID, which it is (1 for the first case, 0 for otherwise), and what it is called. */
@@ -395,6 +423,12 @@ interface SideRef {
   taken: number;
   label: string;
 }
+
+/** Where a step added from a step's or Done's details goes: a side of a branch, a step's catch path (its group's, in one), or the error handler. */
+type Into = SideRef | { catchOf: string; label: string } | { onError: true; label: string };
+
+const whereOf = (into: Into): edits.Where =>
+  "taken" in into ? { side: into.id, taken: into.taken } : "catchOf" in into ? { catchOf: into.catchOf } : "onError";
 
 /** Focuses what an edit asked for, once its details are drawn. */
 function useFocusNext(ref: RefObject<string | null>) {
@@ -481,6 +515,24 @@ function EndPanel({ ctx }: { ctx: PanelContext }) {
           </p>
         </div>
       </div>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>Error handler</legend>
+        <p className="text-muted">
+          Its steps run in order when a failure nothing catches fails the request, before the undo steps and the
+          rollback: an AWX job, a custom workflow, a REST call or a message. They read{" "}
+          <code className="font-mono">error.step</code> and <code className="font-mono">error.message</code>.
+        </p>
+        <SideSteps
+          steps={
+            Array.isArray(obj(ctx.def.blueprint).on_error)
+              ? (obj(ctx.def.blueprint).on_error as unknown[]).map(obj)
+              : []
+          }
+          side={{ onError: true, label: "the error handler" }}
+          empty="None yet: a failure just fails the request."
+          ctx={ctx}
+        />
+      </fieldset>
     </section>
   );
 }
@@ -536,14 +588,18 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const variables = useQuery({ ...adm.variables(), staleTime: 60_000 });
   const found = edits.readStep(text, node.id);
   if (!found) return <NodeDetails node={node} />;
-  const { step, g, j, side, pointer } = found;
+  const { step, g, j, side, caught, pointer } = found;
   const id = node.id;
   const key = str(step.key);
   const target = targetOf(step);
   const listed = findTarget(targets, target);
   const planned = listed?.planned ?? false;
   const slots = Array.isArray(obj(def.blueprint).steps) ? (obj(def.blueprint).steps as unknown[]).length : 0;
-  const place = side ? { g, side: { taken: side.taken, i: side.i } } : { g };
+  const place = caught
+    ? { g, caught: { list: caught.list, i: caught.i } }
+    : side
+      ? { g, side: { taken: side.taken, i: side.i } }
+      : { g };
   const sources = bindingSources(def, { ...place, planned }, targets, variables.data?.items);
   const open = planned ? [] : openEarlier(def, place, targets);
   const withMap = obj(step.with);
@@ -551,6 +607,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const ask = target?.kind === "ask";
   const wait = target?.kind === "wait";
   const poll = target?.kind === "poll";
+  const signal = target?.kind === "signal";
   const branch = target?.kind === "branch";
   const notify = target?.kind === "notify";
   const resource = target?.kind === "resource";
@@ -561,6 +618,8 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const flat = flatten(obj(def.blueprint));
   const at = flat.findIndex((s) => s.pointer === pointer);
   const slotBefore = g > 0 ? obj((obj(def.blueprint).steps as unknown[])[g - 1]) : {};
+  const slot = obj((obj(def.blueprint).steps as unknown[] | undefined)?.[g]);
+  const catchSteps = j === null ? step.catch : slot.catch;
 
   const bind = (name: string, scope: "with" | "undo") => (v: edits.Binding) =>
     apply(() => edits.setBinding(text, id, name, v, scope));
@@ -600,7 +659,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             id="cd-earlier"
             size="sm"
             variant="quiet"
-            disabled={side ? side.i === 0 : j === null && g === 0}
+            disabled={caught ? caught.i === 0 : side ? side.i === 0 : j === null && g === 0}
             onClick={() => move(-1)}
           >
             <ArrowUp aria-hidden />
@@ -610,22 +669,35 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             id="cd-later"
             size="sm"
             variant="quiet"
-            disabled={side ? side.i === side.length - 1 : j === null && g === slots - 1}
+            disabled={
+              caught
+                ? caught.i === caught.length - 1
+                : side
+                  ? side.i === side.length - 1
+                  : j === null && g === slots - 1
+            }
             onClick={() => move(1)}
           >
             <ArrowDown aria-hidden />
             {j === null ? "Move later" : "Run after the others"}
           </Button>
-          {j === null && g > 0 && !side && !branch && slotBefore.branch === undefined && (
-            <Button
-              id="cd-join"
-              size="sm"
-              variant="quiet"
-              onClick={() => apply(() => edits.joinPrevious(text, id), { focus: "cd-later" })}
-            >
-              Run with the step before
-            </Button>
-          )}
+          {j === null &&
+            g > 0 &&
+            !side &&
+            !caught &&
+            !branch &&
+            slotBefore.branch === undefined &&
+            step.catch === undefined &&
+            (slotBefore.parallel !== undefined || slotBefore.catch === undefined) && (
+              <Button
+                id="cd-join"
+                size="sm"
+                variant="quiet"
+                onClick={() => apply(() => edits.joinPrevious(text, id), { focus: "cd-later" })}
+              >
+                Run with the step before
+              </Button>
+            )}
           <Button id="cd-remove" size="sm" variant="danger" onClick={remove}>
             <Trash2 aria-hidden />
             Remove step
@@ -654,6 +726,46 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             {side.branch}
           </button>
           : it runs only when that side is taken, and is skipped otherwise.
+        </p>
+      )}
+      {caught && (
+        <p className="text-muted">
+          {caught.of === "on_error" ? (
+            <>
+              In the{" "}
+              <button
+                type="button"
+                aria-label="Select Done, whose error handler it is in"
+                className="text-accent hover:underline"
+                onClick={() => {
+                  focusNext.current = "cd-heading";
+                  setSelected("end");
+                }}
+              >
+                error handler
+              </button>
+              : it runs only when a failure nothing catches fails the request.
+            </>
+          ) : caught.of ? (
+            <>
+              On the catch path of{" "}
+              <button
+                type="button"
+                aria-label={`Select ${caught.of}, whose catch path it is on`}
+                className="font-mono text-accent hover:underline"
+                onClick={() => {
+                  focusNext.current = "cd-heading";
+                  setSelected(edits.stepId(caught.of));
+                }}
+              >
+                {caught.of}
+              </button>
+              : it runs only if that step fails, and the request goes on.
+            </>
+          ) : (
+            `On the catch path of step group ${g + 1}: it runs only if one of its steps fails, and the request goes on.`
+          )}{" "}
+          It reads <code className="font-mono">error.step</code> and <code className="font-mono">error.message</code>.
         </p>
       )}
       <div className="grid gap-3 md:grid-cols-2">
@@ -701,7 +813,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             value={runsValue}
             loading={ctx.targetsQuery.isPending}
             placeholder="Choose what it runs"
-            options={targetOptions(targets, target, !side && j === null)}
+            options={targetOptions(targets, target, !side && !caught && j === null, Boolean(caught))}
             onCloseAutoFocus={runsFocus.onCloseAutoFocus}
             onChange={(v) => {
               if (v === byName) {
@@ -774,6 +886,8 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
 
       {poll && <PollFields poll={obj(step.poll)} id={id} stepKey={key} reads={sources.map((s) => s.value)} ctx={ctx} />}
 
+      {signal && <SignalFields signal={obj(step.signal)} id={id} stepKey={key} ctx={ctx} />}
+
       {branch && (
         <BranchFields branch={obj(step.branch)} id={id} stepKey={key} reads={sources.map((s) => s.value)} ctx={ctx} />
       )}
@@ -782,7 +896,16 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         <NotifyFields notify={obj(step.notify)} id={id} stepKey={key} reads={sources.map((s) => s.value)} ctx={ctx} />
       )}
 
-      {!rest && !ask && !wait && !poll && !branch && !notify && (
+      {(step.for_each !== undefined || (!planned && !caught && !loopRefused(step))) && (
+        <LoopFields
+          forEach={step.for_each === undefined ? undefined : obj(step.for_each)}
+          id={id}
+          stepKey={key}
+          ctx={ctx}
+        />
+      )}
+
+      {!rest && !ask && !wait && !poll && !signal && !branch && !notify && (
         <fieldset className="flex flex-col gap-2">
           <legend className={legend}>Inputs</legend>
           {target?.kind === "item" && !listed && (
@@ -816,7 +939,8 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
           ))}
           {open.length > 0 && (
             <p className="text-muted">
-              A custom workflow gives what it returns, a custom resource its properties: write{" "}
+              A custom workflow gives what it returns, a custom resource its properties, a wait for a signal what came:
+              write{" "}
               {open.map((k, i) => (
                 <span key={k}>
                   {i > 0 && ", "}
@@ -840,20 +964,47 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
 
       {resource && <p className="text-muted">If a later step fails, its type&apos;s delete step undoes it.</p>}
 
-      {!planned && !ask && !wait && !poll && !branch && !notify && !resource && (
+      {!planned &&
+        !ask &&
+        !wait &&
+        !poll &&
+        !signal &&
+        !branch &&
+        !notify &&
+        !resource &&
+        ((!caught && step.for_each === undefined) || undo !== undefined) && (
+          <fieldset className="flex flex-col gap-2">
+            <legend className={legend}>Undo</legend>
+            <UndoEditor
+              undo={undo}
+              targets={targets}
+              sources={sources}
+              extra={undoExtra}
+              onExtra={(n) => setUndoExtra((x) => [...x, n])}
+              onRemoveExtra={(n) => setUndoExtra((x) => x.filter((m) => m !== n))}
+              onChange={(u) => apply(() => edits.setUndo(text, id, u))}
+              bind={(name) => bind(name, "undo")}
+              onRest={(field, v) => apply(() => edits.setRestField(text, id, field, v, "undo"))}
+              reads={[...sources.map((s) => s.value), ...undoReads(key, outputsOf(step, targets))]}
+            />
+          </fieldset>
+        )}
+
+      {!caught && !branch && !resource && !planned && (
         <fieldset className="flex flex-col gap-2">
-          <legend className={legend}>Undo</legend>
-          <UndoEditor
-            undo={undo}
-            targets={targets}
-            sources={sources}
-            extra={undoExtra}
-            onExtra={(n) => setUndoExtra((x) => [...x, n])}
-            onRemoveExtra={(n) => setUndoExtra((x) => x.filter((m) => m !== n))}
-            onChange={(u) => apply(() => edits.setUndo(text, id, u))}
-            bind={(name) => bind(name, "undo")}
-            onRest={(field, v) => apply(() => edits.setRestField(text, id, field, v, "undo"))}
-            reads={[...sources.map((s) => s.value), ...undoReads(key, outputsOf(step, targets))]}
+          <legend className={legend}>{j === null ? "Catch path" : "Catch path of its group"}</legend>
+          <p className="text-muted">
+            {j === null
+              ? "Steps that run in order if it fails; the request then goes on."
+              : "Steps that run in order if a step of its group fails; the request then goes on."}{" "}
+            They read <code className="font-mono">error.step</code> and <code className="font-mono">error.message</code>
+            .
+          </p>
+          <SideSteps
+            steps={Array.isArray(catchSteps) ? catchSteps.map(obj) : []}
+            side={{ catchOf: id, label: "the catch path" }}
+            empty={j === null ? "None: if it fails, the request fails." : "None: if one fails, the request fails."}
+            ctx={ctx}
           />
         </fieldset>
       )}
@@ -1295,8 +1446,212 @@ function PollFields({
   );
 }
 
-/** The steps on a side of a branch: each a button that selects it, and the way to add another. */
-function SideSteps({ steps, side, ctx }: { steps: Raw[]; side: SideRef; ctx: PanelContext }) {
+const signalByName = "signal:";
+const eventOptions: Option[] = [
+  { value: signalByName, label: "A signal sent to this request" },
+  ...eventTopics.map((t) => ({ value: `event:${t}`, label: t, group: "An event of rvav's" })),
+];
+
+/** A wait for a signal or an event (ADR-0057): which, the event's condition, and its deadline. */
+function SignalFields({ signal, id, stepKey, ctx }: { signal: Raw; id: string; stepKey: string; ctx: PanelContext }) {
+  const { text, apply } = ctx;
+  const set = (field: edits.SignalField, v: string) => apply(() => edits.setSignalField(text, id, field, v));
+  const event = str(signal.event);
+  const name = str(signal.name);
+  const own = `steps.${stepKey || "<key>"}`;
+  return (
+    <>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>What it waits for</legend>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Waits for" htmlFor="cd-signal-for">
+            <Select
+              id="cd-signal-for"
+              value={event ? `event:${event}` : signalByName}
+              options={eventOptions}
+              onChange={(v) => {
+                if (v === signalByName) set("name", name || edits.newSignal(stepKey).name);
+                else set("event", v.slice("event:".length));
+              }}
+            />
+          </Field>
+          {event ? (
+            <Field
+              label="Condition"
+              htmlFor="cd-signal-when"
+              hint={
+                <>
+                  CEL over the event, as a subscription&apos;s condition reads it, and{" "}
+                  <code className="font-mono">waiting</code>: this request and its steps before this one. Empty: the
+                  first event of the topic in the request&apos;s project.
+                </>
+              }
+            >
+              <CommitInput
+                id="cd-signal-when"
+                value={str(signal.when)}
+                className="font-mono text-secondary"
+                placeholder="item.slug == 'backup-host'"
+                onCommit={(v) => set("when", v)}
+              />
+            </Field>
+          ) : (
+            <Field
+              label="Signal name"
+              htmlFor="cd-signal-name"
+              hint={
+                <>
+                  Sent to <code className="font-mono">/requests/&lt;number&gt;/signal/{name || "<name>"}</code> by
+                  someone who manages the project&apos;s requests, or with{" "}
+                  <code className="font-mono">rvavctl requests signal</code>.
+                </>
+              }
+            >
+              <CommitInput
+                id="cd-signal-name"
+                value={name}
+                className="font-mono text-secondary"
+                placeholder="cab-approved"
+                onCommit={(v) => set("name", v)}
+              />
+            </Field>
+          )}
+        </div>
+        <p className="text-muted">
+          What comes is its outputs: later steps read <code className="font-mono">{own}.&lt;field&gt;</code>.
+        </p>
+      </fieldset>
+      <fieldset className="flex flex-col gap-2">
+        <legend className={legend}>If nothing comes</legend>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Timeout" htmlFor="cd-signal-timeout" hint="From 1m to 2160h (90 days), from when it begins.">
+            <CommitInput
+              id="cd-signal-timeout"
+              value={str(signal.timeout)}
+              className="font-mono text-secondary"
+              placeholder="72h"
+              onCommit={(v) => set("timeout", v)}
+            />
+          </Field>
+          <Field
+            label="Then"
+            htmlFor="cd-signal-on-timeout"
+            hint={
+              str(signal.on_timeout) === "continue" ? (
+                <>
+                  Later steps read <code className="font-mono">has({own}.timed_out)</code>.
+                </>
+              ) : undefined
+            }
+          >
+            <Select
+              id="cd-signal-on-timeout"
+              value={str(signal.on_timeout) || "fail"}
+              options={pollThenOptions}
+              onChange={(v) => set("on_timeout", v)}
+            />
+          </Field>
+        </div>
+      </fieldset>
+    </>
+  );
+}
+
+/** A step's loop (ADR-0057): the list it goes over and how many passes run at once, or the way to add one. */
+function LoopFields({
+  forEach,
+  id,
+  stepKey,
+  ctx,
+}: {
+  forEach: Raw | undefined;
+  id: string;
+  stepKey: string;
+  ctx: PanelContext;
+}) {
+  const { text, apply } = ctx;
+  const own = `steps.${stepKey || "<key>"}`;
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className={legend}>Loop</legend>
+      {forEach ? (
+        <>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_8rem]">
+            <Field
+              label="For each item of"
+              htmlFor="cd-loop-items"
+              hint={
+                <>
+                  CEL giving a list of at most 100 items. Each pass reads <code className="font-mono">each</code>, its
+                  item, and <code className="font-mono">index</code>, from 0.
+                </>
+              }
+            >
+              <CommitInput
+                id="cd-loop-items"
+                value={str(forEach.items)}
+                className="font-mono text-secondary"
+                placeholder="inputs.hosts"
+                onCommit={(v) => apply(() => edits.setForEach(text, id, "items", v))}
+              />
+            </Field>
+            <Field label="At a time" htmlFor="cd-loop-parallel" hint="Up to 10. 1: one after the other.">
+              <CommitInput
+                id="cd-loop-parallel"
+                value={typeof forEach.parallel === "number" ? String(forEach.parallel) : str(forEach.parallel) || "1"}
+                className="font-mono text-secondary"
+                onCommit={(v) => apply(() => edits.setForEach(text, id, "parallel", v))}
+              />
+            </Field>
+          </div>
+          <p className="text-muted">
+            Later steps read <code className="font-mono">{own}.items</code>, each pass&apos;s outputs in the list&apos;s
+            order, and <code className="font-mono">{own}.count</code>. A loop has no undo.
+          </p>
+          <div>
+            <Button
+              id="cd-loop-remove"
+              size="sm"
+              variant="quiet"
+              onClick={() => apply(() => edits.removeForEach(text, id), { focus: "cd-loop-add" })}
+            >
+              <Trash2 aria-hidden />
+              Run it once
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-muted">It runs once.</p>
+          <div>
+            <Button
+              id="cd-loop-add"
+              size="sm"
+              variant="secondary"
+              onClick={() => apply(() => edits.setForEach(text, id, "items", ""), { focus: "cd-loop-items" })}
+            >
+              <Plus aria-hidden />
+              Repeat it for each item of a list
+            </Button>
+          </div>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
+/** The steps of a side of a branch, a catch path or the error handler: each a button that selects it, and the way to add another. */
+function SideSteps({
+  steps,
+  side,
+  empty = "No steps yet: it goes on to what comes after the branch.",
+  ctx,
+}: {
+  steps: Raw[];
+  side: Into;
+  empty?: string;
+  ctx: PanelContext;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
       {steps.length > 0 ? (
@@ -1321,10 +1676,10 @@ function SideSteps({ steps, side, ctx }: { steps: Raw[]; side: SideRef; ctx: Pan
           })}
         </ol>
       ) : (
-        <p className="text-muted">No steps yet: it goes on to what comes after the branch.</p>
+        <p className="text-muted">{empty}</p>
       )}
       <div>
-        <Button size="sm" variant="secondary" onClick={() => ctx.addOnSide(side)}>
+        <Button size="sm" variant="secondary" onClick={() => ctx.addInto(side)}>
           <Plus aria-hidden />
           Add a step to {side.label}
         </Button>
@@ -1963,7 +2318,7 @@ function AddStepDialog({
   def,
   targets,
   loading,
-  side,
+  into,
   selected,
   onAdd,
 }: {
@@ -1973,9 +2328,16 @@ function AddStepDialog({
   def: Raw;
   targets: CompositeStepTarget[];
   loading: boolean;
-  /** The side of a branch it goes on, when it was added from there. */
-  side?: SideRef | null;
-  selected?: { key: string; name: string; j: number | null; step: Raw; side?: { taken: number; i: number } };
+  /** Where it goes, when it was added from a step's or Done's details. */
+  into?: Into | null;
+  selected?: {
+    key: string;
+    name: string;
+    j: number | null;
+    step: Raw;
+    side?: { taken: number; i: number };
+    caught?: { list: string; i: number };
+  };
   onAdd: (step: Raw, where: edits.Where) => void;
 }) {
   const [choice, setChoice] = useState("");
@@ -2003,11 +2365,18 @@ function AddStepDialog({
         : undefined
       : parseTarget(choice, targets);
   const listed = findTarget(targets, target);
-  // A branch runs in no parallel group and on no side, and a side lists its steps in order.
+  const onCatch = Boolean(into && !("taken" in into));
+  // A branch runs in no parallel group and on no side, and a side or a catch path lists its steps in order.
   const places = selected
     ? ([
-        ...(target?.kind === "branch" && selected.side ? [] : [["after", `After ${selected.name}`] as const]),
-        ...(target?.kind === "branch" || selected.side || selected.step.branch !== undefined
+        ...(target?.kind === "branch" && (selected.side || selected.caught)
+          ? []
+          : [["after", `After ${selected.name}`] as const]),
+        ...(target?.kind === "branch" ||
+        selected.side ||
+        selected.caught ||
+        selected.step.branch !== undefined ||
+        selected.step.catch !== undefined
           ? []
           : [["with", `At the same time as ${selected.name}`] as const]),
         ["end", "At the end"] as const,
@@ -2036,7 +2405,7 @@ function AddStepDialog({
                 ? "person"
                 : t.kind === "notify"
                   ? "message"
-                  : t.kind === "wait" || t.kind === "poll" || t.kind === "branch"
+                  : t.kind === "wait" || t.kind === "poll" || t.kind === "signal" || t.kind === "branch"
                     ? t.kind
                     : t.ref),
         ),
@@ -2050,8 +2419,8 @@ function AddStepDialog({
     setErrors(e);
     if (Object.keys(e).length > 0 || !target) return;
     const step = newStep(key, title.trim() || listed?.title || "", target, listed?.inputs ?? [], def);
-    const at: edits.Where = side
-      ? { side: side.id, taken: side.taken }
+    const at: edits.Where = into
+      ? whereOf(into)
       : selected && place === "after"
         ? { after: edits.stepId(selected.key) }
         : selected && place === "with"
@@ -2066,7 +2435,7 @@ function AddStepDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title="Add a step"
-        description="It runs one of the catalog's items, an AWX template or a custom workflow, calls a REST API, waits, sends a message, or branches. Inputs named as the form's are bound to them."
+        description="It runs one of the catalog's items, an AWX template or a custom workflow, calls a REST API, waits for a person, a time, a condition or a signal, sends a message, or branches. Inputs named as the form's are bound to them."
         onOpenAutoFocus={(e) => {
           reset();
           // What it runs first, rather than the close button.
@@ -2094,7 +2463,7 @@ function AddStepDialog({
               value={choice}
               loading={loading}
               placeholder="Choose what it runs"
-              options={targetOptions(targets, undefined, !side)}
+              options={targetOptions(targets, undefined, !into, onCatch)}
               onCloseAutoFocus={focus.onCloseAutoFocus}
               onChange={(v) => {
                 if (v === byName) focus.later("cd-new-awx");
@@ -2142,8 +2511,15 @@ function AddStepDialog({
               />
             </Field>
           </div>
-          {side ? (
-            <p className="text-secondary text-muted">It runs on the side {side.label}, after the steps there.</p>
+          {into ? (
+            <p className="text-secondary text-muted">
+              {"taken" in into
+                ? `It runs on the side ${into.label}`
+                : "catchOf" in into
+                  ? "It runs on the catch path"
+                  : "It runs in the error handler"}
+              , after the steps there.
+            </p>
           ) : selected ? (
             <fieldset className="flex flex-col gap-1.5 text-body">
               <legend className="mb-1 text-secondary font-medium">When it runs</legend>

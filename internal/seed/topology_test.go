@@ -69,6 +69,15 @@ var probes = []struct {
 	  "resources": [{"key": "lb", "title": "Load balancer", "type": "load-balancer",
 	                 "with": {"members": "components.web.ips", "token": "'tok_live_r'", "pool": "project.code + '-pool-secret'"}},
 	                {"key": "dns", "type": "dns-alias", "with": {"target": "resources.lb.vip", "zone": "'zone-secret'"}}]}`},
+	{"probe-composite-flow", `{"kind": "composite", "steps": [
+	  {"key": "agents", "title": "Agents", "awx": {"job_template": "t"}, "with": {"target": "each", "token": "'tok_live_l'"},
+	   "for_each": {"items": "inputs.hosts + ['host-secret']", "parallel": 3},
+	   "catch": [{"key": "fix", "rest": {"method": "POST", "url": "https://itsm-secret.corp.example/x", "body": "{'why': error.message, 'k': 'tok_live_c'}"}}]},
+	  {"key": "cab", "title": "The board", "signal": {"name": "cab-approved", "timeout": "72h"}},
+	  {"key": "ev", "signal": {"event": "provisioning.post", "when": "item.slug == 'slug-secret'", "timeout": "1h", "on_timeout": "continue", "unknown": "dropped-secret"}},
+	  {"parallel": [{"key": "p1", "workflow": "x"}, {"key": "p2", "workflow": "y"}],
+	   "catch": [{"key": "tell", "notify": {"requester": true, "message": "Secret-text ${error.step}"}}]}],
+	 "on_error": [{"key": "incident", "rest": {"method": "POST", "url": "https://itsm-secret.corp.example/i", "body": "'tok_live_e'", "secret": "itsm-token-name"}}]}`},
 	{"probe-composite-resource", `{"kind": "composite", "steps": [
 	  {"key": "vm", "item": "rhel9-server"},
 	  {"key": "lb", "title": "Its load balancer", "resource": {"type": "load-balancer", "deployment": "vm"},

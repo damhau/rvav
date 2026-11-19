@@ -7,7 +7,8 @@
 // re-indented the first time, its comments kept.
 //
 // A step is named by its node's ID on the canvas: `step:<key>`, or
-// `step@<pointer>` when its key is missing or taken twice.
+// `step@<pointer>` when its key is missing or taken twice. A step of a catch
+// path or of the error handler is named so too (ADR-0057).
 //
 // An edit changes the step it is made on and no other, whatever anchors
 // and aliases (&name, *name) the text shares between steps: a step whose
@@ -28,7 +29,7 @@ import {
   YAMLMap,
   YAMLSeq,
 } from "yaml";
-import { parseUrl } from "@/lib/composite";
+import { catchRefused, caughtRefused, loopRefused, parseUrl } from "@/lib/composite";
 import { parseText } from "../definitionYaml";
 
 type Raw = Record<string, unknown>;
@@ -47,12 +48,15 @@ const stepOrder = [
   "ask",
   "wait",
   "poll",
+  "signal",
   "branch",
   "notify",
   "resource",
   "when",
+  "for_each",
   "with",
   "undo",
+  "catch",
 ];
 const undoOrder = ["job_template", "workflow", "rest", "with"];
 const restOrder = ["method", "url", "body", "secret", "accept", "keep"];
@@ -74,6 +78,10 @@ const branchOrder = ["cases", "else"];
 const caseOrder = ["title", "when", "steps"];
 const notifyOrder = ["requester", "owner", "groups", "users", "message"];
 const awxOrder = ["job_template", "template_id", "title", "workflow", "inventory", "credentials"];
+const signalOrder = ["name", "event", "when", "timeout", "on_timeout"];
+const forEachOrder = ["items", "parallel"];
+const groupOrder = ["parallel", "catch"];
+const blueprintOrder = ["kind", "rollback_on_failure", "steps", "on_error"];
 
 export const blueprintPrefix = "/definition/blueprint";
 
@@ -87,6 +95,12 @@ interface Located {
   pointer: string;
   /** The side of a branch it is on. */
   side?: { branch: YAMLMap; key: string; list: YAMLSeq; index: number; taken: number };
+  /**
+   * The catch path it is on: the list, its place there, and what it catches,
+   * the step's key, "" for a parallel group (slot g), or "on_error" for the
+   * error handler.
+   */
+  caught?: { holder: YAMLMap; list: YAMLSeq; index: number; of: string };
 }
 
 /** Thrown when an edit can't be made: the YAML doesn't parse, or the step isn't there. */
@@ -206,49 +220,72 @@ const scalarText = (n: unknown) => (isScalar(n) && typeof n.value === "string" ?
 function locateAll(doc: Document): Located[] {
   const out: Located[] = [];
   const steps = doc.getIn(["blueprint", "steps"], true);
-  if (!isSeq(steps)) return out;
-  steps.items.forEach((item, g) => {
-    if (!isMap(item)) return;
-    const parallel = item.get("parallel", true);
-    if (isSeq(parallel)) {
-      parallel.items.forEach((s, j) => {
-        if (isMap(s))
-          out.push({
-            g,
-            j,
-            node: s,
-            key: scalarText(s.get("key", true)),
-            pointer: `${blueprintPrefix}/steps/${g}/parallel/${j}`,
-          });
-      });
-      return;
-    }
-    const key = scalarText(item.get("key", true));
-    const pointer = `${blueprintPrefix}/steps/${g}`;
-    out.push({ g, j: null, node: item, key, pointer });
-    const branch = item.get("branch", true);
-    if (!isMap(branch)) return;
-    const onSide = (list: unknown, taken: number, at: string) => {
-      if (!isSeq(list)) return;
-      list.items.forEach((s, index) => {
-        if (isMap(s))
+  /** The steps of the catch path of holder, after what it catches. */
+  const catchOf = (holder: YAMLMap, g: number, at: string, of: string, field = "catch") => {
+    const list = holder.get(field, true);
+    if (!isSeq(list)) return;
+    list.items.forEach((s, index) => {
+      if (isMap(s))
+        out.push({
+          g,
+          j: null,
+          node: s,
+          key: scalarText(s.get("key", true)),
+          pointer: `${at}/${index}`,
+          caught: { holder, list, index, of },
+        });
+    });
+  };
+  if (isSeq(steps))
+    steps.items.forEach((item, g) => {
+      if (!isMap(item)) return;
+      const parallel = item.get("parallel", true);
+      if (isSeq(parallel)) {
+        parallel.items.forEach((s, j) => {
+          if (isMap(s))
+            out.push({
+              g,
+              j,
+              node: s,
+              key: scalarText(s.get("key", true)),
+              pointer: `${blueprintPrefix}/steps/${g}/parallel/${j}`,
+            });
+        });
+        catchOf(item, g, `${blueprintPrefix}/steps/${g}/catch`, "");
+        return;
+      }
+      const key = scalarText(item.get("key", true));
+      const pointer = `${blueprintPrefix}/steps/${g}`;
+      out.push({ g, j: null, node: item, key, pointer });
+      catchOf(item, g, `${pointer}/catch`, key);
+      const branch = item.get("branch", true);
+      if (!isMap(branch)) return;
+      const onSide = (list: unknown, taken: number, at: string) => {
+        if (!isSeq(list)) return;
+        list.items.forEach((s, index) => {
+          if (!isMap(s)) return;
+          const own = scalarText(s.get("key", true));
           out.push({
             g,
             j: null,
             node: s,
-            key: scalarText(s.get("key", true)),
+            key: own,
             pointer: `${at}/${index}`,
             side: { branch, key, list, index, taken },
           });
-      });
-    };
-    const cases = branch.get("cases", true);
-    if (isSeq(cases))
-      cases.items.forEach((c, i) => {
-        if (isMap(c)) onSide(c.get("steps", true), i + 1, `${pointer}/branch/cases/${i}/steps`);
-      });
-    onSide(branch.get("else", true), 0, `${pointer}/branch/else`);
-  });
+          catchOf(s, g, `${at}/${index}/catch`, own);
+        });
+      };
+      const cases = branch.get("cases", true);
+      if (isSeq(cases))
+        cases.items.forEach((c, i) => {
+          if (isMap(c)) onSide(c.get("steps", true), i + 1, `${pointer}/branch/cases/${i}/steps`);
+        });
+      onSide(branch.get("else", true), 0, `${pointer}/branch/else`);
+    });
+  const bp = doc.getIn(["blueprint"], true);
+  if (isMap(bp))
+    catchOf(bp, isSeq(steps) ? steps.items.length : 0, `${blueprintPrefix}/on_error`, "on_error", "on_error");
   return out;
 }
 
@@ -326,6 +363,10 @@ function expressionNodes(step: YAMLMap): { holder: YAMLMap; key: string }[] {
   for (const call of restCallsOf(step)) if (isScalar(call.get("body", true))) out.push({ holder: call, key: "body" });
   for (const part of [step.get("wait", true), step.get("poll", true)])
     if (isMap(part) && isScalar(part.get("until", true))) out.push({ holder: part, key: "until" });
+  const signal = step.get("signal", true);
+  if (isMap(signal) && isScalar(signal.get("when", true))) out.push({ holder: signal, key: "when" });
+  const forEach = step.get("for_each", true);
+  if (isMap(forEach) && isScalar(forEach.get("items", true))) out.push({ holder: forEach, key: "items" });
   const branch = step.get("branch", true);
   const cases = isMap(branch) ? branch.get("cases", true) : undefined;
   if (isSeq(cases))
@@ -358,7 +399,13 @@ function escape(s: string) {
 
 // ---- Adding, removing and moving steps --------------------------------------
 
-export type Where = { after: string } | { with: string } | { side: string; taken: number } | "end";
+/**
+ * Where a step is added: at the end, after a step, at the same time as one,
+ * on a side of a branch, on the catch path of a step (of its group, if it is
+ * in one), or in the error handler.
+ */
+export type Where =
+  { after: string } | { with: string } | { side: string; taken: number } | { catchOf: string } | "onError" | "end";
 
 /** A branch's list of steps for a side (1 for its first case, 0 for otherwise), made if it has none. */
 function sideList(doc: Document, id: string, taken: number): YAMLSeq {
@@ -382,6 +429,40 @@ function sideList(doc: Document, id: string, taken: number): YAMLSeq {
 
 const noBranchOnSide = "A branch can't be on a side of a branch: give it more cases instead, each with its conditions.";
 const noBranchInGroup = "A branch can't run in a parallel group: put it before or after the group.";
+const noGroupOnCatch = "A catch path lists steps in order: a parallel group can't be one of them.";
+const noCatchInGroup = "A step of a parallel group has no catch path of its own: put it on the group.";
+
+/** A list of a map's, made a block list, and made if it has none. */
+function listOf(doc: Document, holder: YAMLMap, key: string, order: string[]): YAMLSeq {
+  let list = own(doc, holder, key);
+  if (!isSeq(list)) {
+    put(doc, holder, key, new YAMLSeq(), order);
+    list = holder.get(key, true);
+  }
+  const seq = list as YAMLSeq;
+  seq.flow = false;
+  return seq;
+}
+
+/** Refuses a step on a catch path that the server would refuse there. */
+function mayCatch(step: Raw) {
+  const why = catchRefused(step);
+  if (why) throw new EditError(why);
+}
+
+/** The catch path of the step at, or of its group: the server's refusals said before it is written. */
+function catchListOf(doc: Document, at: Located): YAMLSeq {
+  if (at.caught) throw new EditError("A step of a catch path has no catch path of its own.");
+  const steps = stepsOf(doc);
+  const holder = at.j === null ? at.node : steps.items[at.g];
+  if (!isMap(holder)) throw new EditError("That step isn't in the definition any more.");
+  const caught = at.j === null ? [at.node] : parallelOf(holder).items.filter(isMap);
+  for (const s of caught) {
+    const why = caughtRefused(s.toJS(doc) as Raw);
+    if (why) throw new EditError(why);
+  }
+  return listOf(doc, holder, "catch", at.j === null ? stepOrder : groupOrder);
+}
 
 /** Adds a step: at the end, after a step (after its group, if it is in one, on its side, if it is on one), at the same time as one, or on a side of a branch. */
 export function addStep(text: string, step: Raw, where: Where): string {
@@ -389,20 +470,31 @@ export function addStep(text: string, step: Raw, where: Where): string {
   const steps = stepsOf(doc, true);
   const node = doc.createNode(step) as YAMLMap;
   if (where === "end") steps.items.push(node);
-  else if ("side" in where) {
+  else if (where === "onError") {
+    mayCatch(step);
+    listOf(doc, blueprintOf(doc), "on_error", blueprintOrder).items.push(node);
+  } else if ("catchOf" in where) {
+    mayCatch(step);
+    catchListOf(doc, locate(doc, where.catchOf)).items.push(node);
+  } else if ("side" in where) {
     if (step.branch !== undefined) throw new EditError(noBranchOnSide);
     sideList(doc, where.side, where.taken).items.push(node);
   } else if ("after" in where) {
     const at = locate(doc, where.after);
-    if (at.side) {
+    if (at.caught) {
+      mayCatch(step);
+      at.caught.list.items.splice(at.caught.index + 1, 0, node);
+    } else if (at.side) {
       if (step.branch !== undefined) throw new EditError(noBranchOnSide);
       at.side.list.flow = false;
       at.side.list.items.splice(at.side.index + 1, 0, node);
     } else steps.items.splice(at.g + 1, 0, node);
   } else {
     const at = locate(doc, where.with);
+    if (at.caught) throw new EditError(noGroupOnCatch);
     if (at.side) throw new EditError("A side of a branch lists steps in order: a parallel group can't be one of them.");
     if (step.branch !== undefined || at.node.has("branch")) throw new EditError(noBranchInGroup);
+    if (step.catch !== undefined || (at.j === null && at.node.has("catch"))) throw new EditError(noCatchInGroup);
     if (at.j === null) {
       // On its own: it and the new one become a parallel group in its place.
       const group = doc.createNode({ parallel: [] }) as YAMLMap;
@@ -428,6 +520,12 @@ function unwrap(steps: YAMLSeq, g: number) {
 
 /** Takes a step out of where it is, and gives its node. */
 function detach(doc: Document, at: Located): YAMLMap {
+  if (at.caught) {
+    at.caught.list.items.splice(at.caught.index, 1);
+    // A catch path with nothing left to run is no list at all.
+    if (at.caught.list.items.length === 0) at.caught.holder.delete(at.caught.of === "on_error" ? "on_error" : "catch");
+    return at.node;
+  }
   const steps = stepsOf(doc);
   if (at.side) {
     at.side.list.items.splice(at.side.index, 1);
@@ -456,6 +554,14 @@ export function removeStep(text: string, id: string): string {
 export function moveStep(text: string, id: string, dir: -1 | 1): string {
   const doc = load(text);
   const at = locate(doc, id);
+  if (at.caught) {
+    const to = at.caught.index + dir;
+    if (to < 0 || to >= at.caught.list.items.length)
+      throw new EditError(dir < 0 ? "It runs first on its catch path." : "It runs last on its catch path.");
+    at.caught.list.items.splice(at.caught.index, 1);
+    at.caught.list.items.splice(to, 0, at.node);
+    return save(doc);
+  }
   const steps = stepsOf(doc);
   if (at.side) {
     const to = at.side.index + dir;
@@ -481,12 +587,15 @@ export function moveStep(text: string, id: string, dir: -1 | 1): string {
 export function joinPrevious(text: string, id: string): string {
   const doc = load(text);
   const at = locate(doc, id);
+  if (at.caught) throw new EditError(noGroupOnCatch);
   if (at.side) throw new EditError("A side of a branch lists steps in order: a parallel group can't be one of them.");
   if (at.j !== null) throw new EditError("It already runs at the same time as others.");
   if (at.g === 0) throw new EditError("It runs first.");
   const steps = stepsOf(doc);
   const before = steps.items[at.g - 1];
   if (at.node.has("branch") || (isMap(before) && before.has("branch"))) throw new EditError(noBranchInGroup);
+  if (at.node.has("catch") || (isMap(before) && !before.has("parallel") && before.has("catch")))
+    throw new EditError(noCatchInGroup);
   steps.items.splice(at.g, 1);
   const list = isMap(before) ? before.get("parallel", true) : undefined;
   if (isSeq(list)) list.items.push(at.node);
@@ -555,7 +664,9 @@ export type Target =
   /** A branch: its cases and what runs otherwise, in its own fields. */
   | { kind: "branch"; ref: "" }
   /** A message: who it tells and what it says, in its own fields. */
-  | { kind: "notify"; ref: "" };
+  | { kind: "notify"; ref: "" }
+  /** A wait for a signal or an event: which, and for how long, in its own fields (ADR-0057). */
+  | { kind: "signal"; ref: "" };
 
 /** A REST call just added: it says what is missing until its URL is written. */
 export const newRestCall = (method: string) => ({ method, url: "" });
@@ -566,6 +677,9 @@ export const newPoll = () => ({ rest: newRestCall("GET"), until: "", every: "10m
 /** A branch just added: one case with no steps, which says what is missing until its condition is written. */
 export const newBranch = () => ({ cases: [{ when: "", steps: [] }] });
 
+/** A wait for a signal just added: named as its step, for three days. */
+export const newSignal = (key: string) => ({ name: key.replace(/_/g, "-") || "go", timeout: "72h" });
+
 /**
  * What a step runs: one of an item, an AWX template, a custom workflow, a
  * REST call or a wait for a person, a time or a condition; the others are
@@ -575,15 +689,18 @@ export const newBranch = () => ({ cases: [{ when: "", steps: [] }] });
  * body read them, so its bindings go. A wait has no inputs, and nothing to undo.
  * Nor has a message, or a branch, whose cases have the conditions; a branch runs
  * neither in a parallel group nor on a side of another (ADR-0033). A custom
- * resource is undone by its type's delete, so its undo goes (ADR-0056).
+ * resource is undone by its type's delete, so its undo goes (ADR-0056). A
+ * wait for a signal has neither inputs nor an undo; a step that can't loop
+ * loses its loop (ADR-0057).
  */
 export function setTarget(text: string, id: string, t: Target): string {
   const doc = load(text);
   const { node, side, j } = locate(doc, id);
   if (t.kind === "branch" && side) throw new EditError(noBranchOnSide);
   if (t.kind === "branch" && j !== null) throw new EditError(noBranchInGroup);
-  for (const k of ["item", "awx", "workflow", "rest", "ask", "wait", "poll", "branch", "notify", "resource"])
+  for (const k of ["item", "awx", "workflow", "rest", "ask", "wait", "poll", "signal", "branch", "notify", "resource"])
     if (k !== t.kind) node.delete(k);
+  if (["ask", "wait", "poll", "signal", "branch", "resource"].includes(t.kind)) node.delete("for_each");
   if (t.kind === "branch") {
     node.delete("with");
     node.delete("undo");
@@ -600,6 +717,11 @@ export function setTarget(text: string, id: string, t: Target): string {
     node.delete("with");
     node.delete("undo");
     if (!isMap(own(doc, node, "ask"))) put(doc, node, "ask", {}, stepOrder);
+  } else if (t.kind === "signal") {
+    node.delete("with");
+    node.delete("undo");
+    if (!isMap(own(doc, node, "signal")))
+      put(doc, node, "signal", newSignal(scalarText(node.get("key", true))), stepOrder);
   } else if (t.kind === "wait" || t.kind === "poll") {
     node.delete("with");
     node.delete("undo");
@@ -769,6 +891,66 @@ export function setWaitField(text: string, id: string, field: "for" | "until", v
     put(doc, wait, field, v, waitOrder);
     wait.delete(field === "for" ? "until" : "for");
   }
+  return save(doc);
+}
+
+export type SignalField = "name" | "event" | "when" | "timeout" | "on_timeout";
+
+/**
+ * One field of a step's wait for a signal. It waits for a signal by its name
+ * or for an event: writing one removes the other, and a name the event's
+ * condition. Empty removes it, for the step to say what is missing.
+ */
+export function setSignalField(text: string, id: string, field: SignalField, value: string): string {
+  const doc = load(text);
+  const signal = own(doc, locate(doc, id).node, "signal");
+  if (!isMap(signal)) throw new EditError("It doesn't wait for a signal.");
+  signal.flow = false;
+  const v = value.trim();
+  if (!v) signal.delete(field);
+  else {
+    put(doc, signal, field, v, signalOrder);
+    if (field === "name") {
+      signal.delete("event");
+      signal.delete("when");
+    } else if (field === "event") signal.delete("name");
+  }
+  return save(doc);
+}
+
+/**
+ * A step's loop (ADR-0057): the list it goes over, and how many passes run
+ * at once, 1 written as none. A loop has no undo: adding one to a step that
+ * has one is refused, as one that can't loop.
+ */
+export function setForEach(text: string, id: string, field: "items" | "parallel", value: string): string {
+  const doc = load(text);
+  const at = locate(doc, id);
+  const step = at.node.toJS(doc) as Raw;
+  if (step.for_each === undefined) {
+    const why = at.caught ? "A step of a catch path doesn't loop." : loopRefused(step);
+    if (why) throw new EditError(why);
+    if (step.undo !== undefined)
+      throw new EditError("A loop has no undo: each pass would need its own. Remove its undo first.");
+  }
+  let forEach = own(doc, at.node, "for_each");
+  if (!isMap(forEach)) {
+    put(doc, at.node, "for_each", { items: "" }, stepOrder);
+    forEach = at.node.get("for_each", true);
+  }
+  const map = forEach as YAMLMap;
+  map.flow = false;
+  const v = value.trim();
+  if (field === "items") put(doc, map, "items", v, forEachOrder);
+  else if (!v || v === "0" || v === "1") map.delete("parallel");
+  else put(doc, map, "parallel", /^\d+$/.test(v) ? Number(v) : v, forEachOrder);
+  return save(doc);
+}
+
+/** The step runs once again: its loop goes. */
+export function removeForEach(text: string, id: string): string {
+  const doc = load(text);
+  locate(doc, id).node.delete("for_each");
   return save(doc);
 }
 
@@ -998,6 +1180,12 @@ export function readStep(
       pointer: string;
       /** The side of a branch it is on: the branch's key, its place in it, and how many steps are there. */
       side?: { branch: string; taken: number; i: number; length: number };
+      /**
+       * The catch path it is on: what it catches (a step's key, "" for the
+       * parallel group of slot g, "on_error" for the error handler), the
+       * list's pointer, its place there and how many steps are there.
+       */
+      caught?: { of: string; list: string; i: number; length: number };
     }
   | undefined {
   // The text the graph and the designer parsed, read only.
@@ -1017,6 +1205,16 @@ export function readStep(
               taken: at.side.taken,
               i: at.side.index,
               length: at.side.list.items.length,
+            },
+          }
+        : {}),
+      ...(at.caught
+        ? {
+            caught: {
+              of: at.caught.of,
+              list: at.pointer.slice(0, at.pointer.lastIndexOf("/")),
+              i: at.caught.index,
+              length: at.caught.list.items.length,
             },
           }
         : {}),

@@ -13,7 +13,7 @@ async function choose(page: Page, option: string | RegExp) {
 }
 
 async function addStep(page: Page, runs: string | RegExp, key: string, title: string) {
-  await page.getByRole("button", { name: "Add a step" }).click();
+  await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
   await expect(add.getByRole("combobox", { name: "What it runs" })).toBeFocused();
   await choose(page, runs);

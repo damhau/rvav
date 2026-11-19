@@ -3,8 +3,9 @@
 // /admin/catalog/composite-steps); where each of its inputs can come from at
 // that point (the form, the request, the outputs of the steps before it: not
 // those running at the same time, nor any for a VM step, which is planned
-// when the request is submitted); and what the server would refuse when the
-// item is requested, said on the step before then.
+// when the request is submitted; a catch path's, those before what it
+// catches and before it on the path); and what the server would refuse when
+// the item is requested, said on the step before then.
 import type {
   CatalogEntitlements,
   CompositeStepOutput,
@@ -22,7 +23,7 @@ const obj = (v: unknown): Raw => (v && typeof v === "object" && !Array.isArray(v
 export const stepRef = /\bsteps\.([a-z][a-z0-9_]*)/;
 
 export interface StepTarget {
-  kind: CompositeStepTarget["kind"] | "rest" | "ask" | "wait" | "poll" | "branch" | "notify";
+  kind: CompositeStepTarget["kind"] | "rest" | "ask" | "wait" | "poll" | "signal" | "branch" | "notify";
   ref: string;
   /** An AWX workflow template (awx.workflow). */
   workflow?: boolean;
@@ -30,7 +31,7 @@ export interface StepTarget {
   templateId?: number;
 }
 
-/** What a step names: an item, an AWX template, a custom workflow, a REST call, a wait for a person, a time or a condition, a branch, a message or a custom resource's type (the first, when it names several). */
+/** What a step names: an item, an AWX template, a custom workflow, a REST call, a wait for a person, a time, a condition or a signal, a branch, a message or a custom resource's type (the first, when it names several). */
 export function targetOf(step: Raw): StepTarget | undefined {
   if (str(step.item)) return { kind: "item", ref: str(step.item) };
   const awx = obj(step.awx);
@@ -48,6 +49,7 @@ export function targetOf(step: Raw): StepTarget | undefined {
   if (step.ask !== undefined) return { kind: "ask", ref: "" };
   if (step.wait !== undefined) return { kind: "wait", ref: "" };
   if (step.poll !== undefined) return { kind: "poll", ref: "" };
+  if (step.signal !== undefined) return { kind: "signal", ref: "" };
   if (step.branch !== undefined) return { kind: "branch", ref: "" };
   if (step.notify !== undefined) return { kind: "notify", ref: "" };
   if (step.resource !== undefined) return { kind: "resource", ref: str(obj(step.resource).type) };
@@ -143,11 +145,35 @@ export function askOutputs(ask: Raw): CompositeStepOutput[] {
   ];
 }
 
-/** What a step gives the steps after it: its target's outputs, a REST call's, a wait's, a poll's, or an AWX job's ID for a template not listed. */
+/** What a loop gives the steps after it, whatever its step gives (ADR-0057). */
+export const loopOutputs: CompositeStepOutput[] = [
+  { name: "items", type: "array", description: "Each pass's outputs, in the list's order" },
+  { name: "count", type: "integer", description: "How many passes it had" },
+];
+
+/** What a step whose catch path ran gives the steps after it: read it with has() (ADR-0057). */
+export const caughtOutputs: CompositeStepOutput[] = [
+  { name: "caught", type: "boolean", description: "True when it failed and its catch path ran" },
+  { name: "error", type: "object", description: "What failed: its step and its message" },
+];
+
+/**
+ * What a step gives the steps after it: its target's outputs, a REST call's,
+ * a wait's, a poll's, or an AWX job's ID for a template not listed. A loop
+ * gives its passes' instead; a step with a catch path, what failed when it did.
+ * A wait for a signal gives what came, whatever it is.
+ */
 export function outputsOf(
   step: Raw,
   targets: CompositeStepTarget[],
 ): { outputs: CompositeStepOutput[]; open: boolean } {
+  const own = ownOutputs(step, targets);
+  const caught = Array.isArray(step.catch) && step.catch.length > 0 ? caughtOutputs : [];
+  if (step.for_each !== undefined) return { outputs: [...loopOutputs, ...caught], open: false };
+  return { outputs: [...own.outputs, ...caught], open: own.open };
+}
+
+function ownOutputs(step: Raw, targets: CompositeStepTarget[]): { outputs: CompositeStepOutput[]; open: boolean } {
   const t = targetOf(step);
   const found = findTarget(targets, t);
   if (found) return { outputs: found.outputs, open: found.open_outputs };
@@ -157,12 +183,13 @@ export function outputsOf(
   if (t?.kind === "poll") return { outputs: pollOutputs, open: false };
   if (t?.kind === "branch") return { outputs: branchOutputs, open: false };
   if (t?.kind === "notify") return { outputs: notifyOutputs, open: false };
+  if (t?.kind === "signal") return { outputs: [], open: true };
   if (t?.kind === "awx")
     return { outputs: [{ name: "job_id", type: "integer", description: "The AWX job's ID" }], open: false };
   return { outputs: [], open: t?.kind === "workflow" || t?.kind === "resource" };
 }
 
-/** A step of the blueprint, flattened: its slot, its place in a parallel group or on a side of a branch, its pointer. */
+/** A step of the blueprint, flattened: its slot, its place in a parallel group, on a side of a branch or on a catch path, its pointer. */
 export interface FlatStep {
   step: Raw;
   key: string;
@@ -175,38 +202,57 @@ export interface FlatStep {
   pointer: string;
   /** The side of a branch it is on: 1 for the first case, 0 for otherwise, and its place there. */
   side?: { taken: number; i: number };
+  /** The catch path it is on, or the error handler (slot: after the last): the list's pointer, and its place there. */
+  caught?: { list: string; i: number };
 }
 
 /** Where a step is, for what it can read. */
 export interface StepPlace {
   g: number;
   side?: { taken: number; i: number };
+  caught?: { list: string; i: number };
 }
 
 export function flatten(blueprint: Raw, prefix = "/definition/blueprint"): FlatStep[] {
   const out: FlatStep[] = [];
   const steps = Array.isArray(blueprint.steps) ? (blueprint.steps as unknown[]) : [];
+  const push = (
+    s: unknown,
+    g: number,
+    j: number | null,
+    pointer: string,
+    side?: FlatStep["side"],
+    caught?: FlatStep["caught"],
+  ) => {
+    const step = obj(s);
+    const key = str(step.key);
+    const awx = obj(step.awx);
+    out.push({
+      step,
+      key,
+      label: str(step.title) || key || "(no key)",
+      name: str(step.title) || str(awx.title) || key || "(no key)",
+      g,
+      j,
+      pointer,
+      ...(side ? { side } : {}),
+      ...(caught ? { caught } : {}),
+    });
+  };
+  const catchPath = (list: unknown, g: number, at: string) => {
+    if (Array.isArray(list)) list.forEach((s, i) => push(s, g, null, `${at}/${i}`, undefined, { list: at, i }));
+  };
   steps.forEach((raw, g) => {
     const slot = obj(raw);
     const list = Array.isArray(slot.parallel) ? (slot.parallel as unknown[]) : null;
     const flat = (s: unknown, j: number | null, pointer: string, side?: FlatStep["side"]) => {
-      const step = obj(s);
-      const key = str(step.key);
-      const awx = obj(step.awx);
-      out.push({
-        step,
-        key,
-        label: str(step.title) || key || "(no key)",
-        name: str(step.title) || str(awx.title) || key || "(no key)",
-        g,
-        j,
-        pointer,
-        ...(side ? { side } : {}),
-      });
+      push(s, g, j, pointer, side);
+      if (j === null) catchPath(obj(s).catch, g, `${pointer}/catch`);
     };
     (list ?? [slot]).forEach((s, j) =>
       flat(s, list ? j : null, list ? `${prefix}/steps/${g}/parallel/${j}` : `${prefix}/steps/${g}`),
     );
+    if (list) catchPath(slot.catch, g, `${prefix}/steps/${g}/catch`);
     if (list || slot.branch === undefined) return;
     const branch = obj(slot.branch);
     const onSide = (steps: unknown, taken: number, at: string) => {
@@ -216,18 +262,23 @@ export function flatten(blueprint: Raw, prefix = "/definition/blueprint"): FlatS
       branch.cases.forEach((c, i) => onSide(obj(c).steps, i + 1, `${prefix}/steps/${g}/branch/cases/${i}/steps`));
     onSide(branch.else, 0, `${prefix}/steps/${g}/branch/else`);
   });
+  catchPath(blueprint.on_error, steps.length, `${prefix}/on_error`);
   return out;
 }
 
 /**
  * The steps that one at a place can read. Those of the slots before its own
- * (a step on a side of a branch among them: it reads as one `when` skipped);
- * on a side, also its branch and the steps before it there, not another side's.
+ * (a step on a side of a branch among them: it reads as one `when` skipped,
+ * and a catch path's: as one skipped when nothing failed); on a side, also
+ * its branch and the steps before it there, not another side's. On a catch
+ * path, those of the slots before what it catches and the steps before it
+ * on the path.
  */
 export function earlierSteps(blueprint: Raw, at: StepPlace): FlatStep[] {
   return flatten(blueprint).filter((x) => {
+    if (at.caught) return x.caught?.list === at.caught.list ? x.caught.i < at.caught.i : x.g < at.g;
     if (x.g < at.g) return true;
-    if (x.g !== at.g || !at.side) return false;
+    if (x.g !== at.g || !at.side || x.caught) return false;
     return x.side ? x.side.taken === at.side.taken && x.side.i < at.side.i : x.j === null;
   });
 }
@@ -309,9 +360,10 @@ function listing(codes: string[]) {
  * workflow can't start), a custom workflow not registered for composite
  * steps, one not offered to a project the composite is offered to (its
  * entitlements, `offered`: a request from that project is refused), and a
- * VM step with a condition, an undo or an input from a step, or on a side of
- * a branch. Known only once the targets are loaded. A message's secret input
- * is the form's business too: the server refuses it on save.
+ * VM step with a condition, an undo, a loop, a catch path or an input from a
+ * step, on a side of a branch or on a catch path, or in a parallel group
+ * with a catch path. Known only once the targets are loaded. A message's
+ * secret input is the form's business too: the server refuses it on save.
  */
 export function designerProblems(
   def: Raw,
@@ -350,11 +402,30 @@ export function designerProblems(
     if (undoFlow)
       notOffered(`${s.pointer}/undo/workflow`, `${s.label} (undo): the custom workflow ${undoFlow}`, undoTarget);
     if (!found?.planned) continue;
-    if (s.side)
+    if (s.side || s.caught)
       add(
         `${s.pointer}/item`,
         "invalid",
-        `${s.label}: a VM is planned when the request is submitted, before a branch chooses, so it can't be on a side of one.`,
+        `${s.label}: a VM is planned when the request is submitted, before a branch chooses or a step fails, so it can't be on a side of a branch or on a catch path.`,
+      );
+    if (s.step.for_each !== undefined)
+      add(
+        `${s.pointer}/for_each`,
+        "invalid",
+        `${s.label}: a VM step can't loop: its VMs are planned when the request is submitted. Give its item a count instead.`,
+      );
+    if (Array.isArray(s.step.catch) && s.step.catch.length > 0)
+      add(
+        `${s.pointer}/catch`,
+        "invalid",
+        `${s.label}: a VM step has no catch path: what it built is the rollback's to delete, so the request can't go on past it.`,
+      );
+    const slot = obj((obj(def.blueprint).steps as unknown[] | undefined)?.[s.g]);
+    if (s.j !== null && Array.isArray(slot.catch) && slot.catch.length > 0)
+      add(
+        `${s.pointer.slice(0, s.pointer.lastIndexOf("/parallel/"))}/catch`,
+        "invalid",
+        `Step group ${s.g + 1} has a VM step, so it has no catch path: what it built is the rollback's to delete, so the request can't go on past it.`,
       );
     if (s.step.undo !== undefined)
       add(`${s.pointer}/undo`, "invalid", `${s.label}: a VM isn't undone by a job or workflow; a failure deletes it.`);

@@ -143,7 +143,10 @@ describe("compositeGraph", () => {
     ]);
     expect(node(g, "step@/definition/blueprint/steps/0").problems).toEqual(["steps.b is not an earlier step."]);
     expect(node(g, "step@/definition/blueprint/steps/1").problems).toEqual(["Another step has the key a."]);
-    expect(g.groups[0]?.problems).toEqual(["A parallel group only lists steps.", "Parallel groups don't nest."]);
+    expect(g.groups[0]?.problems).toEqual([
+      "A parallel group only lists steps, and its catch path.",
+      "Parallel groups don't nest.",
+    ]);
     expect(g.problems).toHaveLength(4);
     expect(nodeForPointer(g, "/definition/blueprint/steps/1/key")?.id).toBe("step@/definition/blueprint/steps/1");
     expect(nodeForPointer(g, "/definition/blueprint/steps/10")).toBeUndefined();
@@ -671,5 +674,94 @@ describe("custom resources (ADR-0056)", () => {
       ],
     });
     expect(g.problems).toEqual([]);
+  });
+});
+
+describe("loops, catch paths and signals (ADR-0057)", () => {
+  const post = (key: string, extra: Record<string, unknown> = {}) => ({
+    key,
+    rest: { method: "POST", url: "https://h.example/x" },
+    ...extra,
+  });
+  const flow = {
+    kind: "composite",
+    steps: [
+      post("agents", { title: "Agents", for_each: { items: "inputs.hosts", parallel: 3 }, catch: [post("fix")] }),
+      { key: "cab", title: "The board", signal: { name: "cab-approved", timeout: "72h" } },
+      { parallel: [post("p1"), post("p2")], catch: [post("tell")] },
+    ],
+    on_error: [post("incident")],
+  };
+
+  it("draws a loop and a wait for a signal on their steps", () => {
+    const g = compositeGraph(flow);
+    expect(node(g, "step:agents").lines.slice(1, 3)).toEqual([
+      { label: "For each", text: "inputs.hosts", mono: true },
+      { label: "At a time", text: "3" },
+    ]);
+    expect(node(g, "step:cab")).toMatchObject({
+      badge: "Signal",
+      lines: [
+        { label: "Waits for", text: "the signal cab-approved" },
+        { label: "Timeout", text: "72h, then the step fails" },
+      ],
+    });
+  });
+
+  it("draws a catch path after what it catches, by a dashed edge, and the error handler after done", () => {
+    const g = compositeGraph(flow);
+    expect(ids(g)).toEqual([
+      "inputs",
+      "step:agents",
+      "step:fix",
+      "step:cab",
+      "step:p1",
+      "step:p2",
+      "step:tell",
+      "end",
+      "step:incident",
+    ]);
+    expect(node(g, "step:fix")).toMatchObject({
+      lines: [{ label: "Catches", text: "Agents" }, { label: "Calls" }],
+      relations: ["Runs if Agents fails"],
+    });
+    expect(edge(g, "seq:step:agents>step:fix")).toMatchObject({
+      label: "if it fails",
+      conditional: true,
+      description: "Agents (if it fails), then fix",
+    });
+    // Both ways go on: from the step, and from its catch path's last step.
+    expect(edge(g, "seq:step:agents>step:cab")).toBeDefined();
+    expect(edge(g, "seq:step:fix>step:cab")).toMatchObject({ conditional: undefined });
+    expect(edge(g, "seq:parallel:2>step:tell")).toMatchObject({ label: "if it fails" });
+    expect(node(g, "step:tell").relations).toEqual(["Runs if a step of p1 and p2 fails"]);
+    expect(edge(g, "seq:step:tell>end")).toBeDefined();
+    expect(edge(g, "seq:end>step:incident")).toMatchObject({ label: "if it fails", conditional: true });
+    expect(node(g, "step:incident").lines[0]).toEqual({ label: "Catches", text: "the request" });
+    expect(g.problems).toEqual([]);
+  });
+
+  it("puts a side's catch path on its side", () => {
+    const g = compositeGraph({
+      kind: "composite",
+      steps: [
+        {
+          key: "choose",
+          branch: {
+            cases: [{ title: "Big", when: "inputs.big", steps: [post("call", { catch: [post("fix_call")] })] }],
+          },
+        },
+        post("after"),
+      ],
+    });
+    expect(node(g, "step:choose").sides?.[0]?.nodes).toEqual(["step:call", "step:fix_call"]);
+    expect(node(g, "step:fix_call").onSideOf).toBe("step:choose");
+    expect(edge(g, "seq:step:call>step:fix_call")).toMatchObject({ label: "if it fails", branch: { cases: [1] } });
+    expect(edge(g, "seq:step:fix_call>step:after")).toMatchObject({ branch: { cases: [1] } });
+    expect(edge(g, "seq:step:call>step:after")).toBeDefined();
+  });
+
+  it("draws a requester's topology of them as the definition", () => {
+    expect(ids(compositeGraph(topologyOf(flow)!, "/topology"))).toEqual(ids(compositeGraph(flow)));
   });
 });

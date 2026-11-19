@@ -290,33 +290,50 @@ func segmentsInDev(h *harness, admin, project string) {
 // compositeNodes are the IDs of the nodes the canvas draws for a
 // composite's topology (blueprintGraph): the Request node, a step:<key> per
 // step in the order they run, a branch's sides after it (each case's steps,
-// then its else's), Done.
+// then its else's), a catch path after what it catches (ADR-0057), Done,
+// then the error handler.
 func compositeNodes(t *testing.T, topology map[string]any) []string {
 	t.Helper()
 	out := []string{"inputs"}
 	key := func(s any) string { return "step:" + s.(map[string]any)["key"].(string) }
-	for _, raw := range topology["steps"].([]any) {
-		slot := []any{raw}
-		if g, ok := raw.(map[string]any)["parallel"].([]any); ok {
-			slot = g
+	with := func(list []any) {
+		for _, x := range list {
+			out = append(out, key(x))
+			caught, _ := x.(map[string]any)["catch"].([]any)
+			for _, c := range caught {
+				out = append(out, key(c))
+			}
 		}
-		for _, s := range slot {
-			out = append(out, key(s))
+	}
+	for _, raw := range topology["steps"].([]any) {
+		g, group := raw.(map[string]any)["parallel"].([]any)
+		if !group {
+			g = []any{raw}
+		}
+		for _, s := range g {
+			if group {
+				out = append(out, key(s))
+			} else {
+				with([]any{s})
+			}
 			b, _ := s.(map[string]any)["branch"].(map[string]any)
 			cases, _ := b["cases"].([]any)
 			for _, c := range cases {
 				side, _ := c.(map[string]any)["steps"].([]any)
-				for _, x := range side {
-					out = append(out, key(x))
-				}
+				with(side)
 			}
 			otherwise, _ := b["else"].([]any)
-			for _, x := range otherwise {
-				out = append(out, key(x))
-			}
+			with(otherwise)
+		}
+		if group {
+			caught, _ := raw.(map[string]any)["catch"].([]any)
+			with(caught)
 		}
 	}
-	return append(out, "end")
+	out = append(out, "end")
+	onError, _ := topology["on_error"].([]any)
+	with(onError)
+	return out
 }
 
 // stepEvent is a request.step event: one step, without its children.

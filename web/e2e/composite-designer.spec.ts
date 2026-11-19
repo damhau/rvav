@@ -26,7 +26,7 @@ test("a composite's steps edited on the canvas, published and requested", async 
   await expect(page.getByRole("region", { name: "Selected: Database nodes" })).toBeVisible();
 
   // A step after it, from the dialog.
-  await page.getByRole("button", { name: "Add a step" }).click();
+  await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Add a step" });
   await expect(dialog.getByRole("combobox", { name: "What it runs" })).toBeFocused();
   await page.keyboard.press("Enter");

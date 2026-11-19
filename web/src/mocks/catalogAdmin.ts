@@ -656,7 +656,21 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
           at: `${prefix}/blueprint/steps/${g}/branch/else/${j}`,
         })),
       ];
-      [...top, ...onSides].forEach(({ x, at }) => {
+      const caught = (x: Rec, at: string) =>
+        (Array.isArray(x.catch) ? (x.catch as Rec[]) : []).map((c, j) => ({ x: c, at: `${at}/catch/${j}` }));
+      const groupAt = `${prefix}/blueprint/steps/${g}`;
+      [
+        ...top,
+        ...onSides,
+        ...[...top, ...onSides].flatMap(({ x, at }) => caught(x, at)),
+        ...(Array.isArray(st.parallel) ? caught(st, groupAt) : []),
+        ...(g === 0
+          ? (Array.isArray(def.blueprint.on_error) ? (def.blueprint.on_error as Rec[]) : []).map((x, j) => ({
+              x,
+              at: `${prefix}/blueprint/on_error/${j}`,
+            }))
+          : []),
+      ].forEach(({ x, at }) => {
         const inCases = (x.branch as Rec | undefined)?.cases;
         const whens = Array.isArray(inCases)
           ? (inCases as Rec[]).map((c, i): [string, unknown] => [`${at}/branch/cases/${i}/when`, c.when])
@@ -679,6 +693,8 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
           [`${at}/wait/until`, (x.wait as Record<string, unknown> | undefined)?.until],
           ...restCel((x.poll as Record<string, unknown> | undefined)?.rest, `${at}/poll/rest`),
           [`${at}/poll/until`, (x.poll as Record<string, unknown> | undefined)?.until],
+          [`${at}/signal/when`, (x.signal as Record<string, unknown> | undefined)?.when],
+          [`${at}/for_each/items`, (x.for_each as Record<string, unknown> | undefined)?.items],
         ];
         for (const [field, e] of exprs) {
           const problem = typeof e === "string" && e ? celCheck(e) : null;

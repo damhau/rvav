@@ -599,3 +599,109 @@ describe("the composite designer beside the editor", longTests, () => {
     expect(screen.queryByRole("button", { name: "Remove step" })).not.toBeInTheDocument();
   });
 });
+
+describe("loops, catch paths, the error handler and waits for a signal (ADR-0057)", () => {
+  const bp = () => (parse(yaml()) as { blueprint: Record<string, unknown> }).blueprint;
+
+  /** Adds a step from the open dialog: what it runs, its key. */
+  async function add(user: ReturnType<typeof userEvent.setup>, runs: string | RegExp, key: string) {
+    const dialog = await screen.findByRole("dialog", { name: "Add a step" });
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "What it runs" })).toBeEnabled());
+    await pick(user, within(dialog).getByRole("combobox", { name: "What it runs" }), runs);
+    await user.clear(within(dialog).getByRole("textbox", { name: "Key" }));
+    await user.type(within(dialog).getByRole("textbox", { name: "Key" }), key);
+    await user.click(within(dialog).getByRole("button", { name: "Add step" }));
+    return screen.findByRole("region", { name: `Selected: ${key}` });
+  }
+
+  it("adds a wait for a signal, switches it to an event, and says when it is wrong", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={pg} />);
+    await user.click(await screen.findByRole("button", { name: "Add a step" }));
+    const cab = await add(user, "A wait for a signal or an event", "cab_ok");
+    expect(step("cab_ok")).toEqual({ key: "cab_ok", signal: { name: "cab-ok", timeout: "72h" } });
+    expect(within(cab).queryByRole("group", { name: "Inputs" })).toBeNull();
+    expect(within(cab).queryByRole("group", { name: "Undo" })).toBeNull();
+    expect(within(cab).queryByRole("group", { name: "Loop" })).toBeNull();
+    expect(node(/^Signal cab_ok\. Waits for: the signal cab-ok\. Timeout: 72h, then the step fails/)).toBeDefined();
+
+    await user.clear(within(cab).getByRole("textbox", { name: "Signal name" }));
+    await user.type(within(cab).getByRole("textbox", { name: "Signal name" }), "CAB OK{Enter}");
+    expect(within(cab).getByRole("list", { name: "Problems with this step" })).toHaveTextContent(
+      "Lower-case letters, digits, dots, dashes and underscores",
+    );
+    await pick(user, within(cab).getByRole("combobox", { name: "Waits for" }), "provisioning.post");
+    expect(step("cab_ok").signal).toEqual({ event: "provisioning.post", timeout: "72h" });
+    await user.type(within(cab).getByRole("textbox", { name: "Condition" }), "item.slug == 'x'{Enter}");
+    await pick(user, within(cab).getByRole("combobox", { name: "Then" }), "It goes on");
+    expect(step("cab_ok").signal).toEqual({
+      event: "provisioning.post",
+      when: "item.slug == 'x'",
+      timeout: "72h",
+      on_timeout: "continue",
+    });
+    expect(within(cab).queryByRole("list", { name: "Problems with this step" })).toBeNull();
+  });
+
+  it("repeats a step over a list, then runs it once again", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={pg} />);
+    fireEvent.click(await waitFor(() => node(/^Item The database's owner\./)));
+    const backups = await screen.findByRole("region", { name: "Selected: The database's owner" });
+    const loop = within(within(backups).getByRole("group", { name: "Loop" }));
+    await user.click(loop.getByRole("button", { name: "Repeat it for each item of a list" }));
+    await waitFor(() => expect(loop.getByRole("textbox", { name: "For each item of" })).toHaveFocus());
+    expect(within(backups).getByRole("list", { name: "Problems with this step" })).toHaveTextContent("Give the list");
+    await user.type(loop.getByRole("textbox", { name: "For each item of" }), "[['a', 'b']{Enter}");
+    const parallel = loop.getByRole("textbox", { name: "At a time" });
+    await user.clear(parallel);
+    await user.type(parallel, "2{Enter}");
+    expect(step("owner").for_each).toEqual({ items: "['a', 'b']", parallel: 2 });
+    expect(node(/^Item The database's owner\..*For each: \['a', 'b'\]\. At a time: 2/)).toBeDefined();
+    await user.click(loop.getByRole("button", { name: "Run it once" }));
+    expect(step("owner")).not.toHaveProperty("for_each");
+    await waitFor(() => expect(loop.getByRole("button", { name: "Repeat it for each item of a list" })).toHaveFocus());
+  });
+
+  it("adds a catch path to a step and a step to the error handler, from their details", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={pg} />);
+    fireEvent.click(await waitFor(() => node(/^AWX Backups\./)));
+    const backups = await screen.findByRole("region", { name: "Selected: Backups" });
+    const path = within(backups).getByRole("group", { name: "Catch path of its group" });
+    expect(path).toHaveTextContent("None: if one fails, the request fails.");
+    await user.click(within(path).getByRole("button", { name: "Add a step to the catch path" }));
+    let dialog = await screen.findByRole("dialog", { name: "Add a step" });
+    expect(dialog).toHaveTextContent("It runs on the catch path, after the steps there.");
+    expect(within(dialog).queryByRole("radio")).toBeNull();
+    await user.click(within(dialog).getByRole("combobox", { name: "What it runs" }));
+    for (const waits of [/^A wait for/, "A person", /^A branch/])
+      expect(screen.queryByRole("option", { name: waits })).toBeNull();
+    await user.click(screen.getByRole("option", { name: "A message to people" }));
+    await user.clear(within(dialog).getByRole("textbox", { name: "Key" }));
+    await user.type(within(dialog).getByRole("textbox", { name: "Key" }), "tell");
+    await user.click(within(dialog).getByRole("button", { name: "Add step" }));
+    const tell = await screen.findByRole("region", { name: "Selected: tell" });
+    expect(bp().steps).toMatchObject([{ key: "nodes" }, { parallel: [{}, {}], catch: [{ key: "tell" }] }]);
+    expect(tell).toHaveTextContent("On the catch path of step group 2");
+    expect(within(tell).queryByRole("group", { name: "Loop" })).toBeNull();
+    expect(within(tell).queryByRole("group", { name: /^Catch path/ })).toBeNull();
+    expect(node(/^Message tell\. Catches: a step of /)).toBeDefined();
+
+    fireEvent.click(node(/^Done/));
+    const done = await screen.findByRole("region", { name: "Selected: Done" });
+    const handler = within(done).getByRole("group", { name: "Error handler" });
+    await user.click(within(handler).getByRole("button", { name: "Add a step to the error handler" }));
+    dialog = await screen.findByRole("dialog", { name: "Add a step" });
+    expect(dialog).toHaveTextContent("It runs in the error handler, after the steps there.");
+    await add(user, "A REST call", "incident");
+    expect(bp().on_error).toEqual([{ key: "incident", rest: { method: "GET", url: "" } }]);
+    const incident = screen.getByRole("region", { name: "Selected: incident" });
+    await user.click(within(incident).getByRole("button", { name: "Select Done, whose error handler it is in" }));
+    expect(
+      within(await screen.findByRole("region", { name: "Selected: Done" })).getByRole("list", {
+        name: "Steps of the error handler",
+      }),
+    ).toHaveTextContent("incident");
+  });
+});

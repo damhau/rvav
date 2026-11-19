@@ -438,3 +438,102 @@ describe("a branch's sides and a message", () => {
     expect(found.find((p) => p.field === `${at}/1/notify/message`)!.message).toContain("the secret input token");
   });
 });
+
+describe("loops, catch paths and waits for a signal (ADR-0057)", () => {
+  const vm = targets.find((t) => t.planned)!;
+  const call = (key: string, extra: Record<string, unknown> = {}) => ({
+    key,
+    rest: { method: "POST", url: "https://h.example/x" },
+    ...extra,
+  });
+  const bp = {
+    kind: "composite",
+    steps: [
+      call("first"),
+      call("dns", { catch: [call("ticket"), call("page")] }),
+      { parallel: [call("p1"), call("p2")], catch: [call("tell")] },
+      call("last"),
+    ],
+    on_error: [call("incident"), call("after_incident")],
+  };
+  const keys = (at: Parameters<typeof earlierSteps>[1]) => earlierSteps(bp, at).map((s) => s.key);
+
+  it("flattens a catch path after what it catches, and the error handler last", () => {
+    expect(flatten(bp).map((s) => [s.key, s.g, s.caught?.i ?? null])).toEqual([
+      ["first", 0, null],
+      ["dns", 1, null],
+      ["ticket", 1, 0],
+      ["page", 1, 1],
+      ["p1", 2, null],
+      ["p2", 2, null],
+      ["tell", 2, 0],
+      ["last", 3, null],
+      ["incident", 4, 0],
+      ["after_incident", 4, 1],
+    ]);
+    expect(flatten(bp).find((s) => s.key === "tell")?.pointer).toBe("/definition/blueprint/steps/2/catch/0");
+  });
+
+  it("reads before what it catches and before it on its path; later steps read the path", () => {
+    const list = "/definition/blueprint/steps/1/catch";
+    expect(keys({ g: 1, caught: { list, i: 1 } })).toEqual(["first", "ticket"]);
+    expect(keys({ g: 2, caught: { list: "/definition/blueprint/steps/2/catch", i: 0 } })).toEqual([
+      "first",
+      "dns",
+      "ticket",
+      "page",
+    ]);
+    expect(keys({ g: 3 })).toEqual(["first", "dns", "ticket", "page", "p1", "p2", "tell"]);
+    expect(keys({ g: 4, caught: { list: "/definition/blueprint/on_error", i: 1 } })).toEqual([
+      "first",
+      "dns",
+      "ticket",
+      "page",
+      "p1",
+      "p2",
+      "tell",
+      "last",
+      "incident",
+    ]);
+  });
+
+  it("gives a loop's passes, what a caught step says, and what came for a signal", () => {
+    const names = (step: Record<string, unknown>) => outputsOf(step, targets).outputs.map((o) => o.name);
+    expect(names(call("x", { for_each: { items: "[1]" } }))).toEqual(["items", "count"]);
+    expect(names(call("x", { catch: [call("y")] }))).toEqual(["status", "json", "caught", "error"]);
+    expect(outputsOf({ signal: { name: "go", timeout: "1h" } }, targets)).toEqual({ outputs: [], open: true });
+    expect(targetOf({ signal: {} })).toEqual({ kind: "signal", ref: "" });
+  });
+
+  it("refuses a VM step that loops, catches or is caught, as the server does on request", () => {
+    const def = {
+      blueprint: {
+        kind: "composite",
+        steps: [
+          { key: "a", item: vm.ref, for_each: { items: "[1]" }, catch: [call("fix")] },
+          { parallel: [{ key: "b", item: vm.ref }, call("c")], catch: [call("tell")] },
+        ],
+        on_error: [{ key: "late", item: vm.ref }],
+      },
+    };
+    const found = designerProblems(def, targets).map((p) => [p.field, p.message.replace(/^(a|b|late): /, "")]);
+    expect(found).toEqual([
+      [
+        "/definition/blueprint/steps/0/for_each",
+        "a VM step can't loop: its VMs are planned when the request is submitted. Give its item a count instead.",
+      ],
+      [
+        "/definition/blueprint/steps/0/catch",
+        "a VM step has no catch path: what it built is the rollback's to delete, so the request can't go on past it.",
+      ],
+      [
+        "/definition/blueprint/steps/1/catch",
+        "Step group 2 has a VM step, so it has no catch path: what it built is the rollback's to delete, so the request can't go on past it.",
+      ],
+      [
+        "/definition/blueprint/on_error/0/item",
+        "a VM is planned when the request is submitted, before a branch chooses or a step fails, so it can't be on a side of a branch or on a catch path.",
+      ],
+    ]);
+  });
+});

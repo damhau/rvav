@@ -118,7 +118,7 @@ describe("readComposite", () => {
     // A step is one kind.
     const both = readComposite({ steps: [{ key: "x", item: "a", rest: { method: "GET", url } }] });
     expect(both.problems.map((p) => p.message)).toEqual([
-      "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch, notify or resource.",
+      "A step is one of: item, awx, workflow, rest, ask, wait, poll, signal, branch, notify or resource.",
     ]);
   });
 
@@ -498,5 +498,118 @@ describe("a message", () => {
     expect(secretInMessages(def("Fine: ${inputs.name}"))).toEqual([]);
     for (const m of ["Yours: ${inputs.token}", "${inputs['token']}", "${size(inputs.token)}"])
       expect(secretInMessages(def(m)).map((p) => p.field)).toEqual([at]);
+  });
+});
+
+describe("loops, catch paths and signals (ADR-0057)", () => {
+  const post = (key: string, body: string, extra: Record<string, unknown> = {}) => ({
+    key,
+    rest: { method: "POST", url: "https://h.example/x", body },
+    ...extra,
+  });
+
+  it("refuses what the server refuses, where it says so (TestCompositeFlow)", () => {
+    const { problems } = readComposite({
+      kind: "composite",
+      steps: [
+        { key: "loopwait", wait: { for: "1h" }, for_each: { items: "[1, 2]" } },
+        post("loopundo", "{}", { for_each: { items: "[1]" }, undo: { job_template: "x" } }),
+        post("toowide", "{}", { for_each: { items: "[1]", parallel: 11 } }),
+        post("nolist", "{}", { for_each: { items: "" } }),
+        post("noeach", "{'x': each}"),
+        post("noerror", "{'x': error.message}"),
+        post("waitcatch", "{}", { catch: [{ key: "waits", wait: { for: "1h" } }] }),
+        { key: "both", signal: { name: "go", event: "request.submitted", timeout: "1h" } },
+        { key: "short", signal: { name: "Go Now", timeout: "1s" } },
+        { key: "dup1", signal: { name: "same", timeout: "1h" } },
+        { key: "dup2", signal: { name: "same", timeout: "1h", when: "true" } },
+        {
+          parallel: [post("inner", "{}", { catch: [{ key: "tellinner", notify: { requester: true, message: "x" } }] })],
+        },
+      ],
+    });
+    const at = (p: { field: string }) => p.field.replace("/definition/blueprint/steps/", "");
+    expect([...new Set(problems.map(at))].sort()).toEqual(
+      [
+        "0/for_each",
+        "1/undo",
+        "2/for_each/parallel",
+        "3/for_each/items",
+        "4/rest/body",
+        "5/rest/body",
+        "6/catch/0",
+        "7/signal",
+        "8/signal/name",
+        "8/signal/timeout",
+        "10/signal/name",
+        "10/signal/when",
+        "11/parallel/0/catch",
+      ].sort(),
+    );
+  });
+
+  it("refuses a catch path on what the rollback must delete, and steps that wait in one", () => {
+    const refused = (bp: Record<string, unknown>) => readComposite(bp).problems.map((p) => [p.field, p.message]);
+    const noCatch =
+      "A custom resource step has no catch path: what it made is its type's delete step's to roll back, so the request can't go on past it.";
+    expect(
+      refused({
+        steps: [{ key: "lb", resource: { type: "lb" }, catch: [post("fix", "{}")] }],
+        on_error: [{ key: "later", signal: { name: "x", timeout: "1h" } }],
+      }),
+    ).toEqual([
+      ["/definition/blueprint/steps/0/catch", noCatch],
+      [
+        "/definition/blueprint/on_error/0",
+        "A catch path doesn't wait: it runs while the request is failing. Use a message, a REST call, an AWX job or a custom workflow.",
+      ],
+    ]);
+    expect(
+      refused({ steps: [{ parallel: [{ key: "lb", resource: { type: "lb" } }], catch: [post("fix", "{}")] }] }),
+    ).toEqual([["/definition/blueprint/steps/0/catch", noCatch]]);
+  });
+
+  it("reads a loop, a signal, catch paths and the error handler, and what each may read", () => {
+    const v = readComposite({
+      kind: "composite",
+      steps: [
+        post("agents", "{'host': each, 'at': index}", {
+          for_each: { items: "inputs.hosts", parallel: 3 },
+          catch: [post("fix", "{'why': error.message}")],
+        }),
+        { key: "cab", signal: { name: "cab-approved", timeout: "72h" } },
+        {
+          key: "ev",
+          signal: { event: "provisioning.post", when: "item.slug == 'x'", timeout: "1h", on_timeout: "continue" },
+        },
+        { parallel: [post("p1", "{}"), post("p2", "{}")], catch: [post("tell", "{'failed': error.step}")] },
+        post("after", "{'caught': steps.fix.status, 'told': steps.tell.status}"),
+      ],
+      on_error: [post("incident", "{'at': error.step, 'cab': steps.cab.by}")],
+    });
+    expect(v.problems).toEqual([]);
+    expect(v.groups[0]![0]).toMatchObject({ forEach: { items: "inputs.hosts", parallel: 3 }, catch: [{ key: "fix" }] });
+    expect(v.groups[1]![0]).toMatchObject({
+      kind: "signal",
+      signal: { waitsFor: "the signal cab-approved", timeout: "72h, then the step fails" },
+    });
+    expect(v.groups[2]![0]!.signal).toEqual({
+      waitsFor: "the event provisioning.post",
+      when: "item.slug == 'x'",
+      timeout: "1h, then it goes on",
+    });
+    expect(v.groupCatch[3]?.map((s) => s.key)).toEqual(["tell"]);
+    expect(v.onError.map((s) => s.key)).toEqual(["incident"]);
+    expect(allSteps(v).map((s) => s.key)).toEqual([
+      "agents",
+      "fix",
+      "cab",
+      "ev",
+      "p1",
+      "p2",
+      "tell",
+      "after",
+      "incident",
+    ]);
   });
 });

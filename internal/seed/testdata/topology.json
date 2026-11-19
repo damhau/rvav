@@ -1334,6 +1334,163 @@
     }
   },
   {
+    "name": "probe-composite-flow",
+    "blueprint": {
+      "kind": "composite",
+      "on_error": [
+        {
+          "key": "incident",
+          "rest": {
+            "body": "'tok_live_e'",
+            "method": "POST",
+            "secret": "itsm-token-name",
+            "url": "https://itsm-secret.corp.example/i"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "awx": {
+            "job_template": "t"
+          },
+          "catch": [
+            {
+              "key": "fix",
+              "rest": {
+                "body": "{'why': error.message, 'k': 'tok_live_c'}",
+                "method": "POST",
+                "url": "https://itsm-secret.corp.example/x"
+              }
+            }
+          ],
+          "for_each": {
+            "items": "inputs.hosts + ['host-secret']",
+            "parallel": 3
+          },
+          "key": "agents",
+          "title": "Agents",
+          "with": {
+            "target": "each",
+            "token": "'tok_live_l'"
+          }
+        },
+        {
+          "key": "cab",
+          "signal": {
+            "name": "cab-approved",
+            "timeout": "72h"
+          },
+          "title": "The board"
+        },
+        {
+          "key": "ev",
+          "signal": {
+            "event": "provisioning.post",
+            "on_timeout": "continue",
+            "timeout": "1h",
+            "unknown": "dropped-secret",
+            "when": "item.slug == 'slug-secret'"
+          }
+        },
+        {
+          "catch": [
+            {
+              "key": "tell",
+              "notify": {
+                "message": "Secret-text ${error.step}",
+                "requester": true
+              }
+            }
+          ],
+          "parallel": [
+            {
+              "key": "p1",
+              "workflow": "x"
+            },
+            {
+              "key": "p2",
+              "workflow": "y"
+            }
+          ]
+        }
+      ]
+    },
+    "topology": {
+      "kind": "composite",
+      "on_error": [
+        {
+          "key": "incident",
+          "rest": {
+            "body": "'…'",
+            "method": "POST",
+            "url": "…"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "awx": {
+            "job_template": "t"
+          },
+          "catch": [
+            {
+              "key": "fix",
+              "rest": {
+                "body": "{'…': error.message, '…': '…'}",
+                "method": "POST",
+                "url": "…"
+              }
+            }
+          ],
+          "for_each": {
+            "items": "inputs.hosts + ['…']",
+            "parallel": 3
+          },
+          "key": "agents",
+          "title": "Agents",
+          "with": {}
+        },
+        {
+          "key": "cab",
+          "signal": {
+            "name": "cab-approved",
+            "timeout": "72h"
+          },
+          "title": "The board"
+        },
+        {
+          "key": "ev",
+          "signal": {
+            "event": "provisioning.post",
+            "on_timeout": "continue",
+            "timeout": "1h",
+            "when": "item.slug == '…'"
+          }
+        },
+        {
+          "catch": [
+            {
+              "key": "tell",
+              "notify": {
+                "requester": true
+              }
+            }
+          ],
+          "parallel": [
+            {
+              "key": "p1",
+              "workflow": "x"
+            },
+            {
+              "key": "p2",
+              "workflow": "y"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
     "name": "probe-composite-resource",
     "blueprint": {
       "kind": "composite",

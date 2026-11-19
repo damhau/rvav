@@ -130,7 +130,7 @@ test("a composite's step added, published, requested and followed, with the keyb
   await expect(page.getByRole("region", { name: "Selected: Database nodes" })).toBeVisible();
 
   // A step after it, from the dialog; what it runs picked from its list.
-  await tabTo(page, page.getByRole("button", { name: "Add a step" }));
+  await tabTo(page, page.getByRole("button", { name: "Add a step", exact: true }));
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Add a step" });
   await expect(dialog.getByRole("combobox", { name: "What it runs" })).toBeFocused();

@@ -399,5 +399,7 @@ test("a step on a side can't read another side, and neither a branch nor a VM ca
   await add.getByRole("textbox", { name: "Key" }).fill("vm");
   await add.getByRole("button", { name: "Add step" }).click();
   const vm = page.getByRole("region", { name: /^Selected: / });
-  await expect(vm.getByRole("list", { name: "Problems with this step" })).toContainText("can't be on a side of one");
+  await expect(vm.getByRole("list", { name: "Problems with this step" })).toContainText(
+    "can't be on a side of a branch or on a catch path",
+  );
 });

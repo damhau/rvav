@@ -36,7 +36,7 @@ async function newItem(page: Page, name: string, slug: string) {
 
 /** Adds a step that waits for a person; its details take the focus. */
 async function addAsk(page: Page, key: string, title: string) {
-  await page.getByRole("button", { name: "Add a step" }).click();
+  await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
   await expect(add.getByRole("combobox", { name: "What it runs" })).toBeFocused();
   await choose(page, "A person");
@@ -145,7 +145,7 @@ test("a wait with a form, filled in from the keyboard, published, requested and 
   await steps.getByRole("group", { name: "Show as" }).getByRole("button", { name: "Graph" }).click();
 
   // A later step is told what it can read of the answer.
-  await page.getByRole("button", { name: "Add a step" }).click();
+  await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
   await choose(page, "A REST call");
   await add.getByRole("textbox", { name: "Key" }).fill("cmdb");

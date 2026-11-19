@@ -218,6 +218,14 @@ narrowly.
   hands events to subscriptions, in the same transaction, and signals the
   workflows once that commits. The project bound keeps another project's
   data, which becomes the step's outputs, from its requester.
+- The canvas draws a loop as lines on its step, a signal as a wait, a
+  catch path as the steps after what it catches, joined by a dashed "if it
+  fails" edge, and the handler after Done; the designer edits each, with
+  the checks the API makes on request (ADR-0032). A catch path's step picker
+  leaves out what it can't hold, and changing a step to a kind that can't
+  loop drops its loop; a catch path a step can't have stays, marked, for
+  the author to move. The mocks run a loop once, skip catch paths and the
+  handler, and let a signal reach its timeout.
 - The workflow code is behind `workflow.GetVersion("composite-flow")`, read
   only when a plan has a loop, a catch path, a handler or a signal, so a
   workflow in flight replays as before. The histories `composite-flow`

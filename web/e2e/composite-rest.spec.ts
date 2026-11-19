@@ -34,7 +34,7 @@ test("a REST call step filled in from the keyboard, published, requested and run
   // Added at the end of the steps, from the dialog.
   await steps.getByRole("button", { name: /^Request\./ }).focus();
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Add a step" }).click();
+  await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Add a step" });
   await expect(dialog.getByRole("combobox", { name: "What it runs" })).toBeFocused();
   await choose(page, "A REST call");
@@ -181,7 +181,7 @@ test("an item of only REST calls, requested and run to its end", async ({ page }
   await expect(page.getByRole("heading", { name: "CMDB entry" })).toBeVisible();
   await page.getByRole("tab", { name: "Definition" }).click();
 
-  await page.getByRole("button", { name: "Add a step" }).click();
+  await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
   await add.getByRole("combobox", { name: "What it runs" }).click();
   await page.getByRole("option", { name: "A REST call" }).click();

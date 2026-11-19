@@ -40,7 +40,7 @@ const aCondition = /^A wait for a condition/;
 
 /** Adds a step; its details take the focus. */
 async function addStep(page: Page, runs: string | RegExp, key: string, title: string) {
-  await page.getByRole("button", { name: "Add a step" }).click();
+  await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
   await expect(add.getByRole("combobox", { name: "What it runs" })).toBeFocused();
   await choose(page, runs);
@@ -219,7 +219,7 @@ test("a poll checks and waits, a time passed goes on at once, and a deadline can
   const wait = await addStep(page, aTime, "soon", "A short wait");
   await commit(wait, "For", "2m");
   // What they give is offered to what comes after, and may be read.
-  await page.getByRole("button", { name: "Add a step" }).click();
+  await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
   await expect(add.getByRole("combobox", { name: "What it runs" })).toBeFocused();
   await choose(page, "A REST call");

@@ -1359,8 +1359,9 @@ An item's tabs:
   - **Add a step** runs a published item (not another composite), an AWX
     template imported from AWX (or any template, by its name), a
     custom workflow registered for composite steps, a REST call, a
-    person, a wait for a time, or a wait for a condition. It goes after the
-    selected step, at the same time as it, or at the end. Its inputs
+    person, a wait for a time, a wait for a condition, or a wait for a
+    signal or an event. It goes after the selected step, at the same time
+    as it, or at the end. Its inputs
     named as the form's are bound to them. An AWX template picked from
     the list is written with its ID in AWX (`template_id`) beside its
     name, so it is launched even if renamed; picking another drops the
@@ -1446,6 +1447,42 @@ An item's tabs:
     does nobody to tell; a text it can't fill does. Later steps read
     `steps.<key>.told`, never what it said. See
     [the catalog's reference](../service-catalog.md#a-step-that-sends-a-message).
+  - **A wait for a signal or an event** stops the run until something comes,
+    and has no inputs or undo. **What it waits for:** **Waits for** is **A signal
+    sent to this request**, with its **Signal name**, or one of rvav's events by
+    its topic, with a **Condition**, CEL on the event, that picks the one it
+    takes (the first of its topic in the request's project if empty). **If nothing
+    comes:** a **Timeout**, at most 90 days, and **Then** the step fails or it
+    goes on. A project manager's API token sends the signal with
+    `rvavctl requests signal` or `POST /requests/{id}/signal/{name}`; the
+    requester can't. Later steps read what came, the signal's body or the
+    event's data, as `steps.<key>.<field>`. See
+    [the catalog's reference](../service-catalog.md#a-step-that-waits-for-a-signal).
+  - **Loop:** **Repeat it for each item of a list** runs the step once for each
+    item of **For each item of**, a CEL list of at most 100 items, and **At a
+    time** runs up to 10 passes together (one by one if empty). The step reads
+    `each` and `index` in its inputs, its condition, and a REST call's URL and
+    body; later steps read `steps.<key>.items`, each pass's outputs in order,
+    and `count`. **Run it once** removes the loop. A VM or custom resource
+    step, a wait, a branch, a step with an undo and a step on a catch path
+    can't loop. See [the catalog's reference](../service-catalog.md#a-loop).
+  - **Catch path:** **Add a step to the catch path** adds a step that runs only
+    if this one fails, with `error.step` and `error.message`; the request then
+    goes on. On a step in a group of steps that run at the same time, the path
+    is the group's, for any of its steps. A caught step stays failed on the
+    timeline, and later steps read `steps.<key>.caught`. A catch path holds AWX
+    jobs, workflows, REST calls and messages. A VM or custom resource step, a
+    group with one, and a branch have none, since what a VM or a resource
+    built is the rollback's to delete.
+  - **Error handler:** on the Done node, **Add a step to the error handler**
+    adds a step that runs on any failure no catch path caught, before the undo
+    steps and the rollback; the request still fails. It holds the same steps
+    as a catch path. See
+    [the catalog's reference](../service-catalog.md#a-catch-path-and-an-error-handler).
+
+    On the graph, a loop is its step's **For each** and **At a time** lines, a
+    catch path the steps after what it catches, by a dashed **if it fails**
+    edge, and the error handler the steps after Done.
   - A VM item's step is planned when the request is submitted: its inputs
     come from the form only, and it has no condition or undo (a failure
     deletes its VMs).
@@ -1457,9 +1494,10 @@ An item's tabs:
   composite steps, a workflow (a step's, an undo's or a workflow item's)
   not offered to every project the composite is offered to (a request
   from one of the others is refused), a VM step with a condition, an
-  undo or an input from a step, or on a side of a branch, a step using a later
-  one or another side's, a message showing a secret input, a REST call whose
-  host isn't allowed or whose secret is gone. Save the draft, publish it, and
+  undo or an input from a step, or on a side of a branch or a catch path, a
+  VM step that loops or catches, a step using a later one or another side's,
+  a message showing a secret input, a REST call whose host isn't allowed or
+  whose secret is gone. Save the draft, publish it, and
   request it to try it: the request's page draws its run on the graph of
   the version requested, each step with its live status.
 - **Versions:** each version's menu

@@ -44,11 +44,12 @@ const asks = new Map<string, Rec>();
  * far it has got. A tick counts as a minute of its wait: `for: 72h` stays until
  * cancelled, `for: 2m` is over in two ticks. A poll's condition holds at its
  * third check: `every: 1m` gets there in two ticks, `every: 6h` stays a good
- * while, and a `timeout` of 1m gets to its deadline first.
+ * while, and a `timeout` of 1m gets to its deadline first. No signal comes:
+ * a wait for one gets to its deadline.
  */
 const waits = new Map<
   string,
-  { wait?: Rec; poll?: Rec; minutes: number; last: number; checks: number; left: number }
+  { wait?: Rec; poll?: Rec; signal?: Rec; minutes: number; last: number; checks: number; left: number }
 >();
 
 const now = () => new Date().toISOString();
@@ -260,7 +261,9 @@ function chooseSide(cases: Rec[], vars: Rec): { taken: number; error?: never } |
  * one step:<key> each, the key the canvas gives its node (ADR-0032); one whose
  * condition is false is skipped (read when planned, from the form only).
  * Parallel groups run one after the other here; a branch's sides come after
- * it, flat, as the server's do (ADR-0033).
+ * it, flat, as the server's do (ADR-0033). A loop runs once, and nothing
+ * fails here that a catch path or the error handler would catch: their steps
+ * are skipped (ADR-0057).
  */
 function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey, inputs: Rec, jobBase: number): Step[] {
   const bp = publishedBlueprint(db, item);
@@ -278,17 +281,22 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
     inputs: Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, secrets.has(k) ? secretMark : v])),
   };
   const out: Step[] = [];
+  const titleOf = (st: Rec) =>
+    text(st.title) ||
+    db.items.find((i) => i.slug === st.item)?.name ||
+    text((st.awx as Rec | undefined)?.title) ||
+    text((st.awx as Rec | undefined)?.job_template) ||
+    text(st.workflow) ||
+    text(st.key);
+  const unfailed = (list: unknown, why: string) => {
+    for (const st of Array.isArray(list) ? (list as Rec[]) : [])
+      out.push(step(`step:${text(st.key)}`, titleOf(st), "rvav", { status: "skipped", detail: why }));
+  };
   const plan = (st: Rec) => {
     const key = `step:${text(st.key)}`;
     const awx = st.awx as Rec | undefined;
     const target = db.items.find((i) => i.slug === st.item);
-    const title =
-      text(st.title) ||
-      target?.name ||
-      text(awx?.title) ||
-      text(awx?.job_template) ||
-      text(st.workflow) ||
-      text(st.key);
+    const title = titleOf(st);
     const when = text(st.when);
     if (when && !celBool(when, vars, true)) {
       out.push(step(key, title, "rvav", { status: "skipped", detail: `Skipped: ${when} is false` }));
@@ -305,6 +313,13 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
         return out.slice(from);
       });
       branches.set(s, { cases, hasElse: Array.isArray(b.else) && b.else.length > 0, sides, vars });
+      return;
+    }
+    if (st.signal) {
+      const signal = st.signal as Rec;
+      const s = step(key, title, "wait", { detail: `Waits for ${signalWords(signal)}` });
+      waits.set(s.id, { signal, minutes: 0, last: 0, checks: 0, left: 0 });
+      out.push(s);
       return;
     }
     if (st.notify) {
@@ -348,10 +363,23 @@ function compositeSteps(item: StoredItem, project: Project, env: EnvironmentKey,
       if (st.with) givens.set(s, { with: st.with as Rec, vars: messageVars });
       out.push(s);
     }
+    unfailed(st.catch, "Nothing failed before it.");
   };
-  groups.flatMap((g) => (Array.isArray(g.parallel) ? (g.parallel as Rec[]) : [g])).forEach(plan);
+  for (const g of groups) {
+    if (!Array.isArray(g.parallel)) {
+      plan(g);
+      continue;
+    }
+    (g.parallel as Rec[]).forEach(plan);
+    unfailed(g.catch, "Nothing failed before it.");
+  }
+  unfailed(bp?.on_error, "Nothing failed.");
   return out;
 }
+
+/** What a wait for a signal waits for, in words. */
+const signalWords = (signal: Rec) =>
+  text(signal.event) ? `the event ${text(signal.event)}` : `the signal ${text(signal.name)}`;
 
 /** An AWX job's step: a template's own, or a composite's AWX step (step:<key>). */
 const isJob = (s: Step) => s.key === "awx.job" || (s.key.startsWith("step:") && s.system === "awx");
@@ -874,6 +902,13 @@ function openWait(r: StoredRequest, s: Step) {
   const w = waits.get(s.id);
   if (!w) return;
   Object.assign(w, { minutes: 0, last: 0, checks: 0 });
+  if (w.signal) {
+    const timeout = goDuration(text(w.signal.timeout)) ?? 0;
+    s.due_at = new Date(Date.now() + timeout).toISOString();
+    s.detail = `Waiting for ${signalWords(w.signal)}`;
+    w.left = inMinutes(timeout);
+    return;
+  }
   if (w.poll) {
     s.due_at = new Date(Date.now() + (goDuration(text(w.poll.timeout)) ?? 0)).toISOString();
     w.left = inMinutes(goDuration(text(w.poll.timeout)));
@@ -930,6 +965,17 @@ function waitTick(r: StoredRequest, s: Step): boolean {
   const w = waits.get(s.id);
   if (!w) return true;
   w.minutes++;
+  if (w.signal) {
+    if (w.minutes < w.left) return false;
+    s.due_at = null;
+    const timeout = text(w.signal.timeout);
+    if (text(w.signal.on_timeout) !== "continue") {
+      failStep(r, s, `No ${signalWords(w.signal).replace("the ", "")} came in ${timeout}.`);
+      return false;
+    }
+    s.detail = `No ${signalWords(w.signal).replace("the ", "")} came in ${timeout}, so it went on.`;
+    return true;
+  }
   if (!w.poll) return w.minutes >= w.left;
   const due = w.minutes >= w.left;
   const every = inMinutes(goDuration(text(w.poll.every)));

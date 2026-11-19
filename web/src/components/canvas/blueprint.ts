@@ -9,7 +9,9 @@
 //   the earlier steps it binds to show on it. A branch (ADR-0033) leads to
 //   each of its sides, a chain of steps, by a dashed edge labelled with the
 //   side; each side's last step leads on to what comes next, and a side
-//   with no steps goes there straight.
+//   with no steps goes there straight. A catch path (ADR-0057) follows
+//   what it catches by a dashed edge, "if it fails", and leads on to what
+//   comes next too; the error handler follows Done the same way.
 // - A VM item (ADR-0024, ADR-0028), left to right: the networks and NSX
 //   segments, the components with their counts and disks (an edge into one
 //   from each it is built after), then the groups their VMs are in, the
@@ -55,6 +57,7 @@ const stepBadge: Record<CompositeStepView["kind"], string> = {
   ask: "Person",
   wait: "Wait",
   poll: "Poll",
+  signal: "Signal",
   branch: "Branch",
   notify: "Message",
   resource: "Resource",
@@ -72,6 +75,15 @@ function stepLines(s: CompositeStepView): CanvasLine[] {
   if (s.ask) {
     lines.push({ label: "Asks", text: s.ask.who }, { label: "Wants", text: s.ask.wants });
     if (s.ask.timeout) lines.push({ label: "Timeout", text: s.ask.timeout });
+  }
+  if (s.forEach) {
+    lines.push({ label: "For each", text: s.forEach.items, mono: true });
+    if (s.forEach.parallel > 1) lines.push({ label: "At a time", text: String(s.forEach.parallel) });
+  }
+  if (s.signal) {
+    lines.push({ label: "Waits for", text: s.signal.waitsFor });
+    if (s.signal.when) lines.push({ label: "Picks", text: s.signal.when, mono: true });
+    if (s.signal.timeout) lines.push({ label: "Timeout", text: s.signal.timeout });
   }
   if (s.wait?.for) lines.push({ label: "For", text: s.wait.for });
   if (s.wait?.until) lines.push({ label: "Until", text: s.wait.until, mono: true });
@@ -104,10 +116,14 @@ function stepLines(s: CompositeStepView): CanvasLine[] {
 interface Tail {
   id: string;
   names: string[];
-  /** Said on the edge from here: the side a branch's edge leads to. */
+  /** Said on the edge from here: the side a branch's edge leads to, or "if it fails". */
   label?: string;
   branch?: CanvasEdge["branch"];
+  /** The way from here is taken only on a failure: into a catch path or the error handler. */
+  failure?: boolean;
 }
+
+const ifItFails = "if it fails";
 
 // A side's title is what its author wrote: the card holds it in full, an edge doesn't have the room.
 const labelOf = (s: string) => (s.length > 24 ? `${s.slice(0, 23)}…` : s);
@@ -169,13 +185,35 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
         description: capital(
           `${words(t.names)}${t.label ? ` (${t.label})` : ""}, then ${words(names)}${when ? ` when ${when}` : ""}`,
         ),
-        conditional: Boolean(when) || Boolean(t.branch) || undefined,
+        conditional: Boolean(when) || Boolean(t.branch) || t.failure || undefined,
         ...(t.branch ? { branch: t.branch } : {}),
       });
     }
   };
   const after = () => tails.flatMap((t) => t.names);
   const isFirst = () => tails.length === 1 && tails[0]!.id === "inputs";
+  /**
+   * A catch path's nodes after what it catches, from: each follows the one
+   * before it, the first by a dashed edge. Built before the node or frame it
+   * catches, whose problems would take theirs by pointer. Gives the way on
+   * from its last step.
+   */
+  const catchNodes = (
+    caught: CompositeStepView[],
+    from: Tail,
+    catches: string,
+    extra: Partial<CanvasNode> = {},
+  ): { nodes: CanvasNode[]; tail: Tail } => {
+    let tail: Tail = { ...from, label: ifItFails, failure: true };
+    const out = caught.map((c, i) => {
+      tails = [tail];
+      follow(stepId(c), [titleOf(c)], c.when);
+      tail = { id: stepId(c), names: [titleOf(c)], branch: from.branch };
+      const relations = [i === 0 ? `Runs if ${catches} fails` : `Runs after ${titleOf(caught[i - 1]!)}`];
+      return stepNode(c, relations, { ...extra, lines: [{ label: "Catches", text: catches }, ...stepLines(c)] });
+    });
+    return { nodes: out, tail };
+  };
 
   view.groups.forEach((group, g) => {
     if (group.length === 0) return;
@@ -197,21 +235,28 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
       const straight: { label: string; taken: number }[] = [];
       for (const side of branch) {
         const way = { node: slot, cases: [side.taken] };
-        let tail: Tail = { id: slot, names: titles, label: side.label, branch: way };
+        let sideTails: Tail[] = [{ id: slot, names: titles, label: side.label, branch: way }];
         const before = [`On the side ${side.label} of ${titles[0]!}`];
+        const sideNodes: string[] = [];
         side.steps.forEach((s, i) => {
-          tails = [tail];
+          tails = sideTails;
           follow(stepId(s), [titleOf(s)], s.when);
+          const own: Tail = { id: stepId(s), names: [titleOf(s)], branch: way };
+          const caught = s.catch?.length
+            ? catchNodes(s.catch, own, titleOf(s), { onSideOf: slot })
+            : { nodes: [], tail: undefined };
           onSides.push(
             stepNode(s, i === 0 ? before : [...before, `Runs after ${titleOf(side.steps[i - 1]!)}`], {
               onSideOf: slot,
             }),
+            ...caught.nodes,
           );
-          tail = { id: stepId(s), names: [titleOf(s)], branch: way };
+          sideNodes.push(stepId(s), ...caught.nodes.map((n) => n.id));
+          sideTails = caught.tail ? [own, caught.tail] : [own];
         });
-        sides.push({ label: side.label, when: side.when, taken: side.taken, nodes: side.steps.map(stepId) });
+        sides.push({ label: side.label, when: side.when, taken: side.taken, nodes: sideNodes });
         if (side.steps.length === 0) straight.push(side);
-        else next.push(tail);
+        else next.push(...sideTails);
       }
       if (straight.length > 0)
         next.push({
@@ -224,6 +269,11 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
       tails = next;
       return;
     }
+    const own: Tail = { id: slot, names: titles };
+    const caughtBy = parallel ? view.groupCatch[g] : group[0]!.catch;
+    const caught = caughtBy?.length
+      ? catchNodes(caughtBy, own, parallel ? `a step of ${words(titles)}` : titles[0]!)
+      : { nodes: [], tail: undefined };
     nodes.push(
       ...group.map((s, j) => {
         const others = titles.filter((_, k) => k !== j);
@@ -231,10 +281,11 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
         if (others.length > 0) relations.push(`At the same time as ${words(others)}`);
         return stepNode(s, relations, { group: parallel ? slot : undefined });
       }),
+      ...caught.nodes,
     );
     if (parallel)
       groups.push({ id: slot, label: "At the same time", nodes: ids, problems: problemsIn(at), pointer: at });
-    tails = [{ id: slot, names: titles }];
+    tails = caught.tail ? [own, caught.tail] : [own];
   });
 
   nodes.push({
@@ -248,6 +299,8 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
     problems: [],
   });
   follow("end", ["done"]);
+  if (view.onError.length > 0)
+    nodes.push(...catchNodes(view.onError, { id: "end", names: ["the request"] }, "the request").nodes);
   return { kind: "composite", direction: "TB", nodes, edges, groups, problems: view.problems };
 }
 

@@ -325,7 +325,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("option", { name: /composite/i }).click();
       await dialog.getByRole("button", { name: "Create" }).click();
       await page.getByRole("tab", { name: "Definition" }).click();
-      await page.getByRole("button", { name: "Add a step" }).click();
+      await page.getByRole("button", { name: "Add a step", exact: true }).click();
       const add = page.getByRole("dialog", { name: "Add a step" });
       await add.getByRole("combobox", { name: "What it runs" }).click();
       await page.getByRole("option", { name: "A person" }).click();
@@ -422,7 +422,7 @@ for (const theme of ["light", "dark"] as const) {
       await dialog.getByRole("button", { name: "Create" }).click();
       await page.getByRole("tab", { name: "Definition" }).click();
       const addStep = async (runs: string | RegExp, key: string, title: string) => {
-        await page.getByRole("button", { name: "Add a step" }).click();
+        await page.getByRole("button", { name: "Add a step", exact: true }).click();
         const add = page.getByRole("dialog", { name: "Add a step" });
         await add.getByRole("combobox", { name: "What it runs" }).click();
         await page.getByRole("option", { name: runs }).click();

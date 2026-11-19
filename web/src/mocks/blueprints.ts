@@ -409,18 +409,22 @@ const stepKeys: Record<string, Keep> = {
   notify: fields({ requester: asIs, owner: asIs }),
   // A custom resource: its type, and the VM step whose deployment it joins (ADR-0056).
   resource: fields({ type: asIs, deployment: asIs }),
+  // A wait for a signal or an event, and a loop (ADR-0057).
+  signal: fields({ name: asIs, event: asIs, when: cel(), timeout: asIs, on_timeout: asIs }),
+  for_each: fields({ items: cel(), parallel: asIs }),
   when: cel(),
   with: stepRefs,
   undo: fields({ job_template: asIs, workflow: asIs, rest: restCall, with: stepRefs }),
 };
 const step = fields(stepKeys);
 stepKeys.parallel = each(step);
+stepKeys.catch = each(step);
 // A branch: its conditions masked, its sides' steps as any step, nothing else.
 stepKeys.branch = fields({
   cases: each(fields({ title: asIs, when: cel(), steps: each(step) })),
   else: each(step),
 });
-const compositeTopology = fields({ kind: asIs, rollback_on_failure: asIs, steps: each(step) });
+const compositeTopology = fields({ kind: asIs, rollback_on_failure: asIs, steps: each(step), on_error: each(step) });
 
 /**
  * What a request form gets of a blueprint to draw what the item builds, as

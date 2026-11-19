@@ -4,11 +4,13 @@
 // call's host and secret, and the users a wait for a person names, too, with
 // the lists only the server has).
 import type { FieldError } from "@/lib/api/types";
+import { celCode } from "@/lib/dependsOn";
 
 export interface CompositeStepView {
   key: string;
   title?: string;
-  kind: "item" | "awx" | "workflow" | "rest" | "ask" | "wait" | "poll" | "branch" | "notify" | "resource" | "?";
+  kind:
+    "item" | "awx" | "workflow" | "rest" | "ask" | "wait" | "poll" | "signal" | "branch" | "notify" | "resource" | "?";
   target: string;
   /** A wait for a person, in words. A requester's topology names neither a group nor anyone. */
   ask?: { who: string; wants: string; timeout?: string };
@@ -20,6 +22,12 @@ export interface CompositeStepView {
   sides?: CompositeSideView[];
   /** A message: who it tells, and what it says. A requester's topology names no group or person, and has no text. */
   notify?: { who: string; message?: string };
+  /** A wait for a signal or an event (ADR-0057): what it waits for, which event, until when. */
+  signal?: { waitsFor: string; when?: string; timeout: string };
+  /** A loop: the list it goes over, and how many passes run at once (1: one after the other). */
+  forEach?: { items: string; parallel: number };
+  /** Its catch path: the steps that run when it fails, and the request goes on. */
+  catch?: CompositeStepView[];
   when?: string;
   uses: string[];
   undo?: string;
@@ -39,6 +47,10 @@ export interface CompositeSideView {
 
 export interface CompositeView {
   groups: CompositeStepView[][];
+  /** A parallel group's catch path, by the group's index. */
+  groupCatch: Record<number, CompositeStepView[]>;
+  /** The error handler: what runs when a failure nothing catches fails the request. */
+  onError: CompositeStepView[];
   problems: FieldError[];
 }
 
@@ -326,6 +338,119 @@ function checkNotify(n: Raw, ptr: string, err: (field: string, code: string, mes
   if (error) err(`${ptr}/message`, "invalid", `This message can't be read: ${error}.`);
 }
 
+/** The topics of the events a composite step may wait for (outbox.Topics). */
+export const eventTopics = [
+  "request.submitted",
+  "approval.requested",
+  "approval.decided",
+  "provisioning.pre",
+  "compute.allocation.pre",
+  "network.configure",
+  "compute.provision.pre",
+  "compute.provision.post",
+  "custom.create.pre",
+  "custom.create.post",
+  "provisioning.post",
+  "day2.pre",
+  "day2.post",
+  "delete.pre",
+  "custom.delete.pre",
+  "custom.delete.post",
+  "compute.removal.pre",
+  "compute.removal.post",
+  "delete.post",
+  "lease.expiring",
+  "lease.expired",
+  "project.created",
+  "project.updated",
+];
+
+/** What a signal's name may be: it is part of a URL (core.signalName). */
+export const signalName = /^[a-z0-9][a-z0-9_.-]{0,62}$/;
+
+/** The longest a wait for a signal may last (core.maxSignalTimeout). */
+export const maxSignalTimeout = 90 * 24 * 36e5;
+
+/** The most passes of a loop that run at once (blueprint.MaxForEachParallel). */
+export const maxForEachParallel = 10;
+
+/** What the server checks of a wait for a signal on its own (core.checkSignal; its `when` is CEL, checked when saved). */
+function checkSignal(sig: Raw, ptr: string, err: (field: string, code: string, message: string) => void) {
+  const name = str(sig.name);
+  const event = str(sig.event);
+  if (!name === !event)
+    err(ptr, "one_of", "Wait for a signal by its name, or for an event by its topic: one of the two.");
+  else if (name && !signalName.test(name))
+    err(`${ptr}/name`, "pattern", "Lower-case letters, digits, dots, dashes and underscores: it is part of a URL.");
+  else if (event && !eventTopics.includes(event)) err(`${ptr}/event`, "enum", `One of ${eventTopics.join(", ")}.`);
+  if (str(sig.when) && !event)
+    err(
+      `${ptr}/when`,
+      "invalid",
+      "Only a wait for an event picks one with a condition: a signal is sent to this request.",
+    );
+  const timeout = str(sig.timeout);
+  const d = goDuration(timeout);
+  if (!timeout) err(`${ptr}/timeout`, "required", "Give it a deadline: a duration such as 72h.");
+  else if (d === null || d < 60_000) err(`${ptr}/timeout`, "invalid", "A duration of at least a minute, such as 72h.");
+  else if (d > maxSignalTimeout) err(`${ptr}/timeout`, "invalid", "At most 90 days (2160h).");
+  if (str(sig.on_timeout) && !["fail", "continue"].includes(str(sig.on_timeout)))
+    err(`${ptr}/on_timeout`, "enum", "fail or continue.");
+}
+
+/** Why a step can't loop, if it can't (core.loopRefused). */
+export function loopRefused(s: Raw): string {
+  if (s.resource)
+    return "A custom resource can't loop: it is one resource of its deployment, under this step's key, and its type's delete rolls back that one.";
+  if (s.ask || s.wait || s.poll || s.signal)
+    return "A wait can't loop: a pass would wait across runs of the workflow. Use a parallel group, or a custom workflow.";
+  if (s.branch) return "A branch can't loop: loop the steps of its sides.";
+  return "";
+}
+
+/** Why a step can't be on a catch path or in the error handler, if it can't (core.catchRefused). */
+export function catchRefused(s: Raw): string {
+  if (Array.isArray(s.parallel) || s.branch)
+    return "A catch path lists steps in order: a parallel group or a branch can't be one of them.";
+  if (s.ask || s.wait || s.poll || s.signal)
+    return "A catch path doesn't wait: it runs while the request is failing. Use a message, a REST call, an AWX job or a custom workflow.";
+  if (s.resource) return "A catch path makes no custom resource: nothing would roll it back.";
+  if (s.for_each) return "A step of a catch path doesn't loop.";
+  if (Array.isArray(s.catch) && s.catch.length > 0) return "A step of a catch path has no catch path of its own.";
+  if (s.undo !== undefined) return "A step of a catch path isn't undone: it runs because something failed.";
+  return "";
+}
+
+/** Why a step can't have a catch path, or be in a parallel group that has one, if it can't (core.caughtRefused). */
+export function caughtRefused(s: Raw): string {
+  if (s.resource)
+    return "A custom resource step has no catch path: what it made is its type's delete step's to roll back, so the request can't go on past it.";
+  if (s.branch) return "A branch has no catch path: put one on the steps of its sides.";
+  return "";
+}
+
+const flowVar = /(?:^|[^.\w])(each|index|error)\b/g;
+
+/** What of each, index and error an expression reads that its step doesn't have (core.flowVarsRead). */
+function flowVarsRead(expr: string, loop: boolean, caught: boolean): string {
+  for (const m of celCode(expr).matchAll(flowVar)) {
+    const name = m[1]!;
+    if ((name === "each" || name === "index") && !loop)
+      return `${name} is a loop's: this step doesn't repeat over a list.`;
+    if (name === "error" && !caught) return "error is a catch path's: this step doesn't run because another failed.";
+  }
+  return "";
+}
+
+/** A wait for a signal or an event in words. */
+function signalWords(sig: Raw): NonNullable<CompositeStepView["signal"]> {
+  return {
+    waitsFor: str(sig.event) ? `the event ${str(sig.event)}` : `the signal ${str(sig.name)}`,
+    when: str(sig.when) || undefined,
+    timeout: str(sig.timeout) ? `${str(sig.timeout)}, ${timeoutWords[str(sig.on_timeout)] ?? timeoutWords.fail}` : "",
+  };
+}
+
 /** A message in words, from what a definition or a requester's topology has of it. */
 function notifyWords(n: Raw): NonNullable<CompositeStepView["notify"]> {
   const groups = Array.isArray(n.groups) ? (n.groups as unknown[]).map(str).filter(Boolean) : [];
@@ -354,6 +479,28 @@ function expressions(s: Raw): string[] {
   for (const c of Array.isArray(branch?.cases) ? (branch.cases as Raw[]) : []) if (str(c.when)) out.push(str(c.when));
   const notify = s.notify as Raw | undefined;
   if (notify) out.push(...urlExpressions(str(notify.message)));
+  const forEach = s.for_each as Raw | undefined;
+  if (str(forEach?.items)) out.push(str(forEach?.items));
+  return out;
+}
+
+/** A step's CEL with where each is written, as the server points at it. */
+function pointedExpressions(s: Raw, sp: string): { at: string; expr: string }[] {
+  const out: { at: string; expr: string }[] = [];
+  const add = (at: string, e: unknown) => {
+    if (typeof e === "string" && e) out.push({ at, expr: e });
+  };
+  add(`${sp}/when`, s.when);
+  for (const [k, v] of Object.entries((s.with as Raw | undefined) ?? {})) add(`${sp}/with/${k}`, v);
+  const rest = s.rest as Raw | undefined;
+  if (rest) {
+    for (const e of urlExpressions(str(rest.url))) add(`${sp}/rest/url`, e);
+    add(`${sp}/rest/body`, rest.body);
+  }
+  add(`${sp}/wait/until`, (s.wait as Raw | undefined)?.until);
+  const notify = s.notify as Raw | undefined;
+  if (notify) for (const e of urlExpressions(str(notify.message))) add(`${sp}/notify/message`, e);
+  add(`${sp}/for_each/items`, (s.for_each as Raw | undefined)?.items);
   return out;
 }
 
@@ -378,7 +525,11 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
   const err = (field: string, code: string, message: string) => problems.push({ field, code, message });
   const steps = Array.isArray(blueprint.steps) ? (blueprint.steps as Raw[]) : [];
   const seen = new Map<string, number>();
+  const signals = new Set<string>();
   const groups: CompositeStepView[][] = [];
+  const groupCatch: Record<number, CompositeStepView[]> = {};
+  // The steps read are a catch path's or the error handler's: they read error.
+  let catching = false;
 
   const readStep = (s: Raw, sp: string, g: number, side: SideScope | null): CompositeStepView => {
     const key = str(s.key);
@@ -392,9 +543,56 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
     const branch = s.branch as Raw | undefined;
     const notify = s.notify as Raw | undefined;
     const resource = s.resource as Raw | undefined;
-    const kinds = [s.item, awx, s.workflow, rest, ask, wait, poll, branch, notify, resource].filter(Boolean).length;
+    const signal = s.signal as Raw | undefined;
+    const forEach = s.for_each as Raw | undefined;
+    const kinds = [s.item, awx, s.workflow, rest, ask, wait, poll, branch, notify, resource, signal].filter(
+      Boolean,
+    ).length;
     if (kinds !== 1)
-      err(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch, notify or resource.");
+      err(
+        sp,
+        "one_of",
+        "A step is one of: item, awx, workflow, rest, ask, wait, poll, signal, branch, notify or resource.",
+      );
+    if (signal) {
+      if (s.with !== undefined)
+        err(`${sp}/with`, "invalid", "A wait for a signal has no inputs: what comes is its outputs.");
+      if (s.undo !== undefined) err(`${sp}/undo`, "invalid", "A wait for a signal has nothing to undo.");
+      const name = str(signal.name);
+      if (name) {
+        if (signals.has(name))
+          err(
+            `${sp}/signal/name`,
+            "duplicate",
+            `Another step waits for the signal ${name}: a signal names the one step it is for.`,
+          );
+        signals.add(name);
+      }
+      checkSignal(signal, `${sp}/signal`, err);
+    }
+    if (Array.isArray(s.catch) && s.catch.length > 0) {
+      const why = caughtRefused(s);
+      if (why) err(`${sp}/catch`, "invalid", why);
+    }
+    if (forEach) {
+      if (!str(forEach.items).trim())
+        err(`${sp}/for_each/items`, "required", "Give the list: CEL over inputs and steps, such as inputs.hosts.");
+      const parallel = forEach.parallel ?? 0;
+      if (typeof parallel !== "number" || parallel < 0 || parallel > maxForEachParallel)
+        err(
+          `${sp}/for_each/parallel`,
+          "maximum",
+          `From 1, one pass after the other, to ${maxForEachParallel} at a time.`,
+        );
+      const why = loopRefused(s);
+      if (why) err(`${sp}/for_each`, "invalid", why);
+      if (s.undo !== undefined)
+        err(
+          `${sp}/undo`,
+          "invalid",
+          "A loop has no undo: each pass would need its own. Put the passes' work in a custom workflow with its compensation, or add a catch path.",
+        );
+    }
     if (resource) {
       if (!str(resource.type)) err(`${sp}/resource/type`, "required", "Name the resource type.");
       if (s.undo !== undefined)
@@ -449,6 +647,7 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
       !poll &&
       !branch &&
       !notify &&
+      !signal &&
       [str(undo.job_template), str(undo.workflow), undoRest].filter(Boolean).length !== 1
     )
       err(`${sp}/undo`, "one_of", "Undo with a job_template, a workflow or a rest call.");
@@ -476,6 +675,10 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
         if (gr === undefined || gr >= g) err(sp, "unknown_step", `steps.${ref} is not an earlier step.`);
       }
     };
+    for (const x of pointedExpressions(s, sp)) {
+      const why = flowVarsRead(x.expr, Boolean(forEach), catching);
+      if (why) err(x.at, "invalid", why);
+    }
     for (const e of expressions(s)) read(e, null);
     for (const e of undoExpressions(s)) read(e, key);
     // A poll's condition reads its own answer.
@@ -498,13 +701,15 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
                   ? "wait"
                   : poll
                     ? "poll"
-                    : branch
-                      ? "branch"
-                      : notify
-                        ? "notify"
-                        : resource
-                          ? "resource"
-                          : "?",
+                    : signal
+                      ? "signal"
+                      : branch
+                        ? "branch"
+                        : notify
+                          ? "notify"
+                          : resource
+                            ? "resource"
+                            : "?",
       target:
         str(s.item) ||
         str(awx?.job_template) ||
@@ -523,6 +728,13 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
           }
         : undefined,
       notify: notify ? notifyWords(notify) : undefined,
+      signal: signal ? signalWords(signal) : undefined,
+      forEach: forEach
+        ? {
+            items: str(forEach.items),
+            parallel: typeof forEach.parallel === "number" ? Math.max(forEach.parallel, 1) : 1,
+          }
+        : undefined,
       sides: branch ? readSides(branch, key, `${sp}/branch`, g) : undefined,
       when: str(s.when) || undefined,
       uses: [...uses],
@@ -570,12 +782,41 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
             "A branch can't be on a side of a branch: give it more cases instead, each with its conditions.",
           );
         else {
-          views.push(readStep(x, xp, g, scope));
+          const view = readStep(x, xp, g, scope);
           scope.open.add(str(x.key));
+          const caught = catchPath(x.catch, `${xp}/catch`, g);
+          if (caught.length > 0) view.catch = caught;
+          views.push(view);
         }
       });
       return { label: list.label, when: list.when, taken: list.taken, steps: views };
     });
+  };
+
+  /**
+   * A catch path's steps: they run in order after the step or group failed,
+   * read what came before it, and later groups may read them.
+   */
+  const catchPath = (list: unknown, at: string, g: number): CompositeStepView[] => {
+    const out: CompositeStepView[] = [];
+    if (!Array.isArray(list)) return out;
+    const scope: SideScope = { open: new Set(), others: new Set() };
+    catching = true;
+    try {
+      (list as Raw[]).forEach((x, j) => {
+        const xp = `${at}/${j}`;
+        const why = catchRefused(x);
+        if (why) {
+          err(xp, "invalid", why);
+          return;
+        }
+        out.push(readStep(x, xp, g, scope));
+        scope.open.add(str(x.key));
+      });
+    } finally {
+      catching = false;
+    }
+    return out;
   };
 
   steps.forEach((st, g) => {
@@ -583,9 +824,23 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
     const parallel = Array.isArray(st.parallel) ? (st.parallel as Raw[]) : null;
     if (
       parallel &&
-      (st.key || st.item || st.awx || st.workflow || st.rest || st.ask || st.wait || st.poll || st.branch || st.notify)
+      (st.key ||
+        st.item ||
+        st.awx ||
+        st.workflow ||
+        st.rest ||
+        st.ask ||
+        st.wait ||
+        st.poll ||
+        st.branch ||
+        st.notify ||
+        st.signal ||
+        st.resource ||
+        st.for_each ||
+        st.undo)
     )
-      err(at, "invalid", "A parallel group only lists steps.");
+      err(at, "invalid", "A parallel group only lists steps, and its catch path.");
+    const groupCaught = Array.isArray(st.catch) && st.catch.length > 0;
     const list = parallel ?? [st];
     const group: CompositeStepView[] = [];
     list.forEach((s, j) => {
@@ -598,16 +853,40 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
         err(sp, "invalid", "A branch can't run in a parallel group: put it before or after the group.");
         return;
       }
-      group.push(readStep(s, sp, g, null));
+      if (parallel && Array.isArray(s.catch) && s.catch.length > 0)
+        err(`${sp}/catch`, "invalid", "A step of a parallel group has no catch path of its own: put it on the group.");
+      if (parallel && groupCaught) {
+        const why = caughtRefused(s);
+        if (why) err(`${at}/catch`, "invalid", why);
+      }
+      const view = readStep(s, sp, g, null);
+      if (!parallel) {
+        const caught = catchPath(s.catch, `${sp}/catch`, g);
+        if (caught.length > 0) view.catch = caught;
+      }
+      group.push(view);
     });
+    if (parallel) {
+      const caught = catchPath(st.catch, `${at}/catch`, g);
+      if (caught.length > 0) groupCatch[g] = caught;
+    }
     groups.push(group);
   });
-  return { groups, problems };
+  // The error handler runs after any step: it reads them all.
+  const onError = catchPath(blueprint.on_error, `${prefix}/on_error`, steps.length);
+  return { groups, groupCatch, onError, problems };
 }
 
-/** A view's steps and those on its branches' sides, in reading order. */
+/** A view's steps, those on its branches' sides, its catch paths' and its error handler's, in reading order. */
 export function allSteps(view: CompositeView): CompositeStepView[] {
-  return view.groups.flat().flatMap((s) => [s, ...(s.sides ?? []).flatMap((side) => side.steps)]);
+  const withCatch = (s: CompositeStepView): CompositeStepView[] => [s, ...(s.catch ?? [])];
+  return [
+    ...view.groups.flatMap((group, g) => [
+      ...group.flatMap((s) => [...withCatch(s), ...(s.sides ?? []).flatMap((side) => side.steps.flatMap(withCatch))]),
+      ...(view.groupCatch[g] ?? []),
+    ]),
+    ...view.onError,
+  ];
 }
 
 /**

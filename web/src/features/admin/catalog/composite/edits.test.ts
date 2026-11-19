@@ -13,17 +13,20 @@ import {
   readStep,
   removeAskQuestion,
   removeBranchCase,
+  removeForEach,
   removeStep,
   setAskEscalate,
   setAskField,
   setAskQuestion,
   setBinding,
   setBranchCase,
+  setForEach,
   setNotifyField,
   setPollField,
   setResourceDeployment,
   setRestField,
   setRollback,
+  setSignalField,
   setStepField,
   setTarget,
   setUndo,
@@ -767,5 +770,126 @@ describe("a custom resource step", () => {
     expect(lb(text)).toMatchObject({ resource: { deployment: "web" }, with: { members: "[steps.web.ip]" } });
     expect(lb(setResourceDeployment(text, "step:lb", "")).resource).toEqual({ type: "load-balancer" });
     expect(() => setResourceDeployment(base(), "step:vm", "x")).toThrow("It makes no custom resource.");
+  });
+});
+
+describe("loops, catch paths, the error handler and waits for a signal (ADR-0057)", () => {
+  const call = (key: string, extra: Record<string, unknown> = {}) => ({
+    key,
+    rest: { method: "POST", url: "https://h.example/x" },
+    ...extra,
+  });
+  const flow = definition({
+    kind: "composite",
+    steps: [call("dns"), { parallel: [call("p1"), call("p2")] }, call("last")],
+  });
+  const bp = (text: string) => blueprint(text) as Record<string, Record<string, unknown>[]>;
+
+  it("adds a catch path to a step, to the group of one in a group, and to the error handler", () => {
+    let t = addStep(flow, call("ticket", { rest: { method: "POST", url: "https://itsm.example/x" } }), {
+      catchOf: "step:dns",
+    });
+    t = addStep(t, call("tell"), { catchOf: "step:p2" });
+    t = addStep(t, call("incident"), "onError");
+    t = addStep(t, call("page"), { after: "step:ticket" });
+    expect(bp(t).steps![0]!.catch).toMatchObject([{ key: "ticket" }, { key: "page" }]);
+    expect(bp(t).steps![1]).toMatchObject({ parallel: [{ key: "p1" }, { key: "p2" }], catch: [{ key: "tell" }] });
+    expect(bp(t).on_error).toMatchObject([{ key: "incident" }]);
+    expect(Object.keys(blueprint(t))).toEqual(["kind", "steps", "on_error"]);
+    expect(stepKeys(t)).toEqual(["dns", "ticket", "page", "p1", "p2", "tell", "last", "incident"]);
+    expect(readStep(t, "step:page")).toMatchObject({
+      g: 0,
+      pointer: "/definition/blueprint/steps/0/catch/1",
+      caught: { of: "dns", list: "/definition/blueprint/steps/0/catch", i: 1, length: 2 },
+    });
+    expect(readStep(t, "step:tell")?.caught).toMatchObject({ of: "", list: "/definition/blueprint/steps/1/catch" });
+    expect(readStep(t, "step:incident")?.caught).toMatchObject({ of: "on_error", i: 0, length: 1 });
+
+    // They move within their path, and a path left empty goes.
+    t = moveStep(t, "step:page", -1);
+    expect((bp(t).steps![0]!.catch as { key: string }[]).map((s) => s.key)).toEqual(["page", "ticket"]);
+    expect(() => moveStep(t, "step:page", -1)).toThrow("It runs first on its catch path.");
+    t = removeStep(removeStep(t, "step:page"), "step:ticket");
+    expect(bp(t).steps![0]).not.toHaveProperty("catch");
+    t = removeStep(t, "step:incident");
+    expect(blueprint(t)).not.toHaveProperty("on_error");
+  });
+
+  it("refuses what the server refuses on a catch path, and around what can't have one", () => {
+    const t = addStep(flow, call("fix"), { catchOf: "step:dns" });
+    expect(() => addStep(flow, { key: "w", wait: { for: "1h" } }, { catchOf: "step:dns" })).toThrow(EditError);
+    expect(() => addStep(flow, { key: "w", signal: { name: "x", timeout: "1h" } }, "onError")).toThrow(
+      "A catch path doesn't wait",
+    );
+    expect(() => addStep(t, call("again"), { catchOf: "step:fix" })).toThrow(
+      "A step of a catch path has no catch path of its own.",
+    );
+    expect(() => addStep(t, call("beside"), { with: "step:fix" })).toThrow("a parallel group can't be one of them");
+    expect(() => addStep(t, call("beside"), { with: "step:dns" })).toThrow("put it on the group");
+    expect(() => joinPrevious(addStep(t, call("more"), { catchOf: "step:last" }), "step:last")).toThrow(
+      "put it on the group",
+    );
+    const lb = definition({ kind: "composite", steps: [{ key: "lb", resource: { type: "lb" } }] });
+    expect(() => addStep(lb, call("fix"), { catchOf: "step:lb" })).toThrow("A custom resource step has no catch path");
+  });
+
+  it("writes a loop, its list and how many at a time, and takes it away", () => {
+    let t = setForEach(flow, "step:dns", "items", "inputs.hosts");
+    expect(bp(t).steps![0]).toMatchObject({ key: "dns", for_each: { items: "inputs.hosts" } });
+    expect(Object.keys(bp(t).steps![0]!)).toEqual(["key", "rest", "for_each"]);
+    t = setForEach(t, "step:dns", "parallel", "3");
+    expect(bp(t).steps![0]!.for_each).toEqual({ items: "inputs.hosts", parallel: 3 });
+    t = setForEach(t, "step:dns", "parallel", "1");
+    expect(bp(t).steps![0]!.for_each).toEqual({ items: "inputs.hosts" });
+    t = removeForEach(t, "step:dns");
+    expect(bp(t).steps![0]).not.toHaveProperty("for_each");
+    const waits = definition({ kind: "composite", steps: [{ key: "w", wait: { for: "1h" } }] });
+    expect(() => setForEach(waits, "step:w", "items", "[1]")).toThrow("A wait can't loop");
+    const undone = definition({ kind: "composite", steps: [call("u", { undo: { job_template: "x" } })] });
+    expect(() => setForEach(undone, "step:u", "items", "[1]")).toThrow("A loop has no undo");
+    // A step that can't loop loses its loop.
+    t = setTarget(setForEach(flow, "step:dns", "items", "[1]"), "step:dns", { kind: "wait", ref: "" });
+    expect(bp(t).steps![0]).not.toHaveProperty("for_each");
+  });
+
+  it("turns a step into a wait for a signal, and waits for a name or an event, one taking the other's place", () => {
+    let t = setTarget(definition({ kind: "composite", steps: [call("cab_ok", { with: { a: "1" } })] }), "step:cab_ok", {
+      kind: "signal",
+      ref: "",
+    });
+    expect(bp(t).steps![0]).toEqual({ key: "cab_ok", signal: { name: "cab-ok", timeout: "72h" } });
+    t = setSignalField(t, "step:cab_ok", "event", "provisioning.post");
+    t = setSignalField(t, "step:cab_ok", "when", "item.slug == 'x'");
+    t = setSignalField(t, "step:cab_ok", "on_timeout", "continue");
+    expect(bp(t).steps![0]!.signal).toEqual({
+      event: "provisioning.post",
+      when: "item.slug == 'x'",
+      timeout: "72h",
+      on_timeout: "continue",
+    });
+    t = setSignalField(t, "step:cab_ok", "name", "cab-approved");
+    expect(bp(t).steps![0]!.signal).toEqual({ name: "cab-approved", timeout: "72h", on_timeout: "continue" });
+    t = setSignalField(t, "step:cab_ok", "timeout", "");
+    expect(bp(t).steps![0]!.signal).toEqual({ name: "cab-approved", on_timeout: "continue" });
+  });
+
+  it("follows a key renamed into a loop's list, an event's condition and a catch path", () => {
+    let t = definition({
+      kind: "composite",
+      steps: [
+        call("hosts"),
+        call("agents", {
+          for_each: { items: "steps.hosts.json.list" },
+          catch: [call("fix", { when: "steps.hosts.status == 500" })],
+        }),
+        { key: "ev", signal: { event: "provisioning.post", when: "waiting.steps.hosts.status == 200", timeout: "1h" } },
+      ],
+      on_error: [call("incident", { rest: { method: "POST", url: "https://h.example/${steps.hosts.json.id}" } })],
+    });
+    t = setStepField(t, "step:hosts", "key", "machines");
+    expect(t).not.toContain("steps.hosts");
+    expect(bp(t).steps![1]!.for_each).toEqual({ items: "steps.machines.json.list" });
+    expect((bp(t).steps![1]!.catch as Record<string, unknown>[])[0]!.when).toBe("steps.machines.status == 500");
+    expect(bp(t).on_error![0]!.rest).toMatchObject({ url: "https://h.example/${steps.machines.json.id}" });
   });
 });

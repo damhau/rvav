@@ -243,3 +243,41 @@ describe("a composite's run in the mocks", () => {
     expect(second.steps["step:agent"]!.status).toBe("skipped");
   });
 });
+
+describe("loops, catch paths and signals in the mocks (ADR-0057)", () => {
+  const call = (key: string, extra: Record<string, unknown> = {}) => ({
+    key,
+    rest: { method: "POST", url: "https://itsm.corp.example/api/x" },
+    ...extra,
+  });
+
+  it("waits for a signal until its timeout, and skips what catches a failure that didn't come", async () => {
+    const bp = {
+      kind: "composite",
+      steps: [
+        call("agents", { for_each: { items: "['a', 'b']" }, catch: [call("fix")] }),
+        { key: "cab", signal: { name: "cab-approved", timeout: "1m", on_timeout: "continue" } },
+        { parallel: [call("p1"), call("p2")], catch: [call("tell")] },
+      ],
+      on_error: [call("incident")],
+    };
+    const { r, steps } = await ended((await request(await published("flow-continue", bp))).id);
+    expect(r.status).toBe("succeeded");
+    expect(steps["step:cab"]).toMatchObject({
+      status: "done",
+      system: "wait",
+      detail: "No signal cab-approved came in 1m, so it went on.",
+    });
+    expect(steps["step:fix"]).toMatchObject({ status: "skipped", detail: "Nothing failed before it." });
+    expect(steps["step:tell"]).toMatchObject({ status: "skipped", detail: "Nothing failed before it." });
+    expect(steps["step:incident"]).toMatchObject({ status: "skipped", detail: "Nothing failed." });
+  });
+
+  it("fails a step whose signal didn't come, as the server does", async () => {
+    const bp = { kind: "composite", steps: [{ key: "ev", signal: { event: "provisioning.post", timeout: "1m" } }] };
+    const { r, steps } = await ended((await request(await published("flow-fail", bp))).id);
+    expect(r.status).toBe("failed");
+    expect(steps["step:ev"]!.status).toBe("failed");
+    expect(r.error?.message).toContain("No event provisioning.post came in 1m.");
+  });
+});
