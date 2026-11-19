@@ -142,6 +142,39 @@ the web app isn't seen. A request that fails leaves the deployment
 tainted, to be deleted and requested again by the next apply. Stopping
 Terraform while it waits doesn't stop the request.
 
+### The PowerShell module is a script module
+`powershell/Rvav`: a manifest and one script module on PowerShell 7.2 and
+later (Core only), on Windows, Linux and macOS. It calls the API with
+`Invoke-RestMethod`, without the Go client or a compiled assembly, so
+that it is read, changed and signed as any script, and installs by
+copying a folder. It covers what a person does with rvav: the catalog,
+requests and their waits, deployments, their day-2 actions and delete,
+and approvals. `Invoke-RvavApi` calls the rest of the API as the
+connected user. Configuration is Terraform's.
+
+`Connect-Rvav` takes an API token (a `SecureString`, else `RVAV_TOKEN`)
+and rvav's address (else `RVAV_URL`), as rvavctl does. rvavctl's
+profiles and their browser sign-in aren't read: a person at their desk
+makes a token in the web app. Approvals work as the token's user named
+as approver, not through their groups
+([ADR-0051](0051-command-line.md)).
+
+The cmdlets follow PowerShell's rules: approved verbs (`Get`, `New`,
+`Wait`, `Invoke`, `Remove`, `Approve`, `Deny`), objects with the API's
+fields and a type name per kind for their table views, pipeline input by
+property name (`Get-RvavDeployment … | Get-RvavDeploymentAction`), and
+`-WhatIf` and `-Confirm` on what changes things. Deleting, and an action
+that can't be undone, asks first unless `-Force`. A request sends only
+the inputs given, as Terraform does. `-Wait` reads the request every two
+seconds until it ends; one that doesn't succeed is returned and is an
+error too, with rvav's reason. What rvav refuses is a terminating error
+with its reasons, field by field.
+
+`VERSION=1.4.0 make powershell-dist` zips the module with its version
+set, in the `Rvav/1.4.0/` folder `Install-Module` would make, for a
+`PSModulePath` directory or an internal PowerShell repository. The module
+isn't on the PowerShell Gallery.
+
 ## Consequences
 - A change of the API's write schemas needs the provider's schema changed
   with it, by hand: the provider's attributes aren't generated. Its tests
@@ -158,4 +191,10 @@ Terraform while it waits doesn't stop the request.
   archives aren't signed: a mirror's integrity is its directory's and the
   lock file's checksums.
 - An API token can't approve as a member of an approver group: the
-  provider manages configuration, not approvals.
+  provider manages configuration, not approvals, and the module's
+  approvals are those of a user named as approver.
+- The module's end-to-end test (`TestPowerShell`) runs a script with
+  `pwsh` against the e2e harness, and is skipped where `pwsh` isn't on
+  `PATH`. GitHub's Ubuntu runners have it.
+- The module's cmdlets aren't generated either: a renamed field of the
+  API breaks their test, not their build.

@@ -9,7 +9,7 @@ IMAGES      ?= rvav:scan rvav-web:scan
 AS_ME        = -u $$(id -u):$$(id -g) --group-add $$(stat -c %g /var/run/docker.sock) -e TRIVY_CACHE_DIR=/tmp/trivy
 TRIVY       := aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
 
-.PHONY: check check-quick check-nginx web-quick web-e2e build cli-dist terraform-dist testtest-e2e test-e2e-shard test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
+.PHONY: check check-quick check-nginx web-quick web-e2e build cli-dist terraform-dist powershell-dist testtest-e2e test-e2e-shard test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
 
 check: gen-check lint-spec lint-chart check-nginx vet test test-e2e test-ansible test-python web-check ## Everything CI checks on every push (the browser tests run daily: web-e2e)
 check-quick: gen-check lint-spec vet test web-quick ## The fast part, before a push: no end-to-end, browser, chart, Ansible or Python tests (CI runs them)
@@ -56,6 +56,19 @@ terraform-dist: ## The Terraform provider for Linux, macOS and Windows (amd64, a
 	done
 	@rmdir dist/terraform/build
 	@cd $(TF_MIRROR) && sha256sum terraform-provider-rvav_* > SHA256SUMS && cat SHA256SUMS
+
+# The PowerShell module for a release (ADR-0053): VERSION=1.4.0 make
+# powershell-dist. A module's version is numbers only.
+PS_MODULE := dist/powershell/Rvav/$(VERSION)
+
+powershell-dist: ## The PowerShell module, its version set, as dist/powershell/Rvav-VERSION.zip, with SHA256SUMS
+	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || \
+		{ echo "VERSION=$(VERSION) isn't a version of three numbers: VERSION=1.4.0 make powershell-dist" >&2; exit 1; }
+	@rm -rf dist/powershell && mkdir -p $(PS_MODULE)
+	@cp powershell/Rvav/Rvav.psm1 powershell/Rvav/Rvav.Format.ps1xml $(PS_MODULE)/
+	@sed "s/^\( *ModuleVersion *= *\)'0\.0\.0'/\1'$(VERSION)'/" powershell/Rvav/Rvav.psd1 > $(PS_MODULE)/Rvav.psd1
+	@grep -q "ModuleVersion *= *'$(VERSION)'" $(PS_MODULE)/Rvav.psd1
+	@cd dist/powershell && zip -qr Rvav-$(VERSION).zip Rvav && rm -rf Rvav && sha256sum Rvav-$(VERSION).zip > SHA256SUMS && cat SHA256SUMS
 
 test: ## Unit tests, plus vcsim and workflow tests (no database needed)
 	$(GO) test -short ./...
