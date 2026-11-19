@@ -238,8 +238,10 @@ their times and tasks.
     may have reached its service: when in doubt, check there first. A step
     that was rejected asks again, and its first answer stays on the page. A
     wait starts again, with its whole time.
-  - **Roll back:** removes the VMs, addresses and DNS records it made. A
-    composite's AWX, workflow and REST call steps aren't undone by it.
+  - **Roll back:** removes the VMs, addresses and DNS records it made,
+    and first deletes its custom resources with their type's delete
+    step. A composite's AWX, workflow and REST call steps aren't undone
+    by it.
   - Once rolled back (by you, or by a composite that undoes what it built
     when it fails), there is nothing left to roll back: **Retry** runs it
     all again, without a new approval. The rollback gave back the
@@ -297,10 +299,13 @@ and:
 - **Overview:** its VMs, their addresses and DNS records, and their state
   in vCenter, live; its details, lease and placement. A VM whose address
   comes from DHCP shows the address it reports, once it has one, and a VM
-  with an IPv6 address lists it beside its IPv4 one;
+  with an IPv6 address lists it beside its IPv4 one. Under **Custom
+  resources**, what its item's resource types made, such as a load
+  balancer: each with its type, its key and its properties;
 - **Topology:** what it holds, drawn as a graph: its VMs, the networks and
-  NSX segments their adapters are on, the security groups they are in, and
-  the firewall rules into those groups;
+  NSX segments their adapters are on, the security groups they are in, the
+  firewall rules into those groups, and its custom resources, after what
+  they were made from;
 - **History:** the day-2 actions and updates that ran on it (the request
   that created it is under **Details**);
 - **Inputs:** what it was requested with, or last updated with.
@@ -329,7 +334,10 @@ or its node on **Topology**. Its properties open in a side panel:
 
 **Actions**, at the top of the page, lists every action that applies, by
 group. For a deployment with several VMs, each VM's actions are in a
-submenu with its name, and in the **⋯** menu of its row. An action you
+submenu with its name, and in the **⋯** menu of its row. A custom
+resource's actions are in a submenu with its name under **Custom
+resources**, and in its menu on the **Overview**: its type's day-2
+actions, chosen by an administrator. An action you
 can't run now says why. They depend on the VM and your role, and run as
 requests, with their own steps:
 - **Power:** on, off, shut down or restart the guest, reset, suspend. A
@@ -468,6 +476,15 @@ adapter**. On a VM built before rvav recorded its adapters, rvav goes by
 their places: check the adapters the preview names. When an update failed
 part-way, update the deployment again: rvav adds a disk or an adapter only
 to the VMs that don't have it yet.
+
+When the item has custom resources, such as a load balancer, the update
+makes, updates and deletes them with their type's steps, once the VMs are
+built: **What the update does** lists **Add**, **Update** or **Delete**
+and the resource's name, a deletion marked **Deletes**. A resource is
+updated only when its inputs may change. If its type can't update its
+resources, the change is under **Can't be changed in place**: ask an
+administrator to give the type an update step, or request a new
+deployment. The custom resources a composite made stay as they are.
 
 When the item's form has a VM count, change it to scale out or in:
 - **Scale out:** the new VMs are named and addressed as in a new request,

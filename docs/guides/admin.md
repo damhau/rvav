@@ -1120,8 +1120,8 @@ goes through the same checks as a new request:
   | `update.from_version`, `update.to_version` | The version numbers, such as `3`. |
   | `update.vcpu`, `update.memory_gb`, `update.storage_gb`, `update.vm_count` | The net change, negative when the update frees some. |
   | `update.added`, `update.removed` | The number of VMs added and removed. |
-  | `update.changes` | The kinds of change, such as `["resize", "vm_add"]`: `resize`, `disk_add`, `disk_extend`, `disk_remove`, `nic_add`, `nic_move`, `nic_remove`, `vm_add`, `vm_remove`, `job`. |
-  | `update.destructive` | `true` when the update deletes a disk, an adapter or a VM. |
+  | `update.changes` | The kinds of change, such as `["resize", "vm_add"]`: `resize`, `disk_add`, `disk_extend`, `disk_remove`, `nic_add`, `nic_move`, `nic_remove`, `vm_add`, `vm_remove`, `job`, and for custom resources `resource_add`, `resource_update`, `resource_remove` ([ADR-0056](../adr/0056-custom-resource-types.md)). |
+  | `update.destructive` | `true` when the update deletes a disk, an adapter, a VM or a custom resource. |
 
   On a new request, the `update` numbers are 0 and its list is empty, so
   conditions you wrote before keep their meaning. For example, to ask for
@@ -1140,6 +1140,16 @@ computed again from the new inputs, and its validations run on submit, as
 for a new request. Changes that need a VM built again are refused with
 their reason, including another template, cluster, datastore or network.
 Users then delete the deployment and request it again.
+
+An update also makes, updates and deletes the deployment's custom
+resources with their type's steps
+([ADR-0056](../adr/0056-custom-resource-types.md)). Those the new version
+adds are made once the VMs are built. Those whose inputs may change are
+updated, and when their type has no update step, the update is refused.
+Those it
+drops are deleted, before any VM the update removes. A resource whose
+type changes is made under the new type before the old one is deleted. A
+composite's resources stay as they are.
 
 An update matches the extra disks of the deployment's version and the new
 one by their `key` when every extra disk of both versions has one, else
@@ -1192,10 +1202,12 @@ be deleted: withdraw it instead.
 
 An item is a form and a blueprint
 ([service-catalog.md](../service-catalog.md)):
-- **a VM blueprint:** one VM or several, with their guest settings;
+- **a VM blueprint:** one VM or several, with their guest settings, and
+  with components, custom resources of your
+  [resource types](#define-a-resource-type);
 - **an AWX job or workflow:** imported from AWX's templates with the
   catalog label, their survey becoming the form;
-- **a composite:** VMs, jobs, custom workflows, REST calls and waits for a person, a time or a condition in steps;
+- **a composite:** VMs, jobs, custom workflows, custom resources, REST calls and waits for a person, a time or a condition in steps;
 - **a custom workflow**, run by your own worker.
 
 An item's page has its main action in its header: **Publish** the
@@ -1687,10 +1699,15 @@ sign it, GitLab sends it as its token.
   - The **Topic** list groups the topics by what their events are about
     ([ADR-0049](../adr/0049-event-topics.md)): a request; each of its VMs,
     from its placement to its deletion, with vRA's names
-    (`compute.provision.post`); each of its approval levels, asked and
-    decided; a deployment's lease; a project, created or changed.
+    (`compute.provision.post`); each of its custom resources, made and
+    deleted (`custom.create.post`,
+    [ADR-0056](../adr/0056-custom-resource-types.md)); each of its
+    approval levels, asked and decided; a deployment's lease; a project,
+    created or changed.
   - A condition reads the event: on a VM's topic, the VM
-    (`machine.placement.cluster == "GVA-DEV-CL01"`); on an approval's, the
+    (`machine.placement.cluster == "GVA-DEV-CL01"`); on a custom
+    resource's, the resource
+    (`custom_resource.type.key == "load-balancer"`); on an approval's, the
     level (`approval.status == "rejected"`); on a project's, what changed
     (`"cost_center" in changes`).
   - A **blocking** subscription holds a request until it answers, and can
@@ -1703,11 +1720,15 @@ sign it, GitLab sends it as its token.
 - **Custom workflows:** your own Temporal workflows, on your own task
   queue, offered as items or composite steps
   ([custom-workflows.md](../custom-workflows.md)).
+- **Resource types:** what rvav doesn't build itself, such as load
+  balancers, made and deleted by your custom workflows or AWX templates,
+  and kept in deployments beside their VMs
+  ([define a resource type](#define-a-resource-type)).
 
 Each of these pages is a list. A row's menu changes the record in a side
 panel and turns it off or on (a day-2 action is offered or not). A
-subscription or custom workflow can also be removed from its menu: rvav
-first says what stops. A subscription's row opens its page, where
+subscription, custom workflow or resource type can also be removed from
+its menu: rvav first says what stops. A subscription's row opens its page, where
 **Change subscription** is the main action and a menu has the rest.
 
 ### Let a subscription name, place or address VMs
@@ -1793,6 +1814,78 @@ An action's form differs from a catalog item's in these ways:
 If rvav refuses to turn the form on, the designer marks the fields to
 fix. To go back to the survey's form, select **Turn off**. To delete the
 form, select **Drop the form** in the page's menu.
+
+### Define a resource type
+
+A resource type lets blueprints and composites make what rvav doesn't
+build itself, such as a load balancer or a DNS alias, with your custom
+workflows or AWX templates
+([ADR-0056](../adr/0056-custom-resource-types.md)). Its resources sit in
+their deployment beside its VMs, with their own properties and day-2
+actions, and deleting the deployment deletes them. Administrators define
+types; auditors read them.
+
+Before you start, have what makes and deletes a resource ready: custom
+workflows registered with the usage **Resource type**
+([custom-workflows.md](../custom-workflows.md#4-register-it)), or AWX job
+templates. To define a type:
+
+1. Go to **Administration › Resource types** and select **New resource
+   type**.
+2. Enter a **Key**, the type's name in blueprints, such as
+   `load-balancer`, and a **Title**. You can't change the key later.
+3. Under **Its life**, choose what runs each step, a **Custom workflow**
+   or an **AWX template**, and which one:
+   - **Creates it** and **Deletes it** are required.
+   - **Updates it** is optional. Without it, an update of a deployment
+     that changes a resource's inputs is refused.
+   - **Reads it again** is optional. It runs after each day-2 action on
+     a resource, and what it returns replaces the resource's properties.
+4. In **Property schema (JSON Schema)**, describe the properties that
+   **Creates it** returns, as an object. The deployment's page labels
+   them by their `title`.
+5. Under **Day-2 actions on its resources**, select the actions to offer
+   on its resources.
+6. Select **Save resource type**.
+
+What each step gets and returns:
+
+- `create` and `update` get the inputs the blueprint or the composite
+  step binds; `delete` and `read` get the resource's properties.
+- A custom workflow gets them in its context's `inputs`, and the
+  resource in `resource`. Its result is the resource's properties.
+- An AWX template gets them as extra variables, and the resource in
+  `rvav.resource`. It runs on its own inventory, with no limit. It
+  returns the properties with `set_stats`:
+
+  ```yaml
+  - name: Give rvav the load balancer's properties
+    ansible.builtin.set_stats:
+      data:
+        vip: "{{ lb.vip }}"
+        pool: "{{ lb.pool }}"
+  ```
+- A `name` in the result names the resource; else its `name` input does,
+  else rvav names it `<deployment>-<key>`.
+
+An action the type lists that is already offered on VMs or deployments
+is offered on its resources too. To offer an action only on the type's
+resources, list a custom workflow registered and on as a day-2 action,
+with **Offer it on deployments** cleared. An AWX action is offered on the
+VMs or deployments it is set for as well; one that is off, or whose
+template AWX no longer has, is offered nowhere.
+
+A workflow action gets the resource in its context's `resource`, an AWX
+action in `rvav.resource`. An AWX action on a custom resource runs on its
+template's own inventory, with no limit.
+
+A change to a type applies to the resources made before it: they keep
+their properties, and the type's steps as they are now update, read and
+delete them. To stop new requests and updates of the items that use a
+type, clear **Items may use it**, or select **Turn off** in its row's
+menu: its resources keep their actions and are still deleted with their
+deployments. **Remove** is unavailable while a deployment has a resource
+of the type or an item version names it.
 
 ## Existing VMs and EfficientIP
 

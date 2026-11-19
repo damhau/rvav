@@ -20,6 +20,7 @@ people or needs compensation. Most glue is simpler:
 | Steps that depend on a condition, or the cases of a switch | A branch in a composite ([ADR-0033](adr/0033-composite-step-kinds.md)) |
 | Tell the requester, the owner, a group or people something during a run | A step that sends a message in a composite ([ADR-0033](adr/0033-composite-step-kinds.md)) |
 | Call AD, DNS or backup tools, or an API with loops or paging | An AWX job template |
+| Make something rvav doesn't build, such as a load balancer, kept in the deployment and deleted with it | A resource type, whose steps are custom workflows or AWX templates ([ADR-0056](adr/0056-custom-resource-types.md)) |
 | React to requests, approvals, provisioning (each VM too), day-2 actions, deletions, leases, projects | A subscription: webhook or AWX template ([ADR-0021](adr/0021-event-subscriptions.md), [ADR-0049](adr/0049-event-topics.md)) |
 | Waiting for an event, days of back and forth, compensation, decisions that nest, many systems | A custom workflow |
 
@@ -94,6 +95,7 @@ decode it leniently. The helpers do: Python keeps unknown fields in
 | `inputs` | The form, validated against the registered input schema. A secret field arrives as `{"$secret": "<field>"}`: its value stays out of workflow histories and goes only to AWX jobs and cloud-init (S14.6). A composite's conditions and bindings see that marker too, so they can't test or transform a secret input. |
 | `steps` | A composite's earlier steps' outputs |
 | `event` | A subscription's event (`rvav.event.v1`); null otherwise |
+| `resource` | For a resource type's step: `id`, `type` (`key`, `title`), `key`, `name`, `deployment_id`, `phase` (`create`, `update`, `read`, `delete`), `inputs` and `properties`. For a day-2 action on a custom resource: `id`, `type`, `key`, `name`, `inputs` and `properties`. Null otherwise. Go: `rvavflow.Context.Resource`; Python: `Context.resource` ([ADR-0056](adr/0056-custom-resource-types.md)) |
 
 ### What rvav does for it
 
@@ -134,6 +136,9 @@ decode it leniently. The helpers do: Python keeps unknown fields in
   places or addresses the VM, which the context's `machine` describes
   ([ADR-0054](adr/0054-subscriptions-that-change-the-request.md)). As
   its recovery target, only `outcome` and `reason` are read.
+- As a resource type's `create`, `update` or `read`, the result is the
+  resource's properties, which later steps read; a `name` in it names
+  the resource.
 - An error fails the step and the request, with the error's message. Use
   non-retryable application errors for decisions ("rejected") and let
   Temporal retry the rest.
@@ -190,6 +195,12 @@ with `POST /api/v1/admin/workflows`:
     on retries.
   - **Composite step:** `workflow: <key>` in a composite's steps, with
     `with` bindings and an optional `undo`.
+  - **Resource type:** a step of a resource type, under Administration →
+    Resource types: it makes, updates, reads or deletes the type's
+    resources ([ADR-0056](adr/0056-custom-resource-types.md)). `create`
+    and `update` get the inputs the blueprint or the composite step
+    binds, `delete` and `read` the resource's properties; rvav doesn't
+    check them against the input schema.
 
 Auditors read registrations, with their runs not ended and what uses
 them. A registration in use, or with runs, can only be disabled: in its

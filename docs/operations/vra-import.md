@@ -266,6 +266,7 @@ check it) or *unmapped* (left out).
 | `Cloud.NSX.Network`, `Cloud.Network` or `Cloud.vSphere.Network`, `networkType` routed, outbound or private | An NSX segment made for each deployment (`segments`; the VMs' adapters on it, the first by the `network` binding, the others as `nics`). A placement rule says where: its Tier-1 and EfficientIP block ([ADR-0028](../adr/0028-nsx-networking.md)). A private network gets the rule's Tier-1 too. When every VM is on one, the form asks for no network. Its constraint tags chose vRA's network profile: they aren't mapped. |
 | `Cloud.SecurityGroup`, new | A security group made for each deployment (`security_groups`), joined by the machines whose networks name it. Its inbound rules from any or another of its groups, on a service or a usual port (22, 80, 443, 1433, 3306, 3389, 5432, ICMP), carry over; outbound rules, and those from addresses or other ports, are reported. |
 | `Cloud.SecurityGroup`, existing | Reported: rvav can't tell its NSX group from vRA's constraint tags. Add it to `groups` as `nsx:<group ID>`. |
+| `Custom.*` (a vRA custom resource) | Reported as unmapped, left out: its vRO workflows or ABX actions aren't imported. Define an rvav resource type (**Administration › Resource types**) whose custom workflows or AWX templates make and delete it, then add the resource to the blueprint's `resources` ([ADR-0056](../adr/0056-custom-resource-types.md)). |
 | Load balancers, other types | Reported, left out. An AWX job in a composite item can do what they did. |
 
 ### Image profiles

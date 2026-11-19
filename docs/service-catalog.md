@@ -9,7 +9,7 @@ The goal is parity with vRA Service Broker, plus the UX it never delivered.
 | `vm_blueprint` | Authored in the app | Provisions one or more VMs natively, with optional AWX post-config steps |
 | `awx_job_template` | Imported from AWX | Launches a job template with inputs from the form |
 | `awx_workflow` | Imported from AWX | Launches a workflow job template |
-| `composite` | Authored in the app | Ordered or parallel steps combining other items (VM, AWX, custom workflow), AWX templates, custom workflows, REST calls and waits for a person, a time or a condition, inputs bound to earlier steps' outputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md), [ADR-0033](adr/0033-composite-step-kinds.md)) |
+| `composite` | Authored in the app | Ordered or parallel steps combining other items (VM, AWX, custom workflow), AWX templates, custom workflows, custom resources, REST calls and waits for a person, a time or a condition, inputs bound to earlier steps' outputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md), [ADR-0033](adr/0033-composite-step-kinds.md), [ADR-0056](adr/0056-custom-resource-types.md)) |
 | `workflow` | Authored in the app | Starts a registered custom Temporal workflow with the form's inputs ([ADR-0022](adr/0022-custom-workflows-and-composites.md)) |
 
 A composite's blueprint, in its Definition tab:
@@ -41,7 +41,8 @@ its VMs are planned at submit), the others may use
 `steps.<key>`: a VM's `name`, `fqdn`, `ip`, `moref` (and `vms`), an AWX
 job's `job_id`, a workflow's result, a REST call's `status` and `json`, a
 person's `answered`, `by`, `comment` and `answer`, a wait's `until`, a poll's
-`status`, `json` and `met`, a branch's `case`, a message's `told`.
+`status`, `json` and `met`, a branch's `case`, a message's `told`, a custom
+resource's properties.
 
 An AWX step's `with` value, or its undo's, can be a stored secret:
 `with: {password: "${secret.db-admin}"}`, the whole value. The job gets the
@@ -282,6 +283,39 @@ there's nobody to tell when it runs, it goes on and says so. Later steps read
 `steps.<key>.told`, how many it told, never what it said. The timeline says `Message
 sent.`, and a requester's form only whether the requester or the owner is told.
 
+#### A custom resource step
+Makes a resource of a resource type, with the type's create step, in the
+deployment of a VM step before it
+([ADR-0056](adr/0056-custom-resource-types.md)). After the `vm` step of
+the composite above:
+
+```yaml
+  - key: lb
+    resource: {type: load-balancer, deployment: vm}
+    with: {members: "[steps.vm.ip]", port: 443}
+```
+
+| Field | What it is |
+|---|---|
+| `resource.type` | The resource type's key. Required. Publishing needs it to exist and be on |
+| `resource.deployment` | The key of the VM step whose deployment the resource joins. Optional when only one VM step comes before it |
+| `with` | The create step's inputs, CEL over `inputs` and `steps.<key>` as in any step |
+| `title` | Its title on the timeline: the type's by default |
+
+It may have a `when`, and may sit in a parallel group or a branch, after
+the VM step it joins. It has no `undo`: a custom resource is undone by its
+type's delete, and a rollback deletes it. Later steps read its properties
+as `steps.<key>.<property>`. The resource belongs to the VM step's
+deployment: it shows there, its type's actions run on it, and deleting
+the deployment deletes it. An update of that deployment leaves it as it
+is.
+
+In the designer, the resource types that are on are under **Custom
+resources**, with the inputs of their create step and the properties of
+their property schema. Such a step has no undo, and its **Deployment**
+names the VM step it joins when several come before it. The canvas marks
+it **Resource**.
+
 #### A run's data
 A request's page shows what each step was given and what it gave
 ([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)). To read a
@@ -351,6 +385,7 @@ expression's cost limit.
 | `awx_templates` | Post-configuration AWX templates, by key |
 | `rollback_on_failure` | Delete what was built when a step fails |
 | `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, `depends_on` (keys of the components it is built after), and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `ipam`, `ipv6`, `tags`, `storage_policy`, `provisioning`, `linked_clone`, `groups`, `constraints`, `folder`, `prevent_delete`, which win over the blueprint's (guest field by field, bindings key by key, constraints kind by kind), and `properties`, added to the blueprint's key by key |
+| `resources` | With `components` only: the deployment's custom resources, made once its VMs are built ([ADR-0056](adr/0056-custom-resource-types.md)): `key` (as a component's, unique among components and resources), `type` (a resource type's key), `title`, `with` (its create step's inputs). See **Custom resources** below |
 | `deployment_name` | With components, the deployment's naming template, without `{seq}`; else the item's name and the request number. A name the project's live deployments already hold gets the request number after it. A name the requester gives wins ([ADR-0046](adr/0046-deployment-names-and-versions.md)) |
 
 Without `components` the blueprint builds one VM, and a request for
@@ -547,6 +582,52 @@ components:
 - When you save the item, rvav refuses a reference to a component that
   doesn't exist, a `depends_on` naming one, and components that would
   each be built after the other, with the line in the YAML.
+
+**Custom resources** ([ADR-0056](adr/0056-custom-resource-types.md)): a
+blueprint with components can list resources of the resource types
+administrators define, such as a load balancer in front of its web
+servers. Each is made by its type's create step once every VM is built,
+one at a time in list order, and kept in the deployment beside its VMs:
+
+```yaml
+components:
+  - key: web
+    title: Web servers
+    count: 2
+resources:
+  - key: lb
+    title: Load balancer
+    type: load-balancer
+    with:
+      name: deployment.name + "-lb"
+      members: components.web.addresses
+      port: 443
+  - key: dns
+    type: dns-alias
+    with: {target: resources.lb.vip}
+```
+
+`with` strings are CEL over `inputs`, `environment`, `project`,
+`propgroup`, `deployment` (`id`, `name`), `components` (as in
+**References between components**) and `resources`, the properties of
+the resources listed before it; other values are taken as they are.
+A resource has no `when` and no `count`. Its type's create returns its
+properties, and its name: the result's `name`, else the `name` input,
+else `<deployment>-<key>`.
+
+- When you save the item, rvav refuses resources in a blueprint without
+  components, a key a component or another resource has, a missing
+  `type`, and a reference to a component that doesn't exist or to a
+  resource not listed before. A draft may name a type that doesn't exist
+  yet: publishing needs it to exist and be on.
+- A request is refused while the type is turned off.
+- When the request fails and rolls back, its custom resources are deleted
+  first, the last made first. Deleting the deployment deletes them before
+  its VMs.
+- An update makes the resources a new version adds, updates those whose
+  inputs may change with the type's update step, and deletes those it
+  drops. A type without an update step refuses an update that changes a
+  resource's inputs.
 
 **NSX** ([ADR-0028](adr/0028-nsx-networking.md)): an item can put its VMs
 on a segment made for each deployment, in groups made for it with the
@@ -1457,9 +1538,9 @@ warnings it went on despite, and the audit log has them.
   bulk actions.
 - Shared with all the project's members, or shown to their owners only
   (project admins, supervisors and auditors still see all of them).
-- Detail page: summary, resources (VMs with live power state, IPs, DNS names),
-  topology diagram, inputs, **timeline** of all requests and day-2 runs, lease,
-  audit.
+- Detail page: summary, resources (VMs with live power state, IPs, DNS names;
+  custom resources with their type and properties), topology diagram, inputs,
+  **timeline** of all requests and day-2 runs, lease, audit.
 - Edit the name and description, change owner or project (with quota,
   deployment limit and name checks).
 - Onboarding: adopt existing vCenter VMs into a deployment.
@@ -1486,6 +1567,20 @@ only).
   as `limit` plus `extra_vars.rvav` context (deployment, resource,
   project, requester).
 
+### On custom resources
+A resource type lists the day-2 actions offered on its resources
+([ADR-0056](adr/0056-custom-resource-types.md)): custom workflows
+(`wf.<key>`) and AWX actions (`awx.<template>`). An action offered on VMs
+or deployments is offered on the type's resources too; a custom workflow
+registered as a day-2 action but not offered runs only on them.
+- A workflow gets the resource in its context's `resource`; an AWX job in
+  `extra_vars.rvav.resource`, on its template's own inventory, with no
+  limit.
+- When the type has a read step, it runs after the action, and what it
+  returns replaces the resource's properties.
+- Deleting the deployment runs each resource's type's delete step, before
+  its VMs are deleted.
+
 ### Common to all
 - Confirmation dialogs with a clear preview of what will change.
 - Optional approval through the approval policy.
@@ -1501,8 +1596,10 @@ only).
 | `provisioning.pre`, `.post` | Around provisioning |
 | `compute.allocation.pre`, `network.configure` | Each VM, placed and named, then its network configured, before anything is built |
 | `compute.provision.pre`, `.post` | Around each VM's cloning |
+| `custom.create.pre`, `.post` | Around each custom resource's creation ([ADR-0056](adr/0056-custom-resource-types.md)) |
 | `day2.pre`, `.post` | Around each day-2 action |
 | `delete.pre`, `.post` | Around deletion |
+| `custom.delete.pre`, `.post` | Around each custom resource's deletion: by a deletion, an update or a rollback |
 | `compute.removal.pre`, `.post` | Around each VM's deletion |
 | `lease.expiring`, `lease.expired` | Lease lifecycle |
 | `project.created`, `project.updated` | A project is created or its settings change |

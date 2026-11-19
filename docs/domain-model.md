@@ -117,7 +117,11 @@ Subscription (event → awx template | webhook)
   `vsphere.drs_rule`), external ID (VM MoRef plus instance UUID, IP ID, ...),
   properties (JSONB), sync state (`in_sync` | `drifted` | `missing`). A VM's
   properties keep it as rvav last left it, and how it differs now (drift,
-  [ADR-0025](adr/0025-drift.md)).
+  [ADR-0025](adr/0025-drift.md)). A `custom` resource was made by a
+  resource type's create step: its properties keep its type, its key in
+  the blueprint or composite step, the inputs it was made or last updated
+  with, and what the type's steps returned
+  ([ADR-0056](adr/0056-custom-resource-types.md)).
 - **InventoryVM**: cached vCenter inventory maintained by `rvav-sync`, including
   VMs not managed by the app, with their folder and tags. Administrators
   adopt those into deployments with no request behind them
@@ -165,6 +169,12 @@ Subscription (event → awx template | webhook)
   `compute.provision.post`, `approval.decided`, `project.updated`;
   [ADR-0049](adr/0049-event-topics.md)), condition (CEL), target (AWX
   template, webhook or custom workflow), `blocking`, `timeout`, priority.
+- **ResourceType**: key, title, description, the custom workflow or AWX
+  template of each step (`create` and `delete`, optional `update` and
+  `read`), a property schema (JSON Schema), the day-2 actions offered on
+  its resources, and whether items may use it. Blueprints list resources
+  of it under `resources`, composites in a `resource` step
+  ([ADR-0056](adr/0056-custom-resource-types.md)).
 - **OutboxEvent**: reliable delivery for webhooks and notifications.
 
 ### Audit

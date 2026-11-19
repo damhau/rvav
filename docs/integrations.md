@@ -163,6 +163,19 @@ checked against a real AWX by contract tests ([deploy/awx](../deploy/awx/README.
   must also prompt for *Inventory*: rvav launches them with its own
   inventory, the one it has just refreshed, and refuses to launch one that
   doesn't prompt ([ADR-0017](adr/0017-awx-inventory.md)).
+- Templates that are steps of a resource type
+  ([ADR-0056](adr/0056-custom-resource-types.md)) run on their own
+  inventory, with no limit. They get the resource's inputs as extra
+  variables (on delete and read, its properties), and `rvav` with `request_id`,
+  `request_number`, `project`, `environment`, `requester`,
+  `deployment_id`, `deployment` and `resource` (`id`, `type`, `key`,
+  `name`, `deployment_id`, `phase`, `inputs`, `properties`). They give
+  the resource's properties back with `set_stats`: rvav reads the job's
+  artifacts when it ends.
+  ```yaml
+  - ansible.builtin.set_stats:
+      data: {vip: "{{ lb.vip }}", name: "{{ rvav.deployment }}-lb"}
+  ```
 - `extra_vars` sent to AWX:
   ```yaml
   # user inputs mapped from the form
@@ -190,7 +203,10 @@ actions in the Automation group, with their form from the survey; an
 administrator chooses whether they run on VMs or whole deployments, a CEL
 condition for where they are offered, and can turn them off. A run refreshes
 the inventory and launches the template on rvav's inventory with the VM as
-`limit` ([ADR-0018](adr/0018-awx-day2-actions.md)). An administrator can
+`limit` ([ADR-0018](adr/0018-awx-day2-actions.md)). On a custom resource,
+it runs on the template's own inventory with no limit, and gets the
+resource in `rvav.resource`
+([ADR-0056](adr/0056-custom-resource-types.md)). An administrator can
 also design the action's form in rvav's form designer: the job then gets the
 inputs that form leaves as its extra variables, and AWX still checks them
 against the survey ([ADR-0050](adr/0050-designed-day2-forms.md)).
@@ -383,6 +399,7 @@ Each topic's events are about one thing, and their `data` says which
 |---|---|---|
 | `request.submitted`, `provisioning.pre`, `provisioning.post`, `day2.pre`, `day2.post`, `delete.pre`, `delete.post` | Request | Nothing more |
 | `compute.allocation.pre`, `network.configure`, `compute.provision.pre`, `compute.provision.post`, `compute.removal.pre`, `compute.removal.post` | VM of a request | `machine`: its name, placement, networks and addresses, and its `moref` once cloned |
+| `custom.create.pre`, `custom.create.post`, `custom.delete.pre`, `custom.delete.post` | Custom resource of a request ([ADR-0056](adr/0056-custom-resource-types.md)) | `custom_resource`: its `id`, `type` (`key`, `title`), `key`, `name`, `deployment_id`, `phase`, `inputs`, and `properties` once made; `deployment` is the resource's |
 | `approval.requested`, `approval.decided` | Approval level of a request | `approval`: its approvers, status and due time, and who decided it, with their comment |
 | `lease.expiring`, `lease.expired` | Deployment | Nothing more; `request` is null |
 | `project.created`, `project.updated` | Project | `project` with its admins, `actor`, and `changes`: the settings changed. `request` and `deployment` are null |
