@@ -267,7 +267,7 @@ function plan(db: Db, st: State): S["VraPlan"] {
     policies: [
       { vra_id: "pol-approval-prd", name: "Production needs a lead", type: "approval", becomes: "An approval policy for catalog requests, in every project (Administration › Policies › Approvals)",
         notes: [{ level: "info", where: "criteria", text: 'Condition: environment == "prd"' }, { level: "info", where: "approvers", text: "Level 1: infra-leads@corp.example, any of them." }] },
-      { vra_id: "pol-lease-dev", name: "Development leases", type: "lease", vra_project: "Web Platform", becomes: "The lease policy of the project Web Platform maps to (Administration › Policies › Leases), for each of its environments",
+      { vra_id: "pol-lease-dev", name: "Development leases", type: "lease", vra_project: "Web Platform", becomes: "The lease policy of the project Web Platform maps to (Administration › Policies › Lease), for each of its environments",
         enforcement: "soft", notes: [{ level: "info", where: "projectId", text: "For one project: its project admins can write it in rvav (Administration › Policies), unless an administrator does, and a global hard policy still wins over it." },
           { level: "info", where: "enforcementType", text: "Soft: set the lease policy's enforcement to soft. Going beyond it warns the requester, who may go on." },
           { level: "warning", where: "enforcementType", text: "A project's override of a hard environment lease can't be soft: only an administrator can make the environment's lease soft." },
