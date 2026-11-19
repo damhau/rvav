@@ -55,6 +55,19 @@ func (t *Temporal) Signal(ctx context.Context, workflowID, name string, arg any)
 	return err
 }
 
+// StartOnboarding starts a run of an onboarding plan.
+func (t *Temporal) StartOnboarding(ctx context.Context, runID string) error {
+	_, err := t.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+		ID:        OnboardingWorkflowID(runID),
+		TaskQueue: t.TaskQueue,
+	}, OnboardingRun, runID)
+	var started *serviceerror.WorkflowExecutionAlreadyStarted
+	if errors.As(err, &started) {
+		return nil
+	}
+	return err
+}
+
 func (t *Temporal) Rollback(ctx context.Context, requestID string) error {
 	_, err := t.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 		ID:        WorkflowID(requestID),
@@ -78,6 +91,7 @@ func NewDrainingWorker(c client.Client, taskQueue string, a *Activities, stopTim
 	w.RegisterWorkflow(Provision)
 	w.RegisterWorkflow(Housekeeping)
 	w.RegisterWorkflow(RollbackWorkflow)
+	w.RegisterWorkflow(OnboardingRun)
 	w.RegisterActivity(a)
 	RegisterContract(w, a)
 	return w

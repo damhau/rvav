@@ -39,6 +39,9 @@ const (
 	File = "fil"
 	// An image uploaded for image fields (ADR-0040).
 	Image = "img"
+	// Onboarding plans and their runs (X1.5).
+	OnboardingPlan = "obp"
+	OnboardingRun  = "obr"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

@@ -4019,6 +4019,14 @@ paths:
           in: query
           description: Part of the VM's name, address or guest host name.
           schema: { type: string, maxLength: 200 }
+        - name: folder
+          in: query
+          description: A VM folder's path, such as /GVA/vm/legacy. VMs in it and in the folders below it.
+          schema: { type: string, maxLength: 500 }
+        - name: tag
+          in: query
+          description: A vSphere tag the VM has, as category/tag.
+          schema: { type: string, maxLength: 200 }
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Cursor"
       responses:
@@ -4055,6 +4063,166 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /admin/onboarding/into:
+    post:
+      tags: [admin]
+      operationId: adoptVmsInto
+      summary: Adopt existing VMs into a deployment rvav has, as VMs of one of its components (X1.5)
+      description: |
+        The VMs take the deployment's project, environment, owner, item and
+        lease. They must fit its blueprint: a component that takes them
+        (its count, raised in the deployment's inputs when an input sets
+        it), their OS family, names its other VMs don't have. What doesn't
+        fit is refused per VM with the reason, and nothing is adopted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OnboardingIntoDraft" }
+      responses:
+        "200":
+          description: Adopted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /admin/onboarding/plans:
+    get:
+      tags: [admin]
+      operationId: listOnboardingPlans
+      summary: Saved onboarding plans, with how many VMs each matches now and its last run (X1.5)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingPlanList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createOnboardingPlan
+      summary: Save an onboarding plan, a filter and where what it matches goes
+      description: |
+        A plan runs by hand, and on its schedule when it has one. Each run
+        adopts the VMs its filter matches that no deployment has, and
+        skips the others with the reason.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OnboardingPlanWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingPlan" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /admin/onboarding/plans/{planId}:
+    parameters:
+      - { name: planId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [admin]
+      operationId: getOnboardingPlan
+      summary: An onboarding plan
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingPlan" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: updateOnboardingPlan
+      summary: Change an onboarding plan; its next runs follow it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OnboardingPlanWrite" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingPlan" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteOnboardingPlan
+      summary: Delete an onboarding plan and its run history; what it adopted stays
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/onboarding/plans/{planId}/runs:
+    parameters:
+      - { name: planId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [admin]
+      operationId: listOnboardingRuns
+      summary: A plan's runs, the latest first (the last 20 are kept)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingRunList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [admin]
+      operationId: runOnboardingPlan
+      summary: Run a plan now, in the background
+      description: |
+        The run is a Temporal workflow: follow it with `GET
+        /admin/onboarding/runs/{runId}`. A plan runs once at a time: 409
+        while a run of it goes on.
+      responses:
+        "202":
+          description: Started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingRun" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /admin/onboarding/runs/{runId}:
+    parameters:
+      - { name: runId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [admin]
+      operationId: getOnboardingRun
+      summary: A run of a plan, with what it did to each VM it matched
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingRun" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /admin/vra:
     get:
       tags: [admin]
@@ -7990,6 +8158,8 @@ components:
         host: { type: string }
         ip_address: { type: string }
         hostname: { type: string, description: "The guest's host name, as VMware Tools reports it." }
+        folder: { type: string, description: "Its VM folder's path." }
+        tags: { type: array, items: { type: string }, description: "Its vSphere tags, as category/tag." }
 
     OnboardingVmPage:
       type: object
@@ -8033,6 +8203,172 @@ components:
           description: |
             All the VMs in one deployment of this name. Without it, each VM
             is a deployment of its own, named after it.
+        component:
+          type: string
+          description: |
+            The component of the item's blueprint the VMs are VMs of. Needed
+            when it has more than one; a blueprint without components has
+            none.
+        inputs:
+          type: object
+          additionalProperties: true
+          description: |
+            Inputs of the item's form recorded on the deployments, so that
+            their first update compares with them rather than the form's
+            defaults. Fields of the form only, and no secret ones. An input
+            that sets the component's count is set to its VMs.
+
+    OnboardingIntoDraft:
+      type: object
+      required: [deployment_id, vms]
+      properties:
+        deployment_id: { type: string, description: "A deployment of a VM item, ready, that no request runs on." }
+        vms:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            required: [vcenter, moref]
+            properties:
+              vcenter: { type: string }
+              moref: { type: string }
+        component:
+          type: string
+          description: The component of the deployment's blueprint they join. Needed when it has more than one.
+
+    OnboardingFilter:
+      type: object
+      description: |
+        Which VMs of the inventory a plan matches. Every criterion given
+        must match, and a plan has at least one.
+      properties:
+        q: { type: string, maxLength: 200, description: "Part of the VM's name, address or guest host name." }
+        vcenter: { type: string }
+        cluster: { type: string }
+        power_state: { $ref: "#/components/schemas/VmPowerState" }
+        folder: { type: string, maxLength: 500, description: "A VM folder's path: VMs in it and in the folders below it." }
+        tag: { type: string, maxLength: 200, description: "A vSphere tag, as category/tag." }
+
+    OnboardingTarget:
+      type: object
+      required: [project_id]
+      description: |
+        Where a plan's VMs go. Into an existing deployment (`deployment_id`)
+        they take its environment, owner, item and lease, so those aren't
+        given. Otherwise `environment`, `owner_id` and `catalog_item_id`
+        are, as for a one-off adoption: each VM its own deployment, or all
+        in one deployment of `deployment_name`, made by the first run and
+        added to by the next ones.
+      properties:
+        project_id: { type: string }
+        deployment_id: { type: string, description: An existing deployment of the project. }
+        environment: { type: string }
+        owner_id: { type: string }
+        catalog_item_id: { type: string }
+        lease_days: { type: integer, minimum: 1 }
+        deployment_name: { type: string, maxLength: 63 }
+        component: { type: string }
+        inputs: { type: object, additionalProperties: true }
+
+    OnboardingPlanWrite:
+      type: object
+      required: [name, filter, target]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 500 }
+        filter: { $ref: "#/components/schemas/OnboardingFilter" }
+        target: { $ref: "#/components/schemas/OnboardingTarget" }
+        every_hours:
+          type: integer
+          minimum: 1
+          maximum: 168
+          description: Runs on its own every so many hours. Without it, the plan runs by hand only.
+
+    OnboardingPlan:
+      type: object
+      required: [id, name, description, filter, target, matching, running, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        filter: { $ref: "#/components/schemas/OnboardingFilter" }
+        target: { $ref: "#/components/schemas/OnboardingTarget" }
+        every_hours: { type: integer }
+        next_run_at: { type: string, format: date-time, description: When its schedule runs it next. }
+        deployment:
+          allOf: [{ $ref: "#/components/schemas/DeploymentRef" }]
+          description: The deployment its VMs go into, the existing one or the one its first run made.
+        matching: { type: integer, description: How many VMs that no deployment has its filter matches now. }
+        running: { type: boolean, description: A run of it goes on. }
+        last_run: { $ref: "#/components/schemas/OnboardingRun" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        updated_by: { $ref: "#/components/schemas/UserRef" }
+
+    OnboardingPlanList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OnboardingPlan" }
+
+    OnboardingRun:
+      type: object
+      required: [id, plan_id, plan_name, trigger, status, started_at, adopted, skipped, failed]
+      properties:
+        id: { type: string }
+        plan_id: { type: string }
+        plan_name: { type: string }
+        trigger:
+          type: string
+          enum: [manual, schedule]
+        started_by: { $ref: "#/components/schemas/UserRef" }
+        status:
+          type: string
+          enum: [running, succeeded, partial, failed]
+          description: |
+            `partial`: some VMs couldn't be adopted, said per VM. `failed`:
+            the run couldn't go on, said in `error`.
+        error: { type: string }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        adopted: { type: integer }
+        skipped: { type: integer }
+        failed: { type: integer }
+        vms:
+          type: array
+          description: What the run did to each VM its filter matched; on a single run only.
+          items: { $ref: "#/components/schemas/OnboardingRunVm" }
+
+    OnboardingRunList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OnboardingRun" }
+
+    OnboardingRunVm:
+      type: object
+      required: [vcenter, moref, name, outcome, code, reason]
+      properties:
+        vcenter: { type: string }
+        moref: { type: string }
+        name: { type: string }
+        outcome:
+          type: string
+          enum: [adopted, skipped, failed]
+        code:
+          type: string
+          description: |
+            Why: `managed` (a deployment has it), `building` (a request is
+            building it), `not_found`, `taken` (its address or DNS records
+            belong to a deployment), `no_fit`, `busy` (the deployment it
+            joins isn't ready), `upstream`. Empty for an adopted VM.
+        reason: { type: string }
+        deployment: { $ref: "#/components/schemas/DeploymentRef" }
 
     OnboardingResult:
       type: object

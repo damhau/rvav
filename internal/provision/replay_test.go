@@ -45,6 +45,7 @@ func TestReplayHistories(t *testing.T) {
 			r.RegisterWorkflow(Provision)
 			r.RegisterWorkflow(Housekeeping)
 			r.RegisterWorkflow(RollbackWorkflow)
+			r.RegisterWorkflow(OnboardingRun)
 			logger := sdklog.NewStructuredLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
 			if err := r.ReplayWorkflowHistoryFromJSONFile(logger, f); err != nil {
 				t.Fatal(err)

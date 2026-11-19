@@ -522,8 +522,8 @@ func (s *Server) ListOnboardingVms(w http.ResponseWriter, r *http.Request, param
 		s.fail(w, r, err)
 		return
 	}
-	f := store.UnmanagedFilter{VCenter: deref(params.Vcenter), Cluster: deref(params.Cluster), Search: deref(params.Q),
-		Limit: limitOf(params.Limit), After: after}
+	f := store.UnmanagedFilter{InvFilter: store.InvFilter{VCenter: deref(params.Vcenter), Cluster: deref(params.Cluster),
+		Search: deref(params.Q), Folder: deref(params.Folder), Tag: deref(params.Tag)}, Limit: limitOf(params.Limit), After: after}
 	if params.PowerState != nil {
 		f.PowerState = string(*params.PowerState)
 	}
@@ -537,6 +537,64 @@ func (s *Server) AdoptVms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.Core.AdoptVMs(r.Context(), principal(r), b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) AdoptVmsInto(w http.ResponseWriter, r *http.Request) {
+	var b api.OnboardingIntoDraft
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.AdoptVMsInto(r.Context(), principal(r), b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+// Onboarding plans (X1.5).
+
+func (s *Server) ListOnboardingPlans(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Core.ListOnboardingPlans(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) CreateOnboardingPlan(w http.ResponseWriter, r *http.Request) {
+	var b api.OnboardingPlanWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveOnboardingPlan(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
+
+func (s *Server) GetOnboardingPlan(w http.ResponseWriter, r *http.Request, planID string) {
+	out, err := s.Core.GetOnboardingPlan(r.Context(), principal(r), planID)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) UpdateOnboardingPlan(w http.ResponseWriter, r *http.Request, planID string) {
+	var b api.OnboardingPlanWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveOnboardingPlan(r.Context(), principal(r), planID, b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) DeleteOnboardingPlan(w http.ResponseWriter, r *http.Request, planID string) {
+	s.replyEmpty(w, r, s.Core.DeleteOnboardingPlan(r.Context(), principal(r), planID))
+}
+
+func (s *Server) ListOnboardingRuns(w http.ResponseWriter, r *http.Request, planID string) {
+	out, err := s.Core.ListOnboardingRuns(r.Context(), principal(r), planID)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) RunOnboardingPlan(w http.ResponseWriter, r *http.Request, planID string) {
+	out, err := s.Core.RunOnboardingPlanNow(r.Context(), principal(r), planID)
+	s.reply(w, r, http.StatusAccepted, out, err)
+}
+
+func (s *Server) GetOnboardingRun(w http.ResponseWriter, r *http.Request, runID string) {
+	out, err := s.Core.GetOnboardingRun(r.Context(), principal(r), runID)
 	s.reply(w, r, http.StatusOK, out, err)
 }
 

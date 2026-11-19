@@ -31,6 +31,8 @@ type Workflows interface {
 	// Signal sends a signal to a workflow by its ID (a custom workflow's
 	// approval, ADR-0022).
 	Signal(ctx context.Context, workflowID, name string, arg any) error
+	// StartOnboarding starts a run of an onboarding plan (X1.5).
+	StartOnboarding(ctx context.Context, runID string) error
 }
 
 type Service struct {

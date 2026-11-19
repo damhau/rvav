@@ -3070,6 +3070,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/onboarding/into": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt existing VMs into a deployment rvav has, as VMs of one of its components (X1.5)
+         * @description The VMs take the deployment's project, environment, owner, item and
+         *     lease. They must fit its blueprint: a component that takes them
+         *     (its count, raised in the deployment's inputs when an input sets
+         *     it), their OS family, names its other VMs don't have. What doesn't
+         *     fit is refused per VM with the reason, and nothing is adopted.
+         */
+        post: operations["adoptVmsInto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/onboarding/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saved onboarding plans, with how many VMs each matches now and its last run (X1.5) */
+        get: operations["listOnboardingPlans"];
+        put?: never;
+        /**
+         * Save an onboarding plan, a filter and where what it matches goes
+         * @description A plan runs by hand, and on its schedule when it has one. Each run
+         *     adopts the VMs its filter matches that no deployment has, and
+         *     skips the others with the reason.
+         */
+        post: operations["createOnboardingPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/onboarding/plans/{planId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        /** An onboarding plan */
+        get: operations["getOnboardingPlan"];
+        /** Change an onboarding plan; its next runs follow it */
+        put: operations["updateOnboardingPlan"];
+        post?: never;
+        /** Delete an onboarding plan and its run history; what it adopted stays */
+        delete: operations["deleteOnboardingPlan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/onboarding/plans/{planId}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        /** A plan's runs, the latest first (the last 20 are kept) */
+        get: operations["listOnboardingRuns"];
+        put?: never;
+        /**
+         * Run a plan now, in the background
+         * @description The run is a Temporal workflow: follow it with `GET
+         *     /admin/onboarding/runs/{runId}`. A plan runs once at a time: 409
+         *     while a run of it goes on.
+         */
+        post: operations["runOnboardingPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/onboarding/runs/{runId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        /** A run of a plan, with what it did to each VM it matched */
+        get: operations["getOnboardingRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/vra": {
         parameters: {
             query?: never;
@@ -5873,6 +5985,10 @@ export interface components {
             ip_address?: string;
             /** @description The guest's host name, as VMware Tools reports it. */
             hostname?: string;
+            /** @description Its VM folder's path. */
+            folder?: string;
+            /** @description Its vSphere tags, as category/tag. */
+            tags?: string[];
         };
         OnboardingVmPage: {
             items: components["schemas"]["OnboardingVm"][];
@@ -5901,6 +6017,147 @@ export interface components {
              *     is a deployment of its own, named after it.
              */
             deployment_name?: string;
+            /**
+             * @description The component of the item's blueprint the VMs are VMs of. Needed
+             *     when it has more than one; a blueprint without components has
+             *     none.
+             */
+            component?: string;
+            /**
+             * @description Inputs of the item's form recorded on the deployments, so that
+             *     their first update compares with them rather than the form's
+             *     defaults. Fields of the form only, and no secret ones. An input
+             *     that sets the component's count is set to its VMs.
+             */
+            inputs?: {
+                [key: string]: unknown;
+            };
+        };
+        OnboardingIntoDraft: {
+            /** @description A deployment of a VM item, ready, that no request runs on. */
+            deployment_id: string;
+            vms: {
+                vcenter: string;
+                moref: string;
+            }[];
+            /** @description The component of the deployment's blueprint they join. Needed when it has more than one. */
+            component?: string;
+        };
+        /**
+         * @description Which VMs of the inventory a plan matches. Every criterion given
+         *     must match, and a plan has at least one.
+         */
+        OnboardingFilter: {
+            /** @description Part of the VM's name, address or guest host name. */
+            q?: string;
+            vcenter?: string;
+            cluster?: string;
+            power_state?: components["schemas"]["VmPowerState"];
+            /** @description A VM folder's path: VMs in it and in the folders below it. */
+            folder?: string;
+            /** @description A vSphere tag, as category/tag. */
+            tag?: string;
+        };
+        /**
+         * @description Where a plan's VMs go. Into an existing deployment (`deployment_id`)
+         *     they take its environment, owner, item and lease, so those aren't
+         *     given. Otherwise `environment`, `owner_id` and `catalog_item_id`
+         *     are, as for a one-off adoption: each VM its own deployment, or all
+         *     in one deployment of `deployment_name`, made by the first run and
+         *     added to by the next ones.
+         */
+        OnboardingTarget: {
+            project_id: string;
+            /** @description An existing deployment of the project. */
+            deployment_id?: string;
+            environment?: string;
+            owner_id?: string;
+            catalog_item_id?: string;
+            lease_days?: number;
+            deployment_name?: string;
+            component?: string;
+            inputs?: {
+                [key: string]: unknown;
+            };
+        };
+        OnboardingPlanWrite: {
+            name: string;
+            description?: string;
+            filter: components["schemas"]["OnboardingFilter"];
+            target: components["schemas"]["OnboardingTarget"];
+            /** @description Runs on its own every so many hours. Without it, the plan runs by hand only. */
+            every_hours?: number;
+        };
+        OnboardingPlan: {
+            id: string;
+            name: string;
+            description: string;
+            filter: components["schemas"]["OnboardingFilter"];
+            target: components["schemas"]["OnboardingTarget"];
+            every_hours?: number;
+            /**
+             * Format: date-time
+             * @description When its schedule runs it next.
+             */
+            next_run_at?: string;
+            /** @description The deployment its VMs go into, the existing one or the one its first run made. */
+            deployment?: components["schemas"]["DeploymentRef"];
+            /** @description How many VMs that no deployment has its filter matches now. */
+            matching: number;
+            /** @description A run of it goes on. */
+            running: boolean;
+            last_run?: components["schemas"]["OnboardingRun"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserRef"];
+        };
+        OnboardingPlanList: {
+            items: components["schemas"]["OnboardingPlan"][];
+        };
+        OnboardingRun: {
+            id: string;
+            plan_id: string;
+            plan_name: string;
+            /** @enum {string} */
+            trigger: "manual" | "schedule";
+            started_by?: components["schemas"]["UserRef"];
+            /**
+             * @description `partial`: some VMs couldn't be adopted, said per VM. `failed`:
+             *     the run couldn't go on, said in `error`.
+             * @enum {string}
+             */
+            status: "running" | "succeeded" | "partial" | "failed";
+            error?: string;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at?: string;
+            adopted: number;
+            skipped: number;
+            failed: number;
+            /** @description What the run did to each VM its filter matched; on a single run only. */
+            vms?: components["schemas"]["OnboardingRunVm"][];
+        };
+        OnboardingRunList: {
+            items: components["schemas"]["OnboardingRun"][];
+        };
+        OnboardingRunVm: {
+            vcenter: string;
+            moref: string;
+            name: string;
+            /** @enum {string} */
+            outcome: "adopted" | "skipped" | "failed";
+            /**
+             * @description Why: `managed` (a deployment has it), `building` (a request is
+             *     building it), `not_found`, `taken` (its address or DNS records
+             *     belong to a deployment), `no_fit`, `busy` (the deployment it
+             *     joins isn't ready), `upstream`. Empty for an adopted VM.
+             */
+            code: string;
+            reason: string;
+            deployment?: components["schemas"]["DeploymentRef"];
         };
         OnboardingResult: {
             deployments: {
@@ -13408,6 +13665,10 @@ export interface operations {
                 power_state?: components["schemas"]["VmPowerState"];
                 /** @description Part of the VM's name, address or guest host name. */
                 q?: string;
+                /** @description A VM folder's path, such as /GVA/vm/legacy. VMs in it and in the folders below it. */
+                folder?: string;
+                /** @description A vSphere tag the VM has, as category/tag. */
+                tag?: string;
                 limit?: components["parameters"]["Limit"];
                 /** @description The `next_cursor` from the previous page. */
                 cursor?: components["parameters"]["Cursor"];
@@ -13457,6 +13718,242 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             502: components["responses"]["UpstreamError"];
+        };
+    };
+    adoptVmsInto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingIntoDraft"];
+            };
+        };
+        responses: {
+            /** @description Adopted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listOnboardingPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingPlanList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createOnboardingPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingPlanWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingPlan"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getOnboardingPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingPlan"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateOnboardingPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingPlanWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingPlan"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteOnboardingPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listOnboardingRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingRunList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    runOnboardingPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingRun"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getOnboardingRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingRun"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getVraImport: {

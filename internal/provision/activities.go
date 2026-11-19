@@ -56,6 +56,8 @@ type Activities struct {
 	ShutdownTimeout time.Duration
 	// Housekeeper applies retention and lease policies (the core service).
 	Housekeeper Housekeeper
+	// Onboarder runs onboarding plans (the core service).
+	Onboarder Onboarder
 	// Subscriptions delivers to blocking subscriptions (ADR-0021).
 	Subscriptions *dispatch.Dispatcher
 	// TaskQueue is rvav's: custom workflows call the contract's activities

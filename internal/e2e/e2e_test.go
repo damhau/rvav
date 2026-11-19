@@ -98,7 +98,18 @@ type recorder struct {
 	signals    []provision.ApprovalSignal
 	byID       []workflowSignal
 	rolledBack []string
+	onboarding []string
 	startErr   error // returned by Start, to act as an unreachable Temporal
+}
+
+func (r *recorder) StartOnboarding(_ context.Context, runID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.startErr != nil {
+		return r.startErr
+	}
+	r.onboarding = append(r.onboarding, runID)
+	return nil
 }
 
 func (r *recorder) Start(_ context.Context, id string) error {

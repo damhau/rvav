@@ -12,7 +12,8 @@ import (
 )
 
 // Housekeeper applies rvav's own policies (core.Service): snapshot
-// retention and leases.
+// retention and leases. Housekeeping also starts the onboarding plans
+// whose schedule is due (Onboarder).
 type Housekeeper interface {
 	ExpireSnapshots(ctx context.Context, now time.Time) ([]string, error)
 	ExpireLeases(ctx context.Context, now time.Time) ([]string, error)
@@ -36,7 +37,13 @@ func Housekeeping(ctx workflow.Context) error {
 	// One failing does not keep the other from running.
 	snapshots := workflow.ExecuteActivity(ctx, a.ExpireSnapshots)
 	leases := workflow.ExecuteActivity(ctx, a.ExpireLeases)
-	return errors.Join(snapshots.Get(ctx, nil), leases.Get(ctx, nil))
+	errs := []error{}
+	// Runs before X1.5 had no onboarding plans.
+	if workflow.GetVersion(ctx, "onboarding-plans", workflow.DefaultVersion, 1) == 1 {
+		plans := workflow.ExecuteActivity(ctx, a.StartOnboardingPlans)
+		errs = append(errs, plans.Get(ctx, nil))
+	}
+	return errors.Join(append(errs, snapshots.Get(ctx, nil), leases.Get(ctx, nil))...)
 }
 
 // ExpireSnapshots starts the deletion of snapshots past their retention.

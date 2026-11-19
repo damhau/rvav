@@ -69,10 +69,10 @@ func (s *Store) ReplaceInventory(ctx context.Context, inv Inventory) error {
 		}
 		for _, v := range inv.VMs {
 			b.Queue(`insert into inv_vms (vcenter, moref, instance_uuid, name, power_state, guest_state, ip_address, hostname,
-				guest_os, cpu_count, memory_mb, cluster, host, cpu_pct, memory_pct, snapshot_count)
-				values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+				guest_os, cpu_count, memory_mb, cluster, host, cpu_pct, memory_pct, snapshot_count, folder, tags)
+				values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
 				inv.VCenter, v.Moref, v.InstanceUUID, v.Name, v.PowerState, v.GuestState, v.IPAddress, v.Hostname,
-				v.GuestOS, v.CPUCount, v.MemoryMB, v.Cluster, v.Host, v.CPUPct, v.MemoryPct, v.SnapshotCount)
+				v.GuestOS, v.CPUCount, v.MemoryMB, v.Cluster, v.Host, v.CPUPct, v.MemoryPct, v.SnapshotCount, v.Folder, nonNil(v.Tags))
 		}
 		return tx.SendBatch(ctx, b).Close()
 	})
@@ -174,7 +174,7 @@ func (s *Store) InventoryStoragePolicies(ctx context.Context) ([]InvStoragePolic
 }
 
 const invVMCols = `moref, instance_uuid, name, power_state, guest_state, ip_address, hostname, guest_os,
-	cpu_count, memory_mb, cluster, host, cpu_pct, memory_pct, snapshot_count`
+	cpu_count, memory_mb, cluster, host, cpu_pct, memory_pct, snapshot_count, folder, tags`
 
 // InventoryVMsByName reports which of the given VM names exist in vCenter.
 func (s *Store) InventoryVMNames(ctx context.Context, db DB, prefix string) (map[string]bool, error) {
@@ -197,18 +197,19 @@ func (s *Store) InventoryVMs(ctx context.Context, vcenter string) ([]InvVM, erro
 }
 
 // UpsertInventoryVM stores one VM of a vCenter's inventory as a change
-// notification says it is now; its quick stats stay those of the last full
-// sync.
+// notification says it is now; its quick stats and tags stay those of the
+// last full sync.
 func (s *Store) UpsertInventoryVM(ctx context.Context, vcenter string, v InvVM) error {
 	_, err := s.Pool.Exec(ctx, `insert into inv_vms (vcenter, moref, instance_uuid, name, power_state, guest_state, ip_address,
-		hostname, guest_os, cpu_count, memory_mb, cluster, host, snapshot_count, synced_at)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+		hostname, guest_os, cpu_count, memory_mb, cluster, host, snapshot_count, folder, synced_at)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
 		on conflict (vcenter, moref) do update set instance_uuid = excluded.instance_uuid, name = excluded.name,
 		power_state = excluded.power_state, guest_state = excluded.guest_state, ip_address = excluded.ip_address,
 		hostname = excluded.hostname, guest_os = excluded.guest_os, cpu_count = excluded.cpu_count, memory_mb = excluded.memory_mb,
-		cluster = excluded.cluster, host = excluded.host, snapshot_count = excluded.snapshot_count, synced_at = now()`,
+		cluster = excluded.cluster, host = excluded.host, snapshot_count = excluded.snapshot_count, folder = excluded.folder,
+		synced_at = now()`,
 		vcenter, v.Moref, v.InstanceUUID, v.Name, v.PowerState, v.GuestState, v.IPAddress, v.Hostname, v.GuestOS, v.CPUCount,
-		v.MemoryMB, v.Cluster, v.Host, v.SnapshotCount)
+		v.MemoryMB, v.Cluster, v.Host, v.SnapshotCount, v.Folder)
 	return err
 }
 

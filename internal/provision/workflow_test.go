@@ -451,6 +451,58 @@ func TestHousekeepingExpiresSnapshots(t *testing.T) {
 	}
 }
 
+// TestHousekeepingStartsOnboardingPlans: each round starts the onboarding
+// plans whose schedule is due (X1.5).
+func TestHousekeepingStartsOnboardingPlans(t *testing.T) {
+	var s testsuite.WorkflowTestSuite
+	env := s.NewTestWorkflowEnvironment()
+	plans := &fakeOnboarder{}
+	env.RegisterActivity(&Activities{Housekeeper: &fakeHousekeeper{}, Onboarder: plans,
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	env.ExecuteWorkflow(Housekeeping)
+	if plans.due.Load() != 1 {
+		t.Fatalf("due plans asked %d times", plans.due.Load())
+	}
+}
+
+// TestOnboardingRunFails: a run whose activity keeps failing ends failed,
+// with why.
+func TestOnboardingRunFails(t *testing.T) {
+	var s testsuite.WorkflowTestSuite
+	env := s.NewTestWorkflowEnvironment()
+	plans := &fakeOnboarder{runErr: errors.New("database unavailable")}
+	env.RegisterActivity(&Activities{Onboarder: plans, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	env.ExecuteWorkflow(OnboardingRun, "obr_1")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+	if plans.runs.Load() != 3 || plans.failed != "database unavailable" {
+		t.Fatalf("%d runs, failed with %q", plans.runs.Load(), plans.failed)
+	}
+}
+
+type fakeOnboarder struct {
+	due, runs atomic.Int32
+	runErr    error
+	failed    string
+}
+
+func (f *fakeOnboarder) RunOnboarding(_ context.Context, _ string, beat func()) error {
+	f.runs.Add(1)
+	beat()
+	return f.runErr
+}
+
+func (f *fakeOnboarder) FailOnboardingRun(_ context.Context, _, msg string) error {
+	f.failed = msg
+	return nil
+}
+
+func (f *fakeOnboarder) StartDueOnboardingPlans(context.Context, time.Time) ([]string, error) {
+	f.due.Add(1)
+	return []string{"obr_1"}, nil
+}
+
 // TestSegmentVCenters: a segment's port group is waited for in every
 // vCenter one of its VMs goes to, by any adapter (N2 review).
 func TestSegmentVCenters(t *testing.T) {

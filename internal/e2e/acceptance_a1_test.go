@@ -343,6 +343,13 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	var run api.SubscriptionRunDetail
 	h.json("POST", "/api/v1/admin/subscriptions/"+sub.Id+"/test", admin, nil, 200, &run)
 
+	var plan api.OnboardingPlan
+	h.json("POST", "/api/v1/admin/onboarding/plans", admin, api.OnboardingPlanWrite{Name: "Legacy ERP",
+		Filter: api.OnboardingFilter{Q: new("erp-legacy")}, Target: api.OnboardingTarget{ProjectId: "prj_web", Environment: new("dev"),
+			OwnerId: new("usr_tnguyen"), CatalogItemId: new(item.Id)}}, 201, &plan)
+	var planRun api.OnboardingRun
+	h.json("POST", "/api/v1/admin/onboarding/plans/"+plan.Id+"/runs", admin, nil, 202, &planRun)
+
 	fake := httptest.NewServer(vra.NewFakeServer(vra.SampleEstate(time.Now())))
 	t.Cleanup(fake.Close)
 	h.svc.Config.VRA.URL, h.svc.Config.VRA.Token = fake.URL, vra.FakeRefreshToken
@@ -389,6 +396,8 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"tokens/{id}":                token.Id,
 		"files/{fileId}":             attached,
 		"images/{imageId}":           picture,
+		"plans/{planId}":             plan.Id,
+		"runs/{runId}":               planRun.Id,
 	}
 }
 

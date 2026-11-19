@@ -396,7 +396,8 @@ func (s *Syncer) syncVM(ctx context.Context, t target, moref string, gone bool) 
 	v := vm.VM
 	if err := s.Store.UpsertInventoryVM(ctx, vcenter, store.InvVM{Moref: v.Moref, InstanceUUID: v.InstanceUUID, Name: v.Name,
 		PowerState: v.PowerState, GuestState: v.GuestState, IPAddress: v.IP, Hostname: v.Hostname, GuestOS: v.GuestOS,
-		CPUCount: v.CPUCount, MemoryMB: v.MemoryMB, Cluster: v.Cluster, Host: v.Host, SnapshotCount: vm.SnapshotCount}); err != nil {
+		CPUCount: v.CPUCount, MemoryMB: v.MemoryMB, Cluster: v.Cluster, Host: v.Host, SnapshotCount: vm.SnapshotCount,
+		Folder: v.Folder}); err != nil {
 		return err
 	}
 	return s.refreshVM(ctx, t, v.InstanceUUID, vm)
@@ -557,7 +558,7 @@ func (s *Syncer) syncVCenter(ctx context.Context, vc vsphere.Driver, owns func(v
 		snap.VMs = append(snap.VMs, store.InvVM{Moref: v.Moref, InstanceUUID: v.InstanceUUID, Name: v.Name,
 			PowerState: v.PowerState, GuestState: v.GuestState, IPAddress: v.IP, Hostname: v.Hostname, GuestOS: v.GuestOS,
 			CPUCount: v.CPUCount, MemoryMB: v.MemoryMB, Cluster: v.Cluster, Host: v.Host, CPUPct: v.CPUPct,
-			MemoryPct: v.MemoryPct, SnapshotCount: v.SnapshotCount})
+			MemoryPct: v.MemoryPct, SnapshotCount: v.SnapshotCount, Folder: v.Folder, Tags: v.Tags})
 		byUUID[v.InstanceUUID] = v
 	}
 	if err := s.Store.ReplaceInventory(ctx, snap); err != nil {

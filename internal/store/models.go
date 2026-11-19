@@ -454,6 +454,9 @@ type InvVM struct {
 	CPUPct        *float32 `db:"cpu_pct"`
 	MemoryPct     *float32 `db:"memory_pct"`
 	SnapshotCount int      `db:"snapshot_count"`
+	// Folder is its VM folder's path; Tags its vSphere tags (X1.5).
+	Folder string   `db:"folder"`
+	Tags   []string `db:"tags"`
 }
 
 // Inventory is one full snapshot of a vCenter, written by the sync loop.

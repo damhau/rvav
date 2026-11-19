@@ -196,7 +196,7 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 	}
 	var vms []mo.VirtualMachine
 	if err := retrieve([]string{"VirtualMachine"}, []string{"name", "config", "runtime.powerState", "runtime.host",
-		"runtime.maxCpuUsage", "guest", "summary.quickStats", "network", "snapshot", "resourcePool"}, &vms); err != nil {
+		"runtime.maxCpuUsage", "guest", "summary.quickStats", "network", "snapshot", "resourcePool", "parent"}, &vms); err != nil {
 		return nil, err
 	}
 
@@ -281,8 +281,12 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 		netName[n.Self.Value] = n.Name
 	}
 	paths := poolPaths(pools)
+	vmParent := map[string]string{}
 	for _, v := range vms {
 		vm := toVM(v)
+		if v.Parent != nil && v.Parent.Type == "Folder" {
+			vmParent[vm.Moref] = v.Parent.Value
+		}
 		for i := range vm.NICs {
 			if name, ok := netName[vm.NICs[i].Network]; ok {
 				vm.NICs[i].Network = name
@@ -317,6 +321,15 @@ func (cl *Client) Inventory(ctx context.Context) (*Inventory, error) {
 		inv.VMs = append(inv.VMs, iv)
 	}
 	inv.Folders = vmFolders(folders, datacenters)
+	folderPath := map[string]string{}
+	for _, f := range inv.Folders {
+		folderPath[f.Moref] = f.Path
+	}
+	for i := range inv.VMs {
+		if p := vmParent[inv.VMs[i].Moref]; p != "" {
+			inv.VMs[i].Folder = folderPath[p]
+		}
+	}
 	inv.TagsError = cl.readTags(ctx, c, inv)
 	inv.LibrariesError = cl.readLibraries(ctx, c, inv)
 	inv.PoliciesError = readStoragePolicies(ctx, c, inv)

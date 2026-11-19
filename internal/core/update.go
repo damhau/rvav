@@ -435,7 +435,13 @@ func (s *Service) compare(ctx context.Context, u *updatePlan, resources []store.
 		if err != nil {
 			return err
 		}
-		c := componentChange{key: key, title: part.title(), new: newPlan, newGuest: part.guest, jobs: jobs, count: part.count,
+		count := part.count
+		// A blueprint without components has no count of its own: its
+		// deployment keeps the VMs it was built or adopted with (X1.5).
+		if !ev.Blueprint.Multi() {
+			count = max(count, len(byComp[key]))
+		}
+		c := componentChange{key: key, title: part.title(), new: newPlan, newGuest: part.guest, jobs: jobs, count: count,
 			vms: byComp[key], resources: dep, failed: u.d.Status == "failed", antiAffinity: part.comp.AntiAffinity,
 			cluster: part.vm.Cluster, segments: part.segment != "" || slices.ContainsFunc(part.nicSegments, func(s string) bool { return s != "" })}
 		if oc, ok := oldComps[key]; ok {
