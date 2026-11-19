@@ -222,11 +222,57 @@ describe("request form against the mock API", () => {
     await user.click(await screen.findByRole("option", { name: earlier.number }));
     await waitFor(() => expect(version()).toHaveTextContent(earlier.number));
     expect(version()).toHaveAccessibleDescription(`An earlier version: the newest is ${newer.number}.`);
+    // The form is the earlier version's, and the focus is back on Version.
+    await waitFor(() => expect(version()).toHaveFocus());
     expect(screen.getByLabelText("Name (optional)")).toHaveValue("Payroll API");
     await placed();
     await user.click(screen.getByRole("button", { name: "Submit request" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/requests/REQ-10491"));
     expect(db.requests[0]!.request.version.id).toBe(earlier.id);
+  }, 15000);
+
+  it("moves to a version still offered when the one picked was retired, saying why on Version", async () => {
+    const item = db.items.find((i) => i.slug === "rhel9-server")!;
+    const publish = async () => {
+      const v = await call(
+        api.POST("/admin/catalog/items/{itemId}/versions", { params: { path: { itemId: item.id } }, body: {} }),
+      );
+      await call(
+        api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/publish", {
+          params: { path: { itemId: item.id, versionId: v.id } },
+          body: { keep_published: true },
+        }),
+      );
+      return v;
+    };
+    const picked = await publish();
+    const newest = await publish();
+    const user = userEvent.setup();
+    const { router } = await openForm();
+    const version = () => screen.getByRole("combobox", { name: "Version" });
+    await user.click(version());
+    await user.click(await screen.findByRole("option", { name: picked.number }));
+    await waitFor(() => expect(version()).toHaveTextContent(picked.number));
+    await user.type(screen.getByLabelText("Name (optional)"), "Payroll API");
+    await placed();
+    await call(
+      api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", {
+        params: { path: { itemId: item.id, versionId: picked.id } },
+        body: {},
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    await waitFor(() => expect(version()).toHaveTextContent(`${newest.number} (newest)`), { timeout: 5000 });
+    expect(version()).toHaveAccessibleDescription(
+      `Version ${picked.number} of ${item.name} is no longer offered: request ${newest.number}.`,
+    );
+    await waitFor(() => expect(version()).toHaveFocus());
+    expect(screen.getByLabelText("Name (optional)")).toHaveValue("Payroll API");
+    await user.click(version());
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).not.toContain(picked.number);
+    await user.keyboard("{Escape}");
+    expect(router.state.location.pathname).toBe("/catalog/rhel9-server/request");
   }, 15000);
 
   it("warns of a lease longer than a soft lease allows, and submits anyway", async () => {

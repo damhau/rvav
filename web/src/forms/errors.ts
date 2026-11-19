@@ -15,6 +15,7 @@ export function mapFieldErrors(errors: FieldError[] | undefined): MappedErrors {
     const name = m?.[1];
     if (name) out.fields[name] ??= e.message;
     else if (e.field === "/environment") out.fields.$environment ??= e.message;
+    else if (e.field === "/version_id") out.fields.$version_id ??= e.message;
     // The request's own options (S11): how many, when, for whom, its lease, what its deployments are called.
     else if (
       [

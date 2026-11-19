@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { bothThemes, scan, theme } from "./axe";
 
 // Catalog administration against the mock backend (S8, ADR-0019).
@@ -452,5 +452,58 @@ test("an earlier version kept requestable is picked on the request form", async 
   await page.getByRole("button", { name: "Submit request" }).click();
   await expect(page).toHaveURL(/\/requests\/REQ-\d+$/);
   await expect(page.getByText("RHEL 9 server 3.2")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+// C2.4: picking a version remounts the form, yet Version keeps the keyboard focus, and the
+// Update page keeps the inputs changed.
+test("Version keeps the keyboard focus when another version is picked", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/admin/catalog-items");
+  await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server" }).click();
+  await page.getByRole("button", { name: "New draft" }).click();
+  await expect(page.getByText("Draft 3.3 made from the published version")).toBeVisible();
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByRole("button", { name: "Actions for version 3.3" }).click();
+  await page.getByRole("menuitem", { name: "Publish 3.3, keeping 3.2 requestable" }).click();
+  await expect(page.getByText("Published 3.3, 3.2")).toBeVisible();
+
+  const pick = async (version: Locator, label: string) => {
+    await version.focus();
+    await page.keyboard.press("Enter");
+    const option = page.getByRole("option", { name: label, exact: true });
+    await expect(option).toBeVisible();
+    for (let i = 0; i < 5 && !(await option.evaluate((e) => e === document.activeElement)); i++)
+      await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+  };
+
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
+  await page.getByRole("link", { name: "RHEL 9 server", exact: true }).first().click();
+  await page.getByRole("main").getByRole("link", { name: "Request", exact: true }).click();
+  const version = page.getByRole("combobox", { name: "Version" });
+  await expect(version).toHaveText("3.3 (newest)");
+  await page.getByRole("textbox", { name: "Name (optional)" }).fill("Legacy batch");
+  await pick(version, "3.2");
+  await expect(page.getByText("An earlier version: the newest is 3.3.")).toBeVisible();
+  await expect(version).toHaveText("3.2");
+  await expect(version).toBeFocused();
+  await expect(version).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("textbox", { name: "Name (optional)" })).toHaveValue("Legacy batch");
+
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Deployments", exact: true }).click();
+  await page.getByRole("link", { name: "web-dev-api", exact: true }).click();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Update", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Update web-dev-api", level: 1 })).toBeVisible();
+  const to = page.getByRole("combobox", { name: "Version" });
+  await expect(to).toHaveText("3.3 (newest)");
+  await page.getByRole("textbox", { name: "Role" }).fill("gateway");
+  await pick(to, "3.2 (this deployment's)");
+  await expect(page.getByText("Its own version: the update changes its inputs.")).toBeVisible();
+  await expect(to).toBeFocused();
+  await expect(to).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("textbox", { name: "Role" })).toHaveValue("gateway");
   expect(errors).toEqual([]);
 });

@@ -137,6 +137,75 @@ describe("the update page against the mock API", () => {
     expect(again).toHaveTextContent("Change an input to see what the update does.");
   }, 20_000);
 
+  it("keeps the inputs changed, and the focus on Version, when another version is picked", async () => {
+    const d = named("web-tst-search");
+    const item = db.items.find((i) => i.id === d.catalog_item.id)!;
+    const newer = await call(
+      api.POST("/admin/catalog/items/{itemId}/versions", { params: { path: { itemId: item.id } }, body: {} }),
+    );
+    await call(
+      api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/publish", {
+        params: { path: { itemId: item.id, versionId: newer.id } },
+        body: { keep_published: true },
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp(`/deployments/${d.id}/update`);
+    const version = await screen.findByRole("combobox", { name: "Version" }, { timeout: 5000 });
+    await user.click(await screen.findByRole("radio", { name: /^X-Large/ }));
+    await user.click(version);
+    await user.click(await screen.findByRole("option", { name: `${d.version.number} (this deployment's)` }));
+
+    const own = await screen.findByRole("combobox", { name: "Version" });
+    await waitFor(() => expect(own).toHaveAccessibleDescription("Its own version: the update changes its inputs."));
+    await waitFor(() => expect(own).toHaveFocus());
+    expect(screen.getByRole("radio", { name: /^X-Large/ })).toBeChecked();
+    const summary = screen.getByRole("region", { name: "What the update does" });
+    await within(summary).findByText("Set 8 vCPU and 48 GB on web-tst-search001", {}, { timeout: 5000 });
+  }, 20_000);
+
+  it("moves to a version still offered when the one picked was retired, saying why on Version", async () => {
+    const d = named("web-tst-search");
+    const item = db.items.find((i) => i.id === d.catalog_item.id)!;
+    const publish = async () => {
+      const v = await call(
+        api.POST("/admin/catalog/items/{itemId}/versions", { params: { path: { itemId: item.id } }, body: {} }),
+      );
+      await call(
+        api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/publish", {
+          params: { path: { itemId: item.id, versionId: v.id } },
+          body: { keep_published: true },
+        }),
+      );
+      return v;
+    };
+    const retired = await publish();
+    const newest = await publish();
+    const user = userEvent.setup();
+    renderApp(`/deployments/${d.id}/update`);
+    await user.click(await screen.findByRole("combobox", { name: "Version" }, { timeout: 5000 }));
+    await user.click(await screen.findByRole("option", { name: retired.number }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Version" })).toHaveTextContent(retired.number));
+    await user.click(await screen.findByRole("radio", { name: /^X-Large/ }));
+    await call(
+      api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", {
+        params: { path: { itemId: item.id, versionId: retired.id } },
+        body: {},
+      }),
+    );
+
+    const summary = screen.getByRole("region", { name: "What the update does" });
+    await user.click(within(summary).getByRole("button", { name: "Review the update" }));
+    const version = () => screen.getByRole("combobox", { name: "Version" });
+    await waitFor(() => expect(version()).toHaveTextContent(`${newest.number} (newest)`), { timeout: 5000 });
+    expect(version()).toHaveAccessibleDescription(
+      `Version ${retired.number} of ${item.name} is no longer offered: request ${newest.number}.`,
+    );
+    await waitFor(() => expect(version()).toHaveFocus());
+    expect(screen.getByRole("radio", { name: /^X-Large/ })).toBeChecked();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  }, 20_000);
+
   it("holds a deployment to the size limits only where the update grows it", async () => {
     limitState(db).policies.push({
       id: "dlp_size",

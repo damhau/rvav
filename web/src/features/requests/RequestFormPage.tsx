@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LoaderCircle } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
@@ -55,6 +55,7 @@ type ApprovalPreview = RequestPreview["approval"];
 
 /** The request's own options, by the key their errors map to (`mapFieldErrors`). */
 const requestOptions: Record<string, string> = {
+  $version_id: "Version",
   $environment: "Environment",
   $deployment_name: "Deployment name",
   $deployment_description: "Description",
@@ -67,6 +68,8 @@ const requestOptions: Record<string, string> = {
 /** The control that fixes an input's problem. */
 function controlOf(name: string): HTMLElement | null {
   switch (name) {
+    case "$version_id":
+      return document.getElementById("version");
     case "$environment":
       return document.querySelector('[aria-labelledby="env-label"] [aria-checked="true"]');
     case "$deployment_name":
@@ -130,6 +133,33 @@ export function pickedVersion(item: CatalogItem | undefined, wanted: string | un
   return item.versions?.some((v) => v.id === wanted) ? wanted : undefined;
 }
 
+/**
+ * After a stale_version refusal: the item's versions and its default form are
+ * read again. The retired version's form isn't, as it may no longer be served.
+ */
+export function refreshVersions(qc: QueryClient, retired: string) {
+  void qc.invalidateQueries({
+    queryKey: keys.catalog.all,
+    predicate: (query) => !(query.queryKey[1] === "form" && query.queryKey[4] === retired),
+  });
+}
+
+/**
+ * Moves the focus back to Version once the form remounted for the version
+ * picked. It waits a task, as Radix's own focus return does: the Enter that
+ * picked the version would otherwise open the new Select.
+ */
+export function useFocusVersion(flag: RefObject<boolean> | undefined, handle: RefObject<FormHandle | null>) {
+  useEffect(() => {
+    if (!flag?.current) return;
+    const t = setTimeout(() => {
+      flag.current = false;
+      handle.current?.focus("$version_id", () => document.getElementById("version"));
+    });
+    return () => clearTimeout(t);
+  }, [flag, handle]);
+}
+
 /** The requestable version of the item with this ID, its default when it offers no such version. */
 export function versionOf(item: CatalogItem, id: string | undefined) {
   return item.versions?.find((v) => v.id === id) ?? item.version;
@@ -146,6 +176,8 @@ export interface FormStart {
   count?: number;
   scheduledAt?: string | null;
   onBehalfOf?: UserRef;
+  /** Why the last submit was refused, when it named a version since retired. */
+  refusal?: MappedErrors;
 }
 
 /** "Needs approval from Infrastructure leads", or "…, then Network security" for several levels. */
@@ -483,6 +515,7 @@ function RequestFormBody({
   draftId,
   canActForOthers,
   onVersion,
+  focusVersion,
 }: {
   item: CatalogItem;
   form: RequestForm;
@@ -493,6 +526,8 @@ function RequestFormBody({
   canActForOthers: boolean;
   /** Another version picked: its form starts from what this one holds. */
   onVersion?: (versionId: string, keep: FormStart) => void;
+  /** Set when the form remounts for a version picked: the focus goes back to Version. */
+  focusVersion?: RefObject<boolean>;
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -512,12 +547,13 @@ function RequestFormBody({
     return { ...form.initial_values, ...Object.fromEntries(kept) };
   });
   const [touched, setTouched] = useState<Set<string>>(new Set());
-  const [submitted, setSubmitted] = useState(false);
-  const [serverErrors, setServerErrors] = useState<MappedErrors | null>(null);
+  const [submitted, setSubmitted] = useState(Boolean(start?.refusal));
+  const [serverErrors, setServerErrors] = useState<MappedErrors | null>(start?.refusal ?? null);
   // Counts the server's refusals: each moves the focus to the first input to fix.
-  const [refused, setRefused] = useState(0);
+  const [refused, setRefused] = useState(start?.refusal ? 1 : 0);
   const attentionRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<FormHandle>(null);
+  useFocusVersion(focusVersion, formRef);
   // A wizard's page as Next checked it, and the debounced draft then: the check shows until the
   // preview of a later draft arrives, as an older one would hide what the check showed. Then it
   // goes: the previews that follow are all later than the check.
@@ -535,6 +571,18 @@ function RequestFormBody({
   const [onBehalfOf, setOnBehalfOf] = useState<UserRef | null>(
     canActForOthers && start?.onBehalfOf && start.onBehalfOf.id !== me.user.id ? start.onBehalfOf : null,
   );
+  const kept = (): FormStart => ({
+    environment,
+    inputs: values,
+    justification,
+    deploymentName,
+    deploymentDescription: description,
+    leaseDays,
+    count: Number(count) || 1,
+    scheduledAt: later && startAt ? new Date(startAt).toISOString() : null,
+    ...(onBehalfOf ? { onBehalfOf } : {}),
+  });
+  const versions = item.versions ?? [];
   const [savedDraft, setSavedDraft] = useState(draftId);
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
   // Several deployments of a single-VM item; a multi-VM item's counts are in its form.
@@ -637,6 +685,11 @@ function RequestFormBody({
           mapped.form.push(e.problem.detail ?? e.problem.title);
         setServerErrors(mapped);
         setRefused((n) => n + 1);
+        if (rest.some((f) => f.code === "stale_version")) {
+          // The form that follows, of a version still offered, starts from this one and says why.
+          onVersion?.(form.version_id, { ...kept(), refusal: mapped });
+          refreshVersions(qc, form.version_id);
+        }
         return;
       }
       toast.error(isApiError(e) ? e.problem.title : "The request was not sent", {
@@ -675,6 +728,7 @@ function RequestFormBody({
 
   // The inputs the page has a control for, in its order: the rest are said at the top.
   const placed = [
+    ...(versions.length > 1 ? ["$version_id"] : []),
     "$environment",
     ...shownFields(form, shownPreview?.fields),
     ...(named ? ["$deployment_name", "$deployment_description"] : []),
@@ -748,19 +802,7 @@ function RequestFormBody({
   };
   const stepped = form.ui_schema.layout.kind === "wizard";
   const holding = sendingText(useSendingFiles());
-  const versions = item.versions ?? [];
-  const pickVersion = (id: string) =>
-    onVersion?.(id, {
-      environment,
-      inputs: values,
-      justification,
-      deploymentName,
-      deploymentDescription: description,
-      leaseDays,
-      count: Number(count) || 1,
-      scheduledAt: later && startAt ? new Date(startAt).toISOString() : null,
-      ...(onBehalfOf ? { onBehalfOf } : {}),
-    });
+  const pickVersion = (id: string) => onVersion?.(id, kept());
 
   // What the item builds, drawn when there is more to it than one VM on a
   // network (the summary says that much): a composite's steps, an item's
@@ -953,7 +995,7 @@ function RequestFormBody({
           fieldStates={shownPreview?.fields}
           ref={formRef}
           controlOf={controlOf}
-          leadingFields={["$environment"]}
+          leadingFields={["$version_id", "$environment"]}
           wizard={{
             check: checkPage,
             checkAll: form.ui_schema.validations?.length ? checkAll : undefined,
@@ -979,6 +1021,7 @@ function RequestFormBody({
                 <Field
                   label="Version"
                   htmlFor="version"
+                  error={fieldErrors.$version_id}
                   hint={
                     form.version_id === item.version.id
                       ? "The newest. Earlier versions are still offered."
@@ -1051,6 +1094,7 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
   // The version picked, and the form as it was then; a draft or a past request starts on its own
   // version while it is requestable (ADR-0046).
   const [picked, setPicked] = useState<{ id: string; start: FormStart }>();
+  const focusVersion = useRef(false);
   const versionId = pickedVersion(item.data, picked?.id ?? saved.data?.draft.version_id ?? past.data?.version.id);
   const form = useQuery(q.form(itemKey, projectId, versionId));
   // A draft or a past request is resumed in its own project: switched to
@@ -1149,7 +1193,12 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
           start={picked?.start ?? start}
           draftId={draftId}
           canActForOthers={can(me, "request.on_behalf", projectId)}
-          onVersion={(id, keep) => setPicked({ id, start: keep })}
+          onVersion={(id, keep) => {
+            // A refusal moves the focus to what it is about instead.
+            focusVersion.current = !keep.refusal;
+            setPicked({ id, start: keep });
+          }}
+          focusVersion={focusVersion}
         />
       )}
     </Page>

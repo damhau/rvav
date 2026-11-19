@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LoaderCircle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
@@ -16,7 +16,13 @@ import { Field, Textarea } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
-import { approvalBody, approvalTitle, pickedVersion } from "@/features/requests/RequestFormPage";
+import {
+  approvalBody,
+  approvalTitle,
+  pickedVersion,
+  refreshVersions,
+  useFocusVersion,
+} from "@/features/requests/RequestFormPage";
 import { LimitMeters } from "@/features/requests/limits";
 import { quotaLabel, quotaWhere, tightest } from "@/features/requests/quota";
 import { FormRenderer, shownFields, type FormHandle } from "@/forms/FormRenderer";
@@ -26,7 +32,14 @@ import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
 import { sendingText, useSendingFiles } from "@/forms/file";
 import { useSecretStandIns } from "@/forms/secretKeys";
 import { api, call, isApiError } from "@/lib/api/client";
-import type { CatalogItem, DeploymentDetail, RequestForm, UpdateDraft, UpdatePreview } from "@/lib/api/types";
+import type {
+  CatalogItem,
+  DeploymentDetail,
+  FieldError,
+  RequestForm,
+  UpdateDraft,
+  UpdatePreview,
+} from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
 import { keys, q } from "@/lib/query";
 import { cn, newIdempotencyKey } from "@/lib/utils";
@@ -54,6 +67,17 @@ export function startValues(form: RequestForm, d: DeploymentDetail): Record<stri
   }
   return out;
 }
+
+/** What the form of another version starts from: the inputs changed here, and the reason. */
+interface UpdateStart {
+  inputs: Record<string, unknown>;
+  justification: string;
+  /** Why the update was refused, when it named a version since retired. */
+  refusal?: MappedErrors;
+}
+
+/** The control that fixes an input's problem. */
+const controlOf = (name: string) => (name === "$version_id" ? document.getElementById("version") : fieldControl(name));
 
 /** Why a checked update can't go on to its confirmation; null when it can. */
 export function blockedBy(p: UpdatePreview, name: string): { title: string; reasons: string[] } | null {
@@ -240,23 +264,32 @@ function UpdateBody({
   d,
   form,
   item,
+  start,
   onVersion,
+  focusVersion,
 }: {
   d: DeploymentDetail;
   form: RequestForm;
   item?: CatalogItem;
-  /** Another version picked to update to: its form starts again from the deployment's inputs. */
-  onVersion: (versionId: string) => void;
+  start?: UpdateStart;
+  /** Another version picked to update to: its form starts from the deployment's inputs, and those changed here. */
+  onVersion: (versionId: string, keep: UpdateStart) => void;
+  /** Set when the form remounts for a version picked: the focus goes back to Version. */
+  focusVersion?: RefObject<boolean>;
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [values, setValues] = useState(() => startValues(form, d));
+  const [values, setValues] = useState(() => {
+    const props = (form.schema as { properties?: Record<string, unknown> }).properties ?? {};
+    const kept = Object.entries(start?.inputs ?? {}).filter(([k]) => k in props);
+    return { ...startValues(form, d), ...Object.fromEntries(kept) };
+  });
   const [touched, setTouched] = useState<Set<string>>(new Set());
-  const [submitted, setSubmitted] = useState(false);
-  const [serverErrors, setServerErrors] = useState<MappedErrors | null>(null);
+  const [submitted, setSubmitted] = useState(Boolean(start?.refusal));
+  const [serverErrors, setServerErrors] = useState<MappedErrors | null>(start?.refusal ?? null);
   // Counts the attempts with problems: each moves the focus to the first one to fix.
-  const [refusals, setRefusals] = useState(0);
-  const [justification, setJustification] = useState("");
+  const [refusals, setRefusals] = useState(start?.refusal ? 1 : 0);
+  const [justification, setJustification] = useState(start?.justification ?? "");
   // The update as Review checked it, while the dialog asks to confirm it; refused counts the refusals
   // that only warned, each with the warnings found then.
   const [confirm, setConfirm] = useState<{ preview: UpdatePreview; body: UpdateDraft; refused?: number } | null>(null);
@@ -267,6 +300,22 @@ function UpdateBody({
   const attentionRef = useRef<HTMLDivElement>(null);
   const blockedRef = useRef<HTMLDivElement>(null);
   const fields = form.ui_schema.fields;
+  useFocusVersion(focusVersion, formRef);
+  // The inputs changed here: another version's form starts from its own values, then these.
+  const kept = (): UpdateStart => {
+    const was = startValues(form, d);
+    return {
+      inputs: Object.fromEntries(Object.entries(values).filter(([k, v]) => !Object.is(was[k], v))),
+      justification,
+    };
+  };
+  // The version was retired since the page loaded: the item's versions are read again, and the form
+  // of the one offered now starts from this one and says why.
+  const retired = (errors: FieldError[]) => {
+    if (!errors.some((e) => e.code === "stale_version")) return;
+    onVersion(form.version_id, { ...kept(), refusal: mapFieldErrors(errors) });
+    refreshVersions(qc, form.version_id);
+  };
 
   const body = useMemo(
     () => ({ version_id: form.version_id, inputs: sentInputs(fields, values) }),
@@ -340,6 +389,7 @@ function UpdateBody({
           mapped.form.push(e.problem.detail ?? e.problem.title);
         setServerErrors(mapped);
         setRefusals((n) => n + 1);
+        retired(e.fieldErrors);
         return;
       }
       toast.error(isApiError(e) ? e.problem.title : "The update was not sent", {
@@ -355,14 +405,18 @@ function UpdateBody({
   for (const [name, msg] of Object.entries(serverErrors?.fields ?? {})) if (msg) fieldErrors[name] = msg;
   const formErrors = submitted ? [...new Set([...(serverErrors?.form ?? []), ...previewErrors.form])] : [];
 
-  const placed = shownFields(form, p?.fields);
+  const placed = [...(item?.versions ? ["$version_id"] : []), ...shownFields(form, p?.fields)];
   const attention = submitted ? Object.keys(fieldErrors) : [];
   const unplaced: Unplaced[] = attention
     .filter((name) => !placed.includes(name))
-    .map((name) => ({ key: name, label: name, code: true, message: fieldErrors[name]! }));
+    .map((name) => ({
+      key: name,
+      ...(name === "$version_id" ? { label: "Version" } : { label: name, code: true }),
+      message: fieldErrors[name]!,
+    }));
   const focusFirst = () => {
-    const name = placed.find((n) => fieldErrors[n] && fieldControl(n));
-    if (name) return formRef.current?.focus(name);
+    const name = placed.find((n) => fieldErrors[n] && controlOf(n));
+    if (name) return formRef.current?.focus(name, () => controlOf(name));
     attentionRef.current?.focus();
   };
   const focusFirstRef = useRef(focusFirst);
@@ -405,6 +459,7 @@ function UpdateBody({
     if (checked.errors.length) {
       setSubmitted(true);
       setRefusals((n) => n + 1);
+      retired(checked.errors);
       return;
     }
     const why = blockedBy(checked, d.name);
@@ -473,7 +528,18 @@ function UpdateBody({
           ctx={{ versionId: form.version_id, projectId: d.project.id, environment: d.environment }}
           fieldStates={p?.fields}
           ref={formRef}
-          leading={item?.versions && <VersionPicker item={item} d={d} value={form.version_id} onChange={onVersion} />}
+          leading={
+            item?.versions && (
+              <VersionPicker
+                item={item}
+                d={d}
+                value={form.version_id}
+                onChange={(id) => onVersion(id, kept())}
+                error={fieldErrors.$version_id}
+              />
+            )
+          }
+          leadingFields={["$version_id"]}
           wizard={{
             review: (
               <>
@@ -596,8 +662,9 @@ export function UpdatePage({ deploymentId }: { deploymentId: string }) {
   const slug = d?.catalog_item.slug ?? "";
   const projectId = d?.project.id ?? "";
   const item = useQuery({ ...q.catalogItem(slug, projectId), enabled: Boolean(d) });
-  const [picked, setPicked] = useState<string>();
-  const form = useQuery({ ...q.form(slug, projectId, pickedVersion(item.data, picked)), enabled: Boolean(d) });
+  const [picked, setPicked] = useState<{ id: string; start: UpdateStart }>();
+  const focusVersion = useRef(false);
+  const form = useQuery({ ...q.form(slug, projectId, pickedVersion(item.data, picked?.id)), enabled: Boolean(d) });
   const error = dep.error ?? item.error ?? form.error;
   return (
     <Page>
@@ -622,7 +689,19 @@ export function UpdatePage({ deploymentId }: { deploymentId: string }) {
           <Skeleton className="h-64 flex-[1_1_320px] rounded-lg" />
         </div>
       ) : (
-        <UpdateBody key={form.data.version_id} d={d} form={form.data} item={item.data} onVersion={setPicked} />
+        <UpdateBody
+          key={form.data.version_id}
+          d={d}
+          form={form.data}
+          item={item.data}
+          start={picked?.start}
+          onVersion={(id, keep) => {
+            // A refusal moves the focus to what it is about instead.
+            focusVersion.current = !keep.refusal;
+            setPicked({ id, start: keep });
+          }}
+          focusVersion={focusVersion}
+        />
       )}
     </Page>
   );
@@ -634,11 +713,13 @@ function VersionPicker({
   d,
   value,
   onChange,
+  error,
 }: {
   item: CatalogItem;
   d: DeploymentDetail;
   value: string;
   onChange: (versionId: string) => void;
+  error?: string;
 }) {
   const label = (v: { id: string; number: string }) =>
     v.id === item.version.id
@@ -650,6 +731,7 @@ function VersionPicker({
     <Field
       label="Version"
       htmlFor="version"
+      error={error}
       hint={
         value === d.version.id ? "Its own version: the update changes its inputs." : "Its inputs move to this version."
       }

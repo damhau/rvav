@@ -887,6 +887,16 @@ lists the errors on inputs the form has no field for, with their names.
 The count drops as you change each input. The summary shows only what
 the form sends: no placement for a cluster it doesn't hold.
 
+**Version** comes first when the item offers more than one
+([ADR-0046](adr/0046-deployment-names-and-versions.md)). Picking one remounts the
+form for that version: `FormStart` carries what was typed. The focus goes
+back to **Version** one task later (`useFocusVersion`), so the Enter that
+picked the version doesn't open the new list. A submit refused with
+`stale_version`, because the version was retired in the meantime, reads
+the item's versions again (`refreshVersions`). The form of the version
+offered now starts from what was typed, with the refusal under
+**Version**, which takes the focus.
+
 ## Updating a deployment
 
 **Update** in a deployment's **Actions** menu (`ActionItems`, which
@@ -899,7 +909,11 @@ navigates instead of opening a dialog) opens
   left out, and on the same version a defaulted field the deployment
   doesn't have reads `null` (it was emptied), as F1.4's defaults have it;
   on another version, it takes the form's `initial_values`. The body sends
-  every key (`sentInputs`).
+  every key (`sentInputs`). Picking another version under **Version**
+  keeps the inputs changed so far (those that differ from `startValues`)
+  and the reason, and the focus stays on **Version**. A Review or submit
+  refused with `stale_version` moves to a version still offered, as the
+  request form does.
 - **What the update does** previews the draft, debounced, with
   `keepPreviousData`: the changes, those refused (**Can't be changed in
   place**), the quota after the update (a negative change frees some) and

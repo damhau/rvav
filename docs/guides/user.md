@@ -46,7 +46,9 @@ one to ask your project admin or administrator for.
    before the environment, set to the newest. To request an earlier one,
    pick it there: the form changes to that version's and keeps what you
    typed in the fields it has too. The request and its deployments keep
-   the version you picked. The panel beside the form shows what you will
+   the version you picked. If an administrator retires that version
+   before you submit, the form moves to a version still offered, keeps
+   what you typed, and says why under **Version**. The panel beside the form shows what you will
    get, as you fill it in:
    - the VMs' names;
    - the size and the quota it uses: for each resource, the quota with
@@ -414,7 +416,8 @@ deployment:
    a newer version, the page says so, and the update moves the deployment
    to it. When the item offers several versions, pick the one to move to
    under **Version**: the newest is preselected, and the deployment's own
-   version, while it is still offered, updates only its inputs.
+   version, while it is still offered, updates only its inputs. The
+   inputs you already changed stay changed.
 2. Change the inputs. Secret inputs aren't shown: give them again, or
    their field's default applies.
 3. Read **What the update does**, beside the form. As you type, it lists:
