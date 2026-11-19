@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/damhau/rvav/internal/fips"
 )
 
 func check(t *testing.T, password, hash string) bool {
@@ -22,8 +24,13 @@ func TestPasswordHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// ADR-0030's parameters, whatever the machine's CPUs.
-	if !strings.HasPrefix(h, "$argon2id$v=19$m=65536,t=1,p=2$") {
+	// ADR-0030's parameters, whatever the machine's CPUs; ADR-0060's in
+	// FIPS 140 mode.
+	want := "$argon2id$v=19$m=65536,t=1,p=2$"
+	if fips.Current() != fips.Off {
+		want = "$pbkdf2-sha512$i=210000$"
+	}
+	if !strings.HasPrefix(h, want) {
 		t.Fatalf("hash %q", h)
 	}
 	if !check(t, "correct horse battery", h) || check(t, "correct horse batterY", h) {

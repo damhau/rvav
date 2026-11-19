@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -15,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/migrations"
 )
 
@@ -45,15 +47,33 @@ func Open(ctx context.Context, url string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
+	refuseMD5(&cfg.ConnConfig.Config)
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("connect to database: %w", err)
+		return nil, fmt.Errorf("connect to database: %w", explainMD5(err))
 	}
 	return &Store{Pool: pool}, nil
+}
+
+// refuseMD5 turns pgx's MD5 password authentication, which panics in FIPS
+// 140-only mode, into a connection error (ADR-0060). SCRAM-SHA-256,
+// PostgreSQL's default since version 14, uses PBKDF2 and HMAC-SHA-256.
+func refuseMD5(cfg *pgconn.Config) {
+	if fips.Current() == fips.Only && cfg.RequireAuth == "" {
+		cfg.RequireAuth = "!md5"
+	}
+}
+
+func explainMD5(err error) error {
+	if err != nil && fips.Current() == fips.Only && strings.Contains(err.Error(), "requested md5 authentication") {
+		return fmt.Errorf("%w: FIPS 140-only mode refuses MD5; keep rvav's password with SCRAM-SHA-256 "+
+			"(password_encryption = scram-sha-256, then set it again) and give its role scram-sha-256 in pg_hba.conf", err)
+	}
+	return err
 }
 
 func (s *Store) Close() { s.Pool.Close() }
@@ -69,9 +89,10 @@ func Migrate(ctx context.Context, url string) error {
 	if err != nil {
 		return err
 	}
+	refuseMD5(&cfg.Config)
 	db := stdlib.OpenDB(*cfg)
 	defer db.Close()
-	return migrateDB(ctx, db)
+	return explainMD5(migrateDB(ctx, db))
 }
 
 // migrateDB applies the migrations, one process at a time: every rvav pod

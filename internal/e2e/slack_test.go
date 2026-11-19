@@ -217,7 +217,7 @@ func TestSlackNotifications(t *testing.T) {
 			press := map[string]any{"type": "block_actions", "user": map[string]any{"id": "U-MKELLER"}, "trigger_id": "T1",
 				"response_url": sl.URL + "/respond/1", "container": map[string]any{"channel_id": "D-U-MKELLER",
 					"message_ts": "1700000000.000001"}, "actions": []any{map[string]any{"block_id": "rvav_decide", "action_id": notify.SlackReject, "value": value}}}
-			if code, _ := sl.interact(t, h, press, "wrong-secret", time.Now()); code != 401 {
+			if code, _ := sl.interact(t, h, press, "a wrong signing secret", time.Now()); code != 401 {
 				t.Errorf("a request signed with another secret = %d", code)
 			}
 			if code, _ := sl.interact(t, h, press, slackSigning, time.Now().Add(-10*time.Minute)); code != 401 {

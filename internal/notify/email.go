@@ -5,11 +5,15 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/wneessen/go-mail"
+	"github.com/wneessen/go-mail/smtp"
 
 	"github.com/damhau/rvav/internal/config"
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/trust"
 )
 
@@ -36,10 +40,41 @@ func (e *Email) client() (*mail.Client, error) {
 	}
 	if e.Config.Username != "" {
 		// The mechanism the server offers (Microsoft 365 has LOGIN, not PLAIN).
-		opts = append(opts, mail.WithSMTPAuth(mail.SMTPAuthAutoDiscover), mail.WithUsername(e.Config.Username),
-			mail.WithPassword(e.Config.Password))
+		auth := mail.WithSMTPAuth(mail.SMTPAuthAutoDiscover)
+		if fips.Current() == fips.Only {
+			auth = mail.WithSMTPAuthCustom(&fipsOnlyAuth{user: e.Config.Username, pass: e.Config.Password, host: e.Config.Host})
+		}
+		opts = append(opts, auth, mail.WithUsername(e.Config.Username), mail.WithPassword(e.Config.Password))
 	}
 	return mail.NewClient(e.Config.Host, opts...)
+}
+
+// fipsOnlyAuth signs in to the SMTP server with SCRAM-SHA-256, or PLAIN or
+// LOGIN over TLS: go-mail would otherwise choose SCRAM-SHA-1, NTLM or
+// CRAM-MD5 when offered, whose SHA-1 or MD5 panics in FIPS 140-only mode
+// (ADR-0060).
+type fipsOnlyAuth struct {
+	user, pass, host string
+	chosen           smtp.Auth
+}
+
+func (a *fipsOnlyAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	switch {
+	case slices.Contains(server.Auth, "SCRAM-SHA-256"):
+		a.chosen = smtp.ScramSHA256Auth(a.user, a.pass)
+	case server.TLS && slices.Contains(server.Auth, "PLAIN"):
+		a.chosen = smtp.PlainAuth("", a.user, a.pass, a.host, false)
+	case server.TLS && slices.Contains(server.Auth, "LOGIN"):
+		a.chosen = smtp.LoginAuth(a.user, a.pass, a.host, false)
+	default:
+		return "", nil, &fips.NotAllowedError{What: "Every way to sign in that the SMTP server offers (" + strings.Join(server.Auth, ", ") + ")",
+			Algorithm: "SHA-1, MD5 or a password sent without TLS", Instead: "offer SCRAM-SHA-256, or PLAIN or LOGIN over TLS"}
+	}
+	return a.chosen.Start(server)
+}
+
+func (a *fipsOnlyAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+	return a.chosen.Next(fromServer, more)
 }
 
 // Send sends m to its user's address.

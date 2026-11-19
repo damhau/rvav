@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+
+	"github.com/damhau/rvav/internal/fips"
 )
 
 // Checks of a provider's settings before they are saved (ADR-0030): its
@@ -45,7 +47,7 @@ func CheckProvider(ctx context.Context, ps ProviderSettings) ProviderCheck {
 		out.Discovery = fmt.Errorf("the token endpoint, %s, is not at the issuer's origin (%s): the browser may only reach that one",
 			out.Info.TokenEndpoint, Origin(ps.Issuer))
 	}
-	out.Keys, out.KeysErr = signingKeys(ctx, ps.httpClient(), out.Info.JWKSURL)
+	out.Keys, out.KeysErr = signingKeys(ctx, fips.JWKSClient(ps.httpClient()), out.Info.JWKSURL)
 	return out
 }
 

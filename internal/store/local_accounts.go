@@ -98,6 +98,14 @@ func (s *Store) SetLocalPassword(ctx context.Context, userID, hash string, mustC
 	return err
 }
 
+// RehashLocalPassword keeps a password as another hash of it, unless it
+// has changed since it was read as old.
+func (s *Store) RehashLocalPassword(ctx context.Context, userID, old, hash string) error {
+	_, err := s.Pool.Exec(ctx, `update local_accounts set password_hash = $3 where user_id = $1 and password_hash = $2`,
+		userID, old, hash)
+	return err
+}
+
 // CreateSession records a local sign-in by its ID's hash, and forgets the
 // user's sessions that have ended.
 func (s *Store) CreateSession(ctx context.Context, idHash, userID string, now, expires time.Time, idle time.Duration) error {

@@ -1,5 +1,5 @@
 // Package secrets encrypts the secrets rvav keeps in its database
-// (ADR-0019): AES-256-GCM, a fresh nonce for each value, and the secret's
+// (ADR-0019): AES-256-GCM, a random nonce for each value, and the secret's
 // name as additional data, so a value can't be moved to another name.
 // Each value records the ID of the key that sealed it; earlier keys still
 // open what they sealed until it is sealed again with the current one
@@ -9,12 +9,12 @@ package secrets
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // ErrNoKey: RVAV_SECRETS_KEY is not set.
@@ -22,6 +22,9 @@ var ErrNoKey = errors.New("RVAV_SECRETS_KEY is not set: rvav can't store secrets
 
 // ErrUnknownKey: the value was sealed with a key this box doesn't have.
 var ErrUnknownKey = errors.New("the secret was sealed with a key that is neither RVAV_SECRETS_KEY nor in RVAV_SECRETS_OLD_KEYS")
+
+// nonceSize is GCM's standard nonce: 96 bits.
+const nonceSize = 12
 
 type key struct {
 	id   string
@@ -43,7 +46,10 @@ func parseKey(keyB64 string) (key, error) {
 	if err != nil {
 		return key{}, err
 	}
-	aead, err := cipher.NewGCM(block)
+	// FIPS 140-only mode refuses GCM with nonces the caller chooses
+	// (ADR-0060). This one draws its own and writes it before the
+	// ciphertext; rvav keeps the two in columns of their own.
+	aead, err := cipher.NewGCMWithRandomNonce(block)
 	if err != nil {
 		return key{}, err
 	}
@@ -89,11 +95,8 @@ func (b *Box) Seal(name string, value []byte) (keyID string, nonce, ciphertext [
 	if b == nil {
 		return "", nil, nil, ErrNoKey
 	}
-	nonce = make([]byte, b.current.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return "", nil, nil, err
-	}
-	return b.current.id, nonce, b.current.aead.Seal(nil, nonce, value, []byte(name)), nil
+	sealed := b.current.aead.Seal(nil, nil, value, []byte(name))
+	return b.current.id, sealed[:nonceSize:nonceSize], sealed[nonceSize:], nil
 }
 
 // Open decrypts a secret's value with the key that sealed it (keyID), or
@@ -102,13 +105,17 @@ func (b *Box) Open(name, keyID string, nonce, ciphertext []byte) ([]byte, error)
 	if b == nil {
 		return nil, ErrNoKey
 	}
+	if len(nonce) != nonceSize {
+		return nil, fmt.Errorf("the secret's nonce is %d bytes, not %d", len(nonce), nonceSize)
+	}
+	sealed := append(slices.Clip(nonce), ciphertext...)
 	keys := append([]key{b.current}, b.old...)
 	var lastErr error = ErrUnknownKey
 	for _, k := range keys {
 		if keyID != "" && k.id != keyID {
 			continue
 		}
-		plain, err := k.aead.Open(nil, nonce, ciphertext, []byte(name))
+		plain, err := k.aead.Open(nil, nil, sealed, []byte(name))
 		if err == nil {
 			return plain, nil
 		}

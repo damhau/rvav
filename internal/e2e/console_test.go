@@ -23,6 +23,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/httpapi"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 )
@@ -50,6 +51,12 @@ func fakeESXi(t *testing.T) *httptest.Server {
 }
 
 func wsAccept(key string) string {
+	// The handshake's SHA-1 is the browser's and ESXi's, never rvav's, which
+	// passes ESXi's answer on: in FIPS 140-only mode, which refuses SHA-1,
+	// the fake answers something else (ADR-0060).
+	if fips.Current() == fips.Only {
+		return "fips-only-" + key
+	}
 	h := sha1.Sum([]byte(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 	return base64.StdEncoding.EncodeToString(h[:])
 }

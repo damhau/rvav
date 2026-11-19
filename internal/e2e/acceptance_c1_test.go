@@ -74,7 +74,7 @@ func TestC1Acceptance(t *testing.T) {
 		// rvav restarts with them; its sync process adds the catalog.
 		h.restartWith("git")
 		h.svc.Config.Git.Interval, h.svc.Config.Git.Cache = 5*time.Minute, filepath.Join(t.TempDir(), "sync")
-		h.svc.Config.Git.WebhookSecret = "hook-s3cret"
+		h.svc.Config.Git.WebhookSecret = "hook-s3cret-for-git"
 		if h.svc.Config.Git.URL != url || h.svc.Config.Git.Credential != "glpat-catalog" {
 			t.Fatalf("after the restart, Git = %+v", h.svc.Config.Git)
 		}
@@ -125,7 +125,7 @@ func TestC1Acceptance(t *testing.T) {
 		})
 		merge := push(t, ctx, reader, "Merge !42: clearer role label", gitrepo.Change{Path: "catalog/" + slug + ".yaml", Content: theirs})
 		body := []byte(`{"ref":"refs/heads/main","after":"` + merge.SHA + `"}`)
-		if code, b, _ := h.do("POST", "/api/v1/integrations/git/webhook", "", rawYAML(body), "X-Gitlab-Token", "hook-s3cret"); code != 202 {
+		if code, b, _ := h.do("POST", "/api/v1/integrations/git/webhook", "", rawYAML(body), "X-Gitlab-Token", "hook-s3cret-for-git"); code != 202 {
 			t.Fatalf("the webhook = %d: %s", code, b)
 		}
 		var it api.AdminCatalogItem

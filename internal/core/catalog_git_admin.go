@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/integrations/gitrepo"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -241,23 +243,33 @@ func (s *Service) GitWebhook(ctx context.Context, h http.Header, body []byte) er
 	if !s.Config.Git.Configured() || secret == "" {
 		return ErrNotFound
 	}
-	if !gitSigned(h, body, secret) {
+	signed, err := gitSigned(h, body, secret)
+	if err != nil {
+		return err
+	}
+	if !signed {
 		return ErrGitWebhook
 	}
 	return s.Store.RequestGitRead(ctx)
 }
 
-// gitSigned says whether the call carries the secret: GitHub's and
-// Gitea's HMAC of the body, or GitLab's token.
-func gitSigned(h http.Header, body []byte, secret string) bool {
+// gitSigned says whether the call carries the secret: GitLab's token, or
+// GitHub's and Gitea's HMAC of the body, which FIPS 140-only mode refuses
+// with a short secret (ADR-0060).
+func gitSigned(h http.Header, body []byte, secret string) (bool, error) {
+	if token := h.Get("X-Gitlab-Token"); token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1 {
+		return true, nil
+	}
+	if err := fips.CheckHMACKey([]byte(secret)); err != nil {
+		return false, fmt.Errorf("RVAV_GIT_WEBHOOK_SECRET: %w", err)
+	}
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	want := mac.Sum(nil)
 	for _, sig := range []string{strings.TrimPrefix(h.Get("X-Hub-Signature-256"), "sha256="), h.Get("X-Gitea-Signature")} {
 		if got, err := hex.DecodeString(sig); err == nil && sig != "" && hmac.Equal(got, want) {
-			return true
+			return true, nil
 		}
 	}
-	token := h.Get("X-Gitlab-Token")
-	return token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
+	return false, nil
 }

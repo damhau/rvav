@@ -18,6 +18,7 @@ import (
 	"golang.org/x/oauth2/clientcredentials"
 
 	"github.com/damhau/rvav/internal/config"
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/trust"
 )
@@ -292,7 +293,7 @@ func (v *TeamsVerifier) load(ctx context.Context) (*oidc.IDTokenVerifier, error)
 	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil || meta.JWKSURI == "" || meta.Issuer == "" {
 		return nil, fmt.Errorf("the Bot Framework's OpenID configuration can't be read: %v", err)
 	}
-	keys := oidc.NewRemoteKeySet(oidc.ClientContext(context.Background(), client), meta.JWKSURI)
+	keys := oidc.NewRemoteKeySet(oidc.ClientContext(context.Background(), fips.JWKSClient(client)), meta.JWKSURI)
 	v.verifier = oidc.NewVerifier(meta.Issuer, keys, &oidc.Config{ClientID: v.AppID, SupportedSigningAlgs: meta.Algs})
 	return v.verifier, nil
 }

@@ -87,7 +87,7 @@ func TestSubscriptionChanges(t *testing.T) {
 		defer srv.Close()
 		h.allowWebhooks(srv.URL)
 		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "cmdb-hook", Kind: api.SecretWriteKindToken,
-			Value: new("hook-secret")}, 201, nil)
+			Value: new("hook-signing-secret")}, 201, nil)
 		target := func(path string) api.SubscriptionTarget {
 			var t api.SubscriptionTarget
 			_ = json.Unmarshal([]byte(`{"webhook": {"url": "`+srv.URL+path+`", "secret": "cmdb-hook"}}`), &t)

@@ -2,19 +2,27 @@ package auth
 
 import (
 	"context"
+	"crypto/pbkdf2"
 	"crypto/rand"
+	"crypto/sha512"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/argon2id"
 
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/store"
 )
 
 // The local administrator's sign-in (ADR-0030): a password kept as an
-// argon2id hash, and a server-side session in a cookie.
+// argon2id hash (PBKDF2 in FIPS 140 mode, ADR-0060), and a server-side
+// session in a cookie.
 
 // SessionCookie holds a local session's ID.
 const SessionCookie = "rvav_session"
@@ -60,27 +68,91 @@ func HoldHashSlots() (release func()) {
 	}
 }
 
-// HashPassword is a password's argon2id hash, in the PHC string format.
+// pbkdf2Iterations is OWASP's count for PBKDF2-HMAC-SHA-512, the hash
+// FIPS 140 approves for passwords where argon2id isn't (ADR-0060).
+const pbkdf2Iterations = 210_000
+
+const pbkdf2Prefix = "$pbkdf2-sha512$"
+
+// ErrArgon2idRefused: FIPS 140-only mode doesn't check argon2id hashes.
+var ErrArgon2idRefused = &fips.NotAllowedError{What: "The local administrator's password hash", Algorithm: "argon2id",
+	Instead: "set a new password with rvav admin reset-password, or sign in once with RVAV_FIPS=on, which hashes it again with PBKDF2"}
+
+// HashPassword is a password's hash: argon2id in the PHC string format,
+// or PBKDF2-HMAC-SHA-512 in FIPS 140 mode.
 func HashPassword(ctx context.Context, password string) (string, error) {
 	release, err := slot(ctx)
 	if err != nil {
 		return "", err
 	}
 	defer release()
+	if fips.Current() != fips.Off {
+		return hashPBKDF2(password, pbkdf2Iterations)
+	}
 	return argon2id.CreateHash(password, passwordParams)
 }
 
 // CheckPassword compares a password with its hash in constant time; a
-// malformed hash never matches. It fails only when ctx ends before a slot
-// is free.
+// malformed hash never matches. It fails when ctx ends before a slot is
+// free, and with ErrArgon2idRefused (CheckHash).
 func CheckPassword(ctx context.Context, password, hash string) (bool, error) {
+	if err := CheckHash(hash); err != nil {
+		return false, err
+	}
 	release, err := slot(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer release()
+	if strings.HasPrefix(hash, pbkdf2Prefix) {
+		return checkPBKDF2(password, hash), nil
+	}
 	ok, err := argon2id.ComparePasswordAndHash(password, hash)
 	return err == nil && ok, nil
+}
+
+// CheckHash says whether this process checks passwords against a hash:
+// FIPS 140-only mode refuses argon2id's.
+func CheckHash(hash string) error {
+	if fips.Current() == fips.Only && strings.HasPrefix(hash, "$argon2id$") {
+		return ErrArgon2idRefused
+	}
+	return nil
+}
+
+// NeedsRehash says whether a hash that matched should be made again: an
+// argon2id hash in FIPS 140 mode.
+func NeedsRehash(hash string) bool {
+	return fips.Current() != fips.Off && !strings.HasPrefix(hash, pbkdf2Prefix)
+}
+
+func hashPBKDF2(password string, iterations int) (string, error) {
+	salt := make([]byte, 16)
+	_, _ = rand.Read(salt)
+	dk, err := pbkdf2.Key(sha512.New, password, salt, iterations, 32)
+	if err != nil {
+		return "", err
+	}
+	b64 := base64.RawStdEncoding.EncodeToString
+	return fmt.Sprintf("%si=%d$%s$%s", pbkdf2Prefix, iterations, b64(salt), b64(dk)), nil
+}
+
+func checkPBKDF2(password, hash string) bool {
+	parts := strings.Split(strings.TrimPrefix(hash, pbkdf2Prefix), "$")
+	if len(parts) != 3 || !strings.HasPrefix(parts[0], "i=") {
+		return false
+	}
+	iterations, err := strconv.Atoi(parts[0][2:])
+	if err != nil || iterations < 1 || iterations > 10*pbkdf2Iterations {
+		return false
+	}
+	salt, err1 := base64.RawStdEncoding.DecodeString(parts[1])
+	dk, err2 := base64.RawStdEncoding.DecodeString(parts[2])
+	if err1 != nil || err2 != nil || len(salt) < 16 || len(dk) != 32 {
+		return false
+	}
+	got, err := pbkdf2.Key(sha512.New, password, salt, iterations, len(dk))
+	return err == nil && subtle.ConstantTimeCompare(got, dk) == 1
 }
 
 // passwordAlphabet leaves out characters read alike (0 and O, 1, l and I).

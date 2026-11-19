@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/hosts"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
@@ -95,6 +96,9 @@ func (w *Webhook) Deliver(ctx context.Context, d Delivery) Result {
 	secret, err := w.Secret(ctx, t.Webhook.Secret)
 	if err != nil {
 		return Result{Err: "The signing secret can't be read: " + err.Error()}
+	}
+	if err := fips.CheckHMACKey([]byte(secret)); err != nil {
+		return Result{Err: fmt.Sprintf("The signing secret %s: %v.", t.Webhook.Secret, err)}
 	}
 	var head struct {
 		ID    string `json:"id"`

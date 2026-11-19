@@ -35,6 +35,8 @@ import (
 	"github.com/go-git/go-git/v5/storage/memory"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+
+	"github.com/damhau/rvav/internal/fips"
 )
 
 // Options: where the repository is, and how rvav signs in.
@@ -183,8 +185,27 @@ func New(o Options) (*Repo, error) {
 			keys.HostKeyCallback = cb
 		}
 		r.auth = keys
+		if fips.Current() == fips.Only {
+			r.auth = fipsOnlySSH{keys}
+		}
 	}
 	return r, nil
+}
+
+// fipsOnlySSH keeps an SSH connection to what FIPS 140-only mode allows:
+// x/crypto's defaults in that mode still offer AES-GCM and ML-KEM with
+// X25519, which Go refuses there (ADR-0060).
+type fipsOnlySSH struct{ *gitssh.PublicKeys }
+
+func (a fipsOnlySSH) ClientConfig() (*gossh.ClientConfig, error) {
+	c, err := a.PublicKeys.ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+	c.KeyExchanges = []string{gossh.KeyExchangeECDHP256, gossh.KeyExchangeECDHP384, gossh.KeyExchangeECDHP521}
+	c.Ciphers = []string{gossh.CipherAES128CTR, gossh.CipherAES192CTR, gossh.CipherAES256CTR}
+	c.MACs = []string{gossh.HMACSHA256ETM, gossh.HMACSHA512ETM, gossh.HMACSHA256, gossh.HMACSHA512}
+	return c, nil
 }
 
 // CheckURL says whether rvav can use a repository's URL: https://,
@@ -222,8 +243,18 @@ func urlScheme(u string) string {
 	return ""
 }
 
-// hostKeys checks SSH host keys against known_hosts lines.
+// hostKeys checks SSH host keys against known_hosts lines. A hashed
+// line's host is checked with HMAC-SHA-1, which panics in FIPS 140-only
+// mode: refused there (ADR-0060).
 func hostKeys(lines string) (gossh.HostKeyCallback, error) {
+	if fips.Current() == fips.Only {
+		for line := range strings.Lines(lines) {
+			if strings.HasPrefix(strings.TrimSpace(line), "|1|") {
+				return nil, &fips.NotAllowedError{What: "A hashed host key line (|1|…)", Algorithm: "HMAC-SHA-1",
+					Instead: "give the lines unhashed, as ssh-keyscan prints them without -H"}
+			}
+		}
+	}
 	f, err := os.CreateTemp("", "rvav-known-hosts-*")
 	if err != nil {
 		return nil, err

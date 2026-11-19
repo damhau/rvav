@@ -124,7 +124,7 @@ resource "rvav_group_mapping" "ops" {
 resource "rvav_secret" "hook" {
   name  = "tf-hook"
   kind  = "token"
-  value = "hook-secret"
+  value = "hook-signing-secret"
 }
 
 resource "rvav_subscription" "cmdb" {

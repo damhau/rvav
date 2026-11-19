@@ -111,7 +111,7 @@ func TestExtensibilityAcceptance(t *testing.T) {
 		defer srv.Close()
 		h.allowWebhooks(srv.URL)
 		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "cmdb-hook", Kind: api.SecretWriteKindToken,
-			Value: new("hook-secret")}, 201, nil)
+			Value: new("hook-signing-secret")}, 201, nil)
 		var target api.SubscriptionTarget
 		_ = json.Unmarshal([]byte(`{"webhook": {"url": "`+srv.URL+`/rvav", "secret": "cmdb-hook"}}`), &target)
 		h.json("POST", "/api/v1/admin/subscriptions", admin, api.SubscriptionWrite{Name: "CMDB check", Topic: api.ProvisioningPre,

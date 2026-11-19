@@ -120,7 +120,7 @@ func TestMovedSettings(t *testing.T) {
 		}))
 		t.Cleanup(cmdb.Close)
 		api1.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "moved-hook", Kind: api.SecretWriteKindToken,
-			Value: new("hook-secret")}, 201, nil)
+			Value: new("hook-signing-secret")}, 201, nil)
 		target := api.SubscriptionTarget{}
 		_ = json.Unmarshal([]byte(`{"webhook": {"url": "`+hook.URL+`/rvav", "secret": ""}}`), &target)
 		code, body, _ := api1.do("POST", "/api/v1/admin/subscriptions", admin,

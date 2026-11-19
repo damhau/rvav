@@ -60,7 +60,7 @@ func TestEventOutbox(t *testing.T) {
 		srv := httptest.NewServer(receiver)
 		defer srv.Close()
 		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "cmdb-hook", Kind: api.SecretWriteKindToken,
-			Value: new("hook-secret")}, 201, nil)
+			Value: new("hook-signing-secret")}, 201, nil)
 		sub := func(id, topic, condition string) {
 			t.Helper()
 			target, _ := json.Marshal(map[string]any{"webhook": map[string]any{"url": srv.URL + "/rvav", "secret": "cmdb-hook"}})
@@ -270,7 +270,7 @@ func TestEventOutbox(t *testing.T) {
 		sig := first.Header.Get("X-Rvav-Signature")
 		ts, _ := strings.CutPrefix(strings.Split(sig, ",")[0], "t=")
 		at, _ := time.Parse(time.RFC3339, time.Unix(mustInt(t, ts), 0).UTC().Format(time.RFC3339))
-		if sig != dispatch.Sign("hook-secret", at, body) || first.Header.Get("X-Rvav-Topic") == "" {
+		if sig != dispatch.Sign("hook-signing-secret", at, body) || first.Header.Get("X-Rvav-Topic") == "" {
 			t.Fatalf("signature %q", sig)
 		}
 		if len(ids) != 3 || slices.Max(mapValues(ids)) != 2 {

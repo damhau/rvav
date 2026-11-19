@@ -12,6 +12,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/dispatch"
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/hosts"
 )
 
@@ -45,6 +46,9 @@ func (f *Forwarder) webhook(ctx context.Context, c api.AuditWebhook) (sender, er
 	secret, err := f.Secret(ctx, c.Secret)
 	if err != nil {
 		return nil, fmt.Errorf("the signing secret can't be read: %w", err)
+	}
+	if err := fips.CheckHMACKey([]byte(secret)); err != nil {
+		return nil, fmt.Errorf("the signing secret %s: %w", c.Secret, err)
 	}
 	return &webhookSender{f: f, url: u, secret: secret}, nil
 }

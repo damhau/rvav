@@ -20,6 +20,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/trust"
 )
@@ -526,7 +527,7 @@ func newVerifier(ctx context.Context, ps ProviderSettings) (*oidc.IDTokenVerifie
 	}
 	// Access tokens from Keycloak carry the client in azp, and in aud only
 	// with an audience mapper; the realm export in deploy/ adds one.
-	keys := keySet{oidc.NewRemoteKeySet(oidc.ClientContext(context.Background(), client), meta.JWKSURL)}
+	keys := keySet{oidc.NewRemoteKeySet(oidc.ClientContext(context.Background(), fips.JWKSClient(client)), meta.JWKSURL)}
 	return oidc.NewVerifier(ps.Issuer, keys, &oidc.Config{ClientID: ps.ClientID, SupportedSigningAlgs: signingAlgs(meta.Algs)}), meta, nil
 }
 

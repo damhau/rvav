@@ -35,7 +35,7 @@ func TestWritesWithoutTheirRead(t *testing.T) {
 		defer hook.Close()
 		h.allowWebhooks(hook.URL)
 		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "w-hook", Kind: api.SecretWriteKindToken,
-			Value: new("hook-secret")}, 201, nil)
+			Value: new("hook-signing-secret")}, 201, nil)
 		var target api.SubscriptionTarget
 		_ = json.Unmarshal([]byte(`{"webhook": {"url": "`+hook.URL+`/rvav", "secret": "w-hook"}}`), &target)
 		var sub api.Subscription

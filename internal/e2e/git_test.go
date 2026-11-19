@@ -736,9 +736,9 @@ func TestCatalogGitDrafts(t *testing.T) {
 		if code, _, _ := h.do("POST", hook, "", map[string]any{"ref": "refs/heads/main"}); code != 404 {
 			t.Fatalf("a webhook without a secret = %d", code)
 		}
-		h.svc.Config.Git.WebhookSecret = "hook-s3cret"
+		h.svc.Config.Git.WebhookSecret = "hook-s3cret-for-git"
 		body := []byte(`{"ref":"refs/heads/main"}`)
-		mac := hmac.New(sha256.New, []byte("hook-s3cret"))
+		mac := hmac.New(sha256.New, []byte("hook-s3cret-for-git"))
 		mac.Write(body)
 		sig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 		if code, _, _ := h.do("POST", hook, "", rawYAML(body), "X-Hub-Signature-256", "sha256=00"); code != 401 {
@@ -757,7 +757,7 @@ func TestCatalogGitDrafts(t *testing.T) {
 			t.Fatal("the webhook didn't ask for a read")
 		}
 		h.syncGit()
-		if code, _, _ := h.do("POST", hook, "", rawYAML(body), "X-Gitlab-Token", "hook-s3cret"); code != 202 {
+		if code, _, _ := h.do("POST", hook, "", rawYAML(body), "X-Gitlab-Token", "hook-s3cret-for-git"); code != 202 {
 			t.Fatalf("GitLab's call = %d", code)
 		}
 

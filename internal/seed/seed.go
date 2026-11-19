@@ -229,7 +229,8 @@ func Run(ctx context.Context, s *store.Store) error {
 				project = &id
 			}
 			if err := exec(`insert into group_mappings (id, oidc_group, project_id, role)
-				values ('gmp_' || substr(md5($1::text || coalesce($2::text, '') || $3::text), 1, 20), $1, $2, $3) on conflict do nothing`,
+				values ('gmp_' || substr(encode(sha256(convert_to($1::text || coalesce($2::text, '') || $3::text, 'UTF8')), 'hex'), 1, 20),
+				$1, $2, $3) on conflict do nothing`,
 				g.group, project, g.role); err != nil {
 				return err
 			}

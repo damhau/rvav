@@ -13,6 +13,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/config"
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/trust"
 )
@@ -201,6 +202,9 @@ func RejectDialog(data CardData, channel, ts string) slack.ModalViewRequest {
 func VerifySlack(header http.Header, body []byte, signingSecret string) error {
 	if signingSecret == "" {
 		return errors.New("no signing secret is set")
+	}
+	if err := fips.CheckHMACKey([]byte(signingSecret)); err != nil {
+		return fmt.Errorf("the signing secret: %w", err)
 	}
 	sv, err := slack.NewSecretsVerifier(header, signingSecret)
 	if err != nil {

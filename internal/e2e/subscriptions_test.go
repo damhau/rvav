@@ -63,7 +63,7 @@ func TestSubscriptions(t *testing.T) {
 		defer srv.Close()
 		h.allowWebhooks(srv.URL)
 		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "cmdb-hook", Kind: api.SecretWriteKindToken,
-			Value: new("hook-secret")}, 201, nil)
+			Value: new("hook-signing-secret")}, 201, nil)
 		var problem struct{ Errors []api.FieldError }
 
 		// Who may, and what is checked.

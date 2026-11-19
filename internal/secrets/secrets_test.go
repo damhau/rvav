@@ -2,8 +2,12 @@ package secrets
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"testing"
+
+	"github.com/damhau/rvav/internal/fips"
+	"github.com/damhau/rvav/internal/fips/fipstest"
 )
 
 func testKey(b byte) string {
@@ -56,5 +60,33 @@ func TestSealOpenAndRotate(t *testing.T) {
 	var none *Box
 	if _, _, _, err := none.Seal("x", nil); !errors.Is(err, ErrNoKey) {
 		t.Fatalf("no key: %v", err)
+	}
+}
+
+// In FIPS 140-only mode the box seals and opens, and opens what it sealed
+// before (ADR-0060), the nonce still kept apart from the ciphertext.
+func TestBoxInFIPSOnlyMode(t *testing.T) {
+	if !fipstest.In(t, fips.Only) {
+		return
+	}
+	b, err := New(testKey(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, nonce, ct, err := b.Seal("cmdb", []byte("s3cret"))
+	if err != nil || len(nonce) != 12 {
+		t.Fatalf("seal: %x %v", nonce, err)
+	}
+	if got, err := b.Open("cmdb", id, nonce, ct); err != nil || string(got) != "s3cret" {
+		t.Fatalf("open = %q, %v", got, err)
+	}
+	// Sealed with cipher.NewGCM and the nonce "0123456789ab".
+	nonce, _ = hex.DecodeString("303132333435363738396162")
+	ct, _ = hex.DecodeString("7f9bb39284992c9247fcfddd0bef0a050c66988c8e69")
+	if got, err := b.Open("cmdb", id, nonce, ct); err != nil || string(got) != "s3cret" {
+		t.Fatalf("open a value sealed before = %q, %v", got, err)
+	}
+	if _, err := b.Open("cmdb", id, nonce[:8], ct); err == nil {
+		t.Fatal("a short nonce opened")
 	}
 }
