@@ -106,9 +106,12 @@ function Preview({
     enabled: Boolean(ctx.projectId && asUser),
     placeholderData: keepPreviousData,
   });
-  // A wizard's page as Next checked it: what shows until the inputs or the context change.
-  const [checkedPage, setCheckedPage] = useState<{ key: string; data: NonNullable<typeof preview.data> }>();
-  const shown = checkedPage?.key === JSON.stringify(previewOf(ctx.values).queryKey) ? checkedPage.data : preview.data;
+  // A wizard's page as Next checked it, and the preview's key then: the check shows until the
+  // preview of a later key arrives, as an older one would hide what the check showed.
+  const [checkedPage, setCheckedPage] = useState<{ since: string; data: NonNullable<typeof preview.data> }>();
+  const previewKey = JSON.stringify(previewOf(inputs).queryKey);
+  const shown =
+    checkedPage && (previewKey === checkedPage.since || preview.isPlaceholderData) ? checkedPage.data : preview.data;
   const states = shown?.fields;
   useEffect(() => onStates(states), [states, onStates]);
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -120,9 +123,9 @@ function Preview({
   );
   const problemCount = shown?.errors.length ?? 0;
   const checkPage = async (inputsOf: PageInputs) => {
-    const asked = previewOf(ctx.values);
-    const data = await qc.fetchQuery(asked);
-    setCheckedPage({ key: JSON.stringify(asked.queryKey), data });
+    const since = previewKey;
+    const data = await qc.fetchQuery(previewOf(ctx.values));
+    setCheckedPage({ since, data });
     const names = inputsOf(data.fields);
     setChecked((s) => new Set([...s, ...names]));
     const found = new Set(data.errors.map((e) => e.field.replace(/^\/inputs\//, "").split("/")[0]));

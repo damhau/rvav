@@ -393,8 +393,9 @@ function RequestFormBody({
   const [refused, setRefused] = useState(0);
   const attentionRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<FormHandle>(null);
-  // A wizard's page as Next checked it: what shows until the form changes again.
-  const [checked, setChecked] = useState<{ draft: RequestDraft; preview: RequestPreview }>();
+  // A wizard's page as Next checked it, and the debounced draft then: the check shows until the
+  // preview of a later draft arrives, as an older one would hide what the check showed.
+  const [checked, setChecked] = useState<{ since: RequestDraft; preview: RequestPreview }>();
   const [justification, setJustification] = useState(start?.justification ?? "");
   const [leaseDays, setLeaseDays] = useState<number | null>(start?.leaseDays ?? null);
   const [count, setCount] = useState(String(start?.count ?? 1));
@@ -445,7 +446,8 @@ function RequestFormBody({
     queryFn: ({ signal }) => call(api.POST("/requests/preview", { body: debounced, signal })),
     placeholderData: keepPreviousData,
   });
-  const shownPreview = checked?.draft === draft ? checked.preview : preview.data;
+  const shownPreview =
+    checked && (debounced === checked.since || preview.isPlaceholderData) ? checked.preview : preview.data;
 
   const submit = useMutation({
     mutationFn: (body: RequestDraft) =>
@@ -544,11 +546,12 @@ function RequestFormBody({
   // Next on a wizard's page: the preview of the form as it is now, its errors shown for the page's inputs.
   const checkPage = async (inputsOf: PageInputs) => {
     const body = draft;
+    const since = debounced;
     const checkedPreview = await qc.fetchQuery({
       queryKey: keys.preview(body),
       queryFn: ({ signal }) => call(api.POST("/requests/preview", { body, signal })),
     });
-    setChecked({ draft: body, preview: checkedPreview });
+    setChecked({ since, preview: checkedPreview });
     const inputs = inputsOf(checkedPreview.fields);
     setTouched((t) => new Set([...t, ...inputs]));
     const found = mapFieldErrors(checkedPreview.errors).fields;

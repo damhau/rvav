@@ -546,15 +546,21 @@ export function applyStates(
   return [...validate(inputs).filter((e) => !hidden(e) && !errors.some((x) => x.field === e.field)), ...errors];
 }
 
-export function preview(db: Db, item: StoredItem, project: Project, draft: RequestDraft): RequestPreview {
+/** A draft's inputs as the rules leave them, with each field's state and the problems found. */
+export function ruled(db: Db, item: StoredItem, project: Project, draft: RequestDraft) {
   const inputs = { ...draft.inputs };
-  const count = draft.count ?? 1;
   const fields = fieldStates(db.forms[item.id], inputs, {
     environment: draft.environment,
     project: { id: project.id, code: project.code, name: project.name },
     user: { id: db.me.user.id, roles: [], groups: userGroups[db.me.user.id] ?? [] },
   });
   const errors = applyStates(db.forms[item.id], fields, inputs, (x) => validateInputs(db, item, x));
+  return { inputs, fields, errors };
+}
+
+export function preview(db: Db, item: StoredItem, project: Project, draft: RequestDraft): RequestPreview {
+  const { inputs, fields, errors } = ruled(db, item, project, draft);
+  const count = draft.count ?? 1;
   if (count < 1 || count > 20) errors.push({ field: "/count", code: "range", message: "Between 1 and 20." });
   if (multiParts(item.slug, inputs) && count !== 1)
     errors.push({

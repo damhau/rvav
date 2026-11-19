@@ -97,6 +97,9 @@ describe("a wizard form", () => {
     await waitFor(() => expect(page("Rotation", 3, 5)).toHaveFocus());
     await user.click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() => expect(screen.getByLabelText("Every (days)")).toHaveFocus());
+    // Typed before the preview of the toggle arrives: the page stays, as the check showed it.
+    await user.keyboard("30");
+    expect(screen.getByLabelText("Every (days)")).toHaveValue(30);
 
     // Back, and not rotating: Next skips the Rotation page.
     await user.click(screen.getByRole("button", { name: "Back" }));

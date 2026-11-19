@@ -51,7 +51,7 @@ import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
 import { listingHandlers, visibleDeployments } from "./listing";
 import { faults } from "./faults";
-import { demand, preview, resolveField, summarize, vmCount } from "./logic";
+import { demand, preview, resolveField, ruled, summarize, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import {
   cancel,
@@ -634,33 +634,26 @@ export const handlers = [
       );
     }
 
+    // Kept as the server keeps them: without the inputs of fields the rules hide.
+    const { inputs } = ruled(db, item, project, draft);
     const approval = check.approval.policies[0]?.reason ?? null;
     const later = !approval && draft.scheduled_at && new Date(draft.scheduled_at) > new Date();
     const behalf = draft.on_behalf_of ? db.users.find((u) => u.id === draft.on_behalf_of) : undefined;
     const number = newRequestNumber();
     const id = `req_${number.slice(4)}`;
-    const { steps, host } = planSteps(item, project, draft.environment, draft.inputs, approval);
+    const { steps, host } = planSteps(item, project, draft.environment, inputs, approval);
     const now = new Date().toISOString();
     const deploymentIds: string[] = [];
     const dep =
       approval || later
         ? null
-        : createDeployment(
-            item,
-            project,
-            draft.environment,
-            draft.inputs,
-            draft.count ?? 1,
-            host,
-            number,
-            draft.lease_days,
-          );
+        : createDeployment(item, project, draft.environment, inputs, draft.count ?? 1, host, number, draft.lease_days);
     if (dep) deploymentIds.push(dep.id);
     const req: ServiceRequest = {
       id,
       number,
       kind: "provision",
-      title: title(item, host, draft.inputs),
+      title: title(item, host, inputs),
       status: approval ? "pending_approval" : later ? "scheduled" : "running",
       catalog_item: { id: item.id, slug: item.slug, name: item.name, type: item.type },
       version: item.version,
@@ -668,7 +661,7 @@ export const handlers = [
       environment: draft.environment,
       requester: db.me.user,
       ...(behalf ? { on_behalf_of: behalf } : {}),
-      inputs: draft.inputs,
+      inputs,
       count: draft.count ?? 1,
       justification: draft.justification,
       submitted_at: now,
