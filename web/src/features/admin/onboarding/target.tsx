@@ -3,6 +3,7 @@
 // components. Adopting at once and onboarding plans share these fields.
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -26,6 +27,25 @@ export interface Target {
   component: string;
   inputs: { key: string; value: string }[];
 }
+
+/**
+ * After the server refuses, the focus goes to the first field it names. `groups` gives, for an
+ * error on a whole group of fields (such as `/filter`), the id of the group's first input; pass
+ * a constant, as a new object each render would move the focus each render.
+ */
+export function useFocusRefused(errors: Record<string, string>, groups: Record<string, string> = noGroups) {
+  useEffect(() => {
+    if (Object.keys(errors).length === 0) return;
+    const sheet = document.querySelector<HTMLElement>('[role="dialog"]');
+    const named = [
+      ...(sheet?.querySelectorAll<HTMLElement>('[aria-invalid="true"]') ?? []),
+      ...Object.entries(groups).flatMap(([path, id]) => (errors[path] ? [document.getElementById(id)] : [])),
+    ].filter((e): e is HTMLElement => e !== null);
+    named.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    named[0]?.focus();
+  }, [errors, groups]);
+}
+const noGroups: Record<string, string> = {};
 
 export const emptyTarget: Target = {
   project: "",
@@ -134,13 +154,19 @@ export function TargetFields({
     !roles || m.roles.some((r) => roles.find((x) => x.key === r.key)?.permissions.includes("request.submit"));
   const items = useQuery({
     ...q.catalog({ projectId: t.project, type: "vm_blueprint" }),
-    enabled: t.project !== "" && t.into !== "existing",
+    enabled: t.project !== "",
   });
+  // Only a VM item's deployment takes VMs: those of the project's VM items, every page of them.
+  const slugs = items.data?.items.map((i) => i.slug) ?? [];
   const deployments = useInfiniteQuery({
-    ...q.deployments({ projectId: t.project, status: ["ready"], limit: 100 }),
-    enabled: t.project !== "" && t.into === "existing",
+    ...q.deployments({ projectId: t.project, status: ["ready"], item: slugs, limit: 100 }),
+    enabled: t.project !== "" && t.into === "existing" && slugs.length > 0,
   });
-  const ready = deployments.data?.pages[0]?.items ?? [];
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = deployments;
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const ready = slugs.length > 0 ? (deployments.data?.pages.flatMap((p) => p.items) ?? []) : [];
   const offered = current && !ready.some((d) => d.id === current.id) ? [current, ...ready] : ready;
   const e = (field: string) => errors[`${at}/${field}`];
   return (
@@ -170,7 +196,7 @@ export function TargetFields({
               id={`${id}-deployment`}
               value={t.deployment}
               disabled={!t.project}
-              loading={deployments.isFetching}
+              loading={items.isLoading || deployments.isFetching}
               onChange={(v) => set({ deployment: v })}
               options={offered.map((d) => ({ value: d.id, label: d.name }))}
             />

@@ -23,13 +23,14 @@ import { useDebounced } from "@/lib/hooks";
 import { adm } from "@/lib/query";
 import { fullDate, relative } from "@/lib/utils";
 import { failed, fieldErrors } from "../governance/common";
-import { emptyTarget, inputProblems, planTarget, targetOf, TargetFields, type Target } from "./target";
+import { emptyTarget, inputProblems, planTarget, targetOf, TargetFields, useFocusRefused, type Target } from "./target";
 
 type S = components["schemas"];
 export type Plan = S["OnboardingPlan"];
 type Run = S["OnboardingRun"];
 
 const vmsText = (n: number) => `${n} VM${n === 1 ? "" : "s"}`;
+const filterGroup = { "/filter": "obp-q" };
 
 export function filterText(f: S["OnboardingFilter"]): string {
   const power = { on: "powered on", off: "powered off", suspended: "suspended" } as const;
@@ -153,6 +154,7 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
   const [target, setTarget] = useState<Target>(plan ? targetOf(plan.target) : emptyTarget);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [local, setLocal] = useState<Record<number, string>>({});
+  useFocusRefused(errors, filterGroup);
   const save = useMutation({
     mutationFn: () => {
       const body: S["OnboardingPlanWrite"] = {
@@ -205,12 +207,12 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
           onChange={(e) => setF({ ...f, description: e.target.value })}
         />
       </Field>
-      <Panel as="fieldset" title="Which VMs">
+      <Panel as="fieldset" title="Which VMs" describedBy={errors["/filter"] ? "obp-filter-error" : undefined}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Name or address" htmlFor="obp-q" hint="Part of the name or host name, or the address's start">
             <Input id="obp-q" value={filter.q} onChange={(e) => set("q")(e.target.value)} />
           </Field>
-          <Field label="Folder" htmlFor="obp-folder" hint="And the folders under it" error={errors["/filter/folder"]}>
+          <Field label="Folder" htmlFor="obp-folder" hint="And the folders under it">
             <Input
               id="obp-folder"
               className="font-mono text-secondary"
@@ -219,7 +221,7 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
               onChange={(e) => set("folder")(e.target.value)}
             />
           </Field>
-          <Field label="Tag" htmlFor="obp-tag" hint="A vSphere tag, as category/tag" error={errors["/filter/tag"]}>
+          <Field label="Tag" htmlFor="obp-tag" hint="A vSphere tag, as category/tag">
             <Input
               id="obp-tag"
               className="font-mono text-secondary"
@@ -256,7 +258,11 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
             />
           </Field>
         </div>
-        {errors["/filter"] && <p className="text-secondary text-bad">{errors["/filter"]}</p>}
+        {errors["/filter"] && (
+          <p id="obp-filter-error" role="alert" className="mt-3 text-secondary text-bad">
+            {errors["/filter"]}
+          </p>
+        )}
         <Matching filter={filterOf(filter)} />
       </Panel>
       <Panel as="fieldset" title="Where they go">

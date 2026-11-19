@@ -26,7 +26,7 @@ import { useDebounced } from "@/lib/hooks";
 import { adm } from "@/lib/query";
 import { failed, fieldErrors } from "./governance/common";
 import { PlansTab, type Plan } from "./onboarding/plans";
-import { emptyTarget, inputProblems, inputsOf, TargetFields, type Target } from "./onboarding/target";
+import { emptyTarget, inputProblems, inputsOf, TargetFields, useFocusRefused, type Target } from "./onboarding/target";
 
 type S = components["schemas"];
 type Vm = S["OnboardingVm"];
@@ -52,6 +52,7 @@ function AdoptSheet({
   const [t, setT] = useState<Target>(emptyTarget);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [local, setLocal] = useState<Record<number, string>>({});
+  useFocusRefused(errors);
   const refs = vms.map((v) => ({ vcenter: v.vcenter, moref: v.moref }));
   const adopt = useMutation({
     mutationFn: () => {
@@ -392,6 +393,7 @@ function VmsTab() {
             setResult(r);
             void qc.invalidateQueries({ queryKey: ["admin", "onboarding"] });
             void qc.invalidateQueries({ queryKey: ["deployments"] });
+            void qc.invalidateQueries({ queryKey: ["vms"] });
             toast.success(`Adopted ${vmsText(r.deployments.reduce((n, d) => n + d.vms.length, 0))}`);
           }}
         />

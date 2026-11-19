@@ -102,6 +102,8 @@ test("a plan saved by keyboard adopts what it matches, then skips it", async ({ 
   await press(page, page.getByRole("button", { name: "Run now" }));
   await expect(runs.getByText("12 adopted, 0 skipped, 0 failed")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("0 VMs it matches no deployment has")).toBeVisible();
+  // Running, the button stays where the focus is.
+  await expect(page.getByRole("button", { name: "Run now" })).toBeFocused();
   // Tabbing past a toast sends the focus back to where it was.
   await noToast(page);
   await press(page, page.getByRole("button", { name: "Run now" }));
@@ -151,6 +153,7 @@ test("a plan into an existing deployment refuses what its item doesn't have", as
   await typeInto(page, sheet.getByRole("textbox", { name: /^Component/ }), "web");
   await press(page, sheet.getByRole("button", { name: "Save plan" }));
   await expect(sheet.getByText("RHEL 9 server's blueprint has no components: leave the component out.")).toBeVisible();
+  await expect(sheet.getByRole("textbox", { name: /^Component/ })).toBeFocused();
   await scan(page, "an onboarding plan refused");
 
   await typeInto(page, sheet.getByRole("textbox", { name: /^Component/ }), "");

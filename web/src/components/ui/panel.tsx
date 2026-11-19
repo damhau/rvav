@@ -56,6 +56,7 @@ export function Panel({
   className,
   flush,
   as: Box = "section",
+  describedBy,
 }: HeaderProps & {
   /** Help on the left, buttons on the right: what a settings form saves with. */
   footer?: React.ReactNode;
@@ -64,12 +65,15 @@ export function Panel({
   flush?: boolean;
   /** `fieldset` for a section of a form: a group of fields its title names. */
   as?: "section" | "fieldset";
+  /** The id of what explains the whole group, such as a problem with it. */
+  describedBy?: string;
 }) {
   const id = useId();
   return (
     <Box
       className={cn("m-0 min-w-0 rounded-lg border border-line bg-surface p-0", className)}
       aria-labelledby={title ? id : undefined}
+      aria-describedby={describedBy}
     >
       {title && (
         <Header

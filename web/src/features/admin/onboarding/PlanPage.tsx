@@ -206,6 +206,7 @@ export function PlanPage({ planId }: { planId: string }) {
     if (wasRunning.current && p && !p.running) {
       void qc.invalidateQueries({ queryKey: ["admin", "onboarding"] });
       void qc.invalidateQueries({ queryKey: ["deployments"] });
+      void qc.invalidateQueries({ queryKey: ["vms"] });
     }
     wasRunning.current = p?.running ?? false;
   }, [p, qc]);
@@ -239,7 +240,13 @@ export function PlanPage({ planId }: { planId: string }) {
                   </MenuItem>
                 </MenuContent>
               </Menu>
-              <Button variant="primary" disabled={p.running || runNow.isPending} onClick={() => runNow.mutate(p)}>
+              {/* aria-disabled rather than disabled: a disabled button drops the focus to the page. */}
+              <Button
+                variant="primary"
+                aria-disabled={p.running || runNow.isPending || undefined}
+                className="aria-disabled:opacity-50"
+                onClick={() => !p.running && !runNow.isPending && runNow.mutate(p)}
+              >
                 {p.running ? "Running…" : "Run now"}
               </Button>
             </>
