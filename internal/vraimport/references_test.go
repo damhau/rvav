@@ -109,20 +109,12 @@ func TestMapReferences(t *testing.T) {
 			t.Errorf("%s: %v", expr, err)
 		}
 	}
+	// The block holds an input: it is one text printed through json.
 	ud := web["guest"].(map[string]any)["cloud_init"].(map[string]any)["user_data"].(string)
-	for _, want := range []string{
-		"db={{ (index .components.db.vms 0).address }}",
-		"dbs={{ .components.db.addresses | json }}",
-		"db_names={{ .components.db.names | json }}",
-		"me={{ .vm.name }} {{ .vm.index }}",
-		"peer={{ (index .components.webserver.vms .vm.index).address }}",
-		"app={{ .inputs.app | json }}",
-		"up=${to_upper(input.app)}",
-		"lb=${resource.lb.address}",
-	} {
-		if !strings.Contains(ud, want) {
-			t.Errorf("user data lacks %q:\n%s", want, ud)
-		}
+	if want := `content: {{ printf "db=%v\ndbs=%v\ndb_names=%v\nme=%v %v\npeer=%v\napp=%v\nup=${to_upper(input.app)}\nlb=${resource.lb.address}\n" ` +
+		"(index .components.db.vms 0).address (.components.db.addresses | json) (.components.db.names | json) .vm.name .vm.index " +
+		"(index .components.webserver.vms .vm.index).address .inputs.app | json }}\n"; !strings.HasSuffix(ud, want) {
+		t.Errorf("user data\n%s\nwant it to end\n%s", ud, want)
 	}
 	if err := blueprint.CheckUserData(ud); err != nil {
 		t.Errorf("user data: %v", err)

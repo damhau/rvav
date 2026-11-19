@@ -147,7 +147,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	// An input that is a property group: the item names the group, whose
 	// inputs are the form's (ADR-0038).
 	gs := newGroupScope(e, bp.ProjectID)
-	secrets := map[string]bool{}
+	secrets, numbers := map[string]bool{}, map[string]bool{}
 	own := slices.Clone(placementFields)
 	for _, name := range order {
 		if ref, _ := t.Inputs[name]["$ref"].(string); !strings.HasPrefix(ref, groupRefPrefix) {
@@ -179,6 +179,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		gs.inputs[name], gs.used[key] = key, true
 		for _, in := range mapGroup(*g, key).Inputs {
 			secrets[in.Name] = secrets[in.Name] || in.Secret
+			numbers[in.Name] = numbers[in.Name] || in.Type == "integer" || in.Type == "number"
 			// rvav's form has one input of a name, which the save checks.
 			switch other := groupOf[in.Name]; {
 			case slices.Contains(own, in.Name):
@@ -201,6 +202,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		}
 		props[name], fields[name] = prop, field
 		secrets[name] = field["secret"] == true
+		numbers[name] = prop["type"] == "integer" || prop["type"] == "number"
 		if req {
 			required = append(required, name)
 		}
@@ -266,7 +268,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	for _, name := range machines {
 		r := t.Resources[name]
 		where := "resources." + name
-		sc := scope{machines: machineRefs, self: name, groups: gs, secrets: secrets}
+		sc := scope{machines: machineRefs, self: name, groups: gs, secrets: secrets, numbers: numbers}
 		c := map[string]any{"key": machineRefs[name].key, "title": name}
 		bindings := map[string]any{}
 		if img, _ := r.Properties["image"].(string); img != "" {

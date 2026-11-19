@@ -32,6 +32,8 @@ type scope struct {
 	groups *groupScope
 	// secrets are the secret inputs, the template's and its groups'.
 	secrets map[string]bool
+	// numbers are the inputs of numbers, the template's and its groups'.
+	numbers map[string]bool
 }
 
 // What an expression gives, when rvav can tell.
@@ -163,23 +165,10 @@ func (r ref) cel() (string, valueKind) {
 
 // action is a ref as a Go template action, for cloud-init.
 func (r ref) action() string {
-	switch r.what {
-	case "index":
-		return "{{ .vm.index }}"
-	case "self":
-		if r.name == "address" {
-			return "{{ .vm.ip }}"
-		}
-		return "{{ .vm.name }}"
-	case "input":
-		if environmentInput(r.name) {
-			return "{{ .environment }}"
-		}
-		return "{{ .inputs." + r.name + " | json }}"
-	case "secret":
-		// Printed as it is, as vRA does.
-		return `{{ secret "` + r.name + `" }}`
-	case "propgroup":
+	switch {
+	case r.what == "input" && !environmentInput(r.name):
+		return "{{ " + r.pipeline() + " | json }}"
+	case r.what == "propgroup":
 		// rvav's user data doesn't read property groups: the value is
 		// printed in it.
 		v := fmt.Sprint(r.value)
@@ -188,18 +177,41 @@ func (r ref) action() string {
 		}
 		return v
 	}
+	// A secret is printed as it is, as vRA does.
+	return "{{ " + r.pipeline() + " }}"
+}
+
+// pipeline is a ref, other than a property group's constant, as a Go
+// template pipeline giving what vRA prints for it.
+func (r ref) pipeline() string {
+	switch r.what {
+	case "index":
+		return ".vm.index"
+	case "self":
+		if r.name == "address" {
+			return ".vm.ip"
+		}
+		return ".vm.name"
+	case "input":
+		if environmentInput(r.name) {
+			return ".environment"
+		}
+		return ".inputs." + r.name
+	case "secret":
+		return `secret "` + r.name + `"`
+	}
 	c := ".components." + r.component
 	switch {
 	case r.name == "count":
-		return "{{ " + c + ".count }}"
+		return c + ".count"
 	case r.list:
-		return "{{ " + c + "." + r.plural + " | json }}"
+		return c + "." + r.plural + " | json"
 	case r.index == "":
-		return "{{ index " + c + "." + r.plural + " 0 }}"
+		return "index " + c + "." + r.plural + " 0"
 	case r.index == "count.index":
-		return "{{ (index " + c + ".vms .vm.index)." + r.name + " }}"
+		return "(index " + c + ".vms .vm.index)." + r.name
 	}
-	return "{{ (index " + c + ".vms " + r.index + ")." + r.name + " }}"
+	return "(index " + c + ".vms " + r.index + ")." + r.name
 }
 
 // translated is an expression in CEL, with what it reads.
@@ -556,31 +568,6 @@ func SecretName(name string) string {
 
 func quote(s string) string {
 	return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(s) + "'"
-}
-
-// userData translates cloud-init's vRA expressions into the Go template
-// rvav renders, and lists those it can't.
-func (s scope) userData(src string) (string, []string) {
-	var problems []string
-	out := refPattern.ReplaceAllStringFunc(src, func(m string) string {
-		inner := strings.TrimSpace(m[2 : len(m)-1])
-		toks, err := tokenize(inner)
-		if err == nil && len(toks) == 1 && toks[0].kind == tokIdent || secretRef.MatchString(inner) {
-			r, err := s.ref(inner)
-			if err == nil {
-				if r.what == "propgroup" {
-					s.groups.inlined = append(s.groups.inlined, inner)
-				}
-				return r.action()
-			}
-			problems = append(problems, fmt.Sprintf("cloud-init uses %s: %v. It is left as it was.", m, err))
-			return m
-		}
-		problems = append(problems, "cloud-init uses "+m+": rvav's user data prints values, without functions or operators. "+
-			"It is left as it was: compute the value in the form, or in the tags.")
-		return m
-	})
-	return out, problems
 }
 
 // tags maps a machine's vRA tags, a key and a value, to vSphere tags as

@@ -4,8 +4,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"go.yaml.in/yaml/v3"
+
+	"github.com/damhau/rvav/internal/vra"
+	"github.com/damhau/rvav/internal/vraimport"
 )
 
 func TestCloudInit(t *testing.T) {
@@ -74,5 +81,59 @@ func TestCloudInit(t *testing.T) {
 	gi := guestInfo(raw, user)
 	if dec, _ := base64.StdEncoding.DecodeString(gi["guestinfo.userdata"]); string(dec) != user || gi["guestinfo.metadata.encoding"] != "base64" {
 		t.Fatalf("guestinfo = %v", gi)
+	}
+}
+
+// TestImportedUserData: a vRA cloud-init with inputs in the middle of its
+// texts, imported, renders as vRA's would, and a requester's newline or
+// quote stays in its text (#140).
+func TestImportedUserData(t *testing.T) {
+	const content = `formatVersion: 1
+inputs:
+  app:
+    type: string
+  port:
+    type: integer
+resources:
+  web:
+    type: Cloud.vSphere.Machine
+    properties:
+      image: rhel9
+      flavor: small
+      cloudConfig: |
+        #cloud-config
+        hostname: ${self.resourceName}
+        runcmd:
+          - systemctl enable --now ${input.app}@${input.port}
+        write_files:
+          - path: /etc/${input.app}.conf
+            content: |
+              app=${input.app}
+              port=${input.port}
+`
+	e := vra.SampleEstate(time.Now())
+	p := vraimport.MapTemplate(&e, vra.Blueprint{ID: "bp-web", Name: "Web", Versions: []vra.BlueprintVersion{
+		{Version: "1", Status: "RELEASED", Content: content}}})
+	if p.Doc == nil {
+		t.Fatalf("plan = %s %+v", p.Status, p.Notes)
+	}
+	ud := p.Doc.Versions[0].Blueprint["guest"].(map[string]any)["cloud_init"].(map[string]any)["user_data"].(string)
+	for _, app := range []string{"shop", "x\nruncmd:\n  - rm -rf /", `a" #b`} {
+		raw, _ := json.Marshal(map[string]any{"app": app, "port": 1048576})
+		inputs := map[string]any{}
+		_ = json.Unmarshal(raw, &inputs)
+		out, err := renderUserData(ud, map[string]any{"vm": map[string]any{"name": "web01"}, "inputs": inputs}, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", ud, err)
+		}
+		var doc map[string]any
+		if err := yaml.Unmarshal([]byte(out), &doc); err != nil {
+			t.Fatalf("%v:\n%s", err, out)
+		}
+		want := map[string]any{"hostname": "web01", "runcmd": []any{"systemctl enable --now " + app + "@1048576"},
+			"write_files": []any{map[string]any{"path": "/etc/" + app + ".conf", "content": "app=" + app + "\nport=1048576\n"}}}
+		if !reflect.DeepEqual(doc, want) {
+			t.Errorf("app %q:\n%s\n%#v", app, out, doc)
+		}
 	}
 }
