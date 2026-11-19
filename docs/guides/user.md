@@ -13,7 +13,7 @@ You sign in with your organisation's account. What you see depends on your
 |---|---|
 | Viewer | See its requests and deployments. |
 | Member | Request, and act on your own VMs. |
-| Project admin | Act on every VM of the project, hand them over, delete them. |
+| Project admin | Act on every VM of the project, hand them over, delete them; choose who sees its deployments, and write its policies. |
 
 Your organisation can also give you roles of its own, which allow other
 things. The project you work in is chosen at the top of the page. Your
@@ -64,6 +64,12 @@ one to ask your project admin or administrator for.
 6. **Submit request**, at the foot of the summary (**Submit for approval**
    when someone must approve it). A field with a problem says what it is
    under the field.
+
+Some policies only warn: a lease longer than the environment's soft
+maximum, for example. The summary then shows the warning, and the
+lease list offers the longer leases. To go on, select **Submit request
+anyway**. The request keeps the warning: its page lists it under
+**Policy warnings**, for you, its approvers and the project's admins.
 
 Some forms show their sections in another layout, which the item's
 administrator chooses:
@@ -215,6 +221,13 @@ their times and tasks.
 To list the deployments of every project you're in, select **All my
 projects**: a **Project** column then names each one's project.
 
+A project may show its deployments to their owners only. You then see the
+deployments you own (you requested them, they were requested for you, or
+they were handed over to you) and the requests you made, but not your
+colleagues'. Project admins and supervisors still see all of them. To
+let a colleague look after one of yours, hand it over to them. You always
+see the deployments you own, whatever your role in their project.
+
 To narrow the list:
 - search by name, IP or owner;
 - choose a status (**Lease ended** lists the deployments whose lease has
@@ -332,6 +345,14 @@ snapshot, asks first and says what changes. Delete also asks you to type the
 deployment's name. Some actions need approval: deleting in production, going
 over a soft quota.
 
+Some actions only warn: the menu says **warns** beside them, and their
+dialog says why, for example "Web Platform's VMs serve the checkout: tell
+the on-call team before you power one off." To go on, select the action's
+button, which then ends in **anyway**, such as **Power off anyway**. The
+request keeps the warning: open it from **History** to read it under
+**Policy warnings**. Actions on several deployments at once leave out
+those whose action warns: run it on each one.
+
 - **Console:** opens the VM's screen in the browser, or in VMware Remote
   Console.
 - **Changed outside rvav:** a VM changed in vCenter (CPU, memory, disks,
@@ -341,7 +362,8 @@ over a soft quota.
   vCenter.
 - **Leases:** you are told before a lease ends. Extend it, or let it end.
   What happens at the end (power off then delete, or delete) is the
-  environment's policy.
+  environment's policy. An extension beyond the policy asks the project's
+  approvers, or, under a soft policy, warns you and needs no approval.
 
 ## Updating a deployment
 

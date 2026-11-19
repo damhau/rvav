@@ -72,7 +72,7 @@ test("an administrator makes the operator and the auditor, and gives them", asyn
   await page.getByRole("button", { name: "Make role" }).click();
   await expect(page.getByRole("heading", { name: "Compliance auditor", level: 1 })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "audit.read" })).toBeChecked();
-  await expect(page.getByRole("checkbox", { name: "policies.manage" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "policies.manage", exact: true })).not.toBeChecked();
   await nav(page, "Roles");
   await page.getByRole("tab", { name: "For all of rvav" }).click();
   const rvav = page.getByRole("region", { name: "Given for all of rvav" });
@@ -99,7 +99,7 @@ test("an administrator makes the operator and the auditor, and gives them", asyn
   await choose(page, "Where", "For all of rvav");
   const alain = may.getByRole("table", { name: "What Alain Favre may do for all of rvav" });
   await expect(alain.getByRole("row", { name: /\baudit\.read\b/ })).toContainText("Compliance auditor");
-  await expect(alain.getByRole("row", { name: /policies\.manage/ })).toContainText(
+  await expect(alain.getByRole("row", { name: /(?<!project\.)policies\.manage/ })).toContainText(
     "No role they hold for all of rvav grants it.",
   );
 });

@@ -39,6 +39,10 @@ Subscription (event → awx template | webhook)
 
 ### Project
 - `code` (short, used in names), `name`, `description`, `cost_center` (metadata only, passed to AWX and webhooks), `tags`, allowed environments.
+- `deployment_sharing`: `all_members` (the default) or `owner_only`, where
+  members see only the deployments they own and holders of
+  `deployments.read_all` see all of them
+  ([ADR-0045](adr/0045-deployment-sharing-and-project-policies.md)).
 - **PlacementRule**: allowed vCenter, datacenter, cluster or resource pool, VM
   folder, datastores or datastore cluster, networks and their linked EfficientIP
   subnets. Supports tag-based selection and priority.
@@ -117,7 +121,10 @@ Subscription (event → awx template | webhook)
 ### Policies
 - **PolicyDefinition**: `type`, `scope` (global | project | catalog item),
   `condition` (CEL), `priority`, `enforcement` (`hard` | `soft`), `spec` (JSONB,
-  depends on type). Types:
+  depends on type). A project's policies are written by its project admins
+  (`project.policies.manage`); a hard global one still wins. Soft lease and
+  day-2 policies warn, and a request that goes on keeps its warnings
+  ([ADR-0045](adr/0045-deployment-sharing-and-project-policies.md)). Types:
   - `approval`: levels, approvers, auto-approve conditions, timeout behaviour.
   - `lease`: default, max, grace period, max extensions, expiry action.
   - `day2`: which roles can run which actions under which conditions.

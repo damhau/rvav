@@ -538,9 +538,10 @@ With an NSX Manager set in **Integrations**
   give ([Roles and permissions](#roles-and-permissions)).
 
 A project's page has four tabs:
-- **Members:** who holds a role in the project, and where each role comes
-  from. To add someone, choose the role in **As**, then find them in
-  **Add someone**. A member's menu changes their roles or removes them.
+- **Members:** **Deployment sharing**, then who holds a role in the
+  project, and where each role comes from. To add someone, choose the role
+  in **As**, then find them in **Add someone**. A member's menu changes
+  their roles or removes them.
 - **Placement:** each environment's placement rules, lowest priority
   first, and what the project gets there: the clusters, datastores,
   networks and folder a request would use, or what stops it.
@@ -568,6 +569,33 @@ approval. To let it be deleted, open the deployment and select
 **Allow deletion** in its **Actions** menu. You need `project.update` in
 its project, which administrators hold.
 
+### Deployment sharing
+
+By default, everyone who sees a project sees all its deployments. To show
+members only their own, open the project's **Members** tab, choose
+**Owners only** in **Who sees them**, then select **Save sharing**
+([ADR-0045](../adr/0045-deployment-sharing-and-project-policies.md)).
+You need `project.members.manage` there, which project admins hold.
+
+With **Owners only**:
+- a member sees the deployments they own: those they requested, those
+  requested for them, and those handed over to them. They see the
+  requests they made or that were made for them;
+- whoever holds `deployments.read_all` in the project sees all of them:
+  project admins, supervisors, auditors and administrators, and the
+  custom roles you give it;
+- an approver still reads the request they're asked to approve;
+- the rule holds everywhere: lists, search, a deployment's page and
+  actions, updates, consoles, reports, pickers in forms, requests and live
+  updates. A link to a deployment someone no longer sees answers "not
+  found".
+
+To share one deployment with a colleague, hand it over to them. The owner
+of a deployment always sees it, even with a custom role that doesn't hold
+`project.see`. `PUT /api/v1/projects/{id}/deployment-sharing` with
+`{"deployment_sharing": "owner_only"}` does the same, and the audit log
+has each change as `project.sharing.set`.
+
 ## Roles and permissions
 
 What someone may do comes from the permissions their roles hold
@@ -578,8 +606,8 @@ or only for all of rvav. The built-in roles can't be changed:
 |---|---|---|
 | Administrator (`admin`) | For all of rvav | Every permission. Day-2 actions are decided by the day-2 policies. |
 | Catalog admin | For all of rvav | `catalog.manage`. |
-| Auditor | For all of rvav | Every read permission: projects, their settings and audit log, every approval, environments, access, infrastructure, policies, extensibility and the inventory. |
-| Project admin | In a project | Seeing it, requesting (for others too), its requests, approvals, members, settings and audit log. |
+| Auditor | For all of rvav | Every read permission: projects, all their deployments, their settings and audit log, every approval, environments, access, infrastructure, policies, extensibility and the inventory. |
+| Project admin | In a project | Seeing it, all its deployments included (`deployments.read_all`), requesting (for others too), its requests, approvals, members, deployment sharing, settings and audit log, and writing its own approval, day-2 and lease policies (`project.policies.manage`, [Project policies](#project-policies)). |
 | Member | In a project | Seeing it and requesting. |
 | Viewer | In a project | Seeing it. |
 | Supervisor | In a project | Seeing it, all its deployments included (`deployments.read_all`), and approving: it is one of the project's approvers (`approval.project`), asked when a lease is extended beyond its policy, and wherever a level names it ([Who approves](#who-approves)). It doesn't request or run day-2 actions. |
@@ -698,8 +726,8 @@ and an environment, which policies would apply to a request and why.
 | Tab | What it decides |
 |---|---|
 | **Approval** | Which requests need approval, from whom (users, groups or project roles, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota, and what an update changes (see [Updates](#updates)). |
-| **Lease** | Default and longest leases per environment or project, extensions, and the end: power off then delete, delete, or only tell the owner. |
-| **Day-2** | Who may run which action, where, and which need approval (deleting in production, by default). |
+| **Lease** | Default and longest leases per environment or project, extensions, the end (power off then delete, delete, or only tell the owner), and the enforcement. |
+| **Day-2** | Who may run which action, where, which need approval (deleting in production, by default), and the enforcement. |
 | **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment, with where the counter starts and how much it moves (**Start at** 100 and **Increment** 10 give 100, 110, 120). A counter in use goes on from its last number, and jumps to the start when you raise it past that number. Names are never given twice, and are checked free in vCenter and DNS. |
 
 Each tab is a list. To add a policy, select **New approval policy** (or
@@ -711,6 +739,72 @@ policy decides instead.
 
 Quotas are set on each project's page, in its **Quotas** tab: a hard
 limit refuses a request, a soft one asks for approval.
+
+### Project policies
+
+Project admins write the approval, day-2 and lease policies of their
+projects (`project.policies.manage`,
+[ADR-0045](../adr/0045-deployment-sharing-and-project-policies.md)). In
+**Administration › Policies**, they see the global policies and their
+projects' own, and **What applies here** for their projects. They change
+only their projects' policies: the others have no menu. A project admin:
+- picks one of their projects in the side panel's **Project**: a policy
+  for all projects needs `policies.manage`, which administrators hold;
+- doesn't see the **Naming** tab: naming policies and quotas stay
+  administrators';
+- sets a policy's priority instead of moving it up or down, which
+  renumbers every project's policies;
+- can't write a lease override looser than the environment's lease: a
+  longer default or maximum, no lease where the environment gives one,
+  more extensions or grace days, a gentler end, or **Soft** over a hard
+  lease. rvav says which, for example "Development allows 90 days at
+  most."
+
+Every change is in the audit log with its project, as `policy.approval.*`,
+`policy.day2.*` or `policy.lease.*`.
+
+Project and global policies combine as follows:
+- **Approval:** every policy that matches adds its levels. A project's
+  policy adds approvals, and never removes a global one's.
+- **Day-2:** the first policy that matches, by priority, decides, global
+  or not. When a project's policy decides, the first global policy that
+  matches after it still wins if it is hard and stricter: a deny over an
+  approval, an approval over a warning, a warning over an allow. A
+  project's policy can deny what a global one allows, but can't allow what
+  a hard global one denies.
+- **Lease:** a project's override replaces the environment's lease for
+  that project.
+
+**What applies here** names the policy that decides and says why, for
+example when a global policy wins over the project's.
+
+### Soft and hard enforcement
+
+Lease and day-2 policies have an **Enforcement**, **Hard** by default:
+- **Hard** refuses, or asks for approval, as the policy says.
+- **Soft** warns, and the requester may go on.
+
+A soft lease policy warns when a request asks for a longer lease than its
+maximum, and when an extension goes beyond its days or extensions; that
+extension then needs no approval. A soft day-2 policy with the effect
+**Deny** or **Approval** leaves the action enabled, and warns with the
+policy's **Reason people see**. A day-2 policy with the effect **Allow**
+can't be soft. Approval policies always apply: to warn instead of asking
+for approval, write a soft day-2 policy with the effect **Approval**. The
+policy list shows a soft policy as **Soft: warns**, or a soft lease as
+**Soft: longer warns**.
+
+The request form, the action's dialog, the update's review and the lease
+extension show the warning; the requester selects, for example,
+**Submit request anyway**. The request keeps the warnings, its page lists
+them under **Policy warnings**, and the audit log has
+`request.warnings.accept`. Actions on several deployments at once skip
+those whose action warns.
+
+Through the API, previews list the warnings (`warnings`). Send
+`"accept_warnings": true` to go on: without it, rvav refuses the request
+with 422 and one error per warning, at `/accept_warnings` with the code
+`warning`.
 
 ### Who approves
 

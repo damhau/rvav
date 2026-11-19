@@ -1317,6 +1317,19 @@ a way to put a changed field back to its default.
 ## 5. Policies
 
 All policies have a scope (global, project or item), a CEL condition, and a priority.
+Project admins write their project's approval, lease and day-2 policies;
+administrators write the global ones, which a project's can't loosen
+([ADR-0045](adr/0045-deployment-sharing-and-project-policies.md)):
+- an approval policy adds its levels to those of every other policy that
+  matches;
+- the first day-2 policy that matches decides, unless a hard global one
+  that matches after it is stricter;
+- a project's lease override replaces the environment's lease, and a
+  project admin's can't give more than it.
+
+Lease and day-2 policies are hard or soft. Hard refuses or asks for
+approval; soft warns, and the requester may go on. The request keeps the
+warnings it went on despite, and the audit log has them.
 
 ### Approval
 - Multi-level (sequential), with any-of or all-of approvers per level.
@@ -1333,11 +1346,13 @@ All policies have a scope (global, project or item), a CEL condition, and a prio
 - Default and maximum lease; "never expires" only where the policy allows it.
 - Reminders before expiry (for example 7 days and 1 day).
 - Self-service extension within limits, or extension through approval.
+- Soft: a longer lease, or an extension beyond the limits, warns instead.
 - Expiry action: power off → grace period → delete (configurable).
 
 ### Day-2 entitlement
 - Which roles can run which actions, on which resource types, under which
   conditions (for example "members can snapshot but not delete prod VMs").
+- Soft: a deny or an approval warns instead, with its reason.
 
 ### Quota
 - Per project and optionally per environment: vCPU, RAM, storage, VM count.
@@ -1366,6 +1381,8 @@ All policies have a scope (global, project or item), a CEL condition, and a prio
 
 - List with filters (project, owner, status, item, lease expiring), saved views,
   bulk actions.
+- Shared with all the project's members, or shown to their owners only
+  (project admins, supervisors and auditors still see all of them).
 - Detail page: summary, resources (VMs with live power state, IPs, DNS names),
   topology diagram, inputs, **timeline** of all requests and day-2 runs, lease,
   audit.

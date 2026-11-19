@@ -578,7 +578,19 @@ it.
   preview of the next names with the ones skipped because they are taken)
   and **What applies here**, which says which policy decides the approval,
   day-2 action, lease and naming for a project and environment, with the
-  quota lines.
+  quota lines. Day-2 and lease policies have an **Enforcement**; soft rows
+  say so. A project admin (`project.policies.manage`) gets the page
+  without the Naming tab: rows they may not write have no menu, the side
+  panel's **Project** offers only their projects, and moving is off, as it
+  renumbers every project's policies (`usePolicyRights` in
+  `policies/shared.tsx`; ADR-0045).
+- **Soft warnings** (`components/common/warnings.tsx`): `PolicyWarnings`
+  is a `note` listing what soft policies warn about, in the request form's
+  summary, the day-2 dialog, the update's review and a request's page
+  (**Policy warnings**). The submit button ends in "anyway" and the draft
+  sends `accept_warnings`; a 422 at `/accept_warnings` (`refusedWarnings`)
+  shows its warnings until the draft changes. A project's **Deployment
+  sharing** panel heads its Members tab.
 - **Templates and networks**: VM templates (a vCenter template, or an
   item of a content library) and sizes, with where each is offered
   (projects and environments), and the network mappings, from EfficientIP
@@ -638,7 +650,11 @@ for what those roles see); the auditor holds no role in a project, as on
 the server. `vm-operator` and `compliance-auditor` give it a custom role of
 A1's acceptance instead (`e2e/a1-acceptance.spec.ts`): the operator powers
 VMs on and off in Web Platform, its only project; the compliance auditor
-holds the auditor's permissions for all of rvav. `rvav.mock.fresh` set to `1` makes it a new
+holds the auditor's permissions for all of rvav. `member` is a member of
+Web Platform and Data, whose Web Platform shows deployments to their
+owners only and has a soft day-2 policy on power off: G1.3's browser spec
+(`e2e/g1-sharing.spec.ts`) starts from what the project admin did there.
+`rvav.mock.fresh` set to `1` makes it a new
 install: no environments, projects, items or integration settings, and
 the setup checklist open (`e2e/setup.spec.ts` follows it).
 

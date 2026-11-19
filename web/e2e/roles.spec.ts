@@ -207,9 +207,10 @@ test("a project admin is offered only the roles they hold there", async ({ page 
   const members = page.getByRole("region", { name: "Members" });
   await expect(members.getByRole("list", { name: "Roles of Thomas Nguyen" })).toContainText("VM operator");
   await page.getByRole("combobox", { name: "As", exact: true }).click();
-  for (const role of ["Project admin", "Member", "Viewer"])
+  // Supervisor's permissions are a subset of a project admin's.
+  for (const role of ["Project admin", "Member", "Viewer", "Supervisor"])
     await expect(page.getByRole("option", { name: role, exact: true })).toBeVisible();
-  await expect(page.getByRole("option")).toHaveCount(3);
+  await expect(page.getByRole("option")).toHaveCount(4);
 });
 
 test("what someone may do in a project, and why they can't", async ({ page }) => {

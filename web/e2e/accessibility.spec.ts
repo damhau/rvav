@@ -122,9 +122,9 @@ for (const theme of ["light", "dark"] as const) {
     // An administration page that a project admin may not open (V1.6).
     test("axe: a page someone may not open", async ({ page }) => {
       await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "project-admin"));
-      await page.goto("/admin/policies");
+      await page.goto("/admin/integrations");
       await expect(page.getByRole("heading", { level: 1, name: "You can't open this page" })).toBeVisible();
-      await scan(page, "/admin/policies (not allowed)");
+      await scan(page, "/admin/integrations (not allowed)");
     });
 
     // A connection's saved settings applying, then applied (ADR-0030).

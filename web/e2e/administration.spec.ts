@@ -415,7 +415,9 @@ test("what a project admin and an auditor see", async ({ page }) => {
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav.getByRole("link", { name: "Projects", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Audit log" })).toBeVisible();
-  for (const hidden of ["Policies", "Integrations", "Templates and networks"])
+  // Policies: their projects' own to write (ADR-0045).
+  await expect(nav.getByRole("link", { name: "Policies" })).toBeVisible();
+  for (const hidden of ["Integrations", "Templates and networks"])
     await expect(nav.getByRole("link", { name: hidden })).toBeHidden();
   await nav.getByRole("link", { name: "Projects", exact: true }).click();
   await page.getByRole("region", { name: "Your projects" }).getByRole("link", { name: "Web Platform" }).click();
