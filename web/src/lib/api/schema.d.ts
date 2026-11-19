@@ -2764,12 +2764,28 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Lease policies per environment, and projects' overrides */
+        /**
+         * Lease policies per environment, and projects' overrides
+         * @description With `policies.read`, every policy. With `project.policies.manage`
+         *     in projects (project admins), the global policies and those of
+         *     these projects (ADR-0045).
+         */
         get: operations["listLeasePolicies"];
-        /** Set an environment's lease policy, or a project's override of it */
+        /**
+         * Set an environment's lease policy, or a project's override of it
+         * @description An environment's policy needs `policies.manage`. A project's
+         *     override, that or `project.policies.manage` in the project: a
+         *     project admin's override can't give more than the environment's
+         *     lease (more days, more extensions or grace days, no lease, a
+         *     gentler end), each refused with the code `looser` (ADR-0045).
+         *     Audited.
+         */
         put: operations["setLeasePolicy"];
         post?: never;
-        /** Remove a project's override (an environment's own policy stays) */
+        /**
+         * Remove a project's override (an environment's own policy stays)
+         * @description `policies.manage`, or `project.policies.manage` in the project.
+         */
         delete: operations["deleteLeasePolicy"];
         options?: never;
         head?: never;
@@ -2783,10 +2799,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Approval policies, in the order they are tried */
+        /**
+         * Approval policies, in the order they are tried
+         * @description With `policies.read`, every policy. With `project.policies.manage`
+         *     in projects (project admins), the global policies and those of
+         *     these projects (ADR-0045).
+         */
         get: operations["listApprovalPolicies"];
         put?: never;
-        /** Add an approval policy */
+        /**
+         * Add an approval policy
+         * @description A global policy needs `policies.manage`. A project's, that or
+         *     `project.policies.manage` in the project (project admins); anything
+         *     else is refused (403). Audited.
+         */
         post: operations["createApprovalPolicy"];
         delete?: never;
         options?: never;
@@ -2804,7 +2830,12 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Change an approval policy */
+        /**
+         * Change an approval policy
+         * @description A global policy needs `policies.manage`. A project's, that or
+         *     `project.policies.manage` in the project (project admins); anything
+         *     else is refused (403). Audited.
+         */
         put: operations["updateApprovalPolicy"];
         post?: never;
         /** Remove an approval policy (approvals it started go on) */
@@ -2821,10 +2852,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Day-2 policies, in the order they are tried */
+        /**
+         * Day-2 policies, in the order they are tried
+         * @description With `policies.read`, every policy. With `project.policies.manage`
+         *     in projects (project admins), the global policies and those of
+         *     these projects (ADR-0045).
+         */
         get: operations["listDay2Policies"];
         put?: never;
-        /** Add a day-2 policy */
+        /**
+         * Add a day-2 policy
+         * @description A global policy needs `policies.manage`. A project's, that or
+         *     `project.policies.manage` in the project (project admins); anything
+         *     else is refused (403). Audited. Policies are tried by priority, the
+         *     global and the project's together; when a project's policy matches
+         *     first, the first global one that matches still decides if it is
+         *     hard and stricter (deny over approval over allow): a project's
+         *     policy can't loosen a hard global one (ADR-0045).
+         */
         post: operations["createDay2Policy"];
         delete?: never;
         options?: never;
@@ -2842,7 +2887,12 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Change a day-2 policy */
+        /**
+         * Change a day-2 policy
+         * @description A global policy needs `policies.manage`. A project's, that or
+         *     `project.policies.manage` in the project (project admins); anything
+         *     else is refused (403). Audited.
+         */
         put: operations["updateDay2Policy"];
         post?: never;
         /** Remove a day-2 policy */

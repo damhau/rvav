@@ -54,9 +54,11 @@ var legacy = map[Permission]func(w was, projectID string) bool{
 	ApprovalProject:      func(w was, id string) bool { return w.projects[id] == "project-admin" },
 	ProjectSettingsRead:  seesOrProjectAdmin,
 	AuditRead:            seesOrProjectAdmin,
-	ProjectUpdate:        admin,
-	ProjectQuotasManage:  admin,
-	PlacementManage:      admin,
+	// Project admins write their projects' policies (ADR-0045).
+	ProjectPolicies:     isProjectAdmin,
+	ProjectUpdate:       admin,
+	ProjectQuotasManage: admin,
+	PlacementManage:     admin,
 
 	ApprovalReadAll:      sees,
 	EnvironmentsRead:     sees,

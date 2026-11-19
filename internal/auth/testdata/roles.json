@@ -73,6 +73,12 @@
       "summary": "Read the audit log: the project's events, or every event for all of rvav."
     },
     {
+      "id": "project.policies.manage",
+      "scope": "project",
+      "area": "Policies",
+      "summary": "Write the project's own approval, day-2 and lease policies; a global hard policy still wins."
+    },
+    {
       "id": "approval.read_all",
       "scope": "rvav",
       "area": "Approvals",
@@ -207,6 +213,7 @@
         "project.quotas.manage",
         "placement.manage",
         "audit.read",
+        "project.policies.manage",
         "approval.read_all",
         "project.create",
         "environments.read",
@@ -272,7 +279,8 @@
         "approval.project",
         "project.members.manage",
         "project.settings.read",
-        "audit.read"
+        "audit.read",
+        "project.policies.manage"
       ]
     },
     {

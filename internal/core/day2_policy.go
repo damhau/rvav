@@ -63,7 +63,9 @@ func (j *judge) decideQuota(a *day2.Action, t day2.Target, inputs map[string]any
 	}
 	vars := day2Vars(p, d, j.env, a, t, inputs, roles)
 	vars["quota"] = quotaVars(overSoft)
-	for _, pol := range j.policies {
+	var first *store.Day2Policy
+	for i := range j.policies {
+		pol := &j.policies[i]
 		if !matchesAction(pol.Actions, a.Key) || (len(pol.Roles) > 0 && !slices.ContainsFunc(pol.Roles, func(r string) bool { return slices.Contains(roles, r) })) {
 			continue
 		}
@@ -82,30 +84,62 @@ func (j *judge) decideQuota(a *day2.Action, t day2.Target, inputs map[string]any
 		if !match {
 			continue
 		}
-		switch pol.Effect {
-		case "allow":
-			return decision{Policy: pol.ID}
-		case "deny":
-			reason := pol.Reason
-			if reason == "" {
-				reason = a.Name + " is not allowed here."
+		if first == nil {
+			first = pol
+			if pol.ProjectID == nil {
+				break
 			}
-			return decision{Denied: reason, Policy: pol.ID}
-		case "approval":
-			var levels []level
-			_ = json.Unmarshal(pol.Levels, &levels)
-			var chain []ChainLevel
-			ap := store.ApprovalPolicy{ID: pol.ID, Name: pol.Name, Reason: orDefault(pol.Reason, pol.Name), Condition: pol.Condition}
-			for _, l := range levels {
-				chain = addLevel(chain, ap, l)
-			}
-			return decision{Chain: chain, Policy: pol.ID}
+			continue
 		}
+		if pol.ProjectID == nil {
+			if overrides(*pol, *first) {
+				first = pol
+			}
+			break
+		}
+	}
+	if first != nil {
+		return j.effect(*first, a)
 	}
 	if p.RunsDay2(a.Group, a.Key, d.ProjectID) {
 		return decision{}
 	}
 	return decision{Denied: "Your role in " + d.ProjectName + " does not allow " + a.Name + "."}
+}
+
+// strictness orders day-2 effects: a deny refuses more than an approval,
+// which holds back more than an allow.
+func strictness(pol store.Day2Policy) int {
+	return map[string]int{"allow": 0, "approval": 2, "deny": 3}[pol.Effect]
+}
+
+// overrides says whether a global policy decides in place of the project's
+// policy tried before it: a project's policy can't loosen a hard global
+// one (ADR-0045).
+func overrides(global, project store.Day2Policy) bool {
+	return strictness(global) > strictness(project)
+}
+
+// effect is what a policy that matches decides.
+func (j *judge) effect(pol store.Day2Policy, a *day2.Action) decision {
+	switch pol.Effect {
+	case "deny":
+		reason := pol.Reason
+		if reason == "" {
+			reason = a.Name + " is not allowed here."
+		}
+		return decision{Denied: reason, Policy: pol.ID}
+	case "approval":
+		var levels []level
+		_ = json.Unmarshal(pol.Levels, &levels)
+		var chain []ChainLevel
+		ap := store.ApprovalPolicy{ID: pol.ID, Name: pol.Name, Reason: orDefault(pol.Reason, pol.Name), Condition: pol.Condition}
+		for _, l := range levels {
+			chain = addLevel(chain, ap, l)
+		}
+		return decision{Chain: chain, Policy: pol.ID}
+	}
+	return decision{Policy: pol.ID}
 }
 
 // reasons are why the decision needs approval.

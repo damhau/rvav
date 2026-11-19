@@ -38,6 +38,7 @@ const (
 	IntegrationsManage   Permission = "integrations.manage"
 	PoliciesRead         Permission = "policies.read"
 	PoliciesManage       Permission = "policies.manage"
+	ProjectPolicies      Permission = "project.policies.manage"
 	ExtensibilityRead    Permission = "extensibility.read"
 	ExtensibilityManage  Permission = "extensibility.manage"
 	ImportManage         Permission = "import.manage"
@@ -71,6 +72,7 @@ var Catalogue = []PermissionInfo{
 	{ProjectQuotasManage, true, "Projects", "Set the project's quotas."},
 	{PlacementManage, true, "Projects", "Change the project's placement rules."},
 	{AuditRead, true, "Audit", "Read the audit log: the project's events, or every event for all of rvav."},
+	{ProjectPolicies, true, "Policies", "Write the project's own approval, day-2 and lease policies; a global hard policy still wins."},
 
 	{ApprovalReadAll, false, "Approvals", "See every approval, and the questions and answers of composites' waits for a person."},
 	{ProjectCreate, false, "Projects", "Create projects, and name their first project admins, themselves included."},
@@ -167,7 +169,7 @@ var BuiltinRoles = []Role{
 	{Key: "user", Name: "User", BuiltIn: true, Global: true},
 	{Key: "project-admin", Name: "Project admin", BuiltIn: true, Permissions: []Permission{
 		ProjectSee, DeploymentsReadAll, RequestSubmit, RequestOnBehalf, RequestManage, ApprovalProject, ProjectMembersManage,
-		ProjectSettingsRead, AuditRead}},
+		ProjectSettingsRead, AuditRead, ProjectPolicies}},
 	{Key: "member", Name: "Member", BuiltIn: true, Permissions: []Permission{ProjectSee, RequestSubmit}},
 	{Key: "viewer", Name: "Viewer", BuiltIn: true, Permissions: []Permission{ProjectSee}},
 	// ADR-0041: approves and sees, but neither requests nor runs day-2
