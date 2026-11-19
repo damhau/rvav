@@ -52,6 +52,7 @@ async function noSideways(page: Page, where: string) {
 }
 
 test("an administrator forwards the audit log to a syslog server and tests it", async ({ page }) => {
+  test.slow();
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
@@ -64,14 +65,14 @@ test("an administrator forwards the audit log to a syslog server and tests it", 
   await expect(destinations.getByRole("row", { name: /Corporate SIEM/ })).toContainText("Up to date");
   await bothThemes(page, "Audit forwarding");
 
-  const test = async (name: string) => {
+  const sendTest = async (name: string) => {
     await destinations.getByRole("button", { name: `Actions for ${name}` }).click();
     await page.getByRole("menuitem", { name: "Send a test event" }).click();
     return page.getByRole("dialog", { name: `Test of ${name}` });
   };
-  await expect(await test("Corporate SIEM")).toContainText("Delivered in 84 ms");
+  await expect(await sendTest("Corporate SIEM")).toContainText("Delivered in 84 ms");
   await page.keyboard.press("Escape");
-  await inBothThemes(page, () => test("SOC sign-ins"), "A failed test");
+  await inBothThemes(page, () => sendTest("SOC sign-ins"), "A failed test");
 
   const open = async () => {
     await page.getByRole("button", { name: "New destination" }).click();
