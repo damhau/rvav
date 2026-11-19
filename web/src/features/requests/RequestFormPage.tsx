@@ -16,7 +16,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { UserPicker } from "@/features/admin/governance/common";
-import { FormRenderer, shownFields } from "@/forms/FormRenderer";
+import { FormRenderer, shownFields, type FormHandle, type PageInputs } from "@/forms/FormRenderer";
 import { Attention, fieldControl, type Unplaced } from "@/forms/attention";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -179,7 +179,8 @@ function Summary({
   values: Record<string, unknown>;
   pending: boolean;
   formErrors: string[];
-  onSubmit: () => void;
+  /** Unset when the form's own last step submits (a wizard's review). */
+  onSubmit?: () => void;
   onSaveDraft: () => void;
   savingDraft: boolean;
   scheduled: boolean;
@@ -254,10 +255,7 @@ function Summary({
             <Button type="button" onClick={onSaveDraft} disabled={savingDraft}>
               Save as draft
             </Button>
-            <Button variant="primary" type="button" onClick={onSubmit} disabled={pending}>
-              {pending && <LoaderCircle className="animate-spin" aria-hidden />}
-              {approval?.required ? "Submit for approval" : "Submit request"}
-            </Button>
+            {onSubmit && <SubmitButton onClick={onSubmit} pending={pending} approval={approval?.required} />}
           </>
         }
       >
@@ -345,6 +343,15 @@ function Summary({
   );
 }
 
+function SubmitButton({ onClick, pending, approval }: { onClick: () => void; pending: boolean; approval?: boolean }) {
+  return (
+    <Button variant="primary" type="button" onClick={onClick} disabled={pending}>
+      {pending && <LoaderCircle className="animate-spin" aria-hidden />}
+      {approval ? "Submit for approval" : "Submit request"}
+    </Button>
+  );
+}
+
 function RequestFormBody({
   item,
   form,
@@ -385,6 +392,9 @@ function RequestFormBody({
   // Counts the server's refusals: each moves the focus to the first input to fix.
   const [refused, setRefused] = useState(0);
   const attentionRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<FormHandle>(null);
+  // A wizard's page as Next checked it: what shows until the form changes again.
+  const [checked, setChecked] = useState<{ draft: RequestDraft; preview: RequestPreview }>();
   const [justification, setJustification] = useState(start?.justification ?? "");
   const [leaseDays, setLeaseDays] = useState<number | null>(start?.leaseDays ?? null);
   const [count, setCount] = useState(String(start?.count ?? 1));
@@ -435,6 +445,7 @@ function RequestFormBody({
     queryFn: ({ signal }) => call(api.POST("/requests/preview", { body: debounced, signal })),
     placeholderData: keepPreviousData,
   });
+  const shownPreview = checked?.draft === draft ? checked.preview : preview.data;
 
   const submit = useMutation({
     mutationFn: (body: RequestDraft) =>
@@ -488,7 +499,7 @@ function RequestFormBody({
     },
   });
 
-  const previewErrors = mapFieldErrors(preview.data?.errors);
+  const previewErrors = mapFieldErrors(shownPreview?.errors);
   const fieldErrors: Record<string, string> = {};
   for (const [name, msg] of Object.entries(previewErrors.fields))
     if (submitted || touched.has(name)) fieldErrors[name] = msg;
@@ -499,7 +510,7 @@ function RequestFormBody({
   // The inputs the page has a control for, in its order: the rest are said at the top.
   const placed = [
     "$environment",
-    ...shownFields(form, preview.data?.fields),
+    ...shownFields(form, shownPreview?.fields),
     ...(many ? ["$count"] : []),
     ...(later ? ["$scheduled_at"] : []),
     ...(canActForOthers ? ["$on_behalf_of"] : []),
@@ -513,10 +524,8 @@ function RequestFormBody({
       message: fieldErrors[name]!,
     }));
   const focusFirst = () => {
-    for (const name of placed) {
-      const control = fieldErrors[name] ? controlOf(name) : null;
-      if (control) return control.focus();
-    }
+    const name = placed.find((n) => fieldErrors[n] && controlOf(n));
+    if (name) return formRef.current?.focus(name, () => controlOf(name));
     attentionRef.current?.focus();
   };
   const focusFirstRef = useRef(focusFirst);
@@ -532,6 +541,24 @@ function RequestFormBody({
     setValues((v) => (v[name] === value ? v : { ...v, [name]: value }));
     clearServerError(name);
   };
+  // Next on a wizard's page: the preview of the form as it is now, its errors shown for the page's inputs.
+  const checkPage = async (inputsOf: PageInputs) => {
+    const body = draft;
+    const checkedPreview = await qc.fetchQuery({
+      queryKey: keys.preview(body),
+      queryFn: ({ signal }) => call(api.POST("/requests/preview", { body, signal })),
+    });
+    setChecked({ draft: body, preview: checkedPreview });
+    const inputs = inputsOf(checkedPreview.fields);
+    setTouched((t) => new Set([...t, ...inputs]));
+    const found = mapFieldErrors(checkedPreview.errors).fields;
+    return { problems: inputs.filter((n) => found[n] || serverErrors?.fields[n]), fields: checkedPreview.fields };
+  };
+  const submitDraft = () => {
+    setSubmitted(true);
+    submit.mutate(draft);
+  };
+  const stepped = form.ui_schema.layout.kind === "wizard";
 
   // What the item builds, drawn when there is more to it than one VM on a
   // network (the summary says that much): a composite's steps, an item's
@@ -539,11 +566,138 @@ function RequestFormBody({
   const graph = useMemo(() => (form.topology ? blueprintGraph(form.topology, "/topology") : null), [form.topology]);
   const drawn = graph && (graph.kind === "composite" || graph.nodes.length > 2) ? graph : null;
 
-  const lease = preview.data?.lease;
+  const lease = shownPreview?.lease;
   const leaseOptions =
     lease && lease.max_days !== null && lease.max_days !== undefined
       ? [7, 14, 30, 60, 90].filter((d) => d <= (lease.max_days ?? 90))
       : [];
+
+  const requestPanels = (
+    <>
+      <Panel as="fieldset" title="Lease and reason">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field
+            label="Lease"
+            htmlFor="lease"
+            hint={
+              leaseOptions.length
+                ? "You get reminders 7 days and 1 day before. You can extend it twice."
+                : "Production deployments and AWX jobs have no lease."
+            }
+          >
+            {leaseOptions.length ? (
+              <Select
+                id="lease"
+                value={String(leaseDays ?? lease?.default_days ?? 30)}
+                onChange={(v) => setLeaseDays(Number(v))}
+                options={leaseOptions.map((d) => ({ value: String(d), label: `${d} days` }))}
+              />
+            ) : (
+              <Input id="lease" readOnly value="No expiry" className="border-dashed bg-sunken text-muted" />
+            )}
+          </Field>
+          <Field label="Reason" htmlFor="justification" hint="Approvers read it.">
+            <Textarea
+              id="justification"
+              rows={2}
+              placeholder="What is this for? Add a ticket number if there is one."
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+            />
+          </Field>
+        </div>
+      </Panel>
+      <Panel as="fieldset" title="Options">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {many && (
+            <Field
+              label="How many"
+              htmlFor="count"
+              hint="Identical deployments, named one after the other (at most 20)."
+              error={fieldErrors.$count}
+            >
+              <Input
+                id="count"
+                type="number"
+                min={1}
+                max={20}
+                className="w-24"
+                value={count}
+                onChange={(e) => {
+                  setCount(e.target.value);
+                  clearServerError("$count");
+                }}
+              />
+            </Field>
+          )}
+          <div className="flex min-w-0 flex-col gap-3">
+            <Field label="Start" htmlFor="start">
+              <Select
+                id="start"
+                value={later ? "later" : "now"}
+                onChange={(v) => setLater(v === "later")}
+                options={[
+                  {
+                    value: "now",
+                    label: shownPreview?.approval.required ? "As soon as it is approved" : "As soon as it is submitted",
+                  },
+                  { value: "later", label: "At a time I choose" },
+                ]}
+              />
+            </Field>
+            {later && (
+              <Field label="Start at" htmlFor="start-at" error={fieldErrors.$scheduled_at}>
+                <Input
+                  id="start-at"
+                  type="datetime-local"
+                  value={startAt}
+                  onChange={(e) => {
+                    setStartAt(e.target.value);
+                    clearServerError("$scheduled_at");
+                  }}
+                />
+              </Field>
+            )}
+          </div>
+          {canActForOthers && (
+            <div className="flex min-w-0 flex-col gap-1 md:col-span-2">
+              {onBehalfOf ? (
+                <>
+                  <span className="text-secondary font-medium">For someone else</span>
+                  <div className="flex items-center gap-2 text-body">
+                    <span>
+                      On behalf of <strong>{onBehalfOf.name}</strong>{" "}
+                      <span className="text-secondary text-muted">{onBehalfOf.email}</span>: they will own it.
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="quiet"
+                      onClick={() => {
+                        setOnBehalfOf(null);
+                        clearServerError("$on_behalf_of");
+                      }}
+                    >
+                      For myself instead
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <UserPicker
+                  label="For someone else (optional)"
+                  id="on-behalf"
+                  onPick={(u) => {
+                    setOnBehalfOf(u);
+                    clearServerError("$on_behalf_of");
+                  }}
+                />
+              )}
+              <FieldNote error={fieldErrors.$on_behalf_of} />
+            </div>
+          )}
+        </div>
+      </Panel>
+    </>
+  );
 
   return (
     <div className="flex flex-wrap items-start gap-4">
@@ -556,7 +710,24 @@ function RequestFormBody({
           onBlur={(name) => setTouched((t) => (t.has(name) ? t : new Set(t).add(name)))}
           errors={fieldErrors}
           ctx={{ versionId: form.version_id, projectId: project.id, environment }}
-          fieldStates={preview.data?.fields}
+          fieldStates={shownPreview?.fields}
+          ref={formRef}
+          controlOf={controlOf}
+          leadingFields={["$environment"]}
+          wizard={{
+            check: checkPage,
+            review: requestPanels,
+            submit: (
+              <SubmitButton
+                onClick={submitDraft}
+                pending={submit.isPending}
+                approval={shownPreview?.approval.required}
+              />
+            ),
+            leadingRows: [
+              { label: "Environment", value: environments.find((e) => e.key === environment)?.name ?? environment },
+            ],
+          }}
           leading={
             <EnvironmentPicker
               environments={environments}
@@ -573,147 +744,21 @@ function RequestFormBody({
         />
         {drawn && (
           <Suspense>
-            <RequestTopology graph={drawn} name={item.name} components={preview.data?.components} />
+            <RequestTopology graph={drawn} name={item.name} components={shownPreview?.components} />
           </Suspense>
         )}
-        <Panel as="fieldset" title="Lease and reason">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field
-              label="Lease"
-              htmlFor="lease"
-              hint={
-                leaseOptions.length
-                  ? "You get reminders 7 days and 1 day before. You can extend it twice."
-                  : "Production deployments and AWX jobs have no lease."
-              }
-            >
-              {leaseOptions.length ? (
-                <Select
-                  id="lease"
-                  value={String(leaseDays ?? lease?.default_days ?? 30)}
-                  onChange={(v) => setLeaseDays(Number(v))}
-                  options={leaseOptions.map((d) => ({ value: String(d), label: `${d} days` }))}
-                />
-              ) : (
-                <Input id="lease" readOnly value="No expiry" className="border-dashed bg-sunken text-muted" />
-              )}
-            </Field>
-            <Field label="Reason" htmlFor="justification" hint="Approvers read it.">
-              <Textarea
-                id="justification"
-                rows={2}
-                placeholder="What is this for? Add a ticket number if there is one."
-                value={justification}
-                onChange={(e) => setJustification(e.target.value)}
-              />
-            </Field>
-          </div>
-        </Panel>
-        <Panel as="fieldset" title="Options">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {many && (
-              <Field
-                label="How many"
-                htmlFor="count"
-                hint="Identical deployments, named one after the other (at most 20)."
-                error={fieldErrors.$count}
-              >
-                <Input
-                  id="count"
-                  type="number"
-                  min={1}
-                  max={20}
-                  className="w-24"
-                  value={count}
-                  onChange={(e) => {
-                    setCount(e.target.value);
-                    clearServerError("$count");
-                  }}
-                />
-              </Field>
-            )}
-            <div className="flex min-w-0 flex-col gap-3">
-              <Field label="Start" htmlFor="start">
-                <Select
-                  id="start"
-                  value={later ? "later" : "now"}
-                  onChange={(v) => setLater(v === "later")}
-                  options={[
-                    {
-                      value: "now",
-                      label: preview.data?.approval.required
-                        ? "As soon as it is approved"
-                        : "As soon as it is submitted",
-                    },
-                    { value: "later", label: "At a time I choose" },
-                  ]}
-                />
-              </Field>
-              {later && (
-                <Field label="Start at" htmlFor="start-at" error={fieldErrors.$scheduled_at}>
-                  <Input
-                    id="start-at"
-                    type="datetime-local"
-                    value={startAt}
-                    onChange={(e) => {
-                      setStartAt(e.target.value);
-                      clearServerError("$scheduled_at");
-                    }}
-                  />
-                </Field>
-              )}
-            </div>
-            {canActForOthers && (
-              <div className="flex min-w-0 flex-col gap-1 md:col-span-2">
-                {onBehalfOf ? (
-                  <>
-                    <span className="text-secondary font-medium">For someone else</span>
-                    <div className="flex items-center gap-2 text-body">
-                      <span>
-                        On behalf of <strong>{onBehalfOf.name}</strong>{" "}
-                        <span className="text-secondary text-muted">{onBehalfOf.email}</span>: they will own it.
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="quiet"
-                        onClick={() => {
-                          setOnBehalfOf(null);
-                          clearServerError("$on_behalf_of");
-                        }}
-                      >
-                        For myself instead
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <UserPicker
-                    label="For someone else (optional)"
-                    id="on-behalf"
-                    onPick={(u) => {
-                      setOnBehalfOf(u);
-                      clearServerError("$on_behalf_of");
-                    }}
-                  />
-                )}
-                <FieldNote error={fieldErrors.$on_behalf_of} />
-              </div>
-            )}
-          </div>
-        </Panel>
+        {!stepped && requestPanels}
       </div>
       <aside className="flex min-w-0 flex-[1_1_320px] flex-col self-stretch">
         <Summary
-          preview={preview.data}
+          preview={shownPreview}
           previewError={preview.error}
           onRetryPreview={() => void preview.refetch()}
           fetching={preview.isFetching}
           values={values}
           pending={submit.isPending}
           formErrors={formErrors}
-          onSubmit={() => {
-            setSubmitted(true);
-            submit.mutate(draft);
-          }}
+          onSubmit={stepped ? undefined : submitDraft}
           onSaveDraft={() => saveDraft.mutate()}
           savingDraft={saveDraft.isPending}
           scheduled={later && Boolean(startAt)}

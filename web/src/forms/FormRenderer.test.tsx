@@ -50,6 +50,37 @@ describe("FormRenderer", () => {
     }
     expect(screen.getByLabelText("Role")).toHaveValue("app");
     expect(screen.getByRole("radio", { name: /Medium/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("list", { name: "Steps" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+
+  it("shows a wizard's sections one page at a time, and a tab per section", async () => {
+    const user = userEvent.setup();
+    const wizard = rhelForm();
+    wizard.ui_schema.layout.kind = "wizard";
+    const { unmount } = renderWithQuery(<Harness form={wizard} />);
+    expect(screen.getByRole("group", { name: /^Basics/ })).toBeVisible();
+    expect(screen.queryByRole("group", { name: /^Size/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
+    // Without a check, Next goes on.
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByRole("group", { name: /^Size/ })).toBeVisible();
+    expect(screen.queryByRole("group", { name: /^Basics/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Role")).toHaveValue("app");
+    unmount();
+
+    const tabs = rhelForm();
+    tabs.ui_schema.layout.kind = "tabs";
+    renderWithQuery(<Harness form={tabs} errors={{ size: "Pick a size." }} />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Basics",
+      "Size, 1 input needs attention",
+      "Placement and network",
+      "Configuration after boot",
+    ]);
+    expect(screen.getByRole("tabpanel", { name: "Basics" })).toContainElement(screen.getByLabelText("Role"));
+    await user.click(screen.getByRole("tab", { name: /^Size/ }));
+    expect(screen.getByRole("tabpanel")).toContainElement(screen.getByRole("radio", { name: /Medium/ }));
   });
 
   it("fills server defaults and refetches dependent fields when what they depend on changes", async () => {

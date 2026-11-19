@@ -51,7 +51,7 @@ import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
 import { listingHandlers, visibleDeployments } from "./listing";
 import { faults } from "./faults";
-import { demand, preview, resolveField, summarize, validateInputs, vmCount } from "./logic";
+import { demand, preview, resolveField, summarize, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import {
   cancel,
@@ -620,10 +620,10 @@ export const handlers = [
       return problem(403, "forbidden", "You can't request items in this project");
     }
     const check = preview(db, item, project, draft);
-    const errors = [
-      ...validateInputs(db, item, draft.inputs),
-      ...check.errors.filter((e) => ["", "/environment", "/count", "/scheduled_at"].includes(e.field)),
-    ];
+    // As the server: the inputs after the rules, so a field they hide isn't checked.
+    const errors = check.errors.filter(
+      (e) => e.field.startsWith("/inputs/") || ["", "/environment", "/count", "/scheduled_at"].includes(e.field),
+    );
     if (errors.length) {
       return problem(
         422,

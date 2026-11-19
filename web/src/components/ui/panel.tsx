@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type Ref } from "react";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -8,6 +8,8 @@ interface HeaderProps {
   actions?: React.ReactNode;
   /** The heading's level: 2 on a page, 3 inside a section. */
   level?: 2 | 3;
+  /** Lets the heading take the focus, for a step a person moves to (a wizard's page). */
+  titleRef?: Ref<HTMLHeadingElement>;
 }
 
 function Header({
@@ -16,13 +18,19 @@ function Header({
   description,
   actions,
   level = 2,
+  titleRef,
   className,
 }: HeaderProps & { id: string; className?: string }) {
   const H = level === 3 ? "h3" : "h2";
   return (
     <div className={cn("flex flex-wrap items-start justify-between gap-x-4 gap-y-2", className)}>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <H id={id} className="text-section font-semibold">
+        <H
+          id={id}
+          ref={titleRef}
+          tabIndex={titleRef ? -1 : undefined}
+          className={cn("text-section font-semibold", titleRef && "outline-none")}
+        >
           {title}
         </H>
         {description && <p className="max-w-[72ch] text-secondary text-muted">{description}</p>}
@@ -42,6 +50,7 @@ export function Panel({
   description,
   actions,
   level,
+  titleRef,
   footer,
   children,
   className,
@@ -69,6 +78,7 @@ export function Panel({
           description={description}
           actions={actions}
           level={level}
+          titleRef={titleRef}
           className={cn("px-4 pt-3.5", flush ? "border-b border-line pb-3" : "pb-0")}
         />
       )}
