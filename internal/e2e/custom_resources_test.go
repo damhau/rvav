@@ -185,6 +185,11 @@ func TestCustomResources(t *testing.T) {
 		if got := customEvents(ctx, h, built.Id); !slices.Equal(got, []string{"custom.create.pre lb", "custom.create.post lb"}) {
 			t.Fatalf("events = %v", got)
 		}
+		// Its run data: what the create workflow was given and gave (ADR-0057).
+		if d := stepDataOf(h, admin, built.Id, steps["resource:lb"].Id); valueOf(d.Inputs)["name"] != "farm-lb" ||
+			fmt.Sprint(valueOf(d.Inputs)["port"]) != "443" || valueOf(d.Outputs)["vip"] != "10.31.20.10" {
+			t.Fatalf("the load balancer's data = %+v", d)
+		}
 
 		// Its type's day-2 action is offered on it, and nowhere else.
 		var actions struct{ Items []api.Day2Action }
@@ -347,6 +352,11 @@ func TestCustomResourcesAWX(t *testing.T) {
 		if alias.ResourceType.Key != "dns-alias" || alias.Name != "web-dev-farm-alias" || alias.Properties["fqdn"] != "farm.apps.corp.example" {
 			t.Fatalf("the alias = %+v", alias)
 		}
+		created, _ := h.store.GetStepByKey(ctx, built.Id, "resource:alias")
+		if d := stepDataOf(h, admin, built.Id, created.ID); !strings.HasSuffix(fmt.Sprint(valueOf(d.Inputs)["target"]), ".corp.example") ||
+			valueOf(d.Inputs)["rvav"] != nil || valueOf(d.Outputs)["fqdn"] != "farm.apps.corp.example" {
+			t.Fatalf("create's data = %+v", d)
+		}
 
 		// The AWX action its type lists runs on it, then its read.
 		var r api.Request
@@ -378,6 +388,10 @@ func TestCustomResourcesAWX(t *testing.T) {
 		props, _ := resource["properties"].(map[string]any)
 		if vars["fqdn"] != "farm.apps.corp.example" || props["ttl"] != float64(300) {
 			t.Fatalf("delete's extra vars = %v", vars)
+		}
+		deleted, _ := h.store.GetStepByKey(ctx, gone.Id, "custom.delete@"+alias.Id)
+		if d := stepDataOf(h, admin, gone.Id, deleted.ID); valueOf(d.Inputs)["ttl"] != float64(300) || valueOf(d.Inputs)["rvav"] != nil {
+			t.Fatalf("delete's data = %+v", d)
 		}
 		if got := customEvents(ctx, h, gone.Id); !slices.Equal(got, []string{"custom.delete.pre alias", "custom.delete.post alias"}) {
 			t.Fatalf("the deletion's events = %v", got)

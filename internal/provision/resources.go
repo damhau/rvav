@@ -417,6 +417,13 @@ func (a *Activities) FinishResource(ctx context.Context, in FinishResourceInput)
 			return nil, err
 		}
 	}
+	// The run data (ADR-0057): the properties after, or what a delete gave.
+	if result != nil {
+		raw, _ := json.Marshal(result)
+		if err := a.Store.SetStepOutputs(ctx, in.RequestID, in.StepKey, raw); err != nil {
+			return nil, err
+		}
+	}
 	a.update(ctx, in.RequestID, in.ProjectID, in.StepKey, store.StepUpdate{Status: "done", Detail: &detail})
 	return orEmpty(result), nil
 }

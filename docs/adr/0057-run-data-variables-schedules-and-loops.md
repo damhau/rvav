@@ -31,14 +31,20 @@ it, so no workflow changes and no replay concerns:
 - **A REST call** (a step, a poll's check, an undo): its method, URL, the
   secret's name and its body as evaluated, before the secret inputs in it
   are opened.
+- **A custom resource's step** (ADR-0056), its type's create, update, read
+  or delete, from a blueprint, a composite's resource step, a day-2 action
+  or a deletion: what its type's driver is given, as a workflow or a job
+  is above. A create or an update is given the inputs bound; a read or a
+  delete, the resource's properties.
 
 A VM step records none: its VMs were planned from the form at submit, and
 the request's inputs show what it asked. A wait, a branch and a message
 record none either: a message's text stays in the notifications of those
 told (ADR-0033). `outputs` are what later steps read as `steps.<key>`, as
-before; a workflow's result is now its step's outputs too. A step run again
-(a Retry) loses both, as it loses its status: what it shows is its last
-run's.
+before; a workflow's result is now its step's outputs too, and a custom
+resource's step keeps the resource's properties after it, or what its
+delete gave. A step run again (a Retry) loses both, as it loses its status:
+what it shows is its last run's.
 
 ### Who reads them, and how
 `GET /requests/{id}/steps/{stepId}/data` serves both; `Step.has_data` says

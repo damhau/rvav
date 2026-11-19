@@ -328,7 +328,14 @@ outputs, which later steps read as `steps.<key>.<name>`.
 | An AWX job, wherever it runs | Its extra variables, without rvav's `rvav` context |
 | A custom workflow | Its `inputs` |
 | A REST call, a poll's check, an undo's call | Its method, URL, secret's name and body |
+| A custom resource's create or update | What its type's workflow or job is given: the inputs bound |
+| A custom resource's read or delete | The resource's properties, as its type's workflow or job is given them |
 | A VM step, a wait, a branch, a message | None: the request shows what the form asked |
+
+A custom resource's step gives the resource's properties after it, or, for a
+delete, what its type's workflow or job gave. Its step runs wherever the
+resource is made or changed: a blueprint's resources, a composite's resource
+step, a day-2 action or the deployment's deletion.
 
 You need `catalog.manage` for all of rvav to read a step's data, as you do to
 read a blueprint. A requester sees each step's status and error, not its data.

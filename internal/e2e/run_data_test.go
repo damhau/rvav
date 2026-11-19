@@ -130,3 +130,11 @@ func TestStepRunData(t *testing.T) {
 		}
 	})
 }
+
+// stepDataOf is what a step was given and gave, as user reads it.
+func stepDataOf(h *harness, user, requestID, stepID string) api.StepData {
+	h.t.Helper()
+	var d api.StepData
+	h.json("GET", "/api/v1/requests/"+requestID+"/steps/"+stepID+"/data", user, nil, 200, &d)
+	return d
+}
