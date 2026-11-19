@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { api, call } from "@/lib/api/client";
 import type { DeploymentDetail, RequestForm, UiField } from "@/lib/api/types";
 import { adminState } from "@/mocks/administration";
+import { limitState } from "@/mocks/limits";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 import { startValues } from "./UpdatePage";
@@ -135,6 +136,38 @@ describe("the update page against the mock API", () => {
     await within(again).findByText(`${d.version.number}, unchanged`, {}, { timeout: 5000 });
     expect(again).toHaveTextContent("Change an input to see what the update does.");
   }, 20_000);
+
+  it("holds a deployment to the size limits only where the update grows it", async () => {
+    limitState(db).policies.push({
+      id: "dlp_size",
+      name: "Small deployments",
+      project_id: null,
+      environment: null,
+      priority: 100,
+      enabled: true,
+      enforcement: "hard",
+      deployments_per_user: 3,
+      deployments_per_project: null,
+      vcpu_per_deployment: 10,
+      memory_gb_per_deployment: 80,
+      set_by_admin: true,
+    });
+    const user = userEvent.setup();
+    renderApp(`/deployments/${named("web-tst-search").id}/update`);
+    const summary = await screen.findByRole("region", { name: "What the update does" }, { timeout: 5000 });
+    await user.click(await screen.findByRole("radio", { name: /^X-Large/ }));
+    await waitFor(() => expect(summary).toHaveTextContent("Memory per deployment96 / 80 GB"), { timeout: 5000 });
+    expect(summary).toHaveTextContent("vCPU per deployment16 / 10");
+    expect(summary).not.toHaveTextContent("Deployments per user");
+    await user.click(within(summary).getByRole("button", { name: "Review the update" }));
+    expect(
+      await screen.findByText(
+        "Deployments in Web Platform may have at most 80 GB of memory under Small deployments, and this one would have 96. Choose a smaller size, or ask an administrator to raise the limit.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/at most 10 vCPU/)).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  }, 15_000);
 
   it("refuses nothing on a deployment adopted without inputs, before any edit", async () => {
     const item = db.items.find((i) => i.slug === "rhel9-server")!;

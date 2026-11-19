@@ -6,6 +6,7 @@ import { api, call } from "@/lib/api/client";
 import type { FieldError, FieldValuesQuery, RequestDraft } from "@/lib/api/types";
 import { adminState } from "@/mocks/administration";
 import { server } from "@/mocks/node";
+import { limitState } from "@/mocks/limits";
 import { quotaState } from "@/mocks/quotas";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
@@ -72,6 +73,38 @@ describe("request form against the mock API", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit request" }));
     expect(
       await screen.findByText(/This request needs \d+ vCPU but your quota in Web Platform has 0 left\./),
+    ).toBeInTheDocument();
+  }, 15_000);
+
+  it("shows the deployment limits, warns past a soft one and refuses past a hard one", async () => {
+    const limits = {
+      project_id: null,
+      environment: null,
+      priority: 100,
+      enabled: true,
+      deployments_per_user: null,
+      deployments_per_project: null,
+      vcpu_per_deployment: null,
+      memory_gb_per_deployment: null,
+      set_by_admin: true,
+    };
+    limitState(db).policies.push(
+      { ...limits, id: "dlp_count", name: "Few deployments", enforcement: "soft", deployments_per_user: 0 },
+      { ...limits, id: "dlp_size", name: "Small deployments", enforcement: "hard", vcpu_per_deployment: 1 },
+    );
+    renderApp("/catalog/rhel9-server/request");
+    const summary = await screen.findByRole("region", { name: "Summary" }, { timeout: 5000 });
+    await waitFor(() => expect(summary).toHaveTextContent("Limits after this request"), { timeout: 5000 });
+    expect(summary).toHaveTextContent(/Deployments per user · over the soft limit\d+ \/ 0/);
+    expect(summary).toHaveTextContent(/vCPU per deployment\d+ \/ 1/);
+    expect(summary).toHaveTextContent(
+      /Each user should have at most 0 deployments in Web Platform under Few deployments, and you would have \d+\./,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Submit request anyway" }));
+    expect(
+      await screen.findByText(
+        /Deployments in Web Platform may have at most 1 vCPU under Small deployments, and this one would have \d+\. Choose a smaller size, or ask an administrator to raise the limit\./,
+      ),
     ).toBeInTheDocument();
   }, 15_000);
 

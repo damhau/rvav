@@ -52,6 +52,7 @@ import { fileHandlers } from "./files";
 import { reportHandlers } from "./reports";
 import { governanceHandlers } from "./governance";
 import { quotaHandlers } from "./quotas";
+import { limitHandlers } from "./limits";
 import { extensibilityHandlers } from "./extensibility";
 import { notificationHandlers } from "./notifications";
 import { signInHandlers } from "./signIn";
@@ -433,6 +434,7 @@ export const handlers = [
   ...governanceHandlers(db, base, wait),
   ...administrationHandlers(db, base, wait),
   ...quotaHandlers(db, base, wait),
+  ...limitHandlers(db, base, wait),
   ...onboardingHandlers(db, base, wait),
   ...vraHandlers(db, base, wait),
   ...fileHandlers(db, base, wait),

@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { q } from "@/lib/query";
+import { limitLabel, useEnvName } from "@/features/requests/limits";
 import { quotaLabel, quotaWhere } from "@/features/requests/quota";
 import { failed } from "../common";
 import { useProjects } from "./shared";
@@ -21,6 +22,26 @@ const day2Actions = [
   "delete",
 ]; // prettier-ignore
 
+function Considered({ list }: { list: S["PolicyConsidered"][] }) {
+  if (list.length === 0) return null;
+  return (
+    <ul className="mt-1 flex flex-col gap-0.5 text-secondary">
+      {list.map((c) => (
+        <li key={c.id} className={c.applies ? "flex gap-1.5" : "flex gap-1.5 text-muted"}>
+          {c.applies ? (
+            <Check className="mt-0.5 size-3.5 shrink-0 text-ok" aria-label="Applies" />
+          ) : (
+            <Minus className="mt-0.5 size-3.5 shrink-0" aria-label="Doesn't apply" />
+          )}
+          <span>
+            {c.name}: {c.why}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Decision({ title, d }: { title: string; d?: S["PolicyDecision"] }) {
   if (!d) return null;
   return (
@@ -28,22 +49,37 @@ function Decision({ title, d }: { title: string; d?: S["PolicyDecision"] }) {
       <div className="flex flex-col gap-1">
         <p className="text-body">{d.outcome}</p>
         <p className="text-secondary text-muted">Decided by: {d.decided_by ?? "nothing"}</p>
-        {d.considered.length > 0 && (
-          <ul className="mt-1 flex flex-col gap-0.5 text-secondary">
-            {d.considered.map((c) => (
-              <li key={c.id} className={c.applies ? "flex gap-1.5" : "flex gap-1.5 text-muted"}>
-                {c.applies ? (
-                  <Check className="mt-0.5 size-3.5 shrink-0 text-ok" aria-label="Applies" />
-                ) : (
-                  <Minus className="mt-0.5 size-3.5 shrink-0" aria-label="Doesn't apply" />
-                )}
-                <span>
-                  {c.name}: {c.why}
-                </span>
-              </li>
-            ))}
+        <Considered list={d.considered} />
+      </div>
+    </Panel>
+  );
+}
+
+/** Each deployment limit here and the policy deciding it, with what counts toward a count already (ADR-0047). */
+function Limits({ limits }: { limits: S["PolicyLimits"] }) {
+  const envName = useEnvName();
+  return (
+    <Panel title="Deployment limits" level={3}>
+      <div className="flex flex-col gap-1">
+        {limits.lines.length === 0 ? (
+          <p className="text-secondary text-muted">No limit.</p>
+        ) : (
+          <ul className="flex flex-col gap-0.5 text-secondary">
+            {limits.lines.map((l) => {
+              const [name, unit] = limitLabel[l.kind];
+              const most = `${l.limit}${unit ? ` ${unit}` : ""}`;
+              return (
+                <li key={l.kind}>
+                  {name}
+                  {l.environment ? ` in ${envName(l.environment)}` : ""}:{" "}
+                  {l.used != null ? `${l.used} of ${most}` : `at most ${most}`}, by {l.policy}
+                  {l.enforcement === "soft" ? ", which warns" : ""}
+                </li>
+              );
+            })}
           </ul>
         )}
+        <Considered list={limits.considered} />
       </div>
     </Panel>
   );
@@ -176,6 +212,7 @@ export function WhatApplies() {
               </ul>
             )}
           </Panel>
+          <Limits limits={r.limits} />
         </div>
       )}
     </div>

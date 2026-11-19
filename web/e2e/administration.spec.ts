@@ -244,6 +244,28 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await expect(page.getByRole("region", { name: "Naming" })).toContainText("Web names");
 });
 
+test("deployment limits, and what applies here names the policy deciding each", async ({ page }) => {
+  await open(page, "Policies", "Policies");
+  await page.getByRole("tab", { name: "Limits" }).click();
+  const region = page.getByRole("region", { name: "Deployment limits" });
+  await region.getByRole("button", { name: "New deployment limit policy" }).click();
+  const sheet = page.getByRole("dialog", { name: "New deployment limit policy" });
+  await sheet.getByRole("textbox", { name: "Name" }).fill("rvav limits");
+  await sheet.getByRole("spinbutton", { name: "Deployments per user" }).fill("10");
+  await sheet.getByRole("spinbutton", { name: "Memory per deployment (GB)" }).fill("64");
+  await sheet.getByRole("button", { name: "Save policy" }).click();
+  const row = region.getByRole("row", { name: /rvav limits/ });
+  await expect(row).toContainText("Deployments per user: 10");
+  await expect(row).toContainText("Memory per deployment: 64 GB");
+
+  await page.getByRole("tab", { name: "What applies here" }).click();
+  await page.getByRole("button", { name: "Explain" }).click();
+  const applies = page.getByRole("region", { name: "Deployment limits" });
+  await expect(applies).toContainText(/Deployments per user: \d+ of 10, by rvav limits/);
+  await expect(applies).toContainText("Memory per deployment: at most 64 GB, by rvav limits");
+  await expect(applies).toContainText("rvav limits: Decides deployments per user and memory per deployment.");
+});
+
 test("templates, sizes and network mappings", async ({ page }) => {
   await open(page, "Templates and networks", "Templates and networks");
   await page.getByRole("button", { name: "New template" }).click();

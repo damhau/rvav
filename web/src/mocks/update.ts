@@ -21,6 +21,7 @@ import { unaccepted } from "./warnings";
 import { DOMAIN, sizes, type SizeKey } from "./inventory";
 import { approvalFor, reserveIp, ruled, vmNames } from "./logic";
 import { userQuotaCheck } from "./quotas";
+import { limitCheck } from "./limits";
 import type { Db, StoredItem } from "./seed";
 
 type Inputs = Record<string, unknown>;
@@ -301,6 +302,22 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   );
   quota.push(...levels.lines);
   for (const message of levels.hard) errors.push({ field: "", code: "quota_exceeded", message });
+  // As the server's updateLimits: the deployment's size after, held to a limit only when it grows.
+  const now = d.resources.reduce(
+    (n, r) => (r.type === "vsphere.vm" && "vm" in r ? { vcpu: n.vcpu + r.vm.cpu_count, memory: n.memory + Math.round(r.vm.memory_mb / 1024) } : n), // prettier-ignore
+    { vcpu: 0, memory: 0 },
+  );
+  const limits = limitCheck(
+    db,
+    {
+      project,
+      env: db.environments.find((e) => e.key === d.environment) ?? { key: d.environment, name: d.environment },
+      owner: d.owner,
+      you: d.owner.id === db.me.user.id,
+    },
+    { toOwner: 0, toProject: 0, vcpu: now.vcpu + delta.vcpu, memory: now.memory + delta.memory_gb, addVcpu: delta.vcpu, addMemory: delta.memory_gb }, // prettier-ignore
+  );
+  for (const message of limits.hard) errors.push({ field: "", code: "limit_exceeded", message });
 
   const network = text(inputs.network);
   const ops = (names: (c: Component, n: number) => string[]): Op[] => {
@@ -345,7 +362,7 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   const reason = unavailable(db, d);
   // A failed deployment's update with its own inputs is a repair: its jobs run again.
   const same = !failed && draft.version_id === d.version.id && stable(before) === stable(inputs);
-  const warnings = reason ? [] : actionWarnings(db, "update", d);
+  const warnings = reason ? [] : [...actionWarnings(db, "update", d), ...limits.soft];
   return {
     item,
     version: target,
@@ -364,6 +381,7 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
       fields,
       errors,
       quota,
+      ...(limits.lines.length ? { limits: limits.lines } : {}),
       approval:
         delta.vm_count > 0 || delta.vcpu > 0 || delta.memory_gb > 0
           ? approvalFor(db, item, d.environment, inputs)

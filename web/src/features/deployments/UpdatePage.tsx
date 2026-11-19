@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { approvalBody, approvalTitle, pickedVersion } from "@/features/requests/RequestFormPage";
+import { LimitMeters } from "@/features/requests/limits";
 import { quotaLabel, quotaWhere, tightest } from "@/features/requests/quota";
 import { FormRenderer, shownFields, type FormHandle } from "@/forms/FormRenderer";
 import { Attention, fieldControl, type Unplaced } from "@/forms/attention";
@@ -194,6 +195,7 @@ function Summary({
                 })}
               </div>
             )}
+            <LimitMeters title="Limits after this update" lines={preview.limits ?? []} />
             <div
               className={cn(
                 "flex flex-col gap-0.5 border-t border-line px-4 py-3",

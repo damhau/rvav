@@ -30,6 +30,7 @@ import { warning } from "./warnings";
 import { multiParts, partVMs, previewComponents } from "./components";
 import { requestedNames } from "./deploymentNames";
 import { userQuotaCheck } from "./quotas";
+import { limitCheck } from "./limits";
 import { roleRefs } from "./roles";
 import { bound, entryVars, validationErrors } from "./formLibrary";
 import { clusters, datastores, dnsZones, networks, prefix, sizes, vmFolders, type SizeKey } from "./inventory";
@@ -747,12 +748,29 @@ export function preview(
       });
     }
   }
+  const owner = (draft.on_behalf_of && db.users.find((u) => u.id === draft.on_behalf_of)) || db.me.user;
   if (need.vm_count > 0) {
-    const owner = (draft.on_behalf_of && db.users.find((u) => u.id === draft.on_behalf_of)) || db.me.user;
     const levels = userQuotaCheck(db, { project, owner, you: owner.id === db.me.user.id }, "This request", need);
     quota.push(...levels.lines);
     for (const message of levels.hard) errors.push({ field: "", code: "quota_exceeded", message });
   }
+  // As the server's evaluateLimits: a multi-VM item makes one deployment, a single-VM item one per VM.
+  const made = need.vm_count === 0 ? 0 : multiParts(item.slug, inputs) ? 1 : need.vm_count;
+  const vcpu = made === 1 ? need.vcpu : need.vcpu / need.vm_count;
+  const memory = made === 1 ? need.memory_gb : need.memory_gb / need.vm_count;
+  const where = db.environments.find((e) => e.key === draft.environment) ?? {
+    key: draft.environment,
+    name: draft.environment,
+  };
+  const limits =
+    made === 0
+      ? undefined
+      : limitCheck(
+          db,
+          { project, env: where, owner, you: owner.id === db.me.user.id },
+          { toOwner: made, toProject: made, vcpu, memory, addVcpu: vcpu, addMemory: memory, many: made > 1 },
+        );
+  for (const message of limits?.hard ?? []) errors.push({ field: "", code: "limit_exceeded", message });
   const role = typeof inputs.role === "string" ? inputs.role.toLowerCase().replace(/[^a-z]/g, "") : "";
   const vms = vmCount(item, count, inputs);
   // A composite's are its VM steps' (the server's own names and placement
@@ -786,7 +804,7 @@ export function preview(
   const soft = lease?.terms.enforcement === "soft";
   const tooLong = lease ? leaseTooLong(db, lease, draft.environment, leaseDays) : "";
   const envName = db.environments.find((e) => e.key === draft.environment)?.name ?? draft.environment;
-  const warnings = tooLong && soft ? [warning(`Lease in ${envName}`, tooLong)] : [];
+  const warnings = [...(tooLong && soft ? [warning(`Lease in ${envName}`, tooLong)] : []), ...(limits?.soft ?? [])];
   if (tooLong && !soft) errors.push({ field: "/lease_days", code: "too_long", message: tooLong });
   if (leaseDays !== null && leaseDays < 1)
     errors.push({ field: "/lease_days", code: "too_short", message: "A lease is at least one day." });
@@ -816,6 +834,7 @@ export function preview(
         : undefined,
     ...(components ? { components } : {}),
     quota,
+    ...(limits?.lines.length ? { limits: limits.lines } : {}),
     approval: approvalFor(db, item, draft.environment, inputs, project),
     ...(warnings.length ? { warnings } : {}),
     lease: {

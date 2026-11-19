@@ -215,6 +215,10 @@ export const adm = {
   globalQuotas: () => get(["admin", "global-quotas"], (signal) => call(api.GET("/admin/quotas", { signal }))),
   leases: () => get(["admin", "leases"], (signal) => call(api.GET("/admin/lease-policies", { signal }))),
   leaseRules: () => get(["admin", "lease-rules"], (signal) => call(api.GET("/admin/lease-rules", { signal }))),
+  limitPolicies: () =>
+    get(["admin", "deployment-limit-policies"], (signal) =>
+      call(api.GET("/admin/deployment-limit-policies", { signal })),
+    ),
   approvals: () =>
     get(["admin", "approval-policies"], (signal) => call(api.GET("/admin/approval-policies", { signal }))),
   day2: () => get(["admin", "day2-policies"], (signal) => call(api.GET("/admin/day2-policies", { signal }))),

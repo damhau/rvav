@@ -46,6 +46,7 @@ import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, fullDate, localInput, newIdempotencyKey, roughDuration } from "@/lib/utils";
 import { ComponentsPreview, PlacedBy } from "./ComponentsPreview";
+import { LimitMeters } from "./limits";
 import { quotaLabel, quotaWhere, tightest } from "./quota";
 
 const RequestTopology = lazy(() => import("./RequestTopology"));
@@ -401,6 +402,7 @@ function Summary({
                 ))}
               </div>
             )}
+            <LimitMeters title="Limits after this request" lines={preview.limits ?? []} />
             <div
               className={cn(
                 "flex flex-col gap-0.5 border-t border-line px-4 py-3",
