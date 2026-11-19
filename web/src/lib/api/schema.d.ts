@@ -1754,7 +1754,9 @@ export interface paths {
          * @description Changes nothing: the sharing editor shows who its audience lets
          *     request, before it is saved. The project's requesters are those
          *     given a role holding `request.submit` there, themselves or through
-         *     a group whose members rvav has seen.
+         *     a group whose members rvav has seen. Shares add up: when the item
+         *     is shared with every project, its saved every-project share covers
+         *     people too (`everywhere`).
          */
         post: operations["previewCatalogRequesters"];
         delete?: never;
@@ -4219,11 +4221,19 @@ export interface components {
             not_requesters: components["schemas"]["UserRef"][];
             /** @description Its groups, with how many people rvav has seen in each. */
             groups: components["schemas"]["CatalogRequesterGroup"][];
+            /**
+             * @description The item's saved every-project share, which adds to the
+             *     audience in this project. Absent when the item isn't shared
+             *     with every project.
+             */
+            everywhere?: components["schemas"]["CatalogAudience"];
         };
         CatalogRequester: {
             user: components["schemas"]["UserRef"];
             /** @description The audience names them. */
             named: boolean;
+            /** @description The item's every-project share covers them, whatever the audience says. */
+            everywhere: boolean;
             /** @description The audience's groups they were in at their last sign-in. */
             groups: string[];
             /** @description The audience's roles they hold in the project. */

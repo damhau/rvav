@@ -1219,7 +1219,9 @@ An item's tabs:
     who is left out, and anyone named who has no role that may request
     there. Pick **Every project** to name who may request it in each
     project, when it is shared with every project. Shares add up: someone
-    requests it when any share covers them.
+    requests it when any share covers them, and the sheet's list counts
+    the every-project share too. Choosing **Every project** under
+    **Projects** keeps each project's own share.
 
   Sharing doesn't replace the roles: only people whose role in the
   project lets them request see the item there, as before. Administrators

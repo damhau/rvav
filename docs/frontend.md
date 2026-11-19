@@ -393,7 +393,9 @@ Catalog admins and administrators build items under **Catalog items**
   discard; **Compare** two versions), **Form designer**, **Definition**
   (the version as YAML), **Details** (icon from rvav's own set),
   **Sharing** (the projects, then a table of who may request it in each,
-  changed in a sheet that previews who can request; `SharingTab.tsx`) and,
+  changed in a sheet that previews who can request, the every-project
+  share included, and puts the server's refusals on the project, person,
+  group or role they're about; `SharingTab.tsx`) and,
   in Git, **Git**.
 - The **Definition** tab is a CodeMirror 6 editor, loaded only when opened.
   A YAML parse error, or a 422 from the server with JSON pointers under

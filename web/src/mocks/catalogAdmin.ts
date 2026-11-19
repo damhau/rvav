@@ -62,6 +62,10 @@ const tidy = (l: string[]) => [...new Set(l.map((x) => x.trim()))].sort();
 /** The item's sharing, when it was saved since the mocks started. */
 export const itemSharing = (db: Db, itemId: string): ItemSharing | undefined => state(db).sharing[itemId];
 
+/** The item's every-project share, when it is shared with every project. */
+export const everyProjectShare = (db: Db, itemId: string): Audience | undefined =>
+  state(db).allProjects.has(itemId) ? (state(db).sharing[itemId]?.everywhere ?? nobody()) : undefined;
+
 /** The roles given in projects, built in or custom, an audience may name. */
 export const projectRoles = (db: Db): S["RoleRef"][] =>
   [...builtinRoles, ...customRoles(db)].filter((r) => assignable(r, true)).map((r) => ({ key: r.key, name: r.name }));

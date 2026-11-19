@@ -4,7 +4,7 @@
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { rolesGiven } from "./administration";
-import { allMembers, itemSharing } from "./catalogAdmin";
+import { allMembers, everyProjectShare, itemSharing } from "./catalogAdmin";
 import { userGroups } from "./logic";
 import { heldIn, roleRefs } from "./roles";
 import type { Db, StoredItem } from "./seed";
@@ -33,8 +33,8 @@ export function sharingHandlers(db: Db, base: string, wait: () => Promise<void>)
       `${base}/admin/catalog/items/:id/entitlements/requesters`,
       async ({ params, request }) => {
         await wait();
-        if (!db.items.some((i) => i.id === params.id || i.slug === params.id))
-          return HttpResponse.json({ title: "Not found", status: 404 }, { status: 404 });
+        const item = db.items.find((i) => i.id === params.id || i.slug === params.id);
+        if (!item) return HttpResponse.json({ title: "Not found", status: 404 }, { status: 404 });
         const a = (await request.json()) as S["CatalogProjectAudience"];
         const p = db.projects.find((x) => x.id === a.project_id);
         if (!p)
@@ -56,6 +56,9 @@ export function sharingHandlers(db: Db, base: string, wait: () => Promise<void>)
             seen: db.users.filter((u) => (userGroups[u.id] ?? []).includes(name)).length,
           })),
         };
+        // Shares add up: the item's every-project share covers people too.
+        const every = everyProjectShare(db, item.id);
+        if (every) out.everywhere = every;
         for (const u of db.users) {
           const roles = rolesGiven(db, p.id, u.id);
           const named = a.user_ids.includes(u.id);
@@ -66,8 +69,9 @@ export function sharingHandlers(db: Db, base: string, wait: () => Promise<void>)
           }
           const groups = (userGroups[u.id] ?? []).filter((g) => a.groups.includes(g));
           const held = roles.filter((r) => a.roles.includes(r));
-          if (allMembers(a) || named || groups.length > 0 || held.length > 0)
-            out.people.push({ user: u, named, groups, roles: roleRefs(db, held) });
+          const everywhere = !!every && covers(db, every, p.id, u.id);
+          if (allMembers(a) || named || groups.length > 0 || held.length > 0 || everywhere)
+            out.people.push({ user: u, named, everywhere, groups, roles: roleRefs(db, held) });
           else out.left_out.push(u);
         }
         return HttpResponse.json(out);

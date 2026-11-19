@@ -625,7 +625,10 @@ repository never has it. vRA's content sharing policies become shares when
 the catalog is imported ([vRA import](operations/vra-import.md)). Catalog
 admins share an item in **Administration › Catalog items** › the item ›
 **Sharing**, whose sheet lists who can request it before saving
-([admin guide](guides/admin.md)).
+([admin guide](guides/admin.md)). Because shares add up, that list
+(`POST /admin/catalog/items/{id}/entitlements/requesters`) counts the
+item's every-project share too, and returns it as `everywhere`. Sharing
+an item with every project keeps each project's own share.
 
 ## 3. Custom forms
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -283,12 +284,21 @@ func (s *Service) audienceOf(ctx context.Context, ptr string, a api.CatalogAudie
 
 // CatalogRequesters is who an audience lets request an item in a project,
 // before it is saved: the project's members who may request there, and
-// the users it names.
+// the users it names. Shares add up, so the item's every-project share
+// covers people too.
 func (s *Service) CatalogRequesters(ctx context.Context, p *auth.Principal, idOrSlug string, a api.CatalogProjectAudience) (api.CatalogRequesters, error) {
 	out := api.CatalogRequesters{People: []api.CatalogRequester{}, LeftOut: []api.UserRef{}, NotRequesters: []api.UserRef{},
 		Groups: []api.CatalogRequesterGroup{}}
-	if _, err := s.adminItem(ctx, p, idOrSlug); err != nil {
+	it, err := s.adminItem(ctx, p, idOrSlug)
+	if err != nil {
 		return out, err
+	}
+	saved, err := s.Store.ItemSharing(ctx, it.ID)
+	if err != nil {
+		return out, err
+	}
+	if saved.AllProjects {
+		out.Everywhere = present.Ptr(presentAudience(saved.Everywhere))
 	}
 	proj, err := s.Store.GetProject(ctx, a.ProjectId)
 	if errors.Is(err, store.ErrNotFound) {
@@ -335,6 +345,12 @@ func (s *Service) CatalogRequesters(ctx context.Context, p *auth.Principal, idOr
 		people = append(people, person{who.User, who})
 	}
 	slices.SortFunc(people, func(a, b person) int { return strings.Compare(a.user.Name+a.user.ID, b.user.Name+b.user.ID) })
+	everywhere := func(who *auth.Principal) bool {
+		e := saved.Everywhere
+		return saved.AllProjects && (e.Everyone() || slices.Contains(e.UserIDs, who.User.ID) ||
+			slices.ContainsFunc(e.Groups, func(g string) bool { return slices.Contains(who.Groups, g) }) ||
+			slices.ContainsFunc(e.Roles, func(k string) bool { return slices.Contains(who.RolesIn(proj.ID), k) }))
+	}
 	for _, pe := range people {
 		named := slices.Contains(aud.UserIDs, pe.user.ID)
 		if !pe.who.In(auth.RequestSubmit, proj.ID) {
@@ -343,7 +359,8 @@ func (s *Service) CatalogRequesters(ctx context.Context, p *auth.Principal, idOr
 			}
 			continue
 		}
-		r := api.CatalogRequester{User: userRef(pe.user), Named: named, Groups: []string{}, Roles: []api.RoleRef{}}
+		r := api.CatalogRequester{User: userRef(pe.user), Named: named, Groups: []string{}, Roles: []api.RoleRef{},
+			Everywhere: everywhere(pe.who)}
 		for _, g := range aud.Groups {
 			if slices.Contains(pe.who.Groups, g) {
 				r.Groups = append(r.Groups, g)
@@ -354,7 +371,7 @@ func (s *Service) CatalogRequesters(ctx context.Context, p *auth.Principal, idOr
 				r.Roles = append(r.Roles, api.RoleRef{Key: k, Name: roleName[k]})
 			}
 		}
-		if aud.Everyone() || named || len(r.Groups) > 0 || len(r.Roles) > 0 {
+		if aud.Everyone() || named || len(r.Groups) > 0 || len(r.Roles) > 0 || r.Everywhere {
 			out.People = append(out.People, r)
 		} else {
 			out.LeftOut = append(out.LeftOut, userRef(pe.user))

@@ -151,6 +151,30 @@ func TestItemSharing(t *testing.T) {
 		}
 		h.json("POST", "/api/v1/admin/catalog/items/linux-shared/entitlements/requesters", "tnguyen", webAudience, 403, nil)
 
+		// Shares add up: the item's every-project share covers whoever the audience leaves out.
+		for _, c := range []struct {
+			everywhere api.CatalogAudience
+			claire     bool
+		}{
+			{api.CatalogAudience{UserIds: []string{}, Groups: []string{}, Roles: []string{}}, true},
+			{api.CatalogAudience{UserIds: []string{seed.UserID("cdubois")}, Groups: []string{}, Roles: []string{}}, true},
+			{api.CatalogAudience{UserIds: []string{}, Groups: []string{"rvav-nobody"}, Roles: []string{}}, false},
+		} {
+			set(api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{web, data}, Everywhere: &c.everywhere}, 200)
+			h.json("POST", "/api/v1/admin/catalog/items/linux-shared/entitlements/requesters", admin, webAudience, 200, &who)
+			claire := slices.IndexFunc(who.People, func(p api.CatalogRequester) bool { return p.User.Id == seed.UserID("cdubois") })
+			if who.Everywhere == nil || (claire >= 0) != c.claire || claire >= 0 && (!who.People[claire].Everywhere || who.People[claire].Named) ||
+				len(who.LeftOut) != map[bool]int{true: 0, false: 1}[c.claire] {
+				t.Fatalf("with every project's share %+v, requesters = %+v", c.everywhere, who)
+			}
+		}
+		set(api.CatalogEntitlements{ProjectIds: []string{web, data}}, 200)
+		who = api.CatalogRequesters{}
+		h.json("POST", "/api/v1/admin/catalog/items/linux-shared/entitlements/requesters", admin, webAudience, 200, &who)
+		if who.Everywhere != nil || len(who.LeftOut) != 1 {
+			t.Fatalf("without every project, requesters = %+v", who)
+		}
+
 		// Without audiences, each project keeps its own; Finance Apps, added, is shared with all its members.
 		got = set(api.CatalogEntitlements{ProjectIds: []string{web, data, "prj_fin"}}, 200)
 		if len(*got.Audiences) != 1 || (*got.Audiences)[0].ProjectId != web || !listed("sbrunner", "prj_fin") {
