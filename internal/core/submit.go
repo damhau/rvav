@@ -72,6 +72,9 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 		if err := s.holdChange(ctx, tx, change, ev.OverSoft, d.AcceptWarnings, d.AcceptedWarnings); err != nil {
 			return err
 		}
+		if err := s.holdVersion(ctx, tx, ev.Version.ID); err != nil {
+			return err
+		}
 		number, err := s.Store.NextRequestNumber(ctx, tx)
 		if err != nil {
 			return err

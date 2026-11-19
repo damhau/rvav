@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -332,8 +333,10 @@ func TestMigrateItemSharing(t *testing.T) {
 }
 
 // TestMigrateC2 takes C2's migrations (00080 on) down with their data in
-// place, and up again: an item with two requestable versions keeps one, and
-// a deployment drops the lease rules it recorded.
+// place, and up again: an item with two requestable versions keeps one, a
+// deployment drops the lease rules it recorded, and the day-2 policies
+// that keep deletes and handovers to owners and project admins, as before
+// C2, keep edits to them too.
 func TestMigrateC2(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -366,6 +369,11 @@ func TestMigrateC2(t *testing.T) {
 		`insert into global_quotas (resource, limit_value, enforcement) values ('vcpu', 100, 'hard')`,
 		`insert into deployment_limit_policies (id, name, priority, enabled, enforcement, deployments_per_user, set_by_admin)
 			values ('dlp_c2', 'C2', 100, true, 'hard', 3, true)`,
+		`update day2_policies set actions = '{delete,change_owner,change_project}' where id in ('d2p_handover', 'd2p_handover_others')`,
+		`update day2_policies set reason = 'Only the owner and the project admins can delete this deployment or hand it over.'
+			where id = 'd2p_handover_others'`,
+		`insert into day2_policies (id, name, priority, actions, roles, condition, effect)
+			values ('d2p_prd_only', 'Production', 45, '{change_owner,delete,change_project}', '{}', 'environment.production', 'deny')`,
 	} {
 		if _, err := st.Pool.Exec(ctx, sql); err != nil {
 			t.Fatalf("%v\n%s", err, sql)
@@ -391,5 +399,29 @@ func TestMigrateC2(t *testing.T) {
 	}
 	if err := store.Migrate(ctx, databaseURL); err != nil {
 		t.Fatalf("up again: %v", err)
+	}
+	policies := map[string]string{}
+	rows, err := st.Pool.Query(ctx, `select id, array_to_string(actions, ',') || ' · ' || reason from day2_policies
+		where id in ('d2p_handover', 'd2p_handover_others', 'd2p_prd_only')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id, v string
+		if err := rows.Scan(&id, &v); err != nil {
+			t.Fatal(err)
+		}
+		policies[id] = v
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]string{
+		"d2p_handover": "edit,delete,change_owner,change_project · ",
+		"d2p_handover_others": "edit,delete,change_owner,change_project · " +
+			"Only the owner and the project admins can edit this deployment, delete it or hand it over.",
+		"d2p_prd_only": "change_owner,delete,change_project · ",
+	}; !maps.Equal(policies, want) {
+		t.Fatalf("day-2 policies after 00086 = %v", policies)
 	}
 }

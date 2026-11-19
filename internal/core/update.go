@@ -212,6 +212,9 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 		if err := s.holdChange(ctx, tx, u.change, ev.OverSoft, draft.AcceptWarnings, draft.AcceptedWarnings); err != nil {
 			return err
 		}
+		if err := s.holdVersion(ctx, tx, ev.Version.ID); err != nil {
+			return err
+		}
 		if err := s.Store.LockDeployment(ctx, tx, d.ID); err != nil {
 			return err
 		}

@@ -84,7 +84,11 @@ refused (`naming`), for each VM step of a composite too.
 - **Who may:** as for any action, the day-2 policies, else the roles'
   `day2.configuration` permissions. The demo's policies let the owner and
   the project admins edit, with delete and hand over; other members are
-  refused.
+  refused. On an upgraded install, migration 00086 adds `edit` to the
+  policies that list just delete and hand over with the condition `true`,
+  as the demo's did before: those that allow the owner and the project
+  admins, and those that refuse everyone else. Other policies stay as
+  they are.
 - **Checked as a request's name:** trimmed, one line, at most 80
   characters (the form's schema bounds both fields), not one another live
   deployment of the project holds, and not one its VMs' naming gives (a VM
@@ -141,6 +145,10 @@ This revisits ADR-0019's single published version.
   marked while it is still offered (an update on it changes only the
   inputs). A version retired since the form opened is refused with
   `stale_version`.
+- **A request or an update holds its version until it is stored:** its
+  transaction locks the version's row (`for share`), so a retirement
+  waits for it, and one that came first is refused with `stale_version`
+  ("This version was retired meanwhile.").
 - **The vRA importer imports a template's latest version as the draft and
   the earlier ones deprecated** ([ADR-0027](0027-vra-importer.md)): an
   import publishes nothing.
@@ -160,6 +168,9 @@ This revisits ADR-0019's single published version.
   ([ADR-0026](0026-onboarding.md)), numbered when a live deployment of
   the project holds one (`erp-app02 2`), under the same lock: the VMs run
   already, so a name never refuses them.
+- Until C2.4 (#160), an install upgraded from before `edit` let any
+  member a `*` policy allows edit the deployments of others, and a version
+  retired between a request's checks and its transaction was stored.
 - Until C2.4 (#160), onboarding didn't check the project's names, an
   edit of a deployment that shared its name from before this failed in
   its step, and a numbered name could be longer than 80 characters, after

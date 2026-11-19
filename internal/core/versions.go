@@ -5,6 +5,9 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/jackc/pgx/v5"
+
+	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -35,4 +38,16 @@ func (s *Service) requestable(ctx context.Context, it store.CatalogItem, version
 	}
 	add("/version_id", "stale_version", msg)
 	return s.Store.GetVersion(ctx, *it.PublishedVersionID)
+}
+
+// holdVersion keeps the version a request or an update names from being
+// retired until tx ends: one retired since it was checked is refused as
+// stale, as the form would be.
+func (s *Service) holdVersion(ctx context.Context, tx pgx.Tx, id string) error {
+	ok, err := s.Store.LockVersionPublished(ctx, tx, id)
+	if err != nil || ok {
+		return err
+	}
+	return &ValidationError{Errors: []api.FieldError{fieldErr("/version_id", "stale_version",
+		"This version was retired meanwhile. Reload the form to get the current version.")}}
 }

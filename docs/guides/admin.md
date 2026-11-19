@@ -741,6 +741,13 @@ policies up or down, sets their priority, and turns them, and deployment
 limit policies, off or on. Before **Remove** removes a policy, rvav says
 what changes, such as which policy decides instead.
 
+Upgrading from a release without **Edit deployment** adds it to the day-2
+policies that let only the owner and the project admins delete a
+deployment or hand it over, with the condition `true`, as the demo's do.
+Other members then can't edit the deployments of others. If you wrote
+other policies on those actions, add **Edit deployment** where it should
+apply too.
+
 ### Quotas
 
 A quota limits vCPU, memory, storage and VMs at five levels

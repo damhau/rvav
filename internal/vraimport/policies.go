@@ -131,11 +131,11 @@ func PlanPolicies(e *vra.Estate) []PolicyPlan {
 // planLease: a lease policy with criteria becomes a lease rule whose
 // condition is their CEL, and vRA's total lease term the lifetime (ADR-0048).
 func planLease(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(string, string, string), scope string, soft bool) {
-	pl.Becomes = "The lease policy of " + scope + " (Administration › Policies › Leases), for each of its environments"
+	pl.Becomes = "The lease policy of " + scope + " (Administration › Policies › Lease), for each of its environments"
 	rule, kind := len(p.Criteria) > 0 && string(p.Criteria) != "null", "policy"
 	if rule {
 		kind = "rule"
-		pl.Becomes = "A lease rule of " + scope + " (Administration › Policies › Leases), tried before the lease policies"
+		pl.Becomes = "A lease rule of " + scope + " (Administration › Policies › Lease), tried before the lease policies"
 		if cel, ok := criteriaCEL(p.Criteria); ok {
 			note(Info, "criteria", "Condition: "+cel)
 		} else {
@@ -220,8 +220,11 @@ func planQuota(pl *PolicyPlan, def map[string]any, note func(string, string, str
 			continue
 		}
 		for _, k := range []string{"instances", "cpu", "memory", "storage"} {
-			if v, ok := amount(l.limits[k]); ok {
-				note(Info, l.where+"."+k, fmt.Sprintf("%s: %d.", quotaNames[k], v))
+			raw, given := l.limits[k]
+			if v, ok := amount(raw); ok {
+				note(Info, l.where+"."+k, fmt.Sprintf("%s: %d%s.", quotaNames[k], v, roundedUp(raw)))
+			} else if given {
+				note(Unmapped, l.where+"."+k, fmt.Sprintf("%s: rvav doesn't read %s. Set it by hand.", quotaNames[k], compact(raw)))
 			}
 		}
 		for _, k := range slices.Sorted(maps.Keys(l.limits)) {
@@ -260,7 +263,7 @@ func planLimit(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(strin
 			note(Info, where+"."+k, fmt.Sprintf("vCPU per deployment: %d.", v))
 		case k == "memory":
 			mapped = true
-			note(Info, where+"."+k, fmt.Sprintf("Memory per deployment (GB): %d.", v))
+			note(Info, where+"."+k, fmt.Sprintf("Memory per deployment (GB): %d%s.", v, roundedUp(limits[k])))
 		case (k == "deployments" || k == "deploymentCount") && level == "user":
 			mapped = true
 			note(Info, where+"."+k, fmt.Sprintf("Deployments per user: %d.", v))
@@ -291,7 +294,8 @@ func planLimit(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(strin
 	}
 }
 
-// amount reads a number, or vRA's {value, unit} with the unit MB, GB or TB, in GB.
+// amount reads a number, or vRA's {value, unit} with the unit MB, GB or TB,
+// in GB. MB are rounded up to a whole GB: a limit under 1 GB isn't none.
 func amount(v any) (int, bool) {
 	if n, ok := num(v); ok {
 		return n, true
@@ -303,7 +307,7 @@ func amount(v any) (int, bool) {
 	}
 	switch unit, _ := m["unit"].(string); strings.ToUpper(unit) {
 	case "MB":
-		return n / 1024, true
+		return (n + 1023) / 1024, true
 	case "TB":
 		return n * 1024, true
 	case "", "GB":
@@ -562,4 +566,19 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// roundedUp says what an amount in MB not a whole number of GB was.
+func roundedUp(v any) string {
+	m, _ := v.(map[string]any)
+	n, ok := num(m["value"])
+	if unit, _ := m["unit"].(string); !ok || !strings.EqualFold(unit, "MB") || n%1024 == 0 {
+		return ""
+	}
+	return fmt.Sprintf(", rounded up from %d MB", n)
+}
+
+func compact(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }

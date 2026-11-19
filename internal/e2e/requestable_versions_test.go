@@ -2,9 +2,11 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vmware/govmomi/simulator"
@@ -16,9 +18,9 @@ import (
 // TestRequestableVersions: an administrator keeps an earlier version
 // requestable beside a new one; requesters pick either, the newest by
 // default, and the request and deployment keep the one picked. Updates go
-// to any requestable version. A retired version is refused as stale; the
-// newest left becomes the default, and withdrawing retires them all
-// (ADR-0046).
+// to any requestable version. A retired version is refused as stale, also
+// when it is retired while the request is checked; the newest left becomes
+// the default, and withdrawing retires them all (ADR-0046).
 func TestRequestableVersions(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -110,6 +112,57 @@ func TestRequestableVersions(t *testing.T) {
 		if up := update(v2); stale(up.Errors) != "" || up.ToVersion.Id != v2 || up.FromVersion.Id != v1 {
 			t.Fatalf("update to 2: from %s to %s, %+v", up.FromVersion.Id, up.ToVersion.Id, up.Errors)
 		}
+
+		// Retired while a request or an update is checked, after its
+		// preview: it waits for the retirement, then is refused as stale.
+		whileRetiring := func(version, what string, send func() (int, []byte)) {
+			t.Helper()
+			tx, err := h.store.Pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = tx.Rollback(ctx) }()
+			if _, err := tx.Exec(ctx, `update catalog_item_versions set state = 'deprecated' where id = $1`, version); err != nil {
+				t.Fatal(err)
+			}
+			type result struct {
+				status int
+				body   []byte
+			}
+			sent := make(chan result, 1)
+			go func() {
+				status, body := send()
+				sent <- result{status, body}
+			}()
+			for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+				var waiting int
+				_ = h.store.Pool.QueryRow(ctx, `select count(*) from pg_locks where locktype = 'transactionid' and not granted`).Scan(&waiting)
+				if waiting > 0 {
+					break
+				}
+			}
+			if err := tx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			r := <-sent
+			var problem struct{ Errors []api.FieldError }
+			_ = json.Unmarshal(r.body, &problem)
+			if r.status != 422 || stale(problem.Errors) != "This version was retired meanwhile. Reload the form to get the current version." {
+				t.Fatalf("%s while its version is retired = %d %s", what, r.status, r.body)
+			}
+			if _, err := h.store.Pool.Exec(ctx, `update catalog_item_versions set state = 'published' where id = $1`, version); err != nil {
+				t.Fatal(err)
+			}
+		}
+		whileRetiring(v1, "a request", func() (int, []byte) {
+			status, body, _ := h.do("POST", "/api/v1/requests", owner, request(v1), "Idempotency-Key", uuid.NewString())
+			return status, body
+		})
+		whileRetiring(v2, "an update", func() (int, []byte) {
+			status, body, _ := h.do("POST", "/api/v1/deployments/"+dep+"/update", owner, api.UpdateDraft{VersionId: v2, Inputs: inputs},
+				"Idempotency-Key", uuid.NewString())
+			return status, body
+		})
 
 		// Retired, the earlier version is refused, the form of it too; its deployment keeps it.
 		item = change(v1+"/deprecate", nil)

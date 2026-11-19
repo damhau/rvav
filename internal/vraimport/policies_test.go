@@ -29,7 +29,7 @@ func TestPlanPolicies(t *testing.T) {
 	if p := by["pol-lease-dev"]; p.Type != "lease" || p.VRAProject != "Web Platform" || !note(p, Info, "Maximum days: 30.") ||
 		!note(p, Info, "Lifetime: 90 days from the deployment's creation; an extension past it needs approval.") ||
 		!note(p, Info, "Allow as many as the lifetime holds: 2 of 30 days.") || !note(p, Info, "Grace days: 7") ||
-		!strings.Contains(p.Becomes, "The lease policy of") {
+		!strings.Contains(p.Becomes, "The lease policy of") || !strings.Contains(p.Becomes, "(Administration › Policies › Lease)") {
 		t.Fatalf("lease = %+v", p)
 	}
 	if p := by["pol-day2"]; p.Type != "day2" || !note(p, Info, "Allow power_off, power_on, snapshot_create to member.") ||
@@ -269,5 +269,32 @@ func TestPlanDeploymentLimits(t *testing.T) {
 	}
 	if p := by["storage"]; p.Becomes != "Nothing" || p.Enforcement != "" || !has(p, Unmapped, "limits.storage", "") {
 		t.Fatalf("only storage = %+v", p)
+	}
+}
+
+// TestPlanAmountsRoundUp: an amount in MB that isn't a whole number of GB
+// is rounded up and said, and one rvav can't read is said too.
+func TestPlanAmountsRoundUp(t *testing.T) {
+	e := vra.Estate{Policies: []vra.Policy{
+		{ID: "quota", Name: "quota", TypeID: vra.PolicyQuota,
+			Definition: json.RawMessage(`{"limits":{"memory":{"value":1536,"unit":"MB"},"storage":{"value":1,"unit":"PB"}}}`)},
+		{ID: "limit", Name: "limit", TypeID: vra.PolicyLimit,
+			Definition: json.RawMessage(`{"deploymentLimits":{"memory":{"value":512,"unit":"MB"}}}`)},
+	}}
+	by := map[string]PolicyPlan{}
+	for _, p := range PlanPolicies(&e) {
+		by[p.VRAID] = p
+	}
+	has := func(p PolicyPlan, level, where, text string) bool {
+		return slices.ContainsFunc(p.Notes, func(n Note) bool {
+			return n.Level == level && n.Where == where && n.Text == text
+		})
+	}
+	if p := by["quota"]; !has(p, Info, "limits.memory", "Memory (GB): 2, rounded up from 1536 MB.") ||
+		!has(p, Unmapped, "limits.storage", `Storage (GB): rvav doesn't read {"unit":"PB","value":1}. Set it by hand.`) {
+		t.Fatalf("quota = %+v", p.Notes)
+	}
+	if p := by["limit"]; !has(p, Info, "deploymentLimits.memory", "Memory per deployment (GB): 1, rounded up from 512 MB.") {
+		t.Fatalf("limit = %+v", p.Notes)
 	}
 }

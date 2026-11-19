@@ -158,6 +158,17 @@ func (s *Store) GetVersion(ctx context.Context, id string) (ItemVersion, error) 
 	return WithGroups(v, groups), nil
 }
 
+// LockVersionPublished holds the version as it is until tx ends, so that
+// it isn't retired meanwhile, and says whether it is published.
+func (s *Store) LockVersionPublished(ctx context.Context, tx pgx.Tx, id string) (bool, error) {
+	var state string
+	err := tx.QueryRow(ctx, `select state from catalog_item_versions where id = $1 for share`, id).Scan(&state)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return state == "published", err
+}
+
 // UISchemaWithGroups is a version's UI schema with the fields of the
 // property groups its blueprint names, as GetVersion gives it: what tells
 // a group's secret inputs, and those exposed to the AWX inventory.
