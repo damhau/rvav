@@ -207,6 +207,11 @@ export const adm = {
     get(["admin", "quotas", projectId], (signal) =>
       call(api.GET("/admin/projects/{projectId}/quotas", { params: { path: { projectId } }, signal })),
     ),
+  userQuotas: (projectId: string) =>
+    get(["admin", "user-quotas", projectId], (signal) =>
+      call(api.GET("/admin/projects/{projectId}/user-quotas", { params: { path: { projectId } }, signal })),
+    ),
+  globalQuotas: () => get(["admin", "global-quotas"], (signal) => call(api.GET("/admin/quotas", { signal }))),
   leases: () => get(["admin", "leases"], (signal) => call(api.GET("/admin/lease-policies", { signal }))),
   leaseRules: () => get(["admin", "lease-rules"], (signal) => call(api.GET("/admin/lease-rules", { signal }))),
   approvals: () =>

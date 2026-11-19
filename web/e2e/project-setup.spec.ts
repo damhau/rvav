@@ -51,7 +51,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
 
   // A quota of one VM.
   await page.getByRole("tab", { name: "Quotas" }).click();
-  await page.getByRole("button", { name: "Add a limit" }).click();
+  await page.getByRole("region", { name: "Quotas", exact: true }).getByRole("button", { name: "Add a limit" }).click();
   const limit = page.getByRole("dialog", { name: "New limit" });
   await choose(page, "Resource", "VMs");
   await limit.getByRole("spinbutton", { name: "Limit" }).fill("1");

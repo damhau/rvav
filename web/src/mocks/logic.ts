@@ -28,6 +28,7 @@ import { celBool, celEval } from "./cel";
 import { warning } from "./warnings";
 import { multiParts, partVMs, previewComponents } from "./components";
 import { requestedNames } from "./deploymentNames";
+import { userQuotaCheck } from "./quotas";
 import { roleRefs } from "./roles";
 import { bound, entryVars, validationErrors } from "./formLibrary";
 import { clusters, datastores, dnsZones, networks, prefix, sizes, vmFolders, type SizeKey } from "./inventory";
@@ -731,6 +732,12 @@ export function preview(
         message: `This request needs ${line.adding} more ${line.resource.replace("_", " ")} than ${project.name} has left.`,
       });
     }
+  }
+  if (need.vm_count > 0) {
+    const owner = (draft.on_behalf_of && db.users.find((u) => u.id === draft.on_behalf_of)) || db.me.user;
+    const levels = userQuotaCheck(db, { project, owner, you: owner.id === db.me.user.id }, "This request", need);
+    quota.push(...levels.lines);
+    for (const message of levels.hard) errors.push({ field: "", code: "quota_exceeded", message });
   }
   const role = typeof inputs.role === "string" ? inputs.role.toLowerCase().replace(/[^a-z]/g, "") : "";
   const vms = vmCount(item, count, inputs);

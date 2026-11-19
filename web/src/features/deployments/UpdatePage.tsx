@@ -15,7 +15,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Textarea } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { approvalBody, approvalTitle, quotaLabel } from "@/features/requests/RequestFormPage";
+import { approvalBody, approvalTitle } from "@/features/requests/RequestFormPage";
+import { quotaLabel, quotaWhere, tightest } from "@/features/requests/quota";
 import { FormRenderer, shownFields, type FormHandle } from "@/forms/FormRenderer";
 import { Attention, fieldControl, type Unplaced } from "@/forms/attention";
 import { defaulted, sentInputs } from "@/forms/defaults";
@@ -174,13 +175,13 @@ function Summary({
             {preview.quota.length > 0 && (
               <div className="flex flex-col gap-2.5 border-t border-line px-4 py-3">
                 <span className="label">Quota after this update</span>
-                {preview.quota.map((l) => {
+                {tightest(preview.quota).map((l) => {
                   const [name, unit] = quotaLabel[l.resource];
                   const frees = l.adding < 0;
                   return (
                     <Meter
-                      key={`${l.resource}-${l.environment ?? ""}`}
-                      label={`${name}${l.environment ? ` in ${l.environment}` : ""}${
+                      key={l.resource}
+                      label={`${name}${quotaWhere(l)}${
                         frees ? ` · frees ${-l.adding}${unit ? ` ${unit}` : ""}` : ""
                       }${l.exceeds && l.enforcement === "soft" ? " · over the soft limit" : ""}`}
                       unit={unit}

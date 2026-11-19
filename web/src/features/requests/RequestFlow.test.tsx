@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { FieldError, FieldValuesQuery, RequestDraft } from "@/lib/api/types";
 import { adminState } from "@/mocks/administration";
 import { server } from "@/mocks/node";
+import { quotaState } from "@/mocks/quotas";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
@@ -57,6 +58,21 @@ describe("request form against the mock API", () => {
     expect(summary).toHaveTextContent(/Memory464 GB · no limit/);
     expect(summary).toHaveTextContent(/vCPU116 \/ 160/);
   });
+
+  it("shows the tightest quota of each resource, and refuses over each member's", async () => {
+    quotaState(db).perUser[db.projects[0]!.id] = [
+      { resource: "vcpu", limit: 0, enforcement: "hard", set_by_admin: true },
+    ];
+    renderApp("/catalog/rhel9-server/request");
+    const summary = await screen.findByRole("region", { name: "Summary" }, { timeout: 5000 });
+    await waitFor(() => expect(summary).toHaveTextContent(/vCPU · per member/), { timeout: 5000 });
+    expect(summary).toHaveTextContent(/Memory\d+ \/ 640 GB/);
+    expect(summary).not.toHaveTextContent(/vCPU\d+ \/ 160/);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Submit request" }));
+    expect(
+      await screen.findByText(/This request needs \d+ vCPU but your quota in Web Platform has 0 left\./),
+    ).toBeInTheDocument();
+  }, 15_000);
 
   it("shows the approval path for production", async () => {
     const user = userEvent.setup();

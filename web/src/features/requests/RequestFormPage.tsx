@@ -35,7 +35,6 @@ import type {
   CatalogItem,
   Environment,
   Project,
-  QuotaResource,
   RequestDraft,
   RequestForm,
   RequestPreview,
@@ -47,15 +46,9 @@ import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, fullDate, localInput, newIdempotencyKey, roughDuration } from "@/lib/utils";
 import { ComponentsPreview, PlacedBy } from "./ComponentsPreview";
+import { quotaLabel, quotaWhere, tightest } from "./quota";
 
 const RequestTopology = lazy(() => import("./RequestTopology"));
-
-export const quotaLabel: Record<QuotaResource, [string, string]> = {
-  vcpu: ["vCPU", ""],
-  memory_gb: ["Memory", "GB"],
-  storage_gb: ["Storage", "GB"],
-  vm_count: ["VMs", ""],
-};
 
 type ApprovalPreview = RequestPreview["approval"];
 
@@ -342,10 +335,10 @@ function Summary({
             {preview.quota.length > 0 && (
               <div className="flex flex-col gap-2.5 border-t border-line px-4 py-3">
                 <span className="label">Quota after this request</span>
-                {preview.quota.map((l) => (
+                {tightest(preview.quota).map((l) => (
                   <Meter
-                    key={`${l.resource}-${l.environment ?? ""}`}
-                    label={`${quotaLabel[l.resource][0]}${l.environment ? ` in ${l.environment}` : ""}${
+                    key={l.resource}
+                    label={`${quotaLabel[l.resource][0]}${quotaWhere(l)}${
                       l.exceeds && l.enforcement === "soft" ? " · over the soft limit" : ""
                     }`}
                     unit={quotaLabel[l.resource][1]}

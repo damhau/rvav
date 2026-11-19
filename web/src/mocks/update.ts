@@ -19,6 +19,7 @@ import { actionWarnings, busy, requestSteps, type Op, type RunResult } from "./d
 import { unaccepted } from "./warnings";
 import { DOMAIN, sizes, type SizeKey } from "./inventory";
 import { approvalFor, reserveIp, ruled, vmNames } from "./logic";
+import { userQuotaCheck } from "./quotas";
 import type { Db, StoredItem } from "./seed";
 
 type Inputs = Record<string, unknown>;
@@ -292,6 +293,14 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
         code: "quota_exceeded",
         message: `This update needs ${l.adding} more ${l.resource.replace("_", " ")} than ${project.name} has left.`,
       });
+  const levels = userQuotaCheck(
+    db,
+    { project, owner: d.owner, you: d.owner.id === db.me.user.id },
+    "This update",
+    delta,
+  );
+  quota.push(...levels.lines);
+  for (const message of levels.hard) errors.push({ field: "", code: "quota_exceeded", message });
 
   const network = text(inputs.network);
   const ops = (names: (c: Component, n: number) => string[]): Op[] => {

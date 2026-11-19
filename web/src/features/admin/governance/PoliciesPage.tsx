@@ -13,9 +13,10 @@ import { Day2Policies } from "./policies/Day2Policies";
 import { LeasePolicies } from "./policies/LeasePolicies";
 import { LeaseRules } from "./policies/LeaseRules";
 import { NamingPolicies } from "./policies/NamingPolicies";
+import { RvavQuotas } from "./policies/RvavQuotas";
 import { WhatApplies } from "./policies/WhatApplies";
 
-export const policiesTabs = ["approval", "day2", "lease", "naming", "explain"] as const;
+export const policiesTabs = ["approval", "day2", "lease", "naming", "quotas", "explain"] as const;
 export type PoliciesTab = (typeof policiesTabs)[number];
 
 export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
@@ -24,7 +25,9 @@ export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
   const rights = usePolicyRights();
   // Project admins write their projects' own policies; naming policies stay the administrators'.
   const naming = can(me, "policies.read");
-  const shown = tab === "naming" && !naming ? "approval" : tab;
+  // rvav's quota is for all of it: those who read every project's settings (ADR-0047).
+  const quotas = me.permissions.includes("project.settings.read");
+  const shown = (tab === "naming" && !naming) || (tab === "quotas" && !quotas) ? "approval" : tab;
   return (
     <Page>
       <PageHeader
@@ -46,6 +49,7 @@ export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
           <TabsTrigger value="day2">Day-2</TabsTrigger>
           <TabsTrigger value="lease">Lease</TabsTrigger>
           {naming && <TabsTrigger value="naming">Naming</TabsTrigger>}
+          {quotas && <TabsTrigger value="quotas">Quotas</TabsTrigger>}
           <TabsTrigger value="explain">What applies here</TabsTrigger>
         </TabsList>
         <TabsContent value="approval" className="pt-4">
@@ -61,6 +65,11 @@ export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
         {naming && (
           <TabsContent value="naming" className="pt-4">
             <NamingPolicies canEdit={rights.global} />
+          </TabsContent>
+        )}
+        {quotas && (
+          <TabsContent value="quotas" className="pt-4">
+            <RvavQuotas canEdit={can(me, "project.quotas.manage")} />
           </TabsContent>
         )}
         <TabsContent value="explain" className="pt-4">

@@ -67,7 +67,7 @@ test("set a project up: create it, add a member, place it and give it quotas", a
 
   // Quotas.
   await page.getByRole("tab", { name: "Quotas" }).click();
-  await page.getByRole("button", { name: "Add a limit" }).click();
+  await page.getByRole("region", { name: "Quotas", exact: true }).getByRole("button", { name: "Add a limit" }).click();
   const limit = page.getByRole("dialog", { name: "New limit" });
   await limit.getByRole("spinbutton", { name: "Limit" }).fill("16");
   await choose(page, "In", "dev");
@@ -440,7 +440,13 @@ test("what a project admin and an auditor see", async ({ page }) => {
   await expect(page.getByRole("region", { name: "What Web Platform gets in dev" })).toContainText("GVA-DEV-CL01");
   await expect(page.getByRole("button", { name: "New rule" })).toBeHidden();
   await page.getByRole("tab", { name: "Quotas" }).click();
-  await expect(page.getByRole("button", { name: "Add a limit" })).toBeHidden();
+  // Each member's share of the project's quota is theirs to write (ADR-0047).
+  await expect(
+    page.getByRole("region", { name: "Each member's quota" }).getByRole("button", { name: "Add a limit" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Quotas", exact: true }).getByRole("button", { name: "Add a limit" }),
+  ).toBeHidden();
   await page.getByRole("tab", { name: "Details" }).click();
   await expect(page.getByRole("checkbox", { name: "Production" })).toBeDisabled();
 });

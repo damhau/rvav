@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { q } from "@/lib/query";
+import { quotaLabel, quotaWhere } from "@/features/requests/quota";
 import { failed } from "../common";
 import { useProjects } from "./shared";
 
@@ -136,9 +137,9 @@ export function WhatApplies() {
             ) : (
               <ul className="flex flex-col gap-0.5 text-secondary">
                 {r.quota.map((l) => (
-                  <li key={`${l.resource}-${l.scope}`}>
-                    {l.resource} {l.scope ? `in ${l.scope}` : "(project)"}: {l.used + l.reserved} of{" "}
-                    {l.limit ?? "no limit"}
+                  <li key={`${l.resource}-${l.level}`}>
+                    {quotaLabel[l.resource][0]}
+                    {quotaWhere(l) || " · the project"}: {l.used + l.reserved} of {l.limit ?? "no limit"}
                     {l.enforcement === "soft" ? ", then approval" : ""}
                   </li>
                 ))}

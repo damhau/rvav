@@ -29,7 +29,9 @@ import { useCurrentProject } from "@/lib/project";
 import { cn } from "@/lib/utils";
 import { Refusal, refused } from "../access/refusal";
 import { errorAt, failed, fieldErrors, keyProblems, UserPicker } from "./common";
+import { MemberQuotas } from "./MemberQuotas";
 import { ArchiveDialog, quotaTone, takenText } from "./ProjectsPage";
+import { enforcements, quotaResources as resources, resourceName } from "./QuotaLines";
 
 type S = components["schemas"];
 
@@ -950,18 +952,6 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
   );
 }
 
-const resources: { value: S["QuotaResource"]; label: string }[] = [
-  { value: "vcpu", label: "vCPU" },
-  { value: "memory_gb", label: "Memory (GB)" },
-  { value: "storage_gb", label: "Storage (GB)" },
-  { value: "vm_count", label: "VMs" },
-];
-const resourceName = (r: S["QuotaResource"]) => resources.find((x) => x.value === r)?.label ?? r;
-const enforcements = [
-  { value: "hard", label: "Refused" },
-  { value: "soft", label: "Needs approval" },
-];
-
 function useSaveQuotas(project: S["AdminProject"]) {
   const qc = useQueryClient();
   return useMutation({
@@ -1280,8 +1270,13 @@ export function ProjectPage({ projectId, tab = "members" }: { projectId: string;
         <TabsContent value="placement" className="pt-4">
           <Placement project={p} isAdmin={can(me, "placement.manage", p.id)} />
         </TabsContent>
-        <TabsContent value="quotas" className="pt-4">
+        <TabsContent value="quotas" className="flex flex-col gap-4 pt-4">
           <Quotas project={p} isAdmin={can(me, "project.quotas.manage", p.id)} />
+          <MemberQuotas
+            project={p}
+            isAdmin={can(me, "project.quotas.manage", p.id)}
+            isProjectAdmin={can(me, "project.policies.manage", p.id)}
+          />
         </TabsContent>
         <TabsContent value="details" className="pt-4">
           <Details
