@@ -131,12 +131,14 @@ type CustomResourceType struct {
 
 // CustomProps are a custom resource's properties column: its type, its key
 // in the blueprint (or composite step), what made it (blueprint or
-// composite), the inputs its create or last update was given, the
-// properties it returned, and their titles from the type's schema.
+// composite), what deletes it (rvav or awx, for the timeline), the inputs
+// its create or last update was given, the properties it returned, and
+// their titles from the type's schema.
 type CustomProps struct {
 	ResourceType CustomResourceType `json:"resource_type"`
 	Key          string             `json:"key"`
 	Source       string             `json:"source,omitempty"`
+	System       string             `json:"system,omitempty"`
 	Inputs       map[string]any     `json:"inputs,omitempty"`
 	Properties   map[string]any     `json:"properties"`
 	Titles       map[string]string  `json:"property_titles,omitempty"`

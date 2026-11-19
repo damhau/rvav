@@ -1911,7 +1911,8 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 		"nsx.policy": 5, "nsx.group": 6, "nsx.segment": 7, "ipam.subnet": 8, AccessResource: 9}
 	for pass := 0; pass < 10; pass++ {
 		for _, r := range list {
-			if order[r.Type] != pass {
+			// Custom resources are their type's to delete, before (ADR-0056).
+			if order[r.Type] != pass || r.Type == CustomResource {
 				continue
 			}
 			what, err := a.deleteResource(ctx, requestID, r)

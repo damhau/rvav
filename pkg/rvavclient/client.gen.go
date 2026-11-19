@@ -930,6 +930,7 @@ func (e DrsRuleResourceRuleKind) Valid() bool {
 // Defines values for EventTopicGroup.
 const (
 	EventTopicGroupApproval EventTopicGroup = "approval"
+	EventTopicGroupCustom   EventTopicGroup = "custom"
 	EventTopicGroupLease    EventTopicGroup = "lease"
 	EventTopicGroupMachine  EventTopicGroup = "machine"
 	EventTopicGroupProject  EventTopicGroup = "project"
@@ -940,6 +941,8 @@ const (
 func (e EventTopicGroup) Valid() bool {
 	switch e {
 	case EventTopicGroupApproval:
+		return true
+	case EventTopicGroupCustom:
 		return true
 	case EventTopicGroupLease:
 		return true
@@ -963,6 +966,10 @@ const (
 	ComputeProvisionPre  EventTopicKey = "compute.provision.pre"
 	ComputeRemovalPost   EventTopicKey = "compute.removal.post"
 	ComputeRemovalPre    EventTopicKey = "compute.removal.pre"
+	CustomCreatePost     EventTopicKey = "custom.create.post"
+	CustomCreatePre      EventTopicKey = "custom.create.pre"
+	CustomDeletePost     EventTopicKey = "custom.delete.post"
+	CustomDeletePre      EventTopicKey = "custom.delete.pre"
 	Day2Post             EventTopicKey = "day2.post"
 	Day2Pre              EventTopicKey = "day2.pre"
 	DeletePost           EventTopicKey = "delete.post"
@@ -993,6 +1000,14 @@ func (e EventTopicKey) Valid() bool {
 	case ComputeRemovalPost:
 		return true
 	case ComputeRemovalPre:
+		return true
+	case CustomCreatePost:
+		return true
+	case CustomCreatePre:
+		return true
+	case CustomDeletePost:
+		return true
+	case CustomDeletePre:
 		return true
 	case Day2Post:
 		return true
@@ -2474,16 +2489,19 @@ func (e UiWidget) Valid() bool {
 
 // Defines values for UpdateChangeKind.
 const (
-	DiskAdd    UpdateChangeKind = "disk_add"
-	DiskExtend UpdateChangeKind = "disk_extend"
-	DiskRemove UpdateChangeKind = "disk_remove"
-	Job        UpdateChangeKind = "job"
-	NicAdd     UpdateChangeKind = "nic_add"
-	NicMove    UpdateChangeKind = "nic_move"
-	NicRemove  UpdateChangeKind = "nic_remove"
-	Resize     UpdateChangeKind = "resize"
-	VmAdd      UpdateChangeKind = "vm_add"
-	VmRemove   UpdateChangeKind = "vm_remove"
+	DiskAdd        UpdateChangeKind = "disk_add"
+	DiskExtend     UpdateChangeKind = "disk_extend"
+	DiskRemove     UpdateChangeKind = "disk_remove"
+	Job            UpdateChangeKind = "job"
+	NicAdd         UpdateChangeKind = "nic_add"
+	NicMove        UpdateChangeKind = "nic_move"
+	NicRemove      UpdateChangeKind = "nic_remove"
+	Resize         UpdateChangeKind = "resize"
+	ResourceAdd    UpdateChangeKind = "resource_add"
+	ResourceRemove UpdateChangeKind = "resource_remove"
+	ResourceUpdate UpdateChangeKind = "resource_update"
+	VmAdd          UpdateChangeKind = "vm_add"
+	VmRemove       UpdateChangeKind = "vm_remove"
 )
 
 // Valid indicates whether the value is a known member of the UpdateChangeKind enum.
@@ -2504,6 +2522,12 @@ func (e UpdateChangeKind) Valid() bool {
 	case NicRemove:
 		return true
 	case Resize:
+		return true
+	case ResourceAdd:
+		return true
+	case ResourceRemove:
+		return true
+	case ResourceUpdate:
 		return true
 	case VmAdd:
 		return true
@@ -5441,10 +5465,10 @@ type EventBase struct {
 type EventTopic struct {
 	Description string `json:"description"`
 
-	// Group What a topic's events are about: a request, one of its approval levels, one of its VMs, a deployment's lease, or a project.
+	// Group What a topic's events are about: a request, one of its approval levels, one of its VMs, one of its custom resources, a deployment's lease, or a project.
 	Group EventTopicGroup `json:"group"`
 
-	// Key Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049).
+	// Key Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
 	Key EventTopicKey `json:"key"`
 
 	// MayBlock Whether blocking subscriptions are allowed: provisioning.pre, day2.pre and delete.pre.
@@ -5457,10 +5481,10 @@ type EventTopic struct {
 	Sample IntegrationEvent `json:"sample"`
 }
 
-// EventTopicGroup What a topic's events are about: a request, one of its approval levels, one of its VMs, a deployment's lease, or a project.
+// EventTopicGroup What a topic's events are about: a request, one of its approval levels, one of its VMs, one of its custom resources, a deployment's lease, or a project.
 type EventTopicGroup string
 
-// EventTopicKey Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049).
+// EventTopicKey Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
 type EventTopicKey string
 
 // EventTopicList defines model for EventTopicList.
@@ -6001,14 +6025,14 @@ type IntegrationEvent struct {
 	// Contract Examples: rvav.event.v1
 	Contract string `json:"contract"`
 
-	// Data request, item, project, environment, requester, owner, deployment, deployments, resources, inputs and vm; null where they don't apply. A VM's topics add `machine`: its name, size, placement, networks, address and moref; approval topics add `approval`: the level, who may decide it and how it was decided; project topics have `project` with its settings and admins, `actor` and `changes`, and no request (ADR-0049).
+	// Data request, item, project, environment, requester, owner, deployment, deployments, resources, inputs and vm; null where they don't apply. A VM's topics add `machine`: its name, size, placement, networks, address and moref; approval topics add `approval`: the level, who may decide it and how it was decided; custom resource topics add `custom_resource`: its ID, type, key, name, deployment, inputs and properties (ADR-0056); project topics have `project` with its settings and admins, `actor` and `changes`, and no request (ADR-0049).
 	Data map[string]interface{} `json:"data"`
 
 	// Id Stable across retries: receivers ignore an ID they already have.
 	Id         string    `json:"id"`
 	OccurredAt time.Time `json:"occurred_at"`
 
-	// Topic Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049).
+	// Topic Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
 	Topic EventTopicKey `json:"topic"`
 }
 
@@ -8824,7 +8848,7 @@ type Subscription struct {
 	Target         SubscriptionTarget `json:"target"`
 	TimeoutSeconds int                `json:"timeout_seconds"`
 
-	// Topic Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049).
+	// Topic Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
 	Topic     EventTopicKey `json:"topic"`
 	UpdatedAt *time.Time    `json:"updated_at,omitempty"`
 }
@@ -8866,7 +8890,7 @@ type SubscriptionRun struct {
 	// Test Made with Test.
 	Test bool `json:"test"`
 
-	// Topic Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049).
+	// Topic Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
 	Topic EventTopicKey `json:"topic"`
 }
 
@@ -8929,7 +8953,7 @@ type SubscriptionRunDetail struct {
 	// Test Made with Test.
 	Test bool `json:"test"`
 
-	// Topic Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049).
+	// Topic Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
 	Topic EventTopicKey `json:"topic"`
 }
 
@@ -8989,7 +9013,7 @@ type SubscriptionWrite struct {
 	Target         SubscriptionTarget `json:"target"`
 	TimeoutSeconds *int               `json:"timeout_seconds,omitempty"`
 
-	// Topic Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049).
+	// Topic Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
 	Topic EventTopicKey `json:"topic"`
 }
 
@@ -9186,12 +9210,14 @@ type UpdateChange struct {
 	// Component The component's key; `vm` without components.
 	Component *string `json:"component,omitempty"`
 
-	// Destructive It deletes something (a disk and its data, an adapter, a VM).
+	// Destructive It deletes something (a disk and its data, an adapter, a VM, a custom resource).
 	Destructive bool `json:"destructive"`
 
 	// Detail Examples: Was 2 vCPU and 4 GB. Restarts the VM: CPU hot add is off.
-	Detail *string          `json:"detail,omitempty"`
-	Kind   UpdateChangeKind `json:"kind"`
+	Detail *string `json:"detail,omitempty"`
+
+	// Kind `resource_*` add, update or delete one of the deployment's custom resources (ADR-0056).
+	Kind UpdateChangeKind `json:"kind"`
 
 	// Title Examples: Set 4 vCPU and 8 GB on web01
 	Title string `json:"title"`
@@ -9200,7 +9226,7 @@ type UpdateChange struct {
 	Vm *string `json:"vm,omitempty"`
 }
 
-// UpdateChangeKind defines model for UpdateChange.Kind.
+// UpdateChangeKind `resource_*` add, update or delete one of the deployment's custom resources (ADR-0056).
 type UpdateChangeKind string
 
 // UpdateDraft defines model for UpdateDraft.

@@ -60,6 +60,12 @@ var day2 = &set{names: []string{"action", "resource", "deployment", "project", "
 // groups' constants.
 var composite = &set{names: []string{"inputs", "steps", "environment", "project", "propgroup"}, strings: map[string]bool{"environment": true}}
 
+// custom is for the inputs of a blueprint's custom resources (ADR-0056),
+// worked out once the deployment's VMs are built: their components and the
+// custom resources made before them.
+var custom = &set{names: []string{"inputs", "environment", "project", "propgroup", "deployment", "components", "resources"},
+	strings: map[string]bool{"environment": true}}
+
 // build is for the bindings evaluated as each VM is built (ADR-0024): its
 // tags, reading the VM itself and the components built before it.
 var build = &set{names: []string{"inputs", "self", "components"}}
@@ -226,6 +232,15 @@ func CheckComposite(expr string) error {
 	_, err := composite.program(expr)
 	return err
 }
+
+// CheckResource compiles the binding of a custom resource's input.
+func CheckResource(expr string) error {
+	_, err := custom.program(expr)
+	return err
+}
+
+// ResourceEval evaluates the binding of a custom resource's input.
+func ResourceEval(expr string, vars Vars) (any, error) { return custom.eval(expr, vars) }
 
 // CheckBuild compiles a binding evaluated as each VM is built.
 func CheckBuild(expr string) error {

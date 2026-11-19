@@ -39,8 +39,25 @@ func eachVM(ctx workflow.Context, n int, fn func(ctx workflow.Context, i int) (s
 
 // runComponents builds a multi-VM blueprint's plan.
 func runComponents(ctx workflow.Context, info Info) (string, error) {
-	_, failed, err := buildComponents(ctx, info, info.Plan.VMs, info.Plan.Components, planKeys(), nil)
-	return failed, err
+	vms, failed, err := buildComponents(ctx, info, info.Plan.VMs, info.Plan.Components, planKeys(), nil)
+	if err != nil || len(info.Plan.Resources) == 0 {
+		return failed, err
+	}
+	// Then its custom resources, which may read its VMs (ADR-0056).
+	return makeResources(ctx, info, info.Plan.Resources, componentOutputs(vms, vmComponents(vms, info.Plan.Components)))
+}
+
+// vmComponents are the keys of these components and of these VMs'.
+func vmComponents(vms []builtVM, units []ComponentUnit) []string {
+	var keys []string
+	for _, u := range units {
+		keys = append(keys, u.Key)
+	}
+	for _, b := range vms {
+		keys = append(keys, b.vm.Component)
+	}
+	slices.Sort(keys)
+	return slices.Compact(keys)
 }
 
 // buildComponents builds components' VMs in rounds: a component in the

@@ -108,6 +108,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			deployments, plan.VMs, plan.Components = append(deployments, deps...), vms, comps
 			plan.Segments, plan.Security = planSegments(ev, vms), planSecurity(ev, vms)
 			if len(comps) > 0 {
+				plan.Resources = ev.planResources(deps[0].ID)
 				// A multi-VM deployment (ADR-0024): post-configuration is each component's.
 				req.Title = ev.Item.Name + " · " + deps[0].Name
 				break
@@ -121,6 +122,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			plan.AWX, plan.ExtraVars = &job, vars
 			req.Title = ev.Item.Name + titleSuffix(ev.Version.UISchema, ev.Inputs)
 		case blueprint.KindComposite:
+			stepDeployments := map[string]string{}
 			for _, part := range ev.Composite {
 				c := part.planned()
 				if part.sub != nil {
@@ -134,6 +136,9 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 					// (ADR-0028).
 					c.Segments, c.Security = planSegments(part.sub, vms), planSecurity(part.sub, vms)
 					deployments, c.VMs, c.Guest, c.Components = append(deployments, deps...), vms, part.sub.Blueprint.Guest, comps
+					if len(deps) > 0 {
+						stepDeployments[part.step.Key] = deps[0].ID
+					}
 					// A multi-VM item's post-configuration is its components' (ADR-0024).
 					if len(comps) == 0 {
 						if c.PostConfig, err = postConfigJobs(part.sub, part.sub.VM, optionOrder(part.sub.Version.UISchema, "post_config")); err != nil {
@@ -143,6 +148,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 				}
 				plan.Composite = append(plan.Composite, c)
 			}
+			bindResourceSteps(plan.Composite, stepDeployments)
 			if err := s.claimDeploymentNames(ctx, tx, ev, deployments, req.Number); err != nil {
 				return err
 			}

@@ -250,6 +250,17 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 			return stepResult{skipped: true}
 		}
 		out = result
+	case c.Resource != nil:
+		// A custom resource in a VM step's deployment (ADR-0056).
+		if workflow.GetVersion(ctx, versionResources, workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+			break
+		}
+		run := ResourceRun{Phase: PhaseCreate, Unit: c.Resource, Source: "composite", Resolved: true, Inputs: values}
+		result, err := runResource(ctx, info, key, run, outputs)
+		if err != nil {
+			return stepResult{failed: key, err: err}
+		}
+		out = result
 	case c.Notify != nil:
 		in := NotifyInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Notify: *c.Notify, Steps: outputs}
 		if err := workflow.ExecuteActivity(ctx, a.SendStepMessage, in).Get(ctx, &out); err != nil {

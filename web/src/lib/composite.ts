@@ -391,9 +391,15 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
     const poll = s.poll as Raw | undefined;
     const branch = s.branch as Raw | undefined;
     const notify = s.notify as Raw | undefined;
-    const kinds = [s.item, awx, s.workflow, rest, ask, wait, poll, branch, notify].filter(Boolean).length;
+    const resource = s.resource as Raw | undefined;
+    const kinds = [s.item, awx, s.workflow, rest, ask, wait, poll, branch, notify, resource].filter(Boolean).length;
     if (kinds !== 1)
-      err(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch or notify.");
+      err(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch, notify or resource.");
+    if (resource) {
+      if (!str(resource.type)) err(`${sp}/resource/type`, "required", "Name the resource type.");
+      if (s.undo !== undefined)
+        err(`${sp}/undo`, "invalid", "A custom resource is undone by its type's delete: it has no undo of its own.");
+    }
     if (awx && !str(awx.job_template)) err(`${sp}/awx/job_template`, "required", "Name the AWX template.");
     if (rest) {
       checkRest(rest, `${sp}/rest`, err);

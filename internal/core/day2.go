@@ -59,6 +59,11 @@ func targets(d store.DeploymentRow, resources []store.Resource) []day2.Target {
 		if r.Type == "vsphere.vm" {
 			t.VM, t.Drift = day2.VM(r.Properties), day2.DriftOf(r.SyncState, r.Properties)
 		}
+		if r.Type == day2.CustomType {
+			var props store.CustomProps
+			_ = json.Unmarshal(r.Properties, &props)
+			t.Type = day2.CustomTarget(props.ResourceType.Key)
+		}
 		dep.Resources = append(dep.Resources, day2.Resource{ID: r.ID, Type: r.Type, Name: r.Name, VM: t.VM, Properties: r.Properties,
 			PreventDelete: r.PreventDelete})
 		out = append(out, t)
@@ -351,6 +356,11 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	for _, op := range ops {
 		if op.System == day2.SystemAWX && op.Op == day2.OpJob {
 			op.Args["rvav"] = rvavContext(req.ID, p, d, *target)
+		}
+	}
+	if day2.IsCustom(target.Type) {
+		if ops, err = s.customOps(ctx, ops, *target); err != nil {
+			return store.RequestRow{}, err
 		}
 	}
 	plan := provision.Plan{Kind: "day2", ApprovalRequired: req.ApprovalRequired, Day2: &provision.Day2{

@@ -143,12 +143,13 @@ func (c *HTTPClient) LookupJobTemplate(ctx context.Context, name string, workflo
 }
 
 type jobJSON struct {
-	ID         int    `json:"id"`
-	Job        int    `json:"job"`
-	Workflow   int    `json:"workflow_job"`
-	Status     string `json:"status"`
-	Failed     bool   `json:"failed"`
-	EventsDone *bool  `json:"event_processing_finished"`
+	ID         int            `json:"id"`
+	Job        int            `json:"job"`
+	Workflow   int            `json:"workflow_job"`
+	Status     string         `json:"status"`
+	Failed     bool           `json:"failed"`
+	EventsDone *bool          `json:"event_processing_finished"`
+	Artifacts  map[string]any `json:"artifacts"`
 }
 
 func (c *HTTPClient) toJob(j jobJSON, workflow bool) Job {
@@ -168,7 +169,8 @@ func (c *HTTPClient) toJob(j jobJSON, workflow bool) Job {
 	u.Fragment = fmt.Sprintf("/jobs/%s/%d/output", kind, id)
 	// Workflow jobs have no events; an AWX without the field, as finished.
 	eventsDone := workflow || (j.EventsDone == nil && Done(j.Status)) || (j.EventsDone != nil && *j.EventsDone)
-	return Job{ID: id, Status: j.Status, Failed: j.Failed, Finished: Done(j.Status), EventsDone: eventsDone, URL: u.String()}
+	return Job{ID: id, Status: j.Status, Failed: j.Failed, Finished: Done(j.Status), EventsDone: eventsDone, URL: u.String(),
+		Artifacts: j.Artifacts}
 }
 
 // Launch starts a job. A limit or an inventory are checked first to be

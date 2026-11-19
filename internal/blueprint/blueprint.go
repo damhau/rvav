@@ -79,6 +79,10 @@ type Blueprint struct {
 	// nsx:<group ID>. Components may name their own.
 	SecurityGroups []SecurityGroup `json:"security_groups,omitempty"`
 	Groups         []string        `json:"groups,omitempty"`
+	// Resources are custom resources made in the deployment once its VMs
+	// are built, in order (ADR-0056); only a blueprint with components has
+	// them.
+	Resources []Resource `json:"resources,omitempty"`
 
 	// AWX items: the job template to launch with the inputs as extra_vars.
 	AWX *AWXTemplate `json:"awx,omitempty"`
@@ -97,6 +101,25 @@ type Blueprint struct {
 	// RollbackOnFailure deletes what was created when a step fails. When
 	// false, resources are kept so someone can look at the failure.
 	RollbackOnFailure bool `json:"rollback_on_failure,omitempty"`
+}
+
+// Resource is a custom resource of a deployment (ADR-0056): Type is a
+// resource type's key; With binds its create step's inputs, strings CEL over
+// inputs, components, resources (those made before it, by key), deployment,
+// project, environment and propgroup, other values as they are.
+type Resource struct {
+	Key   string         `json:"key"`
+	Type  string         `json:"type"`
+	Title string         `json:"title,omitempty"`
+	With  map[string]any `json:"with,omitempty"`
+}
+
+// ResourceStep is a composite step making a custom resource (ADR-0056) in
+// the deployment of a VM step before it: Deployment is that step's key, the
+// only VM step's when empty.
+type ResourceStep struct {
+	Type       string `json:"type"`
+	Deployment string `json:"deployment,omitempty"`
 }
 
 // Segment is an NSX segment made for a deployment, on the Tier-1 its
@@ -720,15 +743,16 @@ type CompositeStep struct {
 	Key   string `json:"key,omitempty"`
 	Title string `json:"title,omitempty"`
 	// Item is another item's slug: a VM, AWX or custom workflow item.
-	Item     string       `json:"item,omitempty"`
-	AWX      *AWXTemplate `json:"awx,omitempty"`
-	Workflow string       `json:"workflow,omitempty"`
-	REST     *RESTCall    `json:"rest,omitempty"`
-	Ask      *Ask         `json:"ask,omitempty"`
-	Wait     *Wait        `json:"wait,omitempty"`
-	Poll     *Poll        `json:"poll,omitempty"`
-	Branch   *Branch      `json:"branch,omitempty"`
-	Notify   *Notify      `json:"notify,omitempty"`
+	Item     string        `json:"item,omitempty"`
+	AWX      *AWXTemplate  `json:"awx,omitempty"`
+	Workflow string        `json:"workflow,omitempty"`
+	REST     *RESTCall     `json:"rest,omitempty"`
+	Ask      *Ask          `json:"ask,omitempty"`
+	Wait     *Wait         `json:"wait,omitempty"`
+	Poll     *Poll         `json:"poll,omitempty"`
+	Branch   *Branch       `json:"branch,omitempty"`
+	Notify   *Notify       `json:"notify,omitempty"`
+	Resource *ResourceStep `json:"resource,omitempty"`
 	// With binds the step's inputs: strings are CEL over inputs and the
 	// outputs of earlier steps (steps.<key>), other values are as they are.
 	With map[string]any `json:"with,omitempty"`

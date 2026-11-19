@@ -606,7 +606,11 @@ func (s *Service) checkVersion(ctx context.Context, itemType string, d api.Catal
 	}
 	errs := checkDefinition(itemType, d, groups, prefix, publish)
 	refs, err := s.checkFormRefs(ctx, d, prefix, publish)
-	return append(errs, refs...), err
+	if err != nil {
+		return nil, err
+	}
+	types, err := s.checkResourceRefs(ctx, d, prefix, publish)
+	return slices.Concat(errs, refs, types), err
 }
 
 // checkFormRefs checks what a form names that rvav keeps apart: the hosts

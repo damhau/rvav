@@ -28,6 +28,11 @@ type Fake struct {
 	// prompt for an inventory, or credentials, on launch.
 	NoInventoryPrompt  map[string]bool
 	NoCredentialPrompt map[string]bool
+	// Artifacts are what the templates' successful jobs give with
+	// set_stats; Artifact, when set, works them out of the job's extra
+	// variables instead.
+	Artifacts map[string]map[string]any
+	Artifact  func(template string, extraVars map[string]any) map[string]any
 
 	mu      sync.Mutex
 	nextJob int
@@ -142,6 +147,10 @@ func (f *Fake) jobLocked(j *fakeJob) Job {
 		job.Status, job.Failed, job.Finished, job.EventsDone = "failed", true, true, true
 	case done >= len(j.tasks):
 		job.Status, job.Finished, job.EventsDone = "successful", true, true
+		job.Artifacts = f.Artifacts[j.template]
+		if f.Artifact != nil {
+			job.Artifacts = f.Artifact(j.template, j.extraVars)
+		}
 	}
 	return job
 }

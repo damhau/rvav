@@ -6422,8 +6422,11 @@ export interface components {
             warnings?: components["schemas"]["PolicyWarning"][];
         };
         UpdateChange: {
-            /** @enum {string} */
-            kind: "resize" | "disk_add" | "disk_extend" | "disk_remove" | "nic_add" | "nic_move" | "nic_remove" | "vm_add" | "vm_remove" | "job";
+            /**
+             * @description `resource_*` add, update or delete one of the deployment's custom resources (ADR-0056).
+             * @enum {string}
+             */
+            kind: "resize" | "disk_add" | "disk_extend" | "disk_remove" | "nic_add" | "nic_move" | "nic_remove" | "vm_add" | "vm_remove" | "job" | "resource_add" | "resource_update" | "resource_remove";
             /** @description The component's key; `vm` without components. */
             component?: string;
             /** @description The VM it changes. A VM added is named when the update is asked for. */
@@ -6432,7 +6435,7 @@ export interface components {
             title: string;
             /** @example Was 2 vCPU and 4 GB. Restarts the VM: CPU hot add is off. */
             detail?: string;
-            /** @description It deletes something (a disk and its data, an adapter, a VM). */
+            /** @description It deletes something (a disk and its data, an adapter, a VM, a custom resource). */
             destructive: boolean;
         };
         UpdateRefusal: {
@@ -9436,15 +9439,15 @@ export interface components {
             items: components["schemas"]["AuditEvent"][];
         };
         /**
-         * @description Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049).
+         * @description Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
          * @enum {string}
          */
-        EventTopicKey: "request.submitted" | "approval.requested" | "approval.decided" | "provisioning.pre" | "compute.allocation.pre" | "network.configure" | "compute.provision.pre" | "compute.provision.post" | "provisioning.post" | "day2.pre" | "day2.post" | "delete.pre" | "compute.removal.pre" | "compute.removal.post" | "delete.post" | "lease.expiring" | "lease.expired" | "project.created" | "project.updated";
+        EventTopicKey: "request.submitted" | "approval.requested" | "approval.decided" | "provisioning.pre" | "compute.allocation.pre" | "network.configure" | "compute.provision.pre" | "compute.provision.post" | "custom.create.pre" | "custom.create.post" | "provisioning.post" | "day2.pre" | "day2.post" | "delete.pre" | "custom.delete.pre" | "custom.delete.post" | "compute.removal.pre" | "compute.removal.post" | "delete.post" | "lease.expiring" | "lease.expired" | "project.created" | "project.updated";
         /**
-         * @description What a topic's events are about: a request, one of its approval levels, one of its VMs, a deployment's lease, or a project.
+         * @description What a topic's events are about: a request, one of its approval levels, one of its VMs, one of its custom resources, a deployment's lease, or a project.
          * @enum {string}
          */
-        EventTopicGroup: "request" | "approval" | "machine" | "lease" | "project";
+        EventTopicGroup: "request" | "approval" | "machine" | "custom" | "lease" | "project";
         EventTopic: {
             key: components["schemas"]["EventTopicKey"];
             group: components["schemas"]["EventTopicGroup"];
@@ -9470,7 +9473,7 @@ export interface components {
             contract: string;
             /** Format: date-time */
             occurred_at: string;
-            /** @description request, item, project, environment, requester, owner, deployment, deployments, resources, inputs and vm; null where they don't apply. A VM's topics add `machine`: its name, size, placement, networks, address and moref; approval topics add `approval`: the level, who may decide it and how it was decided; project topics have `project` with its settings and admins, `actor` and `changes`, and no request (ADR-0049). */
+            /** @description request, item, project, environment, requester, owner, deployment, deployments, resources, inputs and vm; null where they don't apply. A VM's topics add `machine`: its name, size, placement, networks, address and moref; approval topics add `approval`: the level, who may decide it and how it was decided; custom resource topics add `custom_resource`: its ID, type, key, name, deployment, inputs and properties (ADR-0056); project topics have `project` with its settings and admins, `actor` and `changes`, and no request (ADR-0049). */
             data: {
                 [key: string]: unknown;
             };

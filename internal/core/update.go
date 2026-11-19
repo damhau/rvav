@@ -71,6 +71,11 @@ type componentPlan struct {
 	// marks are, by VM resource, its kept disks' places and keys in the
 	// new version, where they change (ADR-0052).
 	marks map[string][]vmprops.DiskMark
+	// resources are the custom resources made or updated, removeFirst the
+	// deletes of those dropped, before the VMs they may use (ADR-0056).
+	resources   []provision.ResourceUnit
+	removeFirst []day2.Op
+	custom      []api.UpdateChange
 }
 
 func (u *componentPlan) mark(resource string, m vmprops.DiskMark) {
@@ -217,7 +222,8 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 	}
 	plan := provision.Plan{Kind: blueprint.KindVM, ApprovalRequired: req.ApprovalRequired, AutoApproved: ev.AutoApproved,
 		Quota: quota, Guest: ev.Blueprint.Guest, Update: &provision.Update{DeploymentID: d.ID, Before: d.Status,
-			Ops: u.ops, Remove: u.remove, Kept: u.kept, Jobs: u.jobs, VMs: u.vms, DiskMarks: u.marks}}
+			Ops: u.ops, Remove: slices.Concat(u.removeFirst, u.remove), Kept: u.kept, Jobs: u.jobs, VMs: u.vms, DiskMarks: u.marks},
+		Resources: u.resources}
 
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
 		if err := s.holdChange(ctx, tx, u.change, ev.OverSoft, draft.AcceptWarnings, draft.AcceptedWarnings); err != nil {
@@ -535,12 +541,12 @@ func (s *Service) compare(ctx context.Context, u *updatePlan, resources []store.
 			c.plan(&u.componentPlan)
 		}
 	}
-	return nil
+	return s.compareResources(ctx, u, old, oldInputs, resources)
 }
 
 // all are the changes in the order they run.
 func (u *componentPlan) all() []api.UpdateChange {
-	return slices.Concat(u.changes, u.added, u.removed, u.ran)
+	return slices.Concat(u.changes, u.added, u.removed, u.custom, u.ran)
 }
 
 // vars are what approval policies read of the update as `update`.

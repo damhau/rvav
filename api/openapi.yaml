@@ -8627,7 +8627,9 @@ components:
       properties:
         kind:
           type: string
-          enum: [resize, disk_add, disk_extend, disk_remove, nic_add, nic_move, nic_remove, vm_add, vm_remove, job]
+          enum: [resize, disk_add, disk_extend, disk_remove, nic_add, nic_move, nic_remove, vm_add, vm_remove, job, resource_add,
+            resource_update, resource_remove]
+          description: "`resource_*` add, update or delete one of the deployment's custom resources (ADR-0056)."
         component:
           type: string
           description: The component's key; `vm` without components.
@@ -8638,7 +8640,7 @@ components:
         detail: { type: string, examples: ["Was 2 vCPU and 4 GB. Restarts the VM: CPU hot add is off."] }
         destructive:
           type: boolean
-          description: It deletes something (a disk and its data, an adapter, a VM).
+          description: It deletes something (a disk and its data, an adapter, a VM, a custom resource).
 
     UpdateRefusal:
       type: object
@@ -12314,14 +12316,15 @@ components:
     # ── Events and subscriptions (ADR-0021) ──
     EventTopicKey:
       type: string
-      description: "Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049)."
+      description: "Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056)."
       enum: [request.submitted, approval.requested, approval.decided, provisioning.pre, compute.allocation.pre, network.configure,
-        compute.provision.pre, compute.provision.post, provisioning.post, day2.pre, day2.post, delete.pre, compute.removal.pre,
-        compute.removal.post, delete.post, lease.expiring, lease.expired, project.created, project.updated]
+        compute.provision.pre, compute.provision.post, custom.create.pre, custom.create.post, provisioning.post, day2.pre, day2.post,
+        delete.pre, custom.delete.pre, custom.delete.post, compute.removal.pre, compute.removal.post, delete.post, lease.expiring,
+        lease.expired, project.created, project.updated]
     EventTopicGroup:
       type: string
-      description: "What a topic's events are about: a request, one of its approval levels, one of its VMs, a deployment's lease, or a project."
-      enum: [request, approval, machine, lease, project]
+      description: "What a topic's events are about: a request, one of its approval levels, one of its VMs, one of its custom resources, a deployment's lease, or a project."
+      enum: [request, approval, machine, custom, lease, project]
     EventTopic:
       type: object
       required: [key, group, description, may_block, sample]
@@ -12353,7 +12356,7 @@ components:
         occurred_at: { type: string, format: date-time }
         data:
           type: object
-          description: "request, item, project, environment, requester, owner, deployment, deployments, resources, inputs and vm; null where they don't apply. A VM's topics add `machine`: its name, size, placement, networks, address and moref; approval topics add `approval`: the level, who may decide it and how it was decided; project topics have `project` with its settings and admins, `actor` and `changes`, and no request (ADR-0049)."
+          description: "request, item, project, environment, requester, owner, deployment, deployments, resources, inputs and vm; null where they don't apply. A VM's topics add `machine`: its name, size, placement, networks, address and moref; approval topics add `approval`: the level, who may decide it and how it was decided; custom resource topics add `custom_resource`: its ID, type, key, name, deployment, inputs and properties (ADR-0056); project topics have `project` with its settings and admins, `actor` and `changes`, and no request (ADR-0049)."
           additionalProperties: true
     SubscriptionTarget:
       type: object

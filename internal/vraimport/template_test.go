@@ -477,3 +477,32 @@ func TestMapValuePicker(t *testing.T) {
 		t.Errorf("app is reported: %v", notes)
 	}
 }
+
+// TestCustomResourceNote: a vRA custom resource needs an rvav resource type
+// an administrator defines (E1.4): the import says so and leaves it out.
+func TestCustomResourceNote(t *testing.T) {
+	content := `formatVersion: 1
+resources:
+  web:
+    type: Cloud.vSphere.Machine
+    properties:
+      image: rhel9
+      flavor: small
+  lb:
+    type: Custom.LoadBalancer
+    properties:
+      port: 443
+`
+	e := vra.SampleEstate(time.Now())
+	p := MapTemplate(&e, vra.Blueprint{ID: "bp-lb", Name: "Balanced", Versions: []vra.BlueprintVersion{
+		{Version: "1", Status: "RELEASED", Content: content}}})
+	if p.Doc == nil {
+		t.Fatalf("plan = %s %+v", p.Status, p.Notes)
+	}
+	if !has(p, Unmapped, "resources.lb", "needs an rvav resource type") {
+		t.Errorf("no note on the custom resource: %+v", p.Notes)
+	}
+	if _, ok := p.Doc.Versions[0].Blueprint["resources"]; ok {
+		t.Errorf("the custom resource was carried over: %+v", p.Doc.Versions[0].Blueprint)
+	}
+}

@@ -53,6 +53,8 @@ type Job struct {
 	// Always true for workflow jobs, which have no events.
 	EventsDone bool
 	URL        string
+	// Artifacts are what the playbook gave with set_stats.
+	Artifacts map[string]any
 }
 
 // Event is one AWX job event, in counter order.

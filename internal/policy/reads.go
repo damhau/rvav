@@ -16,6 +16,9 @@ type Reads struct {
 	Idents     []string
 	Components []string
 	Inputs     []string
+	// Resources are the custom resources a blueprint resource's input
+	// reads, as resources.<key> (ADR-0056).
+	Resources []string
 	// Loose is set when components is read other than as components.<key>
 	// (components['db'], or components alone): which ones it reads can't
 	// be told before it runs. AllInputs is the same of inputs, read other
@@ -38,7 +41,7 @@ func ReadsOf(expr string) (Reads, error) {
 	if iss.Err() != nil {
 		return r, fmt.Errorf("parse %q: %w", expr, iss.Err())
 	}
-	fields := map[string]*[]string{"components": &r.Components, "inputs": &r.Inputs}
+	fields := map[string]*[]string{"components": &r.Components, "inputs": &r.Inputs, "resources": &r.Resources}
 	whole := map[string]*bool{"components": &r.Loose, "inputs": &r.AllInputs}
 	selected := map[int64]bool{}
 	ast.PreOrderVisit(parsed.NativeRep().Expr(), ast.NewExprVisitor(func(e ast.Expr) {

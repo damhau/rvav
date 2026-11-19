@@ -53,6 +53,7 @@ const topicGroups: Record<S["EventTopicGroup"], string> = {
   request: "Requests",
   approval: "A request's approval levels",
   machine: "A request's VMs, one event each",
+  custom: "A request's custom resources, one event each",
   lease: "Leases",
   project: "Projects",
 };

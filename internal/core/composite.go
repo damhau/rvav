@@ -44,6 +44,9 @@ type compositePart struct {
 	branch *provision.BranchPlan
 	notify *blueprint.Notify
 	undo   *provision.CompositeUndo
+	// resource is a custom resource (ADR-0056), in the deployment of the VM
+	// step it names by key.
+	resource *provision.ResourceUnit
 }
 
 // planned is a part as a plan holds it, but for what a VM step reserves, which
@@ -67,6 +70,9 @@ func (part compositePart) planned() provision.CompositeStep {
 		c.Branch = part.branch
 	case part.notify != nil:
 		c.Notify = part.notify
+	case part.resource != nil:
+		r := *part.resource
+		c.Resource, c.With = &r, part.step.With
 	}
 	return c
 }
@@ -146,13 +152,21 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 			errs = append(errs, fieldErr(sp+"/key", "duplicate", "Another step has the key "+s.Key+"."))
 		}
 		kinds := 0
-		for _, set := range []bool{s.Item != "", s.AWX != nil, s.Workflow != "", s.REST != nil, s.Ask != nil, s.Wait != nil, s.Poll != nil, s.Branch != nil, s.Notify != nil} {
+		for _, set := range []bool{s.Item != "", s.AWX != nil, s.Workflow != "", s.REST != nil, s.Ask != nil, s.Wait != nil, s.Poll != nil, s.Branch != nil, s.Notify != nil, s.Resource != nil} {
 			if set {
 				kinds++
 			}
 		}
 		if kinds != 1 {
-			errs = append(errs, fieldErr(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch or notify."))
+			errs = append(errs, fieldErr(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch, notify or resource."))
+		}
+		if s.Resource != nil {
+			if s.Resource.Type == "" {
+				errs = append(errs, fieldErr(sp+"/resource/type", "required", "Name the resource type."))
+			}
+			if s.Undo != nil {
+				errs = append(errs, fieldErr(sp+"/undo", "invalid", "A custom resource is undone by its type's delete: it has no undo of its own."))
+			}
 		}
 		if s.AWX != nil && s.AWX.JobTemplate == "" {
 			errs = append(errs, fieldErr(sp+"/awx/job_template", "required", "Name the AWX template."))
@@ -721,6 +735,26 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 			part.branch = plan
 		case st.Notify != nil:
 			part.notify = st.Notify
+		case st.Resource != nil:
+			t, why, err := s.usableResourceType(ctx, st.Resource.Type)
+			if err != nil {
+				return nil, err
+			}
+			if why != "" {
+				add("", "not_available", label+": "+why)
+				return nil, nil
+			}
+			vm, why := compositeDeployment(ev.Composite, st.Resource.Deployment, group)
+			if why != "" {
+				add("", "invalid", label+": "+why)
+				return nil, nil
+			}
+			unit := resourceUnit(t, st.Key, "", nil)
+			unit.Step = vm
+			part.resource = &unit
+			if part.title == "" {
+				part.title = t.Title
+			}
 		}
 		if u := st.Undo; u != nil {
 			part.undo = &provision.CompositeUndo{With: u.With}

@@ -103,6 +103,7 @@ func (p Plan) updateSteps() []StepDef {
 	} else {
 		steps = append(steps, p.vmSteps()...)
 	}
+	steps = append(steps, resourceSteps(p.Resources)...)
 	for _, op := range u.Remove {
 		steps = append(steps, StepDef{Key: op.Key, Title: op.Title, Detail: op.Detail, System: op.System, Status: "pending"})
 	}
@@ -132,11 +133,14 @@ func runUpdate(ctx workflow.Context, info Info) (string, error) {
 			return "", err
 		}
 	}
+	built := u.kept()
 	switch {
 	case len(p.Components) > 0:
-		if _, failed, err := buildComponents(ctx, info, p.VMs, p.Components, planKeys(), u.kept()); err != nil {
+		vms, failed, err := buildComponents(ctx, info, p.VMs, p.Components, planKeys(), u.kept())
+		if err != nil {
 			return failed, err
 		}
+		built = append(built, vms...)
 	case len(p.VMs) > 0:
 		vms, failed, err := buildVMs(ctx, info, p.VMs, p.Guest, p.VMKey)
 		if err != nil {
@@ -144,6 +148,11 @@ func runUpdate(ctx workflow.Context, info Info) (string, error) {
 		}
 		if failed, err := postConfig(ctx, info, vms, p.PostConfig, KeyInventory, func(j Job) string { return KeyJob + j.Key }, p.Limit(), p.Context); err != nil {
 			return failed, err
+		}
+	}
+	if len(p.Resources) > 0 {
+		if key, err := makeResources(ctx, info, p.Resources, componentOutputs(built, vmComponents(built, p.Components))); err != nil {
+			return key, err
 		}
 	}
 	if key, err := runOps(ctx, info, u.Remove, target); err != nil {

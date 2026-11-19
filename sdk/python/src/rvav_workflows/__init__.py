@@ -76,6 +76,9 @@ class Context:
     steps: dict[str, Any] = field(default_factory=dict)
     #: The event of a subscription (``rvav.event.v1``), else None.
     event: dict[str, Any] | None = None
+    #: The custom resource a resource type's step or a day-2 action acts on,
+    #: else None.
+    resource: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod

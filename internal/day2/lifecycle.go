@@ -257,6 +257,12 @@ func deleteOps(t Target, in map[string]any) []Op {
 	if in["lease"] == true {
 		ops = append(ops, leaseCheck()) // deleting because the lease ended
 	}
+	// Custom resources first: they may use the VMs (ADR-0056).
+	for _, r := range t.Resources {
+		if r.Type == CustomType {
+			ops = append(ops, ResourceOp("delete", r))
+		}
+	}
 	// The DRS rules keeping a component's VMs apart, first (ADR-0024).
 	var rules []string
 	for _, r := range t.Resources {

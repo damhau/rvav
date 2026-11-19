@@ -163,6 +163,64 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 		errs = append(errs, checkGuest(at+"/guest", *c.Guest, publish)...)
 	}
 	errs = append(errs, checkReferences(b, ptr)...)
+	errs = append(errs, checkResources(b, ptr)...)
+	return errs
+}
+
+// checkResources checks a blueprint's custom resources on their own
+// (ADR-0056); their types are checked when the version is saved
+// (checkResourceRefs).
+func checkResources(b blueprint.Blueprint, ptr string) []api.FieldError {
+	var errs []api.FieldError
+	add := func(at, code, msg string) { errs = append(errs, fieldErr(at, code, msg)) }
+	if len(b.Resources) == 0 {
+		return nil
+	}
+	if !b.Multi() {
+		add(ptr+"/resources", "invalid", "Only a blueprint with components has custom resources: give it components, or make the resource in a composite's resource step.")
+		return errs
+	}
+	comps := map[string]bool{}
+	for _, c := range b.Components {
+		comps[c.Key] = true
+	}
+	seen := map[string]bool{}
+	for i, r := range b.Resources {
+		at := fmt.Sprintf("%s/resources/%d", ptr, i)
+		switch {
+		case !componentKey.MatchString(r.Key):
+			add(at+"/key", "pattern", "A key of up to 16 lower-case letters and digits, starting with a letter: it goes into the resource's name.")
+		case seen[r.Key] || comps[r.Key]:
+			add(at+"/key", "duplicate", "A component or another resource has the key "+r.Key+".")
+		}
+		if r.Type == "" {
+			add(at+"/type", "required", "Name the resource type.")
+		}
+		for _, k := range sortedKeys(r.With) {
+			expr, ok := r.With[k].(string)
+			if !ok {
+				continue
+			}
+			wat := at + "/with/" + k
+			if err := policy.CheckResource(expr); err != nil {
+				add(wat, "invalid", "This input is not valid CEL: "+err.Error()+
+					" (it reads inputs, environment, project, deployment, components and the resources before it).")
+				continue
+			}
+			rd, _ := policy.ReadsOf(expr)
+			for _, c := range rd.Components {
+				if !comps[c] {
+					add(wat, "unknown_component", "There is no component "+c+".")
+				}
+			}
+			for _, o := range rd.Resources {
+				if !seen[o] {
+					add(wat, "unknown_resource", "There is no resource "+o+" before this one: a resource reads those listed before it.")
+				}
+			}
+		}
+		seen[r.Key] = true
+	}
 	return errs
 }
 

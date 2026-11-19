@@ -142,6 +142,7 @@ func Provision(ctx workflow.Context, requestID string) error {
 		return workflow.NewContinueAsNewError(ctx, Provision, requestID)
 	default:
 		if info.Plan.Rollback {
+			rollbackResources(ctx, info, false)
 			if rbErr := workflow.ExecuteActivity(ctx, a.Rollback, requestID, info.ProjectID).Get(ctx, nil); rbErr != nil {
 				workflow.GetLogger(ctx).Error("rollback after failure", "err", rbErr)
 			}
@@ -259,6 +260,7 @@ func RollbackWorkflow(ctx workflow.Context, requestID string) error {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 	var a *Activities
 	msg := ""
+	rollbackResources(ctx, Info{RequestID: requestID}, true)
 	if err := workflow.ExecuteActivity(ctx, a.Rollback, requestID, "").Get(ctx, nil); err != nil {
 		msg = errMessage(err)
 	}
@@ -272,6 +274,7 @@ func finishCancelled(ctx workflow.Context, info Info, rollback bool) error {
 	dctx, _ := workflow.NewDisconnectedContext(ctx)
 	dctx = workflow.WithActivityOptions(dctx, activityOptions)
 	if rollback {
+		rollbackResources(dctx, info, false)
 		if err := workflow.ExecuteActivity(dctx, a.Rollback, info.RequestID, info.ProjectID).Get(dctx, nil); err != nil {
 			workflow.GetLogger(ctx).Error("rollback after cancel", "err", err)
 		}
@@ -550,7 +553,14 @@ func runOps(ctx workflow.Context, info Info, ops []day2.Op, target OpInput) (str
 			inputs, _ := op.Args["inputs"].(map[string]any)
 			call := WorkflowCall{Key: argStr(op.Args, "key"), Title: argStr(op.Args, "title"), Type: argStr(op.Args, "type"),
 				TaskQueue: argStr(op.Args, "task_queue"), Timeout: argInt(op.Args, "timeout_seconds"), Inputs: inputs}
+			call.Resource, _ = op.Args["resource"].(map[string]any)
 			_, err = runCustom(ctx, info, op.Key, call, nil)
+		case op.Op == day2.OpResource:
+			// A custom resource's delete, update or read (ADR-0056).
+			run := ResourceRun{Phase: argStr(op.Args, "phase"), ResourceID: argStr(op.Args, "resource")}
+			if workflow.GetVersion(ctx, versionResources, workflow.DefaultVersion, 1) == 1 {
+				_, err = runResource(ctx, info, op.Key, run, nil)
+			}
 		case op.System == day2.SystemAWX && op.Op == day2.OpRefreshInventory:
 			err = workflow.ExecuteActivity(ctx, a.RefreshInventory, info.RequestID, info.ProjectID).Get(ctx, nil)
 		case op.System == day2.SystemAWX && op.Op == day2.OpJob:

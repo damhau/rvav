@@ -118,7 +118,7 @@ describe("readComposite", () => {
     // A step is one kind.
     const both = readComposite({ steps: [{ key: "x", item: "a", rest: { method: "GET", url } }] });
     expect(both.problems.map((p) => p.message)).toEqual([
-      "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch or notify.",
+      "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch, notify or resource.",
     ]);
   });
 

@@ -41,6 +41,9 @@ func (s *Service) day2Actions(ctx context.Context) ([]*day2.Action, error) {
 		return nil, err
 	}
 	out = append(out, wfs...)
+	if out, err = s.withTypeActions(ctx, out); err != nil {
+		return nil, err
+	}
 	if err := s.withDesignedForms(ctx, out); err != nil {
 		return nil, err
 	}
@@ -103,6 +106,7 @@ func (s *Service) day2Action(ctx context.Context, key string) (*day2.Action, err
 	if a := day2.Get(key); a != nil {
 		return a, nil
 	}
+	var offered *day2.Action
 	if wf, ok := strings.CutPrefix(key, "wf."); ok {
 		w, err := s.Store.GetWorkflowRegistration(ctx, wf)
 		if errors.Is(err, store.ErrNotFound) {
@@ -110,16 +114,132 @@ func (s *Service) day2Action(ctx context.Context, key string) (*day2.Action, err
 		} else if err != nil {
 			return nil, err
 		}
-		return s.withDesignedForm(ctx, workflowAction(w))
+		offered = workflowAction(w)
+	} else {
+		a, err := s.Store.GetAWXAction(ctx, key)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, nil
+		} else if err != nil {
+			return nil, err
+		}
+		if a.Enabled && !a.Gone {
+			offered = awxAction(a)
+		}
+	}
+	list := []*day2.Action{}
+	if offered != nil {
+		list = append(list, offered)
+	}
+	list, err := s.withTypeActions(ctx, list, key)
+	if err != nil || len(list) == 0 {
+		return nil, err
+	}
+	return s.withDesignedForm(ctx, list[0])
+}
+
+// withTypeActions offers the day-2 actions resource types list on their
+// resources (ADR-0056): an action offered elsewhere applies to them too,
+// one that isn't only to them. only, when given, limits it to those keys.
+func (s *Service) withTypeActions(ctx context.Context, actions []*day2.Action, only ...string) ([]*day2.Action, error) {
+	types, err := s.Store.ResourceTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byKey := map[string]*day2.Action{}
+	for _, a := range actions {
+		byKey[a.Key] = a
+	}
+	for _, t := range types {
+		for _, key := range t.Actions {
+			if len(only) > 0 && !slices.Contains(only, key) {
+				continue
+			}
+			a := byKey[key]
+			if a == nil {
+				if a, err = s.typeAction(ctx, key); err != nil {
+					return nil, err
+				}
+				if a == nil {
+					continue
+				}
+				a.Types = nil
+				byKey[key] = a
+				actions = append(actions, a)
+			}
+			a.Types = append(slices.Clone(a.Types), day2.CustomTarget(t.Key))
+		}
+	}
+	return actions, nil
+}
+
+// typeAction is an action a resource type lists, offered or not elsewhere:
+// a custom workflow registered and enabled as a day-2 action, or an AWX
+// action whose template AWX still has.
+func (s *Service) typeAction(ctx context.Context, key string) (*day2.Action, error) {
+	if wf, ok := strings.CutPrefix(key, "wf."); ok {
+		w, err := s.Store.GetWorkflowRegistration(ctx, wf)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, nil
+		} else if err != nil {
+			return nil, err
+		}
+		def, ok := workflowDef(w)
+		if !ok || !w.Enabled {
+			return nil, nil
+		}
+		return day2.WorkflowAction(def.WorkflowDef), nil
 	}
 	a, err := s.Store.GetAWXAction(ctx, key)
-	if errors.Is(err, store.ErrNotFound) || err == nil && (!a.Enabled || a.Gone) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (a.Gone || !a.Enabled) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return s.withDesignedForm(ctx, awxAction(a))
+	return awxAction(a), nil
+}
+
+// customOps give a custom resource's action the resource (its custom
+// workflow in its context, its AWX job in rvav.resource), then read the
+// resource again when its type can (ADR-0056).
+func (s *Service) customOps(ctx context.Context, ops []day2.Op, t day2.Target) ([]day2.Op, error) {
+	var res day2.Resource
+	for _, r := range t.Resources {
+		if r.ID == t.ResourceID {
+			res = r
+		}
+	}
+	var props store.CustomProps
+	_ = json.Unmarshal(res.Properties, &props)
+	resource := map[string]any{"id": res.ID, "type": map[string]any{"key": props.ResourceType.Key, "title": props.ResourceType.Title},
+		"key": props.Key, "name": res.Name, "inputs": nonNilMap(props.Inputs), "properties": nonNilMap(props.Properties)}
+	for _, op := range ops {
+		switch {
+		case op.Op == day2.OpWorkflow:
+			op.Args["resource"] = resource
+		case op.Op == day2.OpJob:
+			if rvav, ok := op.Args["rvav"].(map[string]any); ok {
+				rvav["resource"] = resource
+			}
+		}
+	}
+	rt, err := s.Store.GetResourceType(ctx, props.ResourceType.Key)
+	if errors.Is(err, store.ErrNotFound) {
+		return ops, nil
+	} else if err != nil {
+		return nil, err
+	}
+	if rt.Lifecycle.Read != nil {
+		ops = append(ops, day2.ResourceOp("read", res))
+	}
+	return ops, nil
+}
+
+func nonNilMap(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	return m
 }
 
 // offered says whether an action's condition holds for the target. A

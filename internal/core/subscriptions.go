@@ -35,10 +35,14 @@ var topicDescriptions = map[string]string{
 	outbox.NetworkConfigure:     "A VM's networks are known, before its address is reserved: each adapter's network, subnet, gateway and DNS zone.",
 	outbox.ComputeProvisionPre:  "A VM is about to be cloned: its address is reserved and its DNS records are made.",
 	outbox.ComputeProvisionPost: "A VM is built, customized and powered on, with its moref and address.",
+	outbox.CustomCreatePre:      "A custom resource is about to be made, its inputs worked out (ADR-0056).",
+	outbox.CustomCreatePost:     "A custom resource is made, with the properties its type's create gave.",
 	outbox.ProvisioningPost:     "A catalog request ended: succeeded, failed or cancelled.",
 	outbox.Day2Pre:              "A day-2 request is about to run (not a deletion).",
 	outbox.Day2Post:             "A day-2 request ended.",
 	outbox.DeletePre:            "A deployment is about to be deleted, by someone or at the end of its lease.",
+	outbox.CustomDeletePre:      "A custom resource is about to be deleted: by a deletion, an update that removes it, or a failed request's rollback.",
+	outbox.CustomDeletePost:     "A custom resource is deleted.",
 	outbox.ComputeRemovalPre:    "A VM is about to be deleted: by a deletion, an update that scales in, or a failed request's rollback.",
 	outbox.ComputeRemovalPost:   "A VM is deleted from vCenter; its address and DNS records go after it.",
 	outbox.DeletePost:           "The deletion ended.",
@@ -50,10 +54,11 @@ var topicDescriptions = map[string]string{
 
 // onlyIn says which topics' events have a key the others don't (ADR-0049).
 var onlyIn = map[string]string{
-	"machine":  "a VM's topics, compute.* and network.configure,",
-	"approval": "approval.requested and approval.decided",
-	"actor":    "project.created and project.updated",
-	"changes":  "project.created and project.updated",
+	"machine":         "a VM's topics, compute.* and network.configure,",
+	"custom_resource": "a custom resource's topics, custom.*,",
+	"approval":        "approval.requested and approval.decided",
+	"actor":           "project.created and project.updated",
+	"changes":         "project.created and project.updated",
 }
 
 func asEvent(ev outbox.Event) api.IntegrationEvent {

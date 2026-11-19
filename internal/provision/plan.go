@@ -68,6 +68,9 @@ type Plan struct {
 	// strategy is in it.
 	Placement      []string `json:"placement,omitempty"`
 	PlacementTitle string   `json:"placement_title,omitempty"`
+	// Resources are the custom resources made once the VMs are built
+	// (ADR-0056); an update's are those it adds and those it updates.
+	Resources []ResourceUnit `json:"resources,omitempty"`
 }
 
 // ComponentUnit is one component of a multi-VM blueprint's plan.
@@ -232,6 +235,9 @@ type CompositeStep struct {
 	Branch *BranchPlan       `json:"branch,omitempty"`
 	Notify *blueprint.Notify `json:"notify,omitempty"`
 	Undo   *CompositeUndo    `json:"undo,omitempty"`
+	// Resource makes a custom resource (ADR-0056) in a VM step's
+	// deployment, its inputs With.
+	Resource *ResourceUnit `json:"resource,omitempty"`
 }
 
 // stepDefs are the steps of a composite step in the timeline, in order.
@@ -287,6 +293,8 @@ func (c CompositeStep) stepDefs() []StepDef {
 		}
 	case c.Notify != nil:
 		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "Sends a message", System: "rvav", Status: "pending"})
+	case c.Resource != nil:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "Custom resource · " + c.Resource.Type, System: c.Resource.System, Status: "pending"})
 	}
 	return steps
 }
@@ -886,6 +894,7 @@ func (p Plan) Steps(environment string) []StepDef {
 	steps = append(steps, p.securitySteps()...)
 	if len(p.Components) > 0 {
 		steps = append(steps, componentSteps(p.VMs, p.Components, planKeys(), "")...)
+		steps = append(steps, resourceSteps(p.Resources)...)
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
 	}
 	if p.Kind == blueprint.KindWorkflow && p.Workflow != nil {

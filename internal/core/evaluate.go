@@ -54,6 +54,9 @@ type Evaluation struct {
 	joinable  []string
 	// Composite are a composite item's steps, evaluated.
 	Composite []compositePart
+	// Resources are a VM blueprint's custom resources (ADR-0056), their
+	// types checked.
+	Resources []provision.ResourceUnit
 	// CounterKey is the name counter VM names advance: the prefix, or the
 	// naming policy's own counter.
 	CounterKey string

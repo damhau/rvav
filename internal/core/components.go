@@ -196,6 +196,9 @@ func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) e
 	if err := s.evaluateNSXGroups(ctx, ev); err != nil {
 		return err
 	}
+	if err := s.evaluateResources(ctx, ev); err != nil {
+		return err
+	}
 	// The first component is what single-VM code and policies read.
 	f := ev.Parts[0]
 	ev.VM, ev.Rule, ev.Subnet, ev.Blueprint.Guest = f.vm, f.rule, f.subnet, f.guest

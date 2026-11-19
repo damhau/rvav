@@ -46,6 +46,9 @@ type WorkflowCall struct {
 	TaskQueue string         `json:"task_queue"`
 	Timeout   int            `json:"timeout_seconds"`
 	Inputs    map[string]any `json:"inputs,omitempty"`
+	// Resource is the custom resource it acts on (ADR-0056), in its
+	// context's resource.
+	Resource map[string]any `json:"resource,omitempty"`
 }
 
 // StartRunInput starts a run of a custom workflow as a request step.
@@ -149,6 +152,9 @@ func (a *Activities) StartWorkflowRun(ctx context.Context, in StartRunInput) (ma
 		rctx["steps"] = map[string]any{}
 	}
 	rctx["event"] = nil
+	if in.Call.Resource != nil {
+		rctx["resource"] = in.Call.Resource
+	}
 	if err := a.Store.StartWorkflowRun(ctx, in.WorkflowID, reg.Key, &in.RequestID, &in.StepKey); err != nil {
 		return nil, err
 	}

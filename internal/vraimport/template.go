@@ -238,6 +238,12 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 			}
 		case r.Type == "Cloud.SecurityGroup":
 			// mapNSX
+		case strings.HasPrefix(r.Type, "Custom."):
+			// Its create and delete are vRO workflows or ABX actions rvav
+			// can't import: an administrator gives the type its own.
+			unmapped = append(unmapped, name)
+			note(Unmapped, "resources."+name, fmt.Sprintf("%s is a vRA custom resource: it needs an rvav resource type (Administration > Resource types) "+
+				"with the custom workflows or AWX templates that make and delete it. Add one, then add the resource to the blueprint's resources.", r.Type))
 		default:
 			unmapped = append(unmapped, name)
 			note(Unmapped, "resources."+name, fmt.Sprintf("%s has no equivalent in rvav: it is left out. An AWX job after the VMs, in a composite item, can do what it did.", r.Type))

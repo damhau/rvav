@@ -33,6 +33,9 @@ const (
 func AWXAction(d AWXDef) *Action {
 	a := &Action{Key: d.Key, Name: d.Name, Group: GroupAutomation, Types: d.Types, Condition: d.Condition,
 		Unavailable: func(t Target, _ Choices) string {
+			if IsCustom(t.Type) {
+				return ""
+			}
 			vms := targetVMs(t)
 			if len(vms) == 0 {
 				return "There is no VM to run it on."
@@ -45,15 +48,22 @@ func AWXAction(d AWXDef) *Action {
 			return ""
 		},
 		Ops: func(t Target, inputs map[string]any) []Op {
+			kind := "job"
+			if d.Workflow {
+				kind = "workflow"
+			}
+			// A custom resource's action runs against the template's own
+			// inventory, the resource in rvav.resource (ADR-0056).
+			if IsCustom(t.Type) {
+				return []Op{{Key: "awx.job:" + d.Template, Title: d.Name, Detail: "AWX " + kind + " " + d.Template + " · " + t.ResourceName,
+					System: SystemAWX, Op: OpJob, Args: map[string]any{"template": d.Template, "template_id": d.TemplateID,
+						"workflow": d.Workflow, "limit": "", "extra_vars": inputs, "action": d.Key}}}
+			}
 			var names []string
 			for _, vm := range targetVMs(t) {
 				names = append(names, vm.Name)
 			}
 			limit := strings.Join(names, ",")
-			kind := "job"
-			if d.Workflow {
-				kind = "workflow"
-			}
 			return []Op{
 				{Key: "awx.inventory", Title: "Refresh the AWX inventory", System: SystemAWX, Op: OpRefreshInventory},
 				{Key: "awx.job:" + d.Template, Title: d.Name, Detail: "AWX " + kind + " " + d.Template + " · limit=" + limit,

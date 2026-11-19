@@ -47,6 +47,16 @@ const topics: { key: S["EventTopicKey"]; group: S["EventTopicGroup"]; descriptio
   },
   { key: "compute.provision.pre", group: "machine", description: "A VM is about to be cloned." },
   { key: "compute.provision.post", group: "machine", description: "A VM is built and powered on." },
+  {
+    key: "custom.create.pre",
+    group: "custom",
+    description: "A custom resource is about to be made, its inputs worked out (ADR-0056).",
+  },
+  {
+    key: "custom.create.post",
+    group: "custom",
+    description: "A custom resource is made, with the properties its type's create gave.",
+  },
   { key: "provisioning.post", group: "request", description: "A catalog request ended: built, failed or cancelled." },
   {
     key: "day2.pre",
@@ -59,6 +69,13 @@ const topics: { key: S["EventTopicKey"]; group: S["EventTopicGroup"]; descriptio
     group: "request",
     description: "A deployment is about to be deleted: a blocking subscription may stop it.",
   },
+  {
+    key: "custom.delete.pre",
+    group: "custom",
+    description:
+      "A custom resource is about to be deleted: by a deletion, an update that removes it, or a failed request's rollback.",
+  },
+  { key: "custom.delete.post", group: "custom", description: "A custom resource is deleted." },
   { key: "compute.removal.pre", group: "machine", description: "A VM is about to be deleted." },
   { key: "compute.removal.post", group: "machine", description: "A VM is deleted from vCenter." },
   { key: "delete.post", group: "request", description: "A deployment was deleted, or its deletion failed." },
@@ -67,6 +84,20 @@ const topics: { key: S["EventTopicKey"]; group: S["EventTopicGroup"]; descriptio
   { key: "project.created", group: "project", description: "A project was created." },
   { key: "project.updated", group: "project", description: "A project's settings changed." },
 ];
+
+/** A custom resource as a custom topic's event has it: no properties before its create ran. */
+function sampleCustom(topic: S["EventTopicKey"]) {
+  return {
+    id: "res_sample_lb",
+    type: { key: "load-balancer", title: "Load balancer" },
+    key: "lb",
+    name: "web-dev-app-lb",
+    deployment_id: "dep_sample",
+    phase: topic.startsWith("custom.delete") ? "delete" : "create",
+    inputs: { members: ["10.31.10.57"], port: 443 },
+    properties: topic === "custom.create.pre" ? {} : { vip: "10.31.20.10" },
+  };
+}
 
 /** The topics a blocking subscription may hear, as the server says. */
 const mayBlock = (topic: string) => ["provisioning.pre", "day2.pre", "delete.pre"].includes(topic);
@@ -197,6 +228,7 @@ function sample(topic: S["EventTopicKey"]): S["IntegrationEvent"] {
       lease: null,
       ...(group === "machine" ? { machine: sampleMachine(topic) } : {}),
       ...(group === "approval" ? { approval: sampleApproval(topic) } : {}),
+      ...(group === "custom" ? { custom_resource: sampleCustom(topic) } : {}),
     },
   };
 }

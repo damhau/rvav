@@ -50,18 +50,31 @@ const (
 	ProjectUpdated    = "project.updated"
 )
 
+// A custom resource's (ADR-0056): one event per resource, as it is made
+// and as it is deleted.
+const (
+	CustomCreatePre  = "custom.create.pre"
+	CustomCreatePost = "custom.create.post"
+	CustomDeletePre  = "custom.delete.pre"
+	CustomDeletePost = "custom.delete.post"
+)
+
 // Topics lists them in the order of a deployment's life, then projects'.
 var Topics = []string{RequestSubmitted, ApprovalRequested, ApprovalDecided, ProvisioningPre, ComputeAllocationPre, NetworkConfigure,
-	ComputeProvisionPre, ComputeProvisionPost, ProvisioningPost, Day2Pre, Day2Post,
-	DeletePre, ComputeRemovalPre, ComputeRemovalPost, DeletePost, LeaseExpiring, LeaseExpired, ProjectCreated, ProjectUpdated}
+	ComputeProvisionPre, ComputeProvisionPost, CustomCreatePre, CustomCreatePost, ProvisioningPost, Day2Pre, Day2Post,
+	DeletePre, CustomDeletePre, CustomDeletePost, ComputeRemovalPre, ComputeRemovalPost, DeletePost, LeaseExpiring, LeaseExpired,
+	ProjectCreated, ProjectUpdated}
 
 // Group says what a topic's events are about: a request, one of its VMs
-// (data.machine), one of its approval levels (data.approval), a
-// deployment's lease, or a project.
+// (data.machine), one of its custom resources (data.custom_resource), one
+// of its approval levels (data.approval), a deployment's lease, or a
+// project.
 func Group(topic string) string {
 	switch topic {
 	case ComputeAllocationPre, NetworkConfigure, ComputeProvisionPre, ComputeProvisionPost, ComputeRemovalPre, ComputeRemovalPost:
 		return "machine"
+	case CustomCreatePre, CustomCreatePost, CustomDeletePre, CustomDeletePost:
+		return "custom"
 	case ApprovalRequested, ApprovalDecided:
 		return "approval"
 	case LeaseExpiring, LeaseExpired:
@@ -144,6 +157,26 @@ func ForMachine(ctx context.Context, db store.DB, topic, requestID, dedupe strin
 	return insert(ctx, db, topic, &requestID, deploymentID, dedupe, data, false)
 }
 
+// ForCustom writes the topic's event about one custom resource of a
+// request (ADR-0056): what an event says about the request, with the
+// resource in `custom_resource` and its deployment in `deployment`.
+func ForCustom(ctx context.Context, db store.DB, topic, requestID, dedupe string, resource map[string]any) error {
+	data, deploymentID, err := requestData(ctx, db, requestID)
+	if err != nil {
+		return err
+	}
+	data["custom_resource"] = resource
+	if id, _ := resource["deployment_id"].(string); id != "" {
+		deploymentID = &id
+		for _, d := range data["deployments"].([]map[string]any) {
+			if d["id"] == id {
+				data["deployment"] = d
+			}
+		}
+	}
+	return insert(ctx, db, topic, &requestID, deploymentID, dedupe, data, false)
+}
+
 // ForDeployment writes the topic's event about a deployment without a
 // request (its lease reminder or expiry).
 func ForDeployment(ctx context.Context, db store.DB, topic, deploymentID, dedupe string) error {
@@ -189,7 +222,7 @@ func Sample(topic string) Event {
 		data["request"].(map[string]any)["outcome"] = "succeeded"
 	case Day2Pre:
 		data["request"].(map[string]any)["kind"], data["request"].(map[string]any)["action"] = "day2", "resize"
-	case DeletePre, ComputeRemovalPre, ComputeRemovalPost:
+	case DeletePre, ComputeRemovalPre, ComputeRemovalPost, CustomDeletePre, CustomDeletePost:
 		data["request"].(map[string]any)["kind"], data["request"].(map[string]any)["action"] = "day2", "delete"
 	case LeaseExpiring, LeaseExpired:
 		data["request"] = nil
@@ -200,6 +233,8 @@ func Sample(topic string) Event {
 		if topic == ComputeAllocationPre || topic == NetworkConfigure || topic == ComputeProvisionPre {
 			data["resources"] = []any{}
 		}
+	case "custom":
+		data["custom_resource"] = sampleCustom(topic)
 	case "approval":
 		data["request"].(map[string]any)["status"] = "pending_approval"
 		data["approval"] = sampleApproval(topic)
@@ -208,6 +243,21 @@ func Sample(topic string) Event {
 		data = sampleProject(topic)
 	}
 	return Event{ID: "evt_sample", Topic: topic, Contract: Contract, OccurredAt: time.Now().UTC(), Data: data}
+}
+
+// sampleCustom is a made-up custom resource as the topic's event has it:
+// no properties before it is made.
+func sampleCustom(topic string) map[string]any {
+	r := map[string]any{"id": "res_sample_lb", "type": map[string]any{"key": "load-balancer", "title": "Load balancer"},
+		"key": "lb", "name": "web-dev-app-lb", "deployment_id": "dep_sample", "phase": "create",
+		"inputs": map[string]any{"members": []any{"10.31.10.57"}, "port": 443}, "properties": map[string]any{"vip": "10.31.20.10"}}
+	switch topic {
+	case CustomCreatePre:
+		r["properties"] = map[string]any{}
+	case CustomDeletePre, CustomDeletePost:
+		r["phase"] = "delete"
+	}
+	return r
 }
 
 // sampleMachine is a made-up VM as the topic's event has it: no address

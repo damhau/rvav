@@ -48,6 +48,28 @@ type Context struct {
 	Steps map[string]any `json:"steps"`
 	// Event is the event of a subscription (rvav.event.v1), else nil.
 	Event map[string]any `json:"event"`
+	// Resource is the custom resource a resource type's step or a day-2
+	// action acts on (ADR-0056), else nil.
+	Resource *CustomResource `json:"resource,omitempty"`
+}
+
+// CustomResource is a custom resource as its type's workflows see it: its
+// inputs are those of the step (create, update) or the last ones given,
+// its properties what create, update or read returned.
+type CustomResource struct {
+	ID           string         `json:"id"`
+	Type         ResourceType   `json:"type"`
+	Key          string         `json:"key"`
+	Name         string         `json:"name"`
+	DeploymentID string         `json:"deployment_id"`
+	Phase        string         `json:"phase"`
+	Inputs       map[string]any `json:"inputs"`
+	Properties   map[string]any `json:"properties"`
+}
+
+type ResourceType struct {
+	Key   string `json:"key"`
+	Title string `json:"title"`
 }
 
 type Request struct {
