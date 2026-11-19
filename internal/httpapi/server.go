@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -340,12 +341,37 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // decode reads a JSON body of at most 1 MB.
 func (s *Server) decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	return s.decodeBody(w, r, v, false, false)
+}
+
+// decodeStrict is decode for a body that replaces what it writes: an
+// unknown field, such as a misspelt one, is refused rather than read as
+// leaving empty the field it meant.
+func (s *Server) decodeStrict(w http.ResponseWriter, r *http.Request, v any) bool {
+	return s.decodeBody(w, r, v, true, false)
+}
+
+// decodeOptional is decode for a body that may be absent. A chunked body
+// has no Content-Length, so only reading it tells.
+func (s *Server) decodeOptional(w http.ResponseWriter, r *http.Request, v any) bool {
+	return s.decodeBody(w, r, v, false, true)
+}
+
+func (s *Server) decodeBody(w http.ResponseWriter, r *http.Request, v any, strict, optional bool) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-	if err := dec.Decode(v); err != nil {
-		s.problem(w, r, http.StatusBadRequest, "bad-request", "The request body is not valid JSON", err.Error(), nil)
-		return false
+	if strict {
+		dec.DisallowUnknownFields()
 	}
-	return true
+	err := dec.Decode(v)
+	if err == nil || optional && errors.Is(err, io.EOF) {
+		return true
+	}
+	title := "The request body is not valid JSON"
+	if strings.HasPrefix(err.Error(), "json: unknown field") {
+		title = "The request body has a field this operation doesn't take"
+	}
+	s.problem(w, r, http.StatusBadRequest, "bad-request", title, err.Error(), nil)
+	return false
 }
 
 func limitOf(l *api.Limit) int {

@@ -198,6 +198,11 @@ Migration 00083 adds `deployment_limit_policies`.
   only when its number was lower: a project admin's soft policy, or one
   for a single environment, loosened it. Each hard global limit now holds
   on its own.
+- Writing quotas and deployment limit policies replaces what they hold, so
+  a field rvav doesn't take, such as a misspelt one, is refused (400)
+  rather than read as clearing the field it meant; until C2.4 (#160), it
+  was ignored. A limit policy's name is at most 120 characters
+  (`too_long`), as the API says.
 - The vRA importer's plan maps each quota level to the rvav level that
   counts the same, and a deployment limit policy's vCPU, memory and count
   to an rvav one, with vRA's enforcement. A user level of a policy for

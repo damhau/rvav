@@ -703,7 +703,8 @@ paths:
           in: query
           description: |
             A version to request: one of the item's requestable versions
-            (`CatalogItem.versions`). Defaults to the newest, `CatalogItem.version`.
+            (`CatalogItem.versions` when it offers several, else
+            `CatalogItem.version`). Defaults to the newest, `CatalogItem.version`.
             Catalog administrators may name any version, drafts included.
           schema: { type: string }
       responses:
@@ -3700,6 +3701,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UserQuotaList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -3737,6 +3739,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GlobalQuotaList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
@@ -3768,7 +3771,9 @@ paths:
         project admin's override can't give more than the environment's
         lease (more days, more extensions or grace days, no lease, a
         gentler end), each refused with the code `looser` (ADR-0045), and
-        can't replace an override an administrator set (403). Audited.
+        can't replace an override an administrator set (403). Where the
+        environment gives no lease, its deployments don't expire: any
+        lease is stricter, soft or hard. Audited.
       requestBody:
         required: true
         content:
@@ -3830,7 +3835,8 @@ paths:
         `project.policies.manage` in the project (project admins): a
         project admin's rule can't give more than the environment's lease,
         or the project's override an administrator set, each refused with
-        the code `looser` (ADR-0048). Audited.
+        the code `looser` (ADR-0048); where neither gives a lease, any
+        lease is stricter, soft or hard. Audited.
       requestBody:
         required: true
         content:
@@ -3842,6 +3848,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LeaseRule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
@@ -3867,6 +3874,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LeaseRule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -4096,6 +4104,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DeploymentLimitPolicy" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
@@ -4121,6 +4130,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DeploymentLimitPolicy" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -6432,7 +6442,11 @@ components:
           description: JSON pointer into the submitted inputs, for example `/inputs/memory_gb`. Empty for form-level errors.
         code:
           type: string
-          description: Stable machine code, for example `required`, `maximum`, `name_taken`, `quota_exceeded`.
+          description: |
+            Stable machine code, for example `required`, `maximum`,
+            `too_long`, `taken`, `naming`, `no_deployment`,
+            `quota_exceeded`, `limit_exceeded`, `looser`, `stale_version`,
+            `not_member`.
         message: { type: string }
         warning:
           $ref: "#/components/schemas/PolicyWarning"
@@ -7591,7 +7605,7 @@ components:
         level: { $ref: "#/components/schemas/QuotaLevel" }
         environment:
           $ref: "#/components/schemas/EnvironmentKey"
-          description: Set for a limit of one environment; absent for the project-wide one.
+          description: The environment of an `environment` level; absent for the other levels.
         limit: { type: [integer, "null"] }
         used: { type: integer, description: Used plus reserved. }
         adding: { type: integer }
@@ -8123,7 +8137,11 @@ components:
           items: { $ref: "#/components/schemas/FieldError" }
         quota:
           type: array
-          description: The net change to the project's quotas; `adding` is negative where the update frees more than it adds.
+          description: |
+            The net change at each quota level the update counts against
+            (`level`): the project's, the environment's, the owner's and
+            rvav's. `adding` is negative where the update frees more than
+            it adds.
           items: { $ref: "#/components/schemas/QuotaImpact" }
         limits:
           type: array
@@ -8135,7 +8153,10 @@ components:
         approval: { $ref: "#/components/schemas/ApprovalPreview" }
         warnings:
           type: array
-          description: What soft day-2 policies warn about; submitting needs their `id` in `accepted_warnings`, or `accept_warnings`.
+          description: |
+            What soft day-2 policies and soft deployment limits warn about;
+            submitting needs their `id` in `accepted_warnings`, or
+            `accept_warnings`.
           items: { $ref: "#/components/schemas/PolicyWarning" }
 
     UpdateChange:
@@ -8463,19 +8484,20 @@ components:
             What sets the lease now, by name: the lease rule its request
             matched, the project's override (`Web Platform in
             Development`) or the environment's lease policy
-            (`Development`). Null without a lease policy (ADR-0048). When
+            (`Development`). Absent without a lease policy (ADR-0048). When
             a project admin's rule matched, the deployment also keeps the
             administrators' rule that held it: its terms are the stricter
             of the two, and that rule's once the project admin's is gone.
         max_lifetime_days:
           type: [integer, "null"]
-          description: How long the deployment may live in all, from its creation; null for no limit.
+          description: How long the deployment may live in all, from its creation; absent for no limit.
         lifetime_ends_at:
           type: [string, "null"]
           format: date-time
           description: |
             Its creation plus `max_lifetime_days`: an extension past it
-            needs approval, or warns when the policy is soft.
+            needs approval, or warns when the policy is soft. Absent
+            without a lifetime.
 
     SyncState:
       type: string
@@ -10765,6 +10787,9 @@ components:
                 remove it (ADR-0047).
     UserQuotaWriteList:
       type: object
+      description: |
+        As a request body, an unknown field is refused (400): a misspelt
+        one would otherwise leave the field it meant empty.
       required: [items]
       additionalProperties: false
       properties:
@@ -10791,6 +10816,9 @@ components:
         enforcement: { type: string, enum: [hard, soft] }
     GlobalQuotaList:
       type: object
+      description: |
+        As a request body, an unknown field is refused (400): a misspelt
+        one would otherwise leave the field it meant empty.
       required: [items]
       additionalProperties: false
       properties:
@@ -10834,6 +10862,9 @@ components:
             (ADR-0045).
     LeaseRuleWrite:
       type: object
+      description: |
+        As a request body, an unknown field is refused (400): a misspelt
+        one would otherwise leave the field it meant empty.
       required: [name, condition, max_extensions, grace_days, expiry_action]
       additionalProperties: false
       properties:
@@ -11066,6 +11097,9 @@ components:
       x-enum-varnames: [DeploymentsPerUser, DeploymentsPerProject, VcpuPerDeployment, MemoryGbPerDeployment]
     DeploymentLimitPolicyWrite:
       type: object
+      description: |
+        As a request body, an unknown field is refused (400): a misspelt
+        one would otherwise leave the field it meant empty.
       required: [name]
       additionalProperties: false
       properties:
@@ -11190,7 +11224,13 @@ components:
         item_id: { type: string, description: "A catalog item, for approval policies and lease rules." }
         action: { type: string, description: "A day-2 action key, for day-2 policies." }
         inputs: { type: object, additionalProperties: true, description: Sample inputs for the conditions. }
-        as_user_id: { type: string, description: Whose roles the day-2 policies see; default the caller. }
+        as_user_id:
+          type: string
+          description: |
+            Explain as this user, who must be in the project (`not_member`
+            otherwise): their roles and groups for the approval and day-2
+            policies and the lease rules, and what they own for the quotas
+            and deployment limits. Default the caller.
     PolicyDecision:
       type: object
       required: [decided_by, considered]

@@ -323,9 +323,10 @@ func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.
 	if err := s.evaluateQuota(ctx, ev, p); err != nil {
 		return nil, err
 	}
-	// A composite's steps count with it, and an approver's edits keep the
-	// request's deployments, counted already.
-	if !ofRequest {
+	// Only a new request makes deployments: a composite's steps count with
+	// it, and an approver's edits and updates (kept) keep the deployments
+	// counted already, an update's growth checked on its own.
+	if !ofRequest && ev.kept == nil {
 		if err := s.evaluateLimits(ctx, ev, p); err != nil {
 			return nil, err
 		}

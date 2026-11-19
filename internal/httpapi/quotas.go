@@ -13,7 +13,7 @@ func (s *Server) GetProjectUserQuotas(w http.ResponseWriter, r *http.Request, pr
 
 func (s *Server) SetProjectUserQuotas(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath) {
 	var b api.UserQuotaWriteList
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	items, err := s.Core.SetUserQuotas(r.Context(), principal(r), projectId, b.Items)
@@ -27,7 +27,7 @@ func (s *Server) GetGlobalQuotas(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) SetGlobalQuotas(w http.ResponseWriter, r *http.Request) {
 	var b api.GlobalQuotaList
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	items, err := s.Core.SetGlobalQuotas(r.Context(), principal(r), b.Items)

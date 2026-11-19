@@ -50,10 +50,16 @@ func TestLeaseRules(t *testing.T) {
 		}
 
 		h.json("POST", "/api/v1/admin/lease-rules", admin, api.LeaseRuleWrite{Name: " ", Condition: "inputs.size ==",
-			Environment: new("nowhere"), MaxDays: new(40), MaxLifetimeDays: new(30), ExpiryAction: api.Delete}, 422, &problem)
+			Environment: new("nowhere"), MaxDays: new(40), MaxLifetimeDays: new(30), MaxExtensions: -1, GraceDays: -1,
+			ExpiryAction: api.Delete}, 422, &problem)
 		if got := codes(); got["/name"] != "required" || got["/condition"] != "invalid" || got["/environment"] != "unknown" ||
-			got["/max_days"] != "maximum" {
+			got["/max_lifetime_days"] != "minimum" || got["/max_extensions"] != "minimum" || got["/grace_days"] != "minimum" {
 			t.Fatalf("an invalid rule: %v", got)
+		}
+		h.json("POST", "/api/v1/admin/lease-rules", admin, api.LeaseRuleWrite{Name: strings.Repeat("r", 121), Condition: "true",
+			ExpiryAction: api.Delete}, 422, &problem)
+		if got := codes(); got["/name"] != "too_long" {
+			t.Fatalf("a name of 121 characters: %v", got)
 		}
 		small := api.LeaseRuleWrite{Name: "Small VMs", Condition: `inputs.size == "S"`, Environment: new("dev"), Priority: new(50),
 			DefaultDays: new(7), MaxDays: new(14), MaxExtensions: 1, GraceDays: 3, ExpiryAction: api.Delete, MaxLifetimeDays: new(30)}
@@ -154,7 +160,7 @@ func TestLeaseRules(t *testing.T) {
 		dev := api.LeasePolicy{Environment: "dev", DefaultDays: new(30), MaxDays: new(90), MaxExtensions: 2, GraceDays: 7,
 			ExpiryAction: api.PowerOffThenDelete, MaxLifetimeDays: new(60)}
 		h.json("PUT", "/api/v1/admin/lease-policies", admin, dev, 422, &problem)
-		if codes()["/max_days"] != "maximum" {
+		if codes()["/max_lifetime_days"] != "minimum" {
 			t.Fatalf("a lifetime shorter than the maximum: %+v", problem.Errors)
 		}
 		dev.MaxLifetimeDays = new(180)

@@ -73,6 +73,8 @@ func (s *Service) SaveDeploymentLimitPolicy(ctx context.Context, p *auth.Princip
 	}
 	if strings.TrimSpace(w.Name) == "" {
 		errs = append(errs, fieldErr("/name", "required", "Give the policy a name."))
+	} else if e := policyNameLength(w.Name); e != nil {
+		errs = append(errs, *e)
 	}
 	pol := store.DeploymentLimitPolicy{ID: id, Name: strings.TrimSpace(w.Name), ProjectID: project, Priority: 100,
 		Enabled: w.Enabled == nil || *w.Enabled, SetByAdmin: p.Everywhere(auth.PoliciesManage),

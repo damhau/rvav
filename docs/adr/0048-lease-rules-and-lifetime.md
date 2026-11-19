@@ -150,4 +150,12 @@ lifetime.
 - Until C2.4 (#160), a project admin who loosened or deleted their rule
   loosened the deployments it decided, up to the lease policies. The
   administrators' rule they were held to now holds them.
+- A lease rule's write refuses a field rvav doesn't take (400), and a name
+  longer than 120 characters (`too_long`). A lifetime shorter than the
+  maximum or the default is reported at `max_lifetime_days`, negative
+  extensions at `max_extensions` and negative grace days at `grace_days`,
+  for a lease policy too; until C2.4 (#160), the first two were reported
+  at `max_days` and `default_days`, the last at `max_extensions`.
+- Where an environment gives no lease, a project admin's rule or override
+  may give any lease, soft or hard: any is stricter than none.
 - Lifetime and extensions are two limits. An owner may run out of either.

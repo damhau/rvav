@@ -2856,7 +2856,9 @@ export interface paths {
          *     project admin's override can't give more than the environment's
          *     lease (more days, more extensions or grace days, no lease, a
          *     gentler end), each refused with the code `looser` (ADR-0045), and
-         *     can't replace an override an administrator set (403). Audited.
+         *     can't replace an override an administrator set (403). Where the
+         *     environment gives no lease, its deployments don't expire: any
+         *     lease is stricter, soft or hard. Audited.
          */
         put: operations["setLeasePolicy"];
         post?: never;
@@ -2894,7 +2896,8 @@ export interface paths {
          *     `project.policies.manage` in the project (project admins): a
          *     project admin's rule can't give more than the environment's lease,
          *     or the project's override an administrator set, each refused with
-         *     the code `looser` (ADR-0048). Audited.
+         *     the code `looser` (ADR-0048); where neither gives a lease, any
+         *     lease is stricter, soft or hard. Audited.
          */
         post: operations["createLeaseRule"];
         delete?: never;
@@ -4775,7 +4778,12 @@ export interface components {
         FieldError: {
             /** @description JSON pointer into the submitted inputs, for example `/inputs/memory_gb`. Empty for form-level errors. */
             field: string;
-            /** @description Stable machine code, for example `required`, `maximum`, `name_taken`, `quota_exceeded`. */
+            /**
+             * @description Stable machine code, for example `required`, `maximum`,
+             *     `too_long`, `taken`, `naming`, `no_deployment`,
+             *     `quota_exceeded`, `limit_exceeded`, `looser`, `stale_version`,
+             *     `not_member`.
+             */
             code?: string;
             message: string;
             /** @description With the code `warning`, the warning to accept (ADR-0045). */
@@ -5628,7 +5636,7 @@ export interface components {
         QuotaImpact: {
             resource: components["schemas"]["QuotaResource"];
             level: components["schemas"]["QuotaLevel"];
-            /** @description Set for a limit of one environment; absent for the project-wide one. */
+            /** @description The environment of an `environment` level; absent for the other levels. */
             environment?: components["schemas"]["EnvironmentKey"];
             limit?: number | null;
             /** @description Used plus reserved. */
@@ -6034,7 +6042,12 @@ export interface components {
             refused: components["schemas"]["UpdateRefusal"][];
             fields?: components["schemas"]["FieldStates"];
             errors: components["schemas"]["FieldError"][];
-            /** @description The net change to the project's quotas; `adding` is negative where the update frees more than it adds. */
+            /**
+             * @description The net change at each quota level the update counts against
+             *     (`level`): the project's, the environment's, the owner's and
+             *     rvav's. `adding` is negative where the update frees more than
+             *     it adds.
+             */
             quota: components["schemas"]["QuotaImpact"][];
             /**
              * @description The vCPU and memory limits of each deployment that apply
@@ -6043,7 +6056,11 @@ export interface components {
              */
             limits?: components["schemas"]["DeploymentLimitLine"][];
             approval: components["schemas"]["ApprovalPreview"];
-            /** @description What soft day-2 policies warn about; submitting needs their `id` in `accepted_warnings`, or `accept_warnings`. */
+            /**
+             * @description What soft day-2 policies and soft deployment limits warn about;
+             *     submitting needs their `id` in `accepted_warnings`, or
+             *     `accept_warnings`.
+             */
             warnings?: components["schemas"]["PolicyWarning"][];
         };
         UpdateChange: {
@@ -6276,18 +6293,19 @@ export interface components {
              * @description What sets the lease now, by name: the lease rule its request
              *     matched, the project's override (`Web Platform in
              *     Development`) or the environment's lease policy
-             *     (`Development`). Null without a lease policy (ADR-0048). When
+             *     (`Development`). Absent without a lease policy (ADR-0048). When
              *     a project admin's rule matched, the deployment also keeps the
              *     administrators' rule that held it: its terms are the stricter
              *     of the two, and that rule's once the project admin's is gone.
              */
             policy?: string | null;
-            /** @description How long the deployment may live in all, from its creation; null for no limit. */
+            /** @description How long the deployment may live in all, from its creation; absent for no limit. */
             max_lifetime_days?: number | null;
             /**
              * Format: date-time
              * @description Its creation plus `max_lifetime_days`: an extension past it
-             *     needs approval, or warns when the policy is soft.
+             *     needs approval, or warns when the policy is soft. Absent
+             *     without a lifetime.
              */
             lifetime_ends_at?: string | null;
         };
@@ -8171,6 +8189,10 @@ export interface components {
              */
             set_by_admin: boolean;
         };
+        /**
+         * @description As a request body, an unknown field is refused (400): a misspelt
+         *     one would otherwise leave the field it meant empty.
+         */
         UserQuotaWriteList: {
             items: components["schemas"]["UserQuotaWrite"][];
         };
@@ -8186,6 +8208,10 @@ export interface components {
             /** @enum {string} */
             enforcement: "hard" | "soft";
         };
+        /**
+         * @description As a request body, an unknown field is refused (400): a misspelt
+         *     one would otherwise leave the field it meant empty.
+         */
         GlobalQuotaList: {
             items: components["schemas"]["GlobalQuota"][];
         };
@@ -8220,6 +8246,10 @@ export interface components {
              */
             readonly set_by_admin?: boolean;
         };
+        /**
+         * @description As a request body, an unknown field is refused (400): a misspelt
+         *     one would otherwise leave the field it meant empty.
+         */
         LeaseRuleWrite: {
             name: string;
             /**
@@ -8417,6 +8447,10 @@ export interface components {
          * @enum {string}
          */
         DeploymentLimitKind: "deployments_per_user" | "deployments_per_project" | "vcpu_per_deployment" | "memory_gb_per_deployment";
+        /**
+         * @description As a request body, an unknown field is refused (400): a misspelt
+         *     one would otherwise leave the field it meant empty.
+         */
         DeploymentLimitPolicyWrite: {
             name: string;
             /** @description A project's policy; null for every project, each counted on its own. */
@@ -8514,7 +8548,12 @@ export interface components {
             inputs?: {
                 [key: string]: unknown;
             };
-            /** @description Whose roles the day-2 policies see; default the caller. */
+            /**
+             * @description Explain as this user, who must be in the project (`not_member`
+             *     otherwise): their roles and groups for the approval and day-2
+             *     policies and the lease rules, and what they own for the quotas
+             *     and deployment limits. Default the caller.
+             */
             as_user_id?: string;
         };
         PolicyDecision: {
@@ -10175,7 +10214,8 @@ export interface operations {
                 project_id: components["parameters"]["ProjectIdQueryRequired"];
                 /**
                  * @description A version to request: one of the item's requestable versions
-                 *     (`CatalogItem.versions`). Defaults to the newest, `CatalogItem.version`.
+                 *     (`CatalogItem.versions` when it offers several, else
+                 *     `CatalogItem.version`). Defaults to the newest, `CatalogItem.version`.
                  *     Catalog administrators may name any version, drafts included.
                  */
                 version_id?: string;
@@ -13931,6 +13971,7 @@ export interface operations {
                     "application/json": components["schemas"]["UserQuotaList"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -13981,6 +14022,7 @@ export interface operations {
                     "application/json": components["schemas"]["GlobalQuotaList"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
@@ -14103,6 +14145,7 @@ export interface operations {
                     "application/json": components["schemas"]["LeaseRule"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
@@ -14132,6 +14175,7 @@ export interface operations {
                     "application/json": components["schemas"]["LeaseRule"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -14409,6 +14453,7 @@ export interface operations {
                     "application/json": components["schemas"]["DeploymentLimitPolicy"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
@@ -14438,6 +14483,7 @@ export interface operations {
                     "application/json": components["schemas"]["DeploymentLimitPolicy"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

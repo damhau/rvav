@@ -193,7 +193,7 @@ func (s *Server) ListLeaseRules(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) CreateLeaseRule(w http.ResponseWriter, r *http.Request) {
 	var b api.LeaseRuleWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SaveLeaseRule(r.Context(), principal(r), "", b)
@@ -206,7 +206,7 @@ func (s *Server) DeleteLeaseRule(w http.ResponseWriter, r *http.Request, id api.
 
 func (s *Server) UpdateLeaseRule(w http.ResponseWriter, r *http.Request, id api.IdPath) {
 	var b api.LeaseRuleWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SaveLeaseRule(r.Context(), principal(r), id, b)

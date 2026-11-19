@@ -13,7 +13,7 @@ func (s *Server) ListDeploymentLimitPolicies(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) CreateDeploymentLimitPolicy(w http.ResponseWriter, r *http.Request) {
 	var b api.DeploymentLimitPolicyWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SaveDeploymentLimitPolicy(r.Context(), principal(r), "", b)
@@ -22,7 +22,7 @@ func (s *Server) CreateDeploymentLimitPolicy(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) UpdateDeploymentLimitPolicy(w http.ResponseWriter, r *http.Request, id api.IdPath) {
 	var b api.DeploymentLimitPolicyWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SaveDeploymentLimitPolicy(r.Context(), principal(r), id, b)

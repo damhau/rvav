@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
@@ -41,12 +42,15 @@ func leaseTerms(defaultDays, maxDays *int, extensions, grace int, action api.Lea
 		errs = append(errs, fieldErr("/default_days", "maximum", "The default can't be longer than the maximum."))
 	}
 	if lifetime != nil && maxDays != nil && *maxDays > *lifetime {
-		errs = append(errs, fieldErr("/max_days", "maximum", "The maximum can't be longer than the lifetime."))
+		errs = append(errs, fieldErr("/max_lifetime_days", "minimum", "The maximum can't be longer than the lifetime."))
 	} else if lifetime != nil && defaultDays != nil && *defaultDays > *lifetime {
-		errs = append(errs, fieldErr("/default_days", "maximum", "The default can't be longer than the lifetime."))
+		errs = append(errs, fieldErr("/max_lifetime_days", "minimum", "The default can't be longer than the lifetime."))
 	}
-	if extensions < 0 || grace < 0 {
-		errs = append(errs, fieldErr("/max_extensions", "minimum", "Extensions and grace days are zero or more."))
+	if extensions < 0 {
+		errs = append(errs, fieldErr("/max_extensions", "minimum", "Extensions are zero or more."))
+	}
+	if grace < 0 {
+		errs = append(errs, fieldErr("/grace_days", "minimum", "Grace days are zero or more."))
 	}
 	switch action {
 	case api.PowerOffThenDelete, api.Delete, api.NotifyOnly:
@@ -123,6 +127,8 @@ func (s *Service) SaveLeaseRule(ctx context.Context, p *auth.Principal, id strin
 	}
 	if strings.TrimSpace(w.Name) == "" {
 		errs = append(errs, fieldErr("/name", "required", "Give the rule a name."))
+	} else if e := policyNameLength(w.Name); e != nil {
+		errs = append(errs, *e)
 	}
 	if strings.TrimSpace(w.Condition) == "" {
 		errs = append(errs, fieldErr("/condition", "required", `Which deployments does it give this lease? For example item.slug == "gpu-server".`))
@@ -395,4 +401,16 @@ func (s *Service) chooseLease(ctx context.Context, proj store.Project, env store
 		out.ExpiryAction, out.Enforcement = "notify_only", store.EnforcementHard
 	}
 	return out, nil
+}
+
+// maxPolicyName is the spec's maxLength of a lease rule's or a deployment
+// limit policy's name.
+const maxPolicyName = 120
+
+func policyNameLength(name string) *api.FieldError {
+	if utf8.RuneCountInString(strings.TrimSpace(name)) <= maxPolicyName {
+		return nil
+	}
+	e := fieldErr("/name", "too_long", fmt.Sprintf("%d characters at most.", maxPolicyName))
+	return &e
 }

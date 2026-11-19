@@ -359,9 +359,7 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 		return nil, err
 	}
 	ev.Quota, ev.OverSoft = q.Impacts, q.OverSoft
-	ev.Errors = slices.DeleteFunc(ev.Errors, func(e api.FieldError) bool {
-		return deref(e.Code) == "quota_exceeded" || deref(e.Code) == "limit_exceeded"
-	})
+	ev.Errors = slices.DeleteFunc(ev.Errors, func(e api.FieldError) bool { return deref(e.Code) == "quota_exceeded" })
 	for _, msg := range q.Hard {
 		ev.Errors = append(ev.Errors, fieldErr("", "quota_exceeded", msg))
 	}
