@@ -7,26 +7,37 @@ import type { UiField } from "@/lib/api/types";
 
 export const isSecretField = (ui: UiField | undefined) => ui?.widget === "secret" || Boolean(ui?.secret);
 
+/** A secret value's stand-in, for a query's key; an empty value stays as it is. */
+export function useStandIn(): (value: unknown) => unknown {
+  const seen = useRef(new Map<unknown, number>());
+  return useCallback((v: unknown) => {
+    if (v === undefined || v === null || v === "") return v;
+    let n = seen.current.get(v);
+    if (n === undefined) {
+      n = seen.current.size + 1;
+      seen.current.set(v, n);
+    }
+    return `secret #${n}`;
+  }, []);
+}
+
 /** Replaces the secret inputs of `fields` with stand-ins, for a query's key. */
 export function useSecretStandIns(
   fields: Record<string, UiField>,
 ): <T extends Record<string, unknown>>(inputs: T) => T {
-  const seen = useRef(new Map<unknown, number>());
+  const standIn = useStandIn();
   return useCallback(
     <T extends Record<string, unknown>>(inputs: T): T => {
       let out: Record<string, unknown> = inputs;
       for (const [name, v] of Object.entries(inputs)) {
-        if (!isSecretField(fields[name]) || v === undefined || v === null || v === "") continue;
-        let n = seen.current.get(v);
-        if (n === undefined) {
-          n = seen.current.size + 1;
-          seen.current.set(v, n);
-        }
+        if (!isSecretField(fields[name])) continue;
+        const kept = standIn(v);
+        if (kept === v) continue;
         if (out === inputs) out = { ...inputs };
-        out[name] = `secret #${n}`;
+        out[name] = kept;
       }
       return out as T;
     },
-    [fields],
+    [fields, standIn],
   );
 }

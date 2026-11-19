@@ -347,7 +347,9 @@ the designer preview.
   variables, stay in TanStack Query's cache after the page is gone. The
   previews of the request page, the update page and the designer key on
   the inputs with each secret one as a stand-in (`forms/secretKeys.ts`),
-  and read the real values when they ask the server. Submit's mutation has
+  and read the real values when they ask the server. A value source that
+  depends on a secret input keys on its stand-in too (`FormRenderer` gives
+  `useFieldValues` the form's secret fields). Submit's mutation has
   `gcTime: 0`, so its variables go once it's done.
 - Layout (`layout.kind`): `FormRenderer` shows the sections on one page,
   as a wizard (`forms/wizard.tsx`) or as tabs (`forms/tabs.tsx`); what

@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { api, call } from "@/lib/api/client";
 import type { FieldValuesQuery, UiField, UiWidget } from "@/lib/api/types";
 import { keys } from "@/lib/query";
+import { useStandIn } from "./secretKeys";
 
 export interface FormContext {
   versionId: string;
@@ -12,6 +13,8 @@ export interface FormContext {
   asUserId?: string;
   /** The designer's saved revision of the draft, so a changed source is fetched again. */
   revision?: number;
+  /** The form's secret fields: a source that depends on one is keyed on a stand-in of its value. */
+  secrets?: readonly string[];
 }
 
 /** The built-in sources these widgets always take their choices from: the server checks them. */
@@ -39,7 +42,8 @@ export function useFieldValues(
   ctx: FormContext,
   search?: { text: string; enabled: boolean },
 ) {
-  const deps = (ui.depends_on ?? []).map((d) => values[d] ?? null);
+  const standIn = useStandIn();
+  const deps = (ui.depends_on ?? []).map((d) => (ctx.secrets?.includes(d) ? standIn(values[d]) : values[d]) ?? null);
   // Keep the latest inputs for the request body without putting them in the key.
   const latest = useRef(values);
   latest.current = values;

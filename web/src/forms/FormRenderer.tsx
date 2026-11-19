@@ -7,6 +7,7 @@ import type { FieldStates, RequestForm } from "@/lib/api/types";
 import { fieldControl } from "./attention";
 import { withDefaults } from "./defaults";
 import { FieldGrid, formParts, partShows, sectionFields, type GridProps } from "./sections";
+import { isSecretField } from "./secretKeys";
 import { FormTabs } from "./tabs";
 import { REVIEW, Wizard, type WizardOptions } from "./wizard";
 import type { FormContext } from "./useFieldValues";
@@ -81,7 +82,11 @@ export function FormRenderer({
     () => withDefaults(values, fieldStates, form.initial_values),
     [values, fieldStates, form.initial_values],
   );
-  const grid: GridProps = { form, values: shown, onChange, onBlur, errors, ctx };
+  const secrets = useMemo(
+    () => Object.entries(form.ui_schema.fields).flatMap(([name, f]) => (isSecretField(f) ? [name] : [])),
+    [form],
+  );
+  const grid: GridProps = { form, values: shown, onChange, onBlur, errors, ctx: { ...ctx, secrets } };
   // The page or tab shown; `n` renders again when it is shown anew, for what runs after.
   const [view, setView] = useState<{ key?: string; n: number }>({ key: showing && sectionOf(form, showing), n: 0 });
   const after = useRef<(() => void) | undefined>(undefined);

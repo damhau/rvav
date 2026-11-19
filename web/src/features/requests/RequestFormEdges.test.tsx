@@ -110,6 +110,32 @@ describe("Request form edges", () => {
     }
   }, 20_000);
 
+  it("keys a source that depends on a secret input on a stand-in", async () => {
+    form("page");
+    const f = db.forms.itm_dbuser!;
+    (f.schema as { properties: Record<string, unknown> }).properties.vault = { type: "string" };
+    f.ui_schema.fields.vault = {
+      widget: "select",
+      label: "Vault",
+      depends_on: ["password"],
+      value_source: {
+        kind: "rest",
+        params: { url: "https://vault.corp.example/api/paths?pw=${inputs.password}", value: "$.id" },
+      },
+    };
+    f.ui_schema.layout.sections[0]!.fields.push("vault");
+    const user = userEvent.setup();
+    const { client } = await openForm();
+    await user.type(screen.getByLabelText("Password", { selector: "input" }), "correct-horse-battery");
+    const keys = () =>
+      client
+        .getQueryCache()
+        .getAll()
+        .map((q) => JSON.stringify(q.queryKey));
+    await waitFor(() => expect(keys().some((k) => k.includes('"vault",["secret #'))).toBe(true));
+    expect(keys().filter((k) => k.includes("correct-horse"))).toEqual([]);
+  }, 20_000);
+
   it("keeps a field a later preview showed while a newer one loads, after Next", async () => {
     form("wizard");
     const user = userEvent.setup();
