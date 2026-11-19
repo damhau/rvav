@@ -600,7 +600,10 @@ it.
   (**Policy warnings**). The submit button ends in "anyway" and the draft
   sends `accept_warnings`; a 422 at `/accept_warnings` (`refusedWarnings`)
   shows its warnings until the draft changes. A project's **Deployment
-  sharing** panel heads its Members tab.
+  sharing** panel heads its Members tab, and keeps the focus on its choice
+  once saved. Under owners only, **Requests** says it lists the person's
+  own requests and drops **Only mine**, unless they hold
+  `deployments.read_all` there.
 - **Templates and networks**: VM templates (a vCenter template, or an
   item of a content library) and sizes, with where each is offered
   (projects and environments), and the network mappings, from EfficientIP

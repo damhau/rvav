@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import { db } from "@/mocks/seed";
+import { afterEach, describe, expect, it } from "vitest";
+import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
 describe("the requests list against the mock API", () => {
@@ -84,5 +84,31 @@ describe("your drafts", () => {
     await user.click(within(ask).getByRole("button", { name: "Discard draft" }));
     expect(await screen.findByText("Draft discarded")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("list", { name: "Your drafts" })).toBeNull());
+  });
+
+  describe("under Owners only", () => {
+    afterEach(() => {
+      localStorage.removeItem("rvav.mock.as");
+      resetDb();
+    });
+
+    it("says a member sees their own requests, with nothing else to narrow to", async () => {
+      localStorage.setItem("rvav.mock.as", "member");
+      resetDb();
+      renderApp("/requests");
+      expect(
+        await screen.findByText("The requests you made or own in Web Platform, newest first."),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("checkbox", { name: "Only mine" })).not.toBeInTheDocument();
+    });
+
+    it("still offers a project admin everything, and Only mine", async () => {
+      localStorage.setItem("rvav.mock.as", "project-admin");
+      resetDb();
+      db.projects.find((p) => p.id === "prj_web")!.deployment_sharing = "owner_only";
+      renderApp("/requests");
+      expect(await screen.findByRole("checkbox", { name: "Only mine" })).toBeInTheDocument();
+      expect(screen.getByText("Everything requested in Web Platform, newest first.")).toBeInTheDocument();
+    });
   });
 });

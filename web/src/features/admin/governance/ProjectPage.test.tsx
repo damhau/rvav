@@ -225,7 +225,7 @@ describe("a project's deployment sharing", () => {
     await user.click(save);
     expect(await screen.findByText("Web Platform's deployments: owners only")).toBeInTheDocument();
     expect(db.projects.find((p) => p.id === "prj_web")?.deployment_sharing).toBe("owner_only");
-    // Saved, the panel starts again from the project it read back.
+    // Saved, the panel starts again from the project it read back, and the focus stays on the choice.
     await waitFor(() =>
       expect(
         within(screen.getByRole("region", { name: "Deployment sharing" })).getByRole("button", {
@@ -233,5 +233,10 @@ describe("a project's deployment sharing", () => {
         }),
       ).toBeDisabled(),
     );
+    const choice = within(screen.getByRole("region", { name: "Deployment sharing" })).getByRole("combobox", {
+      name: "Who sees them",
+    });
+    expect(choice).toHaveTextContent("Owners only");
+    expect(choice).toHaveFocus();
   });
 });

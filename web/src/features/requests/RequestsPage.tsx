@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Inbox, Plus, SearchX } from "lucide-react";
 import { ErrorState } from "@/components/common/feedback";
@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import type { RequestStatus, ServiceRequest } from "@/lib/api/types";
+import { can } from "@/lib/can";
 import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
@@ -79,7 +80,10 @@ const columns: Column<ServiceRequest>[] = [
 ];
 
 export function RequestsPage({ search }: { search: RequestsSearch }) {
-  const { projectId, project } = useCurrentProject();
+  const { projectId, project, me } = useCurrentProject();
+  const settings = useQuery({ ...q.project(projectId), enabled: projectId !== "" });
+  // Under Owners only, a member sees the requests they made or own, nothing else to narrow to (ADR-0045).
+  const ownOnly = settings.data?.deployment_sharing === "owner_only" && !can(me, "deployments.read_all", projectId);
   const navigate = useNavigate({ from: "/requests/" });
   // The address keeps the search, without a history entry per keystroke.
   const [text, setText] = useSearchBox(
@@ -106,7 +110,11 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
     <Page>
       <PageHeader
         title="Requests"
-        description={`Everything requested in ${project.name}, newest first.`}
+        description={
+          ownOnly
+            ? `The requests you made or own in ${project.name}, newest first.`
+            : `Everything requested in ${project.name}, newest first.`
+        }
         actions={
           <Button variant="primary" asChild>
             <Link to="/catalog">
@@ -153,14 +161,16 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
                 ]}
                 className="w-48"
               />
-              <span className="flex items-center gap-2 text-body">
-                <Checkbox
-                  id="requests-mine"
-                  checked={Boolean(search.mine)}
-                  onChange={(v) => set({ mine: v || undefined })}
-                />
-                <label htmlFor="requests-mine">Only mine</label>
-              </span>
+              {!ownOnly && (
+                <span className="flex items-center gap-2 text-body">
+                  <Checkbox
+                    id="requests-mine"
+                    checked={Boolean(search.mine)}
+                    onChange={(v) => set({ mine: v || undefined })}
+                  />
+                  <label htmlFor="requests-mine">Only mine</label>
+                </span>
+              )}
               {filtered && (
                 <Button variant="quiet" onClick={clear}>
                   Clear filters

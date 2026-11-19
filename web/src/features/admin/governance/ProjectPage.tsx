@@ -321,6 +321,11 @@ function DeploymentSharing({ project, canManage }: { project: S["AdminProject"];
   const qc = useQueryClient();
   const current = project.deployment_sharing ?? "all_members";
   const [value, setValue] = useState(current);
+  const [saved, setSaved] = useState(current);
+  if (saved !== current) {
+    setSaved(current);
+    setValue(current);
+  }
   const save = useMutation({
     mutationFn: (sharing: S["DeploymentSharing"]) =>
       call(
@@ -333,7 +338,10 @@ function DeploymentSharing({ project, canManage }: { project: S["AdminProject"];
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: ["deployments"] });
       void qc.invalidateQueries({ queryKey: ["requests"] });
+      void qc.invalidateQueries({ queryKey: ["projects", project.id] });
       toast.success(`${project.name}'s deployments: ${sharingLabels[sharing][0].toLowerCase()}`);
+      // Save sharing is disabled once saved: the focus goes back to the choice.
+      document.getElementById("deployment-sharing")?.focus();
     },
     onError: (e) => failed(e, "Not saved"),
   });
@@ -1266,11 +1274,7 @@ export function ProjectPage({ projectId, tab = "members" }: { projectId: string;
           <TabsTrigger value="details">Details</TabsTrigger>
         </TabsList>
         <TabsContent value="members" className="flex flex-col gap-4 pt-4">
-          <DeploymentSharing
-            key={p.deployment_sharing}
-            project={p}
-            canManage={can(me, "project.members.manage", p.id)}
-          />
+          <DeploymentSharing project={p} canManage={can(me, "project.members.manage", p.id)} />
           <Members project={p} canManage={can(me, "project.members.manage", p.id)} />
         </TabsContent>
         <TabsContent value="placement" className="pt-4">
