@@ -42,6 +42,8 @@ const (
 	// Onboarding plans and their runs (X1.5).
 	OnboardingPlan = "obp"
 	OnboardingRun  = "obr"
+	// Where audit events are sent (ADR-0058).
+	AuditDestination = "adt"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

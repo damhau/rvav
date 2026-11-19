@@ -4208,6 +4208,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/audit-destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where audit events are sent, with each one's delivery state (`integrations.manage`, or `audit.read` for all of rvav)
+         * @description Each destination gets the audit events written after it was made,
+         *     of its categories (every category when it names none), as a syslog
+         *     server (RFC 5424) or a webhook. Events wait in the database until
+         *     they are delivered: `state` says how many wait, and how the last
+         *     attempt went (ADR-0058).
+         */
+        get: operations["listAuditDestinations"];
+        put?: never;
+        /** Send audit events to a syslog server or a webhook (`integrations.manage`) */
+        post: operations["createAuditDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/audit-destinations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        /** One destination, with its delivery state */
+        get: operations["getAuditDestination"];
+        /** Change a destination; the events waiting for it are tried again at once */
+        put: operations["updateAuditDestination"];
+        post?: never;
+        /** Stop sending audit events there; those waiting are dropped (the audit log keeps them) */
+        delete: operations["deleteAuditDestination"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/audit-destinations/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a made-up event there now, once, and say how it went (`integrations.manage`)
+         * @description The test event's action is `settings.audit_destination.test` and its
+         *     ID `test`. It isn't queued: a failure changes nothing of the
+         *     destination's state.
+         */
+        post: operations["testAuditDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reports": {
         parameters: {
             query?: never;
@@ -9543,6 +9613,107 @@ export interface components {
         };
         AuditEventPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["AuditEvent"][];
+        };
+        /**
+         * @description What an audit event is about, by its action's first word:
+         *     `sign_in` (`auth.*`), `token` (`token.*`, `awx.inventory_token`),
+         *     `access` (projects, members, environments, roles and group mappings),
+         *     `catalog`, `policy` (policies and naming), `infrastructure`
+         *     (placement, networks, templates, sizes, vCenters), `extensibility`
+         *     (subscriptions, workflows, resource types, day-2 actions and forms),
+         *     `settings` (settings, secrets, integrations, vRA import), `request`
+         *     (requests, deployments, approvals, the console, onboarding) and
+         *     `other` for anything else.
+         * @enum {string}
+         */
+        AuditCategory: "sign_in" | "token" | "access" | "catalog" | "policy" | "infrastructure" | "extensibility" | "settings" | "request" | "other";
+        /**
+         * @description `tls`: RFC 5425, octet-counting framing; `tcp`: the same framing in clear; `udp`: RFC 5426, one event per datagram. `tcp` and `udp` are for labs.
+         * @enum {string}
+         */
+        SyslogTransport: "tls" | "tcp" | "udp";
+        /**
+         * @description The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14).
+         * @enum {string}
+         */
+        SyslogFacility: "kern" | "user" | "mail" | "daemon" | "auth" | "syslog" | "lpr" | "news" | "uucp" | "cron" | "authpriv" | "ftp" | "ntp" | "audit" | "alert" | "clock" | "local0" | "local1" | "local2" | "local3" | "local4" | "local5" | "local6" | "local7";
+        AuditSyslog: {
+            /** @description The syslog server's name or address. */
+            host: string;
+            /** @description 6514 for TLS, 514 otherwise, when left out. */
+            port?: number;
+            transport?: components["schemas"]["SyslogTransport"];
+            facility?: components["schemas"]["SyslogFacility"];
+            /** @description The APP-NAME field; rvav when left out. */
+            app_name?: string;
+            /** @description The CAs (PEM) that sign the server's certificate, trusted besides the system's and the CA bundle's. TLS only. */
+            ca_certificate?: string;
+            /** @description The certificate (PEM) rvav presents when the server asks for one. TLS only, with `client_key_secret`. */
+            client_certificate?: string;
+            /** @description The stored secret (Catalog items › Secrets) that holds the client certificate's private key, in PEM. */
+            client_key_secret?: string;
+        };
+        AuditWebhook: {
+            /** @description An HTTPS (or HTTP) URL on one of the hosts webhooks may call (Administration › Integrations › Allowed hosts). */
+            url: string;
+            /** @description The stored secret each body is signed with, in `X-Rvav-Signature` as subscriptions' webhooks are. */
+            secret: string;
+        };
+        /** @description A syslog server or a webhook, exactly one. */
+        AuditDestinationWrite: {
+            name: string;
+            /** @description Off: no event is queued for it or sent. On when left out. */
+            enabled?: boolean;
+            /** @description Only the events of these categories; every event when empty or left out. */
+            categories?: components["schemas"]["AuditCategory"][];
+            syslog?: components["schemas"]["AuditSyslog"];
+            webhook?: components["schemas"]["AuditWebhook"];
+        };
+        AuditDeliveryState: {
+            /** @description Events waiting to be sent. */
+            backlog: number;
+            /**
+             * Format: int64
+             * @description Events sent since the destination was made.
+             */
+            delivered: number;
+            /** @description Failed attempts in a row since the last success. */
+            failures: number;
+            /** Format: date-time */
+            last_success_at?: string;
+            /** @description Why the last attempt failed, while it hasn't succeeded since. */
+            last_error?: string;
+            /** Format: date-time */
+            last_error_at?: string;
+            /**
+             * Format: date-time
+             * @description When the events waiting are tried again, after a failure.
+             */
+            next_attempt_at?: string;
+        };
+        AuditDestination: {
+            id: string;
+            name: string;
+            enabled: boolean;
+            /** @enum {string} */
+            kind: "syslog" | "webhook";
+            categories: components["schemas"]["AuditCategory"][];
+            syslog?: components["schemas"]["AuditSyslog"];
+            webhook?: components["schemas"]["AuditWebhook"];
+            state: components["schemas"]["AuditDeliveryState"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AuditDestinationList: {
+            items: components["schemas"]["AuditDestination"][];
+        };
+        AuditDestinationTest: {
+            ok: boolean;
+            /** @description What the server answered, or why it couldn't be reached. */
+            message: string;
+            duration_ms: number;
         };
         /**
          * @description Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
@@ -17085,6 +17256,160 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listAuditDestinations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The destinations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDestinationList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createAuditDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditDestinationWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDestination"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getAuditDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The destination */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDestination"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateAuditDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditDestinationWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDestination"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteAuditDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    testAuditDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description How it went */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDestinationTest"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getReport: {

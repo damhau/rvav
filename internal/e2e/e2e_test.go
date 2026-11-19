@@ -43,6 +43,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/app"
+	"github.com/damhau/rvav/internal/auditlog"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/dispatch"
@@ -354,6 +355,8 @@ func setupWith(t *testing.T, ctx context.Context, c *vim25.Client, seeded bool) 
 		Webhook: &dispatch.Webhook{Secret: dispatch.StoredSecret(st, box)},
 		AWX:     &dispatch.AWX{Client: fakeAWX, Poll: 20 * time.Millisecond}}}
 	svc.Dispatcher, acts.Subscriptions, acts.Changer = disp, disp, svc
+	svc.AuditLog = &auditlog.Forwarder{Store: st, Log: log, Secret: dispatch.StoredSecret(st, box), Hostname: "rvav.e2e",
+		WebhookHosts: func(context.Context) []string { return svc.Config.WebhookHosts }}
 	return &harness{t: t, ctx: ctx, store: st, srv: srv, api: apiSrv, acts: acts, svc: svc, hub: hub, vc: vc, wf: wf, awx: fakeAWX, ipam: fakeIPAM,
 		ipamURL: ipamSrv.URL}
 }

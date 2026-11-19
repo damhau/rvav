@@ -5569,6 +5569,112 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /admin/audit-destinations:
+    get:
+      tags: [admin]
+      operationId: listAuditDestinations
+      summary: Where audit events are sent, with each one's delivery state (`integrations.manage`, or `audit.read` for all of rvav)
+      description: |
+        Each destination gets the audit events written after it was made,
+        of its categories (every category when it names none), as a syslog
+        server (RFC 5424) or a webhook. Events wait in the database until
+        they are delivered: `state` says how many wait, and how the last
+        attempt went (ADR-0058).
+      responses:
+        "200":
+          description: The destinations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditDestinationList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createAuditDestination
+      summary: Send audit events to a syslog server or a webhook (`integrations.manage`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AuditDestinationWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditDestination" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/audit-destinations/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    get:
+      tags: [admin]
+      operationId: getAuditDestination
+      summary: One destination, with its delivery state
+      responses:
+        "200":
+          description: The destination
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditDestination" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: updateAuditDestination
+      summary: Change a destination; the events waiting for it are tried again at once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AuditDestinationWrite" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditDestination" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteAuditDestination
+      summary: Stop sending audit events there; those waiting are dropped (the audit log keeps them)
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/audit-destinations/{id}/test:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    post:
+      tags: [admin]
+      operationId: testAuditDestination
+      summary: Send a made-up event there now, once, and say how it went (`integrations.manage`)
+      description: |
+        The test event's action is `settings.audit_destination.test` and its
+        ID `test`. It isn't queued: a failure changes nothing of the
+        destination's state.
+      responses:
+        "200":
+          description: How it went
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditDestinationTest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /reports:
     get:
       tags: [reports]
@@ -12463,6 +12569,138 @@ components:
             items:
               type: array
               items: { $ref: "#/components/schemas/AuditEvent" }
+
+    # ── Audit forwarding and sign-ins (ADR-0058) ──
+    AuditCategory:
+      type: string
+      description: |
+        What an audit event is about, by its action's first word:
+        `sign_in` (`auth.*`), `token` (`token.*`, `awx.inventory_token`),
+        `access` (projects, members, environments, roles and group mappings),
+        `catalog`, `policy` (policies and naming), `infrastructure`
+        (placement, networks, templates, sizes, vCenters), `extensibility`
+        (subscriptions, workflows, resource types, day-2 actions and forms),
+        `settings` (settings, secrets, integrations, vRA import), `request`
+        (requests, deployments, approvals, the console, onboarding) and
+        `other` for anything else.
+      enum: [sign_in, token, access, catalog, policy, infrastructure, extensibility, settings, request, other]
+      x-enum-varnames: [AuditCategorySignIn, AuditCategoryToken, AuditCategoryAccess, AuditCategoryCatalog, AuditCategoryPolicy,
+        AuditCategoryInfrastructure, AuditCategoryExtensibility, AuditCategorySettings, AuditCategoryRequest, AuditCategoryOther]
+    SyslogTransport:
+      type: string
+      description: "`tls`: RFC 5425, octet-counting framing; `tcp`: the same framing in clear; `udp`: RFC 5426, one event per datagram. `tcp` and `udp` are for labs."
+      enum: [tls, tcp, udp]
+      x-enum-varnames: [SyslogTLS, SyslogTCP, SyslogUDP]
+    SyslogFacility:
+      type: string
+      description: The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14).
+      enum: [kern, user, mail, daemon, auth, syslog, lpr, news, uucp, cron, authpriv, ftp, ntp, audit, alert, clock,
+        local0, local1, local2, local3, local4, local5, local6, local7]
+      x-enum-varnames: [FacilityKern, FacilityUser, FacilityMail, FacilityDaemon, FacilityAuth, FacilitySyslog, FacilityLpr,
+        FacilityNews, FacilityUucp, FacilityCron, FacilityAuthpriv, FacilityFtp, FacilityNtp, FacilityAudit, FacilityAlert,
+        FacilityClock, FacilityLocal0, FacilityLocal1, FacilityLocal2, FacilityLocal3, FacilityLocal4, FacilityLocal5,
+        FacilityLocal6, FacilityLocal7]
+    AuditSyslog:
+      type: object
+      additionalProperties: false
+      required: [host]
+      properties:
+        host: { type: string, minLength: 1, maxLength: 253, description: The syslog server's name or address. }
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: 6514 for TLS, 514 otherwise, when left out.
+        transport: { $ref: "#/components/schemas/SyslogTransport" }
+        facility: { $ref: "#/components/schemas/SyslogFacility" }
+        app_name:
+          type: string
+          minLength: 1
+          maxLength: 48
+          pattern: "^[!-~]+$"
+          description: The APP-NAME field; rvav when left out.
+        ca_certificate:
+          type: string
+          description: The CAs (PEM) that sign the server's certificate, trusted besides the system's and the CA bundle's. TLS only.
+        client_certificate:
+          type: string
+          description: The certificate (PEM) rvav presents when the server asks for one. TLS only, with `client_key_secret`.
+        client_key_secret:
+          type: string
+          description: The stored secret (Catalog items › Secrets) that holds the client certificate's private key, in PEM.
+    AuditWebhook:
+      type: object
+      additionalProperties: false
+      required: [url, secret]
+      properties:
+        url:
+          type: string
+          description: An HTTPS (or HTTP) URL on one of the hosts webhooks may call (Administration › Integrations › Allowed hosts).
+        secret:
+          type: string
+          description: The stored secret each body is signed with, in `X-Rvav-Signature` as subscriptions' webhooks are.
+    AuditDestinationWrite:
+      type: object
+      additionalProperties: false
+      description: A syslog server or a webhook, exactly one.
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        enabled: { type: boolean, description: "Off: no event is queued for it or sent. On when left out." }
+        categories:
+          type: array
+          uniqueItems: true
+          description: Only the events of these categories; every event when empty or left out.
+          items: { $ref: "#/components/schemas/AuditCategory" }
+        syslog: { $ref: "#/components/schemas/AuditSyslog" }
+        webhook: { $ref: "#/components/schemas/AuditWebhook" }
+    AuditDeliveryState:
+      type: object
+      required: [backlog, delivered, failures]
+      properties:
+        backlog: { type: integer, description: Events waiting to be sent. }
+        delivered: { type: integer, format: int64, description: Events sent since the destination was made. }
+        failures: { type: integer, description: Failed attempts in a row since the last success. }
+        last_success_at: { type: string, format: date-time }
+        last_error: { type: string, description: "Why the last attempt failed, while it hasn't succeeded since." }
+        last_error_at: { type: string, format: date-time }
+        next_attempt_at:
+          type: string
+          format: date-time
+          description: When the events waiting are tried again, after a failure.
+    AuditDestination:
+      type: object
+      required: [id, name, enabled, kind, categories, state, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        enabled: { type: boolean }
+        kind:
+          type: string
+          enum: [syslog, webhook]
+          x-enum-varnames: [AuditDestinationSyslog, AuditDestinationWebhook]
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/AuditCategory" }
+        syslog: { $ref: "#/components/schemas/AuditSyslog" }
+        webhook: { $ref: "#/components/schemas/AuditWebhook" }
+        state: { $ref: "#/components/schemas/AuditDeliveryState" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AuditDestinationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AuditDestination" }
+    AuditDestinationTest:
+      type: object
+      required: [ok, message, duration_ms]
+      properties:
+        ok: { type: boolean }
+        message: { type: string, description: "What the server answered, or why it couldn't be reached." }
+        duration_ms: { type: integer }
 
     # ── Events and subscriptions (ADR-0021) ──
     EventTopicKey:

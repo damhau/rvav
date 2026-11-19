@@ -1,0 +1,272 @@
+// Package auditlog sends audit events to syslog servers and webhooks
+// (ADR-0058). Each destination's backlog is written with the event, in the
+// audited action's transaction; the forwarder sends it in order, at least
+// once, and tries again with back-off until it goes.
+package auditlog
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"sync"
+	"time"
+	"unicode/utf8"
+
+	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/dispatch"
+	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
+)
+
+// Contract names the webhook body's shape.
+const Contract = "rvav.audit.v1"
+
+// Event is an audit event as a destination gets it.
+type Event struct {
+	ID         string          `json:"id"`
+	At         time.Time       `json:"at"`
+	Category   string          `json:"category"`
+	Action     string          `json:"action"`
+	Actor      *api.UserRef    `json:"actor"`
+	TargetType string          `json:"target_type"`
+	TargetID   string          `json:"target_id"`
+	Project    *api.ProjectRef `json:"project"`
+	Detail     json.RawMessage `json:"detail"`
+}
+
+// FromRow is the event of an audit log row.
+func FromRow(r store.AuditRow) Event {
+	e := Event{ID: strconv.FormatInt(r.ID, 10), At: r.At.UTC(), Category: store.AuditCategory(r.Action), Action: r.Action,
+		TargetType: r.TargetType, TargetID: r.TargetID, Detail: r.Detail}
+	if len(e.Detail) == 0 {
+		e.Detail = json.RawMessage(`{}`)
+	}
+	if r.ActorID != nil {
+		e.Actor = &api.UserRef{Id: *r.ActorID}
+		if r.ActorName != nil {
+			e.Actor.Name = *r.ActorName
+		}
+	}
+	if r.ProjectID != nil {
+		e.Project = &api.ProjectRef{Id: *r.ProjectID}
+		if r.ProjectCode != nil {
+			e.Project.Code = *r.ProjectCode
+		}
+		if r.ProjectName != nil {
+			e.Project.Name = *r.ProjectName
+		}
+	}
+	return e
+}
+
+// Forwarder sends the destinations' backlogs. Every worker replica runs
+// one: a destination is leased to one of them at a time.
+type Forwarder struct {
+	Store *store.Store
+	Log   *slog.Logger
+	// Secret opens the stored secrets that sign webhooks and hold client keys.
+	Secret dispatch.SecretFunc
+	// WebhookHosts are the hosts webhooks may call, as saved now.
+	WebhookHosts func(context.Context) []string
+	// Hostname is syslog's HOSTNAME field.
+	Hostname string
+	// HTTP posts to webhooks; one that follows no redirect when nil.
+	HTTP *http.Client
+	// Interval between rounds; 2 s when zero.
+	Interval time.Duration
+	// Now is the clock; time.Now when nil.
+	Now func() time.Time
+	// Timeout bounds a connection and each write; 10 s when zero.
+	Timeout time.Duration
+
+	inFlight sync.WaitGroup
+}
+
+// Batch is how many events go in one webhook call, or one write to syslog.
+const Batch = 100
+
+// lease is how long a destination is one worker's; a round stops sending
+// well before it ends.
+const lease = 2 * time.Minute
+
+var backoff = []time.Duration{5 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute}
+
+// Backoff is the wait after the n-th failure in a row.
+func Backoff(n int) time.Duration {
+	if n < 1 {
+		n = 1
+	}
+	return backoff[min(n, len(backoff))-1]
+}
+
+func (f *Forwarder) now() time.Time {
+	if f.Now != nil {
+		return f.Now()
+	}
+	return time.Now()
+}
+
+func (f *Forwarder) timeout() time.Duration {
+	if f.Timeout > 0 {
+		return f.Timeout
+	}
+	return 10 * time.Second
+}
+
+// Run sends until the context ends.
+func (f *Forwarder) Run(ctx context.Context) {
+	interval := f.Interval
+	if interval == 0 {
+		interval = 2 * time.Second
+	}
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		if err := f.round(ctx); err != nil && ctx.Err() == nil {
+			f.Log.Warn("audit forwarding", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			f.inFlight.Wait()
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+// Once sends what is due now and waits until it is sent or has failed.
+func (f *Forwarder) Once(ctx context.Context) error {
+	err := f.round(ctx)
+	f.inFlight.Wait()
+	return err
+}
+
+// round leases the due destinations and sends to each in the background:
+// a destination that doesn't answer holds back none of the others.
+func (f *Forwarder) round(ctx context.Context) error {
+	due, err := f.Store.ClaimAuditDestinations(ctx, f.now(), lease)
+	if err != nil {
+		return err
+	}
+	for _, d := range due {
+		f.inFlight.Add(1)
+		go func() {
+			defer f.inFlight.Done()
+			f.drain(ctx, d)
+		}()
+	}
+	return nil
+}
+
+// drain sends a destination's backlog, a batch at a time, while its lease
+// lasts.
+func (f *Forwarder) drain(ctx context.Context, d store.AuditDestination) {
+	ctx = context.WithoutCancel(ctx)
+	defer func() {
+		if err := f.Store.ReleaseAuditDestination(ctx, d.ID); err != nil {
+			f.Log.Warn("audit forwarding: release", "destination", d.Name, "err", err)
+		}
+	}()
+	until := f.now().Add(lease / 2)
+	var s sender
+	defer func() {
+		if s != nil {
+			_ = s.close()
+		}
+	}()
+	for f.now().Before(until) {
+		rows, err := f.Store.AuditBacklog(ctx, d.ID, Batch)
+		if err != nil {
+			f.Log.Warn("audit forwarding: backlog", "destination", d.Name, "err", err)
+			return
+		}
+		if len(rows) == 0 {
+			return
+		}
+		events, sent := make([]Event, len(rows)), make([]int64, len(rows))
+		for i, r := range rows {
+			events[i], sent[i] = FromRow(r), r.ID
+		}
+		if s == nil {
+			s, err = f.open(ctx, d)
+		}
+		if err == nil {
+			_, err = s.send(ctx, events)
+		}
+		if err != nil {
+			f.failed(ctx, d, err)
+			return
+		}
+		if err := f.Store.AuditDelivered(ctx, d.ID, sent, f.now()); err != nil {
+			f.Log.Warn("audit forwarding: delivered", "destination", d.Name, "err", err)
+			return
+		}
+	}
+}
+
+func (f *Forwarder) failed(ctx context.Context, d store.AuditDestination, err error) {
+	now := f.now()
+	next := now.Add(Backoff(d.Failures + 1))
+	f.Log.Warn("audit forwarding failed", "destination", d.Name, "err", err, "next_attempt_at", next)
+	if err := f.Store.AuditDeliveryFailed(ctx, d.ID, truncate(err.Error(), 1000), now, next); err != nil {
+		f.Log.Warn("audit forwarding: record failure", "destination", d.Name, "err", err)
+	}
+}
+
+// Send sends events to a destination once, now: a test's. It says what
+// the destination answered.
+func (f *Forwarder) Send(ctx context.Context, d store.AuditDestination, events []Event) (string, error) {
+	s, err := f.open(ctx, d)
+	if err != nil {
+		return "", err
+	}
+	defer s.close()
+	return s.send(ctx, events)
+}
+
+// sender is an open connection to a destination.
+type sender interface {
+	send(ctx context.Context, events []Event) (string, error)
+	close() error
+}
+
+func (f *Forwarder) open(ctx context.Context, d store.AuditDestination) (sender, error) {
+	switch d.Kind {
+	case "syslog":
+		var cfg api.AuditSyslog
+		if err := json.Unmarshal(d.Settings, &cfg); err != nil {
+			return nil, err
+		}
+		return f.dialSyslog(ctx, cfg)
+	case "webhook":
+		var cfg api.AuditWebhook
+		if err := json.Unmarshal(d.Settings, &cfg); err != nil {
+			return nil, err
+		}
+		return f.webhook(ctx, cfg)
+	}
+	return nil, errors.New("not a syslog server or a webhook")
+}
+
+func (f *Forwarder) client() *http.Client {
+	if f.HTTP != nil {
+		return f.HTTP
+	}
+	// No redirects: an allowed host can't send the events elsewhere.
+	return &http.Client{Transport: trust.Transport(trust.Options{}), Timeout: f.timeout(),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+}
+
+// truncate keeps the first n bytes of s, cut on a rune boundary.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}

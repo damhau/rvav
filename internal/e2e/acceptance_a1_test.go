@@ -368,6 +368,11 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	h.json("POST", "/api/v1/admin/vra/snapshots", admin, nil, 201, nil)
 	h.svc.Config.VCenter.Name, h.svc.Config.VCenter.URL = "vc01.corp.example", "https://vc01.corp.example/sdk"
 
+	// Off, so that what the walk audits queues nothing and its state holds still.
+	var auditDest api.AuditDestination
+	h.json("POST", "/api/v1/admin/audit-destinations", admin, api.AuditDestinationWrite{Name: "SIEM", Enabled: new(false),
+		Categories: &[]api.AuditCategory{api.AuditCategoryCatalog}, Syslog: &api.AuditSyslog{Host: "siem.corp.example"}}, 201, &auditDest)
+
 	return map[string]string{
 		"drafts/{id}":                draft.Id,
 		"views/{id}":                 view.Id,
@@ -407,6 +412,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"vcenters/{name}":                "vc01.corp.example",
 		"subscriptions/{id}":             sub.Id,
 		"subscription-runs/{id}":         run.Id,
+		"audit-destinations/{id}":        auditDest.Id,
 		"workflows/{key}":                "a1-report",
 		"resource-types/{key}":           "a1-lb",
 		"variables/{key}":                "a1.site",

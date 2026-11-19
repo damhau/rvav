@@ -20,7 +20,7 @@ type Backlog struct {
 var (
 	requestsActive = prometheus.NewDesc("rvav_requests_active", "Requests not finished, by status.", []string{"status"}, nil)
 	approvals      = prometheus.NewDesc("rvav_approvals_pending", "Approval levels waiting for a decision; overdue: past their due time.", []string{"overdue"}, nil)
-	queue          = prometheus.NewDesc("rvav_queue_depth", "What waits to go out: events (integration_events), subscription runs, notification deliveries.", []string{"queue"}, nil)
+	queue          = prometheus.NewDesc("rvav_queue_depth", "What waits to go out: events (integration_events), subscription runs, notification deliveries, audit events for syslog and webhooks.", []string{"queue"}, nil)
 	oldest         = prometheus.NewDesc("rvav_queue_oldest_seconds", "How long the oldest item of a queue has waited.", []string{"queue"}, nil)
 	vms            = prometheus.NewDesc("rvav_vms", "VMs rvav manages, by sync state (in_sync, drifted, missing).", []string{"sync_state"}, nil)
 	inventoryAge   = prometheus.NewDesc("rvav_inventory_age_seconds", "Since a VM of the vCenter was last read.", []string{"vcenter"}, nil)
@@ -52,6 +52,7 @@ func (b Backlog) Collect(ch chan<- prometheus.Metric) {
 		"events":        `select count(*), coalesce(extract(epoch from now() - min(created_at)), 0) from integration_events where dispatched_at is null and not held`,
 		"subscriptions": `select count(*), coalesce(extract(epoch from now() - min(next_attempt_at)), 0) from subscription_runs where status = 'queued' and next_attempt_at <= now()`,
 		"notifications": `select count(*), coalesce(extract(epoch from now() - min(next_attempt_at)), 0) from notification_deliveries where status = 'queued' and next_attempt_at <= now()`,
+		"audit":         `select count(*), coalesce(extract(epoch from now() - min(queued_at)), 0) from audit_deliveries`,
 	} {
 		var n, age float64
 		_ = b.Pool.QueryRow(ctx, sql).Scan(&n, &age)

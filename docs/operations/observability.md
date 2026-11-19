@@ -35,7 +35,7 @@ API replica reports the same figures, so take their `max`.
 |---|---|---|
 | `rvav_requests_active` | status | Requests not finished: pending_approval, scheduled, queued, running, cancelling. |
 | `rvav_approvals_pending` | overdue | Approval levels waiting, past their due time or not. |
-| `rvav_queue_depth`, `rvav_queue_oldest_seconds` | queue | Events not dispatched yet, subscription runs and notification deliveries due, and how long the oldest has waited. |
+| `rvav_queue_depth`, `rvav_queue_oldest_seconds` | queue | Events not dispatched yet, subscription runs and notification deliveries due, audit events waiting for a syslog server or webhook (`audit`), and how long the oldest has waited. |
 | `rvav_vms` | sync_state | VMs rvav manages: in sync, drifted, missing. |
 | `rvav_inventory_age_seconds` | vcenter | Since a VM of the vCenter was last read. |
 

@@ -463,13 +463,18 @@ type AuditEvent struct {
 	Detail     any
 }
 
+// Audit records an event and queues it, in the same statement, for each
+// destination it is forwarded to (ADR-0058).
 func (s *Store) Audit(ctx context.Context, db DB, e AuditEvent) error {
 	detail, err := json.Marshal(e.Detail)
 	if err != nil || e.Detail == nil {
 		detail = []byte("{}")
 	}
-	_, err = db.Exec(ctx, `insert into audit_events (actor_id, action, target_type, target_id, project_id, detail)
-		values ($1, $2, $3, $4, $5, $6)`, e.ActorID, e.Action, e.TargetType, e.TargetID, e.ProjectID, detail)
+	_, err = db.Exec(ctx, `with e as (insert into audit_events (actor_id, action, target_type, target_id, project_id, detail)
+			values ($1, $2, $3, $4, $5, $6) returning id)
+		insert into audit_deliveries (destination_id, event_id)
+		select d.id, e.id from e, audit_destinations d where d.enabled and (cardinality(d.categories) = 0 or $7 = any(d.categories))`,
+		e.ActorID, e.Action, e.TargetType, e.TargetID, e.ProjectID, detail, AuditCategory(e.Action))
 	return err
 }
 

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"go.temporal.io/sdk/client"
 	tlog "go.temporal.io/sdk/log"
 
+	"github.com/damhau/rvav/internal/auditlog"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/awxcatalog"
 	"github.com/damhau/rvav/internal/config"
@@ -375,7 +377,7 @@ func (a *App) Core(w core.Workflows) *core.Service {
 		VSphere:    func(ctx context.Context, name string) (vsphere.Driver, error) { return a.VCenters().Get(ctx, name) },
 		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
 		Secrets: a.Secrets, REST: a.restSources(), Config: a.Cfg, Live: a.Live,
-		Dispatcher: a.Dispatcher(), Notifier: a.Notifier()}
+		Dispatcher: a.Dispatcher(), Notifier: a.Notifier(), AuditLog: a.AuditLog()}
 	svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) {
 		if vc, err := a.consoleAccount(ctx); vc != nil || err != nil {
 			return vc, err
@@ -563,6 +565,7 @@ func (a *App) RunWorker(ctx context.Context) error {
 	// channels (ADR-0023): every worker replica takes part.
 	go a.Dispatcher().Run(ctx)
 	go a.Notifier().Run(ctx)
+	go a.AuditLog().Run(ctx)
 	// Custom workflows' approval decisions whose signal failed (#81).
 	go func() {
 		t := time.NewTicker(30 * time.Second)
@@ -673,6 +676,21 @@ func (a *App) Dispatcher() *dispatch.Dispatcher {
 		t.Workflow = &dispatch.Workflow{Client: tc, Store: a.Store, TaskQueue: a.Cfg.Temporal.TaskQueue}
 	}
 	return &dispatch.Dispatcher{Store: a.Store, Log: a.Log, Targets: t}
+}
+
+// AuditLog sends audit events to the syslog servers and webhooks set in
+// Administration (ADR-0058). Syslog's HOSTNAME is the public URL's host:
+// the one name SIEM rules can rely on whichever replica sent.
+func (a *App) AuditLog() *auditlog.Forwarder {
+	hostname := ""
+	if u, err := url.Parse(a.Cfg.PublicURL); err == nil {
+		hostname = u.Hostname()
+	}
+	if hostname == "" || hostname == "localhost" {
+		hostname, _ = os.Hostname()
+	}
+	return &auditlog.Forwarder{Store: a.Store, Log: a.Log, Secret: dispatch.StoredSecret(a.Store, a.Secrets), Hostname: hostname,
+		WebhookHosts: func(ctx context.Context) []string { return a.live(ctx).WebhookHosts }}
 }
 
 // RunSync runs the inventory sync until ctx is done.

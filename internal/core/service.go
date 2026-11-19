@@ -8,6 +8,7 @@ import (
 	"path"
 	"slices"
 
+	"github.com/damhau/rvav/internal/auditlog"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/dispatch"
@@ -78,6 +79,9 @@ type Service struct {
 	// Dispatcher delivers events to subscriptions: their test runs here
 	// (ADR-0021).
 	Dispatcher *dispatch.Dispatcher
+	// AuditLog sends audit events to syslog servers and webhooks: their
+	// tests run here (ADR-0058).
+	AuditLog *auditlog.Forwarder
 	// GitBeforeCommit runs before each commit to the catalog's repository:
 	// tests move the branch with it.
 	GitBeforeCommit func(path string)

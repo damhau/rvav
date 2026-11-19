@@ -339,6 +339,66 @@ func (e ApprovalVoteDecision) Valid() bool {
 	}
 }
 
+// Defines values for AuditCategory.
+const (
+	AuditCategoryAccess         AuditCategory = "access"
+	AuditCategoryCatalog        AuditCategory = "catalog"
+	AuditCategoryExtensibility  AuditCategory = "extensibility"
+	AuditCategoryInfrastructure AuditCategory = "infrastructure"
+	AuditCategoryOther          AuditCategory = "other"
+	AuditCategoryPolicy         AuditCategory = "policy"
+	AuditCategoryRequest        AuditCategory = "request"
+	AuditCategorySettings       AuditCategory = "settings"
+	AuditCategorySignIn         AuditCategory = "sign_in"
+	AuditCategoryToken          AuditCategory = "token"
+)
+
+// Valid indicates whether the value is a known member of the AuditCategory enum.
+func (e AuditCategory) Valid() bool {
+	switch e {
+	case AuditCategoryAccess:
+		return true
+	case AuditCategoryCatalog:
+		return true
+	case AuditCategoryExtensibility:
+		return true
+	case AuditCategoryInfrastructure:
+		return true
+	case AuditCategoryOther:
+		return true
+	case AuditCategoryPolicy:
+		return true
+	case AuditCategoryRequest:
+		return true
+	case AuditCategorySettings:
+		return true
+	case AuditCategorySignIn:
+		return true
+	case AuditCategoryToken:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditDestinationKind.
+const (
+	AuditDestinationSyslog  AuditDestinationKind = "syslog"
+	AuditDestinationWebhook AuditDestinationKind = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the AuditDestinationKind enum.
+func (e AuditDestinationKind) Valid() bool {
+	switch e {
+	case AuditDestinationSyslog:
+		return true
+	case AuditDestinationWebhook:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AwxActionTypes.
 const (
 	AwxActionTypesDeployment AwxActionTypes = "deployment"
@@ -2343,6 +2403,111 @@ func (e SyncState) Valid() bool {
 	}
 }
 
+// Defines values for SyslogFacility.
+const (
+	FacilityAlert    SyslogFacility = "alert"
+	FacilityAudit    SyslogFacility = "audit"
+	FacilityAuth     SyslogFacility = "auth"
+	FacilityAuthpriv SyslogFacility = "authpriv"
+	FacilityClock    SyslogFacility = "clock"
+	FacilityCron     SyslogFacility = "cron"
+	FacilityDaemon   SyslogFacility = "daemon"
+	FacilityFtp      SyslogFacility = "ftp"
+	FacilityKern     SyslogFacility = "kern"
+	FacilityLocal0   SyslogFacility = "local0"
+	FacilityLocal1   SyslogFacility = "local1"
+	FacilityLocal2   SyslogFacility = "local2"
+	FacilityLocal3   SyslogFacility = "local3"
+	FacilityLocal4   SyslogFacility = "local4"
+	FacilityLocal5   SyslogFacility = "local5"
+	FacilityLocal6   SyslogFacility = "local6"
+	FacilityLocal7   SyslogFacility = "local7"
+	FacilityLpr      SyslogFacility = "lpr"
+	FacilityMail     SyslogFacility = "mail"
+	FacilityNews     SyslogFacility = "news"
+	FacilityNtp      SyslogFacility = "ntp"
+	FacilitySyslog   SyslogFacility = "syslog"
+	FacilityUser     SyslogFacility = "user"
+	FacilityUucp     SyslogFacility = "uucp"
+)
+
+// Valid indicates whether the value is a known member of the SyslogFacility enum.
+func (e SyslogFacility) Valid() bool {
+	switch e {
+	case FacilityAlert:
+		return true
+	case FacilityAudit:
+		return true
+	case FacilityAuth:
+		return true
+	case FacilityAuthpriv:
+		return true
+	case FacilityClock:
+		return true
+	case FacilityCron:
+		return true
+	case FacilityDaemon:
+		return true
+	case FacilityFtp:
+		return true
+	case FacilityKern:
+		return true
+	case FacilityLocal0:
+		return true
+	case FacilityLocal1:
+		return true
+	case FacilityLocal2:
+		return true
+	case FacilityLocal3:
+		return true
+	case FacilityLocal4:
+		return true
+	case FacilityLocal5:
+		return true
+	case FacilityLocal6:
+		return true
+	case FacilityLocal7:
+		return true
+	case FacilityLpr:
+		return true
+	case FacilityMail:
+		return true
+	case FacilityNews:
+		return true
+	case FacilityNtp:
+		return true
+	case FacilitySyslog:
+		return true
+	case FacilityUser:
+		return true
+	case FacilityUucp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SyslogTransport.
+const (
+	SyslogTCP SyslogTransport = "tcp"
+	SyslogTLS SyslogTransport = "tls"
+	SyslogUDP SyslogTransport = "udp"
+)
+
+// Valid indicates whether the value is a known member of the SyslogTransport enum.
+func (e SyslogTransport) Valid() bool {
+	switch e {
+	case SyslogTCP:
+		return true
+	case SyslogTLS:
+		return true
+	case SyslogUDP:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UiColumnWidget.
 const (
 	UiColumnWidgetNumber UiColumnWidget = "number"
@@ -4030,6 +4195,80 @@ type AssignableRoleList struct {
 	Items []AssignableRole `json:"items"`
 }
 
+// AuditCategory What an audit event is about, by its action's first word:
+// `sign_in` (`auth.*`), `token` (`token.*`, `awx.inventory_token`),
+// `access` (projects, members, environments, roles and group mappings),
+// `catalog`, `policy` (policies and naming), `infrastructure`
+// (placement, networks, templates, sizes, vCenters), `extensibility`
+// (subscriptions, workflows, resource types, day-2 actions and forms),
+// `settings` (settings, secrets, integrations, vRA import), `request`
+// (requests, deployments, approvals, the console, onboarding) and
+// `other` for anything else.
+type AuditCategory string
+
+// AuditDeliveryState defines model for AuditDeliveryState.
+type AuditDeliveryState struct {
+	// Backlog Events waiting to be sent.
+	Backlog int `json:"backlog"`
+
+	// Delivered Events sent since the destination was made.
+	Delivered int64 `json:"delivered"`
+
+	// Failures Failed attempts in a row since the last success.
+	Failures int `json:"failures"`
+
+	// LastError Why the last attempt failed, while it hasn't succeeded since.
+	LastError     *string    `json:"last_error,omitempty"`
+	LastErrorAt   *time.Time `json:"last_error_at,omitempty"`
+	LastSuccessAt *time.Time `json:"last_success_at,omitempty"`
+
+	// NextAttemptAt When the events waiting are tried again, after a failure.
+	NextAttemptAt *time.Time `json:"next_attempt_at,omitempty"`
+}
+
+// AuditDestination defines model for AuditDestination.
+type AuditDestination struct {
+	Categories []AuditCategory      `json:"categories"`
+	CreatedAt  time.Time            `json:"created_at"`
+	Enabled    bool                 `json:"enabled"`
+	Id         string               `json:"id"`
+	Kind       AuditDestinationKind `json:"kind"`
+	Name       string               `json:"name"`
+	State      AuditDeliveryState   `json:"state"`
+	Syslog     *AuditSyslog         `json:"syslog,omitempty"`
+	UpdatedAt  time.Time            `json:"updated_at"`
+	Webhook    *AuditWebhook        `json:"webhook,omitempty"`
+}
+
+// AuditDestinationKind defines model for AuditDestination.Kind.
+type AuditDestinationKind string
+
+// AuditDestinationList defines model for AuditDestinationList.
+type AuditDestinationList struct {
+	Items []AuditDestination `json:"items"`
+}
+
+// AuditDestinationTest defines model for AuditDestinationTest.
+type AuditDestinationTest struct {
+	DurationMs int `json:"duration_ms"`
+
+	// Message What the server answered, or why it couldn't be reached.
+	Message string `json:"message"`
+	Ok      bool   `json:"ok"`
+}
+
+// AuditDestinationWrite A syslog server or a webhook, exactly one.
+type AuditDestinationWrite struct {
+	// Categories Only the events of these categories; every event when empty or left out.
+	Categories *[]AuditCategory `json:"categories,omitempty"`
+
+	// Enabled Off: no event is queued for it or sent. On when left out.
+	Enabled *bool         `json:"enabled,omitempty"`
+	Name    string        `json:"name"`
+	Syslog  *AuditSyslog  `json:"syslog,omitempty"`
+	Webhook *AuditWebhook `json:"webhook,omitempty"`
+}
+
 // AuditEvent defines model for AuditEvent.
 type AuditEvent struct {
 	// Action Examples: catalog.version.publish
@@ -4051,6 +4290,42 @@ type AuditEventPage struct {
 
 	// NextCursor Null on the last page.
 	NextCursor *string `json:"next_cursor,omitempty"`
+}
+
+// AuditSyslog defines model for AuditSyslog.
+type AuditSyslog struct {
+	// AppName The APP-NAME field; rvav when left out.
+	AppName *string `json:"app_name,omitempty"`
+
+	// CaCertificate The CAs (PEM) that sign the server's certificate, trusted besides the system's and the CA bundle's. TLS only.
+	CaCertificate *string `json:"ca_certificate,omitempty"`
+
+	// ClientCertificate The certificate (PEM) rvav presents when the server asks for one. TLS only, with `client_key_secret`.
+	ClientCertificate *string `json:"client_certificate,omitempty"`
+
+	// ClientKeySecret The stored secret (Catalog items › Secrets) that holds the client certificate's private key, in PEM.
+	ClientKeySecret *string `json:"client_key_secret,omitempty"`
+
+	// Facility The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14).
+	Facility *SyslogFacility `json:"facility,omitempty"`
+
+	// Host The syslog server's name or address.
+	Host string `json:"host"`
+
+	// Port 6514 for TLS, 514 otherwise, when left out.
+	Port *int `json:"port,omitempty"`
+
+	// Transport `tls`: RFC 5425, octet-counting framing; `tcp`: the same framing in clear; `udp`: RFC 5426, one event per datagram. `tcp` and `udp` are for labs.
+	Transport *SyslogTransport `json:"transport,omitempty"`
+}
+
+// AuditWebhook defines model for AuditWebhook.
+type AuditWebhook struct {
+	// Secret The stored secret each body is signed with, in `X-Rvav-Signature` as subscriptions' webhooks are.
+	Secret string `json:"secret"`
+
+	// Url An HTTPS (or HTTP) URL on one of the hosts webhooks may call (Administration › Integrations › Allowed hosts).
+	Url string `json:"url"`
 }
 
 // AuthOptions defines model for AuthOptions.
@@ -9121,6 +9396,12 @@ type SubscriptionWrite struct {
 // longer found in vCenter.
 type SyncState string
 
+// SyslogFacility The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14).
+type SyslogFacility string
+
+// SyslogTransport `tls`: RFC 5425, octet-counting framing; `tcp`: the same framing in clear; `udp`: RFC 5426, one event per datagram. `tcp` and `udp` are for labs.
+type SyslogTransport string
+
 // System defines model for System.
 type System struct {
 	Install   []InstallSetting `json:"install"`
@@ -11116,6 +11397,12 @@ type CreateApprovalPolicyJSONRequestBody = ApprovalPolicyWrite
 // UpdateApprovalPolicyJSONRequestBody defines body for UpdateApprovalPolicy for application/json ContentType.
 type UpdateApprovalPolicyJSONRequestBody = ApprovalPolicyWrite
 
+// CreateAuditDestinationJSONRequestBody defines body for CreateAuditDestination for application/json ContentType.
+type CreateAuditDestinationJSONRequestBody = AuditDestinationWrite
+
+// UpdateAuditDestinationJSONRequestBody defines body for UpdateAuditDestination for application/json ContentType.
+type UpdateAuditDestinationJSONRequestBody = AuditDestinationWrite
+
 // UpdateAwxActionJSONRequestBody defines body for UpdateAwxAction for application/json ContentType.
 type UpdateAwxActionJSONRequestBody = AwxActionUpdate
 
@@ -12506,6 +12793,64 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /admin/approval-policies/{id} (the `UpdateApprovalPolicy` operationId).
 	UpdateApprovalPolicy(ctx context.Context, id IdPath, body UpdateApprovalPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAuditDestinations Where audit events are sent, with each one's delivery state (`integrations.manage`, or `audit.read` for all of rvav)
+	//
+	// Each destination gets the audit events written after it was made,
+	// of its categories (every category when it names none), as a syslog
+	// server (RFC 5424) or a webhook. Events wait in the database until
+	// they are delivered: `state` says how many wait, and how the last
+	// attempt went (ADR-0058).
+	//
+	// Corresponds with GET /admin/audit-destinations (the `ListAuditDestinations` operationId).
+	ListAuditDestinations(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAuditDestinationWithBody Send audit events to a syslog server or a webhook (`integrations.manage`)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/audit-destinations (the `CreateAuditDestination` operationId).
+	CreateAuditDestinationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAuditDestination Send audit events to a syslog server or a webhook (`integrations.manage`)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/audit-destinations (the `CreateAuditDestination` operationId).
+	CreateAuditDestination(ctx context.Context, body CreateAuditDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteAuditDestination Stop sending audit events there; those waiting are dropped (the audit log keeps them)
+	//
+	// Corresponds with DELETE /admin/audit-destinations/{id} (the `DeleteAuditDestination` operationId).
+	DeleteAuditDestination(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAuditDestination One destination, with its delivery state
+	//
+	// Corresponds with GET /admin/audit-destinations/{id} (the `GetAuditDestination` operationId).
+	GetAuditDestination(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAuditDestinationWithBody Change a destination; the events waiting for it are tried again at once
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/audit-destinations/{id} (the `UpdateAuditDestination` operationId).
+	UpdateAuditDestinationWithBody(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAuditDestination Change a destination; the events waiting for it are tried again at once
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/audit-destinations/{id} (the `UpdateAuditDestination` operationId).
+	UpdateAuditDestination(ctx context.Context, id IdPath, body UpdateAuditDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestAuditDestination Send a made-up event there now, once, and say how it went (`integrations.manage`)
+	//
+	// The test event's action is `settings.audit_destination.test` and its
+	// ID `test`. It isn't queued: a failure changes nothing of the
+	// destination's state.
+	//
+	// Corresponds with POST /admin/audit-destinations/{id}/test (the `TestAuditDestination` operationId).
+	TestAuditDestination(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAwxActions AWX templates offered as day-2 actions
 	//
@@ -15830,6 +16175,144 @@ func (c *Client) UpdateApprovalPolicyWithBody(ctx context.Context, id IdPath, co
 // Corresponds with PUT /admin/approval-policies/{id} (the `UpdateApprovalPolicy` operationId).
 func (c *Client) UpdateApprovalPolicy(ctx context.Context, id IdPath, body UpdateApprovalPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateApprovalPolicyRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAuditDestinations Where audit events are sent, with each one's delivery state (`integrations.manage`, or `audit.read` for all of rvav)
+//
+// Each destination gets the audit events written after it was made,
+// of its categories (every category when it names none), as a syslog
+// server (RFC 5424) or a webhook. Events wait in the database until
+// they are delivered: `state` says how many wait, and how the last
+// attempt went (ADR-0058).
+//
+// Corresponds with GET /admin/audit-destinations (the `ListAuditDestinations` operationId).
+func (c *Client) ListAuditDestinations(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAuditDestinationsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAuditDestinationWithBody Send audit events to a syslog server or a webhook (`integrations.manage`)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/audit-destinations (the `CreateAuditDestination` operationId).
+func (c *Client) CreateAuditDestinationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAuditDestinationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAuditDestination Send audit events to a syslog server or a webhook (`integrations.manage`)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/audit-destinations (the `CreateAuditDestination` operationId).
+func (c *Client) CreateAuditDestination(ctx context.Context, body CreateAuditDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAuditDestinationRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteAuditDestination Stop sending audit events there; those waiting are dropped (the audit log keeps them)
+//
+// Corresponds with DELETE /admin/audit-destinations/{id} (the `DeleteAuditDestination` operationId).
+func (c *Client) DeleteAuditDestination(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAuditDestinationRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAuditDestination One destination, with its delivery state
+//
+// Corresponds with GET /admin/audit-destinations/{id} (the `GetAuditDestination` operationId).
+func (c *Client) GetAuditDestination(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAuditDestinationRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAuditDestinationWithBody Change a destination; the events waiting for it are tried again at once
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/audit-destinations/{id} (the `UpdateAuditDestination` operationId).
+func (c *Client) UpdateAuditDestinationWithBody(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAuditDestinationRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAuditDestination Change a destination; the events waiting for it are tried again at once
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/audit-destinations/{id} (the `UpdateAuditDestination` operationId).
+func (c *Client) UpdateAuditDestination(ctx context.Context, id IdPath, body UpdateAuditDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAuditDestinationRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TestAuditDestination Send a made-up event there now, once, and say how it went (`integrations.manage`)
+//
+// The test event's action is `settings.audit_destination.test` and its
+// ID `test`. It isn't queued: a failure changes nothing of the
+// destination's state.
+//
+// Corresponds with POST /admin/audit-destinations/{id}/test (the `TestAuditDestination` operationId).
+func (c *Client) TestAuditDestination(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAuditDestinationRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -22848,6 +23331,222 @@ func NewUpdateApprovalPolicyRequestWithBody(server string, id IdPath, contentTyp
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAuditDestinationsRequest constructs an http.Request for the ListAuditDestinations method
+func NewListAuditDestinationsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/audit-destinations")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAuditDestinationRequest calls the generic CreateAuditDestination builder with application/json body
+func NewCreateAuditDestinationRequest(server string, body CreateAuditDestinationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAuditDestinationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateAuditDestinationRequestWithBody constructs an http.Request for the CreateAuditDestination method, with any body, and a specified content type
+func NewCreateAuditDestinationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/audit-destinations")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteAuditDestinationRequest constructs an http.Request for the DeleteAuditDestination method
+func NewDeleteAuditDestinationRequest(server string, id IdPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/audit-destinations/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAuditDestinationRequest constructs an http.Request for the GetAuditDestination method
+func NewGetAuditDestinationRequest(server string, id IdPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/audit-destinations/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAuditDestinationRequest calls the generic UpdateAuditDestination builder with application/json body
+func NewUpdateAuditDestinationRequest(server string, id IdPath, body UpdateAuditDestinationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAuditDestinationRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewUpdateAuditDestinationRequestWithBody constructs an http.Request for the UpdateAuditDestination method, with any body, and a specified content type
+func NewUpdateAuditDestinationRequestWithBody(server string, id IdPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/audit-destinations/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestAuditDestinationRequest constructs an http.Request for the TestAuditDestination method
+func NewTestAuditDestinationRequest(server string, id IdPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/audit-destinations/%s/test", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -34416,6 +35115,72 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /admin/approval-policies/{id} (the `UpdateApprovalPolicy` operationId).
 	UpdateApprovalPolicyWithResponse(ctx context.Context, id IdPath, body UpdateApprovalPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateApprovalPolicyResponse, error)
 
+	// ListAuditDestinationsWithResponse Where audit events are sent, with each one's delivery state (`integrations.manage`, or `audit.read` for all of rvav)
+	//
+	// Each destination gets the audit events written after it was made,
+	// of its categories (every category when it names none), as a syslog
+	// server (RFC 5424) or a webhook. Events wait in the database until
+	// they are delivered: `state` says how many wait, and how the last
+	// attempt went (ADR-0058).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/audit-destinations (the `ListAuditDestinations` operationId).
+	ListAuditDestinationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAuditDestinationsResponse, error)
+
+	// CreateAuditDestinationWithBodyWithResponse Send audit events to a syslog server or a webhook (`integrations.manage`)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/audit-destinations (the `CreateAuditDestination` operationId).
+	CreateAuditDestinationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAuditDestinationResponse, error)
+
+	// CreateAuditDestinationWithResponse Send audit events to a syslog server or a webhook (`integrations.manage`)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/audit-destinations (the `CreateAuditDestination` operationId).
+	CreateAuditDestinationWithResponse(ctx context.Context, body CreateAuditDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAuditDestinationResponse, error)
+
+	// DeleteAuditDestinationWithResponse Stop sending audit events there; those waiting are dropped (the audit log keeps them)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /admin/audit-destinations/{id} (the `DeleteAuditDestination` operationId).
+	DeleteAuditDestinationWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*DeleteAuditDestinationResponse, error)
+
+	// GetAuditDestinationWithResponse One destination, with its delivery state
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/audit-destinations/{id} (the `GetAuditDestination` operationId).
+	GetAuditDestinationWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*GetAuditDestinationResponse, error)
+
+	// UpdateAuditDestinationWithBodyWithResponse Change a destination; the events waiting for it are tried again at once
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/audit-destinations/{id} (the `UpdateAuditDestination` operationId).
+	UpdateAuditDestinationWithBodyWithResponse(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAuditDestinationResponse, error)
+
+	// UpdateAuditDestinationWithResponse Change a destination; the events waiting for it are tried again at once
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/audit-destinations/{id} (the `UpdateAuditDestination` operationId).
+	UpdateAuditDestinationWithResponse(ctx context.Context, id IdPath, body UpdateAuditDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAuditDestinationResponse, error)
+
+	// TestAuditDestinationWithResponse Send a made-up event there now, once, and say how it went (`integrations.manage`)
+	//
+	// The test event's action is `settings.audit_destination.test` and its
+	// ID `test`. It isn't queued: a failure changes nothing of the
+	// destination's state.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/audit-destinations/{id}/test (the `TestAuditDestination` operationId).
+	TestAuditDestinationWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*TestAuditDestinationResponse, error)
+
 	// ListAwxActionsWithResponse AWX templates offered as day-2 actions
 	//
 	// The templates of the organisation with a label of
@@ -38210,6 +38975,385 @@ func (r UpdateApprovalPolicyResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateApprovalPolicyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAuditDestinationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuditDestinationList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAuditDestinationsResponse) GetJSON200() *AuditDestinationList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListAuditDestinationsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListAuditDestinationsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAuditDestinationsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAuditDestinationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAuditDestinationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAuditDestinationsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateAuditDestinationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *AuditDestination
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateAuditDestinationResponse) GetJSON201() *AuditDestination {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateAuditDestinationResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateAuditDestinationResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateAuditDestinationResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateAuditDestinationResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateAuditDestinationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAuditDestinationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAuditDestinationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateAuditDestinationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteAuditDestinationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteAuditDestinationResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteAuditDestinationResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteAuditDestinationResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteAuditDestinationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteAuditDestinationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteAuditDestinationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteAuditDestinationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAuditDestinationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuditDestination
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAuditDestinationResponse) GetJSON200() *AuditDestination {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetAuditDestinationResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetAuditDestinationResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetAuditDestinationResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAuditDestinationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAuditDestinationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAuditDestinationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAuditDestinationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateAuditDestinationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuditDestination
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateAuditDestinationResponse) GetJSON200() *AuditDestination {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UpdateAuditDestinationResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateAuditDestinationResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateAuditDestinationResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateAuditDestinationResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateAuditDestinationResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateAuditDestinationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAuditDestinationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAuditDestinationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateAuditDestinationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type TestAuditDestinationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuditDestinationTest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r TestAuditDestinationResponse) GetJSON200() *AuditDestinationTest {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r TestAuditDestinationResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r TestAuditDestinationResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r TestAuditDestinationResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r TestAuditDestinationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TestAuditDestinationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestAuditDestinationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TestAuditDestinationResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -54526,6 +55670,120 @@ func (c *ClientWithResponses) UpdateApprovalPolicyWithResponse(ctx context.Conte
 	return ParseUpdateApprovalPolicyResponse(rsp)
 }
 
+// ListAuditDestinationsWithResponse Where audit events are sent, with each one's delivery state (`integrations.manage`, or `audit.read` for all of rvav)
+//
+// Each destination gets the audit events written after it was made,
+// of its categories (every category when it names none), as a syslog
+// server (RFC 5424) or a webhook. Events wait in the database until
+// they are delivered: `state` says how many wait, and how the last
+// attempt went (ADR-0058).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/audit-destinations (the `ListAuditDestinations` operationId).
+func (c *ClientWithResponses) ListAuditDestinationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAuditDestinationsResponse, error) {
+	rsp, err := c.ListAuditDestinations(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAuditDestinationsResponse(rsp)
+}
+
+// CreateAuditDestinationWithBodyWithResponse Send audit events to a syslog server or a webhook (`integrations.manage`)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/audit-destinations (the `CreateAuditDestination` operationId).
+func (c *ClientWithResponses) CreateAuditDestinationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAuditDestinationResponse, error) {
+	rsp, err := c.CreateAuditDestinationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAuditDestinationResponse(rsp)
+}
+
+// CreateAuditDestinationWithResponse Send audit events to a syslog server or a webhook (`integrations.manage`)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/audit-destinations (the `CreateAuditDestination` operationId).
+func (c *ClientWithResponses) CreateAuditDestinationWithResponse(ctx context.Context, body CreateAuditDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAuditDestinationResponse, error) {
+	rsp, err := c.CreateAuditDestination(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAuditDestinationResponse(rsp)
+}
+
+// DeleteAuditDestinationWithResponse Stop sending audit events there; those waiting are dropped (the audit log keeps them)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /admin/audit-destinations/{id} (the `DeleteAuditDestination` operationId).
+func (c *ClientWithResponses) DeleteAuditDestinationWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*DeleteAuditDestinationResponse, error) {
+	rsp, err := c.DeleteAuditDestination(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAuditDestinationResponse(rsp)
+}
+
+// GetAuditDestinationWithResponse One destination, with its delivery state
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/audit-destinations/{id} (the `GetAuditDestination` operationId).
+func (c *ClientWithResponses) GetAuditDestinationWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*GetAuditDestinationResponse, error) {
+	rsp, err := c.GetAuditDestination(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAuditDestinationResponse(rsp)
+}
+
+// UpdateAuditDestinationWithBodyWithResponse Change a destination; the events waiting for it are tried again at once
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/audit-destinations/{id} (the `UpdateAuditDestination` operationId).
+func (c *ClientWithResponses) UpdateAuditDestinationWithBodyWithResponse(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAuditDestinationResponse, error) {
+	rsp, err := c.UpdateAuditDestinationWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAuditDestinationResponse(rsp)
+}
+
+// UpdateAuditDestinationWithResponse Change a destination; the events waiting for it are tried again at once
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/audit-destinations/{id} (the `UpdateAuditDestination` operationId).
+func (c *ClientWithResponses) UpdateAuditDestinationWithResponse(ctx context.Context, id IdPath, body UpdateAuditDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAuditDestinationResponse, error) {
+	rsp, err := c.UpdateAuditDestination(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAuditDestinationResponse(rsp)
+}
+
+// TestAuditDestinationWithResponse Send a made-up event there now, once, and say how it went (`integrations.manage`)
+//
+// The test event's action is `settings.audit_destination.test` and its
+// ID `test`. It isn't queued: a failure changes nothing of the
+// destination's state.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/audit-destinations/{id}/test (the `TestAuditDestination` operationId).
+func (c *ClientWithResponses) TestAuditDestinationWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*TestAuditDestinationResponse, error) {
+	rsp, err := c.TestAuditDestination(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAuditDestinationResponse(rsp)
+}
+
 // ListAwxActionsWithResponse AWX templates offered as day-2 actions
 //
 // The templates of the organisation with a label of
@@ -60419,6 +61677,298 @@ func ParseUpdateApprovalPolicyResponse(rsp *http.Response) (*UpdateApprovalPolic
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAuditDestinationsResponse parses an HTTP response from a ListAuditDestinationsWithResponse call
+func ParseListAuditDestinationsResponse(rsp *http.Response) (*ListAuditDestinationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAuditDestinationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditDestinationList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAuditDestinationResponse parses an HTTP response from a CreateAuditDestinationWithResponse call
+func ParseCreateAuditDestinationResponse(rsp *http.Response) (*CreateAuditDestinationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAuditDestinationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AuditDestination
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteAuditDestinationResponse parses an HTTP response from a DeleteAuditDestinationWithResponse call
+func ParseDeleteAuditDestinationResponse(rsp *http.Response) (*DeleteAuditDestinationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteAuditDestinationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAuditDestinationResponse parses an HTTP response from a GetAuditDestinationWithResponse call
+func ParseGetAuditDestinationResponse(rsp *http.Response) (*GetAuditDestinationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAuditDestinationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditDestination
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAuditDestinationResponse parses an HTTP response from a UpdateAuditDestinationWithResponse call
+func ParseUpdateAuditDestinationResponse(rsp *http.Response) (*UpdateAuditDestinationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAuditDestinationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditDestination
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestAuditDestinationResponse parses an HTTP response from a TestAuditDestinationWithResponse call
+func ParseTestAuditDestinationResponse(rsp *http.Response) (*TestAuditDestinationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestAuditDestinationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditDestinationTest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	}
 
