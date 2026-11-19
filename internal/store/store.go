@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -34,6 +35,9 @@ type DB interface {
 
 type Store struct {
 	Pool *pgxpool.Pool
+	// held are WithLock's keys this process holds or waits for, each a
+	// channel of one.
+	held sync.Map
 }
 
 func Open(ctx context.Context, url string) (*Store, error) {
@@ -129,6 +133,16 @@ const (
 // WithLock runs fn holding a PostgreSQL advisory lock, waiting for whoever
 // holds it (another process included).
 func (s *Store) WithLock(ctx context.Context, key int64, fn func() error) error {
+	// Callers in this process wait their turn without a connection: as many
+	// waiting on the advisory lock as the pool has connections would leave
+	// the holder none for fn's queries (O1.2).
+	turn, _ := s.held.LoadOrStore(key, make(chan struct{}, 1))
+	select {
+	case turn.(chan struct{}) <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { <-turn.(chan struct{}) }()
 	conn, err := s.Pool.Acquire(ctx)
 	if err != nil {
 		return err

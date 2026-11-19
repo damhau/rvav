@@ -166,6 +166,20 @@ func (p *rvavProvider) Resources(context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		newProjectResource,
 		newCatalogItemResource,
+		newApprovalPolicyResource,
+		newDay2PolicyResource,
+		newNamingPolicyResource,
+		newLeasePolicyResource,
+		newLeaseRuleResource,
+		newDeploymentLimitPolicyResource,
+		newProjectQuotasResource,
+		newGlobalQuotasResource,
+		newRoleResource,
+		newRoleAssignmentResource,
+		newProjectMemberResource,
+		newGroupMappingResource,
+		newSubscriptionResource,
+		newSecretResource,
 	}
 }
 
@@ -173,5 +187,6 @@ func (p *rvavProvider) DataSources(context.Context) []func() datasource.DataSour
 	return []func() datasource.DataSource{
 		newProjectDataSource,
 		newCatalogItemDataSource,
+		newUserDataSource,
 	}
 }

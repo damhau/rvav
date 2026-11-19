@@ -93,6 +93,22 @@ Where the API doesn't delete, destroying does what the web app does:
 - **A catalog item that was requested is withdrawn**, with a warning:
   rvav keeps it for its requests' history, and nobody can request it
   again. An item never requested is deleted.
+- **An environment's lease stays**, with a warning, as every environment
+  has one. A project's override is removed.
+
+What the API sets as a whole is one resource: a project's quotas
+(`rvav_project_quotas`, its limits and its members'), and rvav's
+(`rvav_global_quotas`). Terraform then owns all of them: those its
+configuration leaves out are removed. Things the API keys by more than an
+ID take a composite one: a project's lease override is `dev/prj_web`, a
+member `prj_web/usr_afavre`, a project's secret `prj_web/cmdb-hook`.
+
+The resources cover what rvav governs with: projects and catalog items;
+approval, day-2, naming, lease and deployment limit policies, lease
+rules and quotas; roles, their assignments, project members and group
+mappings; secrets and event subscriptions. Infrastructure (vCenters,
+templates, placement) stays in the web app: it is set up once, and its
+objects come from vCenter.
 
 A catalog item's `definition` is the version Terraform writes: a change
 makes a new version, published (deprecating the one before) unless
@@ -106,6 +122,12 @@ configuration's again.
   run with the API's end-to-end tests, so a removed or renamed field fails
   them.
 - `make terraform-dist` needs `zip`, as `make cli-dist` does.
+- Terraform makes ten changes at once. Changes of who administers rvav or
+  a project wait for one lock; its waiters held a pooled connection each,
+  so that ten of them left the holder none, and the API hung. They now
+  wait in the process, without a connection (`Store.WithLock`).
+- A secret's value never comes back from rvav: Terraform can't see it
+  changed in the web app, and an import doesn't have it.
 - Terraform downloads nothing for the provider, and the provider's
   archives aren't signed: a mirror's integrity is its directory's and the
   lock file's checksums.
