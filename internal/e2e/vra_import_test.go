@@ -285,4 +285,35 @@ func TestVRAImport(t *testing.T) {
 	}, model)
 }
 
+// TestVRALatestSnapshot: the estate read last is the one the plan works
+// from, even when the clock stepped back since the read before, as a VM's
+// clock does (#140).
+func TestVRALatestSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		e := vra.SampleEstate(time.Now())
+		var first, second api.VraSnapshot
+		h.json("POST", "/api/v1/admin/vra/snapshots", admin, e, 201, &first)
+		if _, err := h.store.Pool.Exec(ctx, `update vra_snapshots set created_at = now() + interval '1 hour'`); err != nil {
+			t.Fatal(err)
+		}
+		e.Deployments = e.Deployments[:1]
+		h.json("POST", "/api/v1/admin/vra/snapshots", admin, e, 201, &second)
+		var st api.VraImportStatus
+		h.json("GET", "/api/v1/admin/vra", admin, nil, 200, &st)
+		if second.Id == first.Id || st.Snapshot == nil || st.Snapshot.Id != second.Id || st.Snapshot.Counts.Deployments != 1 {
+			t.Fatalf("first %s, second %s, latest %+v", first.Id, second.Id, st.Snapshot)
+		}
+		var p api.VraPlan
+		h.json("GET", "/api/v1/admin/vra/plan", admin, nil, 200, &p)
+		if p.Snapshot.Id != second.Id || len(p.Deployments) != 1 {
+			t.Fatalf("plan of %s, %d deployments", p.Snapshot.Id, len(p.Deployments))
+		}
+	})
+}
+
 func ptr[T any](v T) *T { return &v }

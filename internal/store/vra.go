@@ -64,8 +64,11 @@ type VRASnapshot struct {
 
 func (s *Store) SaveVRASnapshot(ctx context.Context, v VRASnapshot) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `insert into vra_snapshots (id, read_at, source, url, estate, counts, created_by)
-			values ($1, $2, $3, $4, $5, $6, $7)`, v.ID, v.ReadAt, v.Source, v.URL, v.Estate, v.Counts, v.CreatedBy); err != nil {
+		// The latest is the one created last: after the one before, even
+		// when the clock stepped back since, as a VM's clock can.
+		if _, err := tx.Exec(ctx, `insert into vra_snapshots (id, read_at, source, url, estate, counts, created_by, created_at)
+			values ($1, $2, $3, $4, $5, $6, $7, greatest(now(), (select max(created_at) + interval '1 microsecond' from vra_snapshots)))`,
+			v.ID, v.ReadAt, v.Source, v.URL, v.Estate, v.Counts, v.CreatedBy); err != nil {
 			return err
 		}
 		// Only the latest reads are kept: each holds a whole estate.
