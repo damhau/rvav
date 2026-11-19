@@ -106,6 +106,12 @@ members.
 ### The importer
 - vRA's `ROLE:project_supervisor` becomes `supervisor` in a day-2
   policy's authorities, instead of `project-admin`.
+- An approval policy's role approvers, `ROLE:project_supervisor`,
+  `ROLE:project_administrator`, `ROLE:project_member` and
+  `ROLE:project_viewer`, become the level's roles in the plan's notes; the
+  approver `MANAGER`, or the approval type `MANAGER`, its `manager`.
+  Another role is reported as unmapped. Policies stay planned, not
+  imported.
 
 ## Consequences
 - ADR-0034's "Approvers stay people" now reads: the users a level names or

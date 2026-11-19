@@ -173,22 +173,47 @@ func planApproval(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(st
 	if m, _ := def["approvalMode"].(string); m == "ALL_OF" {
 		mode = "all of them"
 	}
-	var groups, users []string
+	var groups, users, roles, unknownRoles []string
+	approvalType, _ := def["approvalType"].(string)
+	manager := strings.EqualFold(approvalType, "manager")
 	for _, a := range strs(def["approvers"]) {
 		kind, name, ok := strings.Cut(a, ":")
 		switch {
+		case isManager(a):
+			manager = true
 		case ok && strings.EqualFold(kind, "group"):
 			groups = append(groups, name)
 		case ok && strings.EqualFold(kind, "user"):
 			users = append(users, name)
+		case ok && strings.EqualFold(kind, "role"):
+			if k, known := roleKeys["ROLE:"+strings.ToLower(name)]; known {
+				roles = append(roles, k)
+			} else {
+				unknownRoles = append(unknownRoles, a)
+			}
 		default:
 			users = append(users, a)
 		}
 	}
-	who := strings.Join(append(groups, users...), ", ")
-	note(Info, "approvers", fmt.Sprintf("Level %d: %s, %s.", max(level, 1), who, mode))
+	who := append(groups, users...)
+	if len(roles) > 0 {
+		who = append(who, "whoever holds "+strings.Join(roles, " or ")+" in the project")
+	}
+	if manager {
+		who = append(who, "the requester's manager")
+	}
+	note(Info, "approvers", fmt.Sprintf("Level %d: %s, %s.", max(level, 1), strings.Join(who, ", "), mode))
 	if len(groups) > 0 {
 		note(Warning, "approvers", "vRA names groups by email ("+strings.Join(groups, ", ")+"): give rvav the group's name in the identity provider.")
+	}
+	if len(roles) > 0 {
+		note(Info, "approvers", "Project roles: "+strings.Join(roles, ", ")+", in the level's roles.")
+	}
+	if manager {
+		note(Info, "approvers", "The requester's manager: set the level's manager, and the identity provider's manager claim.")
+	}
+	if len(unknownRoles) > 0 {
+		note(Unmapped, "approvers", "No rvav project role for "+strings.Join(unknownRoles, ", ")+": name a role or the users.")
 	}
 	if days, ok := num(def["autoApprovalExpiry"]); ok && days > 0 {
 		decision := "reject"
@@ -197,6 +222,11 @@ func planApproval(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(st
 		}
 		note(Info, "autoApprovalExpiry", fmt.Sprintf("Unanswered after %dh: %s.", days*24, decision))
 	}
+}
+
+// isManager: vRA's approver for the requester's manager.
+func isManager(a string) bool {
+	return strings.EqualFold(a, "manager") || strings.EqualFold(a, "role:manager") || strings.EqualFold(a, "role:requester_manager")
 }
 
 func planDay2(pl *PolicyPlan, def map[string]any, note func(string, string, string), scope string) {

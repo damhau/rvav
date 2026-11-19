@@ -1,6 +1,7 @@
 package vraimport
 
 import (
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -47,5 +48,38 @@ func TestPlanPolicies(t *testing.T) {
 		if got != want || ok != (want != "") {
 			t.Fatalf("%s = %q %v, want %q", in, got, ok, want)
 		}
+	}
+}
+
+// TestPlanApprovalRoles: vRA's role approvers become project roles, its
+// manager the requester's manager; a role rvav has no match for is said.
+func TestPlanApprovalRoles(t *testing.T) {
+	approval := func(def string) PolicyPlan {
+		e := vra.Estate{Policies: []vra.Policy{{ID: "p", Name: "p", TypeID: vra.PolicyApproval, EnforcementType: "HARD",
+			Definition: json.RawMessage(def)}}}
+		return PlanPolicies(&e)[0]
+	}
+	has := func(p PolicyPlan, level, text string) bool {
+		return slices.ContainsFunc(p.Notes, func(n Note) bool { return n.Level == level && n.Text == text })
+	}
+	p := approval(`{"level":2,"approvalMode":"ALL_OF","approvalType":"ROLE","approvers":["ROLE:project_supervisor","role:Project_Administrator","USER:claire.dubois@corp.example"],"actions":["Deployment.Create"]}`)
+	if !has(p, Info, "Level 2: claire.dubois@corp.example, whoever holds supervisor or project-admin in the project, all of them.") ||
+		!has(p, Info, "Project roles: supervisor, project-admin, in the level's roles.") ||
+		slices.ContainsFunc(p.Notes, func(n Note) bool { return n.Level == Unmapped || strings.Contains(n.Text, "manager") }) {
+		t.Fatalf("roles = %+v", p.Notes)
+	}
+	for _, def := range []string{
+		`{"level":1,"approvalMode":"ANY_OF","approvalType":"MANAGER","approvers":[],"actions":["Deployment.Create"]}`,
+		`{"level":1,"approvalMode":"ANY_OF","approvalType":"USER","approvers":["MANAGER"],"actions":["Deployment.Create"]}`,
+	} {
+		if p := approval(def); !has(p, Info, "Level 1: the requester's manager, any of them.") ||
+			!has(p, Info, "The requester's manager: set the level's manager, and the identity provider's manager claim.") {
+			t.Fatalf("%s = %+v", def, p.Notes)
+		}
+	}
+	p = approval(`{"level":1,"approvalType":"ROLE","approvers":["ROLE:org_owner","GROUP:leads@corp.example"],"actions":["Cloud.vSphere.Machine.PowerOff"]}`)
+	if !has(p, Unmapped, "No rvav project role for ROLE:org_owner: name a role or the users.") ||
+		!has(p, Info, "Level 1: leads@corp.example, any of them.") || !strings.Contains(p.Becomes, "day-2 policy") {
+		t.Fatalf("unknown role = %+v", p)
 	}
 }

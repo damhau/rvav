@@ -59,6 +59,19 @@ to the item it became:
 Policies aren't imported: they decide who may do what, so an
 administrator sets each from what the plan says.
 
+An approval policy's approvers read as a level's
+([ADR-0041](../adr/0041-approvers-by-role.md)):
+
+| vRA approver | The level's |
+|---|---|
+| `GROUP:<email>` | OIDC group: give the group's name in the identity provider, not vRA's email. |
+| `USER:<name>` | Users. |
+| `ROLE:project_supervisor`, `ROLE:project_administrator`, `ROLE:project_member`, `ROLE:project_viewer` | Project roles: `supervisor`, `project-admin`, `member`, `viewer`. Another role is reported. |
+| `MANAGER`, or the approval type `MANAGER` | The requester's manager: also set the identity provider's **Manager claim**. |
+
+A day-2 policy's `ROLE:project_supervisor` authority becomes the
+`supervisor` role.
+
 Placement rules aren't imported either: they name vCenter objects that
 vRA's projects don't. The **Projects** tab gives each project's
 **Placement strategy**, the one that places as vRA's `placementPolicy`
