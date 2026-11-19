@@ -142,3 +142,49 @@ describe("the mocks' resize, move and handover", () => {
     expect(run(d, "change_owner", { owner: to }).stored?.request.status).toBe("running");
   });
 });
+
+const post = async (path: string) => {
+  const res = await fetch(`http://localhost/api/v1${path}`, {
+    method: "POST",
+    headers: { Authorization: "Bearer test", "Idempotency-Key": crypto.randomUUID() },
+  });
+  return { status: res.status, body: (await res.json()) as { title?: string; status?: string } };
+};
+
+// As the server's retry (ADR-0013, ADR-0047): a rollback gave back the
+// request's quota, its place in the deployment limits and its names, so a
+// retry takes them again; a retried day-2 action is checked as if asked now.
+describe("the mocks' retries", () => {
+  it("refuse a retry after a rollback when its name or its quota is taken since", async () => {
+    const worker = dep("web-dev-worker");
+    expect((await post("/requests/REQ-10482/rollback")).status).toBe(202);
+    const other = dep("web-dev-api");
+    other.name = "web-dev-worker";
+    const named = await post("/requests/REQ-10482/retry");
+    expect(named).toMatchObject({
+      status: 409,
+      body: {
+        title:
+          "Another deployment of Web Platform is named web-dev-worker since the rollback. Submit a new request instead.",
+      },
+    });
+    other.name = "web-dev-api";
+    limitState(db).policies.push(limit({ deployments_per_user: 0 }));
+    expect((await post("/requests/REQ-10482/retry")).status).toBe(409);
+    limitState(db).policies = [];
+    expect((await post("/requests/REQ-10482/retry")).status).toBe(202);
+    expect(worker.status).toBe("provisioning");
+  });
+
+  it("refuse a retried resize past a hard quota", async () => {
+    const d = dep("web-dev-api");
+    const r = grow(d, 2).stored!;
+    r.request.status = "failed";
+    db.requests.unshift(r);
+    d.status = "failed";
+    db.quota.prj_web!.limits.vcpu = db.quota.prj_web!.used.vcpu;
+    const retried = await post(`/requests/${r.request.number}/retry`);
+    expect(retried.status).toBe(409);
+    expect(retried.body.title).toMatch(/^The new size needs 2 vCPU but Web Platform has 0 left\./);
+  });
+});

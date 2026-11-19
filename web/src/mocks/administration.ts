@@ -51,9 +51,13 @@ interface AdminState {
   naming: S["NamingPolicy"][];
   quotas: Record<string, S["QuotaLimit"][]>;
   leases: S["LeasePolicy"][];
-  /** Lease rules (ADR-0048), and the rule that decided each deployment's lease. */
+  /**
+   * Lease rules (ADR-0048), the rule that decided each deployment's lease,
+   * and the administrators' rule that held it when it was a project admin's.
+   */
   leaseRules: S["LeaseRule"][];
   leaseRuleOf: Record<string, string>;
+  leaseCapOf: Record<string, string>;
   approvals: S["ApprovalPolicy"][];
   day2: S["Day2Policy"][];
   integrations: Record<
@@ -364,6 +368,7 @@ export function adminState(db: Db): AdminState {
     ], // prettier-ignore
     leaseRules: [],
     leaseRuleOf: {},
+    leaseCapOf: {},
     approvals: [
       {
         id: "pol_prd_vm", name: "Production VMs", reason: "Production VMs need sign-off", condition: 'environment == "prd"',

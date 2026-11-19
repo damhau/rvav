@@ -100,7 +100,19 @@ Subscription (event → awx template | webhook)
   version and inputs are those of the request that created it, or of its
   last update that succeeded. Its name is unique among the project's live
   deployments, whatever the case, and its description says what it is for
-  ([ADR-0046](adr/0046-deployment-names-and-versions.md)).
+  ([ADR-0046](adr/0046-deployment-names-and-versions.md)). Its lease keeps
+  the end (`expiry_action`) it got at request, and the lease rule that
+  decided it (`lease_rule_id`), whose terms it follows; when that rule is a
+  project admin's, also the administrators' rule that held it
+  (`lease_cap_rule_id`), which it is held to field by field and which
+  decides once the first is gone
+  ([ADR-0048](adr/0048-lease-rules-and-lifetime.md)).
+- **LeaseRule**: a lease for the deployments a CEL condition matches,
+  tried by priority before the lease policies: global or a project's, for
+  every environment or one, with the terms of a lease policy and an
+  enforcement. A project admin's rule never gives more than the first
+  matching rule an administrator wrote, or else the lease an
+  administrator set ([ADR-0048](adr/0048-lease-rules-and-lifetime.md)).
 - **Resource**: `type` (`vsphere.vm` | `ipam.address` | `dns.record` |
   `vsphere.drs_rule`), external ID (VM MoRef plus instance UUID, IP ID, ...),
   properties (JSONB), sync state (`in_sync` | `drifted` | `missing`). A VM's
@@ -130,19 +142,23 @@ Subscription (event → awx template | webhook)
   `condition` (CEL), `priority`, `enforcement` (`hard` | `soft`), `spec` (JSONB,
   depends on type). A project's policies are written by its project admins
   (`project.policies.manage`), except those an administrator wrote last
-  (`set_by_admin`); a hard global one still wins. Soft lease and
-  day-2 policies warn, and a request that goes on keeps its warnings
+  (`set_by_admin`); a hard global one still wins. Soft lease and day-2
+  policies, lease rules and deployment limits warn, and a request that
+  goes on keeps its warnings
   ([ADR-0045](adr/0045-deployment-sharing-and-project-policies.md)). Types:
   - `approval`: levels, approvers, auto-approve conditions, timeout behaviour.
-  - `lease`: default, max, grace period, max extensions, expiry action.
+  - `lease`: default, max, grace period, max extensions, expiry action,
+    and the lifetime (`max_lifetime_days`), counted from the deployment's
+    creation ([ADR-0048](adr/0048-lease-rules-and-lifetime.md)).
   - `day2`: which roles can run which actions under which conditions.
   - `naming`: template and counter scope.
   - `quota`: see Quota above (stored as a policy for consistent evaluation).
-  - **DeploymentLimitPolicy**: global or a project's, for every environment
-    or one; any of deployments per user, deployments per project, and vCPU
-    and memory per deployment. Each limit is decided on its own by
-    priority, a hard stricter global policy winning over a project's
-    ([ADR-0047](adr/0047-user-and-global-quotas.md)).
+- **DeploymentLimitPolicy**: global or a project's, for every environment
+  or one, with a priority and an enforcement; any of deployments per
+  user, deployments per project, and vCPU and memory per deployment. Each
+  limit is decided on its own by the first policy by priority that sets
+  it, and every hard global policy that sets it holds too
+  ([ADR-0047](adr/0047-user-and-global-quotas.md)).
 
 ### Extensibility
 - **Subscription**: event topic (for example `deployment.provision.post`,

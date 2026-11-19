@@ -1016,6 +1016,25 @@ function day2Vars(
  * apply. A hard one passed refuses it at the input it is about; it returns
  * the resources over a soft quota and the soft limits' warnings.
  */
+/**
+ * As the server's retry of a day-2 action: its hard quotas and deployment
+ * limits checked as if it were asked for now. Why it can't run again, ""
+ * when it can.
+ */
+export function retriedActionRefusal(db: Db, r: StoredRequest): string {
+  const req = r.request;
+  const d = db.deployments.find((x) => x.id === req.deployment_ids?.[0]);
+  const key = req.action?.key;
+  if (!d || !key) return "";
+  const vm = d.resources.find((x): x is VmResource => x.id === req.resource?.id && x.type === "vsphere.vm");
+  const a =
+    catalogue.find((x) => x.key === key && Boolean(x.deployment) === !vm) ?? catalogue.find((x) => x.key === key);
+  if (!a) return "";
+  return day2Checks(db, a, d, vm, req.inputs ?? {})
+    .errors.map((e) => e.message)
+    .join(" ");
+}
+
 function day2Checks(db: Db, a: MockAction, d: DeploymentDetail, vm: VmResource | undefined, inputs: Inputs) {
   const none = { errors: [] as FieldError[], overSoft: [] as string[], warnings: [] as PolicyWarning[] };
   const now = deploymentUsage(d);

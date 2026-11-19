@@ -94,7 +94,7 @@ A lease policy reads as one of rvav's leases
 | vRA lease policy | rvav |
 |---|---|
 | Without criteria | The lease policy of each of the project's environments, or of every environment. |
-| With criteria | A lease rule, tried before the lease policies. Criteria on inputs and the project's name become its condition, in CEL. Other criteria, such as the catalog item or `requestedBy`, are reported: write the condition yourself, for example `item.slug == "gpu-server"`. |
+| With criteria | A lease rule, tried before the lease policies. Criteria on inputs and the project's name become its condition, in CEL, and `input.environment` or `input.env` becomes `environment`. When one criterion can't be read, such as one on the catalog item or `requestedBy`, none of them is: the plan reports them, and you write the condition yourself, for example `item.slug == "gpu-server"`. |
 | `leaseTermMax` | The maximum, in days. |
 | `leaseTotalTermMax` | The lifetime, in days from the deployment's creation: past it, an extension needs approval, or warns under a soft lease. vRA counts no extensions, so the plan says how many the lifetime holds: allow at least that many. |
 | `leaseGrace` | The grace days, between the end of the lease and the deletion. |
@@ -229,7 +229,7 @@ check it) or *unmapped* (left out).
 
 | vRA | rvav |
 |---|---|
-| Released versions | The catalog item's versions (`1` becomes `1.0`): the latest as a draft, the earlier ones deprecated. vRA lets requesters pick any released version; to offer the earlier ones too, publish the draft, then open each earlier version's menu on the **Versions** tab and choose **Offer *n* again**. Unreleased versions are left out. |
+| Released versions | The catalog item's versions (`1` becomes `1.0`): the latest as a draft, the earlier ones deprecated. vRA lets requesters pick any released version; to offer the earlier ones too, publish the draft, then open each earlier version's menu on the **Versions** tab and choose **Offer *n* again, beside *m***. Unreleased versions are left out. |
 | `inputs` (string, integer, number, boolean; `enum`, `oneOf`, `default`, `pattern`, `min`/`max`, `title`, `description`, `format: date`, `format: date-time`, `encrypted`) | The form: fields, choices, defaults, checks; `encrypted` becomes a secret field, without its default, which the requester types. An encrypted input that isn't text (a number, a list, an object), or an object or a table with an encrypted property, is reported and left out, so its value isn't kept in clear: add a secret text field by hand if the template needs it. An input without a default is required. |
 | List inputs (`type: array`) | Text items are tags; text items with `enum` or `oneOf` a multi-select of those choices; object items a table, with a column per property: text, a number, a boolean, or text with choices (a select column). `minItems`, `maxItems`, `uniqueItems` and the rows' `required` are kept. Lists of numbers or booleans, and rows with a list or an object, are reported, and left out. |
 | Object inputs (`type: object`) | A group of fields, with a sub-field per property: text, a number, a boolean, or text with choices (a select). The object's `required` is kept. An object without properties, or with a list or an object in it, is reported, and left out. |

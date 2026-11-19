@@ -96,6 +96,8 @@ export interface LeaseChoice {
   /** What decides, by name: a rule, "<project> in <environment>" or the environment; null for nothing. */
   policy: string | null;
   rule?: S["LeaseRule"];
+  /** The administrators' rule that holds the rule, when it is a project admin's. */
+  cap?: S["LeaseRule"];
   considered: S["PolicyConsidered"][];
 }
 
@@ -155,6 +157,7 @@ export function chooseLease(
     ? { terms: ruleAuthority.rule as LeaseTerms, name: `the rule ${ruleAuthority.rule.name}` }
     : adminLease(db, projectId, env);
   let rule: S["LeaseRule"] | undefined;
+  let cap: S["LeaseRule"] | undefined;
   for (const t of matched) {
     const c = considered[t.at]!;
     if (rule) {
@@ -167,6 +170,7 @@ export function chooseLease(
         c.why = `It would decide, but a project admin's rule can't give more than ${authority.name}: ${looser[0]!.message}`;
         continue;
       }
+      cap = ruleAuthority?.rule;
     }
     c.applies = true;
     if (!t.failed) c.why = `Decides: ${t.rule.condition}.`;
@@ -190,7 +194,7 @@ export function chooseLease(
           ? "The project's own lease overrides it."
           : "The environment's lease.",
     });
-  if (rule) return { terms: rule, policy: rule.name, rule, considered };
+  if (rule) return { terms: rule, policy: rule.name, rule, ...(cap ? { cap } : {}), considered };
   return { terms: base ?? noLease, policy: base ? baseName : null, considered };
 }
 
@@ -206,17 +210,41 @@ export function leaseTooLong(db: Db, c: LeaseChoice, env: string, days: number |
   return "";
 }
 
-/** The lease a deployment is under now, as the server's deployment row reads it: its rule, else the policies. */
+/** The lesser of two limits, as SQL's least: a missing one sets none. */
+const least = (a: number | null | undefined, b: number | null | undefined) =>
+  a == null ? (b ?? null) : b == null ? a : Math.min(a, b);
+
+/**
+ * The lease a deployment is under now, as the server's deployment row reads
+ * it: its rule, held field by field to the administrators' rule that held it
+ * at request; that rule once its own is gone; else the policies.
+ */
 export function deploymentLease(db: Db, d: S["DeploymentDetail"]): { terms: LeaseTerms; policy: string } | undefined {
   const st = adminState(db);
-  const ruleId = st.leaseRuleOf[d.id];
-  const rule = st.leaseRules.find(
-    (r) =>
-      r.id === ruleId &&
-      (!r.project_id || r.project_id === d.project.id) &&
-      (!r.environment || r.environment === d.environment),
-  );
+  const fits = (id: string | undefined) =>
+    st.leaseRules.find(
+      (r) =>
+        r.id === id &&
+        (!r.project_id || r.project_id === d.project.id) &&
+        (!r.environment || r.environment === d.environment),
+    );
+  const rule = fits(st.leaseRuleOf[d.id]);
+  const cap = fits(st.leaseCapOf[d.id]);
+  if (rule && cap)
+    return {
+      terms: {
+        default_days: least(rule.default_days, cap.default_days),
+        max_days: least(rule.max_days, cap.max_days),
+        max_extensions: least(rule.max_extensions, cap.max_extensions) ?? 0,
+        grace_days: least(rule.grace_days, cap.grace_days) ?? rule.grace_days,
+        expiry_action: rule.expiry_action,
+        enforcement: cap.enforcement === "hard" ? "hard" : rule.enforcement,
+        max_lifetime_days: least(rule.max_lifetime_days, cap.max_lifetime_days),
+      },
+      policy: rule.name,
+    };
   if (rule) return { terms: rule, policy: rule.name };
+  if (cap) return { terms: cap, policy: cap.name };
   const override = st.leases.find((l) => l.environment === d.environment && l.project_id === d.project.id);
   if (override) return { terms: override, policy: `${d.project.name} in ${envName(db, d.environment)}` };
   const own = st.leases.find((l) => l.environment === d.environment && !l.project_id);

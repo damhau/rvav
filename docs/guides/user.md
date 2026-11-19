@@ -69,11 +69,14 @@ one to ask your project admin or administrator for.
    and the values it reads, not the address.
 4. **Deployment** (for an item that makes deployments): optionally, a
    name and a description of what it is for.
-   - Left empty, rvav names the deployment after its VM, or after the item
-     and the request number.
+   - Left empty, rvav names a one-VM deployment after its VM. A
+     deployment of several VMs takes the name its item sets, or the item's
+     name and the request number. When another deployment of the project
+     has that name, rvav adds the request number.
    - A name you give is unique in the project, whatever the case: the
-     form refuses one a deployment of the project already has, and a VM
-     name the project's naming gives, such as `web-dev-app007`.
+     form refuses one that a deployment of the project already has, unless
+     that deployment is deleted, and a VM name the project's naming gives,
+     such as `web-dev-app007`.
    - When the request makes several deployments, they are numbered:
      `Payroll 1`, `Payroll 2`.
    - The description shows with the deployment. Approvers read the
@@ -239,7 +242,13 @@ their times and tasks.
     composite's AWX, workflow and REST call steps aren't undone by it.
   - Once rolled back (by you, or by a composite that undoes what it built
     when it fails), there is nothing left to roll back: **Retry** runs it
-    all again, without a new approval.
+    all again, without a new approval. The rollback gave back the
+    request's quota and its deployments' names, so the retry takes them
+    again: it's refused when a hard quota or deployment limit no longer
+    has room, or when another deployment of the project took one of the
+    names since. Submit a new request instead.
+  - A retried day-2 action, such as a resize, is checked against the
+    quotas and deployment limits as they are when you retry it.
 - **Request again:** a new request with the same answers.
 
 ## Your deployments
@@ -397,8 +406,10 @@ those whose action warns: run it on each one.
   Accept the changes to make them rvav's. Otherwise, change the VM back in
   vCenter.
 - **Leases:** you are told before a lease ends. Extend it, or let it end.
-  What happens at the end (power off then delete, or delete) is the
-  environment's policy, or a rule's for the item. An extension beyond the
+  What happens at the end (power off then delete, or delete) is set when
+  you request the deployment: by the lease rule that matched it, or by
+  the environment's lease policy. A later change to the rule or policy
+  doesn't change it. An extension beyond the
   policy, or past the deployment's lifetime, asks the project's
   approvers, or, under a soft policy, warns you and needs no approval. The
   deployment's **Lease** panel says which rule or policy sets its lease,
@@ -426,8 +437,9 @@ deployment:
      **Deletes**;
    - **Can't be changed in place:** each change rvav can't make to the
      existing VMs, and why;
-   - **Quota after this update:** what the project uses afterwards. A
-     smaller size or fewer VMs frees quota;
+   - **Quota after this update:** for each resource, the quota with the
+     least left afterwards, such as the project's or the owner's in the
+     project. A smaller size or fewer VMs frees quota;
    - **Limits after this update:** the deployment's vCPU and memory
      afterwards, against the deployment limits that apply. Only an update
      that grows the deployment can go beyond one;

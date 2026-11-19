@@ -34,7 +34,7 @@ import { limitCheck } from "./limits";
 import { roleRefs } from "./roles";
 import { bound, entryVars, validationErrors } from "./formLibrary";
 import { clusters, datastores, dnsZones, networks, prefix, sizes, vmFolders, type SizeKey } from "./inventory";
-import type { Db, StoredItem } from "./seed";
+import type { Db, StoredItem, StoredRequest } from "./seed";
 
 type Inputs = Record<string, unknown>;
 
@@ -698,6 +698,51 @@ export function ruled(db: Db, item: StoredItem, project: Project, draft: Request
   const fields = settledStates(db, db.forms[item.id], inputs, varsOf(db, project, draft));
   const errors = applyStates(db.forms[item.id], fields, inputs, (x) => validateInputs(db, item, x));
   return { inputs, fields, errors };
+}
+
+/**
+ * As the server's retry after a rollback, which gave back the request's
+ * quota, its deployments' place in the deployment limits and their names:
+ * why it can't take them again, "" when it can. Its approval stands, so a
+ * soft quota or limit doesn't refuse it.
+ */
+export function rolledBackRetryRefusal(db: Db, r: StoredRequest): string {
+  const req = r.request;
+  const item = db.items.find((i) => i.id === req.catalog_item.id);
+  const project = db.projects.find((p) => p.id === req.project.id);
+  if (!item || !project) return "";
+  const inputs = req.inputs ?? {};
+  const need = demand(item, inputs, req.count ?? 1);
+  const owner = req.on_behalf_of ?? req.requester;
+  const env = db.environments.find((e) => e.key === req.environment) ?? { key: req.environment, name: req.environment };
+  const sc = { project, env, owner, you: owner.id === db.me.user.id };
+  const made = need.vm_count === 0 ? 0 : multiParts(item.slug, inputs) ? 1 : need.vm_count;
+  const vcpu = made === 1 ? need.vcpu : need.vcpu / Math.max(need.vm_count, 1);
+  const memory = made === 1 ? need.memory_gb : need.memory_gb / Math.max(need.vm_count, 1);
+  const hard = [
+    ...(need.vm_count ? quotaCheck(db, sc, "This request", need).hard : []),
+    ...(made
+      ? limitCheck(db, sc, {
+          toOwner: made,
+          toProject: made,
+          vcpu,
+          memory,
+          addVcpu: vcpu,
+          addMemory: memory,
+          many: made > 1,
+        }).hard
+      : []),
+  ];
+  if (hard.length) return hard.join(" ");
+  const gone = db.deployments.filter((d) => req.deployment_ids?.includes(d.id) && d.status === "deleted");
+  const taken = gone.find((d) =>
+    db.deployments.some(
+      (o) => o.id !== d.id && o.project.id === d.project.id && o.status !== "deleted" && o.name === d.name,
+    ),
+  );
+  return taken
+    ? `Another deployment of ${project.name} is named ${taken.name} since the rollback. Submit a new request instead.`
+    : "";
 }
 
 /**

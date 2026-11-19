@@ -393,9 +393,13 @@ Catalog admins and administrators build items under **Catalog items**
   write-only); **AWX templates**, those imported from AWX.
 - An item's page: **Publish** the draft or **New draft** in its header, and a
   ⋯ menu for the whole item (request form, export, withdraw, delete). Its
-  tabs: **Versions** (a row menu to publish a draft, roll back to a
-  deprecated version, withdraw the published one, export as YAML or
-  discard; **Compare** two versions), **Form designer**, **Definition**
+  tabs: **Versions** (a row menu to publish a draft, or publish it and
+  keep the versions offered now requestable (**Publish n, keeping m
+  requestable**); roll back to a deprecated version, or **Offer n again,
+  beside m**; **Retire n** while another version is offered, or
+  **Withdraw** the only one; export as YAML or discard; **Compare** two
+  versions; [ADR-0046](adr/0046-deployment-names-and-versions.md)),
+  **Form designer**, **Definition**
   (the version as YAML), **Details** (icon from rvav's own set),
   **Sharing** (the projects, then a table of who may request it in each,
   changed in a sheet that previews who can request, the every-project
@@ -581,27 +585,47 @@ it.
   ([ADR-0024](adr/0024-multi-vm-blueprints.md)), and a preview of the clusters,
   datastores, networks with their subnets, and folder a request would get,
   with what would stop it), **Quotas** (limits for the project or one
-  environment, refused or sent to approval when passed, saved as a whole)
-  and **Details** (archive, or put back in use).
+  environment, refused or sent to approval when passed, saved as a whole;
+  then **Each member's quota**, one limit per resource that each member
+  may hold, which a project admin writes within the project's own and an
+  administrator's lines stay locked to them: `MemberQuotas`, on
+  `QuotaLines`; [ADR-0047](adr/0047-user-and-global-quotas.md)) and
+  **Details** (archive, or put back in use).
 - **Policies**, in tabs (`?tab=`, one file each in
   `features/admin/governance/policies/`), each kind a table whose row menu
   changes a policy in a side panel and removes it after saying what
   changes: approval and day-2 policies (moved up and down, given a
   priority or turned off from the row menu; a condition that isn't valid
-  CEL is refused when saved, under its field), lease policies (an environment's, and projects'
-  overrides), naming policies (template, counter, where offered, and a
-  preview of the next names with the ones skipped because they are taken)
-  and **What applies here**, which says which policy decides the approval,
-  day-2 action, lease and naming for a project and environment, with the
-  quota lines. Day-2 and lease policies have an **Enforcement**; soft rows
-  say so. A project admin (`project.policies.manage`) gets the page
-  without the Naming tab: rows they may not change have no menu, a
+  CEL is refused when saved, under its field). The **Lease** tab has the
+  lease policies (an environment's, and projects' overrides) and the
+  **Lease rules** above them, tried by priority: a CEL condition, an
+  environment and a project, and the terms a match gets, a lifetime
+  (`max_lifetime_days`) included
+  ([ADR-0048](adr/0048-lease-rules-and-lifetime.md)). The **Limits** tab
+  has the deployment limit policies: deployments per user and per
+  project, and vCPU and memory per deployment, for a project and an
+  environment or for all ([ADR-0047](adr/0047-user-and-global-quotas.md)).
+  The **Quotas** tab, shown with `project.settings.read`, has **All of
+  rvav** and **Each user across rvav** (`RvavQuotas`, on `QuotaLines`).
+  Then naming policies (template, counter, where offered, and a preview of
+  the next names with the ones skipped because they are taken) and **What
+  applies here**, which says which policy decides the approval, day-2
+  action, lease and naming for a project, environment, item and action,
+  read with the **Inputs (JSON)** given, with the quota lines and each
+  deployment limit. Day-2 and lease policies, lease rules and deployment
+  limit policies have an **Enforcement**; soft rows say so. A project
+  admin (`project.policies.manage`) gets the page without the Naming
+  and Quotas tabs: rows they may not change have no menu, a
   project's row an administrator set says so (`SetByAdmin`), the side
   panel's **Project** offers only the projects whose policies they write
   (an auditor's too), and moving is off, as it renumbers every project's
-  policies (`usePolicyRights` in `policies/shared.tsx`; ADR-0045). Saving
-  or removing a policy also refreshes deployments' actions and request
-  previews (`useRefreshPolicies`).
+  policies (`usePolicyRights` in `policies/shared.tsx`; ADR-0045). Copy
+  that says to add or change something shows only to who can. Saving or
+  removing a policy also refreshes deployments' actions and request
+  previews (`useRefreshPolicies`, which resolves once the list is read
+  again); saving a quota does too. Each kind is read through `adm` in
+  `lib/query.ts`, keyed `["admin", kind]`: `leaseRules`, `limitPolicies`,
+  `globalQuotas`, and `userQuotas(projectId)`.
 - **Soft warnings** (`components/common/warnings.tsx`): `PolicyWarnings`
   is a `note` listing what soft policies warn about, in the request form's
   summary, the day-2 dialog, the update's review and a request's page
@@ -617,7 +641,11 @@ it.
   the focus on its choice once saved. Under owners only, **Requests**
   says it lists the person's own requests and drops **Only mine**, unless
   they hold `deployments.read_all` there. A deployment's **Lease** panel
-  says when its lease policy is soft (`lease.enforcement`).
+  says when its lease policy is soft (`lease.enforcement`), how long it
+  may live (`max_lifetime_days`, `lifetime_ends_at`) and what decides it
+  ("Set by RHEL builds."). Its **Description** heads the details, and
+  **Edit deployment** in **Actions** renames it and changes its
+  description, the name unique in its project.
 - **Templates and networks**: VM templates (a vCenter template, or an
   item of a content library) and sizes, with where each is offered
   (projects and environments), and the network mappings, from EfficientIP
@@ -876,6 +904,18 @@ The request form (`features/requests/RequestFormPage.tsx`) has an
 - **For someone else:** project admins only. That person owns what is
   built.
 
+- **Deployment:** when the item names its deployment
+  (`names_deployments`), an optional **Name**, unique in the project, and
+  **Description**. Left empty, rvav names it; several deployments are
+  numbered from the name.
+
+The **Lease** field says what decides it ("Set by …"). The summary's
+**Quota after this request** shows one meter per resource: the level that refuses,
+else the one with the least left (`tightest` in
+`features/requests/quota.ts`), named after its level ("vCPU · per
+member"). **Limits after this request** shows the deployment limits that
+apply (`LimitMeters`).
+
 **Save as draft** keeps the request as filled: unchecked, and without
 secret fields (`/me/drafts`). Drafts are listed at the top of Requests
 (**Resume**, **Discard**). A resumed draft is discarded once submitted.
@@ -909,7 +949,9 @@ navigates instead of opening a dialog) opens
 `/deployments/$deploymentId/update` (`features/deployments/UpdatePage.tsx`,
 [ADR-0042](adr/0042-deployment-updates.md)):
 
-- **The form** is the item's published version's, through `FormRenderer`.
+- **The form** is the version picked under **Version**, the newest by
+  default when the item offers several (`q.form` takes a version ID),
+  through `FormRenderer`.
   `startValues` starts it from the deployment's inputs: secret ones are
   left out, and on the same version a defaulted field the deployment
   doesn't have reads `null` (it was emptied), as F1.4's defaults have it;
@@ -921,8 +963,9 @@ navigates instead of opening a dialog) opens
   request form does.
 - **What the update does** previews the draft, debounced, with
   `keepPreviousData`: the changes, those refused (**Can't be changed in
-  place**), the quota after the update (a negative change frees some) and
-  the approval. **Review the update** is unavailable while nothing
+  place**), **Quota after this update** as the request form shows it (a
+  negative change frees some), **Limits after this update**, and the
+  approval. **Review the update** is unavailable while nothing
   changes (`unchanged`), something is refused or not allowed.
 - **Review** fetches a fresh preview, then asks in a `ConfirmDialog` that
   lists what the update deletes; it is `danger` when it deletes anything.

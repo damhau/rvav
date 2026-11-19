@@ -814,7 +814,8 @@ leaves it to other policies. A policy that sets no limit is refused.
 Every deployment not deleted counts: a failed one, one still being built,
 and one whose request waits for approval. A multi-VM item makes one
 deployment with all its VMs; a single-VM item makes one deployment for
-each VM; a composite item is as large as its largest step.
+each VM; a composite item makes the deployments of its VM steps, and is
+as large as the largest of them.
 
 Each limit is decided on its own: the first enabled policy, by priority,
 that sets it and applies to the request's project and environment
@@ -873,9 +874,10 @@ environment's lease. A rule for every project therefore wins over a
 project's lease.
 
 A deployment keeps the rule it got when it was requested, and follows
-the rule's changes. When you remove the rule, or the deployment moves to
-a project the rule isn't for, it gets its project's or environment's
-lease. Deployments that rvav takes over from vCenter or vRA get the lease
+the rule's changes, except its end: power off then delete, delete, or
+notify only stays what it got at request. When you remove the rule, or
+the deployment moves to a project the rule isn't for, it gets its
+project's or environment's lease. Deployments that rvav takes over from vCenter or vRA get the lease
 policies', not a rule's.
 
 When a project admin's rule decides a deployment's lease, the deployment
@@ -890,7 +892,7 @@ policies only.
 When a rule's condition can't be read, for example because it needs an
 input the item's form doesn't have:
 - the request form's preview and **What applies here** skip the rule,
-  and say why;
+  and **What applies here** says why;
 - on submit, the rule applies only if it gives no more than the lease
   without rules.
 
@@ -926,8 +928,8 @@ only their projects' policies: the others have no menu. A project admin:
 - sets a policy's priority instead of moving it up or down, which
   renumbers every project's policies;
 - can't write a lease override or a lease rule looser than what
-  administrators set: a longer default or maximum, no lease where the
-  environment gives one, more extensions or grace days, a gentler end, a
+  administrators set: a longer maximum, no lease where the environment
+  gives one, more extensions or grace days, a gentler end, a
   longer lifetime or none, or **Soft** over a hard lease. An override is
   held to the environment's lease. A rule is held, in each environment it
   may apply in, to the project's lease an administrator set, else to the
@@ -1404,9 +1406,9 @@ An item's tabs:
     becomes the only version people can request. Requests and deployments
     keep the version they were made with;
   - **Publish *n*, keeping *m* requestable** publishes a draft beside the
-    versions offered now, and **Offer *n* again** offers a deprecated
-    version beside them. Requesters then pick a version on the form, the
-    newest preselected, and updates move to any of them;
+    versions offered now, and **Offer *n* again, beside *m*** offers a
+    deprecated version beside them. Requesters then pick a version on the
+    form, the newest preselected, and updates move to any of them;
   - **Retire** a published version when several are: requests and updates
     can't use it any more, and the newest of the others is the default.
     A form still open on it is refused as out of date;

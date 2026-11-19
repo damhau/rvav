@@ -27,7 +27,7 @@ import {
   type StoredApproval,
 } from "./approvals";
 import { can } from "@/lib/can";
-import { actionsFor, runAction, type RunResult } from "./day2";
+import { actionsFor, retriedActionRefusal, runAction, type RunResult } from "./day2";
 import { unaccepted } from "./warnings";
 import { previewUpdate, runUpdate } from "./update";
 import { bus, matches } from "./events";
@@ -62,7 +62,7 @@ import { sharedWith, sharingHandlers } from "./sharing";
 import { listingHandlers, seesDeployment, visibleDeployments } from "./listing";
 import { faults } from "./faults";
 import { namesDeployments } from "./deploymentNames";
-import { demand, policyVars, preview, resolveField, ruled, summarize, vmCount } from "./logic";
+import { demand, policyVars, preview, resolveField, rolledBackRetryRefusal, ruled, summarize, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import {
   cancel,
@@ -232,6 +232,7 @@ function createDeployment(
   };
   db.deployments.unshift(dep);
   if (lease.rule) adminState(db).leaseRuleOf[dep.id] = lease.rule.id;
+  if (lease.cap) adminState(db).leaseCapOf[dep.id] = lease.cap.id;
   const q = db.quota[project.id];
   if (q) {
     const need = demand(item, inputs, count);
@@ -893,6 +894,14 @@ export const handlers = [
       );
     if (d?.status === "deleted" && !rolledBack)
       return problem(409, "conflict", "The deployment was deleted since. Submit a new request instead.");
+    // A retry has no inputs to point a refusal at.
+    const refused =
+      r.request.kind === "day2"
+        ? retriedActionRefusal(db, r)
+        : rolledBack && d?.status === "deleted"
+          ? rolledBackRetryRefusal(db, r)
+          : "";
+    if (refused) return problem(409, "conflict", refused);
     // The failed step and the ones after it run again; after a rollback,
     // everything after the approval.
     r.steps = r.steps.filter((s) => s.key !== "rollback");

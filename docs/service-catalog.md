@@ -1335,8 +1335,10 @@ a way to put a changed field back to its default.
 ## 5. Policies
 
 All policies have a scope (global, project or item), a CEL condition, and a priority.
-Project admins write their project's approval, lease and day-2 policies;
-administrators write the global ones, which a project's can't loosen
+Project admins write their project's approval, lease and day-2 policies,
+lease rules and deployment limit policies, and each member's quota within
+the project's own. Administrators write the global ones, which a project's
+can't loosen, and the naming policies and quotas
 ([ADR-0045](adr/0045-deployment-sharing-and-project-policies.md)):
 - an approval policy adds its levels to those of every other policy that
   matches; levels with the same approvers merge only within one scope, so
@@ -1344,11 +1346,16 @@ administrators write the global ones, which a project's can't loosen
 - the first day-2 policy that matches decides, unless a hard global one
   that matches after it is stricter; a project's approval and a hard
   global approval both apply, the global levels first;
-- a project's lease override replaces the environment's lease, and a
-  project admin's can't give more than it.
+- the first lease rule that matches decides the lease; without one, a
+  project's lease override replaces the environment's lease. A project
+  admin's override or rule can't give more than an administrator's;
+- each deployment limit is decided by the first policy, by priority, that
+  sets it, and every hard global policy that sets it holds too, so a
+  project's policy only tightens it.
 
-Lease and day-2 policies are hard or soft. Hard refuses or asks for
-approval; soft warns, and the requester may go on. The request keeps the
+Lease and day-2 policies, lease rules and deployment limit policies are
+hard or soft. Hard refuses or asks for approval; soft warns, and the
+requester may go on. The request keeps the
 warnings it went on despite, and the audit log has them.
 
 ### Approval
@@ -1364,10 +1371,17 @@ warnings it went on despite, and the audit log has them.
 
 ### Lease
 - Default and maximum lease; "never expires" only where the policy allows it.
+- Lease rules: a CEL condition, such as `item.slug == "gpu-server"`, gives
+  the deployments it matches their own lease, tried by priority before the
+  lease policies ([ADR-0048](adr/0048-lease-rules-and-lifetime.md)).
+- Lifetime: how long a deployment may live in all, counted from its
+  creation. An extension past it needs approval.
 - Reminders before expiry (for example 7 days and 1 day).
 - Self-service extension within limits, or extension through approval.
-- Soft: a longer lease, or an extension beyond the limits, warns instead.
-- Expiry action: power off → grace period → delete (configurable).
+- Soft: a longer lease, or an extension beyond the limits or the
+  lifetime, warns instead.
+- Expiry action: power off → grace period → delete (configurable), set
+  when the deployment is requested.
 
 ### Day-2 entitlement
 - Which roles can run which actions, on which resource types, under which
@@ -1375,8 +1389,21 @@ warnings it went on despite, and the audit log has them.
 - Soft: a deny or an approval warns instead, with its reason.
 
 ### Quota
-- Per project and optionally per environment: vCPU, RAM, storage, VM count.
+- vCPU, RAM, storage and VM count, at five levels
+  ([ADR-0047](adr/0047-user-and-global-quotas.md)): the project, the
+  project in one environment, each member of the project, all of rvav,
+  and each user across rvav. A request must fit every level.
+- A request made on someone's behalf counts for them.
 - Hard (block) or soft (warn, or require approval).
+
+### Deployment limits
+- Deployments per user and per project, and vCPU and memory per
+  deployment, for every project or one, and every environment or one
+  ([ADR-0047](adr/0047-user-and-global-quotas.md)).
+- Checked on a request, on an update or a resize that grows the
+  deployment, on a move to another project, on a handover, and when an
+  approver changes a request's inputs.
+- Hard (block) or soft (warn).
 
 ### Placement
 - Project → allowed compute, storage and network targets: clusters, with a
@@ -1406,8 +1433,8 @@ warnings it went on despite, and the audit log has them.
 - Detail page: summary, resources (VMs with live power state, IPs, DNS names),
   topology diagram, inputs, **timeline** of all requests and day-2 runs, lease,
   audit.
-- Edit the name and description, change owner or project (with quota
-  and name checks).
+- Edit the name and description, change owner or project (with quota,
+  deployment limit and name checks).
 - Onboarding: adopt existing vCenter VMs into a deployment.
 
 ## 7. Day-2 actions
