@@ -16,7 +16,7 @@ import (
 func updateVM(name, ip string, cpu, memGB int, disks ...int) existingVM {
 	vm := api.VmProperties{Moref: "vm-" + name, CpuCount: cpu, MemoryMb: memGB * 1024, PowerState: api.On,
 		GuestState: api.VmPropertiesGuestStateRunning, Fqdn: new(name + ".corp.example"), Cluster: new("GVA-DEV-CL01"),
-		Nics: []api.VmNic{{Network: "dvpg-app", IpAddresses: &[]string{ip}}}}
+		Template: new("tpl"), Nics: []api.VmNic{{Network: "dvpg-app", IpAddresses: &[]string{ip}}}}
 	for i, gb := range disks {
 		file := fmt.Sprintf("[ds] %s/%s_%d.vmdk", name, name, i)
 		vm.Disks = append(vm.Disks, api.VmDisk{Label: day2.DiskLabel(i + 1), CapacityGb: gb, Key: new(2000 + i), File: &file, BlueprintDisk: new(i)})
@@ -189,6 +189,29 @@ func TestUpdateScale(t *testing.T) {
 	c.plan(u)
 	if u.remove[0].Op != "delete_resources" || u.remove[0].Args["resource"] != "rule" || len(u.refused) != 1 {
 		t.Fatalf("scale to one: %+v, refused %+v", u.remove[0], u.refused)
+	}
+}
+
+// The VMs rvav built go by their index, 10 after 9, and those adopted
+// after them: scaling in removes an adopted VM first.
+func TestUpdateScaleInOrder(t *testing.T) {
+	legacy := updateVM("legacy-web01", "10.0.0.21", 2, 4, 50)
+	legacy.t.VM.Template = nil
+	vms := []existingVM{legacy, updateVM("web10", "10.0.0.20", 2, 4, 50), updateVM("web09", "10.0.0.19", 2, 4, 50)}
+	slices.SortFunc(vms, byIndex)
+	var names []string
+	for _, vm := range vms {
+		names = append(names, vm.name())
+	}
+	if want := []string{"web09", "web10", "legacy-web01"}; !slices.Equal(names, want) {
+		t.Fatalf("order %v, want %v", names, want)
+	}
+	plan := blueprint.VMPlan{VCPU: 2, MemoryGB: 4, DiskGB: 50, Template: "tpl"}
+	u := newPlan()
+	c := componentChange{key: "web", title: "Web servers", had: true, old: plan, new: plan, count: 2, vms: vms}
+	c.plan(u)
+	if got := keysOf(u.remove); !slices.Contains(got, "vsphere.destroy@legacy-web01") || len(u.removed) != 1 {
+		t.Fatalf("scale in removes %v", got)
 	}
 }
 

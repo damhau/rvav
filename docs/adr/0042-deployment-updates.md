@@ -98,9 +98,9 @@ and a deployment that failed half-way was retried or deleted.
   as a new request's VMs are, with the index after the existing ones
   (`self.index`). Names are given when the update is submitted, not in
   the preview.
-- **Scale in removes the VMs with the highest indices,** with their
-  addresses and DNS records, as Delete does for each. A VM protected from
-  deletion refuses it.
+- **Scale in removes the VMs adopted into the component first, then
+  those with the highest indices,** with their addresses and DNS records,
+  as Delete does for each. A VM protected from deletion refuses it.
 - The component's DRS rule is set again for its new members. VMs can't be
   added to NSX segments made for the deployment.
 
@@ -160,9 +160,13 @@ and a deployment that failed half-way was retried or deleted.
 - While an update that adds VMs runs, a VM already built is counted both
   as used and as reserved until the request ends, which errs towards
   refusing another request.
-- An onboarded or adopted deployment has no inputs recorded: an update
-  compares from its form's defaults, so only what the user changes from
-  them reaches its VMs. Its first plan is worth reading against the VMs.
+- An onboarded or adopted deployment may have no inputs recorded: an
+  update then compares from its version's initial values, so only what
+  the user changes from them reaches its VMs. A placement input it never
+  recorded (cluster, datastore, network) isn't refused where its VMs
+  already are. Its first plan is worth reading against the VMs: rvav
+  doesn't know which of their disks are the blueprint's, so it refuses
+  to grow or remove them.
 - The importer maps vRA's `Deployment.Update` to `update` in day-2
   policies, and says that an approval policy for `Deployment.Create` now
   covers updates too, unless its condition adds

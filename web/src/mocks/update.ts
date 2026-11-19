@@ -45,6 +45,8 @@ const text = (v: unknown) => (typeof v === "string" ? v : "");
 const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 const sizeOf = (v: unknown): SizeKey => (typeof v === "string" && v in sizes ? (v as SizeKey) : "M");
 const byName = (a: VmResource, b: VmResource) => a.name.localeCompare(b.name, "en", { numeric: true });
+// As the server: the VMs built by their number, then those adopted (no template), which scale in removes first.
+const byIndex = (a: VmResource, b: VmResource) => Number(!a.vm.template) - Number(!b.vm.template) || byName(a, b);
 
 // Each input in a stable order, so that two equal inputs compare equal.
 const stable = (v: unknown): string =>
@@ -74,12 +76,12 @@ function componentsOf(item: StoredItem, inputs: Inputs, vms: number): Component[
 function vmsOf(d: DeploymentDetail, item: StoredItem, c: Component): VmResource[] {
   const all = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const mine = multiParts(item.slug, d.inputs) ? all.filter((v) => v.name.includes(`-${c.role}`)) : all;
-  return mine.sort(byName);
+  return mine.sort(byIndex);
 }
 
 /** The names the next VMs of a component take: its counter continues, never reusing one. */
 function nextNames(db: Db, d: DeploymentDetail, vms: VmResource[], c: Component, n: number): string[] {
-  const last = vms.at(-1)?.name;
+  const last = vms.filter((v) => v.vm.template).at(-1)?.name;
   const m = last ? /^(.*?)(\d+)$/.exec(last) : null;
   const project = db.projects.find((p) => p.id === d.project.id);
   if (!m || !project) return project ? vmNames(db, project, d.environment, c.role, n) : [];

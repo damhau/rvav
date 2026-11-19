@@ -1438,7 +1438,10 @@ first says what stops. A subscription's row opens its page, where
     deployment**: give an environment, an owner, a catalog item, and
     optionally a lease and the **Inputs** the deployments record, as if
     they had been requested with them. A later **Update** starts from
-    those inputs; the others are the form's defaults.
+    those inputs; the others are the form's defaults. Without inputs, it
+    starts from the form's initial values, and accepts the cluster,
+    datastore and network the VMs are on. It doesn't grow or remove an
+    adopted VM's disks: rvav doesn't know which are the blueprint's.
   - **Into an existing deployment**: choose a ready deployment of the
     project. Its owner, lease and inputs stay. rvav refuses a VM that
     doesn't fit, with why: another OS family, a name the deployment has

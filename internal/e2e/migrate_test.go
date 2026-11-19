@@ -3,12 +3,15 @@ package e2e
 import (
 	"context"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/vmware/govmomi/simulator"
+	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/store"
@@ -217,6 +220,51 @@ func TestMigrateSupervisor(t *testing.T) {
 	if err := store.Migrate(ctx, databaseURL); err != nil {
 		t.Fatalf("up again: %v", err)
 	}
+}
+
+// TestMigrateUpdateRequests: rolling back past updates (00074) is refused
+// while update requests exist, which rvav before them can't read; it goes
+// down once there are none, and up again.
+func TestMigrateUpdateRequests(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		cfg, err := pgx.ParseConfig(databaseURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db := stdlib.OpenDB(*cfg)
+		defer db.Close()
+		goose.SetBaseFS(migrations.FS)
+		if err := goose.SetDialect("postgres"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.store.Pool.Exec(ctx, `insert into requests (id, number, kind, item_id, version_id, project_id, environment,
+			title, status, requester_id, owner_id, inputs)
+			select 'req_u1', 'REQ-U1', 'update', i.id, v.id, 'prj_web', 'dev', 'Update', 'succeeded', 'usr_tnguyen', 'usr_tnguyen', '{}'
+			from catalog_items i join catalog_item_versions v on v.item_id = i.id where i.slug = 'rhel9-server' limit 1`); err != nil {
+			t.Fatal(err)
+		}
+		const before = 73
+		if err := goose.DownToContext(ctx, db, ".", before); err == nil || !strings.Contains(err.Error(), "requests of kind update exist") {
+			t.Fatalf("down with an update request: %v", err)
+		}
+		var kind string
+		if err := h.store.Pool.QueryRow(ctx, `select kind from requests where id = 'req_u1'`).Scan(&kind); err != nil || kind != "update" {
+			t.Fatalf("the update request after the refusal: %q, %v", kind, err)
+		}
+		if _, err := h.store.Pool.Exec(ctx, `delete from requests where id = 'req_u1'`); err != nil {
+			t.Fatal(err)
+		}
+		if err := goose.DownToContext(ctx, db, ".", before); err != nil {
+			t.Fatalf("down without one: %v", err)
+		}
+		if err := store.Migrate(ctx, databaseURL); err != nil {
+			t.Fatalf("up again: %v", err)
+		}
+	})
 }
 
 // TestMigrateItemSharing: an item shared with a project before G1.2 is

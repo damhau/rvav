@@ -82,6 +82,21 @@ type existingVM struct {
 
 func (v existingVM) name() string { return v.t.ResourceName }
 
+// adopted: rvav didn't clone the VM, which has no template recorded.
+func (v existingVM) adopted() bool { return deref(v.t.VM.Template) == "" }
+
+// byIndex orders the VMs rvav built by their index, then those adopted:
+// scale in removes the last.
+func byIndex(a, b existingVM) int {
+	switch {
+	case a.adopted() == b.adopted():
+		return naturalCompare(a.name(), b.name())
+	case a.adopted():
+		return 1
+	}
+	return -1
+}
+
 // componentChange compares one component's VMs as the deployment's
 // version made them with what the new version makes of them.
 type componentChange struct {
@@ -422,6 +437,12 @@ func (s *Service) compare(ctx context.Context, u *updatePlan, resources []store.
 	}
 	var oldInputs map[string]any
 	_ = json.Unmarshal(u.d.Inputs, &oldInputs)
+	// A deployment adopted without inputs is compared as if requested with
+	// its version's initial values. One with some keeps them, as a key left
+	// out can be a default the requester emptied.
+	if len(oldInputs) == 0 {
+		_ = json.Unmarshal(u.from.InitialValues, &oldInputs)
+	}
 	if old.Multi() != ev.Blueprint.Multi() {
 		u.refused = append(u.refused, api.UpdateRefusal{Setting: present.Ptr("components"),
 			Reason: "The new version splits the VM into components, or the components into one VM: request a new deployment instead."})
@@ -448,7 +469,7 @@ func (s *Service) compare(ctx context.Context, u *updatePlan, resources []store.
 		byComp[key] = append(byComp[key], existingVM{t: t, preventDelete: prevent[t.ResourceID]})
 	}
 	for _, list := range byComp {
-		slices.SortFunc(list, func(a, b existingVM) int { return naturalCompare(a.name(), b.name()) })
+		slices.SortFunc(list, byIndex)
 	}
 	order := optionOrder(ev.Version.UISchema, "post_config")
 	u.delta = map[string]int{"vcpu": 0, "memory_gb": 0, "storage_gb": 0, "vm_count": 0}
@@ -661,6 +682,22 @@ func (c componentChange) scaleIn(u *componentPlan, refuse func(setting, reason s
 	}
 }
 
+func vmCluster(vm api.VmProperties) string { return deref(vm.Cluster) }
+
+func vmDatastore(vm api.VmProperties) string {
+	if len(vm.Disks) == 0 {
+		return ""
+	}
+	return deref(vm.Disks[0].Datastore)
+}
+
+func vmNetwork(vm api.VmProperties) string {
+	if len(vm.Nics) == 0 {
+		return ""
+	}
+	return vm.Nics[0].Network
+}
+
 // blueprintDisks are a VM's disks by the blueprint disk rvav recorded
 // each is (ADR-0042).
 func blueprintDisks(t day2.Target) map[int]api.VmDisk {
@@ -691,16 +728,24 @@ func (c componentChange) inPlace(u *componentPlan, vms []existingVM, refuse func
 	if o.Template != n.Template || o.Library != n.Library {
 		refuse("template", fmt.Sprintf("The template changes from %s to %s: rvav can't clone the existing VMs again in place.", or(o.Template), or(n.Template)))
 	}
-	for _, x := range []struct{ setting, what, old, new string }{
-		{"cluster", "cluster", o.Cluster, n.Cluster}, {"datastore", "datastore", o.Datastore, n.Datastore},
-		{"resource_pool", "resource pool", o.ResourcePool, n.ResourcePool}, {"host", "host", o.Host, n.Host},
-		{"datastore_cluster", "datastore cluster", o.DatastoreCluster, n.DatastoreCluster}, {"folder", "folder", o.Folder, n.Folder},
+	// Never recorded, as for VMs adopted without inputs: nothing moves when
+	// every VM is already there.
+	moves := func(old, new string, at func(api.VmProperties) string) bool {
+		return old != new && (old != "" || slices.ContainsFunc(vms, func(v existingVM) bool { return at(v.t.VM) != new }))
+	}
+	for _, x := range []struct {
+		setting, what, old, new string
+		at                      func(api.VmProperties) string
+	}{
+		{"cluster", "cluster", o.Cluster, n.Cluster, vmCluster}, {"datastore", "datastore", o.Datastore, n.Datastore, vmDatastore},
+		{"resource_pool", "resource pool", o.ResourcePool, n.ResourcePool, nil}, {"host", "host", o.Host, n.Host, nil},
+		{"datastore_cluster", "datastore cluster", o.DatastoreCluster, n.DatastoreCluster, nil}, {"folder", "folder", o.Folder, n.Folder, nil},
 	} {
-		if x.old != x.new {
+		if x.at == nil && x.old != x.new || x.at != nil && moves(x.old, x.new, x.at) {
 			refuse(x.setting, fmt.Sprintf("The %s changes from %s to %s: rvav doesn't move existing VMs.", x.what, or(x.old), or(x.new)))
 		}
 	}
-	if o.Network != n.Network {
+	if moves(o.Network, n.Network, vmNetwork) {
 		refuse("network", fmt.Sprintf("The network changes from %s to %s: the first adapter carries the VMs' addresses and DNS records, which rvav doesn't move.",
 			or(o.Network), or(n.Network)))
 	}

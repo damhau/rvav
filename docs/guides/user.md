@@ -409,7 +409,8 @@ VM's disk actions instead.
 When the item's form has a VM count, change it to scale out or in:
 - **Scale out:** the new VMs are named and addressed as in a new request,
   and their numbers follow the last one.
-- **Scale in:** rvav removes the VMs with the highest numbers, with their
+- **Scale in:** rvav removes the VMs an administrator adopted into the
+  deployment first, then those with the highest numbers, with their
   addresses and DNS records. A VM protected from deletion can't be
   removed.
 
