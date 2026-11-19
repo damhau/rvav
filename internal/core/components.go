@@ -877,11 +877,11 @@ func deploymentName(ev *Evaluation, number string) string {
 	if raw := ev.Blueprint.DeploymentName; raw != "" {
 		if t, err := naming.ParseLabel(raw); err == nil {
 			if name, err := t.Prefix(naming.Values(ev.Project.Code, ev.Env.Key, ev.Inputs)); err == nil && name != "" {
-				return name
+				return withSuffix(name, "")
 			}
 		}
 	}
-	return ev.Item.Name + " " + number
+	return withSuffix(ev.Item.Name, number)
 }
 
 // vmUnit is the plan for one VM of a component.

@@ -1662,6 +1662,10 @@ first says what stops. A subscription's row opens its page, where
     starts from the form's initial values, and accepts the cluster,
     datastore and network the VMs are on. It doesn't grow or remove an
     adopted VM's disks: rvav doesn't know which are the blueprint's.
+    When a live deployment of the project already has a new deployment's
+    name, whatever its case, rvav numbers it: `erp-app02 2`, then
+    `erp-app02 3`. Quotas and deployment limits don't refuse adopted VMs,
+    which run already, but they count from then on.
   - **Into an existing deployment**: choose a ready deployment of the
     project. Its owner, lease and inputs stay. rvav refuses a VM that
     doesn't fit, with why: another OS family, a name the deployment has

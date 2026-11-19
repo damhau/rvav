@@ -188,6 +188,9 @@ Migration 00083 adds `deployment_limit_policies`.
   requester's levels, not the owner's, and counted the request's own
   reservation as well as its new size; its fact showed the project's
   quota only.
+- Onboarding isn't held to quotas or deployment limits: the VMs it
+  adopts run already, and count from then on
+  ([ADR-0026](0026-onboarding.md)).
 - Until C2.4 (#160), a retry after a rollback took neither its quota, its
   place in the deployment limits, nor its names again: it could go over a
   hard limit, or build a second deployment with a name another took.

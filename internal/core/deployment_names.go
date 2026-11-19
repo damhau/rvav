@@ -138,9 +138,22 @@ func numbered(name string, n int) []string {
 	}
 	out := make([]string, n)
 	for i := range out {
-		out[i] = name + " " + strconv.Itoa(i+1)
+		out[i] = withSuffix(name, strconv.Itoa(i+1))
 	}
 	return out
+}
+
+// withSuffix is name followed by a space and suffix, unless suffix is
+// empty, name cut so that the whole is a deployment name that edits
+// accept.
+func withSuffix(name, suffix string) string {
+	if suffix != "" {
+		suffix = " " + suffix
+	}
+	if keep := day2.MaxDeploymentName - utf8.RuneCountInString(suffix); utf8.RuneCountInString(name) > keep {
+		name = strings.TrimRightFunc(string([]rune(name)[:max(keep, 0)]), unicode.IsSpace)
+	}
+	return name + suffix
 }
 
 // deploymentCount is how many deployments the request makes: one per VM
@@ -271,7 +284,7 @@ func (s *Service) claimDeploymentNames(ctx context.Context, tx pgx.Tx, ev *Evalu
 	for i := range deps {
 		switch k := strings.ToLower(deps[i].Name); {
 		case held[k]:
-			deps[i].Name, err = s.freeDeploymentName(ctx, tx, ev.Project.ID, deps[i].Name+" "+number, 1, used)
+			deps[i].Name, err = s.freeDeploymentName(ctx, tx, ev.Project.ID, withSuffix(deps[i].Name, number), 1, used)
 		case used[k]:
 			deps[i].Name, err = s.freeDeploymentName(ctx, tx, ev.Project.ID, deps[i].Name, 2, used)
 		}
@@ -288,9 +301,9 @@ func (s *Service) claimDeploymentNames(ctx context.Context, tx pgx.Tx, ev *Evalu
 // ends; name alone stands for 1.
 func (s *Service) freeDeploymentName(ctx context.Context, tx pgx.Tx, projectID, name string, from int, used map[string]bool) (string, error) {
 	for i := from; ; i++ {
-		candidate := name
+		candidate := withSuffix(name, "")
 		if i > 1 {
-			candidate = name + " " + strconv.Itoa(i)
+			candidate = withSuffix(name, strconv.Itoa(i))
 		}
 		if used[strings.ToLower(candidate)] {
 			continue

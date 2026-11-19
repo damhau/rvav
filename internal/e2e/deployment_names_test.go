@@ -329,5 +329,17 @@ func TestDeploymentEdit(t *testing.T) {
 		}
 		h.json("POST", "/api/v1/deployments/"+again.Id+"/actions", admin, api.Day2Draft{Action: "change_project",
 			Inputs: map[string]any{"project": "prj_data"}}, 422, nil, "Idempotency-Key", uuid.NewString())
+
+		// Two live deployments may share a name, from before migration
+		// 00080: a new description keeps it, another case too.
+		if _, err := h.store.Pool.Exec(ctx, `update deployments set name = 'Billing' where id = $1`, again.Id); err != nil {
+			t.Fatal(err)
+		}
+		edit(again.Id, owner, "Billing", "Billing too.")
+		edit(again.Id, owner, "BILLING", "Billing too.")
+		h.json("GET", "/api/v1/deployments/"+again.Id, owner, nil, 200, &dep)
+		if dep.Name != "BILLING" || dep.Description != "Billing too." {
+			t.Fatalf("a shared name after an edit = %q %q", dep.Name, dep.Description)
+		}
 	})
 }

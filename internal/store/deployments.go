@@ -403,17 +403,25 @@ func (s *Store) SetDeploymentOwner(ctx context.Context, db DB, id, ownerID strin
 }
 
 // SetDeploymentDetails gives the deployment a name and, unless nil, a
-// description, unless another live deployment of its project holds the
+// description, unless another live deployment of its project holds a new
 // name: then it changes nothing and returns that one's name. The name is
 // held as a request's are (ADR-0046).
 func (s *Store) SetDeploymentDetails(ctx context.Context, projectID, id, name string, description *string) (string, error) {
 	var held string
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
-		var err error
-		if held, err = s.heldName(ctx, tx, projectID, id, name); err != nil || held != "" {
+		var had string
+		if err := tx.QueryRow(ctx, `select name from deployments where id = $1 for update`, id).Scan(&had); err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `update deployments set name = $2, description = coalesce($3, description) where id = $1`,
+		// Two live deployments may share a name, from before migration
+		// 00080: each keeps it.
+		if !strings.EqualFold(had, name) {
+			var err error
+			if held, err = s.heldName(ctx, tx, projectID, id, name); err != nil || held != "" {
+				return err
+			}
+		}
+		_, err := tx.Exec(ctx, `update deployments set name = $2, description = coalesce($3, description) where id = $1`,
 			id, name, description)
 		return err
 	})

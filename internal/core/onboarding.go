@@ -309,9 +309,16 @@ func (d *destination) fitting(have []seat, vms []*adoptee) fitting {
 }
 
 // createDeployment records VMs as a new deployment, with the inputs they
-// fit with. detail goes into the audit.
+// fit with. detail goes into the audit. It takes name, or the first of
+// name 2, name 3 and so on that no live deployment of the project holds:
+// the VMs are there already, so neither a name nor the quotas and the
+// deployment limits refuse them (ADR-0046, ADR-0047).
 func (s *Service) createDeployment(ctx context.Context, tx pgx.Tx, dest *destination, name string, group []*adoptee,
 	inputs map[string]any, actor *string, detail map[string]any) (adoptedDeployment, error) {
+	name, err := s.freeDeploymentName(ctx, tx, dest.project.ID, name, 1, nil)
+	if err != nil {
+		return adoptedDeployment{}, err
+	}
 	expires, extensions := dest.expires()
 	if inputs == nil {
 		inputs = map[string]any{}

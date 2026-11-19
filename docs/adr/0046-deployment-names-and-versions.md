@@ -60,7 +60,9 @@ on the earlier build lost it the moment the next one went out.
 - **A name rvav gives is made unique too:** a blueprint's
   `deployment_name` already taken gets the request number after it
   (`erp-prd REQ-10492`), then a number if that is taken as well; a name
-  given twice in one request (two steps of one item) gets ` 2`.
+  given twice in one request (two steps of one item) gets ` 2`. rvav cuts
+  the name before the number so that the whole stays within 80
+  characters, which an edit accepts.
 - **No unique index:** deployments made before this may share a name. An
   index on `(project_id, lower(name))` of the live ones serves the check.
 
@@ -88,8 +90,9 @@ refused (`naming`), for each VM step of a composite too.
   deployment of the project holds, and not one its VMs' naming gives (a VM
   name without its number, then a number) unless it is one of its VMs'
   names. An edit that changes nothing is refused (`no_change`). Its step
-  takes the name under the same lock, and fails if another deployment took
-  it since.
+  takes a new name under the same lock, and fails if another deployment
+  took it since; a name that only changes case isn't new, so a deployment
+  that shares its name with another from before this keeps it.
 - **Its VMs keep their names.** Renaming a VM still renames the deployment
   named after it, unless another deployment of the project holds the new
   name.
@@ -154,8 +157,13 @@ This revisits ADR-0019's single published version.
 - The vRA importer maps a day-2 policy on `Deployment.EditDeployment` to
   `edit`, no longer to the VM's `rename`.
 - Onboarding keeps the names its plans and adoptions give
-  ([ADR-0026](0026-onboarding.md)): an administrator's, not checked
-  against the project's names.
+  ([ADR-0026](0026-onboarding.md)), numbered when a live deployment of
+  the project holds one (`erp-app02 2`), under the same lock: the VMs run
+  already, so a name never refuses them.
+- Until C2.4 (#160), onboarding didn't check the project's names, an
+  edit of a deployment that shared its name from before this failed in
+  its step, and a numbered name could be longer than 80 characters, after
+  which an edit was refused unless it changed the name.
 - A new build no longer has to take the old one away: teams move to it
   when they request again or update, and the administrator retires the
   old one when nobody needs it. Deployments of a retired version keep it

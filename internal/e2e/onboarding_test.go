@@ -141,11 +141,16 @@ func TestOnboarding(t *testing.T) {
 			t.Fatalf("no VMs = %+v", none.Errors)
 		}
 
-		// Two VMs, each a deployment of its own.
+		// Two VMs, each a deployment of its own. A live deployment holds
+		// erp-app02, whatever the case: the second is numbered.
+		if _, err := h.store.Pool.Exec(ctx, `update deployments set name = 'ERP-APP02' where id = $1`, built.id); err != nil {
+			t.Fatal(err)
+		}
 		draft.Vms = append(draft.Vms[:0], ref(legacy1), ref(legacy2))
 		var res api.OnboardingResult
 		h.json("POST", "/api/v1/admin/onboarding", admin, draft, 200, &res)
-		if len(res.Deployments) != 2 || res.Deployments[0].Name != "erp-app01" || res.Deployments[0].Addresses != 1 ||
+		if len(res.Deployments) != 2 || res.Deployments[0].Name != "erp-app01" || res.Deployments[1].Name != "erp-app02 2" ||
+			res.Deployments[0].Addresses != 1 ||
 			res.Deployments[0].Records != 2 || res.Deployments[1].Addresses != 0 || res.Deployments[1].Records != 0 {
 			t.Fatalf("adopted = %+v", res.Deployments)
 		}
