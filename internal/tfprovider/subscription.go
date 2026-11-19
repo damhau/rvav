@@ -39,30 +39,38 @@ func newSubscriptionResource() resource.Resource {
 			"topic":       required("The event topic, for example `compute.provision.post` or `project.created`."),
 			"condition":   optional("A CEL expression over the event's data. Default: every event."),
 			"blocking": schema.BoolAttribute{Optional: true, Computed: true, Default: booldefault.StaticBool(false),
-				MarkdownDescription: "The request waits for the target, which may change or stop it. Default: `false`."},
+				MarkdownDescription: "The request waits for the target, which may change or stop it: on `provisioning.pre`, " +
+					"`compute.allocation.pre`, `network.configure`, `day2.pre` and `delete.pre`. Default: `false`."},
 			"on_failure": schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("stop_request"),
-				MarkdownDescription: "What a blocking subscription does when its target fails: `stop_request` (the default) or `continue_request`."},
+				MarkdownDescription: "What a blocking subscription does when its target fails and its recovery target doesn't decide: " +
+					"`stop_request` (the default) or `continue_request`."},
 			"priority": priority(),
 			"timeout_seconds": schema.Int64Attribute{Optional: true, Computed: true, Default: int64default.StaticInt64(30),
 				MarkdownDescription: "How long a blocking subscription waits for its target. Default: `30`."},
 			"enabled": enabled(),
-			"target": schema.SingleNestedAttribute{Required: true,
-				MarkdownDescription: "What it calls: exactly one of `webhook`, `awx` and `workflow`.",
-				Attributes: map[string]schema.Attribute{
-					"webhook": schema.SingleNestedAttribute{Optional: true, Attributes: map[string]schema.Attribute{
-						"url":    required("An https URL on a host webhooks may call."),
-						"secret": required("The stored secret the body is signed with, by name (`rvav_secret`)."),
-					}},
-					"awx": schema.SingleNestedAttribute{Optional: true, Attributes: map[string]schema.Attribute{
-						"template_id":  number("The job template's ID in AWX."),
-						"job_template": optional("Its name, when no ID is given."),
-					}},
-					"workflow": schema.SingleNestedAttribute{Optional: true, Attributes: map[string]schema.Attribute{
-						"key": required("A registered custom workflow allowed as a subscription target."),
-					}},
-				}},
+			"target":  subscriptionTarget(true, "What it calls: exactly one of `webhook`, `awx` and `workflow`."),
+			"recovery": subscriptionTarget(false, "What a blocking subscription tells, once, when it fails: exactly one of "+
+				"`webhook`, `awx` and `workflow`. Its answer may decide whether the request goes on; else `on_failure` does."),
 		},
 	})
+}
+
+// subscriptionTarget is a subscription's target, or its recovery target.
+func subscriptionTarget(isTarget bool, description string) schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{Required: isTarget, Optional: !isTarget, MarkdownDescription: description,
+		Attributes: map[string]schema.Attribute{
+			"webhook": schema.SingleNestedAttribute{Optional: true, Attributes: map[string]schema.Attribute{
+				"url":    required("An https URL on a host webhooks may call."),
+				"secret": required("The stored secret the body is signed with, by name (`rvav_secret`)."),
+			}},
+			"awx": schema.SingleNestedAttribute{Optional: true, Attributes: map[string]schema.Attribute{
+				"template_id":  number("The job template's ID in AWX."),
+				"job_template": optional("Its name, when no ID is given."),
+			}},
+			"workflow": schema.SingleNestedAttribute{Optional: true, Attributes: map[string]schema.Attribute{
+				"key": required("A registered custom workflow allowed as a subscription target."),
+			}},
+		}}
 }
 
 // newSecretResource is a stored secret, by name and project. rvav never

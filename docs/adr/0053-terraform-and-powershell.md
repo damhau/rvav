@@ -179,7 +179,10 @@ isn't on the PowerShell Gallery.
 - A change of the API's write schemas needs the provider's schema changed
   with it, by hand: the provider's attributes aren't generated. Its tests
   run with the API's end-to-end tests, so a removed or renamed field fails
-  them.
+  them. `TestResourcesCoverWriteSchemas` fails when a write schema gains
+  a field that its resource doesn't have, as a subscription's recovery
+  target did ([ADR-0054](0054-subscriptions-that-change-the-request.md)):
+  an apply would have sent the subscription without it, and cleared it.
 - `make terraform-dist` needs `zip`, as `make cli-dist` does.
 - Terraform makes ten changes at once. Changes of who administers rvav or
   a project wait for one lock; its waiters held a pooled connection each,

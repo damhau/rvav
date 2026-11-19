@@ -331,6 +331,32 @@ resource "rvav_subscription" "cmdb" {
   (**Administration › Integrations › Allowed hosts**, or
   `RVAV_WEBHOOK_HOSTS`).
 
+A blocking subscription makes the request wait for its target's answer,
+which may change the VM, as the administrator guide describes in
+[Let a subscription name, place or address VMs](admin.md#let-a-subscription-name-place-or-address-vms).
+Only a blocking subscription takes a `recovery` target, which rvav tells
+once when the subscription fails. If the recovery target answers with an
+outcome, that decides whether the request goes on; otherwise `on_failure`
+does:
+
+```hcl
+resource "rvav_subscription" "placement" {
+  name       = "Placement from the CMDB"
+  topic      = "compute.allocation.pre"
+  blocking   = true
+  on_failure = "continue_request"
+  target = {
+    webhook = { url = "https://cmdb.corp.example/rvav/place", secret = rvav_secret.cmdb.name }
+  }
+  recovery = {
+    webhook = { url = "https://cmdb.corp.example/rvav/failed", secret = rvav_secret.cmdb.name }
+  }
+}
+```
+
+Without `recovery` in your configuration, the next apply removes a
+recovery target set in the web app; the plan shows it first.
+
 ## Request deployments
 
 `rvav_deployment` requests a catalog item and waits until the request

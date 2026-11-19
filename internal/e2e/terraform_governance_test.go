@@ -134,12 +134,20 @@ resource "rvav_subscription" "cmdb" {
   enabled   = %t
   target    = { webhook = { url = "http://hooks.corp.example/rvav", secret = rvav_secret.hook.name } }
 }
+
+resource "rvav_subscription" "placement" {
+  name     = "Placement"
+  topic    = "compute.allocation.pre"
+  blocking = true
+  target   = { webhook = { url = "http://hooks.corp.example/place", secret = rvav_secret.hook.name } }
+  %s
+}
 `
 
 // TestTerraformGovernance manages every kind of policy, quotas, roles and
-// their bindings, a secret and a subscription with the provider (O1.2):
-// create, import, change in place, drift (deleted outside Terraform) and
-// destroy.
+// their bindings, a secret and subscriptions with the provider (O1.2):
+// create, import, change in place, drift (deleted or changed outside
+// Terraform) and destroy.
 func TestTerraformGovernance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -150,15 +158,40 @@ func TestTerraformGovernance(t *testing.T) {
 		tf := newTerraform(t, h, "mkeller")
 		security := `{ name = "Security", group = "rvav-security", timeout = "48h", on_timeout = "escalate",
       escalate_to = { approvers = [data.rvav_user.marc.id] } },`
-		v1 := tf.config(governance, security, 100, 1, 5, 64, `["project.see", "day2.power:power_on"]`, `["viewer"]`, true)
-		v2 := tf.config(governance, "", 50, 100, 3, 96, `["project.see"]`, `["member", rvav_role.ops.key]`, false)
+		recovery := func(path string) string {
+			return `recovery = { webhook = { url = "http://hooks.corp.example/` + path + `", secret = rvav_secret.hook.name } }`
+		}
+		v1 := tf.config(governance, security, 100, 1, 5, 64, `["project.see", "day2.power:power_on"]`, `["viewer"]`, true,
+			recovery("recover"))
+		v2 := tf.config(governance, "", 50, 100, 3, 96, `["project.see"]`, `["member", rvav_role.ops.key]`, false,
+			recovery("recover-v2"))
+		v3 := tf.config(governance, "", 50, 100, 3, 96, `["project.see"]`, `["member", rvav_role.ops.key]`, false, "")
 
-		var policyID, subscriptionID string
+		var policyID, subscriptionID, placementID string
+		// wantRecovery checks the URL of the placement subscription's recovery
+		// webhook in rvav.
+		wantRecovery := func(want string) resource.TestCheckFunc {
+			return func(*terraform.State) error {
+				var sub api.Subscription
+				h.json("GET", "/api/v1/admin/subscriptions/"+placementID, "mkeller", nil, 200, &sub)
+				got := ""
+				if sub.Recovery != nil && sub.Recovery.Webhook != nil {
+					got = sub.Recovery.Webhook.Url
+				}
+				if got != want {
+					return fmt.Errorf("the recovery target in rvav is %q, not %q", got, want)
+				}
+				return nil
+			}
+		}
 		steps := []resource.TestStep{{
 			Config: v1,
 			Check: resource.ComposeAggregateTestCheckFunc(
 				grab("rvav_approval_policy.prd", "id", &policyID),
 				grab("rvav_subscription.cmdb", "id", &subscriptionID),
+				grab("rvav_subscription.placement", "id", &placementID),
+				resource.TestCheckNoResourceAttr("rvav_subscription.cmdb", "recovery"),
+				wantRecovery("http://hooks.corp.example/recover"),
 				resource.TestCheckResourceAttr("data.rvav_user.marc", "id", "usr_mkeller"),
 				resource.TestCheckResourceAttr("rvav_approval_policy.prd", "enabled", "true"),
 				resource.TestCheckResourceAttr("rvav_approval_policy.prd", "levels.1.escalate_to.approvers.0", "usr_mkeller"),
@@ -188,13 +221,14 @@ func TestTerraformGovernance(t *testing.T) {
 		}}
 		for _, name := range []string{"approval_policy.prd", "day2_policy.delete", "naming_policy.web", "lease_policy.web_dev",
 			"lease_policy.tst", "lease_rule.blueprints", "deployment_limit_policy.web", "project_quotas.web", "global_quotas.all",
-			"role.ops", "role_assignment.catalog", "project_member.alain", "group_mapping.ops", "subscription.cmdb"} {
+			"role.ops", "role_assignment.catalog", "project_member.alain", "group_mapping.ops", "subscription.cmdb",
+			"subscription.placement"} {
 			steps = append(steps, resource.TestStep{ResourceName: "rvav_" + name, ImportState: true, ImportStateVerify: true})
 		}
 		steps = append(steps, resource.TestStep{ResourceName: "rvav_secret.hook", ImportState: true, ImportStateVerify: true,
 			ImportStateVerifyIgnore: []string{"value"}})
 		updated := []string{"approval_policy.prd", "naming_policy.web", "deployment_limit_policy.web", "project_quotas.web",
-			"role.ops", "project_member.alain", "subscription.cmdb"}
+			"role.ops", "project_member.alain", "subscription.cmdb", "subscription.placement"}
 		var inPlace []plancheck.PlanCheck
 		for _, name := range updated {
 			inPlace = append(inPlace, plancheck.ExpectResourceAction("rvav_"+name, plancheck.ResourceActionUpdate))
@@ -207,6 +241,7 @@ func TestTerraformGovernance(t *testing.T) {
 				resource.TestCheckResourceAttr("rvav_approval_policy.prd", "levels.#", "1"),
 				resource.TestCheckResourceAttr("rvav_naming_policy.web", "start", "100"),
 				resource.TestCheckResourceAttr("rvav_project_member.alain", "roles.#", "2"),
+				wantRecovery("http://hooks.corp.example/recover-v2"),
 				func(*terraform.State) error {
 					var q api.QuotaLimitList
 					h.json("GET", "/api/v1/admin/projects/prj_web/quotas", "mkeller", nil, 200, &q)
@@ -221,19 +256,39 @@ func TestTerraformGovernance(t *testing.T) {
 				},
 			),
 		}, resource.TestStep{
-			// Deleted outside Terraform: Terraform makes them again.
+			// Deleted outside Terraform: Terraform makes them again. A recovery
+			// target changed in the web app: Terraform sets it back.
 			PreConfig: func() {
 				h.json("DELETE", "/api/v1/admin/approval-policies/"+policyID, "mkeller", nil, 204, nil)
 				h.json("DELETE", "/api/v1/admin/subscriptions/"+subscriptionID, "mkeller", nil, 204, nil)
 				h.json("DELETE", "/api/v1/projects/prj_web/members/usr_afavre", "mkeller", nil, 204, nil)
+				var sub api.Subscription
+				h.json("GET", "/api/v1/admin/subscriptions/"+placementID, "mkeller", nil, 200, &sub)
+				hook := *sub.Target.Webhook
+				hook.Url = "http://hooks.corp.example/from-the-ui"
+				h.json("PUT", "/api/v1/admin/subscriptions/"+placementID, "mkeller", api.SubscriptionWrite{
+					Name: sub.Name, Topic: sub.Topic, Blocking: &sub.Blocking, Target: sub.Target,
+					Recovery: &api.SubscriptionTarget{Webhook: &hook}}, 200, nil)
 			},
 			Config: v2,
 			ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("rvav_approval_policy.prd", plancheck.ResourceActionCreate),
 				plancheck.ExpectResourceAction("rvav_subscription.cmdb", plancheck.ResourceActionCreate),
 				plancheck.ExpectResourceAction("rvav_project_member.alain", plancheck.ResourceActionCreate),
+				plancheck.ExpectResourceAction("rvav_subscription.placement", plancheck.ResourceActionUpdate),
 				plancheck.ExpectResourceAction("rvav_day2_policy.delete", plancheck.ResourceActionNoop),
 			}},
+			Check: wantRecovery("http://hooks.corp.example/recover-v2"),
+		}, resource.TestStep{
+			// Without recovery in the configuration, the subscription has none.
+			Config: v3,
+			ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+				plancheck.ExpectResourceAction("rvav_subscription.placement", plancheck.ResourceActionUpdate),
+			}},
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckNoResourceAttr("rvav_subscription.placement", "recovery"),
+				wantRecovery(""),
+			),
 		})
 		resource.UnitTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: tf.factories,
