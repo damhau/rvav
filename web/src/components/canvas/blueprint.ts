@@ -16,7 +16,7 @@
 //   security groups' firewall rules arriving at them from Any, another
 //   group or an existing one.
 import { allSteps, readComposite, type CompositeStepView } from "@/lib/composite";
-import { dependsOn } from "@/lib/dependsOn";
+import { celCode, dependsOn } from "@/lib/dependsOn";
 import type { FieldError } from "@/lib/api/types";
 import type { CanvasEdge, CanvasGraph, CanvasGroup, CanvasLine, CanvasNode, CanvasSide } from "./graph";
 import { within } from "./graph";
@@ -57,13 +57,18 @@ const stepBadge: Record<CompositeStepView["kind"], string> = {
   poll: "Poll",
   branch: "Branch",
   notify: "Message",
+  resource: "Resource",
   "?": "Step",
 };
 
 function stepLines(s: CompositeStepView): CanvasLine[] {
   const lines: CanvasLine[] = [];
   if (s.target)
-    lines.push({ label: s.kind === "rest" || s.kind === "poll" ? "Calls" : "Runs", text: s.target, mono: true });
+    lines.push({
+      label: s.kind === "rest" || s.kind === "poll" ? "Calls" : s.kind === "resource" ? "Makes" : "Runs",
+      text: s.target,
+      mono: true,
+    });
   if (s.ask) {
     lines.push({ label: "Asks", text: s.ask.who }, { label: "Wants", text: s.ask.wants });
     if (s.ask.timeout) lines.push({ label: "Timeout", text: s.ask.timeout });
@@ -252,8 +257,8 @@ interface Builder {
   node(n: Omit<CanvasNode, "relations" | "problems"> & { problems?: string[] }, bucket: Bucket): CanvasNode;
 }
 
-type Bucket = "component" | "network" | "segment" | "group" | "other" | "any";
-const bucketOrder: Bucket[] = ["component", "network", "segment", "group", "other", "any"];
+type Bucket = "component" | "resource" | "network" | "segment" | "group" | "other" | "any";
+const bucketOrder: Bucket[] = ["component", "resource", "network", "segment", "group", "other", "any"];
 
 const segmentRef = /^segments\.([a-z][a-z0-9_]*)$/;
 const quoted = /^"([^"]*)"$|^'([^']*)'$/;
@@ -271,7 +276,15 @@ function sizeText(v: unknown): string {
   return str(v) ? `${str(v)} GB` : "? GB";
 }
 
-/** A VM item's topology: `component:<key>`, `network:<binding>`, `segment:<key>`, `sg:<key>`, `nsx:<id>`, `any`. */
+/** What a custom resource's inputs read of the components and the resources before it. */
+const readsOf = (text: string, root: "components" | "resources") =>
+  [...celCode(text).matchAll(new RegExp(`(?<![\\w.])${root}\\.([a-z][a-z0-9_]*)`, "g"))].map((m) => m[1]!);
+
+/**
+ * A VM item's topology: `component:<key>`, `resource:<key>` for a custom
+ * resource (ADR-0056), `network:<binding>`, `segment:<key>`, `sg:<key>`,
+ * `nsx:<id>`, `any`.
+ */
 export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph {
   const buckets = new Map<Bucket, Map<string, CanvasNode>>(bucketOrder.map((b) => [b, new Map()]));
   const edges: CanvasEdge[] = [];
@@ -553,6 +566,46 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
       relate(from.node, `Built before ${to.title}`);
     }
   }
+
+  // Custom resources are made once the VMs are built, one after the other:
+  // drawn after the components and resources their inputs read.
+  const made = new Map<string, CanvasNode>();
+  arr(bp.resources).forEach((raw, i) => {
+    const r = obj(raw);
+    const key = str(r.key);
+    const title = str(r.title) || key;
+    const n = b.node(
+      {
+        id: `resource:${key || i}`,
+        kind: "resource",
+        title,
+        subtitle: key && key !== title ? key : undefined,
+        badge: "Resource",
+        lines: str(r.type) ? [{ label: "Type", text: str(r.type), mono: true }] : [],
+        pointer: `${prefix}/resources/${i}`,
+      },
+      "resource",
+    );
+    const texts = Object.values(obj(r.with)).filter((v): v is string => typeof v === "string");
+    const before = [
+      ...new Set([
+        ...texts.flatMap((t) => readsOf(t, "components")).flatMap((k) => (byKey.has(k) ? [byKey.get(k)!.node] : [])),
+        ...texts.flatMap((t) => readsOf(t, "resources")).flatMap((k) => (made.has(k) ? [made.get(k)!] : [])),
+      ]),
+    ];
+    for (const from of before) {
+      edges.push({
+        id: `after:${from.id}>${n.id}`,
+        source: from.id,
+        target: n.id,
+        kind: "sequence",
+        description: `${title} made after ${from.title}`,
+      });
+      relate(from, `Before ${title}`);
+    }
+    relate(n, before.length > 0 ? `Made after ${words(before.map((x) => x.title))}` : "Made once the VMs are built");
+    if (key) made.set(key, n);
+  });
 
   const verbs: Record<string, string> = { allow: "Allows", drop: "Drops", reject: "Rejects" };
   securityGroups.forEach((sg, i) => {

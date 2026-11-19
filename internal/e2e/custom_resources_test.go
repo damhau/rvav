@@ -395,13 +395,32 @@ func TestCustomResourceStep(t *testing.T) {
 		h := setup(t, ctx, c)
 		const admin, owner = "mkeller", "tnguyen"
 		var problem struct{ Errors []api.FieldError }
+		inputs := map[string]any{"type": "object", "required": []any{"members"}, "properties": map[string]any{
+			"members": map[string]any{"type": "array", "title": "Members"}, "port": map[string]any{"type": "integer"}}}
 		for _, key := range []string{"lb-create", "lb-delete"} {
 			h.json("POST", "/api/v1/admin/workflows", admin, api.WorkflowRegistrationWrite{Key: new(key), Title: key,
-				WorkflowType: key + ".v1", TaskQueue: "platform-workflows", Usages: []api.WorkflowUsage{api.WorkflowUsageResourceType}}, 201, nil)
+				WorkflowType: key + ".v1", TaskQueue: "platform-workflows", Usages: []api.WorkflowUsage{api.WorkflowUsageResourceType},
+				InputSchema: &inputs}, 201, nil)
 		}
+		schema := map[string]any{"type": "object", "properties": map[string]any{"vip": map[string]any{"type": "string", "title": "Virtual IP"}}}
 		h.json("POST", "/api/v1/admin/resource-types", admin, api.ResourceTypeWrite{Key: new("load-balancer"), Title: "Load balancer",
-			Create: api.ResourceTypeDriver{Kind: api.ResourceDriverWorkflow, Name: "lb-create"},
-			Delete: api.ResourceTypeDriver{Kind: api.ResourceDriverWorkflow, Name: "lb-delete"}}, 201, nil)
+			Create:         api.ResourceTypeDriver{Kind: api.ResourceDriverWorkflow, Name: "lb-create"},
+			Delete:         api.ResourceTypeDriver{Kind: api.ResourceDriverWorkflow, Name: "lb-delete"},
+			PropertySchema: &schema}, 201, nil)
+
+		// The designer offers it: create's inputs, the schema's properties, and whatever else create returns.
+		var targets api.CompositeStepTargetList
+		h.json("GET", "/api/v1/admin/catalog/composite-steps", admin, nil, 200, &targets)
+		i := slices.IndexFunc(targets.Items, func(t api.CompositeStepTarget) bool { return t.Kind == api.StepTargetResource })
+		if i < 0 {
+			t.Fatalf("no resource type among the composite steps: %+v", targets.Items)
+		}
+		lbt := targets.Items[i]
+		if lbt.Ref != "load-balancer" || lbt.Runs != api.StepRunsResource || lbt.Planned || !lbt.OpenOutputs ||
+			len(lbt.Inputs) != 2 || lbt.Inputs[0].Name != "members" || !lbt.Inputs[0].Required ||
+			len(lbt.Outputs) != 1 || lbt.Outputs[0].Name != "vip" || lbt.Outputs[0].Description != "Virtual IP" {
+			t.Fatalf("the load balancer as a step = %+v", lbt)
+		}
 
 		def := vmWithDBUser()
 		def.Blueprint["steps"] = []any{

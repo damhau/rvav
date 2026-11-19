@@ -108,6 +108,7 @@ const kindGroup: Record<StepTarget["kind"], string> = {
   poll: "Waits",
   branch: "The way it goes",
   notify: "People",
+  resource: "Custom resources",
 };
 const byName = "awx-by-name";
 const restValue = targetValue({ kind: "rest", ref: "" });
@@ -132,7 +133,14 @@ function targetOptions(targets: CompositeStepTarget[], current?: StepTarget, bra
     out.unshift({
       value: targetValue(current),
       label: current.ref,
-      meta: current.kind === "item" ? "not published" : current.kind === "awx" ? "not imported" : "not registered",
+      meta:
+        current.kind === "item"
+          ? "not published"
+          : current.kind === "awx"
+            ? "not imported"
+            : current.kind === "resource"
+              ? "not defined or turned off"
+              : "not registered",
       group: kindGroup[current.kind],
     });
   out.push({ value: byName, label: "Another AWX template, by its name", group: kindGroup.awx });
@@ -158,7 +166,7 @@ function parseTarget(value: string, targets: CompositeStepTarget[]): edits.Targe
   }
   if (kind === "rest" || kind === "ask" || kind === "wait" || kind === "poll" || kind === "branch" || kind === "notify")
     return { kind, ref: "" };
-  if (kind !== "item" && kind !== "workflow") return undefined;
+  if (kind !== "item" && kind !== "workflow" && kind !== "resource") return undefined;
   return { kind, ref };
 }
 
@@ -178,6 +186,7 @@ function newStep(key: string, title: string, target: edits.Target, inputs: Compo
   else if (target.kind === "poll") step.poll = edits.newPoll();
   else if (target.kind === "branch") step.branch = edits.newBranch();
   else if (target.kind === "notify") step.notify = {};
+  else if (target.kind === "resource") step.resource = { type: target.ref };
   else step[target.kind] = target.ref;
   const form = new Set(formInputsOf(def).map((i) => i.name));
   const bound = Object.fromEntries(inputs.filter((i) => form.has(i.name)).map((i) => [i.name, `inputs.${i.name}`]));
@@ -476,6 +485,47 @@ function EndPanel({ ctx }: { ctx: PanelContext }) {
   );
 }
 
+const onlyVMStep = "-";
+
+/**
+ * The VM step whose deployment a custom resource joins (ADR-0056): named
+ * when several come before it, else the only one.
+ */
+function ResourceDeployment({ step, g, id, ctx }: { step: Raw; g: number; id: string; ctx: PanelContext }) {
+  const { def, targets, text, apply } = ctx;
+  const named = str(obj(step.resource).deployment);
+  const vms = flatten(obj(def.blueprint)).filter(
+    (s) => s.g < g && s.key && findTarget(targets, targetOf(s.step))?.planned,
+  );
+  const hint =
+    vms.length === 0
+      ? "It joins the deployment of a VM step before it: add one first."
+      : "Deleting that deployment runs its type's delete step.";
+  if (vms.length <= 1 && !named)
+    return (
+      <p className="text-muted md:col-span-2">
+        {vms.length === 1 ? `It joins the deployment of ${vms[0]!.name}. ` : ""}
+        {hint}
+      </p>
+    );
+  const options: Option[] = [
+    { value: onlyVMStep, label: "The only VM step before it" },
+    ...vms.map((s) => ({ value: s.key, label: s.name, meta: s.key })),
+  ];
+  if (named && !vms.some((s) => s.key === named))
+    options.push({ value: named, label: named, meta: "not a VM step before it" });
+  return (
+    <Field label="Deployment" htmlFor="cd-resource-deployment" className="md:col-span-2" hint={hint}>
+      <Select
+        id="cd-resource-deployment"
+        value={named || onlyVMStep}
+        options={options}
+        onChange={(v) => apply(() => edits.setResourceDeployment(text, id, v === onlyVMStep ? "" : v))}
+      />
+    </Field>
+  );
+}
+
 function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const { text, def, targets, apply, focusNext, setSelected } = ctx;
   useFocusNext(ctx.focusNext);
@@ -502,6 +552,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
   const poll = target?.kind === "poll";
   const branch = target?.kind === "branch";
   const notify = target?.kind === "notify";
+  const resource = target?.kind === "resource";
   const inputs = listed?.inputs ?? [];
   const others = [...new Set([...Object.keys(withMap), ...extra])].filter((k) => !inputs.some((i) => i.name === k));
   const undo = step.undo === undefined ? undefined : obj(step.undo);
@@ -700,6 +751,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             />
           </Field>
         )}
+        {resource && <ResourceDeployment step={step} g={g} id={id} ctx={ctx} />}
       </div>
 
       {rest && (
@@ -763,7 +815,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
           ))}
           {open.length > 0 && (
             <p className="text-muted">
-              A custom workflow gives what it returns: write{" "}
+              A custom workflow gives what it returns, a custom resource its properties: write{" "}
               {open.map((k, i) => (
                 <span key={k}>
                   {i > 0 && ", "}
@@ -785,7 +837,9 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         </fieldset>
       )}
 
-      {!planned && !ask && !wait && !poll && !branch && !notify && (
+      {resource && <p className="text-muted">If a later step fails, its type&apos;s delete step undoes it.</p>}
+
+      {!planned && !ask && !wait && !poll && !branch && !notify && !resource && (
         <fieldset className="flex flex-col gap-2">
           <legend className={legend}>Undo</legend>
           <UndoEditor

@@ -619,3 +619,57 @@ describe("blueprintGraph", () => {
     expect(words(["a", "b", "c"])).toBe("a, b and c");
   });
 });
+
+describe("custom resources (ADR-0056)", () => {
+  it("draws a VM item's after the components and resources their inputs read", () => {
+    const g = vmGraph({
+      kind: "vm",
+      components: [
+        { key: "web", title: "Web servers", count: 2 },
+        { key: "db", count: 1 },
+      ],
+      resources: [
+        {
+          key: "lb",
+          title: "Load balancer",
+          type: "load-balancer",
+          with: { members: "components.web.ips", port: "443" },
+        },
+        { key: "dns", type: "dns-alias", with: { target: "resources.lb.vip + '.' + project.code" } },
+        { key: "tag", type: "cmdb-tag" },
+      ],
+    });
+    expect(g.nodes.find((n) => n.id === "resource:lb")).toMatchObject({
+      kind: "resource",
+      title: "Load balancer",
+      subtitle: "lb",
+      badge: "Resource",
+      lines: [{ label: "Type", text: "load-balancer", mono: true }],
+      relations: ["Made after Web servers", "Before dns"],
+      pointer: "/definition/blueprint/resources/0",
+    });
+    expect(g.nodes.find((n) => n.id === "resource:tag")?.relations).toEqual(["Made once the VMs are built"]);
+    expect(g.edges.filter((e) => e.kind === "sequence").map((e) => [e.source, e.target])).toEqual([
+      ["component:web", "resource:lb"],
+      ["resource:lb", "resource:dns"],
+    ]);
+  });
+
+  it("draws a composite's resource step by its type", () => {
+    const g = compositeGraph({
+      kind: "composite",
+      steps: [
+        { key: "vm", item: "rhel9-server" },
+        { key: "lb", title: "Its load balancer", resource: { type: "load-balancer" }, with: { m: "[steps.vm.ip]" } },
+      ],
+    });
+    expect(g.nodes.find((n) => n.id === "step:lb")).toMatchObject({
+      badge: "Resource",
+      lines: [
+        { label: "Makes", text: "load-balancer", mono: true },
+        { label: "Uses", text: "vm", mono: true },
+      ],
+    });
+    expect(g.problems).toEqual([]);
+  });
+});

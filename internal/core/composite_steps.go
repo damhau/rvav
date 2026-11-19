@@ -36,19 +36,20 @@ var stepOutputs = map[api.CompositeStepTargetRuns][]api.CompositeStepOutput{
 		{Name: "job_id", Type: "integer", Description: "The AWX job's ID"},
 	},
 	api.StepRunsWorkflow: {},
+	api.StepRunsResource: {},
 }
 
 func stepTarget(kind api.CompositeStepTargetKind, ref, title string, runs api.CompositeStepTargetRuns,
 	inputs []api.CompositeStepInput) api.CompositeStepTarget {
 	return api.CompositeStepTarget{Kind: kind, Ref: ref, Title: title, Runs: runs, Planned: runs == api.StepRunsVm,
 		Inputs: inputs, Outputs: append([]api.CompositeStepOutput{}, stepOutputs[runs]...),
-		OpenOutputs: runs == api.StepRunsWorkflow}
+		OpenOutputs: runs == api.StepRunsWorkflow || runs == api.StepRunsResource}
 }
 
 // CompositeStepTargets lists the published items a step may request (not
 // composites: they don't nest), the AWX templates imported from AWX and the
-// custom workflows registered for composite steps: what evaluateComposite
-// runs. A workflow item is left out while its workflow can't start (not
+// custom workflows registered for composite steps and the resource types
+// turned on: what evaluateComposite runs. A workflow item is left out while its workflow can't start (not
 // registered for catalog items, or disabled), and a workflow offered to some
 // projects only says which: a request from another is refused.
 func (s *Service) CompositeStepTargets(ctx context.Context, p *auth.Principal) (api.CompositeStepTargetList, error) {
@@ -56,7 +57,7 @@ func (s *Service) CompositeStepTargets(ctx context.Context, p *auth.Principal) (
 	if !p.Everywhere(auth.CatalogManage) {
 		return out, ErrForbidden
 	}
-	var items, templates, workflows []api.CompositeStepTarget
+	var items, templates, workflows, types []api.CompositeStepTarget
 	var after *store.Cursor
 	for {
 		page, err := s.Store.AdminItems(ctx, store.AdminItemFilter{State: "published", Limit: 200, After: after})
@@ -152,13 +153,67 @@ func (s *Service) CompositeStepTargets(ctx context.Context, p *auth.Principal) (
 		workflows = append(workflows, t)
 	}
 
-	for _, list := range [][]api.CompositeStepTarget{items, templates, workflows} {
+	types, err = s.resourceTypeTargets(ctx, regs, rows)
+	if err != nil {
+		return out, err
+	}
+	for _, list := range [][]api.CompositeStepTarget{items, templates, workflows, types} {
 		slices.SortStableFunc(list, func(a, b api.CompositeStepTarget) int {
 			return cmp.Or(cmp.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title)), cmp.Compare(a.Ref, b.Ref))
 		})
 		out.Items = append(out.Items, list...)
 	}
 	return out, nil
+}
+
+// resourceTypeTargets are the resource types turned on, as composite steps
+// (ADR-0056): their inputs are their create step's (its workflow's input
+// schema, its AWX template's survey), their outputs the properties their
+// schema lists, and whatever else create returns.
+func (s *Service) resourceTypeTargets(ctx context.Context, regs []store.WorkflowRegistration, templates []store.AWXTemplate) ([]api.CompositeStepTarget, error) {
+	list, err := s.Store.ResourceTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []api.CompositeStepTarget
+	for _, t := range list {
+		if !t.Enabled {
+			continue
+		}
+		inputs := []api.CompositeStepInput{}
+		create := t.Lifecycle.Create
+		switch create.Kind {
+		case "workflow":
+			if i := slices.IndexFunc(regs, func(r store.WorkflowRegistration) bool { return r.Key == create.Name }); i >= 0 {
+				inputs = formInputs(regs[i].InputSchema, nil)
+			}
+		case "awx":
+			if i := slices.IndexFunc(templates, func(r store.AWXTemplate) bool { return r.Name == create.Name && !r.Workflow }); i >= 0 {
+				var survey []awx.SurveyQuestion
+				_ = json.Unmarshal(templates[i].Survey, &survey)
+				schema, ui, _, _ := awxcatalog.Form(t.Title, survey)
+				sj, _ := json.Marshal(schema)
+				uj, _ := json.Marshal(ui)
+				inputs = formInputs(sj, uj)
+			}
+		}
+		target := stepTarget(api.StepTargetResource, t.Key, t.Title, api.StepRunsResource, inputs)
+		target.Outputs = propertyOutputs(t.PropertySchema)
+		if t.Description != "" {
+			target.Summary = present.Ptr(t.Description)
+		}
+		out = append(out, target)
+	}
+	return out, nil
+}
+
+// propertyOutputs are the properties a resource type's schema lists, by name.
+func propertyOutputs(schema json.RawMessage) []api.CompositeStepOutput {
+	out := []api.CompositeStepOutput{}
+	for _, in := range formInputs(schema, nil) {
+		out = append(out, api.CompositeStepOutput{Name: in.Name, Type: in.Type, Description: cmp.Or(deref(in.Description), in.Title)})
+	}
+	return out
 }
 
 // projectLimits are the projects a target is offered to, nil for all of them.

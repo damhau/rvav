@@ -65,6 +65,14 @@ var probes = []struct {
 	  {"key": "tell", "title": "Tell them", "when": "inputs.size == 'huge-secret'", "notify": {"requester": true, "owner": false, "groups": ["grp-told-secret"],
 	   "users": ["usr_told_secret"], "message": "Secret-text for ${inputs.name + 'lit-secret'}"}},
 	  {"key": "tell_owner", "notify": {"owner": true, "message": "Secret-text"}}]}`},
+	{"probe-vm-resources", `{"kind": "vm", "components": [{"key": "web", "count": 2}],
+	  "resources": [{"key": "lb", "title": "Load balancer", "type": "load-balancer",
+	                 "with": {"members": "components.web.ips", "token": "'tok_live_r'", "pool": "project.code + '-pool-secret'"}},
+	                {"key": "dns", "type": "dns-alias", "with": {"target": "resources.lb.vip", "zone": "'zone-secret'"}}]}`},
+	{"probe-composite-resource", `{"kind": "composite", "steps": [
+	  {"key": "vm", "item": "rhel9-server"},
+	  {"key": "lb", "title": "Its load balancer", "resource": {"type": "load-balancer", "deployment": "vm"},
+	   "with": {"members": "[steps.vm.ip]", "password": "'hunter2'"}}]}`},
 }
 
 type fixtureCase struct {
@@ -125,7 +133,7 @@ func TestTopologyFixture(t *testing.T) {
 	for _, secret := range []string{"hunter2", "vlan-pci-secret", "grp-pci", "gold-secret", "vsan-secret", "'fin'",
 		"PCI VLANs", "tok_live", ".secret", "{seq", "inv", "'v'", "é", "cmdb-secret", "p-secret", "cmdb-token-name", "418", "result_secret", "api_key", "/api/",
 		"huge-secret", "grp-ask-secret", "usr_ask_secret", "secret-text", "grp-esc-secret", "usr_esc_secret", "Label-secret", "opt-secret",
-		"big-secret", "lit-secret", "dropped-secret", "grp-told-secret", "usr_told_secret", "Secret-text"} {
+		"big-secret", "lit-secret", "dropped-secret", "grp-told-secret", "usr_told_secret", "Secret-text", "pool-secret", "zone-secret"} {
 		for _, c := range cases[len(cases)-len(probes):] {
 			if b, _ := json.Marshal(c.Topology); bytes.Contains(b, []byte(secret)) {
 				t.Errorf("%s's topology has %q: %s", c.Name, secret, b)

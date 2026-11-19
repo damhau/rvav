@@ -577,6 +577,7 @@ func (e CatalogVersionChangeChange) Valid() bool {
 const (
 	StepTargetAwx      CompositeStepTargetKind = "awx"
 	StepTargetItem     CompositeStepTargetKind = "item"
+	StepTargetResource CompositeStepTargetKind = "resource"
 	StepTargetWorkflow CompositeStepTargetKind = "workflow"
 )
 
@@ -586,6 +587,8 @@ func (e CompositeStepTargetKind) Valid() bool {
 	case StepTargetAwx:
 		return true
 	case StepTargetItem:
+		return true
+	case StepTargetResource:
 		return true
 	case StepTargetWorkflow:
 		return true
@@ -597,6 +600,7 @@ func (e CompositeStepTargetKind) Valid() bool {
 // Defines values for CompositeStepTargetRuns.
 const (
 	StepRunsAwx      CompositeStepTargetRuns = "awx"
+	StepRunsResource CompositeStepTargetRuns = "resource"
 	StepRunsVm       CompositeStepTargetRuns = "vm"
 	StepRunsWorkflow CompositeStepTargetRuns = "workflow"
 )
@@ -605,6 +609,8 @@ const (
 func (e CompositeStepTargetRuns) Valid() bool {
 	switch e {
 	case StepRunsAwx:
+		return true
+	case StepRunsResource:
 		return true
 	case StepRunsVm:
 		return true
@@ -4706,11 +4712,13 @@ type CompositeStepTarget struct {
 	ItemType *CatalogItemType     `json:"item_type,omitempty"`
 
 	// Kind How a step names it: `item` (another item, by slug), `awx`
-	// (`awx.job_template`, a template's name) or `workflow` (a custom
-	// workflow registered for composite steps, by key).
+	// (`awx.job_template`, a template's name), `workflow` (a custom
+	// workflow registered for composite steps, by key) or `resource`
+	// (`resource.type`, a resource type's key: a custom resource in
+	// the deployment of a VM step before it, ADR-0056).
 	Kind CompositeStepTargetKind `json:"kind"`
 
-	// OpenOutputs Its outputs are whatever it returns (a custom workflow's result): fields not listed may be read too.
+	// OpenOutputs Its outputs are whatever it returns (a custom workflow's result, a custom resource's properties): fields not listed may be read too.
 	OpenOutputs bool `json:"open_outputs"`
 
 	// Outputs What later steps read as `steps.<key>.<name>`.
@@ -4735,7 +4743,9 @@ type CompositeStepTarget struct {
 	// Examples: db-user
 	Ref string `json:"ref"`
 
-	// Runs What it runs, which says its outputs and whether it is planned.
+	// Runs What it runs, which says its outputs and whether it is planned:
+	// `resource` makes a custom resource, whose properties are its
+	// outputs.
 	Runs    CompositeStepTargetRuns `json:"runs"`
 	Summary *string                 `json:"summary,omitempty"`
 
@@ -4744,11 +4754,15 @@ type CompositeStepTarget struct {
 }
 
 // CompositeStepTargetKind How a step names it: `item` (another item, by slug), `awx`
-// (`awx.job_template`, a template's name) or `workflow` (a custom
-// workflow registered for composite steps, by key).
+// (`awx.job_template`, a template's name), `workflow` (a custom
+// workflow registered for composite steps, by key) or `resource`
+// (`resource.type`, a resource type's key: a custom resource in
+// the deployment of a VM step before it, ADR-0056).
 type CompositeStepTargetKind string
 
-// CompositeStepTargetRuns What it runs, which says its outputs and whether it is planned.
+// CompositeStepTargetRuns What it runs, which says its outputs and whether it is planned:
+// `resource` makes a custom resource, whose properties are its
+// outputs.
 type CompositeStepTargetRuns string
 
 // CompositeStepTargetList defines model for CompositeStepTargetList.
@@ -12502,10 +12516,12 @@ type ClientInterface interface {
 	// a step may request (VM, AWX and custom workflow items: composites
 	// don't nest; a workflow item only while its custom workflow is
 	// registered for catalog items and enabled), the AWX templates
-	// imported from AWX, and the custom workflows registered for composite
-	// steps and enabled. Each says the inputs its step's `with` binds
-	// (from the item's form, the template's survey or the workflow's input
-	// schema), the outputs later steps read as `steps.<key>.<name>`, and
+	// imported from AWX, the custom workflows registered for composite
+	// steps and enabled, and the resource types turned on (ADR-0056).
+	// Each says the inputs its step's `with` binds (from the item's form,
+	// the template's survey, the workflow's input schema, or a resource
+	// type's create step's), the outputs later steps read as
+	// `steps.<key>.<name>`, and
 	// the projects it is offered to when not all of them. A step may also
 	// name an AWX template not listed (any template AWX has): its inputs
 	// are then the author's. Needs `catalog.manage` (catalog admins and administrators).
@@ -15883,10 +15899,12 @@ func (c *Client) UpdateCatalogCategory(ctx context.Context, key string, body Upd
 // a step may request (VM, AWX and custom workflow items: composites
 // don't nest; a workflow item only while its custom workflow is
 // registered for catalog items and enabled), the AWX templates
-// imported from AWX, and the custom workflows registered for composite
-// steps and enabled. Each says the inputs its step's `with` binds
-// (from the item's form, the template's survey or the workflow's input
-// schema), the outputs later steps read as `steps.<key>.<name>`, and
+// imported from AWX, the custom workflows registered for composite
+// steps and enabled, and the resource types turned on (ADR-0056).
+// Each says the inputs its step's `with` binds (from the item's form,
+// the template's survey, the workflow's input schema, or a resource
+// type's create step's), the outputs later steps read as
+// `steps.<key>.<name>`, and
 // the projects it is offered to when not all of them. A step may also
 // name an AWX template not listed (any template AWX has): its inputs
 // are then the author's. Needs `catalog.manage` (catalog admins and administrators).
@@ -34045,10 +34063,12 @@ type ClientWithResponsesInterface interface {
 	// a step may request (VM, AWX and custom workflow items: composites
 	// don't nest; a workflow item only while its custom workflow is
 	// registered for catalog items and enabled), the AWX templates
-	// imported from AWX, and the custom workflows registered for composite
-	// steps and enabled. Each says the inputs its step's `with` binds
-	// (from the item's form, the template's survey or the workflow's input
-	// schema), the outputs later steps read as `steps.<key>.<name>`, and
+	// imported from AWX, the custom workflows registered for composite
+	// steps and enabled, and the resource types turned on (ADR-0056).
+	// Each says the inputs its step's `with` binds (from the item's form,
+	// the template's survey, the workflow's input schema, or a resource
+	// type's create step's), the outputs later steps read as
+	// `steps.<key>.<name>`, and
 	// the projects it is offered to when not all of them. A step may also
 	// name an AWX template not listed (any template AWX has): its inputs
 	// are then the author's. Needs `catalog.manage` (catalog admins and administrators).
@@ -53836,10 +53856,12 @@ func (c *ClientWithResponses) UpdateCatalogCategoryWithResponse(ctx context.Cont
 // a step may request (VM, AWX and custom workflow items: composites
 // don't nest; a workflow item only while its custom workflow is
 // registered for catalog items and enabled), the AWX templates
-// imported from AWX, and the custom workflows registered for composite
-// steps and enabled. Each says the inputs its step's `with` binds
-// (from the item's form, the template's survey or the workflow's input
-// schema), the outputs later steps read as `steps.<key>.<name>`, and
+// imported from AWX, the custom workflows registered for composite
+// steps and enabled, and the resource types turned on (ADR-0056).
+// Each says the inputs its step's `with` binds (from the item's form,
+// the template's survey, the workflow's input schema, or a resource
+// type's create step's), the outputs later steps read as
+// `steps.<key>.<name>`, and
 // the projects it is offered to when not all of them. A step may also
 // name an AWX template not listed (any template AWX has): its inputs
 // are then the author's. Needs `catalog.manage` (catalog admins and administrators).

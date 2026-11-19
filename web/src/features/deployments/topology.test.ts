@@ -159,9 +159,9 @@ describe("a deployment's topology", () => {
         {
           key: "lb",
           type: "load-balancer",
-          inputs: { members: "components.vm.map(v, v.name)", note: "'resources.dns'" },
+          with: { members: "components.vm", note: "'resources.dns'" },
         },
-        { key: "dns", type: "dns-alias", depends_on: ["lb"] },
+        { key: "dns", type: "dns-alias", with: { target: "resources.lb" } },
       ],
     });
     expect(g.nodes.find((n) => n.id === "resource:res_web-lb")).toMatchObject({

@@ -13,6 +13,7 @@ import { celCheck } from "./cel";
 import { constraintWarnings } from "./constraints";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { workflowRegistrations } from "./extensibility";
+import { resourceTypesOf } from "./resourceTypes";
 import { fileProblems, imageProblem } from "./files";
 import {
   checkProblems,
@@ -973,13 +974,14 @@ const stepOutputs: Record<Target["runs"], S["CompositeStepOutput"][]> = {
   ],
   awx: [{ name: "job_id", type: "integer", description: "The AWX job's ID" }],
   workflow: [],
+  resource: [],
 };
 
 const target = (t: Omit<Target, "planned" | "outputs" | "open_outputs">): Target => ({
   ...t,
   planned: t.runs === "vm",
   outputs: [...stepOutputs[t.runs]],
-  open_outputs: t.runs === "workflow",
+  open_outputs: t.runs === "workflow" || t.runs === "resource",
 });
 
 /** A form's inputs a step binds, in the order its sections show them (core.formInputs). */
@@ -1054,6 +1056,34 @@ const displayName = (template: string) => {
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
 
+/**
+ * The resource types turned on, as steps (core.resourceTypeTargets): their
+ * create step's inputs (its workflow's input schema; the mocks' AWX
+ * templates have no survey), their properties as outputs.
+ */
+function resourceTargets(db: Db, workflows: S["WorkflowRegistration"][]): Target[] {
+  return resourceTypesOf(db)
+    .filter((t) => t.enabled)
+    .map((t) => {
+      const flow = t.create.kind === "workflow" ? workflows.find((w) => w.key === t.create.name) : undefined;
+      return {
+        ...target({
+          kind: "resource",
+          ref: t.key ?? "",
+          title: t.title,
+          runs: "resource",
+          inputs: formInputs(flow?.input_schema ?? {}),
+        }),
+        outputs: formInputs(t.property_schema ?? {}).map((p) => ({
+          name: p.name,
+          type: p.type,
+          description: p.description || p.title,
+        })),
+        ...(t.description ? { summary: t.description } : {}),
+      };
+    });
+}
+
 export function compositeStepTargets(db: Db, workflows: S["WorkflowRegistration"][]): Target[] {
   const st = state(db);
   const byTitle = (a: Target, b: Target) =>
@@ -1101,7 +1131,12 @@ export function compositeStepTargets(db: Db, workflows: S["WorkflowRegistration"
       ...projectLimits(w.project_ids),
       ...(w.description ? { summary: w.description } : {}),
     }));
-  return [...items.sort(byTitle), ...templates.sort(byTitle), ...flows.sort(byTitle)];
+  return [
+    ...items.sort(byTitle),
+    ...templates.sort(byTitle),
+    ...flows.sort(byTitle),
+    ...resourceTargets(db, workflows).sort(byTitle),
+  ];
 }
 
 export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<void>) {

@@ -326,15 +326,19 @@ const cel =
     return null;
   };
 
-const stepRefs: Keep = (v) =>
-  isObject(v)
-    ? Object.fromEntries(
-        Object.entries(v).flatMap(([k, x]) => {
-          const refs = typeof x === "string" ? (x.match(/\bsteps\.[a-z][a-z0-9_]*/g) ?? []) : [];
-          return refs.length > 0 ? [[k, refs.join(" ")]] : [];
-        }),
-      )
-    : null;
+/** Bindings, each only as what it reads by the pattern ("steps.vm"); those reading nothing go. */
+const refs =
+  (pattern: RegExp): Keep =>
+  (v) =>
+    isObject(v)
+      ? Object.fromEntries(
+          Object.entries(v).flatMap(([k, x]) => {
+            const found = typeof x === "string" ? (x.match(pattern) ?? []) : [];
+            return found.length > 0 ? [[k, found.join(" ")]] : [];
+          }),
+        )
+      : null;
+const stepRefs = refs(/\bsteps\.[a-z][a-z0-9_]*/g);
 
 const bindings = fields({ network: cel(true), groups: cel(true), template: cel(true), post_config: cel(true) });
 const guestOS = fields({ os_family: asIs });
@@ -369,6 +373,9 @@ const vmTopology = fields({
       groups: asIs,
     }),
   ),
+  resources: each(
+    fields({ key: asIs, title: asIs, type: asIs, with: refs(/\b(?:components|resources)\.[a-z][a-z0-9_]*/g) }),
+  ),
 });
 /** A REST call's URL: its text goes (the host, the path), each ${expr} stays with its literals masked. */
 const restUrl: Keep = (v) => {
@@ -400,6 +407,8 @@ const stepKeys: Record<string, Keep> = {
   poll: fields({ rest: restCall, until: cel(), every: asIs, timeout: asIs, on_timeout: asIs }),
   // A message: that it tells the requester or the owner, not which group or people, nor what it says.
   notify: fields({ requester: asIs, owner: asIs }),
+  // A custom resource: its type, and the VM step whose deployment it joins (ADR-0056).
+  resource: fields({ type: asIs, deployment: asIs }),
   when: cel(),
   with: stepRefs,
   undo: fields({ job_template: asIs, workflow: asIs, rest: restCall, with: stepRefs }),

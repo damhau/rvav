@@ -1274,5 +1274,107 @@
         }
       ]
     }
+  },
+  {
+    "name": "probe-vm-resources",
+    "blueprint": {
+      "components": [
+        {
+          "count": 2,
+          "key": "web"
+        }
+      ],
+      "kind": "vm",
+      "resources": [
+        {
+          "key": "lb",
+          "title": "Load balancer",
+          "type": "load-balancer",
+          "with": {
+            "members": "components.web.ips",
+            "pool": "project.code + '-pool-secret'",
+            "token": "'tok_live_r'"
+          }
+        },
+        {
+          "key": "dns",
+          "type": "dns-alias",
+          "with": {
+            "target": "resources.lb.vip",
+            "zone": "'zone-secret'"
+          }
+        }
+      ]
+    },
+    "topology": {
+      "components": [
+        {
+          "count": 2,
+          "key": "web"
+        }
+      ],
+      "kind": "vm",
+      "resources": [
+        {
+          "key": "lb",
+          "title": "Load balancer",
+          "type": "load-balancer",
+          "with": {
+            "members": "components.web"
+          }
+        },
+        {
+          "key": "dns",
+          "type": "dns-alias",
+          "with": {
+            "target": "resources.lb"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "probe-composite-resource",
+    "blueprint": {
+      "kind": "composite",
+      "steps": [
+        {
+          "item": "rhel9-server",
+          "key": "vm"
+        },
+        {
+          "key": "lb",
+          "resource": {
+            "deployment": "vm",
+            "type": "load-balancer"
+          },
+          "title": "Its load balancer",
+          "with": {
+            "members": "[steps.vm.ip]",
+            "password": "'hunter2'"
+          }
+        }
+      ]
+    },
+    "topology": {
+      "kind": "composite",
+      "steps": [
+        {
+          "item": "rhel9-server",
+          "key": "vm"
+        },
+        {
+          "key": "lb",
+          "resource": {
+            "deployment": "vm",
+            "type": "load-balancer"
+          },
+          "title": "Its load balancer",
+          "with": {
+            "members": "steps.vm"
+          }
+        }
+      ]
+    }
   }
 ]

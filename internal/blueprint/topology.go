@@ -14,7 +14,10 @@ import (
 // item's components (how many, template, OS family, disks, adapters, kept
 // apart), its networks, segments, security groups and rules; a composite's
 // steps, what each runs, its condition and undo, and which earlier steps
-// its bindings use; which components each is built after. Nothing else:
+// its bindings use; which components each is built after; a VM item's
+// custom resources and a composite's resource steps, by their type, with
+// only the components, resources and steps their inputs read (ADR-0056).
+// Nothing else:
 // no guest settings (domain, join credential, administrator password,
 // cloud-init), sizes, naming, tags,
 // placement or AWX variables, a step's bindings only as the `steps.<key>`
@@ -179,14 +182,17 @@ func (restURL) keep(v any) any {
 	return b.String()
 }
 
-var stepRef = regexp.MustCompile(`\bsteps\.[a-z][a-z0-9_]*`)
+var (
+	stepRef     = regexp.MustCompile(`\bsteps\.[a-z][a-z0-9_]*`)
+	resourceRef = regexp.MustCompile(`\b(?:components|resources)\.[a-z][a-z0-9_]*`)
+)
 
-// stepRefs keeps of a step's bindings only the earlier steps they use:
-// each binding that names one becomes those names ("steps.vm"), the others
-// go. A binding's other literals may be anything, a password included.
-type stepRefs struct{}
+// refs keeps of bindings only what they read by one pattern: each binding
+// that names something becomes those names ("steps.vm"), the others go. A
+// binding's other literals may be anything, a password included.
+type refs struct{ of *regexp.Regexp }
 
-func (stepRefs) keep(v any) any {
+func (r refs) keep(v any) any {
 	m, ok := v.(map[string]any)
 	if !ok {
 		return nil
@@ -194,13 +200,16 @@ func (stepRefs) keep(v any) any {
 	out := map[string]any{}
 	for k, x := range m {
 		if s, ok := x.(string); ok {
-			if refs := stepRef.FindAllString(s, -1); len(refs) > 0 {
-				out[k] = strings.Join(refs, " ")
+			if found := r.of.FindAllString(s, -1); len(found) > 0 {
+				out[k] = strings.Join(found, " ")
 			}
 		}
 	}
 	return out
 }
+
+// stepRefs keeps of a step's bindings only the earlier steps they use.
+var stepRefs = refs{stepRef}
 
 var (
 	// The bindings the canvas draws: adapters, groups chosen in the
@@ -240,6 +249,7 @@ var (
 			"anti_affinity": asIs{},
 			"groups":        asIs{},
 		}},
+		"resources": each{fields{"key": asIs{}, "title": asIs{}, "type": asIs{}, "with": refs{resourceRef}}},
 	}
 
 	// A REST call: its method, and what its URL and body read. Not its
@@ -274,9 +284,10 @@ var (
 		"wait":     topologyWait,
 		"poll":     topologyPoll,
 		"notify":   topologyNotify,
+		"resource": fields{"type": asIs{}, "deployment": asIs{}},
 		"when":     cel{},
-		"with":     stepRefs{},
-		"undo":     fields{"job_template": asIs{}, "workflow": asIs{}, "rest": topologyREST, "with": stepRefs{}},
+		"with":     stepRefs,
+		"undo":     fields{"job_template": asIs{}, "workflow": asIs{}, "rest": topologyREST, "with": stepRefs},
 	}
 	compositeTopology = fields{
 		"kind":                asIs{},

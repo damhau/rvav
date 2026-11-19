@@ -2095,10 +2095,12 @@ export interface paths {
          *     a step may request (VM, AWX and custom workflow items: composites
          *     don't nest; a workflow item only while its custom workflow is
          *     registered for catalog items and enabled), the AWX templates
-         *     imported from AWX, and the custom workflows registered for composite
-         *     steps and enabled. Each says the inputs its step's `with` binds
-         *     (from the item's form, the template's survey or the workflow's input
-         *     schema), the outputs later steps read as `steps.<key>.<name>`, and
+         *     imported from AWX, the custom workflows registered for composite
+         *     steps and enabled, and the resource types turned on (ADR-0056).
+         *     Each says the inputs its step's `with` binds (from the item's form,
+         *     the template's survey, the workflow's input schema, or a resource
+         *     type's create step's), the outputs later steps read as
+         *     `steps.<key>.<name>`, and
          *     the projects it is offered to when not all of them. A step may also
          *     name an AWX template not listed (any template AWX has): its inputs
          *     are then the author's. Needs `catalog.manage` (catalog admins and administrators).
@@ -4477,11 +4479,13 @@ export interface components {
         CompositeStepTarget: {
             /**
              * @description How a step names it: `item` (another item, by slug), `awx`
-             *     (`awx.job_template`, a template's name) or `workflow` (a custom
-             *     workflow registered for composite steps, by key).
+             *     (`awx.job_template`, a template's name), `workflow` (a custom
+             *     workflow registered for composite steps, by key) or `resource`
+             *     (`resource.type`, a resource type's key: a custom resource in
+             *     the deployment of a VM step before it, ADR-0056).
              * @enum {string}
              */
-            kind: "item" | "awx" | "workflow";
+            kind: "item" | "awx" | "workflow" | "resource";
             /**
              * @description The name a step gives it, under `kind`. A job template and a
              *     workflow template may have the same name: `awx_workflow` (and
@@ -4511,10 +4515,12 @@ export interface components {
              */
             project_ids?: string[];
             /**
-             * @description What it runs, which says its outputs and whether it is planned.
+             * @description What it runs, which says its outputs and whether it is planned:
+             *     `resource` makes a custom resource, whose properties are its
+             *     outputs.
              * @enum {string}
              */
-            runs: "vm" | "awx" | "workflow";
+            runs: "vm" | "awx" | "workflow" | "resource";
             /**
              * @description It builds VMs, planned with the request when it is submitted: its
              *     inputs come from the form only, not from earlier steps, and it
@@ -4525,7 +4531,7 @@ export interface components {
             inputs: components["schemas"]["CompositeStepInput"][];
             /** @description What later steps read as `steps.<key>.<name>`. */
             outputs: components["schemas"]["CompositeStepOutput"][];
-            /** @description Its outputs are whatever it returns (a custom workflow's result): fields not listed may be read too. */
+            /** @description Its outputs are whatever it returns (a custom workflow's result, a custom resource's properties): fields not listed may be read too. */
             open_outputs: boolean;
         };
         CompositeStepInput: {

@@ -246,6 +246,30 @@ describe("the composite designer", longTests, () => {
     expect(within(poll).queryByRole("list", { name: "Problems with this step" })).toBeNull();
   });
 
+  it("adds a custom resource by its type, with no undo of its own, in the VM step's deployment", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={pg} />);
+    await user.click(await screen.findByRole("button", { name: "Add a step" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a step" });
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "What it runs" })).toBeEnabled());
+    await user.click(within(dialog).getByRole("combobox", { name: "What it runs" }));
+    // Only the types turned on: the DNS alias is off.
+    const offered = screen.getAllByRole("option").map((o) => o.textContent ?? "");
+    expect(offered.some((o) => o.startsWith("Load balancer"))).toBe(true);
+    expect(offered.some((o) => o.startsWith("DNS alias"))).toBe(false);
+    await user.click(screen.getByRole("option", { name: /^Load balancer/ }));
+    await user.clear(within(dialog).getByRole("textbox", { name: "Key" }));
+    await user.type(within(dialog).getByRole("textbox", { name: "Key" }), "lb");
+    await user.click(within(dialog).getByRole("button", { name: "Add step" }));
+
+    expect(step("lb")).toEqual({ key: "lb", title: "Load balancer", resource: { type: "load-balancer" } });
+    const details = await screen.findByRole("region", { name: "Selected: Load balancer" });
+    expect(within(details).queryByRole("group", { name: "Undo" })).toBeNull();
+    expect(details).toHaveTextContent("If a later step fails, its type's delete step undoes it.");
+    expect(details).toHaveTextContent("It joins the deployment of Database nodes.");
+    expect(node(/^Resource Load balancer\./)).toBeDefined();
+  });
+
   it("adds a branch, a case and a message on its side, each one edit, and goes back to it", async () => {
     const user = userEvent.setup();
     renderWithQuery(<Harness initial={pg} />);

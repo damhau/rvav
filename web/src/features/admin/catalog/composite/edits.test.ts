@@ -21,6 +21,7 @@ import {
   setBranchCase,
   setNotifyField,
   setPollField,
+  setResourceDeployment,
   setRestField,
   setRollback,
   setStepField,
@@ -731,5 +732,40 @@ describe("a branch and its sides", () => {
     text = setNotifyField(text, "step:n", "message", "");
     expect(notify(text)).toEqual({ requester: true, groups: ["dba", "ops"] });
     expect(() => setNotifyField(base(), "step:first", "owner", true)).toThrow("It sends no message.");
+  });
+});
+
+describe("a custom resource step", () => {
+  const base = () =>
+    definition({
+      kind: "composite",
+      steps: [
+        { key: "vm", item: "rhel9-server" },
+        { key: "lb", awx: { job_template: "t" }, with: { members: "[steps.vm.ip]" }, undo: { job_template: "u" } },
+      ],
+    });
+  const lb = (text: string) => (blueprint(text).steps as Record<string, unknown>[])[1]!;
+
+  it("names its type, keeps its inputs and drops its undo: its type's delete undoes it", () => {
+    const text = setTarget(base(), "step:lb", { kind: "resource", ref: "load-balancer" });
+    expect(lb(text)).toEqual({ key: "lb", resource: { type: "load-balancer" }, with: { members: "[steps.vm.ip]" } });
+    expect(lb(setTarget(text, "step:lb", { kind: "resource", ref: "dns-alias" })).resource).toEqual({
+      type: "dns-alias",
+    });
+    expect(lb(setTarget(text, "step:lb", { kind: "awx", ref: "t" }))).toEqual({
+      key: "lb",
+      awx: { job_template: "t" },
+      with: { members: "[steps.vm.ip]" },
+    });
+  });
+
+  it("names the VM step whose deployment it joins, and follows its new key", () => {
+    let text = setTarget(base(), "step:lb", { kind: "resource", ref: "load-balancer" });
+    text = setResourceDeployment(text, "step:lb", "vm");
+    expect(lb(text).resource).toEqual({ type: "load-balancer", deployment: "vm" });
+    text = setStepField(text, "step:vm", "key", "web");
+    expect(lb(text)).toMatchObject({ resource: { deployment: "web" }, with: { members: "[steps.web.ip]" } });
+    expect(lb(setResourceDeployment(text, "step:lb", "")).resource).toEqual({ type: "load-balancer" });
+    expect(() => setResourceDeployment(base(), "step:vm", "x")).toThrow("It makes no custom resource.");
   });
 });

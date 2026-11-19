@@ -24,7 +24,7 @@ export interface StepTarget {
   templateId?: number;
 }
 
-/** What a step names: an item, an AWX template, a custom workflow, a REST call, a wait for a person, a time or a condition, a branch or a message (the first, when it names several). */
+/** What a step names: an item, an AWX template, a custom workflow, a REST call, a wait for a person, a time or a condition, a branch, a message or a custom resource's type (the first, when it names several). */
 export function targetOf(step: Raw): StepTarget | undefined {
   if (str(step.item)) return { kind: "item", ref: str(step.item) };
   const awx = obj(step.awx);
@@ -44,6 +44,7 @@ export function targetOf(step: Raw): StepTarget | undefined {
   if (step.poll !== undefined) return { kind: "poll", ref: "" };
   if (step.branch !== undefined) return { kind: "branch", ref: "" };
   if (step.notify !== undefined) return { kind: "notify", ref: "" };
+  if (step.resource !== undefined) return { kind: "resource", ref: str(obj(step.resource).type) };
   return undefined;
 }
 
@@ -152,7 +153,7 @@ export function outputsOf(
   if (t?.kind === "notify") return { outputs: notifyOutputs, open: false };
   if (t?.kind === "awx")
     return { outputs: [{ name: "job_id", type: "integer", description: "The AWX job's ID" }], open: false };
-  return { outputs: [], open: t?.kind === "workflow" };
+  return { outputs: [], open: t?.kind === "workflow" || t?.kind === "resource" };
 }
 
 /** A step of the blueprint, flattened: its slot, its place in a parallel group or on a side of a branch, its pointer. */

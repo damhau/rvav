@@ -8,7 +8,7 @@ import type { FieldError } from "@/lib/api/types";
 export interface CompositeStepView {
   key: string;
   title?: string;
-  kind: "item" | "awx" | "workflow" | "rest" | "ask" | "wait" | "poll" | "branch" | "notify" | "?";
+  kind: "item" | "awx" | "workflow" | "rest" | "ask" | "wait" | "poll" | "branch" | "notify" | "resource" | "?";
   target: string;
   /** A wait for a person, in words. A requester's topology names neither a group nor anyone. */
   ask?: { who: string; wants: string; timeout?: string };
@@ -502,11 +502,14 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
                       ? "branch"
                       : notify
                         ? "notify"
-                        : "?",
+                        : resource
+                          ? "resource"
+                          : "?",
       target:
         str(s.item) ||
         str(awx?.job_template) ||
         str(s.workflow) ||
+        str(resource?.type) ||
         (rest ? restLine(rest) : poll?.rest ? restLine(poll.rest as Raw) : ""),
       ask: ask ? askWords(ask) : undefined,
       wait: wait ? { for: str(wait.for) || undefined, until: str(wait.until) || undefined } : undefined,

@@ -67,8 +67,8 @@ const readsOf = (text: string, root: "components" | "resources") =>
 
 /**
  * The components and resources each custom resource of the request's
- * topology is made after: those its depends_on names, and those its
- * inputs read as components.<key> or resources.<key>.
+ * topology is made after: those its inputs read as components.<key> or
+ * resources.<key>, all the topology keeps of its `with`.
  */
 function resourcesAfter(topology: unknown): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -77,12 +77,11 @@ function resourcesAfter(topology: unknown): Map<string, string[]> {
   for (const r of resources.map(obj)) {
     const key = str(r.key);
     if (!key) continue;
-    const named = Array.isArray(r.depends_on) ? r.depends_on.map(str) : [];
-    const texts = Object.values(obj(r.inputs)).filter((v): v is string => typeof v === "string");
+    const texts = Object.values(obj(r.with)).filter((v): v is string => typeof v === "string");
     const read = texts.flatMap((t) => [...readsOf(t, "components"), ...readsOf(t, "resources")]);
     out.set(
       key,
-      [...new Set([...named, ...read])].filter((k) => k && k !== key),
+      [...new Set(read)].filter((k) => k && k !== key),
     );
   }
   return out;

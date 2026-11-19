@@ -49,6 +49,7 @@ const stepOrder = [
   "poll",
   "branch",
   "notify",
+  "resource",
   "when",
   "with",
   "undo",
@@ -516,6 +517,12 @@ export function setStepField(text: string, id: string, field: "key" | "title" | 
         const n = call.get("url", true);
         if (isScalar(n) && typeof n.value === "string") n.value = renameInUrl(n.value, old, `steps.${v}`);
       }
+    // A custom resource names the VM step whose deployment it joins.
+    for (const s of locateAll(doc)) {
+      const resource = s.node.get("resource", true);
+      const n = isMap(resource) ? resource.get("deployment", true) : undefined;
+      if (isScalar(n) && n.value === at.key) n.value = v;
+    }
     // A message's text isn't CEL either, but what it fills in is.
     for (const s of locateAll(doc)) {
       const notify = s.node.get("notify", true);
@@ -535,6 +542,8 @@ export type Target =
   /** An AWX template: its name, whether it is a workflow template, its ID in AWX when known. */
   | { kind: "awx"; ref: string; workflow?: boolean; templateId?: number }
   | { kind: "workflow"; ref: string }
+  /** A custom resource: its type's key (ADR-0056). */
+  | { kind: "resource"; ref: string }
   /** A REST call: what it names is in its own fields. */
   | { kind: "rest"; ref: "" }
   /** A wait for a person: who, in its own fields. */
@@ -565,14 +574,15 @@ export const newBranch = () => ({ cases: [{ when: "", steps: [] }] });
  * with it, its inputs' bindings stay. A REST call has no inputs: its URL and
  * body read them, so its bindings go. A wait has no inputs, and nothing to undo.
  * Nor has a message, or a branch, whose cases have the conditions; a branch runs
- * neither in a parallel group nor on a side of another (ADR-0033).
+ * neither in a parallel group nor on a side of another (ADR-0033). A custom
+ * resource is undone by its type's delete, so its undo goes (ADR-0056).
  */
 export function setTarget(text: string, id: string, t: Target): string {
   const doc = load(text);
   const { node, side, j } = locate(doc, id);
   if (t.kind === "branch" && side) throw new EditError(noBranchOnSide);
   if (t.kind === "branch" && j !== null) throw new EditError(noBranchInGroup);
-  for (const k of ["item", "awx", "workflow", "rest", "ask", "wait", "poll", "branch", "notify"])
+  for (const k of ["item", "awx", "workflow", "rest", "ask", "wait", "poll", "branch", "notify", "resource"])
     if (k !== t.kind) node.delete(k);
   if (t.kind === "branch") {
     node.delete("with");
@@ -594,6 +604,11 @@ export function setTarget(text: string, id: string, t: Target): string {
     node.delete("with");
     node.delete("undo");
     if (!isMap(own(doc, node, t.kind))) put(doc, node, t.kind, t.kind === "poll" ? newPoll() : {}, stepOrder);
+  } else if (t.kind === "resource") {
+    node.delete("undo");
+    const resource = own(doc, node, "resource");
+    if (isMap(resource)) put(doc, resource, "type", t.ref, ["type", "deployment"]);
+    else put(doc, node, "resource", { type: t.ref }, stepOrder);
   } else if (t.kind === "awx") {
     const awx = own(doc, node, "awx");
     if (isMap(awx)) {
@@ -732,6 +747,16 @@ function partOf(doc: Document, id: string, kind: "wait" | "poll"): YAMLMap {
   if (!isMap(part)) throw new EditError(kind === "wait" ? "It doesn't wait for a time." : "It doesn't poll.");
   part.flow = false;
   return part;
+}
+
+/** The VM step whose deployment a custom resource joins; empty: the only one before it. */
+export function setResourceDeployment(text: string, id: string, step: string): string {
+  const doc = load(text);
+  const resource = own(doc, locate(doc, id).node, "resource");
+  if (!isMap(resource)) throw new EditError("It makes no custom resource.");
+  if (step.trim()) put(doc, resource, "deployment", step.trim(), ["type", "deployment"]);
+  else resource.delete("deployment");
+  return save(doc);
 }
 
 /** How long a step waits, or until when: one or the other, so that writing one removes the other. */
