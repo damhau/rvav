@@ -1234,6 +1234,126 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /schedules:
+    get:
+      tags: [requests]
+      operationId: listSchedules
+      summary: Recurring schedules visible to the caller (ADR-0057)
+      description: |
+        Those the caller owns, and those of the projects where they hold
+        `request.manage` or `deployments.read_all`. Each with its next runs
+        and its last.
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQuery" }
+      responses:
+        "200":
+          description: The schedules, the newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScheduleList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [requests]
+      operationId: createSchedule
+      summary: Run an item on a recurring schedule, as the caller
+      description: |
+        For an item that makes no deployment: a custom workflow, an AWX
+        template, a composite without VM steps. Each run is a request of
+        the caller's, submitted as `POST /requests` submits one: policies,
+        approvals and quota apply to each, and a run they refuse is kept
+        with why. A run is skipped while the run before it hasn't finished.
+        The inputs are checked as a request's are when the schedule is
+        made; a secret input can't be kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScheduleWrite" }
+      responses:
+        "201":
+          description: Made, with its next runs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
+  /schedules/{scheduleId}:
+    parameters:
+      - { $ref: "#/components/parameters/ScheduleIdPath" }
+    get:
+      tags: [requests]
+      operationId: getSchedule
+      summary: One schedule, with its last runs
+      responses:
+        "200":
+          description: The schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [requests]
+      operationId: deleteSchedule
+      summary: Delete a schedule
+      description: |
+        No run starts after; the requests it started stay, and still name
+        it. Its owner, or `request.manage` in its project.
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
+  /schedules/{scheduleId}/pause:
+    parameters:
+      - { $ref: "#/components/parameters/ScheduleIdPath" }
+    post:
+      tags: [requests]
+      operationId: pauseSchedule
+      summary: Pause a schedule
+      description: No run starts until it is resumed. Its owner, or `request.manage` in its project.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SchedulePause" }
+      responses:
+        "200":
+          description: Paused
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
+  /schedules/{scheduleId}/resume:
+    parameters:
+      - { $ref: "#/components/parameters/ScheduleIdPath" }
+    post:
+      tags: [requests]
+      operationId: resumeSchedule
+      summary: Resume a paused schedule
+      description: |
+        Runs start again from its next time: those missed while it was
+        paused don't. Its owner, or `request.manage` in its project.
+      responses:
+        "200":
+          description: Resumed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
   /approvals:
     get:
       tags: [approvals]
@@ -6099,6 +6219,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    ScheduleIdPath:
+      name: scheduleId
+      in: path
+      required: true
+      schema: { type: string }
     ProjectIdQuery:
       name: project_id
       in: query
@@ -8553,6 +8678,13 @@ components:
           items: { $ref: "#/components/schemas/PolicyWarning" }
         submitted_at: { type: string, format: date-time }
         scheduled_at: { type: [string, "null"], format: date-time }
+        schedule:
+          type: object
+          description: The recurring schedule that started it (ADR-0057), deleted since or not.
+          required: [id, name]
+          properties:
+            id: { type: string }
+            name: { type: string }
         started_at: { type: [string, "null"], format: date-time }
         finished_at: { type: [string, "null"], format: date-time }
         deployment_ids:
@@ -8580,6 +8712,126 @@ components:
                 step_id: { type: string }
                 message: { type: string }
             - type: "null"
+
+    ScheduleWrite:
+      type: object
+      required: [name, catalog_item_id, version_id, project_id, environment, inputs]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        catalog_item_id: { type: string }
+        version_id:
+          type: string
+          description: |
+            The version each run requests. Once it is no longer requestable,
+            runs are refused (`stale_version`): delete the schedule and make
+            another.
+        project_id: { type: string }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        inputs:
+          type: object
+          additionalProperties: true
+          description: |
+            The form's values, as `RequestDraft.inputs`: those left out take
+            their default at each run. No value for a secret input.
+        justification: { type: string, maxLength: 2000 }
+        accept_warnings:
+          type: boolean
+          description: |
+            Each run goes on despite the soft policies' warnings, as
+            `RequestDraft.accept_warnings`. Without it, a run they warn
+            about is refused.
+        cron:
+          type: string
+          description: |
+            When it runs, as five cron fields (minute, hour, day of month,
+            month, day of week) in `timezone`, such as `0 2 * * 1-5` for
+            2:00 on weekdays. Give this or `every_minutes`.
+          examples: ["0 2 * * 1-5"]
+        every_minutes:
+          type: integer
+          minimum: 5
+          maximum: 44640
+          description: Every so many minutes, from 5 to 31 days. Give this or `cron`.
+        timezone:
+          type: string
+          default: UTC
+          description: The IANA time zone `cron` is read in, such as `Europe/Zurich`.
+
+    SchedulePause:
+      type: object
+      properties:
+        note: { type: string, maxLength: 500, description: "Why it is paused, shown with it." }
+
+    ScheduleRunOutcome:
+      type: string
+      description: |
+        `started`: its request was submitted. `refused`: a policy, the quota,
+        the owner's access or the form refused it, as they would a request.
+        `skipped`: the run before hadn't finished. `failed`: rvav couldn't
+        submit it.
+      enum: [started, refused, skipped, failed]
+
+    ScheduleRun:
+      type: object
+      required: [at, outcome]
+      properties:
+        at: { type: string, format: date-time }
+        outcome: { $ref: "#/components/schemas/ScheduleRunOutcome" }
+        reason: { type: string, description: "Why it was refused, skipped or failed." }
+        request:
+          type: object
+          required: [id, number, status]
+          properties:
+            id: { type: string }
+            number: { type: string }
+            status: { $ref: "#/components/schemas/RequestStatus" }
+
+    Schedule:
+      type: object
+      required: [id, name, catalog_item, version, project, environment, owner, inputs, timezone, paused, created_at, next_runs]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        catalog_item:
+          type: object
+          required: [id, slug, name, type]
+          properties:
+            id: { type: string }
+            slug: { type: string }
+            name: { type: string }
+            type: { $ref: "#/components/schemas/CatalogItemType" }
+        version: { $ref: "#/components/schemas/CatalogItemVersionRef" }
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        owner: { $ref: "#/components/schemas/UserRef" }
+        inputs:
+          type: object
+          additionalProperties: true
+        justification: { type: string }
+        accept_warnings: { type: boolean }
+        cron: { type: string }
+        every_minutes: { type: integer }
+        timezone: { type: string }
+        paused: { type: boolean }
+        paused_note: { type: string }
+        created_at: { type: string, format: date-time }
+        next_runs:
+          type: array
+          description: Its next times, from Temporal; none while paused, or when Temporal can't be reached.
+          items: { type: string, format: date-time }
+        last_run: { $ref: "#/components/schemas/ScheduleRun" }
+        runs:
+          type: array
+          description: Its last 20 runs, the newest first, in `getSchedule` only.
+          items: { $ref: "#/components/schemas/ScheduleRun" }
+
+    ScheduleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Schedule" }
 
     RequestTopology:
       type: object

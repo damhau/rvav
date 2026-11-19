@@ -16,6 +16,7 @@ import { Route as ApprovalsRouteImport } from "./routes/approvals"
 import { Route as NotificationsRouteImport } from "./routes/notifications"
 import { Route as ReportsRouteImport } from "./routes/reports"
 import { Route as ResourcesRouteImport } from "./routes/resources"
+import { Route as SchedulesRouteImport } from "./routes/schedules"
 import { Route as TokensRouteImport } from "./routes/tokens"
 import { Route as AdminIndexRouteImport } from "./routes/admin/index"
 import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
@@ -88,6 +89,11 @@ const ReportsRoute = ReportsRouteImport.update({
 const ResourcesRoute = ResourcesRouteImport.update({
   id: "/resources",
   path: "/resources",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SchedulesRoute = SchedulesRouteImport.update({
+  id: "/schedules",
+  path: "/schedules",
   getParentRoute: () => rootRouteImport,
 } as any)
 const TokensRoute = TokensRouteImport.update({
@@ -293,6 +299,7 @@ export interface FileRoutesByFullPath {
   "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
   "/resources": typeof ResourcesRoute
+  "/schedules": typeof SchedulesRoute
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
@@ -339,6 +346,7 @@ export interface FileRoutesByTo {
   "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
   "/resources": typeof ResourcesRoute
+  "/schedules": typeof SchedulesRoute
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
@@ -387,6 +395,7 @@ export interface FileRoutesById {
   "/notifications": typeof NotificationsRoute
   "/reports": typeof ReportsRoute
   "/resources": typeof ResourcesRoute
+  "/schedules": typeof SchedulesRoute
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
@@ -436,6 +445,7 @@ export interface FileRouteTypes {
     | "/notifications"
     | "/reports"
     | "/resources"
+    | "/schedules"
     | "/tokens"
     | "/admin/audit"
     | "/admin/day2-actions"
@@ -482,6 +492,7 @@ export interface FileRouteTypes {
     | "/notifications"
     | "/reports"
     | "/resources"
+    | "/schedules"
     | "/tokens"
     | "/admin/audit"
     | "/admin/day2-actions"
@@ -529,6 +540,7 @@ export interface FileRouteTypes {
     | "/notifications"
     | "/reports"
     | "/resources"
+    | "/schedules"
     | "/tokens"
     | "/admin/audit"
     | "/admin/day2-actions"
@@ -577,6 +589,7 @@ export interface RootRouteChildren {
   NotificationsRoute: typeof NotificationsRoute
   ReportsRoute: typeof ReportsRoute
   ResourcesRoute: typeof ResourcesRoute
+  SchedulesRoute: typeof SchedulesRoute
   TokensRoute: typeof TokensRoute
   ApprovalsApprovalIdRoute: typeof ApprovalsApprovalIdRoute
   DeploymentsDeploymentIdRoute: typeof DeploymentsDeploymentIdRoute
@@ -639,6 +652,13 @@ declare module "@tanstack/react-router" {
       path: "/resources"
       fullPath: "/resources"
       preLoaderRoute: typeof ResourcesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/schedules": {
+      id: "/schedules"
+      path: "/schedules"
+      fullPath: "/schedules"
+      preLoaderRoute: typeof SchedulesRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/tokens": {
@@ -982,6 +1002,7 @@ const rootRouteChildren: RootRouteChildren = {
   NotificationsRoute: NotificationsRoute,
   ReportsRoute: ReportsRoute,
   ResourcesRoute: ResourcesRoute,
+  SchedulesRoute: SchedulesRoute,
   TokensRoute: TokensRoute,
   ApprovalsApprovalIdRoute: ApprovalsApprovalIdRoute,
   DeploymentsDeploymentIdRoute: DeploymentsDeploymentIdRoute,

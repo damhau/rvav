@@ -59,6 +59,7 @@ import { limitHandlers } from "./limits";
 import { extensibilityHandlers } from "./extensibility";
 import { resourceTypeHandlers } from "./resourceTypes";
 import { variableHandlers } from "./variables";
+import { scheduleHandlers, type DraftCheck } from "./schedules";
 import { notificationHandlers } from "./notifications";
 import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
@@ -164,6 +165,38 @@ function publicItem(i: StoredItem): CatalogItem {
   const { projectIds: _p, ...rest } = i;
   const versions = requestableVersions(db, i);
   return { ...rest, favourite: db.favourites.has(i.id), ...(versions.length > 1 ? { versions } : {}) };
+}
+
+// As the server: the inputs after the rules, so a field they hide isn't checked.
+const refusesSubmit = (e: S["FieldError"]) =>
+  e.field.startsWith("/inputs/") ||
+  e.field.startsWith("/validations/") ||
+  [
+    "",
+    "/version_id",
+    "/environment",
+    "/count",
+    "/scheduled_at",
+    "/lease_days",
+    "/deployment_name",
+    "/deployment_description",
+  ].includes(e.field);
+
+/** A schedule's draft, checked as a request's submit checks it. */
+function scheduleCheck(draft: RequestDraft): DraftCheck | null {
+  const item = itemByKey(draft.catalog_item_id);
+  const project = projectById(draft.project_id);
+  if (!item || !project) return null;
+  const check = previewOf(item, project, draft, true, true);
+  const secrets = Object.entries(db.forms[item.id]?.ui_schema.fields ?? {})
+    .filter(([, f]) => f.widget === "secret")
+    .map(([k]) => k);
+  return {
+    errors: check.errors.filter(refusesSubmit),
+    warnings: check.warnings ?? [],
+    makesDeployments: namesDeployments(item),
+    secrets,
+  };
 }
 
 /** The preview of a request, refused as the server does when its version is no longer requestable. */
@@ -478,6 +511,7 @@ export const handlers = [
   ...extensibilityHandlers(db, base, wait),
   ...resourceTypeHandlers(db, base, wait),
   ...variableHandlers(db, base, wait),
+  ...scheduleHandlers(db, base, wait, scheduleCheck),
   ...notificationHandlers(db, base, wait),
   ...signInHandlers(base, wait),
   ...draftHandlers(db, base, wait),
@@ -761,22 +795,7 @@ export const handlers = [
       );
     }
     const check = previewOf(item, project, draft, true, true);
-    // As the server: the inputs after the rules, so a field they hide isn't checked.
-    const errors = check.errors.filter(
-      (e) =>
-        e.field.startsWith("/inputs/") ||
-        e.field.startsWith("/validations/") ||
-        [
-          "",
-          "/version_id",
-          "/environment",
-          "/count",
-          "/scheduled_at",
-          "/lease_days",
-          "/deployment_name",
-          "/deployment_description",
-        ].includes(e.field),
-    );
+    const errors = check.errors.filter(refusesSubmit);
     if (errors.length) {
       return problem(
         422,

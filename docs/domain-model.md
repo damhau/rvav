@@ -88,6 +88,12 @@ Subscription (event → awx template | webhook)
   [ADR-0042](adr/0042-deployment-updates.md)), status (`pending_approval` | `approved` |
   `rejected` | `running` | `succeeded` | `failed` | `cancelled`), scheduled
   time, Temporal workflow ID.
+- **Schedule**: a request made again and again as its owner, of an item
+  that makes no deployment: version, project, environment, inputs (no
+  secrets), a cron expression and time zone or an interval, paused or
+  not. Its Temporal schedule starts each run; each run is recorded with
+  the request it started or why it started none
+  ([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)).
 - **RequestEvent**: timeline entries (step key, parent step, status, message,
   started/finished, external reference such as an AWX job ID).
 - **Approval**: the policy that triggered it, level, approvers (users, groups,

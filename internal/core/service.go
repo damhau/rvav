@@ -43,7 +43,9 @@ type Service struct {
 	Store     *store.Store
 	IPAM      efficientip.Client
 	Workflows Workflows
-	Events    *events.Publisher
+	// ScheduleControl runs recurring schedules (ADR-0057); nil without Temporal.
+	ScheduleControl ScheduleControl
+	Events          *events.Publisher
 	// Notifier renders and sends notifications (ADR-0023): the channels set
 	// up, and test messages.
 	Notifier *notify.Notifier

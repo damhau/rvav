@@ -44,6 +44,8 @@ const (
 	OnboardingRun  = "obr"
 	// Where audit events are sent (ADR-0058).
 	AuditDestination = "adt"
+	// Recurring schedules (ADR-0057).
+	Schedule = "sch"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

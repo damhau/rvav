@@ -378,6 +378,9 @@ func (a *App) Core(w core.Workflows) *core.Service {
 		AWXCatalog: a.awxCatalog(), AWX: a.AWX, AWXOrganization: a.Cfg.AWX.Organization,
 		Secrets: a.Secrets, REST: a.restSources(), Config: a.Cfg, Live: a.Live,
 		Dispatcher: a.Dispatcher(), Notifier: a.Notifier(), AuditLog: a.AuditLog()}
+	if sc, ok := w.(core.ScheduleControl); ok {
+		svc.ScheduleControl = sc
+	}
 	svc.ConsoleAccount = func(ctx context.Context) (core.CloneTicketer, error) {
 		if vc, err := a.consoleAccount(ctx); vc != nil || err != nil {
 			return vc, err
@@ -551,7 +554,7 @@ func (a *App) RunWorker(ctx context.Context) error {
 	}
 	// Retention and lease policies start requests of their own.
 	svc := a.Core(&provision.Temporal{Client: tc, TaskQueue: a.Cfg.Temporal.TaskQueue})
-	acts.Housekeeper, acts.Onboarder, acts.Changer = svc, svc, svc
+	acts.Housekeeper, acts.Onboarder, acts.Changer, acts.Scheduler = svc, svc, svc, svc
 	// Stopped to apply newer settings, running activities finish first,
 	// within RVAV_DRAIN_TIMEOUT (ADR-0030).
 	w := provision.NewDrainingWorker(tc, a.Cfg.Temporal.TaskQueue, acts, a.Cfg.DrainTimeout)

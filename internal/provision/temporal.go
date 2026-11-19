@@ -109,6 +109,7 @@ func NewDrainingWorker(c client.Client, taskQueue string, a *Activities, stopTim
 	w.RegisterWorkflow(Housekeeping)
 	w.RegisterWorkflow(RollbackWorkflow)
 	w.RegisterWorkflow(OnboardingRun)
+	w.RegisterWorkflow(ScheduledRun)
 	w.RegisterActivity(a)
 	RegisterContract(w, a)
 	return w

@@ -15,7 +15,7 @@ select r.id, r.number, r.item_id, r.version_id, r.project_id, r.environment, r.t
        r.requester_id, r.on_behalf_of_id, r.owner_id, r.inputs, r.count, r.justification, r.lease_days,
        r.approval_required, r.approval, r.plan, r.submitted_at, r.scheduled_at, r.started_at,
        r.finished_at, r.workflow_id, r.error_step_id, r.error_message,
-       r.kind, r.action, r.deployment_id, r.resource_id, r.resource_name,
+       r.kind, r.action, r.deployment_id, r.resource_id, r.resource_name, r.schedule_id, sc.name as schedule_name,
        i.slug as item_slug, i.name as item_name, i.type as item_type, v.number as version_number,
        p.code as project_code, p.name as project_name, p.deployment_sharing as project_sharing,
        u.name as requester_name, u.email as requester_email,
@@ -35,6 +35,7 @@ join catalog_item_versions v on v.id = r.version_id
 join projects p on p.id = r.project_id
 join users u on u.id = r.requester_id
 left join users ob on ob.id = r.on_behalf_of_id
+left join schedules sc on sc.id = r.schedule_id
 left join lateral (select s.id, s.title from request_steps s
                    where s.request_id = r.id and s.parent_id is null and s.status in ('running', 'failed')
                    order by s.position limit 1) cs on true`
@@ -51,12 +52,12 @@ func (s *Store) InsertRequest(ctx context.Context, db DB, r Request) error {
 	_, err := db.Exec(ctx, `insert into requests (id, number, item_id, version_id, project_id, environment, title,
 		status, requester_id, on_behalf_of_id, owner_id, inputs, count, justification, lease_days,
 		approval_required, approval, plan, submitted_at, scheduled_at, workflow_id,
-		kind, action, deployment_id, resource_id, resource_name)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+		kind, action, deployment_id, resource_id, resource_name, schedule_id)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
 		r.ID, r.Number, r.ItemID, r.VersionID, r.ProjectID, r.Environment, r.Title, r.Status, r.RequesterID,
 		r.OnBehalfOfID, r.OwnerID, r.Inputs, r.Count, r.Justification, r.LeaseDays, r.ApprovalRequired,
 		jsonOr(r.Approval, "{}"), jsonOr(r.Plan, "{}"), r.SubmittedAt, r.ScheduledAt, r.WorkflowID,
-		orDefault(r.Kind, "provision"), r.Action, r.DeploymentID, r.ResourceID, r.ResourceName)
+		orDefault(r.Kind, "provision"), r.Action, r.DeploymentID, r.ResourceID, r.ResourceName, r.ScheduleID)
 	return err
 }
 

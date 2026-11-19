@@ -174,6 +174,12 @@ func Request(r store.RequestRow, secret map[string]bool) api.Request {
 	if r.Justification != "" {
 		out.Justification = Ptr(r.Justification)
 	}
+	if r.ScheduleID != nil && r.ScheduleName != nil {
+		out.Schedule = &struct {
+			Id   string `json:"id"`
+			Name string `json:"name"`
+		}{Id: *r.ScheduleID, Name: *r.ScheduleName}
+	}
 	if r.OnBehalfOfID != nil && r.OnBehalfOfName != nil {
 		email := ""
 		if r.OnBehalfOfEmail != nil {

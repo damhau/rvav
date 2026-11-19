@@ -348,6 +348,9 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	h.json("POST", "/api/v1/admin/resource-types", admin, api.ResourceTypeWrite{Key: new("a1-lb"), Title: "Load balancer",
 		Create: lb, Delete: lb}, 201, nil)
 	h.json("POST", "/api/v1/admin/variables", admin, api.VariableCreate{Group: "a1", Name: "site", Value: "gva"}, 201, nil)
+	h.svc.ScheduleControl = &scheduleFake{specs: map[string]provision.ScheduleSpec{}, paused: map[string]string{}}
+	var schedule api.Schedule
+	h.json("POST", "/api/v1/schedules", "tnguyen", hourly(cleanupItem(h), map[string]any{"target": "/tmp"}), 201, &schedule)
 
 	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	t.Cleanup(hook.Close)
@@ -421,6 +424,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"workflows/{key}":                "a1-report",
 		"resource-types/{key}":           "a1-lb",
 		"variables/{key}":                "a1.site",
+		"schedules/{scheduleId}":         schedule.Id,
 		"tokens/{id}":                    token.Id,
 		"files/{fileId}":                 attached,
 		"images/{imageId}":               picture,
@@ -717,6 +721,9 @@ func (w a1Walk) body(o a1Op) any {
 		return api.PolicyExplainQuery{Environment: "dev", ProjectId: "prj_web", Action: new("power_off")}
 	case "createRequest":
 		return w.draft
+	case "createSchedule":
+		return api.ScheduleWrite{Name: "A1", CatalogItemId: w.draft.CatalogItemId, VersionId: w.draft.VersionId, ProjectId: w.draft.ProjectId,
+			Environment: w.draft.Environment, Inputs: w.draft.Inputs, EveryMinutes: new(60)}
 	case "createRequestDraft", "updateRequestDraft":
 		return api.SavedDraftWrite{Draft: w.draft}
 	case "createSavedView", "updateSavedView":

@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Inbox, Plus, SearchX } from "lucide-react";
+import { CalendarClock, Inbox, Plus, SearchX } from "lucide-react";
 import { ErrorState } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
@@ -116,11 +116,18 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
             : `Everything requested in ${project.name}, newest first.`
         }
         actions={
-          <Button variant="primary" asChild>
-            <Link to="/catalog">
-              <Plus /> New request
-            </Link>
-          </Button>
+          <>
+            <Button asChild>
+              <Link to="/schedules">
+                <CalendarClock /> Schedules
+              </Link>
+            </Button>
+            <Button variant="primary" asChild>
+              <Link to="/catalog">
+                <Plus /> New request
+              </Link>
+            </Button>
+          </>
         }
       />
       <Drafts />

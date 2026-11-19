@@ -108,6 +108,56 @@ The **Variables** page, under Catalog in the administration menu, lists
 them with their values and the items that read them. The composite
 designer offers them among what an input can be bound to.
 
+### Recurring schedules
+vRA's scheduled workflows and vRO's recurring tasks run a workflow again
+and again as someone. rvav's `scheduled_at` starts one request later; a
+schedule makes a request at each of its times.
+
+- A schedule is a request's draft (item, version, project, environment,
+  inputs, justification, whether warnings are accepted) with a name, an
+  owner, and when it runs: five cron fields read in an IANA time zone, or
+  every 5 minutes to 31 days. Its creator owns it: there is no "on behalf
+  of", and an owner who leaves the project has their runs refused.
+- Only an item that makes no deployment (`MakesDeployments` false: a
+  custom workflow, an AWX job, a composite without a VM step) can be
+  scheduled. Each run of a VM item would make another deployment, against
+  quota and deployment limits, with no one to name it or let its lease
+  expire.
+- A schedule keeps no secret input: one with a value is refused
+  (`secret_input`). A run reads secrets the item stores (ADR-0038).
+- Creating one checks the draft as `POST /requests` does, strictly: an
+  input, a rule or a version that would refuse the request refuses the
+  schedule. Each run is then submitted as the owner, through the same
+  path as a request: entitlement, sharing, policies, approvals, quota and
+  deployment limits as they are at that moment. The version is pinned;
+  once it isn't requestable, its runs are refused (`stale_version`).
+- Temporal runs it: a Temporal schedule per rvav schedule, its action the
+  `ScheduledRun` workflow, a new type, so no `workflow.GetVersion`. That
+  workflow's one activity submits the run. Overlap is `SKIP`, and the
+  catch-up window 15 minutes: times missed while Temporal or the workers
+  were down are dropped but the last within 15 minutes. The cron
+  expression is checked by a pattern, then by Temporal, whose refusal is
+  a 422 on `/cron`.
+- A firing is idempotent: the run is recorded in `schedule_runs` under the
+  firing workflow's ID, in the request's own transaction, so a retried
+  activity submits once.
+- A run is `started`, `refused` (what refuses a request refused it, said
+  in one line), `skipped` (paused, or the request of the run before not
+  finished, approval included) or `failed` (rvav couldn't submit it after
+  its retries). The owner isn't notified of a refusal; the schedule's
+  page shows it. A scheduled run's request isn't announced as submitted to
+  its owner either; its later notifications are as for any request.
+- The owner and those with `request.manage` in the project pause, resume
+  and delete it; those with `deployments.read_all` there see it too. There
+  is no edit: a new schedule replaces it. Deleting one keeps its row, so
+  the requests it started still name it. Each change is audited
+  (`schedule.create`, `schedule.pause`, `schedule.resume`,
+  `schedule.delete`).
+
+The request form offers **Again and again, on a schedule** under **Start**
+for those items, and **Schedules**, from the requests page, lists the
+project's with their next and last runs.
+
 ## Consequences
 - An author sees why a step failed from what it was given, without reading
   Temporal's history or the worker's logs.
@@ -118,3 +168,10 @@ designer offers them among what an input can be bound to.
   size of their outputs; nothing new reaches Temporal's history.
 - A requester's view is unchanged: a blueprint's literals stay masked for
   them.
+- A recurring job is a request like any other: its runs are in the
+  requests list, the audit and the reports, and policies and approvals
+  apply to them. A schedule whose runs need approval waits on its
+  approvers, and skips its times until they decide.
+- Temporal holds when a schedule runs; rvav's table holds what it runs.
+  A restore takes both to the same moment (they share the PostgreSQL
+  server), and a Temporal schedule rvav no longer knows does nothing.

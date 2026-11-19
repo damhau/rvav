@@ -253,6 +253,8 @@ type Request struct {
 	DeploymentID *string `db:"deployment_id"`
 	ResourceID   *string `db:"resource_id"`
 	ResourceName *string `db:"resource_name"`
+	// ScheduleID is the schedule that started it (ADR-0057).
+	ScheduleID *string `db:"schedule_id"`
 }
 
 // RequestRow is a request joined with the names the API shows next to it.
@@ -276,6 +278,7 @@ type RequestRow struct {
 	StepsTotal         int      `db:"steps_total"`
 	CurrentStepID      *string  `db:"current_step_id"`
 	CurrentStepTitle   *string  `db:"current_step_title"`
+	ScheduleName       *string  `db:"schedule_name"`
 }
 
 type Step struct {

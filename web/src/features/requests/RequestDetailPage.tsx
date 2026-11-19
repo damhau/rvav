@@ -168,7 +168,11 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
               <span className="flex items-center gap-1.5">
                 {r.project.name} <EnvBadge env={r.environment} />
               </span>
-              <span>Requested by {r.requester.name}</span>
+              <span>
+                {r.schedule
+                  ? `Started by the schedule ${r.schedule.name}, as ${r.requester.name}`
+                  : `Requested by ${r.requester.name}`}
+              </span>
               {r.kind === "update" && r.deployment_id ? (
                 <span>
                   To {r.catalog_item.name} {r.version.number} on{" "}

@@ -58,6 +58,8 @@ type Activities struct {
 	Housekeeper Housekeeper
 	// Onboarder runs onboarding plans (the core service).
 	Onboarder Onboarder
+	// Scheduler submits the runs of recurring schedules (the core service).
+	Scheduler Scheduler
 	// Subscriptions delivers to blocking subscriptions (ADR-0021).
 	Subscriptions *dispatch.Dispatcher
 	// Changer checks and applies what blocking subscriptions change on a

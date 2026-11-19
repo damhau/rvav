@@ -253,6 +253,52 @@ their times and tasks.
     quotas and deployment limits as they are when you retry it.
 - **Request again:** a new request with the same answers.
 
+## Requests on a schedule
+
+An item that makes no deployment, such as a custom workflow or an AWX job,
+can run again and again on a schedule: a certificate renewed every week,
+a report every night.
+
+To make a schedule:
+1. Fill in the item's form as you would for a request.
+2. Under **Start**, select **Again and again, on a schedule**.
+3. Name the schedule, and choose when it runs:
+   - **At a fixed interval:** every so many minutes, hours or days, from
+     5 minutes to 31 days. Intervals count from 00:00 UTC, so every day
+     runs at midnight UTC.
+   - **At the times of a cron expression:** five fields (minute, hour, day
+     of month, month and day of week), read in the time zone you give. For
+     example, `0 2 * * 1-5` runs at 2:00 on weekdays.
+4. Select **Create schedule**.
+
+Each run is a request of its own, made as you, with the form's version,
+environment and answers. Policies, approvals and quota check it as they
+check a request you submit. A schedule doesn't keep passwords or other
+secret fields: leave them empty, or have the item read a stored secret. An
+item that makes deployments can't run on a schedule, because each run
+would make another.
+
+**Schedules**, on the **Requests** page, lists the schedules you own in the
+project, or all of them if you manage the project's requests. Each row
+shows how the schedule repeats, its next run, and its last run, with the
+request it started or why it didn't start one:
+- A run is skipped while the request of the run before hasn't finished,
+  waiting for approval included, and while the schedule is paused.
+- A run that a policy, the quota or the form refuses, or that your access
+  no longer allows, starts nothing and says why.
+- A request that a schedule started names it at the top of its page.
+
+From a schedule's menu, you or the project's admins can:
+- **Show its runs:** its next five times and its last 20 runs.
+- **Pause** it, with an optional reason that shows with it, and **Resume**
+  it. The times it misses while paused are skipped.
+- **Delete** it: it doesn't run again. The requests it started stay, and
+  still name it.
+
+To change a schedule, delete it and make another. When the item's version
+that a schedule requests is retired, its runs are refused: make a new
+schedule.
+
 ## Your deployments
 
 **Deployments** lists what your requests made in the project you work in.

@@ -320,6 +320,17 @@ export const q = {
       queryKey: ["me", "drafts"],
       queryFn: ({ signal }) => call(api.GET("/me/drafts", { signal })),
     }),
+  schedules: (projectId: string) =>
+    queryOptions({
+      queryKey: ["schedules", projectId],
+      queryFn: ({ signal }) => call(api.GET("/schedules", { params: { query: { project_id: projectId } }, signal })),
+    }),
+  schedule: (id: string) =>
+    queryOptions({
+      queryKey: ["schedules", "one", id],
+      queryFn: ({ signal }) =>
+        call(api.GET("/schedules/{scheduleId}", { params: { path: { scheduleId: id } }, signal })),
+    }),
   draft: (id: string) =>
     queryOptions({
       queryKey: ["me", "drafts", id],

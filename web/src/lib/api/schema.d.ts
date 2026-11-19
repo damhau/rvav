@@ -1017,6 +1017,107 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recurring schedules visible to the caller (ADR-0057)
+         * @description Those the caller owns, and those of the projects where they hold
+         *     `request.manage` or `deployments.read_all`. Each with its next runs
+         *     and its last.
+         */
+        get: operations["listSchedules"];
+        put?: never;
+        /**
+         * Run an item on a recurring schedule, as the caller
+         * @description For an item that makes no deployment: a custom workflow, an AWX
+         *     template, a composite without VM steps. Each run is a request of
+         *     the caller's, submitted as `POST /requests` submits one: policies,
+         *     approvals and quota apply to each, and a run they refuse is kept
+         *     with why. A run is skipped while the run before it hasn't finished.
+         *     The inputs are checked as a request's are when the schedule is
+         *     made; a secret input can't be kept.
+         */
+        post: operations["createSchedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{scheduleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduleId: components["parameters"]["ScheduleIdPath"];
+            };
+            cookie?: never;
+        };
+        /** One schedule, with its last runs */
+        get: operations["getSchedule"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a schedule
+         * @description No run starts after; the requests it started stay, and still name
+         *     it. Its owner, or `request.manage` in its project.
+         */
+        delete: operations["deleteSchedule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{scheduleId}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduleId: components["parameters"]["ScheduleIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause a schedule
+         * @description No run starts until it is resumed. Its owner, or `request.manage` in its project.
+         */
+        post: operations["pauseSchedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{scheduleId}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduleId: components["parameters"]["ScheduleIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume a paused schedule
+         * @description Runs start again from its next time: those missed while it was
+         *     paused don't. Its owner, or `request.manage` in its project.
+         */
+        post: operations["resumeSchedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/approvals": {
         parameters: {
             query?: never;
@@ -6341,6 +6442,11 @@ export interface components {
             submitted_at: string;
             /** Format: date-time */
             scheduled_at?: string | null;
+            /** @description The recurring schedule that started it (ADR-0057), deleted since or not. */
+            schedule?: {
+                id: string;
+                name: string;
+            };
             /** Format: date-time */
             started_at?: string | null;
             /** Format: date-time */
@@ -6358,6 +6464,104 @@ export interface components {
                 step_id: string;
                 message: string;
             } | null;
+        };
+        ScheduleWrite: {
+            name: string;
+            catalog_item_id: string;
+            /**
+             * @description The version each run requests. Once it is no longer requestable,
+             *     runs are refused (`stale_version`): delete the schedule and make
+             *     another.
+             */
+            version_id: string;
+            project_id: string;
+            environment: components["schemas"]["EnvironmentKey"];
+            /**
+             * @description The form's values, as `RequestDraft.inputs`: those left out take
+             *     their default at each run. No value for a secret input.
+             */
+            inputs: {
+                [key: string]: unknown;
+            };
+            justification?: string;
+            /**
+             * @description Each run goes on despite the soft policies' warnings, as
+             *     `RequestDraft.accept_warnings`. Without it, a run they warn
+             *     about is refused.
+             */
+            accept_warnings?: boolean;
+            /**
+             * @description When it runs, as five cron fields (minute, hour, day of month,
+             *     month, day of week) in `timezone`, such as `0 2 * * 1-5` for
+             *     2:00 on weekdays. Give this or `every_minutes`.
+             * @example 0 2 * * 1-5
+             */
+            cron?: string;
+            /** @description Every so many minutes, from 5 to 31 days. Give this or `cron`. */
+            every_minutes?: number;
+            /**
+             * @description The IANA time zone `cron` is read in, such as `Europe/Zurich`.
+             * @default UTC
+             */
+            timezone: string;
+        };
+        SchedulePause: {
+            /** @description Why it is paused, shown with it. */
+            note?: string;
+        };
+        /**
+         * @description `started`: its request was submitted. `refused`: a policy, the quota,
+         *     the owner's access or the form refused it, as they would a request.
+         *     `skipped`: the run before hadn't finished. `failed`: rvav couldn't
+         *     submit it.
+         * @enum {string}
+         */
+        ScheduleRunOutcome: "started" | "refused" | "skipped" | "failed";
+        ScheduleRun: {
+            /** Format: date-time */
+            at: string;
+            outcome: components["schemas"]["ScheduleRunOutcome"];
+            /** @description Why it was refused, skipped or failed. */
+            reason?: string;
+            request?: {
+                id: string;
+                number: string;
+                status: components["schemas"]["RequestStatus"];
+            };
+        };
+        Schedule: {
+            id: string;
+            name: string;
+            catalog_item: {
+                id: string;
+                slug: string;
+                name: string;
+                type: components["schemas"]["CatalogItemType"];
+            };
+            version: components["schemas"]["CatalogItemVersionRef"];
+            project: components["schemas"]["ProjectRef"];
+            environment: components["schemas"]["EnvironmentKey"];
+            owner: components["schemas"]["UserRef"];
+            inputs: {
+                [key: string]: unknown;
+            };
+            justification?: string;
+            accept_warnings?: boolean;
+            cron?: string;
+            every_minutes?: number;
+            timezone: string;
+            paused: boolean;
+            paused_note?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Its next times, from Temporal; none while paused, or when Temporal can't be reached. */
+            next_runs: string[];
+            last_run?: components["schemas"]["ScheduleRun"];
+            /** @description Its last 20 runs, the newest first, in `getSchedule` only. */
+            runs?: components["schemas"]["ScheduleRun"][];
+        };
+        ScheduleList: {
+            items: components["schemas"]["Schedule"][];
         };
         RequestTopology: {
             /**
@@ -10555,6 +10759,7 @@ export interface components {
         TemplateChannelQuery: components["schemas"]["TemplateChannel"];
         TemplateLocaleQuery: components["schemas"]["TemplateLocale"];
         ProjectIdPath: string;
+        ScheduleIdPath: string;
         ProjectIdQuery: string;
         ProjectIdQueryRequired: string;
         /** @description Catalog item ID or slug. */
@@ -12029,6 +12234,162 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listSchedules: {
+        parameters: {
+            query?: {
+                project_id?: components["parameters"]["ProjectIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The schedules, the newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleWrite"];
+            };
+        };
+        responses: {
+            /** @description Made, with its next runs */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduleId: components["parameters"]["ScheduleIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The schedule */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduleId: components["parameters"]["ScheduleIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    pauseSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduleId: components["parameters"]["ScheduleIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SchedulePause"];
+            };
+        };
+        responses: {
+            /** @description Paused */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    resumeSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduleId: components["parameters"]["ScheduleIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resumed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            502: components["responses"]["UpstreamError"];
         };
     };
     listApprovals: {

@@ -23,6 +23,12 @@ import (
 // Submit validates a draft again, records the request with its pending steps
 // and deployments, and starts its workflow.
 func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDraft) (store.RequestRow, error) {
+	return s.submit(ctx, p, d, nil)
+}
+
+// submit is Submit; with fire, a recurring schedule's run (ADR-0057),
+// recorded with its request so that a firing tried again submits once.
+func (s *Service) submit(ctx context.Context, p *auth.Principal, d api.RequestDraft, fire *provision.ScheduleFiring) (store.RequestRow, error) {
 	ev, err := s.Evaluate(ctx, p, d, true)
 	if err != nil {
 		return store.RequestRow{}, err
@@ -52,6 +58,9 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 	}
 	wf := provision.WorkflowID(req.ID)
 	req.WorkflowID = &wf
+	if fire != nil {
+		req.ScheduleID = &fire.ScheduleID
+	}
 	switch {
 	case ev.Approval.Required:
 		req.Status = "pending_approval"
@@ -172,6 +181,14 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 		if err := s.Store.InsertRequest(ctx, tx, req); err != nil {
 			return err
 		}
+		if fire != nil {
+			run := store.ScheduleRun{FireID: fire.FireID, ScheduleID: fire.ScheduleID, At: fire.At, RequestID: &req.ID, Outcome: "started"}
+			if added, err := s.Store.InsertScheduleRun(ctx, tx, run); err != nil {
+				return err
+			} else if !added {
+				return errFiredAlready
+			}
+		}
 		if err := s.auditWarnings(ctx, tx, p, req, ev.Warnings); err != nil {
 			return err
 		}
@@ -212,7 +229,8 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 	// Approvers hear about it when the workflow opens their level.
 	s.publishRequest(ctx, req.ID)
 	stored, err := s.Store.GetRequest(ctx, req.ID)
-	if err == nil && s.Events != nil {
+	// A schedule's owner chose its runs: what they end with tells them.
+	if err == nil && s.Events != nil && fire == nil {
 		// The requester, and the owner when on their behalf (ADR-0023).
 		for _, uid := range []string{stored.RequesterID, stored.OwnerID} {
 			s.Events.Notify(ctx, store.NewNotification{UserID: uid, Kind: "request_submitted", Title: "Submitted: " + stored.Title,

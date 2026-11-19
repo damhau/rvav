@@ -34,17 +34,19 @@ import { api, call, isApiError } from "@/lib/api/client";
 import type {
   CatalogItem,
   Environment,
+  FieldError,
   Project,
   RequestDraft,
   RequestForm,
   RequestPreview,
+  ScheduleWrite,
   UserRef,
 } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
-import { cn, fullDate, localInput, newIdempotencyKey, roughDuration } from "@/lib/utils";
+import { cn, fullDate, localInput, newIdempotencyKey, relative, roughDuration } from "@/lib/utils";
 import { ComponentsPreview, PlacedBy } from "./ComponentsPreview";
 import { LimitMeters } from "./limits";
 import { quotaLabel, quotaWhere, tightest } from "./quota";
@@ -63,7 +65,29 @@ const requestOptions: Record<string, string> = {
   $lease_days: "Lease",
   $scheduled_at: "Start at",
   $on_behalf_of: "For someone else",
+  $schedule_name: "Schedule name",
+  $every_minutes: "Every",
+  $cron: "Cron expression",
+  $timezone: "Time zone",
 };
+
+/** A schedule's own fields (ADR-0057), by the keys the page places them under. */
+const scheduleFields: Record<string, string> = {
+  "/name": "$schedule_name",
+  "/every_minutes": "$every_minutes",
+  "/cron": "$cron",
+  "/timezone": "$timezone",
+};
+
+/** A schedule's refusal: its own fields, and its draft's as a request's. */
+function mapScheduleErrors(errors: FieldError[]): MappedErrors {
+  const out = mapFieldErrors(errors.filter((e) => !scheduleFields[e.field]));
+  for (const e of errors) {
+    const key = scheduleFields[e.field];
+    if (key) out.fields[key] ??= e.message;
+  }
+  return out;
+}
 
 /** The control that fixes an input's problem. */
 function controlOf(name: string): HTMLElement | null {
@@ -84,6 +108,14 @@ function controlOf(name: string): HTMLElement | null {
       return document.getElementById("start-at");
     case "$on_behalf_of":
       return document.getElementById("on-behalf");
+    case "$schedule_name":
+      return document.getElementById("schedule-name");
+    case "$every_minutes":
+      return document.getElementById("every");
+    case "$cron":
+      return document.getElementById("cron");
+    case "$timezone":
+      return document.getElementById("timezone");
     default:
       return fieldControl(name);
   }
@@ -263,6 +295,7 @@ function Summary({
   onSaveDraft,
   savingDraft,
   scheduled,
+  repeating,
   oneDeployment,
   composite,
   previewError,
@@ -288,6 +321,8 @@ function Summary({
   onSaveDraft: () => void;
   savingDraft: boolean;
   scheduled: boolean;
+  /** Made again and again, on a schedule (ADR-0057). */
+  repeating?: boolean;
   /** A multi-VM item: what each component builds replaces the single VM's lines. */
   oneDeployment: boolean;
   /** A composite item: what each of its VM steps builds. */
@@ -377,6 +412,7 @@ function Summary({
                 approval={approval?.required}
                 holding={Boolean(holding)}
                 warned={warnings.length > 0}
+                repeating={repeating}
               />
             )}
           </>
@@ -443,11 +479,13 @@ function Summary({
             >
               <span className="font-medium">{approval?.required ? approvalTitle(approval) : "No approval needed"}</span>
               <span className="text-secondary">
-                {approval?.required
-                  ? approvalBody(approval)
-                  : scheduled
-                    ? "Provisioning starts at the time you chose."
-                    : "Provisioning starts as soon as you submit."}
+                {repeating
+                  ? `Each run is a request of its own, which policies, approvals and quota check as they check this one${approval?.required ? ": each waits for approval" : ""}.`
+                  : approval?.required
+                    ? approvalBody(approval)
+                    : scheduled
+                      ? "Provisioning starts at the time you chose."
+                      : "Provisioning starts as soon as you submit."}
               </span>
             </div>
             {warnings.length > 0 && (
@@ -482,12 +520,14 @@ function SubmitButton({
   approval,
   holding,
   warned,
+  repeating,
 }: {
   onClick: () => void;
   pending: boolean;
   approval?: boolean;
   holding?: boolean;
   warned?: boolean;
+  repeating?: boolean;
 }) {
   // Pending, it keeps the focus: a refusal then moves it to what to fix.
   return (
@@ -500,7 +540,7 @@ function SubmitButton({
       className="aria-disabled:opacity-50"
     >
       {pending && <LoaderCircle className="animate-spin" aria-hidden />}
-      {approval ? "Submit for approval" : "Submit request"}
+      {repeating ? "Create schedule" : approval ? "Submit for approval" : "Submit request"}
       {warned && " anyway"}
     </Button>
   );
@@ -566,6 +606,15 @@ function RequestFormBody({
   const [count, setCount] = useState(String(start?.count ?? 1));
   const [later, setLater] = useState(Boolean(start?.scheduledAt));
   const [startAt, setStartAt] = useState(localInput(start?.scheduledAt));
+  // Only an item that makes no deployment runs on a schedule (ADR-0057): each run would make another.
+  const repeatable = !named;
+  const [repeat, setRepeat] = useState(false);
+  const [scheduleName, setScheduleName] = useState(item.name);
+  const [repeatKind, setRepeatKind] = useState<"every" | "cron">("every");
+  const [every, setEvery] = useState("1");
+  const [everyUnit, setEveryUnit] = useState("1440");
+  const [cron, setCron] = useState("");
+  const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const { me } = useCurrentProject();
   // Only project admins request for others; for oneself is not "on behalf".
   const [onBehalfOf, setOnBehalfOf] = useState<UserRef | null>(
@@ -601,7 +650,7 @@ function RequestFormBody({
       ...(named && description.trim() ? { deployment_description: description } : {}),
       lease_days: leaseDays,
       ...(later && startAt ? { scheduled_at: new Date(startAt).toISOString() } : {}),
-      ...(onBehalfOf && canActForOthers ? { on_behalf_of: onBehalfOf.id } : {}),
+      ...(onBehalfOf && canActForOthers && !repeat ? { on_behalf_of: onBehalfOf.id } : {}),
     }),
     [
       canActForOthers,
@@ -622,6 +671,7 @@ function RequestFormBody({
       later,
       startAt,
       onBehalfOf,
+      repeat,
     ],
   );
   const debounced = useDebounced(draft, 350);
@@ -649,6 +699,31 @@ function RequestFormBody({
   const previewedNow = !preview.isPlaceholderData && debounced === draft ? preview.data?.warnings : undefined;
   const accepted = acceptedWarnings(allWarnings(previewedNow, refusedNow));
 
+  /** Shows why the server refused the values: the warnings to accept, or what to fix. False for any other failure. */
+  const showRefusal = (e: unknown, map: (errors: FieldError[]) => MappedErrors) => {
+    setSubmitted(true);
+    const warned = refusedWarnings(e);
+    if (warned.length) setRefusedWarn({ since: draft, warnings: warned });
+    if (onlyWarned(e)) {
+      setServerErrors(null);
+      setWarnedRefusal((n) => n + 1);
+      return true;
+    }
+    if (!isApiError(e) || e.status !== 422) return false;
+    const rest = e.fieldErrors.filter((f) => f.field !== "/accept_warnings");
+    const mapped = map(rest);
+    if (Object.keys(mapped.fields).length === 0 && mapped.form.length === 0)
+      mapped.form.push(e.problem.detail ?? e.problem.title);
+    setServerErrors(mapped);
+    setRefused((n) => n + 1);
+    if (rest.some((f) => f.code === "stale_version")) {
+      // The form that follows, of a version still offered, starts from this one and says why.
+      onVersion?.(form.version_id, { ...kept(), refusal: mapped });
+      refreshVersions(qc, form.version_id);
+    }
+    return true;
+  };
+
   const submit = useMutation({
     // Its variables hold the secret inputs: gone from the mutation cache once done.
     gcTime: 0,
@@ -671,32 +746,43 @@ function RequestFormBody({
       void navigate({ to: "/requests/$requestId", params: { requestId: request.number } });
     },
     onError: (e) => {
-      setSubmitted(true);
-      const warned = refusedWarnings(e);
-      if (warned.length) setRefusedWarn({ since: draft, warnings: warned });
-      if (onlyWarned(e)) {
-        setServerErrors(null);
-        setWarnedRefusal((n) => n + 1);
-        return;
-      }
-      if (isApiError(e) && e.status === 422) {
-        const rest = e.fieldErrors.filter((f) => f.field !== "/accept_warnings");
-        const mapped = mapFieldErrors(rest);
-        if (Object.keys(mapped.fields).length === 0 && mapped.form.length === 0)
-          mapped.form.push(e.problem.detail ?? e.problem.title);
-        setServerErrors(mapped);
-        setRefused((n) => n + 1);
-        if (rest.some((f) => f.code === "stale_version")) {
-          // The form that follows, of a version still offered, starts from this one and says why.
-          onVersion?.(form.version_id, { ...kept(), refusal: mapped });
-          refreshVersions(qc, form.version_id);
-        }
-        return;
-      }
+      if (showRefusal(e, mapFieldErrors)) return;
       toast.error(isApiError(e) ? e.problem.title : "The request was not sent", {
         description: isApiError(e) ? `${e.problem.detail ?? ""} Request ID ${e.requestId}`.trim() : undefined,
       });
     },
+  });
+
+  const schedule = useMutation({
+    gcTime: 0,
+    mutationFn: (body: ScheduleWrite) => call(api.POST("/schedules", { body })),
+    onSuccess: (made) => {
+      void qc.invalidateQueries({ queryKey: ["schedules"] });
+      toast.success(`${made.name} scheduled`, {
+        description: made.next_runs[0] ? `Its first run is ${relative(made.next_runs[0])}.` : undefined,
+      });
+      void navigate({ to: "/schedules" });
+    },
+    onError: (e) => {
+      if (showRefusal(e, mapScheduleErrors)) return;
+      toast.error(isApiError(e) ? e.problem.title : "The schedule was not made", {
+        description: isApiError(e) ? `${e.problem.detail ?? ""} Request ID ${e.requestId}`.trim() : undefined,
+      });
+    },
+  });
+  // A schedule keeps the request's draft, without what only one request has: when it starts, for whom.
+  const scheduleBody = (): ScheduleWrite => ({
+    name: scheduleName.trim(),
+    catalog_item_id: draft.catalog_item_id,
+    version_id: draft.version_id,
+    project_id: draft.project_id,
+    environment: draft.environment,
+    inputs: draft.inputs,
+    ...(draft.justification ? { justification: draft.justification } : {}),
+    accept_warnings: accepted.length > 0,
+    ...(repeatKind === "cron"
+      ? { cron: cron.trim(), timezone: timezone.trim() }
+      : { every_minutes: Math.round((Number(every) || 0) * Number(everyUnit)), timezone: "UTC" }),
   });
 
   const saveDraft = useMutation({
@@ -736,7 +822,8 @@ function RequestFormBody({
     ...(leaseOptions.length ? ["$lease_days"] : []),
     ...(many ? ["$count"] : []),
     ...(later ? ["$scheduled_at"] : []),
-    ...(canActForOthers ? ["$on_behalf_of"] : []),
+    ...(repeat ? ["$schedule_name", ...(repeatKind === "cron" ? ["$cron", "$timezone"] : ["$every_minutes"])] : []),
+    ...(canActForOthers && !repeat ? ["$on_behalf_of"] : []),
   ];
   const attention = submitted ? Object.keys(fieldErrors) : [];
   const unplaced: Unplaced[] = attention
@@ -799,8 +886,10 @@ function RequestFormBody({
   };
   const submitDraft = () => {
     setSubmitted(true);
-    submit.mutate({ ...draft, accepted_warnings: accepted });
+    if (repeat) schedule.mutate(scheduleBody());
+    else submit.mutate({ ...draft, accepted_warnings: accepted });
   };
+  const sendingNow = submit.isPending || schedule.isPending;
   const stepped = form.ui_schema.layout.kind === "wizard";
   const holding = sendingText(useSendingFiles());
   const pickVersion = (id: string) => onVersion?.(id, kept());
@@ -917,14 +1006,18 @@ function RequestFormBody({
             <Field label="Start" htmlFor="start">
               <Select
                 id="start"
-                value={later ? "later" : "now"}
-                onChange={(v) => setLater(v === "later")}
+                value={repeat ? "repeat" : later ? "later" : "now"}
+                onChange={(v) => {
+                  setLater(v === "later");
+                  setRepeat(v === "repeat");
+                }}
                 options={[
                   {
                     value: "now",
                     label: shownPreview?.approval.required ? "As soon as it is approved" : "As soon as it is submitted",
                   },
                   { value: "later", label: "At a time I choose" },
+                  ...(repeatable ? [{ value: "repeat", label: "Again and again, on a schedule" }] : []),
                 ]}
               />
             </Field>
@@ -941,8 +1034,111 @@ function RequestFormBody({
                 />
               </Field>
             )}
+            {repeat && (
+              <>
+                <Field
+                  label="Schedule name"
+                  htmlFor="schedule-name"
+                  hint="Each run is a request of its own, which names it."
+                  error={fieldErrors.$schedule_name}
+                >
+                  <Input
+                    id="schedule-name"
+                    value={scheduleName}
+                    maxLength={120}
+                    onChange={(e) => {
+                      setScheduleName(e.target.value);
+                      clearServerError("$schedule_name");
+                    }}
+                  />
+                </Field>
+                <Field label="Repeats" htmlFor="repeat-kind">
+                  <Select
+                    id="repeat-kind"
+                    value={repeatKind}
+                    onChange={(v) => setRepeatKind(v === "cron" ? "cron" : "every")}
+                    options={[
+                      { value: "every", label: "At a fixed interval" },
+                      { value: "cron", label: "At the times of a cron expression" },
+                    ]}
+                  />
+                </Field>
+                {repeatKind === "every" ? (
+                  <Field
+                    label="Every"
+                    htmlFor="every"
+                    hint="From 5 minutes to 31 days, counted from 00:00 UTC: every day runs at midnight UTC. For a time of day, use a cron expression."
+                    error={fieldErrors.$every_minutes}
+                  >
+                    <div className="flex gap-2">
+                      <Input
+                        id="every"
+                        type="number"
+                        min={1}
+                        className="w-24"
+                        value={every}
+                        onChange={(e) => {
+                          setEvery(e.target.value);
+                          clearServerError("$every_minutes");
+                        }}
+                      />
+                      <Select
+                        id="every-unit"
+                        aria-label="Unit"
+                        className="w-32"
+                        value={everyUnit}
+                        onChange={(v) => {
+                          setEveryUnit(v);
+                          clearServerError("$every_minutes");
+                        }}
+                        options={[
+                          { value: "1", label: "minutes" },
+                          { value: "60", label: "hours" },
+                          { value: "1440", label: "days" },
+                        ]}
+                      />
+                    </div>
+                  </Field>
+                ) : (
+                  <>
+                    <Field
+                      label="Cron expression"
+                      htmlFor="cron"
+                      hint="Minute, hour, day of month, month and day of week: 0 2 * * 1-5 is 2:00 on weekdays."
+                      error={fieldErrors.$cron}
+                    >
+                      <Input
+                        id="cron"
+                        className="font-mono"
+                        placeholder="0 2 * * 1-5"
+                        value={cron}
+                        onChange={(e) => {
+                          setCron(e.target.value);
+                          clearServerError("$cron");
+                        }}
+                      />
+                    </Field>
+                    <Field
+                      label="Time zone"
+                      htmlFor="timezone"
+                      hint="The IANA name the times are read in, such as Europe/Zurich."
+                      error={fieldErrors.$timezone}
+                    >
+                      <Input
+                        id="timezone"
+                        value={timezone}
+                        onChange={(e) => {
+                          setTimezone(e.target.value);
+                          clearServerError("$timezone");
+                        }}
+                      />
+                    </Field>
+                  </>
+                )}
+              </>
+            )}
           </div>
-          {canActForOthers && (
+          {canActForOthers && !repeat && (
             <div className="flex min-w-0 flex-col gap-1 md:col-span-2">
               {onBehalfOf ? (
                 <>
@@ -1004,10 +1200,11 @@ function RequestFormBody({
             submit: (
               <SubmitButton
                 onClick={submitDraft}
-                pending={submit.isPending}
+                pending={sendingNow}
                 approval={shownPreview?.approval.required}
                 holding={Boolean(holding)}
                 warned={warnings.length > 0}
+                repeating={repeat}
               />
             ),
             holding,
@@ -1068,12 +1265,13 @@ function RequestFormBody({
           onRetryPreview={() => void preview.refetch()}
           fetching={preview.isFetching}
           values={withDefaults(values, shownPreview?.fields, form)}
-          pending={submit.isPending}
+          pending={sendingNow}
           formErrors={formErrors}
           onSubmit={stepped ? undefined : submitDraft}
           onSaveDraft={() => saveDraft.mutate()}
           savingDraft={saveDraft.isPending}
           scheduled={later && Boolean(startAt)}
+          repeating={repeat}
           oneDeployment={Boolean(form.one_deployment)}
           composite={item.type === "composite"}
           holding={holding}

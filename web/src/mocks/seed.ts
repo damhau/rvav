@@ -1228,6 +1228,17 @@ export function createDb(now = Date.now()): Db {
       },
     ),
     finished(
+      "REQ-10458",
+      items.find((i) => i.slug === "tls-cert")!,
+      web,
+      "prd",
+      lea,
+      60 * 24 * 6 + 60 * 3,
+      "Renew TLS certificate · shop.corp.example",
+      "succeeded",
+      { target: "shop.corp.example" },
+    ),
+    finished(
       "REQ-10455",
       items.find((i) => i.slug === "dns-record")!,
       web,
@@ -1244,6 +1255,10 @@ export function createDb(now = Date.now()): Db {
       },
     ),
   ];
+  requests.find((r) => r.request.number === "REQ-10458")!.request.schedule = {
+    id: "sch_tlsweekly",
+    name: "Weekly TLS renewal",
+  };
   requests.find((r) => r.request.number === "REQ-10461")!.request.deployment_ids = [
     deployments.find((d) => d.name === "web-tst-search")!.id,
   ];
