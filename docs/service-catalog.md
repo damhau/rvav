@@ -932,7 +932,8 @@ two letters, it asks its value source with the text, a quarter of a second
 after the last key, and lists what it finds, 20 at most. A source that
 searches by the text itself takes `search: true`: a `rest` source reads the
 text as `${search}` in its URL or body, escaped as inputs are, and a `cel`
-source's `options` expression reads it as `search`. For any other source,
+source's `options` expression reads it as `search`. A `library` source
+searches when its form library entry has `search: true`, the same way. For any other source,
 built-in ones among them, rvav asks the source as for a dropdown and keeps
 the options whose value, label or detail contains the text. To publish, a
 search field needs a source that gives options.
@@ -1066,9 +1067,10 @@ ui_schema:
   inputs, GET or POST, a stored secret as bearer, basic or header, JSONPath
   mapping, cached; only the hosts listed for REST value sources, in
   Administration › Integrations › Allowed hosts or `RVAV_REST_SOURCE_HOSTS`, the list a composite's REST calls share; no redirects,
-  5 s and 1 MB at most) and `cel` (options or a value over the inputs,
-  project, user and environment). On a field that takes one value, a
-  `rest` or `cel` source gives its default, or a computed field's value
+  5 s and 1 MB at most), `cel` (options or a value over the inputs,
+  project, user and environment) and `library` (an entry of the form
+  library, below). On a field that takes one value, a
+  `rest`, `cel` or `library` source gives its default, or a computed field's value
   (see Defaults below). Dependencies re-resolve a field when the
   inputs it depends on change. A search field passes its text to the
   source (`${search}`, `search`) or keeps the options that contain it. A
@@ -1178,6 +1180,96 @@ ui_schema:
         - { key: basics, title: Basics, columns: 2, fields: [role, with_db] }
         - { key: db, title: Database, columns: 1, fields: [database] }
   ```
+- The form library (F1.5, [ADR-0043](adr/0043-form-library.md)): value
+  sources and validations written once, under Administration › Form
+  library, and named by key and version from any item's form.
+  - An entry is a `source` (a field's choices, or its value on a field
+    that takes one) or a `validation` (a check of the whole form), of kind
+    `rest` or `cel`, with the same `params` as an inline source or
+    validation of its kind. It takes up to 20 parameters, each with a
+    name, a label, a description, and whether it's required.
+  - An entry reads its parameters, not the form's inputs: `${params.x}`
+    in a REST entry's URL and body, `params.x` in its expressions, which
+    also read `environment`, `project`, `user` and, for a source with
+    `search`, `search`. The form gives each parameter as a CEL expression
+    over what its rules read.
+  - Saving an entry makes its next version; the versions before it don't
+    change. Each item whose draft or published version names an earlier
+    version gets a draft that names the new one, to review and publish:
+    its draft is changed, or a new draft is made from its published
+    version. Until that draft is published, the item keeps the version it
+    names.
+  - Saving an item refuses an entry or version that doesn't exist, an
+    entry used for the wrong purpose, a parameter the entry doesn't have
+    and an expression that isn't valid CEL. Publishing also refuses a
+    required parameter the form doesn't give. While a required
+    parameter's expression gives nothing, such as an input not filled in
+    yet, the entry doesn't run: a source gives no options, and a
+    validation isn't run.
+  - An entry can't be deleted while a published, deprecated or retired
+    version of an item names it. A draft that names a deleted entry is
+    refused the next time it's saved.
+  - Inline `rest` and `cel` sources and validations keep working.
+
+  ```yaml
+  ui_schema:
+    fields:
+      service:
+        widget: select
+        label: Service
+        depends_on: [app]
+        value_source:
+          kind: library
+          name: cmdbServices
+          version: 2
+          params: { environment: environment, app: inputs.app }
+  ```
+- Validations (F1.5): `ui_schema.validations` lists up to 20 checks of the
+  whole form, run in order on submit, once the inputs pass the form's own
+  checks, and before approval.
+  - Each has a `key`, which names it in messages and the audit log, a
+    `title`, a `kind` (`cel`, `rest` or `library`), its `params`, a
+    `message` for a refusal that doesn't say why, and `fields`, the inputs
+    a message for no input shows on (on the form when none).
+  - `cel`: `params.check` is an expression over what form rules read.
+    `true`, `null`, `""` or `{}` passes; `false` refuses with `message`; a
+    text refuses with that text; a map refuses with a message for each
+    input it names.
+  - `rest`: `params.url`, `method`, `body` and `secret`, as a `rest`
+    value source's. rvav reads a 2xx answer with JSONPath: `valid`
+    (`$.valid` unless given), `message` (`$.message`) and `errors`
+    (`$.errors`: a map of input to message, or a list of `{field,
+    message}`). Without `valid`, an answer with no message and no errors
+    passes.
+  - `library`: a validation entry of the form library, at `version`, its
+    parameters in `params`. A message for a parameter shows on the input
+    that the parameter's expression reads alone, such as `inputs.cc`.
+  - A validation that can't run (another status, a timeout, a host rvav
+    may not call, an answer it can't read, an expression that fails)
+    refuses the request and says so. Nothing is submitted while a
+    validation's service is down.
+  - Validations also run on an approver's edits and on an update request.
+    A wizard runs them when the requester moves to the review step: the
+    wizard stays on the first page with a message, and focuses its input.
+    A message for no input shows above the form. Day-2 actions' forms
+    have no validations.
+  - Each run is audited (`form_validation.run`) with its outcome: `ok`,
+    `refused`, `failed`, or `not_run` when a library entry's required
+    parameter had no value.
+
+  ```yaml
+  ui_schema:
+    validations:
+      - key: cpu
+        title: vCPUs for the environment
+        kind: cel
+        params: { check: 'environment != "prd" || inputs.cpu >= 2 ? {} : {"cpu": "Production needs 2 vCPUs or more."}' }
+      - key: costCentre
+        kind: library
+        name: costCentreOpen
+        version: 1
+        params: { cost_center: inputs.cost_center }
+  ```
 - For AWX items, the form can choose the launch's inventory and credentials
   (inputs picked from `awx.inventories` and `awx.credentials`), which the
   template must prompt for. A composite's step running such an item
@@ -1186,8 +1278,9 @@ ui_schema:
   `awx.credentials` pickers, so a requester's choice is checked as the
   item's form checks it.
 
-Not built yet: async server-side validation rules, the group and AWX
-host pickers, and a way to put a changed field back to its default.
+Not built yet: a server-side check of one field as it's typed (validations
+run at the review step and on submit), the group and AWX host pickers, and
+a way to put a changed field back to its default.
 
 ## 4. Requesting
 

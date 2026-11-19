@@ -1183,6 +1183,74 @@ You can't delete a group while a published or deprecated version of an
 item names it. A draft that names a deleted group is refused the next time
 you save it.
 
+### Form library
+
+The form library holds value sources and checks that several items' forms
+share, such as the CMDB's applications or a check that a cost centre is
+open ([ADR-0043](../adr/0043-form-library.md)). It's where vRO actions go
+when you move from vRA. Manage it in **Form library**, under **Catalog**;
+you need `catalog.manage`.
+
+To add an entry:
+
+1. Select **New entry**.
+2. Give it a **Key**, which forms name it by and which doesn't change, a
+   **Name** and a **Description**, which the form designer shows.
+3. Choose its **Purpose**:
+   - **Value source** gives a field its choices, or its value on a field
+     that takes one, such as a text or a number.
+   - **Validation** checks the whole form when the requester submits it,
+     before approval.
+4. Choose its **Kind**:
+   - **REST call** calls a URL on a host that REST value sources may call
+     (**Administration › Integrations › Allowed hosts**). A source maps
+     the answer with JSONPath: **Items**, **Value**, **Label**, **Detail**.
+     A validation reads **Valid at**, **Message at** and **Errors at**
+     (`$.valid`, `$.message` and `$.errors` when empty). **Secret** names a
+     stored secret that rvav sends as a bearer token.
+   - **CEL expression** works the options, the value or the check out in
+     CEL. A check gives `{}` or `true` to pass, and text, `false` or a map
+     of parameter to message to refuse.
+5. Under **Parameters**, add what the entry needs from the form, each with
+   a name, a label and whether it's required. The entry reads them as
+   `${params.<name>}` in a URL or body and `params.<name>` in CEL. It
+   doesn't read the form's inputs, so forms with different inputs can
+   share it.
+6. Under **Test**, give the parameters values and select **Run test** to
+   see the options, the value, or what the check says.
+7. Select **Add**.
+
+To change an entry, open its row's menu and select **Change or test**.
+Saving makes the entry's next version; the versions before it don't
+change. Each item that names an earlier version gets a draft that names
+the new one, so the change reaches requesters only when you publish those
+drafts. **Used by** lists the items' versions that name the entry, and
+which of its versions each names.
+
+To use an entry in an item's form, in the form designer:
+
+- For a field's choices or value, set the field's **Value source** to
+  **Form library**, then choose the **Entry** and its **Version**.
+- For a check of the whole form, select **Form validations**, then **Add
+  one from the form library**, and choose the **Entry** and its
+  **Version**.
+
+Then give each parameter a CEL expression over the form's inputs, such as
+`inputs.app` or `environment`. A message the check gives for a parameter
+shows on the input that the parameter's expression reads alone. **Add a
+validation** writes a REST or CEL check into the form itself instead.
+
+A validation refuses the request when it can't run, such as when its
+service is down or answers an error: a requester can't submit until it
+answers. In a wizard, it runs when the requester moves to the review step.
+Each run is in the audit log as `form_validation.run`, with its outcome,
+and each change to an entry as `form_library.create`, `form_library.update`
+or `form_library.delete`.
+
+You can't delete an entry while a published, deprecated or retired version
+of an item names it: its menu says how many items use it. A draft that
+names a deleted entry is refused the next time you save it.
+
 ### The catalog in Git
 
 The catalog can be kept in a Git repository

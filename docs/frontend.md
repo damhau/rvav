@@ -358,7 +358,11 @@ the designer preview.
   and masks secrets; the request page puts its lease, reason, options and
   Submit on it. A `FormHandle` ref (`focus(name)`) opens the page or tab
   of an input before focusing it: the request page's refused submit goes
-  through it.
+  through it. When the form has validations (ADR-0043), the wizard calls
+  `checkAll` before the review step: the request page asks
+  `POST /requests/preview?validate=true`, and a message on an input keeps
+  the wizard on that input's page, focused through the handle. Messages
+  for no input show above the form.
 - Draft auto-save (debounced) for long forms.
 
 ## Catalog administration and the form designer
@@ -449,6 +453,18 @@ Catalog admins and administrators build items under **Catalog items**
   list, sets `layout.kind` (`setLayout`); the list and the properties
   then call sections pages or tabs (`partWord`). The preview shows the
   page or tab of the selection (`FormRenderer`'s `showing`).
+- The form library (`features/admin/catalog/FormLibraryPage.tsx`,
+  ADR-0043), beside **Property groups** under Catalog in the sidebar: a
+  table of entries and a Sheet that adds or changes one (a save is a new
+  version, and says which items get a draft), tests it with its
+  parameters (`POST /admin/form-library/test`) and lists the items'
+  versions that use it. The designer's **Value source** offers **Form
+  library**: an entry, its version and a CEL expression per parameter
+  (`designer/Properties.tsx`, `LibraryRef`), a parameter named as an input
+  starting bound to it. **Form validations**, after the sections in
+  the field list, selects the form's validations: each written in the form
+  (CEL or REST) or taken from the library, with the inputs its messages
+  show on.
 - The designer edits a **working copy** of the draft
   (`designer/draftStore.ts`), kept outside React so it outlives the tab.
   Every change is saved after a 600 ms pause, one save at a time, each

@@ -79,6 +79,14 @@ administrator chooses:
 
 A page or tab whose fields don't apply to what you chose is left out.
 
+Some forms check the whole request when you submit it, sometimes with
+another service, such as whether a cost centre is open. In a wizard, the
+check runs when you move to **Review**: if it refuses an input, you stay
+on that input's page, and the focus moves to it with the message under
+it. A message about the whole request shows above the form. If the check
+can't run, the request can't be submitted: try again later, and if it
+keeps failing, tell the catalog's administrators.
+
 A form you leave can be kept as a **draft** (Resume or Discard it later).
 A draft never keeps passwords or other secret fields. A secret field
 hides what you type: to check it, select the eye button beside it (or tab

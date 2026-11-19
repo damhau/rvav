@@ -261,13 +261,58 @@ even when nothing changed in vRA. The plan says so on the group, and
 lists the items it makes a new draft of. Publish the drafts, or discard
 them to keep the version the items name.
 
+### vRO actions
+
+The import makes a form library entry
+(**Administration › Form library**,
+[ADR-0043](../adr/0043-form-library.md)) of each vRO action that a custom
+form takes a field's choices or default from, when the action's script
+makes one REST call rvav can make in its place. It makes the entries
+before the items that name them. The **Catalog items** tab lists them
+under the property groups, as **Form library**.
+
+| vRO action | rvav entry |
+|---|---|
+| Name | The key, as a property group's (`get-versions` is `get_versions`). When actions share a name, the second gets `_2`. The name, in words, is the entry's name, and the description names the action and its version. |
+| A script that makes one `GET`, to a literal URL, or to a literal host URL followed by `createRequest`'s path | A value source of kind `rest`, on that URL. Each action input the URL concatenates is a required parameter, read as `${params.<input>}`. An input the URL doesn't read is left out, with an info note. |
+| Output type `Array/string` or `Array/number` | The answer is the list of choices (`items` and `value` `$`). |
+| Output type `Array/Properties` | Choices with `$.value` and `$.label`. |
+| Output type `string`, `number` or `boolean` | The answer is one value, a field's default. |
+| An `Authorization` header | A warning: store the credential as a secret in rvav, and name it in the entry. |
+
+Every entry made of a script carries a warning: check its JSONPaths
+against what the service answers, with **Change or test** on the **Form
+library** page. To call the service, rvav needs its host among the hosts
+REST value sources may call (**Administration › Integrations › Allowed
+hosts**). The plan skips an action whose host isn't there and says so:
+add the host, then plan the import again.
+
+The import makes no entry, and the fields keep their unmapped notes,
+naming the action and why, when an action:
+
+- works its values out in JavaScript, which rvav doesn't run: write a CEL
+  entry, or have a REST service give them;
+- makes several REST calls, or a call other than `GET`;
+- calls a vRO REST host by name, whose URL the import doesn't know: add
+  an entry with that host's URL and the path the note gives;
+- builds its URL in steps the import can't follow, names several URLs,
+  or takes its host from an input;
+- returns another type, such as `Properties` or a vCenter object;
+- isn't in what the import read from vRO.
+
+The import never changes an rvav entry. When rvav's entry of that key
+isn't what the action gives, the plan marks it **Differs in rvav**, and
+the items name rvav's latest version, each with a warning. Changing an
+imported entry in rvav gives the items that name it a new draft at once,
+as any change of an entry does.
+
 ### Custom forms
 
 | vRA form | rvav |
 |---|---|
 | Labels, placeholders, signposts (help), constant defaults | The fields'. A constant default is the field's initial value. |
 | A default bound to a field (`bind`), or to an operation on fields and constants (`concatenate`, `add`, `subtract`, `multiply`, `divide`) | The field's `default` rule, in CEL: `{"bind": "hostName"}` is `inputs.hostName`, and ``{"bind": {"values": ["hostName", "`.corp.example`"], "operator": "concatenate"}}`` (a constant between backquotes) is `inputs.hostName + ".corp.example"`. The requester can change the field; until they do, it follows the fields it reads. An operation's numbers are worked out as decimals. On a field read-only in vRA's form, it's the field's `value` rule instead, which the requester can't change. A bind to a field that isn't an input of the template, or another operator, is reported (unmapped): write the rule. |
-| A default from a vRO action (`scriptAction`) | Reported (unmapped): give the field a REST value source, which gives a text, number, date or toggle field its default. |
+| A default from a vRO action (`scriptAction`) | The field's value source names the form library entry made of the action ([vRO actions](#vro-actions)), which gives a text, number, date or toggle field its default. The requester can change it. When the import makes no entry of the action, or the entry gives a list, it's reported (unmapped) with why: give the field a value source. |
 | A conditional default (values, each with its condition) | Reported (unmapped): write a `default` rule (CEL). |
 | Static value lists | Choices. |
 | `textField`, `textArea`, `dropDown`, `radio`, `checkbox`, `integerField`, `decimalField`, `passwordField`, `datetime`, `multiSelect`, `multiValuePicker`, `dualList`, `datagrid`, `objectField` | text, textarea, select, radio cards, toggle, number, number (a decimal on a `number` input), secret, datetime, multiselect, multiselect, dual list, table, group of fields. |
@@ -281,7 +326,8 @@ them to keep the version the items name.
 | A widget rvav has none of, such as `treeView` | Reported (unmapped): the field keeps the widget of its type. |
 | Pages and sections | One page keeps its sections. Several pages become tabs, as vRA shows them: one tab per page, with the fields of its sections in their order. To show them one after the other instead, choose the wizard layout in the form designer. |
 | Required, pattern, lengths, minimum and maximum | The form's checks. |
-| Values from vRO actions or external sources | Reported: give the field an rvav value source (REST or CEL). A `multiSelect`, `multiValuePicker` or `dualList` without choices of its own becomes tags, which take any value typed: once it has a source, make it a multi-select or a dual list again. |
+| Values from a vRO action | The field's value source names the form library entry made of the action ([vRO actions](#vro-actions)), each of its parameters bound to what vRA's form passes the action: a field (`inputs.x`, and the field depends on it), the environment, or a constant. A text field becomes a dropdown. When the import makes no entry of the action, or vRA's form passes the action nothing for one of its inputs, it's reported (unmapped) with why. |
+| Values from vRO actions the import doesn't map, or external sources | Reported: give the field an rvav value source (REST, CEL or the form library). A `multiSelect`, `multiValuePicker` or `dualList` without choices of its own becomes tags, which take any value typed: once it has a source, make it a multi-select or a dual list again. |
 | Conditions on visibility or read-only | Reported: write an rvav rule (CEL). A field read-only in vRA's form is editable in rvav's (a warning), unless its default is bound: then its `value` rule computes it. |
 
 ## Deployments
@@ -326,8 +372,9 @@ plan against what its VMs have.
 
 ## vRO
 
-vRO's workflows and actions aren't imported. They are sorted, for people
-to decide, into the groups of
+vRO's workflows aren't imported, and neither are its actions, except those
+that custom forms take values from ([vRO actions](#vro-actions)). They are
+sorted, for people to decide, into the groups of
 [ADR-0007](../adr/0007-extensibility-model.md#migrating-vro-workflows):
 
 ```sh
