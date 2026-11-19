@@ -84,6 +84,41 @@ describe("Policies", () => {
     expect(await within(region).findByRole("row", { name: /Big VMs/ })).toHaveTextContent("rvav-capacity");
   });
 
+  it("asks project roles and the requester's manager on a level", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/policies");
+    const region = await screen.findByRole("region", { name: "Approval policies" });
+    await user.click(await within(region).findByRole("button", { name: "New approval policy" }));
+    const sheet = await screen.findByRole("dialog", { name: "New approval policy" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Supervised");
+    const roles = within(sheet).getByRole("group", { name: "Project roles" });
+    expect(roles).toHaveAccessibleDescription(/Whoever holds one in the request's project/);
+    // Only the roles given in projects: no Administrator.
+    expect(within(roles).queryByRole("checkbox", { name: "Administrator" })).toBeNull();
+    await user.click(within(roles).getByRole("checkbox", { name: "Supervisor" }));
+    await user.click(within(roles).getByRole("checkbox", { name: "Project admin" }));
+    await user.click(within(roles).getByRole("checkbox", { name: "Project admin" }));
+    await user.click(within(sheet).getByRole("checkbox", { name: "The requester's manager" }));
+    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    expect(await screen.findByText("Supervised saved")).toBeInTheDocument();
+    expect(await within(region).findByRole("row", { name: /Supervised/ })).toHaveTextContent(
+      "Supervisor, the requester's manager",
+    );
+  });
+
+  it("says a level needs someone to ask", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/policies");
+    const region = await screen.findByRole("region", { name: "Approval policies" });
+    await user.click(await within(region).findByRole("button", { name: "New approval policy" }));
+    const sheet = await screen.findByRole("dialog", { name: "New approval policy" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Nobody");
+    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    expect(
+      await within(sheet).findByText("Give an OIDC group, approvers, project roles or the requester's manager."),
+    ).toBeInTheDocument();
+  });
+
   it("removes a project's own lease, and only that", async () => {
     const user = userEvent.setup();
     renderApp("/admin/policies?tab=lease");

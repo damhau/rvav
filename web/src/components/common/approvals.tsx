@@ -24,6 +24,15 @@ export function ApprovalStatusBadge({ status, label }: { status: ApprovalStatus;
   );
 }
 
+/** Whom a level asks besides the users it names: project roles' holders and the requester's manager. */
+function askedOf(a: Approval): string | undefined {
+  const parts = [
+    a.roles?.length ? `whoever holds ${a.roles.map((r) => r.name).join(" or ")} in the project` : undefined,
+    a.manager ? "the requester's manager" : undefined,
+  ].filter(Boolean);
+  return parts.length ? `Asks ${parts.join(" and ")}` : undefined;
+}
+
 /** What a step's wait came to, when it goes on: an answer, or its timeout. */
 const stepLabel = (a: Approval) =>
   a.step_key && a.status === "approved" ? (a.votes.length > 0 ? "Answered" : "Went on") : undefined;
@@ -118,6 +127,7 @@ export function ApprovalHistory({ levels, label = "Approval levels" }: { levels:
             <ApprovalStatusBadge status={a.status} label={stepLabel(a)} />
           </div>
           {a.reasons.length > 0 && <span className="text-secondary text-muted">{a.reasons.join(" · ")}</span>}
+          {askedOf(a) && <span className="text-secondary text-muted">{askedOf(a)}</span>}
           <StepQuestion a={a} />
           {a.outcome && <span className="text-secondary">{a.outcome}</span>}
           {a.status === "pending" && (

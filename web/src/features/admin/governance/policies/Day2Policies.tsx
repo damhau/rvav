@@ -30,6 +30,7 @@ const put = ({ id, ...body }: Policy) => call(api.PUT("/admin/day2-policies/{id}
 function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }) {
   const qc = useQueryClient();
   const projects = useProjects();
+  const listed = useQuery(adm.day2());
   const [f, setF] = useState<S["Day2PolicyWrite"]>(
     policy
       ? writable(policy, "id")
@@ -165,7 +166,12 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
         />
       </Field>
       {f.effect === "approval" && (
-        <LevelsEditor value={f.levels ?? []} onChange={(levels) => setF({ ...f, levels })} errors={errors} />
+        <LevelsEditor
+          value={f.levels ?? []}
+          onChange={(levels) => setF({ ...f, levels })}
+          errors={errors}
+          roles={listed.data?.level_roles ?? []}
+        />
       )}
       <label htmlFor="d2-enabled" className="flex items-center gap-1.5 text-body">
         <Checkbox id="d2-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />

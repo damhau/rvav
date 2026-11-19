@@ -3,15 +3,17 @@ import { X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button, IconButton } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
-import { Field, Input } from "@/components/ui/input";
+import { Field, FieldNote, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { errorAt, failed } from "../common";
 
 type ApprovalLevel = components["schemas"]["ApprovalLevel"];
+type RoleRef = components["schemas"]["RoleRef"];
 
 export const list = (s: string) =>
   s
@@ -186,15 +188,95 @@ export function PriorityDialog<T extends Ordered>({
   );
 }
 
+/** Who a level asks, in a sentence: its group, users, project roles and the requester's manager. */
+export function askedText(l: ApprovalLevel, roles: RoleRef[]): string {
+  const name = (k: string) => roles.find((r) => r.key === k)?.name ?? k;
+  const parts = [
+    l.group,
+    l.approvers?.length ? l.approvers.join(", ") : undefined,
+    l.roles?.length ? l.roles.map(name).join(" or ") : undefined,
+    l.manager ? "the requester's manager" : undefined,
+  ].filter(Boolean);
+  return parts.length ? parts.join(", ") : l.name;
+}
+
+/** The project roles a level asks, and whether it asks the requester's manager. */
+function LevelAsks({
+  i,
+  l,
+  roles,
+  errors,
+  set,
+}: {
+  i: number;
+  l: ApprovalLevel;
+  roles: RoleRef[];
+  errors: Record<string, string>;
+  set: (l: ApprovalLevel) => void;
+}) {
+  const picked = l.roles ?? [];
+  const shown = [...roles, ...picked.filter((k) => !roles.some((r) => r.key === k)).map((k) => ({ key: k, name: k }))];
+  const error = errorAt(errors, `/levels/${i}/roles`);
+  const toggle = (key: string, on: boolean) => {
+    const next = on ? [...picked, key] : picked.filter((k) => k !== key);
+    set({ ...l, roles: next.length ? next : undefined });
+  };
+  return (
+    <div className="flex flex-col gap-3 pr-9">
+      <fieldset className="flex flex-col gap-1" aria-describedby={`level-${i}-roles-note`}>
+        <legend className="mb-1 text-secondary font-medium text-fg">Project roles</legend>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+          {shown.map((r) => {
+            const id = `level-${i}-role-${r.key}`;
+            return (
+              <div key={r.key} className="flex items-center gap-1.5">
+                <Checkbox id={id} checked={picked.includes(r.key)} onChange={(on) => toggle(r.key, on)} />
+                <label htmlFor={id} className="text-body">
+                  {r.name}
+                </label>
+              </div>
+            );
+          })}
+        </div>
+        <FieldNote
+          id={`level-${i}-roles-note`}
+          error={error}
+          hint="Whoever holds one in the request's project when the level opens, themselves or through a group."
+        />
+      </fieldset>
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id={`level-${i}-manager`}
+          className="mt-0.5"
+          aria-describedby={`level-${i}-manager-note`}
+          checked={l.manager ?? false}
+          onChange={(manager) => set({ ...l, manager: manager || undefined })}
+        />
+        <div className="flex flex-col">
+          <label htmlFor={`level-${i}-manager`} className="text-body">
+            The requester's manager
+          </label>
+          <p id={`level-${i}-manager-note`} className="text-secondary text-muted">
+            From the identity provider's manager claim. Without one, the level asks only its other approvers.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** The levels of an approval: who approves, how many, and what happens on time-out. */
 export function LevelsEditor({
   value,
   onChange,
   errors,
+  roles,
 }: {
   value: ApprovalLevel[];
   onChange: (v: ApprovalLevel[]) => void;
   errors: Record<string, string>;
+  /** The project roles a level may name. */
+  roles: RoleRef[];
 }) {
   const set = (i: number, l: ApprovalLevel) => onChange(value.map((x, j) => (j === i ? l : x)));
   return (
@@ -235,6 +317,7 @@ export function LevelsEditor({
                 <X />
               </IconButton>
             </div>
+            <LevelAsks i={i} l={l} roles={roles} errors={errors} set={(next) => set(i, next)} />
             <div className="grid grid-cols-3 gap-3 pr-9">
               <Field label="Who" htmlFor={`level-${i}-mode`}>
                 <Select

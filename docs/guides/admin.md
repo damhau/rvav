@@ -734,9 +734,17 @@ approval, asks one or more of these
 given for all of rvav only, such as `auditor`, or no role at all, isn't
 saved.
 
+In **Administration › Policies**, the side panel of an approval or day-2
+policy gives each level an **OIDC group**, the **Project roles** it asks,
+one checkbox per role in `level_roles`, and **The requester's manager**.
+The policy list shows whom each level asks, for example "Supervisor, the
+requester's manager". On a request's page and in the approvals inbox, a
+level that asks roles or the manager says so, for example "Asks whoever
+holds Supervisor in the project and the requester's manager".
+
 In mode `all`, every user the level names, who holds one of its roles,
-or is the requester's manager must approve. Groups are never required in full: a level of groups only
-needs one approval.
+or is the requester's manager must approve. Groups are never required in
+full: a level of groups only needs one approval.
 
 A requester without a manager, or whose manager has never signed in, has
 none on that level: the level asks its other approvers. When a level

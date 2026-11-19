@@ -23,6 +23,14 @@ describe("a request's page against the mock API", () => {
     expect(within(asked).getByText("Reason")).toBeVisible();
   });
 
+  it("says whom a level asks besides the users it names", async () => {
+    renderApp("/requests/REQ-10471");
+    const levels = await screen.findByRole("list", { name: "Approval levels" }, { timeout: 5000 });
+    const security = within(levels).getByText("Network security").closest("li")!;
+    expect(security).toHaveTextContent("Asks whoever holds Supervisor in the project and the requester's manager");
+    expect(security).toHaveTextContent("Waiting for Marc Keller");
+  });
+
   it("leads to the deployment a finished request built", async () => {
     renderApp("/requests/REQ-10461");
     const title = await screen.findByRole("heading", { level: 1, name: /web-tst-search002/ }, { timeout: 5000 });

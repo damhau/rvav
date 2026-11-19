@@ -1366,6 +1366,8 @@ export function createDb(now = Date.now()): Db {
       level: { index: 2, count: 2, name: "Network security" },
       reasons: ["Firewall changes are reviewed by network security"],
       approvers: [marc],
+      roles: [{ key: "supervisor", name: "Supervisor" }],
+      manager: true,
       status: "pending",
       due_at: ago(60),
     }),

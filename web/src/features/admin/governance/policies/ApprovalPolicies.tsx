@@ -17,7 +17,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { failed, fieldErrors, priorityOf, writable } from "../common";
-import { LevelsEditor, OrderedMenu, PriorityDialog, useOrderedPolicies, useProjects } from "./shared";
+import { askedText, LevelsEditor, OrderedMenu, PriorityDialog, useOrderedPolicies, useProjects } from "./shared";
 
 type S = components["schemas"];
 type Policy = S["ApprovalPolicy"];
@@ -36,6 +36,7 @@ const put = ({ id, ...body }: Policy) =>
 function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => void }) {
   const qc = useQueryClient();
   const projects = useProjects();
+  const listed = useQuery(adm.approvals());
   const [f, setF] = useState<S["ApprovalPolicyWrite"]>(
     policy
       ? writable(policy, "id")
@@ -140,7 +141,12 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
           onChange={(e) => setF({ ...f, auto_approve: e.target.value || null })}
         />
       </Field>
-      <LevelsEditor value={f.levels} onChange={(levels) => setF({ ...f, levels })} errors={errors} />
+      <LevelsEditor
+        value={f.levels}
+        onChange={(levels) => setF({ ...f, levels })}
+        errors={errors}
+        roles={listed.data?.level_roles ?? []}
+      />
       <label htmlFor="ap-enabled" className="flex items-center gap-1.5 text-body">
         <Checkbox id="ap-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />
         Enabled
@@ -149,11 +155,10 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
   );
 }
 
-const approversText = (p: Policy) => p.levels.map((l) => l.group ?? l.approvers?.join(", ") ?? l.name).join(" → ");
-
 export function ApprovalPolicies({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const policies = useQuery(adm.approvals());
+  const approversText = (p: Policy) => p.levels.map((l) => askedText(l, policies.data?.level_roles ?? [])).join(" → ");
   const projects = useProjects();
   const [editing, setEditing] = useState<Policy | "new" | null>(null);
   const [ranking, setRanking] = useState<Policy | null>(null);
