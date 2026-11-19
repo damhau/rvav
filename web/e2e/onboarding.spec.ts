@@ -59,7 +59,7 @@ test("several VMs into one deployment", async ({ page }) => {
   await choose(page, "Environment", "dev");
   await choose(page, "Owner", "Léa Martin");
   await choose(page, "Catalog item", "RHEL 9 server");
-  await dialog.getByRole("checkbox", { name: /All in one deployment/ }).check();
+  await choose(page, "Where they go", "All into one new deployment");
   await dialog.getByRole("textbox", { name: "Deployment name" }).fill("legacy-apps");
   await dialog.getByRole("button", { name: "Adopt 2 VMs" }).click();
   const adopted = page.getByRole("region", { name: "Adopted 2 VMs into 1 deployment" });

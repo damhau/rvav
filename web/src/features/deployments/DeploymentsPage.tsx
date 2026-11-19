@@ -15,6 +15,7 @@ import { Panel } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import type { Day2Action, Deployment, DeploymentStatusFilter } from "@/lib/api/types";
+import { can } from "@/lib/can";
 import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { q, type DeploymentSort } from "@/lib/query";
@@ -514,6 +515,13 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
               ]}
             />
             <SavedViewsMenu list="deployments" query={toQuery({ ...search, layout })} onApply={apply} />
+            {can(me, "import.manage") && (
+              <Button asChild>
+                <Link to="/admin/onboarding" search={{ tab: "plans" }}>
+                  Adopt existing VMs
+                </Link>
+              </Button>
+            )}
             <Button variant="primary" asChild>
               <Link to="/catalog">
                 <Plus /> New request

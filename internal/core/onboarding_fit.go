@@ -77,10 +77,15 @@ func (s *Service) newDestination(ctx context.Context, userID string, t newTarget
 	}
 	d.project = project
 	if project.ID != "" {
-		if !slices.Contains(project.Environments, t.environment) {
+		switch {
+		case t.environment == "":
+			add(at+"/environment", "required", "Choose the environment of "+project.Name+" the deployments are in.")
+		case !slices.Contains(project.Environments, t.environment):
 			add(at+"/environment", "invalid", fmt.Sprintf("%s has no environment %s.", project.Name, t.environment))
-		} else if d.lease, err = s.Store.LeasePolicy(ctx, project.ID, t.environment); err != nil && !errors.Is(err, store.ErrNotFound) {
-			return nil, err
+		default:
+			if d.lease, err = s.Store.LeasePolicy(ctx, project.ID, t.environment); err != nil && !errors.Is(err, store.ErrNotFound) {
+				return nil, err
+			}
 		}
 		owners, err := s.requesters(ctx, project.ID)
 		if err != nil {

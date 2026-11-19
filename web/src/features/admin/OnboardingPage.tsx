@@ -1,9 +1,10 @@
-// Onboarding (S13.3): administrators adopt VMs rvav didn't build into
-// deployments, with an owner, project, environment, catalog item and lease;
-// their addresses and DNS records come from EfficientIP. Nothing changes in
-// vCenter or EfficientIP.
+// Onboarding (S13.3, X1.5): administrators adopt VMs rvav didn't build into
+// new deployments, with an owner, project, environment, catalog item and
+// lease, or into an existing deployment; their addresses and DNS records come
+// from EfficientIP. Nothing changes in vCenter or EfficientIP. Plans adopt
+// the VMs a filter matches, by hand or every few hours.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ServerCog } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -11,7 +12,6 @@ import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { PowerDot } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
@@ -19,14 +19,20 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { useDebounced } from "@/lib/hooks";
-import { adm, q } from "@/lib/query";
+import { adm } from "@/lib/query";
 import { failed, fieldErrors } from "./governance/common";
+import { PlansTab, type Plan } from "./onboarding/plans";
+import { emptyTarget, inputProblems, inputsOf, TargetFields, type Target } from "./onboarding/target";
 
 type S = components["schemas"];
 type Vm = S["OnboardingVm"];
+
+export const onboardingTabs = ["vms", "plans"] as const;
+export type OnboardingTab = (typeof onboardingTabs)[number];
 
 const keyOf = (v: Vm) => `${v.vcenter}/${v.moref}`;
 /** How many VMs one adoption takes (the server's limit). */
@@ -43,33 +49,33 @@ function AdoptSheet({
   onClose: () => void;
   onDone: (r: S["OnboardingResult"]) => void;
 }) {
-  const [f, setF] = useState({ project: "", environment: "", owner: "", item: "", lease: "", one: false, name: "" });
+  const [t, setT] = useState<Target>(emptyTarget);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const projects = useQuery(adm.projectNames());
-  const project = useQuery({ ...q.project(f.project), enabled: f.project !== "" });
-  const members = useQuery({ ...adm.members(f.project), enabled: f.project !== "" });
-  // Owners run the actions on their deployments: members who may request
-  // there. Without the roles to read, every member is offered; the server
-  // decides.
-  const roles = useQuery(adm.roles()).data?.items;
-  const requests = (m: S["ProjectMember"]) =>
-    !roles || m.roles.some((r) => roles.find((x) => x.key === r.key)?.permissions.includes("request.submit"));
-  const items = useQuery({ ...q.catalog({ projectId: f.project, type: "vm_blueprint" }), enabled: f.project !== "" });
+  const [local, setLocal] = useState<Record<number, string>>({});
+  const refs = vms.map((v) => ({ vcenter: v.vcenter, moref: v.moref }));
   const adopt = useMutation({
-    mutationFn: () =>
-      call(
+    mutationFn: () => {
+      const component = t.component.trim() || undefined;
+      if (t.into === "existing")
+        return call(
+          api.POST("/admin/onboarding/into", { body: { vms: refs, deployment_id: t.deployment, component } }),
+        );
+      return call(
         api.POST("/admin/onboarding", {
           body: {
-            vms: vms.map((v) => ({ vcenter: v.vcenter, moref: v.moref })),
-            project_id: f.project,
-            environment: f.environment,
-            owner_id: f.owner,
-            catalog_item_id: f.item,
-            ...(f.lease ? { lease_days: Number(f.lease) } : {}),
-            ...(f.one ? { deployment_name: f.name } : {}),
+            vms: refs,
+            project_id: t.project,
+            environment: t.environment,
+            owner_id: t.owner,
+            catalog_item_id: t.item,
+            ...(t.lease ? { lease_days: Number(t.lease) } : {}),
+            ...(t.into === "one" ? { deployment_name: t.name } : {}),
+            component,
+            inputs: inputsOf(t),
           },
         }),
-      ),
+      );
+    },
     onSuccess: onDone,
     onError: (e) => {
       setErrors(fieldErrors(e));
@@ -90,89 +96,27 @@ function AdoptSheet({
       pending={adopt.isPending}
       title={`Adopt ${vmsText(vms.length)}`}
       description="Nothing changes in vCenter or EfficientIP: rvav records the VMs, and the addresses and DNS records EfficientIP has for them. Deleting a deployment later deletes its VMs and releases those."
+      className="w-[min(640px,100vw)]"
       onSubmit={() => {
         setErrors({});
-        adopt.mutate();
+        const problems = inputProblems(t);
+        setLocal(problems);
+        if (Object.keys(problems).length === 0) adopt.mutate();
       }}
       submitLabel={adopt.isPending ? "Adopting…" : `Adopt ${vmsText(vms.length)}`}
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Project" htmlFor="ob-project" error={errors["/project_id"]}>
-          <Select
-            id="ob-project"
-            value={f.project}
-            loading={projects.isPending}
-            onChange={(v) => setF({ ...f, project: v, environment: "", owner: "", item: "" })}
-            options={(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name }))}
-          />
-        </Field>
-        <Field label="Environment" htmlFor="ob-env" error={errors["/environment"]}>
-          <Select
-            id="ob-env"
-            value={f.environment}
-            disabled={!f.project}
-            onChange={(v) => setF({ ...f, environment: v })}
-            loading={project.isFetching}
-            options={(project.data?.environments ?? []).map((e) => ({ value: e, label: e }))}
-          />
-        </Field>
-        <Field label="Owner" htmlFor="ob-owner" hint="A member of the project" error={errors["/owner_id"]}>
-          <Select
-            id="ob-owner"
-            value={f.owner}
-            disabled={!f.project}
-            loading={members.isFetching}
-            onChange={(v) => setF({ ...f, owner: v })}
-            options={(members.data?.items ?? [])
-              .filter(requests)
-              .map((m) => ({ value: m.user.id, label: m.user.name }))}
-          />
-        </Field>
-        <Field
-          label="Catalog item"
-          htmlFor="ob-item"
-          hint="Their OS family and day-2 actions"
-          error={errors["/catalog_item_id"]}
-        >
-          <Select
-            id="ob-item"
-            value={f.item}
-            disabled={!f.project}
-            loading={items.isFetching}
-            onChange={(v) => setF({ ...f, item: v })}
-            options={(items.data?.items ?? []).map((i) => ({ value: i.id, label: i.name }))}
-          />
-        </Field>
-        <Field
-          label="Lease (days)"
-          htmlFor="ob-lease"
-          hint="Empty: the lease policy's default"
-          error={errors["/lease_days"]}
-        >
-          <Input
-            id="ob-lease"
-            type="number"
-            min={1}
-            value={f.lease}
-            onChange={(e) => setF({ ...f, lease: e.target.value })}
-          />
-        </Field>
-      </div>
-      <label htmlFor="ob-one" className="flex items-center gap-1.5 text-body">
-        <Checkbox id="ob-one" checked={f.one} onChange={(on) => setF({ ...f, one: on })} />
-        All in one deployment (else one each, named after its VM)
-      </label>
-      {f.one && (
-        <Field label="Deployment name" htmlFor="ob-name" error={errors["/deployment_name"]}>
-          <Input
-            id="ob-name"
-            className="font-mono text-secondary"
-            placeholder="erp-prd"
-            value={f.name}
-            onChange={(e) => setF({ ...f, name: e.target.value })}
-          />
-        </Field>
-      )}
+      <TargetFields
+        t={t}
+        onChange={(next) => {
+          // A row gone: the problems found by row no longer line up.
+          if (next.inputs.length < t.inputs.length) setLocal({});
+          setT(next);
+        }}
+        errors={errors}
+        at=""
+        id="ob"
+        local={local}
+      />
       {vmErrors.length > 0 && (
         <ul
           role="alert"
@@ -204,7 +148,7 @@ function Adopted({ result, onClose }: { result: S["OnboardingResult"]; onClose: 
   return (
     <Panel
       title={`Adopted ${vmsText(vms)} into ${result.deployments.length} deployment${result.deployments.length === 1 ? "" : "s"}`}
-      description="Each is a deployment like any other: its owner runs its day-2 actions, and its lease runs from today."
+      description="Each is a deployment like any other: its owner runs its day-2 actions, and its lease runs from when it was made."
       actions={
         <Button size="sm" variant="quiet" onClick={onClose}>
           Close
@@ -273,18 +217,20 @@ const columns: Column<Vm>[] = [
     cell: (v) => (
       <span className="text-secondary text-muted">
         {v.cluster ?? ""}
-        <div className="text-caption text-faint">{v.vcenter}</div>
+        <div className="text-caption text-faint">{v.folder || v.vcenter}</div>
       </span>
     ),
   },
 ];
 
-export function OnboardingPage() {
+function VmsTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [vcenter, setVcenter] = useState("any");
   const [power, setPower] = useState("any");
+  const [folder, setFolder] = useState("");
   const debounced = useDebounced(search, 250);
+  const debouncedFolder = useDebounced(folder.trim(), 250);
   const vcenters = useQuery(adm.vcenters());
   // Loaded with the page: the side panel then opens on its Project field,
   // which stays disabled while it loads.
@@ -293,8 +239,9 @@ export function OnboardingPage() {
     q: debounced || undefined,
     vcenter: vcenter === "any" ? undefined : vcenter,
     power_state: power === "any" ? undefined : (power as S["VmPowerState"]),
+    folder: debouncedFolder || undefined,
   };
-  const filtered = search !== "" || vcenter !== "any" || power !== "any";
+  const filtered = search !== "" || vcenter !== "any" || power !== "any" || folder !== "";
   const list = useInfiniteQuery({
     queryKey: ["admin", "onboarding", filters],
     initialPageParam: undefined as string | undefined,
@@ -316,13 +263,10 @@ export function OnboardingPage() {
     setSearch("");
     setVcenter("any");
     setPower("any");
+    setFolder("");
   };
   return (
-    <Page>
-      <PageHeader
-        title="Onboarding"
-        description="VMs in vCenter that rvav doesn't manage. Select them, then adopt them into deployments with an owner, a project and a lease."
-      />
+    <div className="flex flex-col gap-4">
       {result && <Adopted result={result} onClose={() => setResult(null)} />}
       {selected.size > 0 && (
         <div
@@ -375,6 +319,15 @@ export function OnboardingPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Name, address or host name"
+                />
+              </Field>
+              <Field label="Folder" htmlFor="ob-folder" className="w-48">
+                <Input
+                  id="ob-folder"
+                  className="font-mono"
+                  value={folder}
+                  onChange={(e) => setFolder(e.target.value)}
+                  placeholder="/GVA/vm/legacy"
                 />
               </Field>
               <Field label="vCenter" htmlFor="ob-vcenter" className="w-48">
@@ -443,6 +396,45 @@ export function OnboardingPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+export function OnboardingPage({ tab = "vms" }: { tab?: OnboardingTab }) {
+  const navigate = useNavigate();
+  const plans = useQuery(adm.onboardingPlans());
+  const [editing, setEditing] = useState<Plan | "new" | null>(null);
+  return (
+    <Page>
+      <PageHeader
+        title="Onboarding"
+        description="VMs in vCenter that rvav doesn't manage. Adopt them into deployments with an owner, a project and a lease, or save a plan that adopts those its filter matches, as they appear."
+        actions={
+          tab === "plans" &&
+          Boolean(plans.data?.items.length) && (
+            <Button variant="primary" onClick={() => setEditing("new")}>
+              New plan
+            </Button>
+          )
+        }
+      />
+      <Tabs
+        value={tab}
+        onValueChange={(next) =>
+          void navigate({ to: "/admin/onboarding", search: { tab: next as OnboardingTab }, replace: true })
+        }
+      >
+        <TabsList aria-label="Onboarding sections">
+          <TabsTrigger value="vms">VMs to adopt</TabsTrigger>
+          <TabsTrigger value="plans">Plans</TabsTrigger>
+        </TabsList>
+        <TabsContent value="vms" className="pt-4">
+          <VmsTab />
+        </TabsContent>
+        <TabsContent value="plans" className="pt-4">
+          <PlansTab editing={editing} setEditing={setEditing} />
+        </TabsContent>
+      </Tabs>
     </Page>
   );
 }

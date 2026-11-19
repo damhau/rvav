@@ -131,6 +131,12 @@ func TestOnboardingPlans(t *testing.T) {
 			"/target/inputs/secret_sauce unknown_field", "/target/inputs/web_nodes maximum"}; !slices.Equal(fields, want) {
 			t.Fatalf("errors = %v, want %v", fields, want)
 		}
+		h.json("POST", "/api/v1/admin/onboarding/plans", admin, api.OnboardingPlanWrite{Name: "No environment",
+			Filter: api.OnboardingFilter{Tag: present.Ptr("app/erp")}, Target: api.OnboardingTarget{ProjectId: "prj_web",
+				OwnerId: present.Ptr("usr_tnguyen"), CatalogItemId: present.Ptr(rhel.Id)}}, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/target/environment" || deref(problem.Errors[0].Code) != "required" {
+			t.Fatalf("without an environment = %+v", problem.Errors)
+		}
 		h.json("GET", "/api/v1/admin/onboarding/plans", "tnguyen", nil, 403, nil)
 
 		// A plan adopts the two VMs it matches into one deployment it

@@ -22,7 +22,6 @@ import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
 import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-actions"
 import { Route as AdminFormLibraryRouteImport } from "./routes/admin/form-library"
 import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastructure"
-import { Route as AdminOnboardingRouteImport } from "./routes/admin/onboarding"
 import { Route as AdminPoliciesRouteImport } from "./routes/admin/policies"
 import { Route as AdminPropertyGroupsRouteImport } from "./routes/admin/property-groups"
 import { Route as AdminSetupRouteImport } from "./routes/admin/setup"
@@ -39,6 +38,7 @@ import { Route as AdminCatalogItemsIndexRouteImport } from "./routes/admin/catal
 import { Route as AdminCatalogItemsItemIdRouteImport } from "./routes/admin/catalog-items/$itemId"
 import { Route as AdminIntegrationsIndexRouteImport } from "./routes/admin/integrations/index"
 import { Route as AdminIntegrationsKindRouteImport } from "./routes/admin/integrations/$kind"
+import { Route as AdminOnboardingIndexRouteImport } from "./routes/admin/onboarding/index"
 import { Route as AdminProjectsIndexRouteImport } from "./routes/admin/projects/index"
 import { Route as AdminProjectsProjectIdRouteImport } from "./routes/admin/projects/$projectId"
 import { Route as AdminRolesIndexRouteImport } from "./routes/admin/roles/index"
@@ -49,6 +49,7 @@ import { Route as AdminSubscriptionsSubscriptionIdRouteImport } from "./routes/a
 import { Route as CatalogItemIdIndexRouteImport } from "./routes/catalog/$itemId.index"
 import { Route as CatalogItemIdRequestRouteImport } from "./routes/catalog/$itemId.request"
 import { Route as DeploymentsDeploymentIdUpdateRouteImport } from "./routes/deployments/$deploymentId_.update"
+import { Route as AdminOnboardingPlansPlanIdRouteImport } from "./routes/admin/onboarding/plans/$planId"
 import { Route as DeploymentsDeploymentIdConsoleResourceIdRouteImport } from "./routes/deployments/$deploymentId_.console.$resourceId"
 
 const IndexRoute = IndexRouteImport.update({
@@ -114,11 +115,6 @@ const AdminFormLibraryRoute = AdminFormLibraryRouteImport.update({
 const AdminInfrastructureRoute = AdminInfrastructureRouteImport.update({
   id: "/infrastructure",
   path: "/infrastructure",
-  getParentRoute: () => AdminRouteRoute,
-} as any)
-const AdminOnboardingRoute = AdminOnboardingRouteImport.update({
-  id: "/onboarding",
-  path: "/onboarding",
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
@@ -201,6 +197,11 @@ const AdminIntegrationsKindRoute = AdminIntegrationsKindRouteImport.update({
   path: "/integrations/$kind",
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminOnboardingIndexRoute = AdminOnboardingIndexRouteImport.update({
+  id: "/onboarding/",
+  path: "/onboarding/",
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminProjectsIndexRoute = AdminProjectsIndexRouteImport.update({
   id: "/projects/",
   path: "/projects/",
@@ -253,6 +254,12 @@ const DeploymentsDeploymentIdUpdateRoute =
     path: "/deployments/$deploymentId/update",
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminOnboardingPlansPlanIdRoute =
+  AdminOnboardingPlansPlanIdRouteImport.update({
+    id: "/onboarding/plans/$planId",
+    path: "/onboarding/plans/$planId",
+    getParentRoute: () => AdminRouteRoute,
+  } as any)
 const DeploymentsDeploymentIdConsoleResourceIdRoute =
   DeploymentsDeploymentIdConsoleResourceIdRouteImport.update({
     id: "/deployments/$deploymentId_/console/$resourceId",
@@ -273,7 +280,6 @@ export interface FileRoutesByFullPath {
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
-  "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
   "/admin/property-groups": typeof AdminPropertyGroupsRoute
   "/admin/setup": typeof AdminSetupRoute
@@ -297,10 +303,12 @@ export interface FileRoutesByFullPath {
   "/deployments/$deploymentId/update": typeof DeploymentsDeploymentIdUpdateRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/admin/integrations/": typeof AdminIntegrationsIndexRoute
+  "/admin/onboarding/": typeof AdminOnboardingIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
   "/admin/roles/": typeof AdminRolesIndexRoute
   "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
   "/catalog/$itemId/": typeof CatalogItemIdIndexRoute
+  "/admin/onboarding/plans/$planId": typeof AdminOnboardingPlansPlanIdRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRoutesByTo {
@@ -315,7 +323,6 @@ export interface FileRoutesByTo {
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
-  "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
   "/admin/property-groups": typeof AdminPropertyGroupsRoute
   "/admin/setup": typeof AdminSetupRoute
@@ -339,10 +346,12 @@ export interface FileRoutesByTo {
   "/deployments/$deploymentId/update": typeof DeploymentsDeploymentIdUpdateRoute
   "/admin/catalog-items": typeof AdminCatalogItemsIndexRoute
   "/admin/integrations": typeof AdminIntegrationsIndexRoute
+  "/admin/onboarding": typeof AdminOnboardingIndexRoute
   "/admin/projects": typeof AdminProjectsIndexRoute
   "/admin/roles": typeof AdminRolesIndexRoute
   "/admin/subscriptions": typeof AdminSubscriptionsIndexRoute
   "/catalog/$itemId": typeof CatalogItemIdIndexRoute
+  "/admin/onboarding/plans/$planId": typeof AdminOnboardingPlansPlanIdRoute
   "/deployments/$deploymentId/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRoutesById {
@@ -359,7 +368,6 @@ export interface FileRoutesById {
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
-  "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
   "/admin/property-groups": typeof AdminPropertyGroupsRoute
   "/admin/setup": typeof AdminSetupRoute
@@ -383,10 +391,12 @@ export interface FileRoutesById {
   "/deployments/$deploymentId_/update": typeof DeploymentsDeploymentIdUpdateRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/admin/integrations/": typeof AdminIntegrationsIndexRoute
+  "/admin/onboarding/": typeof AdminOnboardingIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
   "/admin/roles/": typeof AdminRolesIndexRoute
   "/admin/subscriptions/": typeof AdminSubscriptionsIndexRoute
   "/catalog/$itemId/": typeof CatalogItemIdIndexRoute
+  "/admin/onboarding/plans/$planId": typeof AdminOnboardingPlansPlanIdRoute
   "/deployments/$deploymentId_/console/$resourceId": typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
 export interface FileRouteTypes {
@@ -404,7 +414,6 @@ export interface FileRouteTypes {
     | "/admin/day2-actions"
     | "/admin/form-library"
     | "/admin/infrastructure"
-    | "/admin/onboarding"
     | "/admin/policies"
     | "/admin/property-groups"
     | "/admin/setup"
@@ -428,10 +437,12 @@ export interface FileRouteTypes {
     | "/deployments/$deploymentId/update"
     | "/admin/catalog-items/"
     | "/admin/integrations/"
+    | "/admin/onboarding/"
     | "/admin/projects/"
     | "/admin/roles/"
     | "/admin/subscriptions/"
     | "/catalog/$itemId/"
+    | "/admin/onboarding/plans/$planId"
     | "/deployments/$deploymentId/console/$resourceId"
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -446,7 +457,6 @@ export interface FileRouteTypes {
     | "/admin/day2-actions"
     | "/admin/form-library"
     | "/admin/infrastructure"
-    | "/admin/onboarding"
     | "/admin/policies"
     | "/admin/property-groups"
     | "/admin/setup"
@@ -470,10 +480,12 @@ export interface FileRouteTypes {
     | "/deployments/$deploymentId/update"
     | "/admin/catalog-items"
     | "/admin/integrations"
+    | "/admin/onboarding"
     | "/admin/projects"
     | "/admin/roles"
     | "/admin/subscriptions"
     | "/catalog/$itemId"
+    | "/admin/onboarding/plans/$planId"
     | "/deployments/$deploymentId/console/$resourceId"
   id:
     | "__root__"
@@ -489,7 +501,6 @@ export interface FileRouteTypes {
     | "/admin/day2-actions"
     | "/admin/form-library"
     | "/admin/infrastructure"
-    | "/admin/onboarding"
     | "/admin/policies"
     | "/admin/property-groups"
     | "/admin/setup"
@@ -513,10 +524,12 @@ export interface FileRouteTypes {
     | "/deployments/$deploymentId_/update"
     | "/admin/catalog-items/"
     | "/admin/integrations/"
+    | "/admin/onboarding/"
     | "/admin/projects/"
     | "/admin/roles/"
     | "/admin/subscriptions/"
     | "/catalog/$itemId/"
+    | "/admin/onboarding/plans/$planId"
     | "/deployments/$deploymentId_/console/$resourceId"
   fileRoutesById: FileRoutesById
 }
@@ -634,13 +647,6 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminInfrastructureRouteImport
       parentRoute: typeof AdminRouteRoute
     }
-    "/admin/onboarding": {
-      id: "/admin/onboarding"
-      path: "/onboarding"
-      fullPath: "/admin/onboarding"
-      preLoaderRoute: typeof AdminOnboardingRouteImport
-      parentRoute: typeof AdminRouteRoute
-    }
     "/admin/policies": {
       id: "/admin/policies"
       path: "/policies"
@@ -753,6 +759,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminIntegrationsKindRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    "/admin/onboarding/": {
+      id: "/admin/onboarding/"
+      path: "/onboarding"
+      fullPath: "/admin/onboarding/"
+      preLoaderRoute: typeof AdminOnboardingIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     "/admin/projects/": {
       id: "/admin/projects/"
       path: "/projects"
@@ -823,6 +836,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof DeploymentsDeploymentIdUpdateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin/onboarding/plans/$planId": {
+      id: "/admin/onboarding/plans/$planId"
+      path: "/onboarding/plans/$planId"
+      fullPath: "/admin/onboarding/plans/$planId"
+      preLoaderRoute: typeof AdminOnboardingPlansPlanIdRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     "/deployments/$deploymentId_/console/$resourceId": {
       id: "/deployments/$deploymentId_/console/$resourceId"
       path: "/deployments/$deploymentId/console/$resourceId"
@@ -838,7 +858,6 @@ interface AdminRouteRouteChildren {
   AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
   AdminFormLibraryRoute: typeof AdminFormLibraryRoute
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
-  AdminOnboardingRoute: typeof AdminOnboardingRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
   AdminPropertyGroupsRoute: typeof AdminPropertyGroupsRoute
   AdminSetupRoute: typeof AdminSetupRoute
@@ -854,9 +873,11 @@ interface AdminRouteRouteChildren {
   AdminSubscriptionsSubscriptionIdRoute: typeof AdminSubscriptionsSubscriptionIdRoute
   AdminCatalogItemsIndexRoute: typeof AdminCatalogItemsIndexRoute
   AdminIntegrationsIndexRoute: typeof AdminIntegrationsIndexRoute
+  AdminOnboardingIndexRoute: typeof AdminOnboardingIndexRoute
   AdminProjectsIndexRoute: typeof AdminProjectsIndexRoute
   AdminRolesIndexRoute: typeof AdminRolesIndexRoute
   AdminSubscriptionsIndexRoute: typeof AdminSubscriptionsIndexRoute
+  AdminOnboardingPlansPlanIdRoute: typeof AdminOnboardingPlansPlanIdRoute
 }
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
@@ -864,7 +885,6 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminDay2ActionsRoute: AdminDay2ActionsRoute,
   AdminFormLibraryRoute: AdminFormLibraryRoute,
   AdminInfrastructureRoute: AdminInfrastructureRoute,
-  AdminOnboardingRoute: AdminOnboardingRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,
   AdminPropertyGroupsRoute: AdminPropertyGroupsRoute,
   AdminSetupRoute: AdminSetupRoute,
@@ -880,9 +900,11 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminSubscriptionsSubscriptionIdRoute: AdminSubscriptionsSubscriptionIdRoute,
   AdminCatalogItemsIndexRoute: AdminCatalogItemsIndexRoute,
   AdminIntegrationsIndexRoute: AdminIntegrationsIndexRoute,
+  AdminOnboardingIndexRoute: AdminOnboardingIndexRoute,
   AdminProjectsIndexRoute: AdminProjectsIndexRoute,
   AdminRolesIndexRoute: AdminRolesIndexRoute,
   AdminSubscriptionsIndexRoute: AdminSubscriptionsIndexRoute,
+  AdminOnboardingPlansPlanIdRoute: AdminOnboardingPlansPlanIdRoute,
 }
 
 const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(

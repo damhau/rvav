@@ -254,6 +254,20 @@ export const adm = {
     get(["admin", "subscription-run", id], (signal) =>
       call(api.GET("/admin/subscription-runs/{id}", { params: { path: { id } }, signal })),
     ),
+  onboardingPlans: () =>
+    get(["admin", "onboarding", "plans"], (signal) => call(api.GET("/admin/onboarding/plans", { signal }))),
+  onboardingPlan: (planId: string) =>
+    get(["admin", "onboarding", "plan", planId], (signal) =>
+      call(api.GET("/admin/onboarding/plans/{planId}", { params: { path: { planId } }, signal })),
+    ),
+  onboardingRuns: (planId: string) =>
+    get(["admin", "onboarding", "runs", planId], (signal) =>
+      call(api.GET("/admin/onboarding/plans/{planId}/runs", { params: { path: { planId } }, signal })),
+    ),
+  onboardingRun: (runId: string) =>
+    get(["admin", "onboarding", "run", runId], (signal) =>
+      call(api.GET("/admin/onboarding/runs/{runId}", { params: { path: { runId } }, signal })),
+    ),
   workflows: () => get(["admin", "workflows"], (signal) => call(api.GET("/admin/workflows", { signal }))),
   secrets: () => get(["admin", "secrets"], (signal) => call(api.GET("/admin/secrets", { signal }))),
   users: (search: string) =>
