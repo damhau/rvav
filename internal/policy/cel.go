@@ -42,6 +42,12 @@ var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm
 var sources = &set{names: append(slices.Clone(forms.names), "search"),
 	strings: map[string]bool{"environment": true, "search": true}}
 
+// library is for the form library's entries (ADR-0043): their parameters,
+// which forms give them, and what any form knows of the request; not the
+// inputs of any one form.
+var library = &set{names: []string{"params", "environment", "project", "user", "search"},
+	strings: map[string]bool{"environment": true, "search": true}}
+
 // day2 is for day-2 policy conditions, where environment is an object
 // (key, name, production).
 var day2 = &set{names: []string{"action", "resource", "deployment", "project", "environment", "user", "inputs", "quota"}}
@@ -166,6 +172,15 @@ func CheckSource(expr string) error {
 
 // EvalSource evaluates a `cel` value source's expression.
 func EvalSource(expr string, vars Vars) (any, error) { return sources.eval(expr, vars) }
+
+// CheckLibrary compiles a form library entry's expression.
+func CheckLibrary(expr string) error {
+	_, err := library.program(expr)
+	return err
+}
+
+// EvalLibrary evaluates a form library entry's expression.
+func EvalLibrary(expr string, vars Vars) (any, error) { return library.eval(expr, vars) }
 
 // Bool evaluates expr and requires a boolean result.
 func Bool(expr string, vars Vars) (bool, error) { return forms.boolean(expr, vars) }

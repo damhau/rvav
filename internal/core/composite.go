@@ -601,8 +601,8 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 					}
 					inputs[k] = val
 				}
-				sub, err := s.evaluate(ctx, p, api.RequestDraft{CatalogItemId: item.ID, VersionId: version.ID,
-					ProjectId: ev.Project.ID, Environment: ev.Env.Key, Inputs: inputs}, strict, true)
+				sub, err := s.evaluateWith(ctx, p, api.RequestDraft{CatalogItemId: item.ID, VersionId: version.ID,
+					ProjectId: ev.Project.ID, Environment: ev.Env.Key, Inputs: inputs}, strict, true, ev.validate)
 				if err != nil {
 					return nil, err
 				}

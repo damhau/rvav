@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -32,8 +33,14 @@ var CatalogIcons = []string{"server", "monitor", "database", "key-round", "shiel
 	"box", "container", "hard-drive", "network", "cloud", "cpu", "package", "wrench", "mail", "file-text", "archive",
 	"git-branch", "layers", "activity"}
 
-// checkCustomSource checks a `rest` or `cel` value source's parameters.
+// checkCustomSource checks a form's `rest` or `cel` value source's parameters.
 func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
+	return checkSourceParams(src, ptr, "inputs")
+}
+
+// checkSourceParams checks a `rest` or `cel` source's parameters, whose
+// templates read ns: a form's inputs, or a library entry's params.
+func checkSourceParams(src api.ValueSource, ptr, ns string) []api.FieldError {
 	params := map[string]any{}
 	if src.Params != nil {
 		params = *src.Params
@@ -42,22 +49,9 @@ func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
 	var errs []api.FieldError
 	switch src.Kind {
 	case api.Rest:
-		if str("url") == "" {
-			errs = append(errs, fieldErr(ptr+"/params/url", "required", "Give the URL the options come from."))
-		} else if u, err := url.Parse(fill(str("url"), nil, "", restcall.Escape)); err != nil || (u.Scheme != "https" && u.Scheme != "http") {
-			errs = append(errs, fieldErr(ptr+"/params/url", "invalid", "Give an http or https URL."))
-		} else if !restcall.FixedOrigin(str("url")) {
-			errs = append(errs, fieldErr(ptr+"/params/url", "invalid", "Inputs may fill the URL's path and query, not its scheme, host or port."))
-		}
-		if m := strings.ToUpper(str("method")); m != "" && m != http.MethodGet && m != http.MethodPost {
-			errs = append(errs, fieldErr(ptr+"/params/method", "invalid", "GET or POST."))
-		}
+		errs = append(errs, checkRESTParams(params, ptr+"/params", ns, "The URL the options come from")...)
 		for _, k := range []string{"items", "value", "label", "meta", "parent"} {
-			if path := str(k); path != "" {
-				if _, err := jp.ParseString(path); err != nil {
-					errs = append(errs, fieldErr(ptr+"/params/"+k, "invalid", fmt.Sprintf("This is not valid JSONPath: %v", err)))
-				}
-			}
+			errs = append(errs, checkJSONPath(str(k), ptr+"/params/"+k)...)
 		}
 	case api.Cel:
 		options, value := str("options"), str("value")
@@ -68,7 +62,7 @@ func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
 			if expr == "" {
 				continue
 			}
-			if err := policy.CheckSource(expr); err != nil {
+			if err := checkCELOf(ns)(expr); err != nil {
 				errs = append(errs, fieldErr(ptr+"/params/"+k, "invalid", fmt.Sprintf("This expression is not valid CEL: %v", err)))
 			}
 		}
@@ -82,6 +76,53 @@ func checkCustomSource(src api.ValueSource, ptr string) []api.FieldError {
 		}
 	}
 	return errs
+}
+
+// checkRESTParams checks a REST call's url, method and body, whose
+// templates read ns only; ask is what the URL is for, when it's missing.
+func checkRESTParams(params map[string]any, ptr, ns, ask string) []api.FieldError {
+	str := func(k string) string { s, _ := params[k].(string); return s }
+	var errs []api.FieldError
+	if str("url") == "" {
+		errs = append(errs, fieldErr(ptr+"/url", "required", "Give "+strings.ToLower(ask[:1])+ask[1:]+"."))
+	} else if u, err := url.Parse(fill(str("url"), nil, "", restcall.Escape)); err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		errs = append(errs, fieldErr(ptr+"/url", "invalid", "Give an http or https URL."))
+	} else if !restcall.FixedOrigin(str("url")) {
+		errs = append(errs, fieldErr(ptr+"/url", "invalid", "Inputs may fill the URL's path and query, not its scheme, host or port."))
+	}
+	if m := strings.ToUpper(str("method")); m != "" && m != http.MethodGet && m != http.MethodPost {
+		errs = append(errs, fieldErr(ptr+"/method", "invalid", "GET or POST."))
+	}
+	other := map[string]string{"inputs": "params", "params": "inputs"}[ns]
+	for _, k := range []string{"url", "body"} {
+		if strings.Contains(str(k), "${"+other+".") {
+			msg := "Only a form library entry has parameters: read the form's inputs as ${inputs.x}."
+			if ns == "params" {
+				msg = "An entry reads what forms give it, its parameters, as ${params.x}: not a form's inputs."
+			}
+			errs = append(errs, fieldErr(ptr+"/"+k, "invalid", msg))
+		}
+	}
+	return errs
+}
+
+func checkJSONPath(path, ptr string) []api.FieldError {
+	if path == "" {
+		return nil
+	}
+	if _, err := jp.ParseString(path); err != nil {
+		return []api.FieldError{fieldErr(ptr, "invalid", fmt.Sprintf("This is not valid JSONPath: %v", err))}
+	}
+	return nil
+}
+
+// checkCELOf is how a source's expressions are checked: a form's read
+// what form rules read, a library entry's its parameters.
+func checkCELOf(ns string) func(string) error {
+	if ns == "params" {
+		return policy.CheckLibrary
+	}
+	return policy.CheckSource
 }
 
 // formVars are the CEL variables of form rules and `cel` value sources.
@@ -98,10 +139,11 @@ func formVars(inputs map[string]any, proj store.Project, environment string, p *
 }
 
 // celValues resolves a `cel` value source: options from a list of strings
-// or of {value, label, meta}, or a computed value.
-func celValues(params map[string]any, vars policy.Vars) (opts *[]api.Option, value any, err error) {
+// or of {value, label, meta}, or a computed value; eval is how its
+// expressions run, a form's or a library entry's.
+func celValues(params map[string]any, vars policy.Vars, eval func(string, policy.Vars) (any, error)) (opts *[]api.Option, value any, err error) {
 	if expr, _ := params["value"].(string); expr != "" {
-		if value, err = policy.EvalSource(expr, vars); err != nil {
+		if value, err = eval(expr, vars); err != nil {
 			return nil, nil, &BadRequestError{Msg: "The value expression failed: " + err.Error()}
 		}
 	}
@@ -109,7 +151,7 @@ func celValues(params map[string]any, vars policy.Vars) (opts *[]api.Option, val
 	if expr == "" {
 		return nil, value, nil
 	}
-	v, err := policy.EvalSource(expr, vars)
+	v, err := eval(expr, vars)
 	if err != nil {
 		return nil, nil, &BadRequestError{Msg: "The options expression failed: " + err.Error()}
 	}
@@ -159,6 +201,7 @@ type RESTSources struct {
 type restEntry struct {
 	opts  []api.Option
 	value any
+	check []checkMessage
 	until time.Time
 }
 
@@ -181,14 +224,24 @@ func (r *RESTSources) Allowed(ctx context.Context, u *url.URL) bool {
 	return r != nil && r.Caller.Allowed(ctx, u)
 }
 
-// sourceRef is ${inputs.x}, or ${search}: the text typed in a search field.
-var sourceRef = regexp.MustCompile(`\$\{(?:inputs\.([a-zA-Z0-9_]+)|search)\}`)
+// sourceRef is ${inputs.x}, ${params.x} (a form library entry's
+// parameter), or ${search}: the text typed in a search field.
+var sourceRef = regexp.MustCompile(`\$\{(?:(inputs|params)\.([a-zA-Z0-9_]+)|search)\}`)
 
-// fill puts inputs and the searched text into a template, each escaped by
-// esc (empty when absent), in one pass: a value can't add a reference.
-func fill(tpl string, inputs map[string]any, search string, esc func(string) string) string {
+// Refs are what a template's references read, by namespace: a form's
+// inputs, or a library entry's parameters (ADR-0043).
+type Refs map[string]map[string]any
+
+// inputRefs are the references of a form's own template: its inputs.
+func inputRefs(inputs map[string]any) Refs { return Refs{"inputs": inputs} }
+
+// fill puts the references and the searched text into a template, each
+// escaped by esc (empty when absent), in one pass: a value can't add a
+// reference.
+func fill(tpl string, refs Refs, search string, esc func(string) string) string {
 	return sourceRef.ReplaceAllStringFunc(tpl, func(m string) string {
-		v, ok := refValue(sourceRef.FindStringSubmatch(m)[1], inputs, search)
+		sub := sourceRef.FindStringSubmatch(m)
+		v, ok := refValue(sub[1], sub[2], refs, search)
 		if !ok {
 			return ""
 		}
@@ -196,13 +249,13 @@ func fill(tpl string, inputs map[string]any, search string, esc func(string) str
 	})
 }
 
-// refValue is what a reference of a template stands for: an input, or
-// with no input name, the searched text.
-func refValue(input string, inputs map[string]any, search string) (string, bool) {
-	if input == "" {
+// refValue is what a reference of a template stands for: an input or a
+// parameter, or with no namespace, the searched text.
+func refValue(ns, name string, refs Refs, search string) (string, bool) {
+	if ns == "" {
 		return search, true
 	}
-	v, ok := inputs[input]
+	v, ok := refs[ns][name]
 	if !ok || v == nil {
 		return "", false
 	}
@@ -215,10 +268,10 @@ func jsonEscape(s string) string {
 }
 
 // Options calls the source and maps its answer to options.
-func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs map[string]any, search string,
+func (r *RESTSources) Options(ctx context.Context, params map[string]any, refs Refs, search string,
 	secret func(name string) (store.Secret, string, error)) ([]api.Option, int, error) {
 	p := func(k string) string { s, _ := params[k].(string); return s }
-	e, cacheSeconds, err := r.answer(ctx, params, inputs, search, secret, "options", func(data any) (restEntry, error) {
+	e, cacheSeconds, err := r.answer(ctx, params, refs, search, secret, "options", func(data any) (restEntry, error) {
 		opts, err := mapOptions(data, cmp.Or(p("items"), "$"), cmp.Or(p("value"), "$"), p("label"), p("meta"), p("parent"))
 		return restEntry{opts: opts}, err
 	})
@@ -227,36 +280,52 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 
 // Value calls the source for one value: what the value path finds in the
 // first item the items path finds, or in the answer itself.
-func (r *RESTSources) Value(ctx context.Context, params map[string]any, inputs map[string]any,
+func (r *RESTSources) Value(ctx context.Context, params map[string]any, refs Refs,
 	secret func(name string) (store.Secret, string, error)) (any, int, error) {
 	p := func(k string) string { s, _ := params[k].(string); return s }
-	e, cacheSeconds, err := r.answer(ctx, params, inputs, "", secret, "value", func(data any) (restEntry, error) {
+	e, cacheSeconds, err := r.answer(ctx, params, refs, "", secret, "value", func(data any) (restEntry, error) {
 		v, err := mapValue(data, cmp.Or(p("items"), "$"), cmp.Or(p("value"), "$"))
 		return restEntry{value: v}, err
 	})
 	return e.value, cacheSeconds, err
 }
 
+// Check calls a REST validation: what it says of the form, nothing when it
+// passes. Its answer isn't cached unless cache_seconds says so.
+func (r *RESTSources) Check(ctx context.Context, params map[string]any, refs Refs,
+	secret func(name string) (store.Secret, string, error)) ([]checkMessage, error) {
+	if _, ok := params["cache_seconds"]; !ok {
+		params = maps.Clone(params)
+		params["cache_seconds"] = 0.0
+	}
+	p := func(k string) string { s, _ := params[k].(string); return s }
+	e, _, err := r.answer(ctx, params, refs, "", secret, "check", func(data any) (restEntry, error) {
+		msgs, err := readCheck(data, cmp.Or(p("valid"), "$.valid"), cmp.Or(p("message"), "$.message"), cmp.Or(p("errors"), "$.errors"))
+		return restEntry{check: msgs}, err
+	})
+	return e.check, err
+}
+
 // answer calls the source, or takes what the cache keeps of its answer for
 // the same call read the same way (mode), and reads it with read.
-func (r *RESTSources) answer(ctx context.Context, params map[string]any, inputs map[string]any, search string,
+func (r *RESTSources) answer(ctx context.Context, params map[string]any, refs Refs, search string,
 	secret func(name string) (store.Secret, string, error), mode string, read func(data any) (restEntry, error)) (restEntry, int, error) {
 	p := func(k string) string { s, _ := params[k].(string); return s }
 	if !restcall.FixedOrigin(p("url")) {
 		return restEntry{}, 0, &BadRequestError{Msg: "The source's URL lets inputs choose its host: inputs may fill its path and query only."}
 	}
 	for _, m := range sourceRef.FindAllStringSubmatch(p("url"), -1) {
-		if v, _ := refValue(m[1], inputs, search); v == "." || v == ".." {
-			return restEntry{}, 0, &BadRequestError{Msg: fmt.Sprintf("%s can't be %q in the source's URL.", cmp.Or(m[1], "The search"), v)}
+		if v, _ := refValue(m[1], m[2], refs, search); v == "." || v == ".." {
+			return restEntry{}, 0, &BadRequestError{Msg: fmt.Sprintf("%s can't be %q in the source's URL.", cmp.Or(m[2], "The search"), v)}
 		}
 	}
-	target := fill(p("url"), inputs, search, restcall.Escape)
+	target := fill(p("url"), refs, search, restcall.Escape)
 	u, err := url.Parse(target)
 	if err != nil || !r.Allowed(ctx, u) {
 		return restEntry{}, 0, &BadRequestError{Msg: fmt.Sprintf("The source's host %q is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", hostOf(target))}
 	}
 	method := strings.ToUpper(cmp.Or(p("method"), http.MethodGet))
-	body := fill(p("body"), inputs, search, jsonEscape)
+	body := fill(p("body"), refs, search, jsonEscape)
 	cacheSeconds := 60
 	if n, ok := params["cache_seconds"].(float64); ok {
 		cacheSeconds = min(max(int(n), 0), 3600)
@@ -277,7 +346,8 @@ func (r *RESTSources) answer(ctx context.Context, params map[string]any, inputs 
 		sealedAs = sec.SealName()
 	}
 	// The mapping is in the key too: two fields may read one answer differently.
-	key := strings.Join([]string{mode, method + " " + target, body, sealedAs, p("items"), p("value"), p("label"), p("meta"), p("parent")}, "\n")
+	key := strings.Join([]string{mode, method + " " + target, body, sealedAs, p("items"), p("value"), p("label"), p("meta"), p("parent"),
+		p("valid"), p("message"), p("errors")}, "\n")
 	r.mu.Lock()
 	if e, ok := r.cache[key]; ok && time.Now().Before(e.until) {
 		r.mu.Unlock()
@@ -285,16 +355,20 @@ func (r *RESTSources) answer(ctx context.Context, params map[string]any, inputs 
 	}
 	r.mu.Unlock()
 
+	system := "REST source " + u.Host
+	if mode == "check" {
+		system = "REST validation " + u.Host
+	}
 	answer, err := r.Do(ctx, call)
 	switch {
 	case err != nil:
-		return restEntry{}, 0, &UpstreamError{System: "REST source " + u.Host, Err: err}
+		return restEntry{}, 0, &UpstreamError{System: system, Err: err}
 	case answer.Status >= 300:
-		return restEntry{}, 0, &UpstreamError{System: "REST source " + u.Host, Err: fmt.Errorf("it answered %s", restcall.StatusText(answer.Status))}
+		return restEntry{}, 0, &UpstreamError{System: system, Err: fmt.Errorf("it answered %s", restcall.StatusText(answer.Status))}
 	}
 	data, err := oj.Parse(answer.Body)
 	if err != nil {
-		return restEntry{}, 0, &UpstreamError{System: "REST source " + u.Host, Err: fmt.Errorf("its answer is not JSON: %w", err)}
+		return restEntry{}, 0, &UpstreamError{System: system, Err: fmt.Errorf("its answer is not JSON: %w", err)}
 	}
 	e, err := read(data)
 	if err != nil {

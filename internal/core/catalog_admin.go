@@ -428,12 +428,17 @@ func (s *Service) PublishCatalogItemVersion(ctx context.Context, p *auth.Princip
 	}
 	// The revision checked above must be the one published.
 	var gone *store.GroupGoneError
+	var entryGone *store.LibraryGoneError
 	if err := s.Store.PublishVersion(ctx, it.ID, versionID, changelog, row.Revision); errors.Is(err, store.ErrVersionState) {
 		return api.AdminCatalogItem{}, &ConflictError{Msg: "Version " + row.Number + " is already published."}
 	} else if errors.As(err, &gone) {
 		return api.AdminCatalogItem{}, &ConflictError{Msg: fmt.Sprintf(
 			"Property group %s was deleted while version %s was being published: name another group in the blueprint, then publish it.",
 			gone.Key, row.Number)}
+	} else if errors.As(err, &entryGone) {
+		return api.AdminCatalogItem{}, &ConflictError{Msg: fmt.Sprintf(
+			"Form library entry %s was deleted while version %s was being published: use another in the form, then publish it.",
+			entryGone.Key, row.Number)}
 	} else if errors.Is(err, store.ErrVersionChanged) {
 		return api.AdminCatalogItem{}, &ConflictError{Msg: "Draft " + row.Number + " was saved while it was being published: publish it again."}
 	} else if err != nil {
@@ -613,8 +618,16 @@ func (s *Service) checkVersion(ctx context.Context, itemType string, d api.Catal
 	if err != nil {
 		return nil, err
 	}
+	library, err := s.checkLibraryRefs(ctx, d, prefix, publish)
+	if err != nil {
+		return nil, err
+	}
+	checks, err := s.checkValidationRefs(ctx, d.UiSchema, prefix)
+	if err != nil {
+		return nil, err
+	}
 	images, err := s.checkImages(ctx, d, prefix)
-	return append(append(errs, refs...), images...), err
+	return slices.Concat(errs, refs, library, checks, images), err
 }
 
 // checkDefinition checks a version's definition as a whole, with pointers
@@ -700,6 +713,7 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 			add("/form_schema/properties/"+name, "no_ui_field", fmt.Sprintf("%q has no UI field, so nobody could fill it in.", name))
 		}
 	}
+	errs = append(errs, checkValidations(d.UiSchema, props, prefix)...)
 	for _, name := range sortedKeys(d.InitialValues) {
 		if _, ok := props[name]; !ok {
 			add("/initial_values/"+name, "unknown_input", fmt.Sprintf("%q is not an input of the form's schema.", name))
@@ -725,6 +739,12 @@ func checkValueSource(src api.ValueSource, ptr string) []api.FieldError {
 		}
 	case api.Rest, api.Cel:
 		return checkCustomSource(src, ptr)
+	case api.Library:
+		errs := checkLibraryBindings(src.Name, src.Version, src.Params, ptr)
+		if src.Search != nil {
+			errs = append(errs, fieldErr(ptr+"/search", "invalid", "The library entry says whether it searches: leave search out."))
+		}
+		return errs
 	default:
 		return []api.FieldError{fieldErr(ptr+"/kind", "unknown", fmt.Sprintf("%q is not a kind of value source.", src.Kind))}
 	}

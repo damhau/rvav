@@ -283,9 +283,9 @@ func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, ch
 		}
 		var state string
 		var current int
-		var bp json.RawMessage
-		err := tx.QueryRow(ctx, `select state, revision, blueprint from catalog_item_versions where id = $1 and item_id = $2 for update`,
-			versionID, itemID).Scan(&state, &current, &bp)
+		var bp, ui json.RawMessage
+		err := tx.QueryRow(ctx, `select state, revision, blueprint, ui_schema from catalog_item_versions where id = $1 and item_id = $2 for update`,
+			versionID, itemID).Scan(&state, &current, &bp, &ui)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -299,6 +299,9 @@ func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, ch
 			return ErrVersionChanged
 		}
 		if err := groupsStay(ctx, tx, bp); err != nil {
+			return err
+		}
+		if err := librariesStay(ctx, tx, ui); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `update catalog_item_versions set state = 'deprecated', deprecated_at = now()

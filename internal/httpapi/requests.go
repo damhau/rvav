@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -15,7 +16,7 @@ import (
 	"github.com/damhau/rvav/internal/store"
 )
 
-func (s *Server) PreviewRequest(w http.ResponseWriter, r *http.Request) {
+func (s *Server) PreviewRequest(w http.ResponseWriter, r *http.Request, params api.PreviewRequestParams) {
 	var d api.RequestDraft
 	if !s.decode(w, r, &d) {
 		return
@@ -23,7 +24,13 @@ func (s *Server) PreviewRequest(w http.ResponseWriter, r *http.Request) {
 	if d.Inputs == nil {
 		d.Inputs = map[string]any{}
 	}
-	ev, err := s.Core.Evaluate(r.Context(), principal(r), d, false)
+	evaluate := func(ctx context.Context, p *auth.Principal, d api.RequestDraft) (*core.Evaluation, error) {
+		return s.Core.Evaluate(ctx, p, d, false)
+	}
+	if params.Validate != nil && *params.Validate {
+		evaluate = s.Core.EvaluateValidated
+	}
+	ev, err := evaluate(r.Context(), principal(r), d)
 	if err != nil {
 		s.fail(w, r, err)
 		return

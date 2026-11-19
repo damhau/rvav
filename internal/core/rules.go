@@ -25,7 +25,7 @@ var valueWidgets = []api.UiWidget{api.UiWidgetText, api.UiWidgetTextarea, api.Ui
 // computed field's value, another field's default. A secret takes none.
 func singleSource(f api.UiField) bool {
 	src := f.ValueSource
-	if src == nil || src.Kind != api.Rest && src.Kind != api.Cel || f.Secret != nil && *f.Secret {
+	if src == nil || src.Kind != api.Rest && src.Kind != api.Cel && src.Kind != api.Library || f.Secret != nil && *f.Secret {
 		return false
 	}
 	return f.Widget == api.UiWidgetComputed || slices.Contains(valueWidgets, f.Widget)

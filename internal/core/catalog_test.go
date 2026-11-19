@@ -30,7 +30,7 @@ func TestRESTAllowedSchemes(t *testing.T) {
 	}
 	// Inputs can't climb the path.
 	_, _, err := r.Options(context.Background(), map[string]any{"url": "https://cmdb.corp.example/api/${inputs.app}/items"},
-		map[string]any{"app": ".."}, "", nil)
+		inputRefs(map[string]any{"app": ".."}), "", nil)
 	if err == nil || !strings.Contains(err.Error(), `".."`) {
 		t.Fatalf("an input of .. = %v", err)
 	}
@@ -43,7 +43,7 @@ func TestRESTAllowedSchemes(t *testing.T) {
 }
 
 func TestFillSearch(t *testing.T) {
-	inputs := map[string]any{"app": "${search}", "env": "dev"}
+	inputs := inputRefs(map[string]any{"app": "${search}", "env": "dev"})
 	if got, want := fill("https://h/apps?q=${search}&app=${inputs.app}&env=${inputs.env}", inputs, "pay roll", url.QueryEscape),
 		"https://h/apps?q=pay+roll&app=%24%7Bsearch%7D&env=dev"; got != want {
 		t.Errorf("fill URL = %s, want %s", got, want)

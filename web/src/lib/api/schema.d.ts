@@ -1932,6 +1932,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/form-library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The form library's entries, at their latest version
+         * @description Needs `catalog.manage`. The form library (ADR-0043) holds value
+         *     sources and validations, `rest` or `cel`, that any item's form
+         *     names by key and version: a field's `value_source` of kind
+         *     `library`, an entry of `UiSchema.validations` of kind `library`.
+         *     An entry takes parameters, which the form gives as CEL.
+         */
+        get: operations["listFormLibrary"];
+        put?: never;
+        /** Add an entry to the form library, as its version 1 */
+        post: operations["createFormLibraryEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/form-library/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run an entry, saved or not, with parameters
+         * @description A source gives its options or its value; a validation, what it
+         *     says of the parameters. Calls a REST entry's URL, as a form would.
+         */
+        post: operations["testFormLibraryEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/form-library/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        /** An entry of the form library, at its latest version or the one asked */
+        get: operations["getFormLibraryEntry"];
+        /**
+         * Save an entry as its next version, and give the items that use it a draft naming it
+         * @description Versions never change. Each item whose draft or published version
+         *     names an earlier version of the entry gets a draft that names the
+         *     new one: its draft changed, or a new draft made from its published
+         *     version. `drafts` in the answer lists them; the items keep using
+         *     what they published until a draft is published.
+         */
+        put: operations["updateFormLibraryEntry"];
+        post?: never;
+        /**
+         * Delete an entry no saved version uses
+         * @description Refused while a published or earlier version of an item names it; drafts that do are refused when next saved.
+         */
+        delete: operations["deleteFormLibraryEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -3995,6 +4072,117 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        FormLibraryList: {
+            items: components["schemas"]["FormLibraryEntry"][];
+        };
+        /**
+         * @description `source`: a field's choices or value. `validation`: a check of the whole form on submit.
+         * @enum {string}
+         */
+        FormLibraryPurpose: "source" | "validation";
+        /** @description A parameter the entry takes, which each form using it gives as CEL. */
+        FormLibraryParameter: {
+            /** @description Read as ${params.<name>} in templates, params.<name> in expressions. */
+            name: string;
+            label: string;
+            description?: string;
+            /** @description A form must give it to publish; the entry is not run without it. */
+            required?: boolean;
+        };
+        FormLibraryEntryWrite: {
+            /** @description When creating, how forms name it. */
+            key?: string;
+            name: string;
+            description?: string;
+            use: components["schemas"]["FormLibraryPurpose"];
+            /** @description `rest` or `cel`. */
+            kind: components["schemas"]["ValueSourceKind"];
+            /**
+             * @description A source's as a `rest` or `cel` value source's, a validation's
+             *     as a `rest` or `cel` validation's (`FormValidation`), reading
+             *     the entry's parameters as `${params.x}` and `params.x` (not the
+             *     form's inputs), and in expressions `environment`, `project`,
+             *     `user` and, for a source, `search`.
+             */
+            params: {
+                [key: string]: unknown;
+            };
+            /** @description For a source, as a value source's `search`. */
+            search?: boolean;
+            parameters: components["schemas"]["FormLibraryParameter"][];
+            /** @description For a validation, what a refusal without its own message says. */
+            message?: string;
+        };
+        FormLibraryItemUse: {
+            item_id: string;
+            slug: string;
+            name: string;
+            version_id: string;
+            number: string;
+            /** @description The item version's: draft, published, deprecated or retired. */
+            state: string;
+            /** @description The entry's version it names. */
+            entry_version: number;
+        };
+        /** @description An item given a draft naming the entry's new version. */
+        FormLibraryDraft: {
+            item_id: string;
+            slug: string;
+            name: string;
+            /** @description The draft's number. */
+            number: string;
+            /** @description Made from its published version; false when its draft changed. */
+            created: boolean;
+            /** @description Why it got none: the draft would not pass the designer's checks, or was changed at the same time. */
+            problem?: string;
+        };
+        FormLibraryEntry: {
+            key: string;
+            name: string;
+            description: string;
+            use: components["schemas"]["FormLibraryPurpose"];
+            kind: components["schemas"]["ValueSourceKind"];
+            params: {
+                [key: string]: unknown;
+            };
+            search: boolean;
+            parameters: components["schemas"]["FormLibraryParameter"][];
+            message?: string;
+            /** @description The version shown. */
+            version: number;
+            /** @description Every version, the latest last. */
+            versions: number[];
+            /** @description The items' versions naming the entry, any version of it: it can't be deleted while one that isn't a draft does. */
+            used_by: components["schemas"]["FormLibraryItemUse"][];
+            /** @description On save, the items given a draft naming this version. */
+            drafts?: components["schemas"]["FormLibraryDraft"][];
+            /** Format: date-time */
+            updated_at: string;
+        };
+        FormLibraryTest: {
+            entry: components["schemas"]["FormLibraryEntryWrite"];
+            /** @description The parameters' values. */
+            params: {
+                [key: string]: unknown;
+            };
+            /** @description For a source with `search`, the text typed. */
+            search?: string;
+            /** @description The project whose secret of that name a REST entry opens, before the global one. */
+            project_id?: string;
+            environment?: components["schemas"]["EnvironmentKey"];
+        };
+        FormLibraryTestResult: {
+            options?: components["schemas"]["Option"][];
+            /** @description What a source gives a field that takes one value. */
+            value?: unknown;
+            /** @description For a validation, whether it passed. */
+            valid?: boolean;
+            /** @description For a validation, what it says, on a parameter or on the form (no field). */
+            messages?: {
+                field?: string;
+                message: string;
+            }[];
+        };
         IpamReconcile: {
             /** Format: date-time */
             checked_at: string;
@@ -4328,6 +4516,56 @@ export interface components {
             fields: {
                 [key: string]: components["schemas"]["UiField"];
             };
+            /**
+             * @description Checks of the whole form, in order, run on submit (and an
+             *     approver's edits) once the inputs pass the form's own checks,
+             *     and on the wizard's review step (`POST /requests/preview?validate=true`).
+             *     Not on day-2 actions' forms.
+             */
+            validations?: components["schemas"]["FormValidation"][];
+        };
+        /**
+         * @description A check of the whole form (ADR-0043). It passes, or refuses the
+         *     request with a message, on the form or on fields; a validation
+         *     that can't run (its service down, an expression that fails)
+         *     refuses it too, saying so.
+         *
+         *     `cel`: `params.check` is an expression over what form rules read.
+         *     `true`, `null`, `""` or `{}` passes; `false` refuses with
+         *     `message`; text refuses with that text; a map refuses with its
+         *     messages, each on the input it names.
+         *
+         *     `rest`: `params.url`, `method`, `body` and `secret` as a `rest`
+         *     value source's, its inputs as `${inputs.x}`. A 2xx answer is read
+         *     with JSONPath: `valid` (a boolean, `$.valid` unless given),
+         *     `message` (`$.message`) and `errors` (`$.errors`: a map of input to
+         *     message, or a list of `{field, message}`). It passes when `valid`
+         *     is true, or, without `valid`, when the answer has no message and
+         *     no errors. Any other answer refuses the request: the check
+         *     couldn't run. Not cached unless `cache_seconds` says so.
+         *
+         *     `library`: the form library's entry `name` at `version`, its
+         *     parameters given in `params` as CEL. A message for a parameter
+         *     shows on the input its expression reads alone (`inputs.x`).
+         */
+        FormValidation: {
+            /** @description Names the validation in the form, its messages and the audit. */
+            key: string;
+            /** @description What it checks, in a few words, for the designer. */
+            title?: string;
+            kind: components["schemas"]["ValueSourceKind"];
+            /** @description For `library`, the entry's key. */
+            name?: string;
+            /** @description For `library`, the entry's version. */
+            version?: number;
+            /** @description As described above, for its kind. */
+            params?: {
+                [key: string]: unknown;
+            };
+            /** @description The inputs a message for no input shows on; on the form when none. */
+            fields?: string[];
+            /** @description What a refusal without its own message says. */
+            message?: string;
         };
         UiSection: {
             key: string;
@@ -4417,11 +4655,22 @@ export interface components {
              */
             default?: string;
         };
+        /**
+         * @description `builtin`, `rest` and `cel` are defined where they are used;
+         *     `library` names an entry of the form library (ADR-0043). A form
+         *     library entry is `rest` or `cel`.
+         * @enum {string}
+         */
+        ValueSourceKind: "builtin" | "rest" | "cel" | "library";
         ValueSource: {
-            /** @enum {string} */
-            kind: "builtin" | "rest" | "cel";
+            kind: components["schemas"]["ValueSourceKind"];
+            /** @description For `library`, the version of the entry `name` the field uses. */
+            version?: number;
             /**
-             * @description For `builtin`: `vsphere.clusters`, `vsphere.datastores`,
+             * @description For `library`: the key of a form library entry that is a
+             *     source (ADR-0043); `params` gives its parameters.
+             *
+             *     For `builtin`: `vsphere.clusters`, `vsphere.datastores`,
              *     `vsphere.networks`, `vsphere.templates`, `vsphere.folders`
              *     (the VM folders of the datacenters the project's placement
              *     uses in the environment, by path, each under its parent
@@ -4459,10 +4708,13 @@ export interface components {
              *     `secret` (a stored secret's name), `items` (JSONPath to the list), `value`, `label`,
              *     `meta` and `parent` (JSONPath in each item), `cache_seconds`. For `cel`: `options` (an
              *     expression giving a list of strings or of {value, label, meta, parent}) or `value`.
+             *     For `library`: a CEL expression per parameter of the entry, over what form rules read and
+             *     `search`, for example `{"environment": "inputs.environment"}`; the entry's templates read
+             *     them as `${params.x}`, its expressions as `params.x`.
              *
              *     On a field that takes one value rather than a choice (`text`,
              *     `textarea`, `number`, `slider`, `date`, `datetime`, `toggle`),
-             *     a `rest` or `cel` source gives the field its default (see
+             *     a `rest`, `cel` or `library` source gives the field its default (see
              *     `UiRules.default`), as the input's type takes it: a text input
              *     takes a number as its digits. A `rest` source's is what `value`
              *     finds in the first item `items` finds (the answer's first item
@@ -8896,7 +9148,16 @@ export interface operations {
     };
     previewRequest: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Also run the item's validations (`UiSchema.validations`), as
+                 *     submit does: the wizard's review step asks this before the
+                 *     requester submits. They run once the inputs pass the form's own
+                 *     checks; their messages are in `errors`, and a validation that
+                 *     couldn't run is an error too.
+                 */
+                validate?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10909,6 +11170,167 @@ export interface operations {
         };
     };
     deletePropertyGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listFormLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormLibraryList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createFormLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FormLibraryEntryWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormLibraryEntry"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    testFormLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FormLibraryTest"];
+            };
+        };
+        responses: {
+            /** @description What the entry gave */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormLibraryTestResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getFormLibraryEntry: {
+        parameters: {
+            query?: {
+                version?: number;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormLibraryEntry"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateFormLibraryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FormLibraryEntryWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormLibraryEntry"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteFormLibraryEntry: {
         parameters: {
             query?: never;
             header?: never;

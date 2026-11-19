@@ -19,6 +19,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/naming"
+	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -167,8 +168,8 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 // text itself.
 func (s *Service) sourceValues(ctx context.Context, p *auth.Principal, proj store.Project, env string, ver store.ItemVersion,
 	name string, field api.UiField, inputs map[string]any, search string) (api.FieldValues, error) {
-	out, err := s.resolveSource(ctx, p, proj, env, ver, name, field, inputs, search)
-	if err != nil || strings.TrimSpace(search) == "" || out.Options == nil || searchesItself(sourceOf(field)) {
+	out, itself, err := s.resolveSource(ctx, p, proj, env, ver, name, field, inputs, search)
+	if err != nil || strings.TrimSpace(search) == "" || out.Options == nil || itself {
 		return out, err
 	}
 	kept := matching(*out.Options, search)
@@ -197,47 +198,82 @@ func matching(opts []api.Option, text string) []api.Option {
 	return out
 }
 
+// resolveSource resolves a field's value source, and says whether the
+// source found its options by the searched text itself. A library source
+// is its entry's, the entry's parameters given by the field.
 func (s *Service) resolveSource(ctx context.Context, p *auth.Principal, proj store.Project, env string, ver store.ItemVersion,
-	name string, field api.UiField, inputs map[string]any, search string) (api.FieldValues, error) {
+	name string, field api.UiField, inputs map[string]any, search string) (api.FieldValues, bool, error) {
 	out := api.FieldValues{Field: name}
 	src := sourceOf(field)
 	if src == nil {
 		if field.Options != nil {
 			out.Options = field.Options
 		}
-		return out, nil
+		return out, false, nil
+	}
+	refs := inputRefs(inputs)
+	eval := policy.EvalSource
+	vars := func() policy.Vars {
+		v := formVars(inputs, proj, env, p, ver)
+		v["search"] = search
+		return v
+	}
+	if src.Kind == api.Library {
+		e, params, err := s.libraryBound(ctx, deref(src.Name), derefInt(src.Version), api.Source, derefMap(src.Params), vars())
+		if errors.Is(err, errUnbound) {
+			if !singleSource(field) {
+				out.Options = &[]api.Option{}
+			}
+			return out, false, nil
+		}
+		if err != nil {
+			return out, false, err
+		}
+		own := vars
+		vars = func() policy.Vars { return libraryVars(params, own()) }
+		refs, eval = Refs{"params": params}, policy.EvalLibrary
+		entryParams := map[string]any{}
+		_ = json.Unmarshal(e.Params, &entryParams)
+		src = &api.ValueSource{Kind: api.ValueSourceKind(e.Kind), Params: &entryParams, Search: &e.Search}
 	}
 	raw := map[string]any{}
 	if src.Params != nil {
 		raw = *src.Params
 	}
+	itself := searchesItself(src)
 	switch src.Kind {
 	case api.Rest:
 		secret := func(name string) (store.Secret, string, error) { return s.secretValue(ctx, proj.ID, name) }
 		if singleSource(field) {
-			value, cacheSeconds, err := s.REST.Value(ctx, raw, inputs, secret)
+			value, cacheSeconds, err := s.REST.Value(ctx, raw, refs, secret)
 			if err != nil {
-				return out, err
+				return out, itself, err
 			}
 			out.Value, out.CacheSeconds = value, &cacheSeconds
-			return out, nil
+			return out, itself, nil
 		}
-		opts, cacheSeconds, err := s.REST.Options(ctx, raw, inputs, search, secret)
+		opts, cacheSeconds, err := s.REST.Options(ctx, raw, refs, search, secret)
 		if err != nil {
-			return out, err
+			return out, itself, err
 		}
 		out.Options, out.CacheSeconds = &opts, &cacheSeconds
-		return out, nil
+		return out, itself, nil
 	case api.Cel:
-		vars := formVars(inputs, proj, env, p, ver)
-		vars["search"] = search
-		opts, value, err := celValues(raw, vars)
+		opts, value, err := celValues(raw, vars(), eval)
 		if err != nil {
-			return out, err
+			return out, itself, err
 		}
 		out.Options, out.Value = opts, value
-		return out, nil
+		return out, itself, nil
 	}
+	out, err := s.builtinValues(ctx, p, proj, env, ver, name, field, *src, inputs, search)
+	return out, itself, err
+}
+
+// builtinValues resolves a field's built-in value source.
+func (s *Service) builtinValues(ctx context.Context, p *auth.Principal, proj store.Project, env string, ver store.ItemVersion,
+	name string, field api.UiField, src api.ValueSource, inputs map[string]any, search string) (api.FieldValues, error) {
+	out := api.FieldValues{Field: name}
 	if src.Kind != api.Builtin || src.Name == nil {
 		return out, &BadRequestError{Msg: fmt.Sprintf("Value source %q of %s is not supported.", src.Kind, name)}
 	}

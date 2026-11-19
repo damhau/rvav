@@ -77,6 +77,8 @@ type Evaluation struct {
 	// Update is what an update changes, as approval policies read it
 	// (ADR-0042); nil on a new request.
 	Update map[string]any
+	// validate is set when the form's validations run (ADR-0043).
+	validate bool
 }
 
 type LeaseInfo struct {
@@ -97,11 +99,23 @@ func (s *Service) Evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	return s.evaluate(ctx, p, d, strict, false)
 }
 
+// EvaluateValidated is a preview that also runs the form's validations,
+// as submit does: the wizard's review step.
+func (s *Service) EvaluateValidated(ctx context.Context, p *auth.Principal, d api.RequestDraft) (*Evaluation, error) {
+	return s.evaluateWith(ctx, p, d, false, false, true)
+}
+
 // evaluate is Evaluate; with ofRequest, the draft is a submitted request's,
 // checked again (an approver's edits) on the version it was made with, even
 // if another is published or the item was withdrawn since (ADR-0019).
 func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest bool) (*Evaluation, error) {
-	ev := &Evaluation{Inputs: map[string]any{}}
+	return s.evaluateWith(ctx, p, d, strict, ofRequest, strict)
+}
+
+// evaluateWith is evaluate; with validate, the form's validations run once
+// its inputs pass its own checks.
+func (s *Service) evaluateWith(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest, validate bool) (*Evaluation, error) {
+	ev := &Evaluation{Inputs: map[string]any{}, validate: validate}
 	for k, v := range d.Inputs {
 		ev.Inputs[k] = v
 	}
@@ -207,6 +221,9 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	}
 	if err := s.evaluateFound(ctx, p, ev, strict); err != nil {
 		return nil, err
+	}
+	if validate {
+		s.evaluateValidations(ctx, p, ev, ui)
 	}
 
 	ev.Count = 1

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -338,7 +339,7 @@ func TestOptionParents(t *testing.T) {
 	if err != nil || len(opts) != 2 || opts[0].Parent != nil || deref(opts[1].Parent) != "OU=apps,DC=corp" || opts[1].Label != "web" {
 		t.Errorf("REST options with parents: %+v %v", opts, err)
 	}
-	list, _, err := celValues(map[string]any{"options": `[{"value": "apps", "label": "Apps"}, {"value": "web", "label": "Web", "parent": "apps"}]`}, nil)
+	list, _, err := celValues(map[string]any{"options": `[{"value": "apps", "label": "Apps"}, {"value": "web", "label": "Web", "parent": "apps"}]`}, nil, policy.EvalSource)
 	if err != nil || list == nil || len(*list) != 2 || (*list)[0].Parent != nil || deref((*list)[1].Parent) != "apps" {
 		t.Errorf("CEL options with parents: %+v %v", list, err)
 	}
