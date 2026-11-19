@@ -851,11 +851,11 @@ export function publishedBlueprint(db: Db, item: StoredItem): Record<string, unk
 /**
  * What the version a request was made from builds, as its form draws it
  * (GET /requests/{id}/topology, ADR-0032): not the item's latest. A day-2
- * request runs an action, not the item: none.
+ * request or an update changes a deployment, not the item: none.
  */
 export function requestTopology(db: Db, r: S["Request"]): S["RequestTopology"] {
   const item = db.items.find((i) => i.id === r.catalog_item.id);
-  if (r.kind === "day2" || !item) return {};
+  if (r.kind !== "provision" || !item) return {};
   const v = (state(db).versions[item.id] ?? []).find((x) => x.id === r.version.id);
   const topology = topologyOf(v?.definition.blueprint ?? seededBlueprint(item.slug));
   return topology ? { topology } : {};

@@ -63,7 +63,8 @@ export function summaryOf(ctx: Ctx, a: StoredApproval): ApprovalSummary {
 
 export function editableFields(ctx: Ctx, r: ServiceRequest): ApprovalEditableField[] {
   const form = ctx.forms[r.catalog_item.id];
-  if (!form) return [];
+  // Approvers change only a new request's inputs.
+  if (!form || r.kind !== "provision") return [];
   return Object.entries(form.ui_schema.fields)
     .filter(([, f]) => f.approver_editable)
     .map(([field, f]) => ({

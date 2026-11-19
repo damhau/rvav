@@ -650,7 +650,7 @@ function History({ deploymentId, createdBy }: { deploymentId: string; createdBy?
           </span>
           <span className="min-w-0">
             <Link to="/requests/$requestId" params={{ requestId: r.number }} className="font-medium">
-              {r.kind === "day2" ? (r.action?.name ?? r.title) : "Created"}
+              {r.kind === "day2" ? (r.action?.name ?? r.title) : r.kind === "update" ? "Updated" : "Created"}
             </Link>
             <span className="text-muted">
               {" "}

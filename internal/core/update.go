@@ -45,7 +45,7 @@ type updatePlan struct {
 	// reason is why the caller can't update the deployment now.
 	reason string
 	dec    decision
-	// same: the version and inputs are the deployment's.
+	// same: the version and inputs are the deployment's, which isn't failed.
 	same bool
 	componentPlan
 }
@@ -112,7 +112,7 @@ func (s *Service) PreviewUpdate(ctx context.Context, p *auth.Principal, deployme
 	ev := u.ev
 	sort.SliceStable(ev.Errors, func(i, j int) bool { return ev.Errors[i].Field < ev.Errors[j].Field })
 	out := api.UpdatePreview{
-		FromVersion: versionRef(u.from), ToVersion: versionRef(ev.Version), Allowed: u.reason == "",
+		FromVersion: versionRef(u.from), ToVersion: versionRef(ev.Version), Allowed: u.reason == "", Unchanged: u.same,
 		Changes: nonNilChanges(u.all()), Refused: u.refused, Errors: ev.Errors, Quota: ev.Quota, Approval: ev.Approval,
 	}
 	if out.Refused == nil {
@@ -297,7 +297,9 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 	if err := s.compare(ctx, u, resources, all[1:]); err != nil {
 		return nil, err
 	}
-	u.same = ev.Version.ID == d.VersionID && sameInputs(ev.Version.UISchema, d.Inputs, ev.Inputs)
+	// A failed deployment's update with its own inputs is a repair: it
+	// builds what is missing and runs its jobs again.
+	u.same = d.Status != "failed" && ev.Version.ID == d.VersionID && sameInputs(ev.Version.UISchema, d.Inputs, ev.Inputs)
 
 	// Quota on the net change; approval policies see the update.
 	q, err := s.quotaCheck(ctx, ev.Project, ev.Env.Key, ev.Env.Name, "This update", u.delta)

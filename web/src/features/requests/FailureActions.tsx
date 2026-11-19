@@ -26,7 +26,7 @@ export function FailureActions({
   rolledBack?: Step;
   announce?: boolean;
 }) {
-  const undone = request.kind !== "day2" && rolledBack;
+  const undone = request.kind === "provision" && rolledBack;
   const [alert] = useState(announce);
   const qc = useQueryClient();
   const [confirmRollback, setConfirmRollback] = useState(false);
@@ -62,7 +62,7 @@ export function FailureActions({
     >
       <span className="font-semibold text-bad">{request.error?.message}</span>
       <span className="text-secondary">
-        {request.kind === "day2"
+        {request.kind !== "provision"
           ? "Retrying runs the failed step and the ones after it; the steps that were done are kept."
           : undone
             ? `It was rolled back: ${undone.detail || "what it created was deleted"}. Retry runs it again from its first step, without asking for approval again.`
@@ -72,7 +72,7 @@ export function FailureActions({
         <Button size="sm" variant="primary" onClick={() => retry.mutate()} disabled={retry.isPending}>
           {undone ? "Retry" : "Retry from the failed step"}
         </Button>
-        {request.kind !== "day2" && !undone && (
+        {request.kind === "provision" && !undone && (
           <>
             <Button size="sm" variant="danger" onClick={() => setConfirmRollback(true)}>
               Roll back

@@ -27,7 +27,8 @@ import {
   type StoredApproval,
 } from "./approvals";
 import { can } from "@/lib/can";
-import { actionsFor, runAction } from "./day2";
+import { actionsFor, runAction, type RunResult } from "./day2";
+import { previewUpdate, runUpdate } from "./update";
 import { bus, matches } from "./events";
 import {
   adminItemOf,
@@ -200,7 +201,7 @@ function createDeployment(
 /** Every level approved: the request is planned again with its inputs and starts. */
 function provisionApproved(stored: StoredRequest, outcome: string, detail: string) {
   const r = stored.request;
-  if (r.kind === "day2") {
+  if (r.kind !== "provision") {
     const policy = stored.steps.find((s) => s.key === "policy.approval");
     if (policy)
       Object.assign(policy, { title: outcome, detail, status: "done", finished_at: new Date().toISOString() });
@@ -288,6 +289,31 @@ const visibleApproval = (a: StoredApproval) => isApproverOf(db, a) || myProjectI
 /** A project as its GET answers: with what the caller holds there. */
 function withMine(p: S["Project"]): S["Project"] {
   return { ...p, my_permissions: db.me.projects.find((x) => x.project.id === p.id)?.permissions ?? db.me.permissions };
+}
+
+/** The answer to a day-2 action or an update: its request, started unless it waits for approval. */
+function submitted(key: string, raw: string, res: RunResult) {
+  if (res.error) {
+    const e = res.error;
+    return problem(
+      e.status,
+      e.status === 422 ? "validation" : e.status === 403 ? "forbidden" : "conflict",
+      e.title,
+      e.detail,
+      e.errors ?? (e.field ? [{ field: e.field, message: e.title }] : undefined),
+    );
+  }
+  const stored = res.stored!;
+  db.requests.unshift(stored);
+  if (res.approval) {
+    const levels = openLevels(db, stored.request, res.approval, null, () => `apr_${(db.seq.id++).toString(36)}`);
+    db.approvals.push(...levels);
+    levels.forEach(publishApproval);
+  }
+  publishRequest(stored);
+  if (!res.approval) start(stored.request.id);
+  db.idempotency.set(key, { body: raw, status: 202, response: structuredClone(stored.request) });
+  return json<S["Request"]>(stored.request, { status: 202 });
 }
 
 export const handlers = [
@@ -783,7 +809,7 @@ export const handlers = [
     }
     // The mock's simulator only advances running requests (the server answers queued).
     Object.assign(r.request, { status: "running", error: null, finished_at: null });
-    if (d && r.request.kind !== "day2") d.status = "provisioning";
+    if (d && r.request.kind !== "day2") d.status = r.request.kind === "update" ? "updating" : "provisioning";
     publishRequest(r);
     start(r.request.id);
     return json<S["Request"]>(r.request, { status: 202 });
@@ -793,7 +819,7 @@ export const handlers = [
     await wait();
     const r = requestByKey(params.requestId);
     if (!r || !visibleRequest(r.request)) return notFound("Request");
-    if (r.request.status !== "failed" || r.request.kind === "day2")
+    if (r.request.status !== "failed" || r.request.kind !== "provision")
       return problem(409, "conflict", `${r.request.number} has nothing to roll back.`);
     const d = db.deployments.find((x) => x.id === r.request.deployment_ids?.[0]);
     if (!d || d.status === "deleted") return problem(409, "conflict", `${r.request.number} has nothing to roll back.`);
@@ -1102,28 +1128,31 @@ export const handlers = [
     if (seen) return json(seen.response, { status: seen.status });
     const dep = db.deployments.find((d) => d.id === params.deploymentId);
     if (!dep) return notFound("Deployment");
-    const res = runAction(db, dep, JSON.parse(raw) as S["Day2Draft"], newRequestNumber());
-    if (res.error) {
-      const e = res.error;
-      return problem(
-        e.status,
-        e.status === 422 ? "validation" : e.status === 403 ? "forbidden" : "conflict",
-        e.title,
-        e.detail,
-        e.field ? [{ field: e.field, message: e.title }] : undefined,
-      );
-    }
-    const stored = res.stored!;
-    db.requests.unshift(stored);
-    if (res.approval) {
-      const levels = openLevels(db, stored.request, res.approval, null, () => `apr_${(db.seq.id++).toString(36)}`);
-      db.approvals.push(...levels);
-      levels.forEach(publishApproval);
-    }
-    publishRequest(stored);
-    if (!res.approval) start(stored.request.id);
-    db.idempotency.set(key, { body: raw, status: 202, response: structuredClone(stored.request) });
-    return json<S["Request"]>(stored.request, { status: 202 });
+    return submitted(key, raw, runAction(db, dep, JSON.parse(raw) as S["Day2Draft"], newRequestNumber()));
+  }),
+
+  http.post<{ deploymentId: string }>(
+    `${base}/deployments/:deploymentId/update/preview`,
+    async ({ params, request }) => {
+      await wait();
+      const dep = db.deployments.find((d) => d.id === params.deploymentId);
+      if (!dep) return notFound("Deployment");
+      const res = previewUpdate(db, dep, (await request.json()) as S["UpdateDraft"]);
+      if (res.error) return problem(res.error.status, "conflict", res.error.title);
+      return json<S["UpdatePreview"]>(res.preview!);
+    },
+  ),
+
+  http.post<{ deploymentId: string }>(`${base}/deployments/:deploymentId/update`, async ({ params, request }) => {
+    await wait();
+    const key = request.headers.get("Idempotency-Key");
+    if (!key) return problem(400, "bad-request", "Idempotency-Key header is required");
+    const raw = await request.text();
+    const seen = db.idempotency.get(key);
+    if (seen) return json(seen.response, { status: seen.status });
+    const dep = db.deployments.find((d) => d.id === params.deploymentId);
+    if (!dep) return notFound("Deployment");
+    return submitted(key, raw, runUpdate(db, dep, JSON.parse(raw) as S["UpdateDraft"], newRequestNumber()));
   }),
 
   http.get<{ deploymentId: string }>(`${base}/deployments/:deploymentId/history`, async ({ params, request }) => {

@@ -307,6 +307,7 @@ export function DeploymentActionsMenu({
               <ActionItems
                 actions={top}
                 onPick={onPick}
+                deploymentId={deploymentId}
                 consoleLink={single ? { deploymentId, resourceId: single } : undefined}
               />
             )}
@@ -338,17 +339,22 @@ export function DeploymentActionsMenu({
 function ActionItems({
   actions,
   onPick,
+  deploymentId,
   consoleLink,
 }: {
   actions: Day2Action[];
   onPick: (a: Day2Action) => void;
+  /** Where Update goes (it has a page of its own). */
+  deploymentId?: string;
   consoleLink?: { deploymentId: string; resourceId: string };
 }) {
   const navigate = useNavigate();
   const groups = groupOrder
     .map((g) => ({
       g,
-      items: actions.filter((a) => a.group === g && (a.key !== "console" || consoleLink) && a.key !== "update"),
+      items: actions.filter(
+        (a) => a.group === g && (a.key !== "console" || consoleLink) && (a.key !== "update" || deploymentId),
+      ),
     }))
     .filter((x) => x.items.length);
   if (groups.length === 0) return <MenuLabel>No actions apply</MenuLabel>;
@@ -374,7 +380,11 @@ function ActionItems({
                 key={a.key}
                 disabled={!a.enabled}
                 danger={a.destructive && a.group === "lifecycle"}
-                onSelect={() => onPick(a)}
+                onSelect={() =>
+                  a.key === "update" && deploymentId
+                    ? void navigate({ to: "/deployments/$deploymentId/update", params: { deploymentId } })
+                    : onPick(a)
+                }
                 title={a.disabled_reason}
               >
                 <span className="flex min-w-0 flex-col">
@@ -417,6 +427,7 @@ export function RowActionItems({
     <div className="min-w-56">
       <ActionItems
         actions={actions}
+        deploymentId={deployment.id}
         consoleLink={vm ? { deploymentId: deployment.id, resourceId: vm } : undefined}
         onPick={(a) => onPick(deployment, a)}
       />

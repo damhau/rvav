@@ -515,7 +515,16 @@ export function createDb(now = Date.now()): Db {
       vms_powered_on: vms.filter((v) => v.vm.power_state === "on").length,
       primary_address: first ? { ip: first.vm.nics[0]?.ip_addresses?.[0] ?? "", fqdn: first.vm.fqdn ?? "" } : null,
       sync_state: "in_sync",
-      inputs: s.inputs,
+      // Where its form placed it: an update's form starts from these.
+      inputs:
+        s.item.type === "vm_blueprint" && first
+          ? {
+              cluster: first.vm.cluster,
+              datastore: first.vm.disks[0]?.datastore,
+              network: first.vm.nics[0]?.network,
+              ...s.inputs,
+            }
+          : s.inputs,
       resources,
     };
   };

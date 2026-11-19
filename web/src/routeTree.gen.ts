@@ -48,6 +48,7 @@ import { Route as AdminSubscriptionsIndexRouteImport } from "./routes/admin/subs
 import { Route as AdminSubscriptionsSubscriptionIdRouteImport } from "./routes/admin/subscriptions/$subscriptionId"
 import { Route as CatalogItemIdIndexRouteImport } from "./routes/catalog/$itemId.index"
 import { Route as CatalogItemIdRequestRouteImport } from "./routes/catalog/$itemId.request"
+import { Route as DeploymentsDeploymentIdUpdateRouteImport } from "./routes/deployments/$deploymentId_.update"
 import { Route as DeploymentsDeploymentIdConsoleResourceIdRouteImport } from "./routes/deployments/$deploymentId_.console.$resourceId"
 
 const IndexRoute = IndexRouteImport.update({
@@ -246,6 +247,12 @@ const CatalogItemIdRequestRoute = CatalogItemIdRequestRouteImport.update({
   path: "/catalog/$itemId/request",
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeploymentsDeploymentIdUpdateRoute =
+  DeploymentsDeploymentIdUpdateRouteImport.update({
+    id: "/deployments/$deploymentId_/update",
+    path: "/deployments/$deploymentId/update",
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DeploymentsDeploymentIdConsoleResourceIdRoute =
   DeploymentsDeploymentIdConsoleResourceIdRouteImport.update({
     id: "/deployments/$deploymentId_/console/$resourceId",
@@ -287,6 +294,7 @@ export interface FileRoutesByFullPath {
   "/admin/roles/new": typeof AdminRolesNewRoute
   "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
+  "/deployments/$deploymentId/update": typeof DeploymentsDeploymentIdUpdateRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/admin/integrations/": typeof AdminIntegrationsIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
@@ -328,6 +336,7 @@ export interface FileRoutesByTo {
   "/admin/roles/new": typeof AdminRolesNewRoute
   "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
+  "/deployments/$deploymentId/update": typeof DeploymentsDeploymentIdUpdateRoute
   "/admin/catalog-items": typeof AdminCatalogItemsIndexRoute
   "/admin/integrations": typeof AdminIntegrationsIndexRoute
   "/admin/projects": typeof AdminProjectsIndexRoute
@@ -371,6 +380,7 @@ export interface FileRoutesById {
   "/admin/roles/new": typeof AdminRolesNewRoute
   "/admin/subscriptions/$subscriptionId": typeof AdminSubscriptionsSubscriptionIdRoute
   "/catalog/$itemId/request": typeof CatalogItemIdRequestRoute
+  "/deployments/$deploymentId_/update": typeof DeploymentsDeploymentIdUpdateRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/admin/integrations/": typeof AdminIntegrationsIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
@@ -415,6 +425,7 @@ export interface FileRouteTypes {
     | "/admin/roles/new"
     | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
+    | "/deployments/$deploymentId/update"
     | "/admin/catalog-items/"
     | "/admin/integrations/"
     | "/admin/projects/"
@@ -456,6 +467,7 @@ export interface FileRouteTypes {
     | "/admin/roles/new"
     | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
+    | "/deployments/$deploymentId/update"
     | "/admin/catalog-items"
     | "/admin/integrations"
     | "/admin/projects"
@@ -498,6 +510,7 @@ export interface FileRouteTypes {
     | "/admin/roles/new"
     | "/admin/subscriptions/$subscriptionId"
     | "/catalog/$itemId/request"
+    | "/deployments/$deploymentId_/update"
     | "/admin/catalog-items/"
     | "/admin/integrations/"
     | "/admin/projects/"
@@ -523,6 +536,7 @@ export interface RootRouteChildren {
   DeploymentsIndexRoute: typeof DeploymentsIndexRoute
   RequestsIndexRoute: typeof RequestsIndexRoute
   CatalogItemIdRequestRoute: typeof CatalogItemIdRequestRoute
+  DeploymentsDeploymentIdUpdateRoute: typeof DeploymentsDeploymentIdUpdateRoute
   CatalogItemIdIndexRoute: typeof CatalogItemIdIndexRoute
   DeploymentsDeploymentIdConsoleResourceIdRoute: typeof DeploymentsDeploymentIdConsoleResourceIdRoute
 }
@@ -802,6 +816,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CatalogItemIdRequestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/deployments/$deploymentId_/update": {
+      id: "/deployments/$deploymentId_/update"
+      path: "/deployments/$deploymentId/update"
+      fullPath: "/deployments/$deploymentId/update"
+      preLoaderRoute: typeof DeploymentsDeploymentIdUpdateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/deployments/$deploymentId_/console/$resourceId": {
       id: "/deployments/$deploymentId_/console/$resourceId"
       path: "/deployments/$deploymentId/console/$resourceId"
@@ -884,6 +905,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeploymentsIndexRoute: DeploymentsIndexRoute,
   RequestsIndexRoute: RequestsIndexRoute,
   CatalogItemIdRequestRoute: CatalogItemIdRequestRoute,
+  DeploymentsDeploymentIdUpdateRoute: DeploymentsDeploymentIdUpdateRoute,
   CatalogItemIdIndexRoute: CatalogItemIdIndexRoute,
   DeploymentsDeploymentIdConsoleResourceIdRoute:
     DeploymentsDeploymentIdConsoleResourceIdRoute,

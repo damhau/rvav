@@ -40,7 +40,7 @@ import { ComponentsPreview, PlacedBy } from "./ComponentsPreview";
 
 const RequestTopology = lazy(() => import("./RequestTopology"));
 
-const quotaLabel: Record<QuotaResource, [string, string]> = {
+export const quotaLabel: Record<QuotaResource, [string, string]> = {
   vcpu: ["vCPU", ""],
   memory_gb: ["Memory", "GB"],
   storage_gb: ["Storage", "GB"],
@@ -85,13 +85,13 @@ export interface FormStart {
 }
 
 /** "Needs approval from Infrastructure leads", or "…, then Network security" for several levels. */
-function approvalTitle(approval: ApprovalPreview) {
+export function approvalTitle(approval: ApprovalPreview) {
   const groups = [...new Set(approval.policies.flatMap((p) => p.levels.map((l) => l.name ?? "an approver")))];
   return `Needs approval from ${groups.join(", then ")}`;
 }
 
 /** The policy reasons as written by admins, plus the usual wait. */
-function approvalBody(approval: ApprovalPreview) {
+export function approvalBody(approval: ApprovalPreview) {
   const reasons = approval.policies.map((p) => p.reason.replace(/\.$/, "")).join(". ");
   const wait = approval.typical_wait_seconds;
   if (!wait) return `${reasons}.`;

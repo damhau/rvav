@@ -133,6 +133,7 @@ export const keys = {
     list: (f: DeploymentFilters) => ["deployments", "list", f] as const,
     detail: (id: string) => ["deployments", "detail", id] as const,
     actions: (id: string) => ["deployments", "actions", id] as const,
+    updatePreview: (id: string, draft: unknown) => ["deployments", "update-preview", id, draft] as const,
     history: (id: string) => ["deployments", "history", id] as const,
     facets: (projectId: string) => ["deployments", "facets", projectId] as const,
   },

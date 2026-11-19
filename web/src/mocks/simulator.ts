@@ -18,6 +18,7 @@ import { goDuration, parseUrl } from "@/lib/composite";
 import { maskLiterals } from "./blueprints";
 import type { StoredApproval } from "./approvals";
 import { completeDay2Step, day2Finished } from "./day2";
+import { updateFinished } from "./update";
 import { publishedBlueprint, secretInputsOf } from "./catalogAdmin";
 import { celBool, celEval, Missing, unmodelled } from "./cel";
 import { bus } from "./events";
@@ -512,7 +513,7 @@ function completeStep(r: StoredRequest, s: Step) {
   s.status = "done";
   s.finished_at = now();
   if (!d) return;
-  if (r.request.kind === "day2") {
+  if (r.request.kind !== "provision") {
     if (completeDay2Step(d, s)) {
       publishDeployment(r, d);
       d.resources.forEach((res) => publishResource(r, d, res));
@@ -956,8 +957,9 @@ function finish(r: StoredRequest) {
   r.request.finished_at = now();
   publishRequest(r);
   const d = db.deployments.find((x) => x.id === r.request.deployment_ids?.[0]);
-  if (r.request.kind === "day2") {
+  if (r.request.kind !== "provision") {
     if (d) {
+      if (r.request.kind === "update") updateFinished(db, d, r.request);
       day2Finished(db, d, r.request);
       publishDeployment(r, d);
     }

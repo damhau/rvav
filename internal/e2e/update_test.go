@@ -159,7 +159,7 @@ func TestUpdateDeployment(t *testing.T) {
 
 		// The same version and inputs change nothing.
 		pv := preview(v1, inputs)
-		if !pv.Allowed || len(pv.Changes) != 0 || len(pv.Refused) != 0 || pv.FromVersion.Id != v1 || pv.ToVersion.Id != v1 {
+		if !pv.Allowed || !pv.Unchanged || len(pv.Changes) != 0 || len(pv.Refused) != 0 || pv.FromVersion.Id != v1 || pv.ToVersion.Id != v1 {
 			t.Fatalf("unchanged preview = %+v", pv)
 		}
 		if _, errs := ask(v1, inputs, 422); len(errs) != 1 || deref(errs[0].Code) != "no_change" {
@@ -354,14 +354,21 @@ func TestUpdateFailedDeployment(t *testing.T) {
 		h.waitStatus(built.Id, owner, api.RequestStatusFailed)
 		depID := (*built.DeploymentIds)[0]
 
-		inputs["size"] = "M"
-		var pv api.UpdatePreview
-		h.json("POST", "/api/v1/deployments/"+depID+"/update/preview", owner, api.UpdateDraft{VersionId: form.VersionId, Inputs: inputs}, 200, &pv)
-		var kinds []string
-		for _, c := range pv.Changes {
-			kinds = append(kinds, string(c.Kind))
+		kindsOf := func(inputs map[string]any) (api.UpdatePreview, []string) {
+			var pv api.UpdatePreview
+			h.json("POST", "/api/v1/deployments/"+depID+"/update/preview", owner, api.UpdateDraft{VersionId: form.VersionId, Inputs: inputs}, 200, &pv)
+			var kinds []string
+			for _, c := range pv.Changes {
+				kinds = append(kinds, string(c.Kind))
+			}
+			return pv, kinds
 		}
-		if !pv.Allowed || !slices.Equal(kinds, []string{"resize", "job", "job"}) {
+		// With its own inputs, an update repairs it: its jobs run again.
+		if pv, kinds := kindsOf(inputs); !pv.Allowed || pv.Unchanged || !slices.Equal(kinds, []string{"job", "job"}) {
+			t.Fatalf("failed deployment's repair = %+v", pv)
+		}
+		inputs["size"] = "M"
+		if pv, kinds := kindsOf(inputs); !pv.Allowed || !slices.Equal(kinds, []string{"resize", "job", "job"}) {
 			t.Fatalf("failed deployment's preview = %+v", pv)
 		}
 		var req api.Request

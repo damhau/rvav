@@ -5,6 +5,7 @@ import type {
   ApprovalPreview,
   Day2Action,
   DeploymentDetail,
+  FieldError,
   GroupMembershipResource,
   GroupRef,
   SecurityGroupResource,
@@ -21,7 +22,7 @@ const now = () => new Date().toISOString();
 
 type Inputs = Record<string, unknown>;
 
-interface Op {
+export interface Op {
   key: string;
   title: string;
   detail?: string;
@@ -37,6 +38,10 @@ interface MockAction {
   group: Day2Action["group"];
   deployment?: boolean;
   direct?: boolean;
+  // Offered on deployments of VM items only.
+  vmItems?: boolean;
+  // Offered on a failed deployment too.
+  onFailed?: boolean;
   // Offered only to those who change the project: administrators.
   admin?: boolean;
   applies?: (vm: VmResource | undefined, d: DeploymentDetail) => boolean;
@@ -535,6 +540,16 @@ export const catalogue: MockAction[] = [
     ],
   },
   {
+    key: "update",
+    name: "Update",
+    group: "lifecycle",
+    deployment: true,
+    direct: true,
+    vmItems: true,
+    onFailed: true,
+    ops: () => [],
+  },
+  {
     key: "console",
     name: "Open the console",
     group: "access",
@@ -674,7 +689,7 @@ export const catalogue: MockAction[] = [
 
 // The request in the way of an action on vm (or on the whole deployment):
 // actions on different VMs run side by side, as on the server.
-const busy = (db: Db, d: DeploymentDetail, vm?: VmResource) =>
+export const busy = (db: Db, d: DeploymentDetail, vm?: VmResource) =>
   db.requests.find(
     (r) =>
       r.request.deployment_ids?.includes(d.id) &&
@@ -711,12 +726,15 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
   for (const vm of targets) {
     for (const a of catalogue) {
       if (Boolean(a.deployment) !== !vm || (a.admin && !isAdmin) || a.applies?.(vm, d) === false) continue;
+      if (a.vmItems && db.items.find((i) => i.id === d.catalog_item.id)?.type !== "vm_blueprint") continue;
       const active = busy(db, d, vm);
       const reason =
         (active ? `${active.request.number} is still running on this ${vm ? "VM" : "deployment"}.` : null) ??
         (d.status === "deleted"
           ? "The deployment was deleted."
-          : d.status !== "ready" && !(d.status === "updating" && vm) && !(d.status === "failed" && a.key === "delete")
+          : d.status !== "ready" &&
+              !(d.status === "updating" && vm) &&
+              !(d.status === "failed" && (a.key === "delete" || a.onFailed))
             ? `The deployment is ${d.status}.`
             : null) ??
         (runs(a) ? null : `Your role in ${d.project.name} does not allow ${a.name}.`) ??
@@ -760,8 +778,33 @@ const step = (key: string, title: string, system: Step["system"], extra: Partial
   ...extra,
 });
 
+/**
+ * The steps of a request that runs these operations: submitted, its
+ * approval (`none` says why there is none), the operations, then done.
+ */
+export function requestSteps(ops: Op[], approval: boolean, none: string): Step[] {
+  const steps: Step[] = [
+    step("request.submit", "Submitted", "rvav", { status: "done", started_at: now(), finished_at: now() }),
+    approval
+      ? step("policy.approval", "Waiting for approval", "policy", { status: "running", started_at: now() })
+      : step("policy.approval", "Approval not required", "policy", {
+          status: "done",
+          started_at: now(),
+          finished_at: now(),
+          detail: none,
+        }),
+  ];
+  for (const op of ops) {
+    const s = step(op.key, op.title, op.system, op.detail ? { detail: op.detail } : {});
+    pending.set(s.id, op);
+    steps.push(s);
+  }
+  steps.push(step("request.ready", "Done", "rvav"));
+  return steps;
+}
+
 export interface RunResult {
-  error?: { status: number; title: string; detail?: string; field?: string };
+  error?: { status: number; title: string; detail?: string; field?: string; errors?: FieldError[] };
   stored?: StoredRequest;
   approval?: ApprovalPreview;
 }
@@ -799,24 +842,11 @@ export function runAction(
   const why = approvalReason(a, d, inputs);
   const needsApproval = why !== "";
   const marc: UserRef = db.users.find((u) => u.id === "usr_mkeller")!;
-  const ops = a.ops(vm, inputs, d);
-  const steps: Step[] = [
-    step("request.submit", "Submitted", "rvav", { status: "done", started_at: now(), finished_at: now() }),
-    needsApproval
-      ? step("policy.approval", "Waiting for approval", "policy", { status: "running", started_at: now() })
-      : step("policy.approval", "Approval not required", "policy", {
-          status: "done",
-          started_at: now(),
-          finished_at: now(),
-          detail: `No day-2 policy asks for approval in ${d.environment}`,
-        }),
-  ];
-  for (const op of ops) {
-    const s = step(op.key, op.title, op.system, op.detail ? { detail: op.detail } : {});
-    pending.set(s.id, op);
-    steps.push(s);
-  }
-  steps.push(step("request.ready", "Done", "rvav"));
+  const steps = requestSteps(
+    a.ops(vm, inputs, d),
+    needsApproval,
+    `No day-2 policy asks for approval in ${d.environment}`,
+  );
   const request: ServiceRequest = {
     id: `req_${number.slice(4)}`,
     number,

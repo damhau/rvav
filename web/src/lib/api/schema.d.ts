@@ -5470,6 +5470,8 @@ export interface components {
             allowed: boolean;
             /** @description Why they can't, when `allowed` is false. */
             reason?: string;
+            /** @description The version and the inputs, as the rules leave them, are the deployment's, and it isn't failed. Submitting it is refused with `no_change`. A failed deployment's update with its own inputs builds what is missing and runs its jobs again. */
+            unchanged: boolean;
             /** @description What the update does, in the order it runs. */
             changes: components["schemas"]["UpdateChange"][];
             /** @description Changes rvav can't make in place, and why. An update with any is refused. */

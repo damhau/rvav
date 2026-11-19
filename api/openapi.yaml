@@ -7387,7 +7387,7 @@ components:
 
     UpdatePreview:
       type: object
-      required: [from_version, to_version, allowed, changes, refused, errors, quota, approval]
+      required: [from_version, to_version, allowed, unchanged, changes, refused, errors, quota, approval]
       properties:
         from_version: { $ref: "#/components/schemas/CatalogItemVersionRef" }
         to_version: { $ref: "#/components/schemas/CatalogItemVersionRef" }
@@ -7397,6 +7397,12 @@ components:
         reason:
           type: string
           description: Why they can't, when `allowed` is false.
+        unchanged:
+          type: boolean
+          description: >-
+            The version and the inputs, as the rules leave them, are the deployment's, and it isn't failed.
+            Submitting it is refused with `no_change`. A failed deployment's update with its own inputs builds
+            what is missing and runs its jobs again.
         changes:
           type: array
           description: What the update does, in the order it runs.

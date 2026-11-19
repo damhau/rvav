@@ -149,7 +149,18 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 {r.project.name} <EnvBadge env={r.environment} />
               </span>
               <span>Requested by {r.requester.name}</span>
-              {r.kind === "day2" && r.deployment_id ? (
+              {r.kind === "update" && r.deployment_id ? (
+                <span>
+                  To {r.catalog_item.name} {r.version.number} on{" "}
+                  <Link
+                    to="/deployments/$deploymentId"
+                    params={{ deploymentId: r.deployment_id }}
+                    className="text-accent underline underline-offset-2"
+                  >
+                    {r.title.replace(/^Update · /, "")}
+                  </Link>
+                </span>
+              ) : r.kind === "day2" && r.deployment_id ? (
                 <span>
                   {r.action?.name} on{" "}
                   <Link
