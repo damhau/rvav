@@ -332,12 +332,14 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		mapFolderAndProperties(sc, r.Properties, where, c, note)
 		mapMachineOptions(r.Properties, where, c, note)
 		var cDisks []map[string]any
+		diskKeys := map[string]bool{}
 		if ad, ok := r.Properties["attachedDisks"].([]any); ok {
 			for _, a := range ad {
 				src, _ := a.(map[string]any)["source"].(string)
 				ref := resourceRef(src)
 				if d, ok := disks[ref]; ok {
-					disk := map[string]any{"size_gb": d["capacityGb"]}
+					// Keyed by its vRA resource, so that a later version tells it apart (ADR-0052).
+					disk := map[string]any{"key": resourceKey(ref, "disk", diskKeys), "size_gb": d["capacityGb"]}
 					if l := cs.constraintsOf(d["constraints"], "resources."+ref+".constraints", note); len(l) > 0 {
 						disk["constraints"] = l
 					}

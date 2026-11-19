@@ -706,9 +706,13 @@ func (a *Activities) recordVM(ctx context.Context, vc vsphere.Driver, in VMInput
 	for i, n := range in.VM.NICs {
 		added[i], keys[i] = n.IPAM == blueprint.IPAMDHCP, n.Key
 	}
+	disks, diskKeys := vmprops.BuiltDisks(*vm, len(in.VM.Disks)), make([]string, len(in.VM.Disks))
+	for i, d := range in.VM.Disks {
+		diskKeys[i] = d.Key
+	}
 	props := vmprops.Build(vc.Name(), *vm, vmprops.Ours{FQDN: in.VM.FQDN, Template: in.VM.Template, Component: in.VM.Component,
 		DHCP: in.VM.DHCP, Properties: in.VM.Properties, DHCPAdapters: vmprops.AdapterDHCP(*vm, in.VM.DHCP, added),
-		BlueprintDisks: vmprops.BuiltDisks(*vm, len(in.VM.Disks)), BlueprintNICs: vmprops.BuiltNICs(*vm, keys)}, nil, 0)
+		BlueprintDisks: disks, BlueprintDiskKeys: vmprops.BuiltDiskKeys(disks, diskKeys), BlueprintNICs: vmprops.BuiltNICs(*vm, keys)}, nil, 0)
 	// The VM as rvav built it: what drift is measured from (S13.2).
 	props, _ = vmprops.Settle(nil, props, vmprops.All...)
 	ext := vm.InstanceUUID
@@ -1637,6 +1641,24 @@ func splitLines(s string) []string {
 	return strings.Split(s, "\n")
 }
 
+// remarkDisks records, on the VMs an update kept, which of its new
+// version's disks theirs are (ADR-0052).
+func (a *Activities) remarkDisks(ctx context.Context, db pgx.Tx, raw json.RawMessage) error {
+	var plan Plan
+	if err := json.Unmarshal(raw, &plan); err != nil || plan.Update == nil {
+		return nil
+	}
+	for _, id := range slices.Sorted(maps.Keys(plan.Update.DiskMarks)) {
+		err := a.Store.EditResourceProperties(ctx, db, id, func(p json.RawMessage) (json.RawMessage, error) {
+			return vmprops.Remark(p, plan.Update.DiskMarks[id])
+		})
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+	}
+	return nil
+}
+
 // Finish records the outcome of the request and notifies the owner.
 func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	r, err := a.Store.GetRequest(ctx, in.RequestID)
@@ -1680,6 +1702,9 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 			// inputs, from now on (ADR-0042).
 			if r.Kind == "update" && r.DeploymentID != nil {
 				if err := a.Store.SetDeploymentVersion(ctx, db, *r.DeploymentID, r.VersionID, r.Inputs); err != nil {
+					return err
+				}
+				if err := a.remarkDisks(ctx, db, r.Plan); err != nil {
 					return err
 				}
 			}

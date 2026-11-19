@@ -282,8 +282,17 @@ func checkReferences(b blueprint.Blueprint, ptr string) []api.FieldError {
 func checkParts(ptr string, disks []blueprint.Disk, nics []blueprint.NIC, tags []string) []api.FieldError {
 	var errs []api.FieldError
 	add := func(at, code, msg string) { errs = append(errs, fieldErr(at, code, msg)) }
+	diskKeys := map[string]bool{}
 	for i, d := range disks {
 		at := fmt.Sprintf("%s/disks/%d", ptr, i)
+		switch {
+		case d.Key == "":
+		case !componentKey.MatchString(d.Key):
+			add(at+"/key", "pattern", "A key of up to 16 lower-case letters and digits, starting with a letter.")
+		case diskKeys[d.Key]:
+			add(at+"/key", "duplicate", "Another disk has the key "+d.Key+".")
+		}
+		diskKeys[d.Key] = true
 		switch n := d.SizeGB.(type) {
 		case float64:
 			if n != float64(int(n)) || n < 1 || n > 65536 {

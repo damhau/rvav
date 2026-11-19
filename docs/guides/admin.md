@@ -1112,6 +1112,18 @@ for a new request. Changes that need a VM built again are refused with
 their reason, including another template, cluster, datastore or network.
 Users then delete the deployment and request it again.
 
+An update matches the extra disks of the deployment's version and the new
+one by their `key` when every extra disk of both versions has one, else
+by their place. Matched by place, a version that removes extra disks and
+changes others is refused, as rvav can't tell which disks go. To remove
+some disks and change others in one version, give every extra disk a key
+([ADR-0052](../adr/0052-disk-keys.md)):
+1. Publish a version that only adds a `key` to each extra disk. Its
+   update changes nothing on the VMs.
+2. Publish the version that removes and changes disks.
+
+Items the vRA importer makes have their disks keyed already.
+
 To update a deployment through the API, send the same body to
 `POST /api/v1/deployments/{id}/update/preview` to read the plan, then to
 `POST /api/v1/deployments/{id}/update` with an `Idempotency-Key` header:

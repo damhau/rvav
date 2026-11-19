@@ -9,6 +9,7 @@ import (
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/outbox"
+	"github.com/damhau/rvav/internal/vmprops"
 )
 
 // Update is an update request's plan (ADR-0042). Ops change the VMs it
@@ -27,6 +28,9 @@ type Update struct {
 	// VMs are the IDs of the deployment's VMs the update was planned on:
 	// it doesn't start once they changed. Nil in a plan made before X1.6.
 	VMs []string `json:"vms"`
+	// DiskMarks are, by VM resource, the disks it keeps whose place or key
+	// differs in the new version (ADR-0052).
+	DiskMarks map[string][]vmprops.DiskMark `json:"disk_marks,omitempty"`
 }
 
 // Stale says why an update's plan no longer fits its deployment, which

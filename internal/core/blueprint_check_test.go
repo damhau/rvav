@@ -25,7 +25,7 @@ func TestCheckVMBlueprint(t *testing.T) {
 	good := `{"kind": "vm", "naming": "{project}-{component}{seq:02}", "deployment_name": "{project}-{inputs.app}",
 		"template": "rhel9", "guest": {"os_family": "linux", "domain": "corp.example"},
 		"components": [
-		  {"key": "web", "count": "inputs.web_nodes", "anti_affinity": true, "disks": [{"size_gb": 50}],
+		  {"key": "web", "count": "inputs.web_nodes", "anti_affinity": true, "disks": [{"key": "data", "size_gb": 50}, {"size_gb": 5}],
 		   "guest": {"cloud_init": {"user_data": "#cloud-config\nhostname: {{ .vm.name }}"}}},
 		  {"key": "db", "count": 1, "template": "win2022", "nics": [{"key": "backup", "network": "\"dvpg-b\""}],
 		   "guest": {"os_family": "windows", "domain_join": {"domain": "corp.example", "credential": "ad-join"}, "admin_password": "win-admin"},
@@ -37,15 +37,18 @@ func TestCheckVMBlueprint(t *testing.T) {
 	bad := `{"kind": "vm", "naming": "{project}", "deployment_name": "{project}{seq:02}",
 		"guest": {"os_family": "linux"}, "tags": ["daily"],
 		"components": [
-		  {"key": "Web", "count": 1, "anti_affinity": true, "disks": [{"size_gb": 0}, {"datastore": "vsan-01 x"}]},
+		  {"key": "Web", "count": 1, "anti_affinity": true, "disks": [{"key": "Data", "size_gb": 0}, {"datastore": "vsan-01 x"},
+		    {"key": "logs", "size_gb": 5}, {"key": "logs", "size_gb": 5}]},
 		  {"key": "db", "count": 30, "template": "w", "nics": [{"network": ""}, {"key": "nic2", "network": "inputs.n", "ipam": "static"}],
 		   "guest": {"cloud_init": {"user_data": "{{ .vm.name"}, "domain_join": {"domain": ""}, "admin_password": "x"}},
 		  {"key": "db", "count": "inputs.("}]}`
 	want := []string{
 		"/blueprint/components/0/anti_affinity invalid",
+		"/blueprint/components/0/disks/0/key pattern",
 		"/blueprint/components/0/disks/0/size_gb out_of_range",
 		"/blueprint/components/0/disks/1/datastore invalid",
 		"/blueprint/components/0/disks/1/size_gb required",
+		"/blueprint/components/0/disks/3/key duplicate",
 		"/blueprint/components/0/key pattern",
 		"/blueprint/components/0/template required",
 		"/blueprint/components/1/count out_of_range",

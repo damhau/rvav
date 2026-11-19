@@ -66,12 +66,16 @@ and a deployment that failed half-way was retried or deleted.
   and when an update adds a disk (X1.6). An update grows and removes only
   those, wherever day-2 actions added disks between them, and adds a
   version's disk only to the VMs that don't have it: an update made again
-  after one failed part-way doesn't add it twice. A version's extra disks
-  have no names, so the n-th of the old version is the n-th of the new;
-  a version that removes extra disks while it changes others is refused,
-  as rvav can't tell which ones go. A VM without the record (onboarded,
-  or built before X1.6) refuses growing or removing its disks, rather than
-  guessing from their places; a disk the new version adds is added to it.
+  after one failed part-way doesn't add it twice. When every extra disk
+  of both versions has a `key`, the disks match by key, and the record
+  keeps the key too (ADR-0052, #191). Otherwise the n-th extra disk of
+  the old version is the n-th of the new, and a version that removes
+  extra disks while it changes others is refused, as rvav can't tell
+  which ones go. An update that succeeds records, on the VMs it kept,
+  the places and keys of their disks in its version. A VM without the
+  record (onboarded, or built before X1.6) refuses growing or removing
+  its disks, rather than guessing from their places; a disk the new
+  version adds is added to it.
   A disk no longer on the VM when its step runs fails the step.
 - **rvav records which of its blueprint's adapters each adapter of a VM
   is** (`blueprint_nic`: `nic1` for the first, else the adapter's `key`,

@@ -7383,8 +7383,13 @@ export interface components {
             linked?: boolean;
             /** @description vCenter's device key for the disk, which stays the same while the disk is on the VM. */
             key?: number;
-            /** @description Which of its blueprint's disks this is: 0 for the first disk, 1 for the first extra disk, and so on (ADR-0042). rvav records it when it builds the VM or an update adds the disk. Absent on a disk a day-2 action added, on an onboarded VM, and on a VM built before rvav recorded it. */
+            /** @description Which of its blueprint's disks this is: 0 for the first disk, 1 for the first extra disk, and so on (ADR-0042), in the version the deployment has. rvav records it when it builds the VM or an update adds the disk, and an update that succeeds records the place the disk has in its new version. Absent on a disk a day-2 action added, on an onboarded VM, and on a VM built before rvav recorded it. */
             blueprint_disk?: number;
+            /**
+             * @description The `key` its blueprint gives the extra disk this is (ADR-0052), recorded with `blueprint_disk`. Absent when the blueprint gives it none.
+             * @example data
+             */
+            blueprint_disk_key?: string;
         };
         VmNic: {
             /** @example Network adapter 1 */

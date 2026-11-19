@@ -68,6 +68,16 @@ type componentPlan struct {
 	kept    []provision.KeptVM
 	add     []addVMs
 	delta   map[string]int
+	// marks are, by VM resource, its kept disks' places and keys in the
+	// new version, where they change (ADR-0052).
+	marks map[string][]vmprops.DiskMark
+}
+
+func (u *componentPlan) mark(resource string, m vmprops.DiskMark) {
+	if u.marks == nil {
+		u.marks = map[string][]vmprops.DiskMark{}
+	}
+	u.marks[resource] = append(u.marks[resource], m)
 }
 
 // addVMs are VMs an update adds to a component, from its index first.
@@ -207,7 +217,7 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 	}
 	plan := provision.Plan{Kind: blueprint.KindVM, ApprovalRequired: req.ApprovalRequired, AutoApproved: ev.AutoApproved,
 		Quota: quota, Guest: ev.Blueprint.Guest, Update: &provision.Update{DeploymentID: d.ID, Before: d.Status,
-			Ops: u.ops, Remove: u.remove, Kept: u.kept, Jobs: u.jobs, VMs: u.vms}}
+			Ops: u.ops, Remove: u.remove, Kept: u.kept, Jobs: u.jobs, VMs: u.vms, DiskMarks: u.marks}}
 
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
 		if err := s.holdChange(ctx, tx, u.change, ev.OverSoft, draft.AcceptWarnings, draft.AcceptedWarnings); err != nil {
@@ -717,14 +727,88 @@ func vmNetwork(vm api.VmProperties) string {
 	return vm.Nics[0].Network
 }
 
-// blueprintDisks are a VM's disks by the blueprint disk rvav recorded
-// each is (ADR-0042).
-func blueprintDisks(t day2.Target) map[int]api.VmDisk {
-	out := map[int]api.VmDisk{}
+// vmDisks are the disks of a VM rvav recorded as its blueprint's (ADR-0042).
+type vmDisks []api.VmDisk
+
+func blueprintDisks(t day2.Target) vmDisks {
+	var out vmDisks
 	for _, d := range t.VM.Disks {
-		if d.BlueprintDisk != nil {
-			out[*d.BlueprintDisk] = d
+		if d.BlueprintDisk != nil && d.Key != nil {
+			out = append(out, d)
 		}
+	}
+	return out
+}
+
+func (v vmDisks) first() (api.VmDisk, bool) {
+	i := slices.IndexFunc(v, func(d api.VmDisk) bool { return *d.BlueprintDisk == 0 })
+	if i < 0 {
+		return api.VmDisk{}, false
+	}
+	return v[i], true
+}
+
+// of is the VM's disk that is the version's extra disk d, at place i: by
+// its recorded key when the disks match by key, else by its recorded place
+// unless recorded with another key (ADR-0052). A disk of the old version
+// recorded before that version had keys is found by its place.
+func (v vmDisks) of(d blueprint.DiskPlan, i int, byKey, old bool) (api.VmDisk, bool) {
+	match := func(x api.VmDisk) bool {
+		return *x.BlueprintDisk == i+1 && (x.BlueprintDiskKey == nil || *x.BlueprintDiskKey == d.Key)
+	}
+	if byKey {
+		match = func(x api.VmDisk) bool { return deref(x.BlueprintDiskKey) == d.Key }
+	}
+	j := slices.IndexFunc(v, match)
+	if j < 0 && byKey && old {
+		// Recorded before its version had keys.
+		j = slices.IndexFunc(v, func(x api.VmDisk) bool { return x.BlueprintDiskKey == nil && *x.BlueprintDisk == i+1 })
+	}
+	if j < 0 {
+		return api.VmDisk{}, false
+	}
+	return v[j], true
+}
+
+// diskPair is an extra disk of the old version, the new one or both, by
+// its place in each; -1 in the one it isn't in.
+type diskPair struct{ old, new int }
+
+// pairDisks matches the versions' extra disks (ADR-0052): by key when
+// every one of both versions has a key, else by place. The disks both
+// versions have come first, then those the new one adds, then those it
+// removes, each in its version's order.
+func pairDisks(o, n []blueprint.DiskPlan) ([]diskPair, bool) {
+	keyed := func(ds []blueprint.DiskPlan) bool {
+		return !slices.ContainsFunc(ds, func(d blueprint.DiskPlan) bool { return d.Key == "" })
+	}
+	byKey := keyed(o) && keyed(n)
+	var kept, added, removed []diskPair
+	paired := map[int]bool{}
+	for j := range n {
+		i := slices.IndexFunc(o, func(d blueprint.DiskPlan) bool { return d.Key == n[j].Key })
+		if !byKey {
+			i = j
+		}
+		if i >= 0 && i < len(o) {
+			kept, paired[i] = append(kept, diskPair{i, j}), true
+		} else {
+			added = append(added, diskPair{-1, j})
+		}
+	}
+	for i := range o {
+		if !paired[i] {
+			removed = append(removed, diskPair{i, -1})
+		}
+	}
+	return slices.Concat(kept, added, removed), byKey
+}
+
+// unkeyed are disks without their keys, for comparing what vCenter has.
+func unkeyed(ds []blueprint.DiskPlan) []blueprint.DiskPlan {
+	out := slices.Clone(ds)
+	for i := range out {
+		out[i].Key = ""
 	}
 	return out
 }
@@ -825,14 +909,21 @@ func (c componentChange) inPlace(u *componentPlan, vms []existingVM, refuse func
 		refuse("guest", "The guest settings change: they are applied only when a VM is built.")
 	}
 
-	hardware := o.VCPU != n.VCPU || o.MemoryGB != n.MemoryGB || o.DiskGB != n.DiskGB || !reflect.DeepEqual(o.Disks, n.Disks) ||
+	hardware := o.VCPU != n.VCPU || o.MemoryGB != n.MemoryGB || o.DiskGB != n.DiskGB || !slices.Equal(unkeyed(o.Disks), unkeyed(n.Disks)) ||
 		!reflect.DeepEqual(o.NICs, n.NICs)
 	if n.DiskGB < o.DiskGB {
 		refuse("disk_gb", fmt.Sprintf("The first disk shrinks from %d to %d GB: vCenter can't shrink a disk.", o.DiskGB, n.DiskGB))
 	}
-	for i := range min(len(o.Disks), len(n.Disks)) {
-		od, nd := o.Disks[i], n.Disks[i]
-		label := fmt.Sprintf("Extra disk %d", i+1)
+	pairs, byKey := pairDisks(o.Disks, n.Disks)
+	for _, p := range pairs {
+		if p.old < 0 || p.new < 0 {
+			continue
+		}
+		od, nd := o.Disks[p.old], n.Disks[p.new]
+		label := fmt.Sprintf("Extra disk %d", p.old+1)
+		if byKey {
+			label = "Extra disk " + nd.Key
+		}
 		if nd.SizeGB < od.SizeGB {
 			refuse("disks", fmt.Sprintf("%s shrinks from %d to %d GB: vCenter can't shrink a disk.", label, od.SizeGB, nd.SizeGB))
 		}
@@ -840,11 +931,11 @@ func (c componentChange) inPlace(u *componentPlan, vms []existingVM, refuse func
 			refuse("disks", label+" changes its datastore, storage policy or provisioning: rvav doesn't move existing disks.")
 		}
 	}
-	// A version's extra disks have no names: the n-th is the n-th.
-	ambiguous := len(n.Disks) < len(o.Disks) && !reflect.DeepEqual(o.Disks[:len(n.Disks)], n.Disks)
+	// Without keys, the n-th extra disk of a version is the n-th of the other.
+	ambiguous := !byKey && len(n.Disks) < len(o.Disks) && !slices.Equal(unkeyed(o.Disks[:len(n.Disks)]), unkeyed(n.Disks))
 	if ambiguous {
 		refuse("disks", "The new version removes extra disks and changes others: rvav matches the versions' disks by their place, "+
-			"so it can't tell which ones go. Remove them in one version and change the others in the next.")
+			"so it can't tell which ones go. Give every extra disk a key, or remove them in one version and change the others in the next.")
 	}
 	oldNICs, newNICs := map[string]int{}, map[string]int{}
 	for i, x := range o.NICs {
@@ -895,7 +986,7 @@ func (c componentChange) inPlace(u *componentPlan, vms []existingVM, refuse func
 		// Which of its disks are the blueprint's, as rvav recorded them; a
 		// VM without its first disk recorded is one it didn't build so.
 		own := blueprintDisks(t)
-		_, known := own[0]
+		_, known := own.first()
 		unknown := func(setting, what string) {
 			refuse(setting, name+" was onboarded or built before rvav recorded which of its disks are the blueprint's, so rvav can't tell "+
 				"which disk to "+what+". Change its disks with the day-2 actions instead.")
@@ -905,7 +996,7 @@ func (c componentChange) inPlace(u *componentPlan, vms []existingVM, refuse func
 			change(api.DiskExtend, fmt.Sprintf("Grow %s of %s to %d GB", d.Label, name, size), fmt.Sprintf("Was %d GB.", d.CapacityGb), false)
 			u.delta["storage_gb"] += size - d.CapacityGb
 		}
-		if d, ok := own[0]; n.DiskGB > o.DiskGB {
+		if d, ok := own.first(); n.DiskGB > o.DiskGB {
 			switch {
 			case !ok:
 				unknown("disk_gb", "grow")
@@ -916,26 +1007,28 @@ func (c componentChange) inPlace(u *componentPlan, vms []existingVM, refuse func
 				grow(d, n.DiskGB)
 			}
 		}
-		for i := range max(len(o.Disks), len(n.Disks)) {
-			d, ok := own[i+1]
+		for _, p := range pairs {
 			switch {
 			case ambiguous:
-			case i >= len(o.Disks):
+			case p.old < 0:
+				nd := n.Disks[p.new]
 				// Already added by an update that failed after it.
-				if ok {
+				if _, ok := own.of(nd, p.new, byKey, false); ok {
 					continue
 				}
-				nd := n.Disks[i]
 				in := map[string]any{"size_gb": float64(nd.SizeGB), "datastore": nd.Datastore, "provisioning": nd.Provisioning, "storage_policy": nd.StoragePolicy}
 				add := day2.Get("disk_add").Ops(t, in)
 				for _, op := range add {
-					op.Args["blueprint_disk"] = i + 1
+					op.Args["blueprint_disk"] = p.new + 1
+					if nd.Key != "" {
+						op.Args["blueprint_disk_key"] = nd.Key
+					}
 				}
 				ops = append(ops, add...)
 				change(api.DiskAdd, fmt.Sprintf("Add a %d GB disk to %s", nd.SizeGB, name), nd.Datastore, false)
 				u.delta["storage_gb"] += nd.SizeGB
-			case i >= len(n.Disks):
-				switch {
+			case p.new < 0:
+				switch d, ok := own.of(o.Disks[p.old], p.old, byKey, true); {
 				case !ok && !known:
 					unknown("disks", "remove")
 				case ok && disks("remove"):
@@ -943,12 +1036,20 @@ func (c componentChange) inPlace(u *componentPlan, vms []existingVM, refuse func
 					change(api.DiskRemove, fmt.Sprintf("Remove %s from %s", d.Label, name), fmt.Sprintf("Its %d GB and the data on it are deleted.", d.CapacityGb), true)
 					u.delta["storage_gb"] -= d.CapacityGb
 				}
-			case n.Disks[i].SizeGB > o.Disks[i].SizeGB:
+			default:
+				d, ok := own.of(o.Disks[p.old], p.old, byKey, true)
+				nd := n.Disks[p.new]
+				if ok && (*d.BlueprintDisk != p.new+1 || deref(d.BlueprintDiskKey) != nd.Key) {
+					u.mark(t.ResourceID, vmprops.DiskMark{Device: int32(*d.Key), Disk: p.new + 1, Key: nd.Key})
+				}
+				if nd.SizeGB <= o.Disks[p.old].SizeGB {
+					continue
+				}
 				switch {
 				case !ok && !known:
 					unknown("disks", "grow")
-				case ok && d.CapacityGb < n.Disks[i].SizeGB && disks("grow"):
-					grow(d, n.Disks[i].SizeGB)
+				case ok && d.CapacityGb < nd.SizeGB && disks("grow"):
+					grow(d, nd.SizeGB)
 				}
 			}
 		}

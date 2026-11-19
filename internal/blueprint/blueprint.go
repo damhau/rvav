@@ -234,8 +234,10 @@ type Component struct {
 // Disk is a disk added after the template's: SizeGB is a number or CEL,
 // Datastore CEL (the VM's when empty). Constraints are its own storage
 // constraints (ADR-0035): rvav chooses its datastore by them when it isn't
-// given. Provisioning wins over the component's (ADR-0036).
+// given. Provisioning wins over the component's (ADR-0036). Key names it,
+// so that an update tells the versions' disks apart (ADR-0052).
 type Disk struct {
+	Key           string   `json:"key,omitempty"`
 	SizeGB        any      `json:"size_gb"`
 	Datastore     string   `json:"datastore,omitempty"`
 	StoragePolicy string   `json:"storage_policy,omitempty"`
@@ -431,6 +433,7 @@ func (p VMPlan) StorageGB() int {
 }
 
 type DiskPlan struct {
+	Key           string `json:"key,omitempty"`
 	SizeGB        int    `json:"size_gb"`
 	Datastore     string `json:"datastore,omitempty"`
 	StoragePolicy string `json:"storage_policy,omitempty"`
@@ -576,7 +579,7 @@ func (b Blueprint) EvaluateComponent(c Component, inputs map[string]any) (plan V
 	plan.Tags = append(plan.Tags, c.Tags...)
 	plan.Groups = append(plan.Groups, c.Groups...)
 	for i, d := range c.Disks {
-		dp := DiskPlan{StoragePolicy: d.StoragePolicy, Provisioning: cmp.Or(d.Provisioning, c.Provisioning)}
+		dp := DiskPlan{Key: d.Key, StoragePolicy: d.StoragePolicy, Provisioning: cmp.Or(d.Provisioning, c.Provisioning)}
 		n, ok := numberOrCEL(d.SizeGB, vars)
 		if !ok {
 			missing = append(missing, fmt.Sprintf("disks/%d/size_gb", i))

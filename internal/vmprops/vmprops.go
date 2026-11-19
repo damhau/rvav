@@ -40,6 +40,9 @@ type Ours struct {
 	// BlueprintDisks say, by device key, which of its blueprint's disks a
 	// disk is (ADR-0042); a disk rvav didn't make from it is missing.
 	BlueprintDisks map[int32]int `json:"-"`
+	// BlueprintDiskKeys say, by device key, the key its blueprint gives a
+	// disk BlueprintDisks marks, if any (ADR-0052).
+	BlueprintDiskKeys map[int32]string `json:"-"`
 	// BlueprintNICs say, by device key, which of its blueprint's adapters
 	// an adapter is: FirstNIC, or the key of one added (ADR-0042).
 	BlueprintNICs map[int32]string `json:"-"`
@@ -84,6 +87,73 @@ func BuiltDisks(vm vsphere.VM, extra int) map[int32]int {
 	return out
 }
 
+// BuiltDiskKeys are the keys the blueprint gives, in order, to the extra
+// disks marks names (BuiltDisks).
+func BuiltDiskKeys(marks map[int32]int, keys []string) map[int32]string {
+	out := map[int32]string{}
+	for dev, j := range marks {
+		if j >= 1 && j <= len(keys) && keys[j-1] != "" {
+			out[dev] = keys[j-1]
+		}
+	}
+	return out
+}
+
+// DiskMark is which of its new version's disks a disk an update kept is,
+// recorded once the update succeeds (ADR-0052).
+type DiskMark struct {
+	// Device is vCenter's device key.
+	Device int32  `json:"device"`
+	Disk   int    `json:"disk"`
+	Key    string `json:"key,omitempty"`
+}
+
+// Remark records marks on the disks of a VM's stored properties, leaving
+// the rest as it is.
+func Remark(props json.RawMessage, marks []DiskMark) (json.RawMessage, error) {
+	var top, vm map[string]json.RawMessage
+	var disks []map[string]json.RawMessage
+	if err := json.Unmarshal(props, &top); err != nil {
+		return nil, err
+	}
+	if len(top["vm"]) == 0 {
+		return props, nil
+	}
+	if err := json.Unmarshal(top["vm"], &vm); err != nil {
+		return nil, err
+	}
+	if len(vm["disks"]) == 0 {
+		return props, nil
+	}
+	if err := json.Unmarshal(vm["disks"], &disks); err != nil {
+		return nil, err
+	}
+	for _, d := range disks {
+		var dev int32
+		if json.Unmarshal(d["key"], &dev) != nil {
+			continue
+		}
+		for _, m := range marks {
+			if m.Device != dev {
+				continue
+			}
+			d["blueprint_disk"], _ = json.Marshal(m.Disk)
+			delete(d, "blueprint_disk_key")
+			if m.Key != "" {
+				d["blueprint_disk_key"], _ = json.Marshal(m.Key)
+			}
+		}
+	}
+	var err error
+	if vm["disks"], err = json.Marshal(disks); err != nil {
+		return nil, err
+	}
+	if top["vm"], err = json.Marshal(vm); err != nil {
+		return nil, err
+	}
+	return json.Marshal(top)
+}
+
 // AdapterDHCP says which of a VM rvav just built has its address from
 // DHCP: its first adapter as first says, and the adapters it added, the
 // last ones, as added says. A template's other adapters are left out.
@@ -112,8 +182,9 @@ func OursOf(props json.RawMessage) Ours {
 				BlueprintNIC *string `json:"blueprint_nic"`
 			} `json:"nics"`
 			Disks []struct {
-				Key           *int32 `json:"key"`
-				BlueprintDisk *int   `json:"blueprint_disk"`
+				Key              *int32  `json:"key"`
+				BlueprintDisk    *int    `json:"blueprint_disk"`
+				BlueprintDiskKey *string `json:"blueprint_disk_key"`
 			} `json:"disks"`
 		} `json:"vm"`
 	}
@@ -125,6 +196,12 @@ func OursOf(props json.RawMessage) Ours {
 				out.BlueprintDisks = map[int32]int{}
 			}
 			out.BlueprintDisks[*d.Key] = *d.BlueprintDisk
+		}
+		if d.Key != nil && d.BlueprintDiskKey != nil {
+			if out.BlueprintDiskKeys == nil {
+				out.BlueprintDiskKeys = map[int32]string{}
+			}
+			out.BlueprintDiskKeys[*d.Key] = *d.BlueprintDiskKey
 		}
 	}
 	for _, n := range p.VM.Nics {
@@ -241,6 +318,9 @@ func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int
 			p.Disks[i].Key = present.Ptr(int(d.Key))
 			if j, ok := ours.BlueprintDisks[d.Key]; ok {
 				p.Disks[i].BlueprintDisk = present.Ptr(j)
+			}
+			if k, ok := ours.BlueprintDiskKeys[d.Key]; ok {
+				p.Disks[i].BlueprintDiskKey = &k
 			}
 		}
 	}

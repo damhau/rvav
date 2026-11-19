@@ -235,6 +235,12 @@ func markAdded(ours *vmprops.Ours, vm vsphere.VM, op day2.Op, label string) {
 					ours.BlueprintDisks = map[int32]int{}
 				}
 				ours.BlueprintDisks[d.Key] = argInt(op.Args, "blueprint_disk")
+				if key := argStr(op.Args, "blueprint_disk_key"); key != "" {
+					if ours.BlueprintDiskKeys == nil {
+						ours.BlueprintDiskKeys = map[int32]string{}
+					}
+					ours.BlueprintDiskKeys[d.Key] = key
+				}
 			}
 		}
 	}

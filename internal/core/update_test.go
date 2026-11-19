@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/provision"
+	"github.com/damhau/rvav/internal/vmprops"
 )
 
 func updateVM(name, ip string, cpu, memGB int, disks ...int) existingVM {
@@ -305,6 +307,87 @@ func TestUpdateDisksAmbiguous(t *testing.T) {
 		if op.Op == "remove_disk" {
 			t.Fatalf("removes %v", op.Args["file"])
 		}
+	}
+
+	// With keys (#191), the versions' disks are told apart: the update
+	// removes data and grows logs, wherever they are, and records logs's
+	// new place once it succeeds. On a VM recorded before its version had
+	// keys, by the places the old version gives them.
+	old.Disks = []blueprint.DiskPlan{{Key: "data", SizeGB: 20}, {Key: "logs", SizeGB: 50}}
+	next.Disks = []blueprint.DiskPlan{{Key: "logs", SizeGB: 60}}
+	keyed := keyedAs(updateVM("web01", "10.0.0.11", 2, 4, 50, 20, 50), "", "data", "logs")
+	before := updateVM("web02", "10.0.0.12", 2, 4, 50, 20, 50)
+	u = newPlan()
+	c = componentChange{key: "web", title: "Web", had: true, old: old, new: next, count: 2, vms: []existingVM{keyed, before}}
+	c.plan(u)
+	var got []string
+	for _, op := range u.ops {
+		got = append(got, fmt.Sprintf("%s %v %v", op.Key, op.Args["key"], op.Args["size_gb"]))
+	}
+	want := []string{"vsphere.disk_extend@web01 2002 60", "vsphere.disk_remove@web01 2001 <nil>",
+		"vsphere.disk_extend@web02 2002 60", "vsphere.disk_remove@web02 2001 <nil>"}
+	if !slices.Equal(got, want) || len(u.refused) > 0 || u.delta["storage_gb"] != -20 {
+		t.Fatalf("ops = %v, refused %v, delta %v", got, refusals(u), u.delta)
+	}
+	logs := []vmprops.DiskMark{{Device: 2002, Disk: 1, Key: "logs"}}
+	if !reflect.DeepEqual(u.marks, map[string][]vmprops.DiskMark{"res-web01": logs, "res-web02": logs}) {
+		t.Fatalf("marks = %+v", u.marks)
+	}
+}
+
+// keyedAs records the key of the blueprint disk each of a VM's disks is: ""
+// for none.
+func keyedAs(vm existingVM, keys ...string) existingVM {
+	vm.t.VM.Disks = slices.Clone(vm.t.VM.Disks)
+	for i, k := range keys {
+		vm.t.VM.Disks[i].BlueprintDiskKey = nil
+		if k != "" {
+			vm.t.VM.Disks[i].BlueprintDiskKey = new(k)
+		}
+	}
+	return vm
+}
+
+// Disks match by key only when every extra disk of both versions has one
+// (#191): giving the disks keys changes nothing on the VMs, and records
+// the keys once the update succeeds; a disk added is recorded with its
+// key; a version that keys only some disks matches them by place, refused
+// as before when it removes some and changes others.
+func TestUpdateDiskKeys(t *testing.T) {
+	base := blueprint.VMPlan{VCPU: 2, MemoryGB: 4, DiskGB: 50, Template: "tpl", Cluster: "GVA-DEV-CL01"}
+	plan := func(old, next []blueprint.DiskPlan, vm existingVM) *componentPlan {
+		o, n := base, base
+		o.Disks, n.Disks = old, next
+		u := newPlan()
+		c := componentChange{key: "web", title: "Web", had: true, old: o, new: n, count: 1, vms: []existingVM{vm}}
+		c.plan(u)
+		return u
+	}
+	vm := updateVM("web01", "10.0.0.11", 2, 4, 50, 20, 50)
+	vm.t.VM.PowerState = api.Suspended
+	u := plan([]blueprint.DiskPlan{{SizeGB: 20}, {SizeGB: 50}}, []blueprint.DiskPlan{{Key: "data", SizeGB: 20}, {Key: "logs", SizeGB: 50}}, vm)
+	want := map[string][]vmprops.DiskMark{"res-web01": {{Device: 2001, Disk: 1, Key: "data"}, {Device: 2002, Disk: 2, Key: "logs"}}}
+	if len(u.ops) > 0 || len(u.refused) > 0 || !reflect.DeepEqual(u.marks, want) {
+		t.Fatalf("keys given: ops %v, refused %v, marks %+v", keysOf(u.ops), refusals(u), u.marks)
+	}
+
+	keyed := keyedAs(updateVM("web01", "10.0.0.11", 2, 4, 50, 20), "", "logs")
+	u = plan([]blueprint.DiskPlan{{Key: "logs", SizeGB: 20}}, []blueprint.DiskPlan{{Key: "data", SizeGB: 30}, {Key: "logs", SizeGB: 20}}, keyed)
+	if !slices.Equal(keysOf(u.ops), []string{"vsphere.disk_add@web01"}) || u.ops[0].Args["blueprint_disk"] != 1 ||
+		u.ops[0].Args["blueprint_disk_key"] != "data" || !reflect.DeepEqual(u.marks["res-web01"], []vmprops.DiskMark{{Device: 2001, Disk: 2, Key: "logs"}}) {
+		t.Fatalf("a disk added before: ops %+v, marks %+v", u.ops, u.marks)
+	}
+	// Made again after it was added: not added twice.
+	again := keyedAs(recordedAs(updateVM("web01", "10.0.0.11", 2, 4, 50, 20, 30), 0, 1, 1), "", "logs", "data")
+	u = plan([]blueprint.DiskPlan{{Key: "logs", SizeGB: 20}}, []blueprint.DiskPlan{{Key: "data", SizeGB: 30}, {Key: "logs", SizeGB: 20}}, again)
+	if len(u.ops) > 0 || len(u.refused) > 0 {
+		t.Fatalf("made again: ops %v, refused %v", keysOf(u.ops), refusals(u))
+	}
+
+	u = plan([]blueprint.DiskPlan{{Key: "data", SizeGB: 20}, {SizeGB: 50}}, []blueprint.DiskPlan{{SizeGB: 50}},
+		keyedAs(updateVM("web01", "10.0.0.11", 2, 4, 50, 20, 50), "", "data"))
+	if len(u.refused) != 1 || !strings.Contains(u.refused[0].Reason, "Give every extra disk a key") || len(u.ops) > 0 {
+		t.Fatalf("some keyed: ops %v, refused %v", keysOf(u.ops), refusals(u))
 	}
 }
 

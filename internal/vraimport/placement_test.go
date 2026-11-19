@@ -47,6 +47,12 @@ resources:
 			t.Fatalf("disk %d = %+v", i, disks[i])
 		}
 	}
+	// Each keyed by its resource, as updates match disks by key (#191).
+	for i, want := range []string{"thin", "eager", "thick", "odd"} {
+		if disks[i]["key"] != want {
+			t.Fatalf("disk %d = %+v", i, disks[i])
+		}
+	}
 	if !has(p, Unmapped, "resources.odd.provisioningType", "isn't thin, thick or eagerZeroedThick") || p.Status != Partial {
 		t.Fatalf("notes = %s %+v", p.Status, p.Notes)
 	}

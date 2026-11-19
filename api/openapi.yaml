@@ -9800,8 +9800,15 @@ components:
           minimum: 0
           description: >-
             Which of its blueprint's disks this is: 0 for the first disk, 1 for the first extra disk, and so on
-            (ADR-0042). rvav records it when it builds the VM or an update adds the disk. Absent on a disk a
-            day-2 action added, on an onboarded VM, and on a VM built before rvav recorded it.
+            (ADR-0042), in the version the deployment has. rvav records it when it builds the VM or an update
+            adds the disk, and an update that succeeds records the place the disk has in its new version.
+            Absent on a disk a day-2 action added, on an onboarded VM, and on a VM built before rvav recorded it.
+        blueprint_disk_key:
+          type: string
+          description: >-
+            The `key` its blueprint gives the extra disk this is (ADR-0052), recorded with `blueprint_disk`.
+            Absent when the blueprint gives it none.
+          examples: [data]
 
     VmNic:
       type: object

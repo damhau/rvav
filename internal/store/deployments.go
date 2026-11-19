@@ -364,6 +364,21 @@ func (s *Store) UpdateResourceState(ctx context.Context, db DB, id, syncState st
 	return err
 }
 
+// EditResourceProperties replaces a resource's properties with what edit
+// makes of them, its row locked meanwhile.
+func (s *Store) EditResourceProperties(ctx context.Context, db DB, id string, edit func(json.RawMessage) (json.RawMessage, error)) error {
+	var props json.RawMessage
+	if err := db.QueryRow(ctx, `select properties from resources where id = $1 for update`, id).Scan(&props); err != nil {
+		return notFound(err)
+	}
+	next, err := edit(props)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(ctx, `update resources set properties = $2, updated_at = now() where id = $1`, id, next)
+	return err
+}
+
 // RefreshDeploymentSyncState sets a deployment's sync state from its worst resource.
 func (s *Store) RefreshDeploymentSyncState(ctx context.Context, db DB, id string) error {
 	_, err := db.Exec(ctx, `update deployments d set sync_state = coalesce((
