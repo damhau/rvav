@@ -1,11 +1,14 @@
 package provision
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"slices"
 	"time"
+
+	"go.temporal.io/sdk/activity"
 
 	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/ids"
@@ -40,11 +43,18 @@ func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
 			return "", detail, err
 		}
 		detail, err := a.op(ctx, in)
+		if errors.Is(err, vsphere.ErrNoDisk) && in.Op.Op == "remove_disk" && activity.IsActivity(ctx) && activity.GetInfo(ctx).Attempt > 1 {
+			// The attempt before removed it and stopped before it said so.
+			detail, err = "", nil
+		}
 		if err != nil {
 			var refused *vsphere.Refused
 			switch {
 			case vsphere.IsNotFound(err):
 				return "", "", permanent("The VM is no longer in vCenter.")
+			case errors.Is(err, vsphere.ErrNoDisk):
+				return "", "", permanent("%s is no longer on the VM: it was removed or changed since the request was made.",
+					cmp.Or(argStr(in.Op.Args, "disk"), "The disk"))
 			case errors.As(err, &refused):
 				return "", "", permanent("%s", refused.Msg)
 			case errors.Is(err, vsphere.ErrToolsNotRunning):
@@ -55,7 +65,12 @@ func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
 		if in.ResourceID != "" && in.Moref != "" {
-			if err := a.refreshVM(ctx, in); err != nil {
+			// A disk an update adds is the blueprint's disk it names.
+			var added map[string]int
+			if _, ok := in.Op.Args["blueprint_disk"]; ok && in.Op.Op == "add_disk" && detail != "" {
+				added = map[string]int{detail: argInt(in.Op.Args, "blueprint_disk")}
+			}
+			if err := a.refreshVM(ctx, in, added); err != nil {
 				// Accepting the changes is only this: tried again as a whole.
 				if in.Op.Op == "accept_changes" {
 					return "", "", fmt.Errorf("record the VM: %w", err)
@@ -80,9 +95,9 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return v.AddDisk(ctx, in.Moref, vsphere.DiskSpec{SizeGB: argInt(args, "size_gb"), Datastore: argStr(args, "datastore"),
 			StoragePolicy: argStr(args, "storage_policy"), Provisioning: argStr(args, "provisioning")})
 	case "extend_disk":
-		return "Grow the file system in the guest to use the space", v.ExtendDisk(ctx, in.Moref, argStr(args, "disk"), argInt(args, "size_gb"))
+		return "Grow the file system in the guest to use the space", v.ExtendDisk(ctx, in.Moref, diskRef(args), argInt(args, "size_gb"))
 	case "remove_disk":
-		return "", v.RemoveDisk(ctx, in.Moref, argStr(args, "disk"), argStr(args, "file"))
+		return "", v.RemoveDisk(ctx, in.Moref, diskRef(args))
 	case "set_tags":
 		return "", v.SetTags(ctx, in.Moref, argStrs(args, "categories"), argStrs(args, "tags"))
 	case "add_nic":
@@ -193,7 +208,9 @@ var settles = map[string][]string{
 // refreshVM stores what vCenter reports about the VM now, the aspects the
 // operation changed taken as rvav left them (S13.2). A vCenter or database
 // hiccup is tried again: left out, rvav's own change would look like drift.
-func (a *Activities) refreshVM(ctx context.Context, in OpInput) error {
+// refreshVM records the VM as vCenter has it now; added names, by label,
+// the blueprint disks an operation just added.
+func (a *Activities) refreshVM(ctx context.Context, in OpInput, added map[string]int) error {
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
@@ -201,7 +218,7 @@ func (a *Activities) refreshVM(ctx context.Context, in OpInput) error {
 				return serr
 			}
 		}
-		if err = a.refreshVMOnce(ctx, in); err == nil {
+		if err = a.refreshVMOnce(ctx, in, added); err == nil {
 			return nil
 		}
 		a.Log.Warn("refresh vm", "resource", in.ResourceID, "moref", in.Moref, "attempt", attempt+1, "err", err)
@@ -209,7 +226,7 @@ func (a *Activities) refreshVM(ctx context.Context, in OpInput) error {
 	return err
 }
 
-func (a *Activities) refreshVMOnce(ctx context.Context, in OpInput) error {
+func (a *Activities) refreshVMOnce(ctx context.Context, in OpInput, added map[string]int) error {
 	res, err := a.Store.GetResource(ctx, in.ResourceID)
 	if err != nil {
 		return err
@@ -235,8 +252,16 @@ func (a *Activities) refreshVMOnce(ctx context.Context, in OpInput) error {
 	// The sync writes the row too: replace it only if it is still what was
 	// read, else read it again.
 	for range 3 {
-		props, drifted := vmprops.Settle(res.Properties, vmprops.Build(vc.Name(), *vm, vmprops.OursOf(res.Properties), nil, 0),
-			settles[in.Op.Op]...)
+		ours := vmprops.OursOf(res.Properties)
+		for _, d := range vm.Disks {
+			if j, ok := added[d.Label]; ok && d.Key != 0 {
+				if ours.BlueprintDisks == nil {
+					ours.BlueprintDisks = map[int32]int{}
+				}
+				ours.BlueprintDisks[d.Key] = j
+			}
+		}
+		props, drifted := vmprops.Settle(res.Properties, vmprops.Build(vc.Name(), *vm, ours, nil, 0), settles[in.Op.Op]...)
 		state := "in_sync"
 		if drifted {
 			state = "drifted"
@@ -257,6 +282,10 @@ func (a *Activities) refreshVMOnce(ctx context.Context, in OpInput) error {
 		}
 	}
 	return errors.New("the VM's record kept changing")
+}
+
+func diskRef(args map[string]any) vsphere.DiskRef {
+	return vsphere.DiskRef{Key: int32(argInt(args, "key")), File: argStr(args, "file"), Label: argStr(args, "disk")}
 }
 
 func argInt(args map[string]any, key string) int {

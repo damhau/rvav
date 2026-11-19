@@ -376,6 +376,12 @@ another template, cluster, datastore or network, a disk that shrinks, or
 tags and custom properties. To make one of those, change it back, or
 delete the deployment and request it again.
 
+An update changes only the disks rvav built from the item, never a disk
+you added with **Add a disk**. On a VM that was onboarded, or built before
+rvav recorded its disks, rvav can't tell which disks are the item's: the
+update refuses to grow or remove them. To change those disks, use the
+VM's disk actions instead.
+
 When the item's form has a VM count, change it to scale out or in:
 - **Scale out:** the new VMs are named and addressed as in a new request,
   and their numbers follow the last one.

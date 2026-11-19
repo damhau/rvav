@@ -8983,6 +8983,16 @@ components:
         linked:
           type: boolean
           description: A child of its template's disk, as a linked clone's first disk is (ADR-0037). It can't be extended.
+        key:
+          type: integer
+          description: vCenter's device key for the disk, which stays the same while the disk is on the VM.
+        blueprint_disk:
+          type: integer
+          minimum: 0
+          description: >-
+            Which of its blueprint's disks this is: 0 for the first disk, 1 for the first extra disk, and so on
+            (ADR-0042). rvav records it when it builds the VM or an update adds the disk. Absent on a disk a
+            day-2 action added, on an onboarded VM, and on a VM built before rvav recorded it.
 
     VmNic:
       type: object

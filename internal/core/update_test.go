@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -17,9 +18,31 @@ func updateVM(name, ip string, cpu, memGB int, disks ...int) existingVM {
 		GuestState: api.VmPropertiesGuestStateRunning, Fqdn: new(name + ".corp.example"), Cluster: new("GVA-DEV-CL01"),
 		Nics: []api.VmNic{{Network: "dvpg-app", IpAddresses: &[]string{ip}}}}
 	for i, gb := range disks {
-		vm.Disks = append(vm.Disks, api.VmDisk{Label: day2.DiskLabel(i + 1), CapacityGb: gb})
+		file := fmt.Sprintf("[ds] %s/%s_%d.vmdk", name, name, i)
+		vm.Disks = append(vm.Disks, api.VmDisk{Label: day2.DiskLabel(i + 1), CapacityGb: gb, Key: new(2000 + i), File: &file, BlueprintDisk: new(i)})
 	}
 	return existingVM{t: day2.Target{ResourceID: "res-" + name, ResourceName: name, Type: "vsphere.vm", VM: vm}}
+}
+
+// recordedAs sets which blueprint disk each of a VM's disks is: -1 for a
+// disk that isn't one.
+func recordedAs(vm existingVM, which ...int) existingVM {
+	vm.t.VM.Disks = slices.Clone(vm.t.VM.Disks)
+	for i, j := range which {
+		vm.t.VM.Disks[i].BlueprintDisk = nil
+		if j >= 0 {
+			vm.t.VM.Disks[i].BlueprintDisk = new(j)
+		}
+	}
+	return vm
+}
+
+func refusals(u *componentPlan) []string {
+	var out []string
+	for _, r := range u.refused {
+		out = append(out, r.Reason)
+	}
+	return out
 }
 
 func keysOf(ops []day2.Op) []string {
@@ -186,6 +209,132 @@ func TestUpdateFailedJobs(t *testing.T) {
 	c.vms = nil
 	if n := c.plan(u); n != 1 || len(u.jobs) != 0 {
 		t.Fatalf("adds %d, jobs %+v", n, u.jobs)
+	}
+}
+
+// An update acts on the disks rvav recorded as the blueprint's (X1.6): not
+// on one a day-2 action added between them, wherever it sits.
+func TestUpdateDisksByRecord(t *testing.T) {
+	base := blueprint.VMPlan{VCPU: 2, MemoryGB: 4, DiskGB: 50, Template: "tpl", Cluster: "GVA-DEV-CL01"}
+	v2, v3 := base, base
+	v2.Disks = []blueprint.DiskPlan{{SizeGB: 20}, {SizeGB: 30}}
+	v3.Disks = []blueprint.DiskPlan{{SizeGB: 20}}
+	v3.DiskGB = 60
+	// Its first disk, v2's 20 GB disk, the owner's 100 GB disk, v2's 30 GB disk.
+	vm := recordedAs(updateVM("web01", "10.0.0.11", 2, 4, 50, 20, 100, 30), 0, 1, -1, 2)
+	u := newPlan()
+	c := componentChange{key: "web", title: "Web", had: true, old: v2, new: v3, count: 1, vms: []existingVM{vm}}
+	c.plan(u)
+	if len(u.refused) > 0 {
+		t.Fatalf("refused %v", refusals(u))
+	}
+	var got []string
+	for _, op := range u.ops {
+		got = append(got, fmt.Sprintf("%s %v %v", op.Op, op.Args["file"], op.Args["size_gb"]))
+	}
+	want := []string{"extend_disk <nil> 60", "remove_disk [ds] web01/web01_3.vmdk <nil>"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ops = %v, want %v", got, want)
+	}
+	if u.ops[0].Args["key"] != 2000 || u.ops[1].Args["key"] != 2003 {
+		t.Fatalf("by key: %+v", u.ops)
+	}
+	if u.delta["storage_gb"] != 10-30 || u.changes[1].Title != "Remove Hard disk 4 from web01" {
+		t.Fatalf("delta %v, changes %+v", u.delta, u.changes)
+	}
+
+	// Its first extra disk grows, wherever it sits.
+	v4 := v3
+	v4.Disks = []blueprint.DiskPlan{{SizeGB: 40}}
+	moved := recordedAs(updateVM("web03", "10.0.0.13", 2, 4, 60, 100, 20), 0, -1, 1)
+	u = newPlan()
+	c = componentChange{key: "web", title: "Web", had: true, old: v3, new: v4, count: 1, vms: []existingVM{moved}}
+	if c.plan(u); len(u.refused) > 0 || len(u.ops) != 1 || u.ops[0].Args["key"] != 2002 || u.ops[0].Args["size_gb"] != 40 {
+		t.Fatalf("grow its first extra disk: %+v, refused %v", u.ops, refusals(u))
+	}
+	c = componentChange{key: "web", title: "Web", had: true, old: v2, new: v3, count: 1}
+
+	// The blueprint's disk the owner removed stays removed.
+	gone := recordedAs(updateVM("web02", "10.0.0.12", 2, 4, 50, 100, 30), 0, -1, 2)
+	u = newPlan()
+	c.vms = []existingVM{gone}
+	if c.plan(u); len(u.refused) > 0 || !slices.Equal(keysOf(u.ops), []string{"vsphere.disk_extend@web02", "vsphere.disk_remove@web02"}) ||
+		u.ops[1].Args["key"] != 2002 {
+		t.Fatalf("without its first extra disk: %v, refused %v", u.ops, refusals(u))
+	}
+}
+
+// A version that removes extra disks and changes others is refused: its
+// disks have no names, so rvav can't tell which ones go.
+func TestUpdateDisksAmbiguous(t *testing.T) {
+	base := blueprint.VMPlan{VCPU: 2, MemoryGB: 4, DiskGB: 50, Template: "tpl", Cluster: "GVA-DEV-CL01"}
+	old, next := base, base
+	old.Disks = []blueprint.DiskPlan{{SizeGB: 20}, {SizeGB: 50}}
+	next.Disks = []blueprint.DiskPlan{{SizeGB: 50}}
+	u := newPlan()
+	c := componentChange{key: "web", title: "Web", had: true, old: old, new: next, count: 1,
+		vms: []existingVM{updateVM("web01", "10.0.0.11", 2, 4, 50, 20, 50)}}
+	c.plan(u)
+	if len(u.refused) != 1 || *u.refused[0].Setting != "disks" || !strings.Contains(u.refused[0].Reason, "can't tell which ones go") {
+		t.Fatalf("refused %v", refusals(u))
+	}
+	for _, op := range u.ops {
+		if op.Op == "remove_disk" {
+			t.Fatalf("removes %v", op.Args["file"])
+		}
+	}
+}
+
+// After an update failed part-way, the next adds the disk only to the VMs
+// it didn't reach, and records which blueprint disk each new one is.
+func TestUpdateAddsOnce(t *testing.T) {
+	base := blueprint.VMPlan{VCPU: 2, MemoryGB: 4, DiskGB: 50, Template: "tpl", Cluster: "GVA-DEV-CL01"}
+	next := base
+	next.Disks = []blueprint.DiskPlan{{SizeGB: 20}}
+	u := newPlan()
+	c := componentChange{key: "web", title: "Web", had: true, old: base, new: next, count: 2,
+		vms: []existingVM{updateVM("web01", "10.0.0.11", 2, 4, 50, 20), updateVM("web02", "10.0.0.12", 2, 4, 50)}}
+	c.plan(u)
+	if !slices.Equal(keysOf(u.ops), []string{"vsphere.disk_add@web02"}) || u.ops[0].Args["blueprint_disk"] != 1 || u.delta["storage_gb"] != 20 {
+		t.Fatalf("ops = %+v, delta %v", u.ops, u.delta)
+	}
+}
+
+// A VM whose disks rvav didn't record, onboarded or built before X1.6:
+// growing or removing its disks is refused with the reason, not guessed
+// from their places; a disk the new version brings is added.
+func TestUpdateDisksUnrecorded(t *testing.T) {
+	base := blueprint.VMPlan{VCPU: 2, MemoryGB: 4, DiskGB: 50, Template: "tpl", Cluster: "GVA-DEV-CL01",
+		Disks: []blueprint.DiskPlan{{SizeGB: 20}, {SizeGB: 30}}}
+	vm := recordedAs(updateVM("legacy01", "10.0.0.41", 2, 4, 50, 20, 30), -1, -1, -1)
+	for _, tc := range []struct {
+		name    string
+		change  func(*blueprint.VMPlan)
+		refused []string
+		ops     []string
+	}{
+		{"grow its first disk", func(p *blueprint.VMPlan) { p.DiskGB = 80 }, []string{"disk_gb"}, nil},
+		{"grow an extra disk", func(p *blueprint.VMPlan) { p.Disks[1].SizeGB = 40 }, []string{"disks"}, nil},
+		{"remove an extra disk", func(p *blueprint.VMPlan) { p.Disks = p.Disks[:1] }, []string{"disks"}, nil},
+		{"add a disk", func(p *blueprint.VMPlan) { p.Disks = append(p.Disks, blueprint.DiskPlan{SizeGB: 10}) }, nil,
+			[]string{"vsphere.disk_add@legacy01"}},
+	} {
+		next := base
+		next.Disks = slices.Clone(base.Disks)
+		tc.change(&next)
+		u := newPlan()
+		c := componentChange{key: "web", title: "Web", had: true, old: base, new: next, count: 1, vms: []existingVM{vm}}
+		c.plan(u)
+		var settings []string
+		for _, r := range u.refused {
+			settings = append(settings, *r.Setting)
+			if !strings.Contains(r.Reason, "legacy01 was onboarded or built before rvav recorded") {
+				t.Errorf("%s: reason %q", tc.name, r.Reason)
+			}
+		}
+		if !slices.Equal(settings, tc.refused) || !slices.Equal(keysOf(u.ops), tc.ops) {
+			t.Errorf("%s: refused %v, ops %v", tc.name, refusals(u), keysOf(u.ops))
+		}
 	}
 }
 

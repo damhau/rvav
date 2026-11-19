@@ -145,10 +145,13 @@ func init() {
 		},
 		Ops: func(t Target, in map[string]any) []Op {
 			label, size := strInput(in, "disk"), intInput(in, "size_gb")
-			op := vcenter("vsphere.disk_extend", fmt.Sprintf("Extend %s to %d GB", label, size), "extend_disk",
-				map[string]any{"disk": label, "size_gb": size})
+			args := map[string]any{"disk": label, "size_gb": size}
+			op := vcenter("vsphere.disk_extend", fmt.Sprintf("Extend %s to %d GB", label, size), "extend_disk", args)
 			if d := disk(t, label); d != nil {
 				op.Detail = fmt.Sprintf("Was %d GB", d.CapacityGb)
+				if d.Key != nil {
+					args["key"] = *d.Key
+				}
 			}
 			return []Op{op}
 		},
@@ -189,6 +192,9 @@ func init() {
 				op.Detail = fmt.Sprintf("%d GB", d.CapacityGb)
 				if d.File != nil {
 					args["file"] = *d.File
+				}
+				if d.Key != nil {
+					args["key"] = *d.Key
 				}
 			}
 			return []Op{op}

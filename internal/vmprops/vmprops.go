@@ -37,6 +37,29 @@ type Ours struct {
 	// DHCPAdapters say, by adapter label, whether rvav left an adapter's
 	// address to DHCP; an adapter it doesn't know about is missing.
 	DHCPAdapters map[string]bool `json:"-"`
+	// BlueprintDisks say, by device key, which of its blueprint's disks a
+	// disk is (ADR-0042); a disk rvav didn't make from it is missing.
+	BlueprintDisks map[int32]int `json:"-"`
+}
+
+// BuiltDisks are the blueprint disks of a VM rvav just built: its first
+// disk, and the extra disks it added after its template's.
+func BuiltDisks(vm vsphere.VM, extra int) map[int32]int {
+	base := vm.BaseDisks
+	if base == 0 {
+		base = len(vm.Disks) - extra
+	}
+	out := map[int32]int{}
+	for i, d := range vm.Disks {
+		switch j := i - base + 1; {
+		case d.Key == 0:
+		case i == 0 && base > 0:
+			out[d.Key] = 0
+		case j >= 1 && j <= extra:
+			out[d.Key] = j
+		}
+	}
+	return out
 }
 
 // AdapterDHCP says which of a VM rvav just built has its address from
@@ -64,10 +87,22 @@ func OursOf(props json.RawMessage) Ours {
 				Label string `json:"label"`
 				DHCP  *bool  `json:"dhcp"`
 			} `json:"nics"`
+			Disks []struct {
+				Key           *int32 `json:"key"`
+				BlueprintDisk *int   `json:"blueprint_disk"`
+			} `json:"disks"`
 		} `json:"vm"`
 	}
 	_ = json.Unmarshal(props, &p)
 	out := p.VM.Ours
+	for _, d := range p.VM.Disks {
+		if d.Key != nil && d.BlueprintDisk != nil {
+			if out.BlueprintDisks == nil {
+				out.BlueprintDisks = map[int32]int{}
+			}
+			out.BlueprintDisks[*d.Key] = *d.BlueprintDisk
+		}
+	}
 	for _, n := range p.VM.Nics {
 		if n.DHCP != nil {
 			if out.DHCPAdapters == nil {
@@ -171,6 +206,12 @@ func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int
 		}
 		if d.Linked {
 			p.Disks[i].Linked = present.Ptr(true)
+		}
+		if d.Key != 0 {
+			p.Disks[i].Key = present.Ptr(int(d.Key))
+			if j, ok := ours.BlueprintDisks[d.Key]; ok {
+				p.Disks[i].BlueprintDisk = present.Ptr(j)
+			}
 		}
 	}
 	p.Nics = make([]api.VmNic, len(vm.NICs))

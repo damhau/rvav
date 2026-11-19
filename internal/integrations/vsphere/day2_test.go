@@ -29,8 +29,8 @@ func TestRemoveDisk(t *testing.T) {
 			t.Fatal(err)
 		}
 		boot, gone, kept := vm.Disks[0], vm.Disks[1], vm.Disks[2]
-		if gone.File == "" || gone.File == kept.File {
-			t.Fatalf("disks = %+v", vm.Disks)
+		if gone.File == "" || gone.File == kept.File || gone.Key == 0 || gone.Key == kept.Key || vm.BaseDisks != 1 {
+			t.Fatalf("disks = %+v, %d from the template", vm.Disks, vm.BaseDisks)
 		}
 		ds := object.NewDatastore(c, mustRef(t, ctx, c, "Datastore", "vsan-gva-dev-cl01"))
 		ds.InventoryPath = "vsan-gva-dev-cl01"
@@ -40,30 +40,44 @@ func TestRemoveDisk(t *testing.T) {
 			t.Fatalf("the disk's file before: %v", err)
 		}
 
-		if err := d.RemoveDisk(ctx, vm.Moref, gone.Label, gone.File); err != nil {
+		// Another disk at its key or with its file is not it.
+		if err := d.RemoveDisk(ctx, vm.Moref, DiskRef{Key: gone.Key, File: kept.File}); !errors.Is(err, ErrNoDisk) {
+			t.Fatalf("its key with another's file: %v", err)
+		}
+		ref := DiskRef{Key: gone.Key, File: gone.File, Label: gone.Label}
+		if err := d.RemoveDisk(ctx, vm.Moref, ref); err != nil {
 			t.Fatal(err)
 		}
-		if err := d.RemoveDisk(ctx, vm.Moref, gone.Label, gone.File); err != nil {
+		if err := d.RemoveDisk(ctx, vm.Moref, ref); !errors.Is(err, ErrNoDisk) {
 			t.Fatalf("again: %v", err)
+		}
+		if err := d.ExtendDisk(ctx, vm.Moref, ref, 50); !errors.Is(err, ErrNoDisk) {
+			t.Fatalf("extending it: %v", err)
 		}
 		if vm, err = d.GetVM(ctx, vm.Moref); err != nil {
 			t.Fatal(err)
 		}
-		if len(vm.Disks) != 2 || vm.Disks[1].File != kept.File {
+		if len(vm.Disks) != 2 || vm.Disks[1].File != kept.File || vm.Disks[1].Key != kept.Key {
 			t.Fatalf("disks after = %+v", vm.Disks)
+		}
+		if err := d.ExtendDisk(ctx, vm.Moref, DiskRef{Key: kept.Key}, 8); err != nil {
+			t.Fatal(err)
+		}
+		if vm, err = d.GetVM(ctx, vm.Moref); err != nil || vm.Disks[1].CapacityGB != 8 {
+			t.Fatalf("extended by its key: %+v %v", vm.Disks, err)
 		}
 		if _, err := ds.Stat(ctx, path.Path); err == nil {
 			t.Fatal("the disk's file is still on the datastore")
 		}
 
 		var refused *Refused
-		if err := d.RemoveDisk(ctx, vm.Moref, boot.Label, boot.File); !errors.As(err, &refused) {
+		if err := d.RemoveDisk(ctx, vm.Moref, DiskRef{Key: boot.Key, File: boot.File}); !errors.As(err, &refused) {
 			t.Fatalf("the boot disk: %v", err)
 		}
 		if err := d.CreateSnapshot(ctx, vm.Moref, "before", "", false); err != nil {
 			t.Fatal(err)
 		}
-		if err := d.RemoveDisk(ctx, vm.Moref, vm.Disks[1].Label, ""); !errors.As(err, &refused) {
+		if err := d.RemoveDisk(ctx, vm.Moref, DiskRef{Label: vm.Disks[1].Label}); !errors.As(err, &refused) {
 			t.Fatalf("with a snapshot: %v", err)
 		}
 	})

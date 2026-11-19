@@ -438,8 +438,9 @@ func TestUpdateFailedDeployment(t *testing.T) {
 		if pv, kinds := kindsOf(inputs); !pv.Allowed || pv.Unchanged || !slices.Equal(kinds, []string{"job", "job"}) {
 			t.Fatalf("failed deployment's repair = %+v", pv)
 		}
+		// Size M's first disk is bigger too: it grows.
 		inputs["size"] = "M"
-		if pv, kinds := kindsOf(inputs); !pv.Allowed || !slices.Equal(kinds, []string{"resize", "job", "job"}) {
+		if pv, kinds := kindsOf(inputs); !pv.Allowed || !slices.Equal(kinds, []string{"disk_extend", "resize", "job", "job"}) {
 			t.Fatalf("failed deployment's preview = %+v", pv)
 		}
 		var req api.Request
@@ -455,6 +456,13 @@ func TestUpdateFailedDeployment(t *testing.T) {
 		h.json("GET", "/api/v1/deployments/"+depID, owner, nil, 200, &dep)
 		if dep.Status != api.DeploymentStatusReady || dep.Inputs["size"] != "M" {
 			t.Fatalf("deployment = %s, inputs %v", dep.Status, dep.Inputs)
+		}
+		for _, r := range dep.Resources {
+			if v, _ := r.ValueByDiscriminator(); v != nil {
+				if vm, ok := v.(api.VmResource); ok && vm.Vm.Disks[0].CapacityGb != 80 {
+					t.Fatalf("%s's first disk = %+v", vm.Name, vm.Vm.Disks[0])
+				}
+			}
 		}
 		// Its history lists the update.
 		var history struct{ Items []api.Request }

@@ -29,16 +29,6 @@ type Refused struct{ Msg string }
 
 func (e *Refused) Error() string { return e.Msg }
 
-// findDevice finds a device by the label vCenter shows ("Hard disk 1").
-func findDevice(devices object.VirtualDeviceList, label string) types.BaseVirtualDevice {
-	for _, d := range devices {
-		if info := d.GetVirtualDevice().DeviceInfo; info != nil && info.GetDescription().Label == label {
-			return d
-		}
-	}
-	return devices.Find(label)
-}
-
 func deviceLabel(d types.BaseVirtualDevice) string {
 	if info := d.GetVirtualDevice().DeviceInfo; info != nil {
 		return info.GetDescription().Label
@@ -184,11 +174,37 @@ func (cl *Client) AddDisk(ctx context.Context, moref string, d DiskSpec) (string
 	return "", nil
 }
 
-// RemoveDisk detaches a disk and deletes its file. It is found by its file
-// when one is given, as vCenter numbers the labels again once a disk is
-// gone, else by its label; one already gone is not an error. The boot disk,
-// a linked clone's template disk and a VM with snapshots are refused.
-func (cl *Client) RemoveDisk(ctx context.Context, moref, label, file string) error {
+// ErrNoDisk: the disk an action names is not on the VM.
+var ErrNoDisk = errors.New("the disk is not on the VM")
+
+// DiskRef names a disk of a VM: by its device key when it has one, and by
+// its file when it has one, as vCenter numbers the labels again once a disk
+// is gone; else by its label.
+type DiskRef struct {
+	Key   int32
+	File  string
+	Label string
+}
+
+func (r DiskRef) find(devices object.VirtualDeviceList) *types.VirtualDisk {
+	for _, d := range devices.SelectByType((*types.VirtualDisk)(nil)) {
+		vd := d.(*types.VirtualDisk)
+		switch {
+		case r.Key != 0 || r.File != "":
+			if (r.Key == 0 || vd.Key == r.Key) && (r.File == "" || diskFile(vd) == r.File) {
+				return vd
+			}
+		case deviceLabel(vd) == r.Label || devices.Name(vd) == r.Label:
+			return vd
+		}
+	}
+	return nil
+}
+
+// RemoveDisk detaches a disk and deletes its file; ErrNoDisk when it is not
+// on the VM. The boot disk, a linked clone's template disk and a VM with
+// snapshots are refused.
+func (cl *Client) RemoveDisk(ctx context.Context, moref string, ref DiskRef) error {
 	vm, err := cl.vmObject(ctx, moref)
 	if err != nil {
 		return err
@@ -201,15 +217,10 @@ func (cl *Client) RemoveDisk(ctx context.Context, moref, label, file string) err
 		return errVMGone
 	}
 	devices := object.VirtualDeviceList(o.Config.Hardware.Device)
-	var disk *types.VirtualDisk
-	for _, d := range devices.SelectByType((*types.VirtualDisk)(nil)) {
-		if vd := d.(*types.VirtualDisk); file != "" && diskFile(vd) == file || file == "" && deviceLabel(vd) == label {
-			disk = vd
-		}
-	}
+	disk := ref.find(devices)
 	switch {
 	case disk == nil:
-		return nil
+		return ErrNoDisk
 	case o.Snapshot != nil:
 		return &Refused{Msg: "The VM has snapshots: delete them before removing a disk."}
 	case disk.Key == bootDisk(devices, o.Config.BootOptions).Key:
@@ -243,7 +254,7 @@ func diskFile(d *types.VirtualDisk) string {
 }
 
 // ExtendDisk grows a disk. Shrinking is refused, as in vCenter.
-func (cl *Client) ExtendDisk(ctx context.Context, moref, label string, sizeGB int) error {
+func (cl *Client) ExtendDisk(ctx context.Context, moref string, ref DiskRef, sizeGB int) error {
 	vm, err := cl.vmObject(ctx, moref)
 	if err != nil {
 		return err
@@ -252,16 +263,16 @@ func (cl *Client) ExtendDisk(ctx context.Context, moref, label string, sizeGB in
 	if err != nil {
 		return err
 	}
-	disk, ok := findDevice(devices, label).(*types.VirtualDisk)
-	if !ok {
-		return &Refused{Msg: label + " is not on the VM."}
+	disk := ref.find(devices)
+	if disk == nil {
+		return ErrNoDisk
 	}
 	want := int64(sizeGB) * 1024 * 1024
 	if want == disk.CapacityInKB {
 		return nil
 	}
 	if want < disk.CapacityInKB {
-		return &Refused{Msg: fmt.Sprintf("%s is %d GB; disks can only grow.", label, disk.CapacityInKB/(1024*1024))}
+		return &Refused{Msg: fmt.Sprintf("%s is %d GB; disks can only grow.", deviceLabel(disk), disk.CapacityInKB/(1024*1024))}
 	}
 	disk.CapacityInKB, disk.CapacityInBytes = want, want*1024
 	return vm.EditDevice(ctx, disk)

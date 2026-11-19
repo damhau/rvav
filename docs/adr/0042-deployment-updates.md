@@ -59,6 +59,18 @@ and a deployment that failed half-way was retried or deleted.
   - `vm_remove`, then `vm_add`;
   - `job`: the AWX jobs the new version adds run on the VMs kept, and each
     VM added runs all its component's jobs as it is built.
+- **rvav records which of its blueprint's disks each disk of a VM is**
+  (`blueprint_disk`, kept by vCenter's device key) when it builds the VM
+  and when an update adds a disk (X1.6). An update grows and removes only
+  those, wherever day-2 actions added disks between them, and adds a
+  version's disk only to the VMs that don't have it: an update made again
+  after one failed part-way doesn't add it twice. A version's extra disks
+  have no names, so the n-th of the old version is the n-th of the new;
+  a version that removes extra disks while it changes others is refused,
+  as rvav can't tell which ones go. A VM without the record (onboarded,
+  or built before X1.6) refuses growing or removing its disks, rather than
+  guessing from their places; a disk the new version adds is added to it.
+  A disk no longer on the VM when its step runs fails the step.
 - **Changes that delete something are marked `destructive`:** a disk and
   its data, an adapter, a VM.
 - **A change rvav can't make in place is refused, with its reason,** and

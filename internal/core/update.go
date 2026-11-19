@@ -657,6 +657,18 @@ func (c componentChange) scaleIn(u *componentPlan, refuse func(setting, reason s
 	}
 }
 
+// blueprintDisks are a VM's disks by the blueprint disk rvav recorded
+// each is (ADR-0042).
+func blueprintDisks(t day2.Target) map[int]api.VmDisk {
+	out := map[int]api.VmDisk{}
+	for _, d := range t.VM.Disks {
+		if d.BlueprintDisk != nil {
+			out[*d.BlueprintDisk] = d
+		}
+	}
+	return out
+}
+
 func ruleComponent(r day2.Resource) string {
 	var p struct {
 		Rule struct {
@@ -714,13 +726,19 @@ func (c componentChange) inPlace(u *componentPlan, vms []existingVM, refuse func
 	}
 	for i := range min(len(o.Disks), len(n.Disks)) {
 		od, nd := o.Disks[i], n.Disks[i]
-		label := day2.DiskLabel(i + 2)
+		label := fmt.Sprintf("Extra disk %d", i+1)
 		if nd.SizeGB < od.SizeGB {
 			refuse("disks", fmt.Sprintf("%s shrinks from %d to %d GB: vCenter can't shrink a disk.", label, od.SizeGB, nd.SizeGB))
 		}
 		if od.Datastore != nd.Datastore || od.StoragePolicy != nd.StoragePolicy || od.Provisioning != nd.Provisioning {
 			refuse("disks", label+" changes its datastore, storage policy or provisioning: rvav doesn't move existing disks.")
 		}
+	}
+	// A version's extra disks have no names: the n-th is the n-th.
+	ambiguous := len(n.Disks) < len(o.Disks) && !reflect.DeepEqual(o.Disks[:len(n.Disks)], n.Disks)
+	if ambiguous {
+		refuse("disks", "The new version removes extra disks and changes others: rvav matches the versions' disks by their place, "+
+			"so it can't tell which ones go. Remove them in one version and change the others in the next.")
 	}
 	oldNICs, newNICs := map[string]int{}, map[string]int{}
 	for i, x := range o.NICs {
@@ -768,40 +786,64 @@ func (c componentChange) inPlace(u *componentPlan, vms []existingVM, refuse func
 			}
 			return true
 		}
-		if d := day2.Disk(t, day2.DiskLabel(1)); n.DiskGB > o.DiskGB && d != nil && d.CapacityGb < n.DiskGB {
+		// Which of its disks are the blueprint's, as rvav recorded them; a
+		// VM without its first disk recorded is one it didn't build so.
+		own := blueprintDisks(t)
+		_, known := own[0]
+		unknown := func(setting, what string) {
+			refuse(setting, name+" was onboarded or built before rvav recorded which of its disks are the blueprint's, so rvav can't tell "+
+				"which disk to "+what+". Change its disks with the day-2 actions instead.")
+		}
+		grow := func(d api.VmDisk, size int) {
+			ops = append(ops, day2.Get("disk_extend").Ops(t, map[string]any{"disk": d.Label, "size_gb": float64(size)})...)
+			change(api.DiskExtend, fmt.Sprintf("Grow %s of %s to %d GB", d.Label, name, size), fmt.Sprintf("Was %d GB.", d.CapacityGb), false)
+			u.delta["storage_gb"] += size - d.CapacityGb
+		}
+		if d, ok := own[0]; n.DiskGB > o.DiskGB {
 			switch {
+			case !ok:
+				unknown("disk_gb", "grow")
+			case d.CapacityGb >= n.DiskGB:
 			case d.Linked != nil && *d.Linked:
 				refuse("disk_gb", name+": a linked clone's disk from its template can't grow.")
 			case disks("grow"):
-				ops = append(ops, day2.Get("disk_extend").Ops(t, map[string]any{"disk": d.Label, "size_gb": float64(n.DiskGB)})...)
-				change(api.DiskExtend, fmt.Sprintf("Grow %s of %s to %d GB", d.Label, name, n.DiskGB), fmt.Sprintf("Was %d GB.", d.CapacityGb), false)
-				u.delta["storage_gb"] += n.DiskGB - d.CapacityGb
+				grow(d, n.DiskGB)
 			}
 		}
 		for i := range max(len(o.Disks), len(n.Disks)) {
-			label := day2.DiskLabel(i + 2)
-			d := day2.Disk(t, label)
+			d, ok := own[i+1]
 			switch {
+			case ambiguous:
 			case i >= len(o.Disks):
+				// Already added by an update that failed after it.
+				if ok {
+					continue
+				}
 				nd := n.Disks[i]
 				in := map[string]any{"size_gb": float64(nd.SizeGB), "datastore": nd.Datastore, "provisioning": nd.Provisioning, "storage_policy": nd.StoragePolicy}
-				ops = append(ops, day2.Get("disk_add").Ops(t, in)...)
+				add := day2.Get("disk_add").Ops(t, in)
+				for _, op := range add {
+					op.Args["blueprint_disk"] = i + 1
+				}
+				ops = append(ops, add...)
 				change(api.DiskAdd, fmt.Sprintf("Add a %d GB disk to %s", nd.SizeGB, name), nd.Datastore, false)
 				u.delta["storage_gb"] += nd.SizeGB
 			case i >= len(n.Disks):
-				if d == nil || !disks("remove") {
-					continue
+				switch {
+				case !ok && !known:
+					unknown("disks", "remove")
+				case ok && disks("remove"):
+					ops = append(ops, day2.Get("disk_remove").Ops(t, map[string]any{"disk": d.Label})...)
+					change(api.DiskRemove, fmt.Sprintf("Remove %s from %s", d.Label, name), fmt.Sprintf("Its %d GB and the data on it are deleted.", d.CapacityGb), true)
+					u.delta["storage_gb"] -= d.CapacityGb
 				}
-				ops = append(ops, day2.Get("disk_remove").Ops(t, map[string]any{"disk": label})...)
-				change(api.DiskRemove, fmt.Sprintf("Remove %s from %s", label, name), fmt.Sprintf("Its %d GB and the data on it are deleted.", d.CapacityGb), true)
-				u.delta["storage_gb"] -= d.CapacityGb
-			case n.Disks[i].SizeGB > o.Disks[i].SizeGB && d != nil && d.CapacityGb < n.Disks[i].SizeGB:
-				if !disks("grow") {
-					continue
+			case n.Disks[i].SizeGB > o.Disks[i].SizeGB:
+				switch {
+				case !ok && !known:
+					unknown("disks", "grow")
+				case ok && d.CapacityGb < n.Disks[i].SizeGB && disks("grow"):
+					grow(d, n.Disks[i].SizeGB)
 				}
-				ops = append(ops, day2.Get("disk_extend").Ops(t, map[string]any{"disk": label, "size_gb": float64(n.Disks[i].SizeGB)})...)
-				change(api.DiskExtend, fmt.Sprintf("Grow %s of %s to %d GB", label, name, n.Disks[i].SizeGB), fmt.Sprintf("Was %d GB.", d.CapacityGb), false)
-				u.delta["storage_gb"] += n.Disks[i].SizeGB - d.CapacityGb
 			}
 		}
 		for _, x := range n.NICs {

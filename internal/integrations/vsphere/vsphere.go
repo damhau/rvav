@@ -177,6 +177,9 @@ type VM struct {
 	// Tags are its vSphere tags, as category/tag; nil when they weren't
 	// read.
 	Tags []string
+	// BaseDisks is how many disks its template gave it, as rvav kept on the
+	// VM when it built it; 0 when it didn't.
+	BaseDisks int
 }
 
 type Snapshot struct {
@@ -186,6 +189,8 @@ type Snapshot struct {
 }
 
 type Disk struct {
+	// Key is vCenter's device key, which stays while the disk is on the VM.
+	Key        int32
 	Label      string
 	CapacityGB int
 	Datastore  string
@@ -241,8 +246,8 @@ type Driver interface {
 	Suspend(ctx context.Context, moref string) error
 	Reconfigure(ctx context.Context, moref string, cpus, memoryMB int) error
 	AddDisk(ctx context.Context, moref string, d DiskSpec) (string, error)
-	ExtendDisk(ctx context.Context, moref, label string, sizeGB int) error
-	RemoveDisk(ctx context.Context, moref, label, file string) error
+	ExtendDisk(ctx context.Context, moref string, ref DiskRef, sizeGB int) error
+	RemoveDisk(ctx context.Context, moref string, ref DiskRef) error
 	AddNIC(ctx context.Context, moref, network string) error
 	RemoveNIC(ctx context.Context, moref, label string) error
 	SetNICNetwork(ctx context.Context, moref, label, network string) error
@@ -556,6 +561,11 @@ func toVM(m mo.VirtualMachine) VM {
 		vm.MemoryMB = int(m.Config.Hardware.MemoryMB)
 		vm.Template = m.Config.Template
 		vm.CPUHotAdd = m.Config.CpuHotAddEnabled != nil && *m.Config.CpuHotAddEnabled
+		for _, o := range m.Config.ExtraConfig {
+			if v, ok := o.GetOptionValue().Value.(string); ok && o.GetOptionValue().Key == baseDisksKey {
+				vm.BaseDisks, _ = strconv.Atoi(v)
+			}
+		}
 		vm.MemoryHotAdd = m.Config.MemoryHotAddEnabled != nil && *m.Config.MemoryHotAddEnabled
 		// Disks in controller and unit order, as vCenter numbers them;
 		// adapters by key, the first adapter first; other devices in the
@@ -596,8 +606,8 @@ func toVM(m mo.VirtualMachine) VM {
 				if p.FromString(file) {
 					ds = p.Datastore
 				}
-				vm.Disks = append(vm.Disks, Disk{Label: label, CapacityGB: gb, Datastore: ds, File: file, Provisioning: provisioningOf(dev),
-					Linked: linkedDisk(dev)})
+				vm.Disks = append(vm.Disks, Disk{Key: dev.Key, Label: label, CapacityGB: gb, Datastore: ds, File: file,
+					Provisioning: provisioningOf(dev), Linked: linkedDisk(dev)})
 				vm.DiskGB += gb
 			case types.BaseVirtualEthernetCard:
 				card := dev.GetVirtualEthernetCard()
