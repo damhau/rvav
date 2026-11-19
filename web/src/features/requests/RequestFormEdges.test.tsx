@@ -70,6 +70,43 @@ function storedInputs(path: string) {
 }
 
 describe("Request form edges", () => {
+  it("keeps a secret input out of the query and mutation caches, yet sends it", async () => {
+    form("page");
+    const previewed: unknown[] = [];
+    const listen = ({ request }: { request: Request }) => {
+      if (request.url.endsWith("/requests/preview"))
+        void request
+          .clone()
+          .json()
+          .then((b) => previewed.push(b));
+    };
+    server.events.on("request:start", listen);
+    try {
+      const user = userEvent.setup();
+      const { client, router } = await openForm();
+      await user.type(screen.getByLabelText("Password", { selector: "input" }), "correct-horse-battery");
+      await user.type(screen.getByLabelText("Role name"), "app_ro");
+      const keys = () =>
+        client
+          .getQueryCache()
+          .getAll()
+          .map((q) => JSON.stringify(q.queryKey));
+      await waitFor(() => expect(keys().some((k) => k.includes("secret #"))).toBe(true));
+      expect(keys().filter((k) => k.includes("correct-horse"))).toEqual([]);
+      await waitFor(() => expect(JSON.stringify(previewed)).toContain("correct-horse-battery"));
+      await user.click(screen.getByRole("button", { name: "Submit request" }));
+      await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/requests\/REQ-/));
+      const holding = () =>
+        client
+          .getMutationCache()
+          .getAll()
+          .filter((m) => JSON.stringify(m.state.variables ?? null).includes("correct-horse"));
+      await waitFor(() => expect(holding()).toEqual([]));
+    } finally {
+      server.events.removeListener("request:start", listen);
+    }
+  }, 20_000);
+
   it("keeps a field a later preview showed while a newer one loads, after Next", async () => {
     form("wizard");
     const user = userEvent.setup();

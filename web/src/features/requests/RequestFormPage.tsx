@@ -22,6 +22,7 @@ import { Attention, fieldControl, type Unplaced } from "@/forms/attention";
 import { sentInputs, withDefaults } from "@/forms/defaults";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
 import { sendingText, useSendingFiles } from "@/forms/file";
+import { useSecretStandIns } from "@/forms/secretKeys";
 import { api, call, isApiError } from "@/lib/api/client";
 import type {
   CatalogItem,
@@ -483,9 +484,16 @@ function RequestFormBody({
     ],
   );
   const debounced = useDebounced(draft, 350);
+  const standIns = useSecretStandIns(form.ui_schema.fields);
+  const previewKey = (d: RequestDraft) => keys.preview({ ...d, inputs: standIns(d.inputs) });
+  // The cached queries keep their queryFn: it reads the draft here, so none keeps a password of its own.
+  const sending = useRef(debounced);
+  sending.current = debounced;
+  // previewKey holds the draft, its secrets as stand-ins.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const preview = useQuery({
-    queryKey: keys.preview(debounced),
-    queryFn: ({ signal }) => call(api.POST("/requests/preview", { body: debounced, signal })),
+    queryKey: previewKey(debounced),
+    queryFn: ({ signal }) => call(api.POST("/requests/preview", { body: sending.current, signal })),
     placeholderData: keepPreviousData,
   });
   const caughtUp = checked && debounced !== checked.since && preview.data && !preview.isPlaceholderData;
@@ -496,6 +504,8 @@ function RequestFormBody({
   const warnings = allWarnings(shownPreview?.warnings, refusedWarn?.since === draft ? refusedWarn.warnings : undefined);
 
   const submit = useMutation({
+    // Its variables hold the secret inputs: gone from the mutation cache once done.
+    gcTime: 0,
     mutationFn: (body: RequestDraft) =>
       call(api.POST("/requests", { params: { header: { "Idempotency-Key": idempotencyKey } }, body })),
     onSuccess: (request) => {
@@ -602,7 +612,7 @@ function RequestFormBody({
     const body = draft;
     const since = debounced;
     const checkedPreview = await qc.fetchQuery({
-      queryKey: keys.preview(body),
+      queryKey: previewKey(body),
       queryFn: ({ signal }) => call(api.POST("/requests/preview", { body, signal })),
     });
     setChecked({ since, preview: checkedPreview });

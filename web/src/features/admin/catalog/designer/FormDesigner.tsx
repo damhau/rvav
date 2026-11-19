@@ -12,6 +12,7 @@ import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { FormRenderer, type PageInputs } from "@/forms/FormRenderer";
 import { sentInputs } from "@/forms/defaults";
+import { useSecretStandIns } from "@/forms/secretKeys";
 import { api, call } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemVersion, FieldStates, UiField } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
@@ -83,6 +84,7 @@ function Preview({
   const environments = useQuery(q.environments());
   const { users, list, asUser } = usePreviewUsers(ctx.projectId, ctx.asUserId, me);
   const inputs = useDebounced(ctx.values, 300);
+  const standIns = useSecretStandIns(fields);
   // Keyed on the server's revision of the draft: the same revision is the same form.
   const previewOf = (given: Record<string, unknown>, values = sentInputs(fields, given)) => ({
     queryKey: [
@@ -94,7 +96,7 @@ function Preview({
       ctx.projectId,
       asUser,
       ctx.environment,
-      values,
+      standIns(values),
     ],
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       call(

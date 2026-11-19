@@ -21,6 +21,7 @@ import { Attention, fieldControl, type Unplaced } from "@/forms/attention";
 import { defaulted, sentInputs } from "@/forms/defaults";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
 import { sendingText, useSendingFiles } from "@/forms/file";
+import { useSecretStandIns } from "@/forms/secretKeys";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { CatalogItem, DeploymentDetail, RequestForm, UpdateDraft, UpdatePreview } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
@@ -239,13 +240,20 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
     [form.version_id, fields, values],
   );
   const debounced = useDebounced(body, 350);
+  const standIns = useSecretStandIns(fields);
+  const previewKey = (b: UpdateDraft) => keys.deployments.updatePreview(d.id, { ...b, inputs: standIns(b.inputs) });
+  // The cached queries keep their queryFn: it reads the draft here, so none keeps a password of its own.
+  const sending = useRef(debounced);
+  sending.current = debounced;
+  // previewKey holds the draft, its secrets as stand-ins.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const preview = useQuery({
-    queryKey: keys.deployments.updatePreview(d.id, debounced),
+    queryKey: previewKey(debounced),
     queryFn: ({ signal }) =>
       call(
         api.POST("/deployments/{deploymentId}/update/preview", {
           params: { path: { deploymentId: d.id } },
-          body: debounced,
+          body: sending.current,
           signal,
         }),
       ),
@@ -254,6 +262,8 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
   const p = preview.data;
 
   const submit = useMutation({
+    // Its variables hold the secret inputs: gone from the mutation cache once done.
+    gcTime: 0,
     mutationFn: (draft: UpdateDraft) =>
       call(
         api.POST("/deployments/{deploymentId}/update", {
@@ -322,8 +332,9 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
     const checking = body;
     let checked: UpdatePreview;
     try {
+      // eslint-disable-next-line @tanstack/query/exhaustive-deps
       checked = await qc.fetchQuery({
-        queryKey: keys.deployments.updatePreview(d.id, checking),
+        queryKey: previewKey(checking),
         queryFn: ({ signal }) =>
           call(
             api.POST("/deployments/{deploymentId}/update/preview", {

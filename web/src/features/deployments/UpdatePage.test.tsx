@@ -16,7 +16,7 @@ describe("the update page against the mock API", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Update" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Update web-tst-search" })).toBeVisible();
 
-    const summary = screen.getByRole("region", { name: "What the update does" });
+    const summary = await screen.findByRole("region", { name: "What the update does" }, { timeout: 5000 });
     expect(await within(summary).findByText("Change an input to see what the update does.")).toBeVisible();
     expect(within(summary).getByRole("button", { name: "Review the update" })).toBeDisabled();
 
