@@ -17,7 +17,17 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { errorAt, failed, fieldErrors, priorityOf, writable } from "../common";
-import { LevelsEditor, list, OrderedMenu, PriorityDialog, useOrderedPolicies, useProjects } from "./shared";
+import {
+  enforcementOptions,
+  LevelsEditor,
+  list,
+  movesEveryone,
+  OrderedMenu,
+  PriorityDialog,
+  useOrderedPolicies,
+  useProjects,
+  type PolicyRights,
+} from "./shared";
 
 type S = components["schemas"];
 type Policy = S["Day2Policy"];
@@ -43,7 +53,7 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
           condition: "true",
           effect: "allow",
           levels: [],
-          project_id: null,
+          project_id: projects.initial,
           enabled: true,
         },
   );
@@ -58,6 +68,7 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
         actions: list(actions),
         roles: list(roles),
         levels: f.effect === "approval" ? f.levels : [],
+        enforcement: f.effect === "allow" ? undefined : (f.enforcement ?? "hard"),
         priority: priorityOf(priority),
       };
       return policy
@@ -114,6 +125,21 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
           ]}
         />
       </Field>
+      {f.effect !== "allow" && (
+        <Field
+          label="Enforcement"
+          htmlFor="d2-enforcement"
+          error={errors["/enforcement"]}
+          hint="A soft policy's warning shows when the action is picked; the request keeps it."
+        >
+          <Select
+            id="d2-enforcement"
+            value={f.enforcement ?? "hard"}
+            onChange={(v) => setF({ ...f, enforcement: v as S["PolicyEnforcement"] })}
+            options={enforcementOptions}
+          />
+        </Field>
+      )}
       <Field
         label="Actions"
         htmlFor="d2-actions"
@@ -157,7 +183,12 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
       <Field label="Reason people see" htmlFor="d2-reason">
         <Input id="d2-reason" value={f.reason ?? ""} onChange={(e) => setF({ ...f, reason: e.target.value })} />
       </Field>
-      <Field label="Project" htmlFor="d2-project">
+      <Field
+        label="Project"
+        htmlFor="d2-project"
+        error={errors["/project_id"]}
+        hint="A policy of every project that is hard and stricter still wins over a project's own."
+      >
         <Select
           id="d2-project"
           value={f.project_id ?? "all"}
@@ -181,7 +212,7 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
   );
 }
 
-export function Day2Policies({ canEdit }: { canEdit: boolean }) {
+export function Day2Policies({ rights }: { rights: PolicyRights }) {
   const qc = useQueryClient();
   const policies = useQuery(adm.day2());
   const projects = useProjects();
@@ -236,15 +267,28 @@ export function Day2Policies({ canEdit }: { canEdit: boolean }) {
         </span>
       ),
     },
-    { id: "effect", header: "Effect", cell: (p) => <Badge tone={effectTone[p.effect]}>{effectLabel[p.effect]}</Badge> },
+    {
+      id: "effect",
+      header: "Effect",
+      cell: (p) => (
+        <span className="flex flex-wrap gap-1">
+          <Badge tone={effectTone[p.effect]}>{effectLabel[p.effect]}</Badge>
+          {p.enforcement === "soft" && <Badge tone="outline">Soft: warns</Badge>}
+        </span>
+      ),
+    },
     { id: "priority", header: "Priority", align: "end", cell: (p) => <span className="tnum">{p.priority}</span> },
   ];
   return (
     <Panel
       title="Day-2 policies"
-      description="The first policy that matches an action decides; when none does, the action is denied."
+      description={`The first policy that matches an action decides; when none does, the action is denied.${
+        rights.global
+          ? ""
+          : " You change your projects' own; a hard policy of every project that is stricter still wins."
+      }`}
       flush
-      actions={canEdit && Boolean(items?.length) && add}
+      actions={rights.any && Boolean(items?.length) && add}
     >
       <DataTable
         label="Day-2 policies"
@@ -259,23 +303,25 @@ export function Day2Policies({ canEdit }: { canEdit: boolean }) {
             icon={Wrench}
             title="No day-2 policy"
             body="Every day-2 action is denied until a policy allows it."
-            action={canEdit && add}
+            action={rights.any && add}
           />
         }
         rowMenuLabel={(p) => `Actions for ${p.name}`}
         rowMenu={
-          canEdit && items
-            ? (p) => (
-                <OrderedMenu
-                  policy={p}
-                  items={items}
-                  index={items.indexOf(p)}
-                  ops={ops}
-                  onChange={() => setEditing(p)}
-                  onPriority={() => setRanking(p)}
-                  onRemove={() => setRemoving(p)}
-                />
-              )
+          rights.any && items
+            ? (p) =>
+                rights.writes(p.project_id) ? (
+                  <OrderedMenu
+                    policy={p}
+                    items={items}
+                    index={items.indexOf(p)}
+                    ops={ops}
+                    onChange={() => setEditing(p)}
+                    onPriority={() => setRanking(p)}
+                    onRemove={() => setRemoving(p)}
+                    moveWhy={movesEveryone(rights)}
+                  />
+                ) : null
             : undefined
         }
       />

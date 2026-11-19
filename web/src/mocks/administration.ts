@@ -372,6 +372,7 @@ export function adminState(db: Db): AdminState {
         actions: ["delete"], roles: [], condition: "environment.production", effect: "approval", project_id: null, enabled: true,
         levels: [level("Infrastructure leads", "rvav-infra-leads")],
       },
+      ...(db.seedDay2 ?? []),
       {
         id: "d2p_members", name: "Members operate their VMs", reason: "", priority: 50, actions: ["*"],
         roles: ["owner", "member", "project-admin"], condition: "true", effect: "allow", project_id: null, enabled: true,
@@ -877,6 +878,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     const x = st().extra[p.id] ?? { created_at: now() };
     return {
       ...p,
+      deployment_sharing: p.deployment_sharing ?? "all_members",
       archived: Boolean(x.archived_at),
       ...(x.archived_at ? { archived_at: x.archived_at } : {}),
       created_at: x.created_at,
@@ -919,6 +921,22 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     });
   };
   const forbidden = (detail: string) => problem(403, "Not allowed", undefined, detail);
+  const holdsAnywhere = (perm: string) =>
+    db.me.permissions.includes(perm) || db.me.projects.some((p) => p.permissions.includes(perm));
+  // As the server's readsPolicies, showsPolicy and writesPolicy (ADR-0045).
+  const policies = {
+    reads: () => db.me.permissions.includes("policies.read") || holdsAnywhere("project.policies.manage"),
+    shows: (projectId?: string | null) =>
+      db.me.permissions.includes("policies.read") || !projectId || holdsIn(db, projectId, "project.policies.manage"),
+    global: () => db.me.permissions.includes("policies.manage"),
+    writes: (projectId?: string | null) =>
+      db.me.permissions.includes("policies.manage") ||
+      (Boolean(projectId) && holdsIn(db, projectId!, "project.policies.manage")),
+  };
+  const refusedPolicy = (projectId?: string | null) =>
+    projectId
+      ? forbidden(`you may not write the policies of ${project(projectId)?.name ?? projectId}`)
+      : forbidden("you may not write the policies of every project");
   /** As the server's ExplainAccess: the grants that count, and what each permission is held through. */
   const explain = (u: S["UserRef"], p: Db["projects"][number] | null): S["AccessExplanation"] => {
     // The mock user's roles for all of rvav are its persona's: none of its groups gives it another.
@@ -1729,13 +1747,41 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       audited(db, "policy.quota.set", "project", p.id);
       return HttpResponse.json({ items });
     }),
+    http.put(`${base}/projects/:id/deployment-sharing`, async ({ params, request }) => {
+      await wait();
+      const p = project(String(params.id));
+      if (!p) return problem(404, "Not found");
+      if (!holdsIn(db, p.id, "project.members.manage")) return forbidden("you may not manage its members");
+      const { deployment_sharing: sharing } = (await request.json()) as S["DeploymentSharingWrite"];
+      if (sharing !== "all_members" && sharing !== "owner_only")
+        return invalid([err("/deployment_sharing", "all_members or owner_only.")]);
+      p.deployment_sharing = sharing;
+      audited(db, "project.sharing.set", "project", p.id);
+      return HttpResponse.json({
+        ...p,
+        my_permissions: db.me.projects.find((x) => x.project.id === p.id)?.permissions ?? db.me.permissions,
+      });
+    }),
     http.get(`${base}/admin/lease-policies`, async () => {
       await wait();
-      return HttpResponse.json({ items: st().leases });
+      if (!policies.reads()) return forbidden("you may not read policies");
+      return HttpResponse.json({ items: st().leases.filter((l) => policies.shows(l.project_id)) });
     }),
     http.put(`${base}/admin/lease-policies`, async ({ request }) => {
       await wait();
-      const l = (await request.json()) as S["LeasePolicy"];
+      const w = (await request.json()) as S["LeasePolicy"];
+      const l = { ...w, enforcement: w.enforcement ?? "hard" };
+      if (!policies.writes(l.project_id)) return refusedPolicy(l.project_id);
+      const env = st().leases.find((x) => x.environment === l.environment && !x.project_id);
+      const name = db.environments.find((e) => e.key === l.environment)?.name ?? l.environment;
+      const looser: S["FieldError"][] = [];
+      if (!policies.global() && env) {
+        if (env.max_days != null && (l.max_days == null || l.max_days > env.max_days))
+          looser.push(err("/max_days", `${name} allows ${env.max_days} days at most.`));
+        if (l.enforcement === "soft" && env.enforcement !== "soft")
+          looser.push(err("/enforcement", `${name}'s lease is hard: its overrides are too.`));
+      }
+      if (looser.length) return invalid(looser);
       if (l.default_days != null && l.max_days != null && l.default_days > l.max_days)
         return invalid([err("/default_days", "The default can't be longer than the maximum.")]);
       const list = st().leases;
@@ -1756,7 +1802,9 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           x.environment === url.searchParams.get("environment") && x.project_id === url.searchParams.get("project_id"),
       );
       if (i < 0) return problem(404, "Not found");
+      if (!policies.writes(list[i]!.project_id)) return refusedPolicy(list[i]!.project_id);
       list.splice(i, 1);
+      audited(db, "policy.lease.delete", "lease_policy", url.searchParams.get("environment") ?? "");
       return new HttpResponse(null, { status: 204 });
     }),
     ...(
@@ -1765,9 +1813,19 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         ["day2-policies", "day2", "d2p"],
       ] as const
     ).flatMap(([path, kind, prefix]) => {
-      const list = () => (kind === "approval" ? st().approvals : st().day2) as { id: string; priority: number }[];
+      const list = () =>
+        (kind === "approval" ? st().approvals : st().day2) as {
+          id: string;
+          priority: number;
+          project_id?: string | null;
+        }[];
       const save = (id: string, w: Record<string, unknown>, status: number) => {
+        const was = list().find((x) => x.id === id);
+        for (const pid of [was?.project_id, w.project_id as string | null | undefined])
+          if (status === 200 || pid === w.project_id) if (!policies.writes(pid)) return refusedPolicy(pid);
         const errors: S["FieldError"][] = [];
+        if (kind === "day2" && w.enforcement === "soft" && w.effect === "allow")
+          errors.push(err("/enforcement", "Only a deny or an approval policy can be soft: it warns instead."));
         if (typeof w.name !== "string" || !w.name.trim()) errors.push(err("/name", "Give the policy a name."));
         checkCel(w.condition as string, "/condition", errors);
         if (kind === "approval") checkCel(w.auto_approve as string, "/auto_approve", errors);
@@ -1800,6 +1858,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           roles: [],
           condition: "true",
           ...w,
+          ...(kind === "day2" ? { enforcement: w.enforcement ?? "hard" } : {}),
           id,
           priority: Number(w.priority ?? 100),
         };
@@ -1813,9 +1872,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       return [
         http.get(`${base}/admin/${path}`, async () => {
           await wait();
+          if (!policies.reads()) return forbidden("you may not read policies");
           const levelRoles = [...builtinRoles, ...customRoles(db)].filter((r) => assignable(r, true));
           return HttpResponse.json({
-            items: list(),
+            items: list().filter((x) => policies.shows(x.project_id)),
             level_roles: levelRoles.map((r) => ({ key: r.key, name: r.name })),
           });
         }),
@@ -1832,6 +1892,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           await wait();
           const i = list().findIndex((x) => x.id === params.id);
           if (i < 0) return problem(404, "Not found");
+          if (!policies.writes(list()[i]!.project_id)) return refusedPolicy(list()[i]!.project_id);
           list().splice(i, 1);
           audited(db, `policy.${kind}.delete`, `${kind}_policy`, String(params.id));
           return new HttpResponse(null, { status: 204 });
@@ -1850,21 +1911,25 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const naming = st().naming.find((n) =>
         n.offers.some((o) => (!o.project_id || o.project_id === p.id) && (!o.environment || o.environment === env.key)),
       );
-      const approvals = st().approvals.map((a) => {
-        const applies = a.enabled && (a.condition === "true" || a.condition === `environment == "${env.key}"`);
-        return {
-          id: a.id,
-          name: a.name,
-          applies,
-          why: applies ? `Applies: ${a.condition}.` : `Its condition ${a.condition} is false here.`,
-        };
-      });
+      const here = (x: { project_id?: string | null }) => !x.project_id || x.project_id === p.id;
+      const approvals = st()
+        .approvals.filter(here)
+        .map((a) => {
+          const applies = a.enabled && (a.condition === "true" || a.condition === `environment == "${env.key}"`);
+          return {
+            id: a.id,
+            name: a.name,
+            applies,
+            why: applies ? `Applies: ${a.condition}.` : `Its condition ${a.condition} is false here.`,
+          };
+        });
       const deciding = approvals.filter((a) => a.applies).map((a) => a.name);
       const action = q.action;
       const day2 = action
         ? st().day2.find(
             (d) =>
               d.enabled &&
+              here(d) &&
               (d.actions ?? []).some((x) => glob(x, action)) &&
               (d.condition !== "environment.production" || env.production),
           )

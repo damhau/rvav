@@ -7,6 +7,7 @@ import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
 import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
+import { allWarnings, PolicyWarnings, refusedWarnings, type PolicyWarning } from "@/components/common/warnings";
 // The graph's model only: the canvas itself (React Flow) loads with RequestTopology.
 import { blueprintGraph } from "@/components/canvas/blueprint";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
@@ -173,8 +174,11 @@ function Summary({
   previewError,
   onRetryPreview,
   holding,
+  warnings,
 }: {
   preview: RequestPreview | undefined;
+  /** What soft policies warn about: submitting goes on despite them. */
+  warnings: PolicyWarning[];
   /** Why the summary couldn't be worked out, when it couldn't. */
   previewError: unknown;
   onRetryPreview: () => void;
@@ -271,6 +275,7 @@ function Summary({
                 pending={pending}
                 approval={approval?.required}
                 holding={Boolean(holding)}
+                warned={warnings.length > 0}
               />
             )}
           </>
@@ -343,6 +348,11 @@ function Summary({
                     : "Provisioning starts as soon as you submit."}
               </span>
             </div>
+            {warnings.length > 0 && (
+              <div className="border-t border-line px-4 py-3">
+                <PolicyWarnings warnings={warnings} note="You may submit anyway: the request keeps the warning." />
+              </div>
+            )}
           </>
         )}
         {formErrors.length > 0 && (
@@ -365,16 +375,19 @@ function SubmitButton({
   pending,
   approval,
   holding,
+  warned,
 }: {
   onClick: () => void;
   pending: boolean;
   approval?: boolean;
   holding?: boolean;
+  warned?: boolean;
 }) {
   return (
     <Button variant="primary" type="button" onClick={onClick} disabled={pending || holding}>
       {pending && <LoaderCircle className="animate-spin" aria-hidden />}
       {approval ? "Submit for approval" : "Submit request"}
+      {warned && " anyway"}
     </Button>
   );
 }
@@ -476,6 +489,9 @@ function RequestFormBody({
   });
   const shownPreview =
     checked && (debounced === checked.since || preview.isPlaceholderData) ? checked.preview : preview.data;
+  // What the server warned about on submit, until the request changes.
+  const [refusedWarn, setRefusedWarn] = useState<{ since: RequestDraft; warnings: PolicyWarning[] }>();
+  const warnings = allWarnings(shownPreview?.warnings, refusedWarn?.since === draft ? refusedWarn.warnings : undefined);
 
   const submit = useMutation({
     mutationFn: (body: RequestDraft) =>
@@ -498,8 +514,15 @@ function RequestFormBody({
     },
     onError: (e) => {
       setSubmitted(true);
+      const warned = refusedWarnings(e);
+      if (warned.length) setRefusedWarn({ since: draft, warnings: warned });
       if (isApiError(e) && e.status === 422) {
-        const mapped = mapFieldErrors(e.fieldErrors);
+        const rest = e.fieldErrors.filter((f) => f.field !== "/accept_warnings");
+        if (warned.length && rest.length === 0) {
+          setServerErrors(null);
+          return;
+        }
+        const mapped = mapFieldErrors(rest);
         if (Object.keys(mapped.fields).length === 0 && mapped.form.length === 0)
           mapped.form.push(e.problem.detail ?? e.problem.title);
         setServerErrors(mapped);
@@ -604,7 +627,7 @@ function RequestFormBody({
   };
   const submitDraft = () => {
     setSubmitted(true);
-    submit.mutate(draft);
+    submit.mutate(warnings.length ? { ...draft, accept_warnings: true } : draft);
   };
   const stepped = form.ui_schema.layout.kind === "wizard";
   const holding = sendingText(useSendingFiles());
@@ -616,9 +639,11 @@ function RequestFormBody({
   const drawn = graph && (graph.kind === "composite" || graph.nodes.length > 2) ? graph : null;
 
   const lease = shownPreview?.lease;
+  const soft = lease?.enforcement === "soft";
+  // A soft lease offers longer ones too: they warn, and the requester may go on.
   const leaseOptions =
     lease && lease.max_days !== null && lease.max_days !== undefined
-      ? [7, 14, 30, 60, 90].filter((d) => d <= (lease.max_days ?? 90))
+      ? [7, 14, 30, 60, 90, ...(soft ? [180, 365] : [])].filter((d) => soft || d <= (lease.max_days ?? 90))
       : [];
 
   const requestPanels = (
@@ -630,7 +655,9 @@ function RequestFormBody({
             htmlFor="lease"
             hint={
               leaseOptions.length
-                ? "You get reminders 7 days and 1 day before. You can extend it twice."
+                ? `You get reminders 7 days and 1 day before. You can extend it twice.${
+                    soft ? ` Longer than ${lease?.max_days} days warns, and you may go on.` : ""
+                  }`
                 : "Production deployments and AWX jobs have no lease."
             }
           >
@@ -773,6 +800,7 @@ function RequestFormBody({
                 pending={submit.isPending}
                 approval={shownPreview?.approval.required}
                 holding={Boolean(holding)}
+                warned={warnings.length > 0}
               />
             ),
             holding,
@@ -817,6 +845,7 @@ function RequestFormBody({
           oneDeployment={Boolean(form.one_deployment)}
           composite={item.type === "composite"}
           holding={holding}
+          warnings={warnings}
         />
       </aside>
     </div>

@@ -5223,6 +5223,8 @@ export interface components {
                 max_days?: number | null;
                 /** Format: date-time */
                 expires_at?: string | null;
+                /** @description Soft when a longer lease than `max_days` only warns (ADR-0045). */
+                enforcement?: components["schemas"]["PolicyEnforcement"];
             };
             /**
              * @description What each component of a VM item builds (ADR-0024), in its

@@ -308,6 +308,65 @@ function RolesSheet({
   );
 }
 
+const sharingLabels: Record<S["DeploymentSharing"], [string, string]> = {
+  all_members: ["All members", "Whoever sees the project sees all its deployments and requests."],
+  owner_only: [
+    "Owners only",
+    "Members see the deployments they own and the requests they made. Project admins, supervisors, auditors and administrators still see all of them. To share a deployment, change its owner.",
+  ],
+};
+
+/** Who sees the project's deployments (ADR-0045), set by whoever manages its members. */
+function DeploymentSharing({ project, canManage }: { project: S["AdminProject"]; canManage: boolean }) {
+  const qc = useQueryClient();
+  const current = project.deployment_sharing ?? "all_members";
+  const [value, setValue] = useState(current);
+  const save = useMutation({
+    mutationFn: (sharing: S["DeploymentSharing"]) =>
+      call(
+        api.PUT("/projects/{projectId}/deployment-sharing", {
+          params: { path: { projectId: project.id } },
+          body: { deployment_sharing: sharing },
+        }),
+      ),
+    onSuccess: (_, sharing) => {
+      void qc.invalidateQueries({ queryKey: ["admin"] });
+      void qc.invalidateQueries({ queryKey: ["deployments"] });
+      void qc.invalidateQueries({ queryKey: ["requests"] });
+      toast.success(`${project.name}'s deployments: ${sharingLabels[sharing][0].toLowerCase()}`);
+    },
+    onError: (e) => failed(e, "Not saved"),
+  });
+  return (
+    <Panel
+      title="Deployment sharing"
+      description="Who sees the project's deployments and requests."
+      footer={
+        canManage && (
+          <Button variant="primary" disabled={value === current || save.isPending} onClick={() => save.mutate(value)}>
+            Save sharing
+          </Button>
+        )
+      }
+    >
+      {canManage ? (
+        <Field label="Who sees them" htmlFor="deployment-sharing" hint={sharingLabels[value][1]} className="max-w-xl">
+          <Select
+            id="deployment-sharing"
+            value={value}
+            onChange={(v) => setValue(v as S["DeploymentSharing"])}
+            options={Object.entries(sharingLabels).map(([v, [label]]) => ({ value: v, label }))}
+          />
+        </Field>
+      ) : (
+        <p className="text-body">
+          <span className="font-medium">{sharingLabels[current][0]}.</span> {sharingLabels[current][1]}
+        </p>
+      )}
+    </Panel>
+  );
+}
+
 function Members({ project, canManage }: { project: S["AdminProject"]; canManage: boolean }) {
   const projectId = project.id;
   const qc = useQueryClient();
@@ -1206,7 +1265,12 @@ export function ProjectPage({ projectId, tab = "members" }: { projectId: string;
           <TabsTrigger value="quotas">Quotas</TabsTrigger>
           <TabsTrigger value="details">Details</TabsTrigger>
         </TabsList>
-        <TabsContent value="members" className="pt-4">
+        <TabsContent value="members" className="flex flex-col gap-4 pt-4">
+          <DeploymentSharing
+            key={p.deployment_sharing}
+            project={p}
+            canManage={can(me, "project.members.manage", p.id)}
+          />
           <Members project={p} canManage={can(me, "project.members.manage", p.id)} />
         </TabsContent>
         <TabsContent value="placement" className="pt-4">

@@ -17,7 +17,16 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { failed, fieldErrors, priorityOf, writable } from "../common";
-import { askedText, LevelsEditor, OrderedMenu, PriorityDialog, useOrderedPolicies, useProjects } from "./shared";
+import {
+  askedText,
+  LevelsEditor,
+  movesEveryone,
+  OrderedMenu,
+  PriorityDialog,
+  useOrderedPolicies,
+  useProjects,
+  type PolicyRights,
+} from "./shared";
 
 type S = components["schemas"];
 type Policy = S["ApprovalPolicy"];
@@ -45,7 +54,7 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
           reason: "",
           condition: "true",
           item_type: null,
-          project_id: null,
+          project_id: projects.initial,
           levels: [{ name: "Level 1", mode: "any" }],
           priority: 100,
           enabled: true,
@@ -119,7 +128,7 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
             options={itemTypes}
           />
         </Field>
-        <Field label="Project" htmlFor="ap-project">
+        <Field label="Project" htmlFor="ap-project" error={errors["/project_id"]}>
           <Select
             id="ap-project"
             value={f.project_id ?? "all"}
@@ -155,7 +164,7 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
   );
 }
 
-export function ApprovalPolicies({ canEdit }: { canEdit: boolean }) {
+export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
   const qc = useQueryClient();
   const policies = useQuery(adm.approvals());
   const approversText = (p: Policy) => p.levels.map((l) => askedText(l, policies.data?.level_roles ?? [])).join(" → ");
@@ -212,9 +221,11 @@ export function ApprovalPolicies({ canEdit }: { canEdit: boolean }) {
   return (
     <Panel
       title="Approval policies"
-      description="Every policy that matches a request adds its levels of approvers, lower priority first."
+      description={`Every policy that matches a request adds its levels of approvers, lower priority first.${
+        rights.global ? "" : " You change your projects' own: they add levels to those of every project."
+      }`}
       flush
-      actions={canEdit && Boolean(items?.length) && add}
+      actions={rights.any && Boolean(items?.length) && add}
     >
       <DataTable
         label="Approval policies"
@@ -229,23 +240,25 @@ export function ApprovalPolicies({ canEdit }: { canEdit: boolean }) {
             icon={ShieldCheck}
             title="No approval policy"
             body="Every request runs at once. Add a policy to have some approved first."
-            action={canEdit && add}
+            action={rights.any && add}
           />
         }
         rowMenuLabel={(p) => `Actions for ${p.name}`}
         rowMenu={
-          canEdit && items
-            ? (p) => (
-                <OrderedMenu
-                  policy={p}
-                  items={items}
-                  index={items.indexOf(p)}
-                  ops={ops}
-                  onChange={() => setEditing(p)}
-                  onPriority={() => setRanking(p)}
-                  onRemove={() => setRemoving(p)}
-                />
-              )
+          rights.any && items
+            ? (p) =>
+                rights.writes(p.project_id) ? (
+                  <OrderedMenu
+                    policy={p}
+                    items={items}
+                    index={items.indexOf(p)}
+                    ops={ops}
+                    onChange={() => setEditing(p)}
+                    onPriority={() => setRanking(p)}
+                    onRemove={() => setRemoving(p)}
+                    moveWhy={movesEveryone(rights)}
+                  />
+                ) : null
             : undefined
         }
       />

@@ -58,13 +58,14 @@ func TestPolicyEnforcement(t *testing.T) {
 		// Hard: a 120-day lease in dev, 90 at most, is refused.
 		var preview api.RequestPreview
 		h.json("POST", "/api/v1/requests/preview", member, draft(120, false), 200, &preview)
-		if preview.Valid || preview.Warnings != nil || codes(preview.Errors)["/lease_days"] != "too_long" {
+		if preview.Valid || preview.Warnings != nil || codes(preview.Errors)["/lease_days"] != "too_long" ||
+			preview.Lease == nil || valueOf(preview.Lease.Enforcement) != api.PolicyEnforcementHard {
 			t.Fatalf("a hard lease's preview = %+v", preview)
 		}
 		// Soft: it warns, and goes on once the warning is accepted.
 		lease(admin, nil, api.PolicyEnforcementSoft, 200)
 		h.json("POST", "/api/v1/requests/preview", member, draft(120, false), 200, &preview)
-		if !preview.Valid || preview.Warnings == nil || len(*preview.Warnings) != 1 ||
+		if !preview.Valid || preview.Warnings == nil || len(*preview.Warnings) != 1 || valueOf(preview.Lease.Enforcement) != api.PolicyEnforcementSoft ||
 			(*preview.Warnings)[0].Message != "Leases in Development should be at most 90 days." {
 			t.Fatalf("a soft lease's preview = %+v", preview)
 		}

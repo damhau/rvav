@@ -9,6 +9,8 @@ import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { Field, FieldNote, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { components } from "@/lib/api/schema";
+import { can, canAnywhere } from "@/lib/can";
+import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { errorAt, failed } from "../common";
 
@@ -21,15 +23,57 @@ export const list = (s: string) =>
     .map((x) => x.trim())
     .filter(Boolean);
 
+/**
+ * The projects the page names and picks: every one for those who read
+ * every policy, else those whose own policies the caller writes (ADR-0045).
+ */
 export function useProjects() {
-  const projects = useQuery(adm.projectNames());
-  const items = projects.data?.items ?? [];
+  const { me } = useCurrentProject();
+  const everyone = can(me, "policies.read");
+  const global = can(me, "policies.manage");
+  const projects = useQuery({ ...adm.projectNames(), enabled: everyone });
+  const items = everyone
+    ? (projects.data?.items ?? [])
+    : me.projects.filter((p) => p.permissions.includes("project.policies.manage")).map((p) => p.project);
   return {
     items,
     name: (id: string) => items.find((p) => p.id === id)?.name ?? id,
-    options: (all: string) => [{ value: "all", label: all }, ...items.map((p) => ({ value: p.id, label: p.name }))],
+    /** The projects a policy may be written for, every project first when the caller writes those. */
+    options: (all: string) => [
+      ...(global ? [{ value: "all", label: all }] : []),
+      ...items.map((p) => ({ value: p.id, label: p.name })),
+    ],
+    /** The project a new policy is for: every project, or the caller's first. */
+    initial: global ? null : (items[0]?.id ?? null),
   };
 }
+
+/** A soft policy warns where a hard one refuses or asks for approval (ADR-0045). */
+export const enforcementOptions = [
+  { value: "hard", label: "Hard: it refuses, or waits for approval" },
+  { value: "soft", label: "Soft: it warns, and the requester may go on" },
+];
+
+/** What the caller writes: every policy with policies.manage, else their projects' own (ADR-0045). */
+export function usePolicyRights() {
+  const { me } = useCurrentProject();
+  const global = can(me, "policies.manage");
+  return {
+    /** Writes the policies of every project. */
+    global,
+    /** Writes some policy. */
+    any: global || canAnywhere(me, "project.policies.manage"),
+    /** Writes the policy of this project, or of every project for null. */
+    writes: (projectId?: string | null) =>
+      global || (Boolean(projectId) && can(me, "project.policies.manage", projectId ?? undefined)),
+  };
+}
+
+export type PolicyRights = ReturnType<typeof usePolicyRights>;
+
+/** Why a project admin's menu doesn't move policies: it renumbers every project's too. */
+export const movesEveryone = (rights: PolicyRights) =>
+  rights.global ? undefined : "It renumbers the policies of every project: set its priority instead";
 
 interface Ordered {
   id: string;
@@ -87,6 +131,7 @@ export function OrderedMenu<T extends Ordered>({
   onChange,
   onPriority,
   onRemove,
+  moveWhy,
 }: {
   policy: T;
   items: T[];
@@ -95,9 +140,11 @@ export function OrderedMenu<T extends Ordered>({
   onChange: () => void;
   onPriority: () => void;
   onRemove: () => void;
+  /** Why moving is off, whatever the policy's place. */
+  moveWhy?: string;
 }) {
   const busy = ops.move.isPending || ops.update.isPending;
-  const waits = busy ? "Waits for the change running" : undefined;
+  const waits = busy ? "Waits for the change running" : moveWhy;
   const up = waits ?? (index === 0 ? "It comes first already" : undefined);
   const down = waits ?? (index === items.length - 1 ? "It comes last already" : undefined);
   return (

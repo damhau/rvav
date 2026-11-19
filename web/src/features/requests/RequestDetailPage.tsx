@@ -5,6 +5,7 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { blueprintGraph } from "@/components/canvas/blueprint";
 import { ApprovalHistory } from "@/components/common/approvals";
+import { PolicyWarnings } from "@/components/common/warnings";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
@@ -295,6 +296,12 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
           </Panel>
 
           {asked.length > 0 && <AskPanel rows={asked} />}
+
+          {Boolean(r?.warnings?.length) && (
+            <Panel title="Policy warnings" description="The requester went on despite them.">
+              <PolicyWarnings warnings={r?.warnings ?? []} note="" />
+            </Panel>
+          )}
 
           {levels.length > 0 && (
             <Panel

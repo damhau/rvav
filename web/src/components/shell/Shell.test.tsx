@@ -79,7 +79,10 @@ describe("sidebar", () => {
     localStorage.setItem("rvav.mock.as", "project-admin");
     resetDb();
     renderApp("/");
-    expect(adminMenuOf(await mainNav())).toEqual({ Governance: ["Projects"], Operations: ["Audit log"] });
+    expect(adminMenuOf(await mainNav())).toEqual({
+      Governance: ["Projects", "Policies"],
+      Operations: ["Audit log"],
+    });
   });
 
   it("says so on an administration page someone may not open, its items' pages too", async () => {

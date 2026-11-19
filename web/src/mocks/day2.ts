@@ -15,8 +15,12 @@ import type {
   UserRef,
   VmResource,
 } from "@/lib/api/types";
+import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
+import { adminState, leasePolicyOf } from "./administration";
 import type { Db, StoredRequest } from "./seed";
+
+type PolicyWarning = components["schemas"]["PolicyWarning"];
 
 const now = () => new Date().toISOString();
 
@@ -709,6 +713,53 @@ function approvalReason(a: MockAction, d: DeploymentDetail, inputs?: Inputs): st
   return "";
 }
 
+/**
+ * The day-2 policy that decides an action, as the server's first match by
+ * priority (ADR-0045); the mock tries those whose condition is "true" only.
+ */
+function deciding(db: Db, a: MockAction, d: DeploymentDetail) {
+  const roles = new Set([
+    ...db.me.roles.map((r) => r.key),
+    ...(db.me.projects.find((p) => p.project.id === d.project.id)?.roles.map((r) => r.key) ?? []),
+    ...(d.owner.id === db.me.user.id ? ["owner"] : []),
+  ]);
+  const names = (p: string) => p === "*" || p === a.key || (p.endsWith("*") && a.key.startsWith(p.slice(0, -1)));
+  return adminState(db)
+    .day2.filter(
+      (p) =>
+        p.enabled &&
+        (!p.project_id || p.project_id === d.project.id) &&
+        p.condition.trim() === "true" &&
+        (p.actions ?? []).some(names) &&
+        ((p.roles ?? []).length === 0 || (p.roles ?? []).some((r) => roles.has(r))),
+    )
+    .sort((x, y) => x.priority - y.priority)[0];
+}
+
+/** What a soft policy, or a soft lease, warns about instead of refusing or asking for approval. */
+function warningsFor(db: Db, a: MockAction, d: DeploymentDetail, leaseWhy: string): PolicyWarning[] {
+  const out: PolicyWarning[] = [];
+  const pol = deciding(db, a, d);
+  if (pol && pol.effect !== "allow" && pol.enforcement === "soft")
+    out.push({
+      policy: pol.name,
+      message:
+        pol.reason ||
+        (pol.effect === "deny"
+          ? `${a.name} goes against the policy ${pol.name}.`
+          : `${a.name} would need approval under ${pol.name}.`),
+    });
+  if (leaseWhy && leaseSoft(db, d))
+    out.push({
+      policy: `Lease in ${db.environments.find((e) => e.key === d.environment)?.name ?? d.environment}`,
+      message: leaseWhy,
+    });
+  return out;
+}
+
+const leaseSoft = (db: Db, d: DeploymentDetail) =>
+  leasePolicyOf(db, d.project.id, d.environment)?.enforcement === "soft";
+
 /** The actions list of a deployment, as GET /deployments/{id}/actions answers. */
 export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
   // The seeded day-2 policies let administrators, members and project
@@ -720,6 +771,10 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
     Boolean(held?.roles.some((r) => r.key === "member" || r.key === "project-admin")) ||
     can(db.me, `day2.${a.group}`, d.project.id) ||
     can(db.me, `day2.${a.group}:${a.key}`, d.project.id);
+  const hardDeny = (a: MockAction) => {
+    const pol = deciding(db, a, d);
+    return pol?.effect === "deny" && pol.enforcement !== "soft" ? pol.reason || `${pol.name} doesn't allow it.` : null;
+  };
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const targets: (VmResource | undefined)[] = [undefined, ...vms];
   const out: Day2Action[] = [];
@@ -738,8 +793,13 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
             ? `The deployment is ${d.status}.`
             : null) ??
         (runs(a) ? null : `Your role in ${d.project.name} does not allow ${a.name}.`) ??
+        hardDeny(a) ??
         a.unavailable?.(vm, d) ??
         null;
+      const why = approvalReason(a, d);
+      const lease = a.key === "extend_lease" ? why : "";
+      const warnings = reason === null ? warningsFor(db, a, d, lease) : [];
+      const asks = why !== "" && !(lease && leaseSoft(db, d));
       out.push({
         key: a.key,
         name: a.name,
@@ -749,9 +809,8 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
         enabled: reason === null,
         ...(reason ? { disabled_reason: reason } : {}),
         destructive: Boolean(a.destructive),
-        approval: approvalReason(a, d)
-          ? { required: true, reasons: [approvalReason(a, d)] }
-          : { required: false, reasons: [] },
+        approval: asks ? { required: true, reasons: [why] } : { required: false, reasons: [] },
+        ...(warnings.length ? { warnings } : {}),
         ...(a.confirm || a.typeName
           ? { confirm: { message: a.confirm ?? "", ...(a.typeName ? { type_to_confirm: vm?.name ?? d.name } : {}) } }
           : {}),
@@ -813,7 +872,7 @@ export interface RunResult {
 export function runAction(
   db: Db,
   d: DeploymentDetail,
-  draft: { action: string; resource_id?: string; inputs?: Inputs; justification?: string },
+  draft: { action: string; resource_id?: string; inputs?: Inputs; justification?: string; accept_warnings?: boolean },
   number: string,
 ): RunResult {
   const vm = d.resources.find((r): r is VmResource => r.id === draft.resource_id && r.type === "vsphere.vm");
@@ -840,7 +899,16 @@ export function runAction(
   if (invalid) return { error: { status: 422, title: invalid, field: "/inputs" } };
 
   const why = approvalReason(a, d, inputs);
-  const needsApproval = why !== "";
+  const warnings = warningsFor(db, a, d, a.key === "extend_lease" ? why : "");
+  if (warnings.length && !draft.accept_warnings)
+    return {
+      error: {
+        status: 422,
+        title: "Some values need fixing",
+        errors: warnings.map((w) => ({ field: "/accept_warnings", code: "warning", message: w.message })),
+      },
+    };
+  const needsApproval = why !== "" && !(a.key === "extend_lease" && leaseSoft(db, d));
   const marc: UserRef = db.users.find((u) => u.id === "usr_mkeller")!;
   const steps = requestSteps(
     a.ops(vm, inputs, d),
@@ -872,6 +940,7 @@ export function runAction(
     current_step: null,
     progress: { done: 0, total: steps.length },
     error: null,
+    ...(warnings.length ? { warnings } : {}),
   };
   if (!needsApproval) d.status = a.key === "delete" ? "deleting" : "updating";
   return {

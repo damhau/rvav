@@ -23,7 +23,7 @@ import { computedBy, defaulted, singleSource } from "@/forms/defaults";
 import { withOwnSource } from "@/forms/useFieldValues";
 import { can } from "@/lib/can";
 import { toText } from "@/lib/utils";
-import { namingTemplate, placed, placementFolder } from "./administration";
+import { leasePolicyOf, namingTemplate, placed, placementFolder } from "./administration";
 import { celBool, celEval } from "./cel";
 import { multiParts, partVMs, previewComponents } from "./components";
 import { bound, entryVars, validationErrors } from "./formLibrary";
@@ -652,6 +652,13 @@ export function preview(
   const next = network ? nextFreeIp(db, network) : null;
   const production = db.environments.find((e) => e.key === draft.environment)?.production ?? false;
   const leaseDefault = production || vms === 0 ? null : 30;
+  const leaseMax = production || vms === 0 ? null : 90;
+  const soft = leaseMax !== null && leasePolicyOf(db, project.id, draft.environment)?.enforcement === "soft";
+  const envName = db.environments.find((e) => e.key === draft.environment)?.name ?? draft.environment;
+  const warnings =
+    soft && leaseMax !== null && (draft.lease_days ?? 0) > leaseMax
+      ? [{ policy: `Lease in ${envName}`, message: `Leases in ${envName} should be at most ${leaseMax} days.` }]
+      : [];
   return {
     valid: errors.length === 0,
     errors,
@@ -678,9 +685,11 @@ export function preview(
     ...(components ? { components } : {}),
     quota,
     approval: approvalFor(db, item, draft.environment, inputs),
+    ...(warnings.length ? { warnings } : {}),
     lease: {
       default_days: leaseDefault,
-      max_days: production || vms === 0 ? null : 90,
+      max_days: leaseMax,
+      enforcement: soft ? "soft" : "hard",
       expires_at:
         (draft.lease_days ?? leaseDefault)
           ? new Date(Date.now() + (draft.lease_days ?? leaseDefault ?? 0) * 86_400_000).toISOString()

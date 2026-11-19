@@ -120,7 +120,7 @@ export const adminGroups: AdminGroup[] = [
         label: "Policies",
         icon: Scale,
         keywords: ["approval", "lease", "naming"],
-        show: (me) => can(me, "policies.read"),
+        show: (me) => can(me, "policies.read") || canAnywhere(me, "project.policies.manage"),
       },
     ],
   },

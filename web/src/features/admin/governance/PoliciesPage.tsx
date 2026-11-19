@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
+import { usePolicyRights } from "./policies/shared";
 import { ApprovalPolicies } from "./policies/ApprovalPolicies";
 import { Day2Policies } from "./policies/Day2Policies";
 import { LeasePolicies } from "./policies/LeasePolicies";
@@ -19,15 +20,22 @@ export type PoliciesTab = (typeof policiesTabs)[number];
 export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
   const navigate = useNavigate();
   const { me } = useCurrentProject();
-  const canEdit = can(me, "policies.manage");
+  const rights = usePolicyRights();
+  // Project admins write their projects' own policies; naming policies stay the administrators'.
+  const naming = can(me, "policies.read");
+  const shown = tab === "naming" && !naming ? "approval" : tab;
   return (
     <Page>
       <PageHeader
         title="Policies"
-        description="Who approves what, which day-2 actions are allowed, how long deployments live and how VMs are named."
+        description={
+          naming
+            ? "Who approves what, which day-2 actions are allowed, how long deployments live and how VMs are named."
+            : "Who approves what, which day-2 actions are allowed and how long deployments live in your projects. You read the policies of every project, and write your projects' own."
+        }
       />
       <Tabs
-        value={tab}
+        value={shown}
         onValueChange={(next) =>
           void navigate({ to: "/admin/policies", search: { tab: next as PoliciesTab }, replace: true })
         }
@@ -36,21 +44,23 @@ export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
           <TabsTrigger value="approval">Approval</TabsTrigger>
           <TabsTrigger value="day2">Day-2</TabsTrigger>
           <TabsTrigger value="lease">Lease</TabsTrigger>
-          <TabsTrigger value="naming">Naming</TabsTrigger>
+          {naming && <TabsTrigger value="naming">Naming</TabsTrigger>}
           <TabsTrigger value="explain">What applies here</TabsTrigger>
         </TabsList>
         <TabsContent value="approval" className="pt-4">
-          <ApprovalPolicies canEdit={canEdit} />
+          <ApprovalPolicies rights={rights} />
         </TabsContent>
         <TabsContent value="day2" className="pt-4">
-          <Day2Policies canEdit={canEdit} />
+          <Day2Policies rights={rights} />
         </TabsContent>
         <TabsContent value="lease" className="pt-4">
-          <LeasePolicies canEdit={canEdit} />
+          <LeasePolicies rights={rights} />
         </TabsContent>
-        <TabsContent value="naming" className="pt-4">
-          <NamingPolicies canEdit={canEdit} />
-        </TabsContent>
+        {naming && (
+          <TabsContent value="naming" className="pt-4">
+            <NamingPolicies canEdit={rights.global} />
+          </TabsContent>
+        )}
         <TabsContent value="explain" className="pt-4">
           <WhatApplies />
         </TabsContent>

@@ -456,7 +456,15 @@ function LeasePanel({ d, extend, onPick }: { d: DeploymentDetail; extend?: Day2A
       </p>
       {extend && (
         <Tip
-          content={extend.enabled ? (extend.approval.required ? "Needs approval" : "Extend") : extend.disabled_reason}
+          content={
+            !extend.enabled
+              ? extend.disabled_reason
+              : extend.approval.required
+                ? "Needs approval"
+                : extend.warnings?.length
+                  ? "A policy warns, and you may go on"
+                  : "Extend"
+          }
         >
           <span className="self-start">
             <Button size="sm" disabled={!extend.enabled} onClick={() => onPick(extend)}>

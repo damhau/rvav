@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { server } from "@/mocks/node";
+import { resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
 const rows = (region: HTMLElement) =>
@@ -187,5 +188,52 @@ describe("Policies", () => {
     expect(start).toHaveAccessibleDescription(/Enter a whole number, such as 1\./);
     expect(sent).toEqual([]);
     server.events.removeAllListeners();
+  });
+});
+
+// A project admin's page (ADR-0045): every project's policies to read, their
+// projects' own to write, and no naming policies.
+describe("Policies as a project admin", () => {
+  afterEach(() => localStorage.removeItem("rvav.mock.as"));
+
+  it("writes a soft day-2 policy for their project, and only reads every project's", async () => {
+    localStorage.setItem("rvav.mock.as", "project-admin");
+    resetDb();
+    const user = userEvent.setup();
+    renderApp("/admin/policies?tab=naming");
+    expect(await screen.findByRole("tab", { name: "Approval", selected: true })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Naming" })).toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "Day-2" }));
+    const region = await screen.findByRole("region", { name: "Day-2 policies" });
+    await within(region).findByRole("row", { name: /Members operate their VMs/ });
+    expect(within(region).queryByRole("button", { name: /^Actions for/ })).toBeNull();
+
+    await user.click(within(region).getByRole("button", { name: "New day-2 policy" }));
+    const sheet = await screen.findByRole("dialog", { name: "New day-2 policy" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Powering off web VMs");
+    const priority = within(sheet).getByRole("spinbutton", { name: "Priority" });
+    await user.clear(priority);
+    await user.type(priority, "30");
+    await user.click(within(sheet).getByRole("combobox", { name: "Effect" }));
+    await user.click(await screen.findByRole("option", { name: "Deny" }));
+    await user.click(within(sheet).getByRole("combobox", { name: "Enforcement" }));
+    await user.click(await screen.findByRole("option", { name: "Soft: it warns, and the requester may go on" }));
+    const actions = within(sheet).getByRole("textbox", { name: "Actions" });
+    await user.clear(actions);
+    await user.type(actions, "power_off");
+    await user.type(within(sheet).getByRole("textbox", { name: "Reason people see" }), "Tell the on-call team.");
+    await user.click(within(sheet).getByRole("combobox", { name: "Project" }));
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Web Platform"]);
+    await user.keyboard("{Escape}");
+    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    expect(await screen.findByText("Powering off web VMs saved")).toBeInTheDocument();
+
+    const row = await within(region).findByRole("row", { name: /Powering off web VMs/ });
+    expect(row).toHaveTextContent("Soft: warns");
+    await user.click(within(row).getByRole("button", { name: "Actions for Powering off web VMs" }));
+    const up = await screen.findByRole("menuitem", { name: /^Move up/ });
+    expect(up).toHaveAttribute("aria-disabled", "true");
+    expect(up).toHaveTextContent("It renumbers the policies of every project: set its priority instead");
   });
 });

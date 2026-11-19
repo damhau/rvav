@@ -16,7 +16,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
 import { failed, fieldErrors } from "../common";
-import { useProjects } from "./shared";
+import { enforcementOptions, useProjects, type PolicyRights } from "./shared";
 
 type S = components["schemas"];
 type Lease = S["LeasePolicy"];
@@ -34,7 +34,7 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
   const [f, setF] = useState<Lease>(
     lease ?? {
       environment: "dev",
-      project_id: null,
+      project_id: projects.initial,
       default_days: 30,
       max_days: 90,
       max_extensions: 2,
@@ -89,7 +89,12 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
             options={(envs.data?.items ?? []).map((e) => ({ value: e.key, label: e.name }))}
           />
         </Field>
-        <Field label="Project" htmlFor="lease-project" hint="A project's own policy wins">
+        <Field
+          label="Project"
+          htmlFor="lease-project"
+          error={errors["/project_id"]}
+          hint="A project's own policy wins, but it can't be looser than every project's"
+        >
           <Select
             id="lease-project"
             value={f.project_id ?? "all"}
@@ -127,11 +132,24 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
           options={Object.entries(expiryLabels).map(([value, label]) => ({ value, label }))}
         />
       </Field>
+      <Field
+        label="Enforcement"
+        htmlFor="lease-enforcement"
+        error={errors["/enforcement"]}
+        hint="Soft: a longer lease, or one more extension, warns the requester instead of being refused or approved."
+      >
+        <Select
+          id="lease-enforcement"
+          value={f.enforcement ?? "hard"}
+          onChange={(v) => setF({ ...f, enforcement: v as S["PolicyEnforcement"] })}
+          options={enforcementOptions}
+        />
+      </Field>
     </Sheet>
   );
 }
 
-export function LeasePolicies({ canEdit }: { canEdit: boolean }) {
+export function LeasePolicies({ rights }: { rights: PolicyRights }) {
   const qc = useQueryClient();
   const leases = useQuery(adm.leases());
   const projects = useProjects();
@@ -177,6 +195,7 @@ export function LeasePolicies({ canEdit }: { canEdit: boolean }) {
       cell: (l) => (
         <span className="text-secondary">
           {l.default_days ? `${l.default_days} days, up to ${l.max_days ?? "no limit"}` : "None"}
+          {l.enforcement === "soft" && <span className="block text-muted">Soft: longer warns</span>}
         </span>
       ),
     },
@@ -199,9 +218,11 @@ export function LeasePolicies({ canEdit }: { canEdit: boolean }) {
   return (
     <Panel
       title="Lease policies"
-      description="How long deployments live in each environment, and what happens when the lease ends."
+      description={`How long deployments live in each environment, and what happens when the lease ends.${
+        rights.global ? "" : " You change your projects' own, no looser than every project's."
+      }`}
       flush
-      actions={canEdit && Boolean(items?.length) && add}
+      actions={rights.any && Boolean(items?.length) && add}
     >
       <DataTable
         label="Lease policies"
@@ -216,25 +237,26 @@ export function LeasePolicies({ canEdit }: { canEdit: boolean }) {
             icon={Timer}
             title="No lease policy"
             body="Deployments live until someone deletes them. Add a policy to give them a lease."
-            action={canEdit && add}
+            action={rights.any && add}
           />
         }
         rowMenuLabel={(l) => `Actions for the lease in ${where(l)}`}
         rowMenu={
-          canEdit
-            ? (l) => (
-                <>
-                  <MenuItem onSelect={() => setEditing(l)}>Change</MenuItem>
-                  {l.project_id && (
-                    <>
-                      <MenuSeparator />
-                      <MenuItem danger onSelect={() => setRemoving(l)}>
-                        Remove
-                      </MenuItem>
-                    </>
-                  )}
-                </>
-              )
+          rights.any
+            ? (l) =>
+                rights.writes(l.project_id) ? (
+                  <>
+                    <MenuItem onSelect={() => setEditing(l)}>Change</MenuItem>
+                    {l.project_id && (
+                      <>
+                        <MenuSeparator />
+                        <MenuItem danger onSelect={() => setRemoving(l)}>
+                          Remove
+                        </MenuItem>
+                      </>
+                    )}
+                  </>
+                ) : null
             : undefined
         }
       />

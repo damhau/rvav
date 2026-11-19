@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import type { FieldError, FieldValuesQuery, RequestDraft } from "@/lib/api/types";
+import { adminState } from "@/mocks/administration";
 import { server } from "@/mocks/node";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
@@ -72,6 +73,30 @@ describe("request form against the mock API", () => {
     await user.click(screen.getByRole("link", { name: "Open deployment" }));
     await screen.findByRole("heading", { name: "web-dev-app" }, { timeout: 5000 });
     expect(await screen.findByText("web-dev-app001")).toBeInTheDocument();
+  }, 15000);
+
+  it("warns of a lease longer than a soft lease allows, and submits anyway", async () => {
+    adminState(db).leases.find((l) => l.environment === "dev" && !l.project_id)!.enforcement = "soft";
+    const user = userEvent.setup();
+    const { router } = await openForm();
+    expect(screen.getByRole("combobox", { name: "Lease" })).toHaveAccessibleDescription(
+      /Longer than 90 days warns, and you may go on\.$/,
+    );
+    await user.click(screen.getByRole("combobox", { name: "Lease" }));
+    await user.click(await screen.findByRole("option", { name: "180 days" }));
+    const summary = screen.getByRole("region", { name: "Summary" });
+    expect(await within(summary).findByRole("note", { name: "Policy warning" })).toHaveTextContent(
+      "Leases in Development should be at most 90 days. (Lease in Development)You may submit anyway: the request keeps the warning.",
+    );
+    await user.click(screen.getByRole("button", { name: "Submit request anyway" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/requests/REQ-10491"));
+    expect(await screen.findByRole("region", { name: "Policy warnings" }, { timeout: 5000 })).toHaveTextContent(
+      "Leases in Development should be at most 90 days.",
+    );
+    expect(db.requests[0]!.request.warnings).toEqual([
+      { policy: "Lease in Development", message: "Leases in Development should be at most 90 days." },
+    ]);
   }, 15000);
 });
 

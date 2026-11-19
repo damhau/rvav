@@ -51,7 +51,7 @@ import { notificationHandlers } from "./notifications";
 import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
 import { sharedWith, sharingHandlers } from "./sharing";
-import { listingHandlers, visibleDeployments } from "./listing";
+import { listingHandlers, seesDeployment, visibleDeployments } from "./listing";
 import { faults } from "./faults";
 import { demand, preview, resolveField, ruled, summarize, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
@@ -141,7 +141,11 @@ function publicItem(i: StoredItem): CatalogItem {
 }
 
 function visibleRequest(r: ServiceRequest) {
-  return myProjectIds().has(r.project.id);
+  const me = db.me.user.id;
+  return seesDeployment(db, {
+    project: r.project,
+    owner: { id: r.requester.id === me || r.on_behalf_of?.id === me ? me : r.requester.id },
+  });
 }
 
 function title(item: StoredItem, host: string | null, inputs: Record<string, unknown>) {
@@ -678,6 +682,15 @@ export const handlers = [
         errors,
       );
     }
+    const warnings = check.warnings ?? [];
+    if (warnings.length && !draft.accept_warnings)
+      return problem(
+        422,
+        "validation",
+        "Some values need fixing",
+        "A policy warns: submit again to go on.",
+        warnings.map((w) => ({ field: "/accept_warnings", code: "warning", message: w.message })),
+      );
 
     // Kept as the server keeps them: without the inputs of fields the rules hide.
     const { inputs } = ruled(db, item, project, draft);
@@ -717,6 +730,7 @@ export const handlers = [
       current_step: null,
       progress: { done: 0, total: steps.length },
       error: null,
+      ...(warnings.length ? { warnings } : {}),
     };
     const stored = { request: req, steps, logs: {} };
     db.requests.unshift(stored);
@@ -1129,7 +1143,7 @@ export const handlers = [
 
   http.get<{ deploymentId: string }>(`${base}/deployments/:deploymentId/actions`, async ({ params }) => {
     await wait();
-    const dep = db.deployments.find((d) => d.id === params.deploymentId);
+    const dep = db.deployments.find((d) => d.id === params.deploymentId && seesDeployment(db, d));
     if (!dep) return notFound("Deployment");
     return json<Ok<"/deployments/{deploymentId}/actions", "get">>({ items: actionsFor(db, dep) });
   }),
@@ -1141,7 +1155,7 @@ export const handlers = [
     const raw = await request.text();
     const seen = db.idempotency.get(key);
     if (seen) return json(seen.response, { status: seen.status });
-    const dep = db.deployments.find((d) => d.id === params.deploymentId);
+    const dep = db.deployments.find((d) => d.id === params.deploymentId && seesDeployment(db, d));
     if (!dep) return notFound("Deployment");
     return submitted(key, raw, runAction(db, dep, JSON.parse(raw) as S["Day2Draft"], newRequestNumber()));
   }),
@@ -1150,7 +1164,7 @@ export const handlers = [
     `${base}/deployments/:deploymentId/update/preview`,
     async ({ params, request }) => {
       await wait();
-      const dep = db.deployments.find((d) => d.id === params.deploymentId);
+      const dep = db.deployments.find((d) => d.id === params.deploymentId && seesDeployment(db, d));
       if (!dep) return notFound("Deployment");
       const res = previewUpdate(db, dep, (await request.json()) as S["UpdateDraft"]);
       if (res.error) return problem(res.error.status, "conflict", res.error.title);
@@ -1165,14 +1179,14 @@ export const handlers = [
     const raw = await request.text();
     const seen = db.idempotency.get(key);
     if (seen) return json(seen.response, { status: seen.status });
-    const dep = db.deployments.find((d) => d.id === params.deploymentId);
+    const dep = db.deployments.find((d) => d.id === params.deploymentId && seesDeployment(db, d));
     if (!dep) return notFound("Deployment");
     return submitted(key, raw, runUpdate(db, dep, JSON.parse(raw) as S["UpdateDraft"], newRequestNumber()));
   }),
 
   http.get<{ deploymentId: string }>(`${base}/deployments/:deploymentId/history`, async ({ params, request }) => {
     await wait();
-    const dep = db.deployments.find((d) => d.id === params.deploymentId);
+    const dep = db.deployments.find((d) => d.id === params.deploymentId && seesDeployment(db, d));
     if (!dep) return notFound("Deployment");
     const items = db.requests
       .map((r) => r.request)
@@ -1190,7 +1204,7 @@ export const handlers = [
     `${base}/deployments/:deploymentId/resources/:resourceId/console`,
     async ({ params }) => {
       await wait();
-      const dep = db.deployments.find((d) => d.id === params.deploymentId);
+      const dep = db.deployments.find((d) => d.id === params.deploymentId && seesDeployment(db, d));
       const vm = dep?.resources.find((r) => r.id === params.resourceId && r.type === "vsphere.vm");
       if (!dep || !vm || vm.type !== "vsphere.vm") return notFound("VM");
       if (vm.vm.power_state !== "on") return problem(409, "conflict", "The VM is powered off.", "Power it on first.");
@@ -1201,7 +1215,7 @@ export const handlers = [
 
   http.post<{ deploymentId: string }>(`${base}/deployments/:deploymentId/private-key`, async ({ params }) => {
     await wait();
-    const d = db.deployments.find((x) => x.id === params.deploymentId && myProjectIds().has(x.project.id));
+    const d = db.deployments.find((x) => x.id === params.deploymentId && seesDeployment(db, x));
     const k = d?.generated_key;
     if (!d || !k) return notFound("Generated key");
     if (d.owner.id !== db.me.user.id)
@@ -1232,7 +1246,7 @@ export const handlers = [
 
   http.get<{ deploymentId: string }>(`${base}/deployments/:deploymentId`, async ({ params }) => {
     await wait();
-    const d = db.deployments.find((x) => x.id === params.deploymentId && myProjectIds().has(x.project.id));
+    const d = db.deployments.find((x) => x.id === params.deploymentId && seesDeployment(db, x));
     return d ? json<S["DeploymentDetail"]>({ ...d, ...summarize(d) }) : notFound("Deployment");
   }),
 

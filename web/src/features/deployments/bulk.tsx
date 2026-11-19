@@ -85,6 +85,11 @@ export function BulkDialog({
           out.push({ name, result: a.disabled_reason ?? "Not available", ok: false });
           continue;
         }
+        // Going on despite a soft policy is each requester's choice, one deployment at a time.
+        if (a.warnings?.length) {
+          out.push({ name, result: `${a.warnings[0]!.message} Run it on this deployment to go on.`, ok: false });
+          continue;
+        }
         try {
           const r = await call(
             api.POST("/deployments/{deploymentId}/actions", {

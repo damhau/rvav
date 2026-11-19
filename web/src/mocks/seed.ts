@@ -18,6 +18,7 @@ import type {
   UserRef,
   VmResource,
 } from "@/lib/api/types";
+import type { components } from "@/lib/api/schema";
 import type { StoredApproval } from "./approvals";
 import { factsFor } from "./approvals";
 import { seededBlueprint, topologyOf } from "./blueprints";
@@ -55,6 +56,8 @@ export interface Db {
   fresh: boolean;
   /** Roles a persona's seed gives others in projects, beyond the mocks' own. */
   seedMembers?: { projectId: string; userId: string; role: string }[];
+  /** Day-2 policies a persona's seed adds to the mocks' own. */
+  seedDay2?: components["schemas"]["Day2Policy"][];
 }
 
 /** rvav.mock.fresh in localStorage set to "1" starts the mock as a new
@@ -117,9 +120,12 @@ export function createDb(now = Date.now()): Db {
 
   // Mock mode shows every page: the mock user is an administrator too, unless
   // rvav.mock.as in localStorage says "project-admin" or "auditor" (tests of
-  // what those see), or names a custom role of A1's acceptance: "vm-operator"
-  // in Web Platform, "compliance-auditor" for all of rvav. An auditor holds
-  // no role in a project, as the server's seed gives none.
+  // what those see), "member" (a member of both projects, after G1.3's
+  // project admin shared Web Platform's deployments with their owners only
+  // and wrote a soft day-2 policy), or names a custom role of A1's
+  // acceptance: "vm-operator" in Web Platform, "compliance-auditor" for all
+  // of rvav. An auditor holds no role in a project, as the server's seed
+  // gives none.
   let as: string | null = null;
   try {
     as = localStorage.getItem("rvav.mock.as");
@@ -130,7 +136,7 @@ export function createDb(now = Date.now()): Db {
   const roles = { customRoles: persona ? [persona] : [] } as unknown as Db;
   const auditing = as === "auditor" || as === "compliance-auditor";
   const rvav =
-    as === "project-admin" || as === "vm-operator"
+    as === "project-admin" || as === "vm-operator" || as === "member"
       ? ["user"]
       : as === "auditor" || as === "compliance-auditor"
         ? ["user", as]
@@ -144,7 +150,7 @@ export function createDb(now = Date.now()): Db {
       as === "vm-operator"
         ? [meProject(roles, ref(web), rvav, ["vm-operator"])]
         : [
-            meProject(roles, ref(web), rvav, auditing ? [] : ["project-admin"]),
+            meProject(roles, ref(web), rvav, auditing ? [] : [as === "member" ? "member" : "project-admin"]),
             meProject(roles, ref(data), rvav, auditing ? [] : ["member"]),
           ],
   };
@@ -1439,6 +1445,24 @@ export function createDb(now = Date.now()): Db {
     const r = personaRoles["vm-operator"]!;
     customRoles(out).push({ ...r, permissions: [...r.permissions] });
     out.seedMembers = [{ projectId: "prj_web", userId: "usr_tnguyen", role: r.key }];
+  }
+  if (as === "member") {
+    web.deployment_sharing = "owner_only";
+    out.seedDay2 = [
+      {
+        id: "d2p_web_power_off",
+        name: "Powering off web VMs",
+        reason: "Web Platform's VMs serve the checkout: tell the on-call team before you power one off.",
+        priority: 30,
+        actions: ["power_off"],
+        roles: [],
+        condition: "true",
+        effect: "deny",
+        enforcement: "soft",
+        project_id: web.id,
+        enabled: true,
+      },
+    ];
   }
   return out;
 }

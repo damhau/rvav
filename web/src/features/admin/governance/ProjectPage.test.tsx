@@ -208,3 +208,30 @@ describe("a project's placement and quotas", () => {
     );
   }, 15_000);
 });
+
+describe("a project's deployment sharing", () => {
+  it("lets its project admin share its deployments with their owners only", { timeout: 20_000 }, async () => {
+    asProjectAdmin();
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web");
+    const sharing = await screen.findByRole("region", { name: "Deployment sharing" });
+    const save = within(sharing).getByRole("button", { name: "Save sharing" });
+    expect(save).toBeDisabled();
+    await user.click(within(sharing).getByRole("combobox", { name: "Who sees them" }));
+    await user.click(await screen.findByRole("option", { name: "Owners only" }));
+    expect(sharing).toHaveTextContent(
+      "Project admins, supervisors, auditors and administrators still see all of them.",
+    );
+    await user.click(save);
+    expect(await screen.findByText("Web Platform's deployments: owners only")).toBeInTheDocument();
+    expect(db.projects.find((p) => p.id === "prj_web")?.deployment_sharing).toBe("owner_only");
+    // Saved, the panel starts again from the project it read back.
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("region", { name: "Deployment sharing" })).getByRole("button", {
+          name: "Save sharing",
+        }),
+      ).toBeDisabled(),
+    );
+  });
+});

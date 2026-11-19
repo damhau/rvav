@@ -7,6 +7,7 @@ import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
 import { Page } from "@/components/common/page";
 import { EnvBadge } from "@/components/common/status";
+import { PolicyWarnings } from "@/components/common/warnings";
 import { Badge } from "@/components/ui/badge";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
@@ -191,6 +192,14 @@ function Summary({
                   : "The update starts as soon as you confirm it."}
               </span>
             </div>
+            {Boolean(preview.warnings?.length) && (
+              <div className="border-t border-line px-4 py-3">
+                <PolicyWarnings
+                  warnings={preview.warnings ?? []}
+                  note="You may update anyway: the request keeps the warning."
+                />
+              </div>
+            )}
           </>
         )}
         {formErrors.length > 0 && (
@@ -336,7 +345,14 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
       return;
     }
     if (checked.allowed && checked.refused.length === 0)
-      setConfirm({ preview: checked, body: { ...checking, ...(justification ? { justification } : {}) } });
+      setConfirm({
+        preview: checked,
+        body: {
+          ...checking,
+          ...(justification ? { justification } : {}),
+          ...(checked.warnings?.length ? { accept_warnings: true } : {}),
+        },
+      });
   };
   const holding = sendingText(useSendingFiles());
   const secrets = Object.entries(d.inputs).some(([k, v]) => v === masked && fields[k]?.secret);
@@ -444,23 +460,28 @@ function ConfirmUpdate({
             : `rvav makes ${what} now.`
       }
       consequences={
-        p.changes.length > 0 && (
-          <ul className="flex list-disc flex-col gap-0.5 pl-4">
-            {(destructive.length ? destructive : p.changes).map((c, i) => (
-              <li key={`${c.kind}-${c.vm ?? ""}-${i}`}>
-                {c.title}
-                {c.destructive && c.detail ? `: ${c.detail.charAt(0).toLowerCase()}${c.detail.slice(1)}` : ""}
-              </li>
-            ))}
-            {destructive.length > 0 && rest > 0 && (
-              <li>
-                and {rest} more change{rest === 1 ? "" : "s"}
-              </li>
+        (p.changes.length > 0 || Boolean(p.warnings?.length)) && (
+          <div className="flex flex-col gap-2">
+            {p.changes.length > 0 && (
+              <ul className="flex list-disc flex-col gap-0.5 pl-4">
+                {(destructive.length ? destructive : p.changes).map((c, i) => (
+                  <li key={`${c.kind}-${c.vm ?? ""}-${i}`}>
+                    {c.title}
+                    {c.destructive && c.detail ? `: ${c.detail.charAt(0).toLowerCase()}${c.detail.slice(1)}` : ""}
+                  </li>
+                ))}
+                {destructive.length > 0 && rest > 0 && (
+                  <li>
+                    and {rest} more change{rest === 1 ? "" : "s"}
+                  </li>
+                )}
+              </ul>
             )}
-          </ul>
+            <PolicyWarnings warnings={p.warnings ?? []} note="" />
+          </div>
         )
       }
-      confirmLabel={p.approval.required ? "Submit for approval" : "Update"}
+      confirmLabel={`${p.approval.required ? "Submit for approval" : "Update"}${p.warnings?.length ? " anyway" : ""}`}
       cancelLabel="Keep editing"
       tone={destructive.length ? "danger" : "primary"}
       pending={pending}

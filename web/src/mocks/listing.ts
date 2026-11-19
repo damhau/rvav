@@ -38,10 +38,21 @@ const compare = (a: string | number, b: string | number) =>
   typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
 
 /** The deployments of the person's projects, or of one of them, that aren't deleted. */
+/** Whoever sees the project sees its deployments, or only their own where it shares none (ADR-0045). */
+export function seesDeployment(db: Db, d: { project: { id: string }; owner: { id: string } }) {
+  const held = db.me.projects.find((p) => p.project.id === d.project.id);
+  if (!held) return false;
+  return (
+    db.projects.find((p) => p.id === d.project.id)?.deployment_sharing !== "owner_only" ||
+    d.owner.id === db.me.user.id ||
+    held.permissions.includes("deployments.read_all") ||
+    db.me.permissions.includes("deployments.read_all")
+  );
+}
+
 export function visibleDeployments(db: Db, projectId: string | null) {
-  const mine = new Set(db.me.projects.map((p) => p.project.id));
   return db.deployments.filter(
-    (d) => mine.has(d.project.id) && d.status !== "deleted" && (!projectId || d.project.id === projectId),
+    (d) => seesDeployment(db, d) && d.status !== "deleted" && (!projectId || d.project.id === projectId),
   );
 }
 

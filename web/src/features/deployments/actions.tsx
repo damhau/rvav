@@ -18,6 +18,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { allWarnings, PolicyWarnings, refusedWarnings, type PolicyWarning } from "@/components/common/warnings";
 import { Input, Textarea } from "@/components/ui/input";
 import { FormRenderer } from "@/forms/FormRenderer";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
@@ -37,8 +38,9 @@ export const groupLabel: Record<Day2Action["group"], string> = {
 
 const groupOrder = Object.keys(groupLabel) as Day2Action["group"][];
 
-/** Actions that run without asking anything: no form, no confirmation, no approval, nothing lost. */
-export const runsDirectly = (a: Day2Action) => !a.form && !a.confirm && !a.approval.required && !a.destructive;
+/** Actions that run without asking anything: no form, no confirmation, no approval, no warning, nothing lost. */
+export const runsDirectly = (a: Day2Action) =>
+  !a.form && !a.confirm && !a.approval.required && !a.destructive && !a.warnings?.length;
 
 /** Toast for an action that failed to start without a dialog to show it in. */
 export function actionFailed(e: unknown) {
@@ -96,6 +98,9 @@ export function ActionDialog({
   const [typed, setTyped] = useState("");
   const [justification, setJustification] = useState("");
   const [errors, setErrors] = useState<MappedErrors | null>(null);
+  // What the server warned about on submit, such as an extension longer than a soft lease allows.
+  const [refused, setRefused] = useState<PolicyWarning[]>([]);
+  const warnings = allWarnings(action.warnings, refused);
   const [key, setKey] = useState(newIdempotencyKey);
   const run = useRunAction(deployment.id);
   const mustType = action.confirm?.type_to_confirm;
@@ -107,6 +112,7 @@ export function ActionDialog({
       ...(action.resource_id ? { resource_id: action.resource_id } : {}),
       inputs: values,
       ...(justification.trim() ? { justification: justification.trim() } : {}),
+      ...(warnings.length ? { accept_warnings: true } : {}),
     };
     run.mutate(
       { draft, key },
@@ -117,8 +123,10 @@ export function ActionDialog({
         },
         onError: (e) => {
           setKey(newIdempotencyKey());
+          const warned = refusedWarnings(e);
+          if (warned.length) setRefused(warned);
           if (isApiError(e) && e.status === 422) {
-            setErrors(mapFieldErrors(e.fieldErrors));
+            setErrors(mapFieldErrors(e.fieldErrors.filter((f) => f.field !== "/accept_warnings")));
             return;
           }
           setErrors({ fields: {}, form: [isApiError(e) ? (e.problem.detail ?? e.problem.title) : String(e)] });
@@ -170,6 +178,7 @@ export function ActionDialog({
               <span>Needs approval: {action.approval.reasons.join("; ")}. It starts once approved.</span>
             </p>
           )}
+          <PolicyWarnings warnings={warnings} />
           {form && (
             <FormRenderer
               form={form}
@@ -224,6 +233,7 @@ export function ActionDialog({
               disabled={!ready || run.isPending}
             >
               {action.approval.required ? "Ask for approval" : action.name}
+              {warnings.length > 0 && " anyway"}
             </Button>
           </div>
         </form>
@@ -391,6 +401,7 @@ function ActionItems({
                   <span>
                     {a.name}
                     {a.approval.required && <span className="ml-1.5 text-caption text-warn">approval</span>}
+                    {Boolean(a.warnings?.length) && <span className="ml-1.5 text-caption text-warn">warns</span>}
                   </span>
                   {!a.enabled && a.disabled_reason && (
                     <span className="text-caption leading-snug text-faint">{a.disabled_reason}</span>

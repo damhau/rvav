@@ -7074,6 +7074,9 @@ components:
             default_days: { type: [integer, "null"] }
             max_days: { type: [integer, "null"] }
             expires_at: { type: [string, "null"], format: date-time }
+            enforcement:
+              $ref: "#/components/schemas/PolicyEnforcement"
+              description: Soft when a longer lease than `max_days` only warns (ADR-0045).
         components:
           type: array
           description: |

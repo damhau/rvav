@@ -1,9 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { server } from "@/mocks/node";
-import { db } from "@/mocks/seed";
+import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
 const idOf = (name: string) => db.deployments.find((d) => d.name === name)!.id;
@@ -109,5 +109,48 @@ describe("a deployment's page against the mock API", () => {
       "10.21.10.12DHCP · web-prd-edge001",
       "Address not known yetDHCP · web-prd-edge002",
     ]);
+  });
+});
+
+// The "member" persona: Web Platform shares its deployments with their
+// owners only, and a soft policy of its own warns before a VM powers off
+// (ADR-0045).
+describe("a soft day-2 policy", () => {
+  afterEach(() => localStorage.removeItem("rvav.mock.as"));
+
+  it("warns a member in the action's dialog, and runs the action once they go on", { timeout: 20_000 }, async () => {
+    localStorage.setItem("rvav.mock.as", "member");
+    resetDb();
+    const user = userEvent.setup();
+    renderApp(`/deployments/${idOf("web-tst-search")}`);
+    await user.click(await screen.findByRole("button", { name: "Actions" }, { timeout: 5000 }));
+    const menu = await screen.findByRole("menu");
+    const vm = within(menu).getByRole("menuitem", { name: "web-tst-search001" });
+    await user.click(vm);
+    await waitFor(() => expect(vm).toHaveAttribute("aria-expanded", "true"));
+    const sub = screen.getAllByRole("menu").find((m) => m !== menu)!;
+    const off = within(sub).getByRole("menuitem", { name: /^Power off/ });
+    expect(off).toHaveTextContent("warns");
+    // Under jsdom a click on a submenu's item doesn't select it; Enter does.
+    off.focus();
+    await user.keyboard("{Enter}");
+
+    const dialog = await screen.findByRole("dialog", { name: "Power off · web-tst-search001" });
+    expect(within(dialog).getByRole("note", { name: "Policy warning" })).toHaveTextContent(
+      "Web Platform's VMs serve the checkout: tell the on-call team before you power one off. (Powering off web VMs)",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Power off anyway" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(db.requests[0]!.request).toMatchObject({
+      kind: "day2",
+      warnings: [expect.objectContaining({ policy: "Powering off web VMs" })],
+    });
+  });
+
+  it("shows a member of an owners-only project their own deployments only", { timeout: 20_000 }, async () => {
+    localStorage.setItem("rvav.mock.as", "member");
+    resetDb();
+    renderApp(`/deployments/${idOf("web-dev-api")}`);
+    expect(await screen.findByText("Deployment not found", {}, { timeout: 5000 })).toBeInTheDocument();
   });
 });

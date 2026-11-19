@@ -93,6 +93,8 @@ type LeaseInfo struct {
 	ExpiresAt     *time.Time
 	MaxExtensions int
 	ExpiryAction  string
+	// Soft: a lease longer than MaxDays warns (ADR-0045).
+	Soft bool
 }
 
 var quotaOrder = []string{"vcpu", "memory_gb", "storage_gb", "vm_count"}
@@ -752,7 +754,8 @@ func (s *Service) evaluateLease(ctx context.Context, ev *Evaluation, requested *
 	if err != nil {
 		return err
 	}
-	ev.Lease = LeaseInfo{DefaultDays: pol.DefaultDays, MaxDays: pol.MaxDays, MaxExtensions: pol.MaxExtensions, ExpiryAction: pol.ExpiryAction}
+	ev.Lease = LeaseInfo{DefaultDays: pol.DefaultDays, MaxDays: pol.MaxDays, MaxExtensions: pol.MaxExtensions, ExpiryAction: pol.ExpiryAction,
+		Soft: pol.Enforcement == store.EnforcementSoft}
 	days := pol.DefaultDays
 	if requested != nil {
 		days = requested
@@ -775,6 +778,24 @@ func (s *Service) evaluateLease(ctx context.Context, ev *Evaluation, requested *
 		ev.Lease.ExpiresAt = &t
 	}
 	return nil
+}
+
+func (ev *Evaluation) previewLease() *struct {
+	DefaultDays *int                   `json:"default_days,omitempty"`
+	Enforcement *api.PolicyEnforcement `json:"enforcement,omitempty"`
+	ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
+	MaxDays     *int                   `json:"max_days,omitempty"`
+} {
+	enforcement := api.PolicyEnforcementHard
+	if ev.Lease.Soft {
+		enforcement = api.PolicyEnforcementSoft
+	}
+	return &struct {
+		DefaultDays *int                   `json:"default_days,omitempty"`
+		Enforcement *api.PolicyEnforcement `json:"enforcement,omitempty"`
+		ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
+		MaxDays     *int                   `json:"max_days,omitempty"`
+	}{DefaultDays: ev.Lease.DefaultDays, Enforcement: &enforcement, MaxDays: ev.Lease.MaxDays, ExpiresAt: ev.Lease.ExpiresAt}
 }
 
 // Preview turns an evaluation into the API response.
@@ -822,20 +843,12 @@ func (ev *Evaluation) Preview() api.RequestPreview {
 		}
 		out.Placement = pl
 		out.Components = present.Ptr(ev.previewComponents())
-		out.Lease = &struct {
-			DefaultDays *int       `json:"default_days,omitempty"`
-			ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-			MaxDays     *int       `json:"max_days,omitempty"`
-		}{DefaultDays: ev.Lease.DefaultDays, MaxDays: ev.Lease.MaxDays, ExpiresAt: ev.Lease.ExpiresAt}
+		out.Lease = ev.previewLease()
 	}
 	// A composite's VM steps: what each builds, under the step's title, and
 	// their lease.
 	if ev.Blueprint.Kind == blueprint.KindComposite && ev.compositeVMs() {
-		out.Lease = &struct {
-			DefaultDays *int       `json:"default_days,omitempty"`
-			ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-			MaxDays     *int       `json:"max_days,omitempty"`
-		}{DefaultDays: ev.Lease.DefaultDays, MaxDays: ev.Lease.MaxDays, ExpiresAt: ev.Lease.ExpiresAt}
+		out.Lease = ev.previewLease()
 	}
 	if ev.Blueprint.Kind == blueprint.KindComposite {
 		var comps []api.PreviewComponent
