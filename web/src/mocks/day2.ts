@@ -54,7 +54,7 @@ interface MockAction {
   typeName?: boolean;
   unavailable?: (vm: VmResource | undefined, d: DeploymentDetail) => string | null;
   form?: (vm: VmResource | undefined, d: DeploymentDetail) => ActionForm;
-  validate?: (vm: VmResource | undefined, inputs: Inputs) => string | null;
+  validate?: (vm: VmResource | undefined, inputs: Inputs) => FieldError | null;
   ops: (vm: VmResource | undefined, inputs: Inputs, d: DeploymentDetail) => Op[];
 }
 
@@ -76,6 +76,12 @@ const power = (state: VmResource["vm"]["power_state"]) => (_d: DeploymentDetail,
   vm.vm.guest_state = state === "on" ? "running" : "not_running";
 };
 const snapshots = (vm?: VmResource) => vm?.vm.snapshots ?? [];
+
+const invalid = (name: string, code: string, message: string): FieldError => ({
+  field: `/inputs/${name}`,
+  code,
+  message,
+});
 
 function form(title: string, fields: [string, Record<string, unknown>, UiField, unknown?][]): ActionForm {
   return {
@@ -230,8 +236,13 @@ export const catalogue: MockAction[] = [
       ]),
     validate: (vm, i) => {
       if (Number(i.cpu_count) === vm?.vm.cpu_count && Number(i.memory_gb) * 1024 === vm?.vm.memory_mb)
-        return "This is the VM's current size.";
-      if (on(vm) && !i.restart) return "CPU hot add is off on this VM. Allow the restart, or power the VM off first.";
+        return invalid("cpu_count", "no_change", "This is the VM's current size.");
+      if (on(vm) && !i.restart)
+        return invalid(
+          "restart",
+          "needs_power_off",
+          "CPU hot add is off on this VM. Allow the restart, or power the VM off first.",
+        );
       return null;
     },
     ops: (vm, i) => {
@@ -380,7 +391,7 @@ export const catalogue: MockAction[] = [
     validate: (vm, i) => {
       const now = (vm?.vm.tags ?? []).filter((t) => t.startsWith("backup/")).sort();
       const picked = (Array.isArray(i.tags) ? i.tags.map(String) : []).sort();
-      return now.join() === picked.join() ? "The VM already has these tags." : null;
+      return now.join() === picked.join() ? invalid("tags", "unchanged", "The VM already has these tags.") : null;
     },
     ops: (vm, i) => {
       const picked = Array.isArray(i.tags) ? i.tags.map(String) : [];
@@ -469,7 +480,9 @@ export const catalogue: MockAction[] = [
         ],
       ]),
     validate: (vm, i) =>
-      snapshots(vm).some((s) => s.name === i.name) ? `The VM already has a snapshot named “${String(i.name)}”.` : null,
+      snapshots(vm).some((s) => s.name === i.name)
+        ? invalid("name", "taken", `The VM already has a snapshot named “${String(i.name)}”.`)
+        : null,
     ops: (_vm, i) => [
       vcenter("vsphere.snapshot_create", `Take snapshot ${String(i.name)}`, (_d, v) => {
         if (!v) return;
@@ -895,8 +908,13 @@ export function runAction(
     return { error: { status: reason.startsWith("Your role") ? 403 : 409, title: reason } };
   }
   const inputs = draft.inputs ?? {};
-  const invalid = a.validate?.(vm, inputs);
-  if (invalid) return { error: { status: 422, title: invalid, field: "/inputs" } };
+  // As the server: the form's schema first, then the action's own checks, each on the input it is about.
+  const required = (a.form?.(vm, d).schema as { required?: string[] } | undefined)?.required ?? [];
+  const missing = required
+    .filter((n) => inputs[n] === undefined)
+    .map((n) => invalid(n, "required", "This field is required."));
+  const problems = missing.length ? missing : [a.validate?.(vm, inputs)].filter((e): e is FieldError => Boolean(e));
+  if (problems.length) return { error: { status: 422, title: "Some inputs need attention", errors: problems } };
 
   const why = approvalReason(a, d, inputs);
   const warnings = warningsFor(db, a, d, a.key === "extend_lease" ? why : "");

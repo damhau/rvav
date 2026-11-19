@@ -68,6 +68,7 @@ export function useRunAction(deploymentId?: string) {
       void qc.invalidateQueries({ queryKey: keys.deployments.actions(deployment) });
       void qc.invalidateQueries({ queryKey: keys.deployments.history(deployment) });
       void qc.invalidateQueries({ queryKey: keys.requests.lists() });
+      void qc.invalidateQueries({ queryKey: keys.vms.all });
       toast.success(r.title, {
         description: r.status === "pending_approval" ? `${r.number} waits for approval.` : `${r.number} has started.`,
         action: {
@@ -179,6 +180,20 @@ export function ActionDialog({
             </p>
           )}
           <PolicyWarnings warnings={warnings} />
+          {mustType && (
+            <div className="flex flex-col gap-1.5 text-secondary">
+              <label htmlFor="action-confirm">
+                Type <span className="font-mono font-medium">{mustType}</span> to confirm
+              </label>
+              <Input
+                id="action-confirm"
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+          )}
           {form && (
             <FormRenderer
               form={form}
@@ -201,20 +216,6 @@ export function ActionDialog({
                 value={justification}
                 onChange={(e) => setJustification(e.target.value)}
                 rows={2}
-              />
-            </div>
-          )}
-          {mustType && (
-            <div className="flex flex-col gap-1.5 text-secondary">
-              <label htmlFor="action-confirm">
-                Type <span className="font-mono font-medium">{mustType}</span> to confirm
-              </label>
-              <Input
-                id="action-confirm"
-                value={typed}
-                onChange={(e) => setTyped(e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
               />
             </div>
           )}

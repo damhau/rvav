@@ -233,6 +233,10 @@ test("delete a deployment going on past failures, then see what was left (X1.3)"
   await page.getByRole("button", { name: "Actions", exact: true }).click();
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   const del = page.getByRole("dialog", { name: "Delete · web-dev-api" });
+  // The name to type comes first; its option follows it.
+  await expect(del.getByRole("textbox", { name: /to confirm/ })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(del.getByRole("checkbox", { name: /^Go on past steps in vCenter/ })).toBeFocused();
   await del.getByRole("checkbox", { name: /^Go on past steps in vCenter/ }).check();
   await del.getByRole("textbox", { name: /to confirm/ }).fill("web-dev-api");
   await del.getByRole("button", { name: "Delete", exact: true }).click();

@@ -145,11 +145,14 @@ export function applyEvent(qc: QueryClient, event: LiveEvent, notify?: (n: Notif
       void qc.invalidateQueries({ queryKey: keys.deployments.history(d.id) });
       // Deleted resources arrive only as a status change: read them again.
       if (before && before.status !== d.status) void qc.invalidateQueries({ queryKey: keys.deployments.detail(d.id) });
+      // Resources lists VMs across deployments: VMs come and go with them.
+      void qc.invalidateQueries({ queryKey: keys.vms.all });
       break;
     }
     case "resource.updated": {
       const { deployment_id, resource } = event.data;
       void qc.invalidateQueries({ queryKey: keys.deployments.actions(deployment_id) });
+      void qc.invalidateQueries({ queryKey: keys.vms.all });
       patch<DeploymentDetail>(qc, keys.deployments.detail(deployment_id), (old) => {
         const exists = old.resources.some((r) => r.id === resource.id);
         return {

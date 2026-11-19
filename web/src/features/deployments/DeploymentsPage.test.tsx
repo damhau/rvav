@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
+import { server } from "@/mocks/node";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
@@ -12,6 +14,21 @@ const names = (table: HTMLElement) =>
 
 describe("the deployments list against the mock API", () => {
   beforeEach(() => localStorage.removeItem("rvav.layout.deployments.usr_lmartin"));
+
+  it("counts the deployments it shows while more pages remain", async () => {
+    server.use(
+      http.get("*/api/v1/deployments", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("limit") === "3") return undefined;
+        url.searchParams.set("limit", "3");
+        return fetch(url, { headers: request.headers });
+      }),
+    );
+    renderApp("/deployments?layout=table");
+    const table = await screen.findByRole("table", { name: "Deployments" }, { timeout: 5000 });
+    await waitFor(() => expect(names(table)).toHaveLength(3));
+    expect(screen.getByText(/^3 shown · \d+ VMs, \d+ powered on/)).toBeInTheDocument();
+  });
 
   it("filters by status from the address, and a row opens its deployment", async () => {
     const user = userEvent.setup();

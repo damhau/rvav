@@ -305,6 +305,13 @@ function DeploymentCards({
   );
 }
 
+/** The count above the list: the deployments loaded, said as such while more pages remain. */
+export function deploymentCount(n: number, vms: number, on: number, expiring: number, more: boolean) {
+  const leases = expiring ? ` · ${expiring} lease${expiring === 1 ? "" : "s"} end within 7 days` : "";
+  if (more) return `${n} shown · ${vms} VMs, ${on} powered on${leases}`;
+  return `${n} deployment${n === 1 ? "" : "s"} · ${vms} VMs, ${on} powered on${leases}`;
+}
+
 export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const { me, projectId, project } = useCurrentProject();
   const navigate = useNavigate({ from: "/deployments/" });
@@ -492,10 +499,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
       <PageHeader
         title="Deployments"
         description={`What requests built in ${where}. Power state and addresses come from vCenter, live.`}
-        meta={
-          items &&
-          `${shown.length} deployment${shown.length === 1 ? "" : "s"} · ${vms} VMs, ${on} powered on${expiring ? ` · ${expiring} lease${expiring === 1 ? "" : "s"} end within 7 days` : ""}`
-        }
+        meta={items && deploymentCount(shown.length, vms, on, expiring, list.hasNextPage)}
         actions={
           <>
             {(me.projects.length > 1 || all) && (

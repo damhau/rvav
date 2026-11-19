@@ -176,7 +176,7 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
     },
     {
       id: "placement",
-      className: "whitespace-nowrap",
+      className: "[overflow-wrap:anywhere]",
       header: "Placement",
       cell: (v) => (
         <>
@@ -212,7 +212,7 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
     },
     {
       id: "networks",
-      className: "whitespace-nowrap",
+      className: "[overflow-wrap:anywhere]",
       header: "Networks",
       cell: (v) => (
         <ul className={mono}>
@@ -223,6 +223,12 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
       ),
     },
   ];
+}
+
+/** The count above the table: the rows loaded, said as such while more pages remain. */
+export function vmCount(n: number, on: number, more: boolean) {
+  if (more) return `${n} shown · ${on} of them powered on`;
+  return `${n} VM${n === 1 ? "" : "s"} · ${on} powered on`;
 }
 
 export function ResourcesPage({ search }: { search: ResourcesSearch }) {
@@ -346,7 +352,7 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
       <PageHeader
         title="Resources"
         description={`The VMs your deployments hold in ${where}, live from vCenter.`}
-        meta={items && `${rows.length} VM${rows.length === 1 ? "" : "s"} · ${on} powered on`}
+        meta={items && vmCount(rows.length, on, list.hasNextPage)}
         actions={
           <>
             {(me.projects.length > 1 || all) && (
@@ -378,7 +384,7 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
           sort={toSort(search.sort)}
           onSortChange={(s) => set({ sort: fromSort(s) })}
           presorted
-          minWidth={all ? 1280 : 1180}
+          minWidth={all ? 1280 : 1100}
           loading={list.isPending}
           error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
           toolbar={toolbar}

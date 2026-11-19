@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http } from "msw";
 import { describe, expect, it } from "vitest";
+import { server } from "@/mocks/node";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
@@ -16,6 +18,22 @@ const pick = async (user: ReturnType<typeof userEvent.setup>, select: string, op
 };
 
 describe("the Resources page against the mock API", () => {
+  it("counts the VMs it shows while more pages remain", async () => {
+    server.use(
+      http.get("*/api/v1/resources/vms", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("limit") === "5") return undefined;
+        url.searchParams.set("limit", "5");
+        return fetch(url, { headers: request.headers });
+      }),
+    );
+    renderApp("/resources");
+    const table = await screen.findByRole("table", { name: "VMs" }, { timeout: 5000 });
+    await waitFor(() => expect(names(table)).toHaveLength(5));
+    expect(screen.getByText(/^5 shown · \d+ of them powered on$/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
+  });
+
   it("lists the project's VMs with their addresses, placement and size", async () => {
     renderApp("/resources");
     expect(await screen.findByRole("heading", { level: 1, name: "Resources" }, { timeout: 5000 })).toBeInTheDocument();

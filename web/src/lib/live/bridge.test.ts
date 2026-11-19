@@ -110,6 +110,18 @@ describe("applyEvent", () => {
     expect(res.type === "vsphere.vm" && res.vm.power_state).toBe("off");
   });
 
+  it("deployment and resource events refresh Resources, which lists VMs across deployments", () => {
+    const qc = new QueryClient();
+    const d = structuredClone<DeploymentDetail>(db.deployments[0]!);
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    applyEvent(qc, { id: "e5v", at, type: "deployment.updated", data: { ...d, vm_count: 1 } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.vms.all });
+    invalidate.mockClear();
+    const vm = d.resources[0]!;
+    applyEvent(qc, { id: "e6v", at, type: "resource.updated", data: { deployment_id: d.id, resource: vm } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.vms.all });
+  });
+
   it("hands notifications to the callback and resync refetches everything", () => {
     const qc = new QueryClient();
     const notify = vi.fn();

@@ -123,6 +123,8 @@ test("open a VM from the Resources page, and its deployment", async ({ page }) =
   await page.goto("/resources");
   const table = page.getByRole("table", { name: "VMs" });
   await expect(table.getByRole("button", { name: "web-prd-front001" })).toBeVisible();
+  // One project's VMs fit their card at 1440 px; every project's, a column wider, may scroll.
+  expect(await table.locator("xpath=..").evaluate((e) => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(0);
 
   await pick(page, "Power", "Powered off");
   await expect(table.getByRole("row")).toHaveCount(3);
