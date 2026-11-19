@@ -273,7 +273,45 @@ const (
 	PolicyDay2     = "com.vmware.policy.deployment.action"
 	PolicyQuota    = "com.vmware.policy.resource.quota"
 	PolicyLimit    = "com.vmware.policy.deployment.limit"
+	// PolicySharing is a content sharing policy: catalog items or content
+	// sources shared with a project's users, groups or roles, or with all
+	// of its members (vRA 8.x).
+	PolicySharing = "com.vmware.policy.catalog.entitlement"
 )
+
+// SharingDefinition is a content sharing policy's definition.
+type SharingDefinition struct {
+	EntitledUsers []EntitledUsers `json:"entitledUsers"`
+}
+
+// EntitledUsers are principals and the items shared with them.
+type EntitledUsers struct {
+	UserType   string            `json:"userType,omitempty"` // USER, ROLE
+	Principals []SharePrincipal  `json:"principals"`
+	Items      []SharedReference `json:"items"`
+}
+
+// SharePrincipal is who a content sharing policy shares with: PROJECT (all
+// its members), USER, GROUP or ROLE, by reference.
+type SharePrincipal struct {
+	Type        string `json:"type"`
+	ReferenceID string `json:"referenceId"`
+}
+
+// SharedReference is a catalog item (CATALOG_ITEM_IDENTIFIER) or a content
+// source (CATALOG_SOURCE_IDENTIFIER) a policy shares.
+type SharedReference struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
+// Share is how a catalog item is shared with a vRA project: with all its
+// members, or with the principals content sharing policies name.
+type Share struct {
+	ProjectID  string
+	All        bool
+	Principals []SharePrincipal
+}
 
 // Resource is something a deployment holds: a machine, a disk, a network.
 type Resource struct {
@@ -442,24 +480,74 @@ func (e *Estate) SourceOf(ci CatalogItem) string {
 }
 
 // SharedWith are the projects a catalog item is offered to: shared on its
-// own, through its content source, or as the item lists them.
+// own, through its content source, as the item lists them, or by a content
+// sharing policy.
 func (e *Estate) SharedWith(ci CatalogItem) []string {
-	shared := map[string]bool{}
+	var out []string
+	for _, s := range e.Shares(ci) {
+		out = append(out, s.ProjectID)
+	}
+	return out
+}
+
+// Shares say how a catalog item is shared with each project, in the
+// estate's order. An entitlement, or a policy's PROJECT principal, shares
+// it with all the project's members; else the principals of the policies
+// that name it do. A project the item only lists is all its members' (a
+// vRA whose policies weren't read).
+func (e *Estate) Shares(ci CatalogItem) []Share {
+	all := map[string]bool{}
+	listed := map[string]bool{}
 	for _, id := range ci.ProjectIDs {
-		shared[id] = true
+		listed[id] = true
 	}
 	for _, en := range e.Entitlements {
 		switch en.Definition.Type {
 		case "CatalogItemIdentifier":
-			shared[en.ProjectID] = shared[en.ProjectID] || en.Definition.ID == ci.ID
+			all[en.ProjectID] = all[en.ProjectID] || en.Definition.ID == ci.ID
 		case "CatalogSourceIdentifier":
-			shared[en.ProjectID] = shared[en.ProjectID] || ci.SourceID != "" && en.Definition.ID == ci.SourceID
+			all[en.ProjectID] = all[en.ProjectID] || ci.SourceID != "" && en.Definition.ID == ci.SourceID
 		}
 	}
-	var out []string
+	named := map[string][]SharePrincipal{}
+	for _, p := range e.Policies {
+		if p.TypeID != PolicySharing {
+			continue
+		}
+		var def SharingDefinition
+		if json.Unmarshal(p.Definition, &def) != nil {
+			continue
+		}
+		for _, eu := range def.EntitledUsers {
+			if !slices.ContainsFunc(eu.Items, func(r SharedReference) bool {
+				return r.Type == "CATALOG_ITEM_IDENTIFIER" && r.ID == ci.ID ||
+					r.Type == "CATALOG_SOURCE_IDENTIFIER" && ci.SourceID != "" && r.ID == ci.SourceID
+			}) {
+				continue
+			}
+			for _, vp := range e.Projects {
+				if p.ProjectID != "" && p.ProjectID != vp.ID {
+					continue
+				}
+				for _, pr := range eu.Principals {
+					if pr.Type == "PROJECT" {
+						all[vp.ID] = true
+					} else if !slices.Contains(named[vp.ID], pr) {
+						named[vp.ID] = append(named[vp.ID], pr)
+					}
+				}
+			}
+		}
+	}
+	var out []Share
 	for _, p := range e.Projects {
-		if shared[p.ID] {
-			out = append(out, p.ID)
+		switch {
+		case all[p.ID]:
+			out = append(out, Share{ProjectID: p.ID, All: true})
+		case len(named[p.ID]) > 0:
+			out = append(out, Share{ProjectID: p.ID, Principals: named[p.ID]})
+		case listed[p.ID]:
+			out = append(out, Share{ProjectID: p.ID, All: true})
 		}
 	}
 	return out

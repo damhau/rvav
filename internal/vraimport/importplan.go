@@ -64,12 +64,25 @@ type ItemImport struct {
 	Notes         []Note   `json:"notes"`
 	ShareAdd      []string `json:"share_add"`
 	ShareUnmapped []string `json:"share_unmapped"`
+	// ShareAudiences say who may request it in the projects of ShareAdd
+	// that vRA's content sharing shares it with chosen people in; all
+	// their members in the others.
+	ShareAudiences []ShareAudience `json:"share_audiences,omitempty"`
 
 	// Doc and Hash are what the import sends and records.
 	Doc  *ItemDoc `json:"-"`
 	Hash string   `json:"-"`
 	// templates are the catalogue templates it binds.
 	templates []string
+}
+
+// ShareAudience is who may request an item in an rvav project: the users,
+// OIDC groups and project roles vRA's content sharing names there.
+type ShareAudience struct {
+	ProjectID string   `json:"project_id"`
+	UserIDs   []string `json:"user_ids"`
+	Groups    []string `json:"groups"`
+	Roles     []string `json:"roles"`
 }
 
 // ProjectPlan is how a vRA project maps.
@@ -310,18 +323,25 @@ func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint, groups ma
 	}
 
 	// Sharing: the rvav projects of the vRA projects it is offered to, on
-	// its own or through its content source.
-	shared := map[string]bool{}
+	// its own, through its content source or by a content sharing policy;
+	// with all their members, or the people the policies name.
+	shared := map[string]*vra.Share{}
 	for _, ci := range e.CatalogItems {
 		if ci.Type.ID == "com.vmw.blueprint" && e.SourceOf(ci) == bp.ID {
-			for _, id := range e.SharedWith(ci) {
-				shared[id] = true
+			for _, s := range e.Shares(ci) {
+				if prev, ok := shared[s.ProjectID]; ok {
+					prev.All = prev.All || s.All
+					prev.Principals = append(prev.Principals, s.Principals...)
+				} else {
+					shared[s.ProjectID] = &s
+				}
 			}
 		}
 	}
-	var removed []string
+	var removed, nobody []string
 	for _, vp := range e.Projects {
-		if !shared[vp.ID] {
+		share, ok := shared[vp.ID]
+		if !ok {
 			continue
 		}
 		proj, how := mapProject(r, vp.ID, vp.Name)
@@ -332,11 +352,25 @@ func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint, groups ma
 		case item != nil && (item.AllProjects || slices.Contains(item.Projects, proj.ID)):
 		case item != nil && st.Shared[item.ID+"/"+proj.ID]:
 			removed = append(removed, proj.Name)
-		case !slices.Contains(it.ShareAdd, proj.ID):
+		case slices.Contains(it.ShareAdd, proj.ID):
+		case share.All:
 			it.ShareAdd = append(it.ShareAdd, proj.ID)
+		default:
+			// Nobody it names maps: shared with all, it would be shared with more.
+			if a, ok := audienceOf(&it, r, proj, share.Principals); ok {
+				it.ShareAdd = append(it.ShareAdd, proj.ID)
+				it.ShareAudiences = append(it.ShareAudiences, a)
+			} else {
+				nobody = append(nobody, proj.Name)
+			}
 		}
 	}
 	slices.Sort(it.ShareAdd)
+	slices.SortFunc(it.ShareAudiences, func(a, b ShareAudience) int { return strings.Compare(a.ProjectID, b.ProjectID) })
+	if len(nobody) > 0 {
+		it.Notes = append(it.Notes, Note{Warning, "sharing", "Not shared with " + strings.Join(nobody, ", ") +
+			": none of those vRA shares it with there has an rvav equivalent. Share it in Catalog items › Sharing."})
+	}
 	if len(removed) > 0 {
 		it.Notes = append(it.Notes, Note{Info, "sharing", "Not shared again with " + strings.Join(removed, ", ") +
 			": the import shared it before, and an administrator has taken it away since."})

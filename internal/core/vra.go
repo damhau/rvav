@@ -643,10 +643,22 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 			if len(add) == 0 {
 				continue
 			}
-			if err := s.Store.AddEntitlements(ctx, itemID, add); err != nil {
+			shares := make([]store.ProjectShare, len(add))
+			for i, id := range add {
+				shares[i].ProjectID = id
+				if j := slices.IndexFunc(it.ShareAudiences, func(a vraimport.ShareAudience) bool { return a.ProjectID == id }); j >= 0 {
+					a := it.ShareAudiences[j]
+					shares[i].Audience = store.Audience{UserIDs: a.UserIDs, Groups: a.Groups, Roles: a.Roles}
+				}
+			}
+			if err := s.Store.AddShares(ctx, itemID, shares); err != nil {
 				return out, err
 			}
-			s.auditCatalog(ctx, p, "catalog.item.entitlements", itemID, map[string]any{"added": add, "by": "vra import"})
+			detail := map[string]any{"added": add, "by": "vra import"}
+			if len(it.ShareAudiences) > 0 {
+				detail["audiences"] = it.ShareAudiences
+			}
+			s.auditCatalog(ctx, p, "catalog.item.entitlements", itemID, detail)
 			for _, id := range add {
 				if err := s.Store.SaveVRALink(ctx, store.VRALink{Kind: "share", VRAID: it.BlueprintID, RvavID: itemID + "/" + id},
 					p.User.ID); err != nil {

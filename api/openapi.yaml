@@ -8292,6 +8292,13 @@ components:
           items: { $ref: "#/components/schemas/VraNote" }
         share_add: { type: array, items: { type: string }, description: rvav projects (IDs) it would be shared with. }
         share_unmapped: { type: array, items: { type: string }, description: vRA projects it is shared with that map to no rvav project. }
+        share_audiences:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProjectAudience" }
+          description: |
+            Who may request it in the projects of `share_add` that vRA's
+            content sharing shares it with chosen users, groups or roles in;
+            all their members in the others.
     VraDeploymentPlan:
       type: object
       required: [vra_id, name, vra_project, owner, status, notes]

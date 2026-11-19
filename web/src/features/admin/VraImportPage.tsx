@@ -428,7 +428,18 @@ function ItemsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }
       header: "Shared with",
       cell: (it) => (
         <span className="text-secondary">
-          {it.share_add.length > 0 && <div>Adds {it.share_add.map((id) => names.get(id) ?? id).join(", ")}</div>}
+          {it.share_add.length > 0 && (
+            <div>
+              Adds{" "}
+              {it.share_add
+                .map(
+                  (id) =>
+                    (names.get(id) ?? id) +
+                    (it.share_audiences?.some((a) => a.project_id === id) ? " (chosen people)" : ""),
+                )
+                .join(", ")}
+            </div>
+          )}
           {it.share_unmapped.length > 0 && (
             <div className="text-warn">Not {it.share_unmapped.join(", ")}: not mapped</div>
           )}

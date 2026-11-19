@@ -45,7 +45,21 @@ to the item it became:
   slug: rename one of them.
 - **Sharing** is only ever added, never removed. Each share the import
   made is recorded: one an administrator takes away later isn't made
-  again, and the plan says so.
+  again, and the plan says so. A project the item is already shared
+  with keeps its sharing, even when vRA's changed.
+- **Content sharing policies** (vRA 8.x) share an item with chosen
+  people in a project: the import shares it with them there, not with
+  all the project's members. A content sharing policy without a project
+  applies in each project. A project an entitlement or a `PROJECT`
+  principal shares the item with gets it for all its members. When none
+  of the people a policy names maps, the item isn't shared there, and
+  the plan says so:
+
+  | vRA principal | rvav's |
+  |---|---|
+  | `USER` | The user with that email. Someone who hasn't signed in to rvav yet is reported: share with them later in **Catalog items › Sharing**. |
+  | `GROUP` | The OIDC group, by the name vRA gives. Check that the identity provider's token names it the same. |
+  | `ROLE` | `administrator`, `member`, `viewer` and `supervisor` (or their `project_` forms) are `project-admin`, `member`, `viewer` and `supervisor`. Another role is reported. |
 - **Twice the same name:** two templates of the same name get the
   project's name in their slug.
 - **A new draft** is mapped from vRA's template again: what was changed
@@ -56,8 +70,10 @@ to the item it became:
 - **One import at a time:** a second one started meanwhile is refused.
   An import finishes even if the page is closed.
 
-Policies aren't imported: they decide who may do what, so an
-administrator sets each from what the plan says.
+Policies aren't imported, except content sharing: they decide who may
+do what, so an administrator sets each from what the plan says. The
+plan's content sharing policies are imported with the catalog items
+they name.
 
 An approval policy's approvers read as a level's
 ([ADR-0041](../adr/0041-approvers-by-role.md)):

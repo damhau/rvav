@@ -6145,6 +6145,12 @@ export interface components {
             share_add: string[];
             /** @description vRA projects it is shared with that map to no rvav project. */
             share_unmapped: string[];
+            /**
+             * @description Who may request it in the projects of `share_add` that vRA's
+             *     content sharing shares it with chosen users, groups or roles in;
+             *     all their members in the others.
+             */
+            share_audiences?: components["schemas"]["CatalogProjectAudience"][];
         };
         VraDeploymentPlan: {
             vra_id: string;

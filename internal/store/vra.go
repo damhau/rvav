@@ -156,11 +156,9 @@ func (s *Store) AdoptedVRADeployments(ctx context.Context) (map[string][]string,
 	return out, err
 }
 
-// AddEntitlements offers an item to more projects, leaving those it has.
-func (s *Store) AddEntitlements(ctx context.Context, itemID string, projectIDs []string) error {
-	_, err := s.Pool.Exec(ctx, `insert into catalog_entitlements (item_id, project_id) select $1, unnest($2::text[])
-		on conflict do nothing`, itemID, projectIDs)
-	return err
+// AddShares shares an item with more projects, leaving those it has.
+func (s *Store) AddShares(ctx context.Context, itemID string, shares []ProjectShare) error {
+	return addShares(ctx, s.Pool, itemID, shares, false)
 }
 
 // ItemImportState is what the import needs of a catalog item: whether it

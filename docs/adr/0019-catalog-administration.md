@@ -119,6 +119,12 @@ requests the item in a project when any share covers them there.
   project's members who may request there, by name, with the name, group
   or role that covers them, those left out, the users it names who can't
   request, and how many people rvav has seen in each group.
+- **vRA's content sharing policies** become shares when the catalog is
+  imported ([ADR-0027](0027-vra-importer.md)): users by email, groups by
+  the name vRA gives, vRA's project roles as rvav's. A share the import
+  adds names who the policies name; it never changes a project the item
+  is shared with already. What doesn't map is in the plan's notes, and a
+  project where nobody maps isn't shared, rather than shared with all.
 
 ### Categories and icons
 Categories can be added, renamed, ordered, and removed once empty. Icons

@@ -117,6 +117,10 @@ func PlanPolicies(e *vra.Estate) []PolicyPlan {
 					note(Info, "limits."+k, fmt.Sprintf("%s: %d.", names[k], v))
 				}
 			}
+		case vra.PolicySharing:
+			pl.Type = "sharing"
+			pl.Becomes = "The sharing of the catalog items it names, in " + scope + ", made by the catalog's import"
+			note(Info, "entitledUsers", "Imported with the items: users by email, groups by name, project roles as rvav's. What doesn't map is in each item's notes.")
 		case vra.PolicyLimit:
 			pl.Type = "limit"
 			pl.Becomes = "The sizes of the items requested in " + scope
