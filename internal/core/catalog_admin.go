@@ -677,7 +677,7 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 		}
 		if f.Rules != nil {
 			for rule, expr := range map[string]*string{"visible": f.Rules.Visible, "required": f.Rules.Required,
-				"read_only": f.Rules.ReadOnly, "value": f.Rules.Value} {
+				"read_only": f.Rules.ReadOnly, "value": f.Rules.Value, "default": f.Rules.Default} {
 				if expr != nil && *expr != "" {
 					if err := policy.Check(*expr); err != nil {
 						add(ptr+"/rules/"+rule, "invalid", "This rule is not valid CEL: "+err.Error())
@@ -693,6 +693,7 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 		errs = append(errs, checkSearch(name, f, prefix, publish)...)
 		_, initial := d.InitialValues[name]
 		errs = append(errs, checkFile(name, f, initial, prefix, publish)...)
+		errs = append(errs, checkDefaults(name, f, initial, prefix)...)
 	}
 	for _, name := range sortedKeys(props) {
 		if _, ok := d.UiSchema.Fields[name]; !ok {

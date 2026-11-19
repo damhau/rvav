@@ -3842,9 +3842,15 @@ export interface components {
             visible: boolean;
             required: boolean;
             read_only: boolean;
-            /** @description The value a `value` rule computed. */
+            /** @description The value a `value` rule, or a `computed` field's value source, worked out: the input's value. */
             value?: unknown;
-            /** @description A rule that could not be evaluated (for the designer). */
+            /**
+             * @description The field's default, from its `default` rule or its value
+             *     source: the form shows it while the field has no value, and a
+             *     request without the input gets it.
+             */
+            default?: unknown;
+            /** @description A rule, or a value source giving a default or a value, that could not be worked out (for the designer). */
             error?: string;
         };
         SecretList: {
@@ -4339,6 +4345,20 @@ export interface components {
             read_only?: string;
             /** @description Computed value. The field becomes read-only. */
             value?: string;
+            /**
+             * @description A default worked out from the other inputs: the field shows it
+             *     and stays editable. It applies while the field has no value
+             *     (its input is absent); once the requester changes the field, it
+             *     keeps their value, whatever the inputs it reads become. On
+             *     preview and submit, a request without the input gets the
+             *     default, and `null` for the input means the requester emptied
+             *     the field: it gets none. A read-only field takes its default.
+             *     The rule doesn't see the field's own input; it sees the other
+             *     default rules' results. Not with a `value` rule, an initial
+             *     value, or a value source that gives the field its default.
+             * @example inputs.app + "-" + environment
+             */
+            default?: string;
         };
         ValueSource: {
             /** @enum {string} */
@@ -4382,6 +4402,16 @@ export interface components {
              *     `secret` (a stored secret's name), `items` (JSONPath to the list), `value`, `label`,
              *     `meta` and `parent` (JSONPath in each item), `cache_seconds`. For `cel`: `options` (an
              *     expression giving a list of strings or of {value, label, meta, parent}) or `value`.
+             *
+             *     On a field that takes one value rather than a choice (`text`,
+             *     `textarea`, `number`, `slider`, `date`, `datetime`, `toggle`),
+             *     a `cel` source's `value` gives the field its default (see
+             *     `UiRules.default`), as the input's type takes it: a text input
+             *     takes a number as its digits. On a `computed` field, it gives
+             *     the field's value, which the server works out again on preview
+             *     and submit. A source that fails gives no default. The field's
+             *     `depends_on` names the inputs its source reads: those with a
+             *     source are worked out first.
              */
             params?: {
                 [key: string]: unknown;
@@ -4472,7 +4502,11 @@ export interface components {
         FieldValues: {
             field: string;
             options?: components["schemas"]["Option"][];
-            /** @description For computed fields and sources such as `naming.preview` or `ipam.next_free_address`. */
+            /**
+             * @description For computed fields and sources such as `naming.preview` or
+             *     `ipam.next_free_address`, and a `cel` source's single value: a
+             *     `computed` field's value, or another field's default.
+             */
             value?: unknown;
             /** @description Suggested option value when the current value is empty or no longer valid. */
             default?: string;
@@ -4484,6 +4518,12 @@ export interface components {
             version_id: string;
             project_id: string;
             environment: components["schemas"]["EnvironmentKey"];
+            /**
+             * @description The form's values by input name. An input left out takes its
+             *     field's default, from a `default` rule or a value source; `null`
+             *     for a field with a default means it was emptied, and it gets
+             *     none.
+             */
             inputs: {
                 [key: string]: unknown;
             };

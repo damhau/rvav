@@ -179,7 +179,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 	}
 
 	// Rules first: computed values are inputs like any other.
-	ev.Fields = fieldStates(ev.Version.FormSchema, ev.Version.UISchema, formVars(ev.Inputs, ev.Project, ev.Env.Key, p, ev.Version))
+	ev.Fields = s.formStates(ctx, p, ev.Project, ev.Env.Key, ev.Version, ev.Inputs)
 	var ui api.UiSchema
 	_ = json.Unmarshal(ev.Version.UISchema, &ui)
 	var initial map[string]any

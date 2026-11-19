@@ -256,3 +256,47 @@ func optionsOf(o *[]api.Option) []api.Option {
 	}
 	return *o
 }
+
+func paramText(src *api.ValueSource, key string) string {
+	if src.Params == nil {
+		return ""
+	}
+	s, _ := (*src.Params)[key].(string)
+	return s
+}
+
+// checkDefaults checks what gives a field its default: a default rule, an
+// initial value or a value source that gives one value, one at most, on a
+// field the requester fills in.
+func checkDefaults(name string, f api.UiField, initial bool, ptr string) []api.FieldError {
+	at := ptr + "/ui_schema/fields/" + name
+	if src := f.ValueSource; singleSource(f) && src.Kind == api.Cel && strings.TrimSpace(paramText(src, "value")) == "" {
+		return []api.FieldError{fieldErr(at+"/value_source/params/value", "required",
+			fmt.Sprintf("A %s field takes one value from its source: give a value expression.", f.Widget))}
+	}
+	rule := ""
+	if f.Rules != nil {
+		rule = deref(f.Rules.Default)
+	}
+	if rule == "" {
+		if initial && singleSource(f) && f.Widget != api.UiWidgetComputed {
+			return []api.FieldError{fieldErr(at+"/value_source", "conflict",
+				"The field has an initial value, so the default its value source gives would never show: keep one of the two.")}
+		}
+		return nil
+	}
+	at += "/rules/default"
+	switch {
+	case f.Widget == api.UiWidgetComputed:
+		return []api.FieldError{fieldErr(at, "widget_mismatch", "A computed field's value is worked out: give it a value rule rather than a default.")}
+	case shownOnly[f.Widget] || f.Widget == api.UiWidgetFile:
+		return []api.FieldError{fieldErr(at, "widget_mismatch", fmt.Sprintf("A %s field takes no default.", f.Widget))}
+	case valueRule(f) != "":
+		return []api.FieldError{fieldErr(at, "conflict", "The field's value rule gives it its value: keep the value rule or the default.")}
+	case initial:
+		return []api.FieldError{fieldErr(at, "conflict", "The field has an initial value too: keep the initial value or the default.")}
+	case singleSource(f):
+		return []api.FieldError{fieldErr(at, "conflict", "The field's value source gives it its default too: keep the value source or the default rule.")}
+	}
+	return nil
+}
