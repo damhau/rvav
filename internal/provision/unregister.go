@@ -1,12 +1,18 @@
 package provision
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
+	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -20,6 +26,8 @@ func (a *Activities) forget(ctx context.Context, in OpInput) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	var lowered json.RawMessage
+	var note string
 	if id := argStr(in.Op.Args, "vm"); id != "" {
 		all := make([]day2.Resource, 0, len(list))
 		for _, r := range list {
@@ -37,9 +45,24 @@ func (a *Activities) forget(ctx context.Context, in OpInput) (string, error) {
 		list = slices.DeleteFunc(list, func(r store.Resource) bool {
 			return !slices.ContainsFunc(own, func(o day2.Resource) bool { return o.ID == r.ID })
 		})
+		comp := componentOf(all[i].VM)
+		remaining := 0
+		for _, r := range all {
+			if r.Type == "vsphere.vm" && r.ID != id && componentOf(r.VM) == comp {
+				remaining++
+			}
+		}
+		if lowered, note, err = a.lowerCount(ctx, in.DeploymentID, comp, remaining); err != nil {
+			return "", err
+		}
 	}
 	var vms, left []string
 	err = a.Store.Tx(ctx, func(tx pgx.Tx) error {
+		if lowered != nil {
+			if err := a.Store.SetDeploymentInputs(ctx, tx, in.DeploymentID, lowered); err != nil {
+				return err
+			}
+		}
 		for _, r := range list {
 			// A generated private key not downloaded goes with the
 			// deployment, as on deletion (ADR-0039).
@@ -70,7 +93,65 @@ func (a *Activities) forget(ctx context.Context, in OpInput) (string, error) {
 	case len(vms) == 0:
 		return "", nil
 	}
-	return "Left in vCenter: " + strings.Join(vms, ", "), nil
+	return "Left in vCenter: " + strings.Join(vms, ", ") + note, nil
+}
+
+func componentOf(vm api.VmProperties) string { return cmp.Or(deref(vm.Component), blueprint.SingleKey) }
+
+// lowerCount gives the deployment's inputs with its component's count
+// input lowered for a VM unregistered, as a join raises it, so the next
+// update doesn't build it again (X1.6): never below the VMs it keeps or
+// the form's minimum. Nil when the count isn't an input it has, or is
+// shared with another component.
+func (a *Activities) lowerCount(ctx context.Context, deploymentID, component string, remaining int) (json.RawMessage, string, error) {
+	d, err := a.Store.GetDeployment(ctx, deploymentID)
+	if err != nil {
+		return nil, "", err
+	}
+	v, err := a.Store.GetVersion(ctx, d.VersionID)
+	if err != nil {
+		return nil, "", err
+	}
+	bp, err := blueprint.Parse(v.Blueprint)
+	if err != nil {
+		return nil, "", nil
+	}
+	comps := bp.ComponentList()
+	i := slices.IndexFunc(comps, func(c blueprint.Component) bool { return c.Key == component })
+	if i < 0 {
+		return nil, "", nil
+	}
+	field := comps[i].CountInput()
+	var inputs map[string]any
+	_ = json.Unmarshal(d.Inputs, &inputs)
+	was, ok := inputs[field].(float64)
+	if field == "" || !ok {
+		return nil, "", nil
+	}
+	var schema struct {
+		Properties map[string]struct {
+			Minimum *float64 `json:"minimum"`
+		} `json:"properties"`
+	}
+	_ = json.Unmarshal(v.FormSchema, &schema)
+	n := max(was-1, float64(remaining))
+	if m := schema.Properties[field].Minimum; m != nil {
+		n = max(n, *m)
+	}
+	if n == was {
+		return nil, "", nil
+	}
+	out := maps.Clone(inputs)
+	out[field] = n
+	for _, c := range comps {
+		_, before, _ := bp.EvaluateComponent(c, inputs)
+		_, after, _ := bp.EvaluateComponent(c, out)
+		if c.Key != component && after != before {
+			return nil, "", nil
+		}
+	}
+	b, err := json.Marshal(out)
+	return b, fmt.Sprintf("; %s is now %v", field, n), err
 }
 
 var leftKinds = map[string]string{

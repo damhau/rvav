@@ -97,6 +97,17 @@ func TestSingleVMBlueprint(t *testing.T) {
 	}
 }
 
+// A component's count input is the input its count is, only when it is
+// just that input.
+func TestCountInput(t *testing.T) {
+	for count, want := range map[any]string{"inputs.web_nodes": "web_nodes", " inputs.n ": "n", "inputs.n + 1": "",
+		"inputs.a.b": "", 3.0: "", nil: ""} {
+		if got := (Component{Count: count}).CountInput(); got != want {
+			t.Errorf("count %v: %q, want %q", count, got, want)
+		}
+	}
+}
+
 // A component's provisioning is the blueprint's unless it has its own, and
 // an added disk's is its own, else its component's (ADR-0036).
 func TestDiskProvisioningInherits(t *testing.T) {

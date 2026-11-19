@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -277,8 +276,6 @@ type misfit struct {
 
 func (m *misfit) Error() string { return m.msg }
 
-var countInputPattern = regexp.MustCompile(`^\s*inputs\.([A-Za-z_][A-Za-z0-9_]*)\s*$`)
-
 // fit says whether f.vms join their component, and the inputs the
 // deployment then has when its count input must rise (nil when they stay
 // as they are); or why one can't. Joining VMs take the places after the
@@ -319,8 +316,8 @@ func fit(f fitting) (map[string]any, *misfit) {
 	if !slices.Contains(missing, "count") && total <= count {
 		return nil, nil
 	}
-	if m := countInputPattern.FindStringSubmatch(fmt.Sprint(f.comp.Count)); m != nil {
-		return raiseCount(f, m[1], total, inComp)
+	if field := f.comp.CountInput(); field != "" {
+		return raiseCount(f, field, total, inComp)
 	}
 	if slices.Contains(missing, "count") {
 		return nil, &misfit{vm: 0, code: "no_fit", msg: fmt.Sprintf("How many VMs %s has, %v, can't be worked out from the deployment's inputs.",

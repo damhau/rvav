@@ -1492,9 +1492,11 @@ first says what stops. A subscription's row opens its page, where
   **Onboarding** lists them again: adopting a VM finds its address and
   records again, but not its NSX memberships. A VM goes with its own
   addresses and records; an address another VM of the deployment has
-  stays with that VM. A deployment's only VM is unregistered with the
-  deployment, which then shows as deleted, its history saying it was
-  unregistered. To delete what stays, do it in vCenter, EfficientIP and
+  stays with that VM. When the VM's component counts its VMs with an
+  input, such as `web_nodes`, rvav lowers it, within the form's minimum,
+  so the next update doesn't build the VM again. A deployment's only VM
+  is unregistered with the deployment, which then shows as deleted, its
+  history saying it was unregistered. To delete what stays, do it in vCenter, EfficientIP and
   NSX. Only those who may change the project (administrators) are
   offered it; day-2 policies can still refuse it or ask for approval.
 - **EfficientIP reconcile** (**Integrations › Checks**): addresses and records

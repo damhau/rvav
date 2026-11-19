@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -268,6 +269,17 @@ const (
 	// MaxVMs is the most VMs a component, and a request, builds.
 	MaxVMs = 20
 )
+
+var countInput = regexp.MustCompile(`^\s*inputs\.([A-Za-z_][A-Za-z0-9_]*)\s*$`)
+
+// CountInput is the input the component's count is, when its count is
+// just that input; "" otherwise.
+func (c Component) CountInput() string {
+	if m := countInput.FindStringSubmatch(fmt.Sprint(c.Count)); m != nil {
+		return m[1]
+	}
+	return ""
+}
 
 // Multi says whether the blueprint lists components: one deployment for
 // all its VMs, rather than one per VM.

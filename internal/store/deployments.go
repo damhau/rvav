@@ -184,6 +184,13 @@ func (s *Store) SetDeploymentStatus(ctx context.Context, db DB, id, status strin
 	return err
 }
 
+// SetDeploymentInputs records the deployment's inputs, its count changed
+// by VMs that joined or left it.
+func (s *Store) SetDeploymentInputs(ctx context.Context, db DB, id string, inputs json.RawMessage) error {
+	_, err := db.Exec(ctx, `update deployments set inputs = $2 where id = $1`, id, inputs)
+	return err
+}
+
 // SetDeploymentVersion records the version and inputs an update left the
 // deployment with (ADR-0042).
 func (s *Store) SetDeploymentVersion(ctx context.Context, db DB, id, versionID string, inputs json.RawMessage) error {

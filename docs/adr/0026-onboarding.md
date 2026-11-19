@@ -66,4 +66,6 @@ Administrators **adopt** existing VMs into deployments
 - Unregistering (X1.3, #143) is the reverse, as a day-2 action on a VM or
   a deployment: rvav drops the resources' rows and changes nothing in
   vCenter, EfficientIP or NSX, so adopting the VM again finds its address
-  and records. NSX memberships aren't adopted back.
+  and records. NSX memberships aren't adopted back. A VM unregistered
+  lowers its component's count input by one, as a join raises it (X1.6,
+  #146), never below the VMs left or the form's minimum.
