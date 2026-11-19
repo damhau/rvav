@@ -346,6 +346,9 @@ function checkPlan(db: Db, b: S["OnboardingPlanWrite"], id: string | undefined):
   else if (state(db).plans.some((p) => p.plan.name === name && p.plan.id !== id))
     errors.push(err("/name", "taken", "A plan has this name already."));
   if ((b.description ?? "").length > 500) errors.push(err("/description", "too_long", "500 characters at most."));
+  const most = { q: 200, folder: 500, tag: 200 } as const;
+  for (const f of ["q", "folder", "tag"] as const)
+    if ((b.filter[f] ?? "").length > most[f]) errors.push(err(`/filter/${f}`, "too_long", `${most[f]} characters at most.`)); // prettier-ignore
   if (!hasCriterion(b.filter))
     errors.push(err("/filter", "required", "Give the filter a criterion at least: without one, the plan would adopt every VM rvav doesn't manage.")); // prettier-ignore
   if (b.every_hours !== undefined && (b.every_hours < 1 || b.every_hours > 168))

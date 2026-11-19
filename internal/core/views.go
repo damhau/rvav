@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
@@ -62,7 +63,10 @@ func (s *Service) SaveView(ctx context.Context, p *auth.Principal, id string, w 
 		errs = append(errs, fieldErr("/query", "too_many", "At most 20 filters."))
 	}
 	for k, v := range w.Query {
-		if len([]rune(v)) > 400 || len(k) > 40 {
+		switch {
+		case utf8.RuneCountInString(k) > 40:
+			errs = append(errs, fieldErr("/query", "too_long", "A filter's name is 40 characters at most."))
+		case utf8.RuneCountInString(v) > 400:
 			errs = append(errs, fieldErr("/query/"+k, "too_long", "At most 400 characters."))
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
@@ -125,6 +126,17 @@ func (s *Service) evaluateWith(ctx context.Context, p *auth.Principal, d api.Req
 	return s.evaluateKeeping(ctx, p, d, strict, ofRequest, validate, nil)
 }
 
+// maxJustification is the most characters of the reason a requester
+// gives approvers.
+const maxJustification = 2000
+
+func justificationErrs(j *string) []api.FieldError {
+	if j != nil && utf8.RuneCountInString(strings.TrimSpace(*j)) > maxJustification {
+		return []api.FieldError{fieldErr("/justification", "too_long", fmt.Sprintf("%d characters at most.", maxJustification))}
+	}
+	return nil
+}
+
 // evaluateKeeping is evaluateWith for an update, whose inputs may name
 // the deployment's files, kept.
 func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest, validate bool,
@@ -157,6 +169,7 @@ func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.
 		add("/environment", "not_allowed", fmt.Sprintf("%s cannot deploy to %s.", ev.Project.Name, env.Name))
 	}
 	ev.Env = env
+	ev.Errors = append(ev.Errors, justificationErrs(d.Justification)...)
 
 	ev.Item, err = s.Store.GetItem(ctx, d.CatalogItemId, p.User.ID)
 	if errors.Is(err, store.ErrNotFound) {

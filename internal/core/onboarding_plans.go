@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 
@@ -153,11 +154,20 @@ func (s *Service) SaveOnboardingPlan(ctx context.Context, p *auth.Principal, id 
 	var errs []api.FieldError
 	add := func(at, code, msg string) { errs = append(errs, fieldErr(at, code, msg)) }
 	w.Name = strings.TrimSpace(w.Name)
-	if w.Name == "" || len(w.Name) > 80 {
+	if w.Name == "" || utf8.RuneCountInString(w.Name) > 80 {
 		add("/name", "invalid", "Name the plan, in 80 characters at most.")
 	}
-	if w.Description != nil && len(*w.Description) > 500 {
+	if w.Description != nil && utf8.RuneCountInString(*w.Description) > 500 {
 		add("/description", "too_long", "500 characters at most.")
+	}
+	for _, x := range []struct {
+		at  string
+		v   *string
+		max int
+	}{{"/filter/q", w.Filter.Q, 200}, {"/filter/folder", w.Filter.Folder, 500}, {"/filter/tag", w.Filter.Tag, 200}} {
+		if x.v != nil && utf8.RuneCountInString(*x.v) > x.max {
+			add(x.at, "too_long", fmt.Sprintf("%d characters at most.", x.max))
+		}
 	}
 	if vmFilter(w.Filter) == (store.InvFilter{}) {
 		add("/filter", "required", "Give the filter a criterion at least: without one, the plan would adopt every VM rvav doesn't manage.")

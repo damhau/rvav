@@ -94,7 +94,11 @@ describe("a deployment's page against the mock API", () => {
 
     await user.click(screen.getByRole("tab", { name: "Inputs" }));
     await waitFor(() => expect(router.state.location.search).toEqual({ tab: "inputs" }));
-    expect(await screen.findByRole("region", { name: "Inputs" })).toHaveTextContent("role: worker");
+    const inputs = await screen.findByRole("region", { name: "Inputs" });
+    expect(inputs).toHaveTextContent("role: worker");
+    // An update, a join or an unregister changes them since: no request is named.
+    expect(inputs).toHaveTextContent("What it was requested or last updated with");
+    expect(inputs).not.toHaveTextContent("REQ-10482");
   });
 
   it("shows the address a VM on DHCP reports, once it has one", async () => {

@@ -7954,6 +7954,7 @@ components:
             The list's address query, such as `{"status": "failed", "sort":
             "-lease_expires_at"}`: the page reads it back as its own.
           maxProperties: 20
+          propertyNames: { maxLength: 40 }
           additionalProperties: { type: string, maxLength: 400 }
 
     SavedView:

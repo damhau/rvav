@@ -237,6 +237,25 @@ describe("Onboarding plans", () => {
     await waitFor(() => expect(within(sheet).getByRole("textbox", { name: "Name or address" })).toHaveFocus());
   });
 
+  it("ties a filter too long to its field", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/onboarding?tab=plans");
+    await user.click(await screen.findByRole("button", { name: "New plan" }));
+    const sheet = await screen.findByRole("dialog", { name: "New plan" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Long tag");
+    await user.click(within(sheet).getByRole("textbox", { name: /^Tag/ }));
+    await user.paste(`app/${"x".repeat(200)}`);
+    await choose(user, "Project", "Web Platform");
+    await choose(user, "Environment", "prd");
+    await choose(user, "Owner", "Thomas Nguyen");
+    await choose(user, "Catalog item", "RHEL 9 server");
+    await user.click(within(sheet).getByRole("button", { name: "Save plan" }));
+    const tag = within(sheet).getByRole("textbox", { name: /^Tag/ });
+    await waitFor(() => expect(tag).toHaveAccessibleDescription("200 characters at most."));
+    expect(tag).toHaveAttribute("aria-invalid", "true");
+    await waitFor(() => expect(tag).toHaveFocus());
+  });
+
   it("is where Deployments sends administrators to adopt existing VMs", { timeout: 15_000 }, async () => {
     const user = userEvent.setup();
     renderApp("/deployments");

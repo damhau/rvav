@@ -209,10 +209,15 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
       </Field>
       <Panel as="fieldset" title="Which VMs" describedBy={errors["/filter"] ? "obp-filter-error" : undefined}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Name or address" htmlFor="obp-q" hint="Part of the name or host name, or the address's start">
+          <Field
+            label="Name or address"
+            htmlFor="obp-q"
+            hint="Part of the name or host name, or the address's start"
+            error={errors["/filter/q"]}
+          >
             <Input id="obp-q" value={filter.q} onChange={(e) => set("q")(e.target.value)} />
           </Field>
-          <Field label="Folder" htmlFor="obp-folder" hint="And the folders under it">
+          <Field label="Folder" htmlFor="obp-folder" hint="And the folders under it" error={errors["/filter/folder"]}>
             <Input
               id="obp-folder"
               className="font-mono text-secondary"
@@ -221,7 +226,7 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
               onChange={(e) => set("folder")(e.target.value)}
             />
           </Field>
-          <Field label="Tag" htmlFor="obp-tag" hint="A vSphere tag, as category/tag">
+          <Field label="Tag" htmlFor="obp-tag" hint="A vSphere tag, as category/tag" error={errors["/filter/tag"]}>
             <Input
               id="obp-tag"
               className="font-mono text-secondary"

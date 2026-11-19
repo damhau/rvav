@@ -791,8 +791,8 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
                 title="Inputs"
                 description={
                   <>
-                    Values submitted with {d.created_by_request_id ?? "the creating request"}, as passed to the
-                    blueprint and to AWX as <span className="font-mono">extra_vars</span>.
+                    What it was requested or last updated with, as passed to the blueprint and to AWX as{" "}
+                    <span className="font-mono">extra_vars</span>.
                   </>
                 }
                 flush

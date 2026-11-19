@@ -329,10 +329,11 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			return store.RequestRow{}, &ValidationError{Errors: errs}
 		}
 	}
-	if errs, err := s.checkAction(ctx, a, *target, inputs); err != nil || len(errs) > 0 {
-		if err != nil {
-			return store.RequestRow{}, err
-		}
+	errs, err := s.checkAction(ctx, a, *target, inputs)
+	if err != nil {
+		return store.RequestRow{}, err
+	}
+	if errs = append(errs, justificationErrs(draft.Justification)...); len(errs) > 0 {
 		return store.RequestRow{}, &ValidationError{Errors: errs}
 	}
 	overSoft, err := s.day2Quota(ctx, a, d, *target, inputs)
