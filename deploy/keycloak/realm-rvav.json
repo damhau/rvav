@@ -24,9 +24,9 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
-      "redirectUris": ["http://localhost:5173/*", "http://localhost:3000/*", "http://localhost:8080/*"],
+      "redirectUris": ["http://localhost:5173/*", "http://localhost:3000/*", "http://localhost:8080/*", "http://127.0.0.1/callback"],
       "webOrigins": ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"],
-      "attributes": { "pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost:3000/*" },
+      "attributes": { "pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost:3000/*", "oauth2.device.authorization.grant.enabled": "true" },
       "protocolMappers": [
         {
           "name": "audience rvav",

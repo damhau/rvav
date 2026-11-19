@@ -9,14 +9,32 @@ IMAGES      ?= rvav:scan rvav-web:scan
 AS_ME        = -u $$(id -u):$$(id -g) --group-add $$(stat -c %g /var/run/docker.sock) -e TRIVY_CACHE_DIR=/tmp/trivy
 TRIVY       := aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
 
-.PHONY: check check-quick check-nginx web-quick web-e2e build test test-e2e test-e2e-shard test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
+.PHONY: check check-quick check-nginx web-quick web-e2e build cli-dist test test-e2e test-e2e-shard test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
 
 check: gen-check lint-spec lint-chart check-nginx vet test test-e2e test-ansible test-python web-check ## Everything CI checks on every push (the browser tests run daily: web-e2e)
 check-quick: gen-check lint-spec vet test web-quick ## The fast part, before a push: no end-to-end, browser, chart, Ansible or Python tests (CI runs them)
 
-build: ## Build rvav and rvav-vcsim into ./bin
+build: ## Build rvav, rvav-vcsim and rvavctl into ./bin
 	$(GO) build -o $(BIN)/rvav ./cmd/rvav
 	$(GO) build -o $(BIN)/rvav-vcsim ./cmd/rvav-vcsim
+	$(GO) build -o $(BIN)/rvavctl ./cmd/rvavctl
+
+# rvavctl's archives for a release: VERSION=1.4.0 make cli-dist.
+VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+CLI_OS_ARCH := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
+
+cli-dist: ## rvavctl for Linux, macOS and Windows (amd64, arm64) into dist/, with SHA256SUMS
+	@rm -rf dist/rvavctl && mkdir -p dist/rvavctl
+	@set -e; for target in $(CLI_OS_ARCH); do \
+		os=$${target%/*}; arch=$${target#*/}; ext=; [ $$os = windows ] && ext=.exe; \
+		dir=dist/rvavctl/rvavctl_$(VERSION)_$${os}_$${arch}; mkdir -p $$dir; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -trimpath \
+			-ldflags="-s -w -X github.com/damhau/rvav/internal/buildinfo.version=$(VERSION)" -o $$dir/rvavctl$$ext ./cmd/rvavctl; \
+		if [ $$os = windows ]; then (cd dist/rvavctl && zip -qr $$(basename $$dir).zip $$(basename $$dir)); \
+		else tar -C dist/rvavctl -czf $$dir.tar.gz $$(basename $$dir); fi; \
+		rm -rf $$dir; \
+	done
+	@cd dist/rvavctl && sha256sum rvavctl_* > SHA256SUMS && cat SHA256SUMS
 
 test: ## Unit tests, plus vcsim and workflow tests (no database needed)
 	$(GO) test -short ./...
@@ -42,11 +60,11 @@ vet:
 	@out=$$(gofmt -l cmd internal pkg); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	$(GO) vet ./...
 
-gen: ## Regenerate internal/api from api/openapi.yaml
-	$(GO) generate ./internal/api/
+gen: ## Regenerate internal/api (server) and pkg/rvavclient (client) from api/openapi.yaml
+	$(GO) generate ./internal/api/ ./pkg/rvavclient/
 
 gen-check: gen ## Fail if the generated code is out of date
-	git diff --exit-code -- internal/api/api.gen.go
+	git diff --exit-code -- internal/api/api.gen.go pkg/rvavclient/client.gen.go
 
 lint-spec:
 	npx --yes @redocly/cli@1 lint --config api/redocly.yaml api/openapi.yaml

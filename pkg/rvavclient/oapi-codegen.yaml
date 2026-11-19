@@ -1,0 +1,9 @@
+# Generates Go types and a typed HTTP client from the shared contract. Run
+# `make gen` after changing api/openapi.yaml.
+package: rvavclient
+output: client.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: true

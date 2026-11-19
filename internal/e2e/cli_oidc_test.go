@@ -1,0 +1,278 @@
+package e2e
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/go-jose/go-jose/v4"
+	"github.com/vmware/govmomi/simulator"
+	"github.com/vmware/govmomi/vim25"
+
+	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/httpapi"
+	"github.com/damhau/rvav/pkg/rvavclient"
+)
+
+// idpUser is who signs in at the fake provider next.
+type idpUser struct {
+	sub, name, email string
+	groups           []string
+}
+
+// cliIdP is a provider for rvavctl's sign-ins, as Keycloak serves the rvav
+// public client: the authorization code with PKCE on a loopback redirect,
+// the device flow, and refresh tokens.
+type cliIdP struct {
+	*fakeIdP
+	mu      sync.Mutex
+	signsIn idpUser
+	// What the last authorization request asked for.
+	challenge, redirect, scope string
+	refresh                    string
+	refreshes, devicePolls     int
+	refuseRefresh              bool
+}
+
+func newCLIIdP(t *testing.T) *cliIdP {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &cliIdP{fakeIdP: &fakeIdP{t: t, key: key}}
+	p.up.Store(true)
+	p.srv = httptest.NewServer(http.HandlerFunc(p.serve))
+	t.Cleanup(p.srv.Close)
+	p.issuer = p.srv.URL
+	return p
+}
+
+func reply(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func (p *cliIdP) serve(w http.ResponseWriter, r *http.Request) {
+	base := p.srv.URL
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch r.URL.Path {
+	case "/.well-known/openid-configuration":
+		reply(w, 200, map[string]any{"issuer": p.issuer, "jwks_uri": base + "/certs",
+			"authorization_endpoint": base + "/auth", "token_endpoint": base + "/token",
+			"device_authorization_endpoint": base + "/device", "id_token_signing_alg_values_supported": []string{"RS256"},
+			"scopes_supported": []string{"openid", "profile", "email", "offline_access"}})
+	case "/certs":
+		reply(w, 200, jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &p.key.PublicKey, KeyID: "k1", Algorithm: "RS256", Use: "sig"}}})
+	case "/auth":
+		q := r.URL.Query()
+		if q.Get("client_id") != "rvav" || q.Get("code_challenge_method") != "S256" ||
+			!strings.HasPrefix(q.Get("redirect_uri"), "http://127.0.0.1:") || q.Get("response_type") != "code" {
+			http.Error(w, "bad authorization request: "+r.URL.RawQuery, http.StatusBadRequest)
+			return
+		}
+		p.challenge, p.redirect, p.scope = q.Get("code_challenge"), q.Get("redirect_uri"), q.Get("scope")
+		http.Redirect(w, r, p.redirect+"?code=code-1&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
+	case "/device":
+		_ = r.ParseForm()
+		p.scope = r.PostForm.Get("scope")
+		reply(w, 200, map[string]any{"device_code": "device-1", "user_code": "WDJB-MJHT",
+			"verification_uri": base + "/activate", "verification_uri_complete": base + "/activate?user_code=WDJB-MJHT",
+			"expires_in": 600, "interval": 1})
+	case "/token":
+		_ = r.ParseForm()
+		f := r.PostForm
+		if f.Get("client_id") != "rvav" {
+			reply(w, 401, map[string]string{"error": "invalid_client"})
+			return
+		}
+		switch f.Get("grant_type") {
+		case "authorization_code":
+			sum := sha256.Sum256([]byte(f.Get("code_verifier")))
+			if f.Get("code") != "code-1" || f.Get("redirect_uri") != p.redirect ||
+				base64.RawURLEncoding.EncodeToString(sum[:]) != p.challenge {
+				reply(w, 400, map[string]string{"error": "invalid_grant"})
+				return
+			}
+		case "urn:ietf:params:oauth:grant-type:device_code":
+			if p.devicePolls++; p.devicePolls == 1 || f.Get("device_code") != "device-1" {
+				reply(w, 400, map[string]string{"error": "authorization_pending"})
+				return
+			}
+		case "refresh_token":
+			if p.refuseRefresh || f.Get("refresh_token") != p.refresh {
+				reply(w, 400, map[string]string{"error": "invalid_grant", "error_description": "Session not active"})
+				return
+			}
+			p.refreshes++
+		default:
+			reply(w, 400, map[string]string{"error": "unsupported_grant_type"})
+			return
+		}
+		// A new refresh token each time, the old one spent, as rotating
+		// providers do.
+		p.refresh = fmt.Sprintf("refresh-%d", time.Now().UnixNano())
+		u := p.signsIn
+		reply(w, 200, map[string]any{"access_token": p.token(u.sub, u.name, u.email, u.groups, tokenOpts{}),
+			"token_type": "Bearer", "expires_in": 300, "refresh_token": p.refresh})
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (p *cliIdP) set(change func(p *cliIdP)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	change(p)
+}
+
+// idpSeen is what the provider saw so far.
+type idpSeen struct {
+	scope                  string
+	refreshes, devicePolls int
+}
+
+func (p *cliIdP) get() idpSeen {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return idpSeen{scope: p.scope, refreshes: p.refreshes, devicePolls: p.devicePolls}
+}
+
+// TestCLIOIDC signs rvavctl in at rvav's identity provider, as people do
+// with OIDC: in the browser, on another device, refreshing the sign-in and
+// saving it, until it can't be refreshed any more.
+func TestCLIOIDC(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		idp := newCLIIdP(t)
+		o, err := auth.NewOIDC(ctx, h.store, idp.srv.URL, "", "rvav", "groups")
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.svc.Config.Auth.OIDCIssuer, h.svc.Config.Auth.OIDCClientID = idp.srv.URL, "rvav"
+		h.svc.Config.Auth.Scopes = "openid profile email"
+		srv := httptest.NewServer((&httpapi.Server{Store: h.store, Core: h.svc, Hub: h.hub, Log: discardLog(),
+			AuthMode: "oidc", Auth: o, Heartbeat: time.Second}).Handler())
+		t.Cleanup(srv.Close)
+
+		// In the browser: the code comes back to a loopback port.
+		lea := newRvavctl(t, ctx)
+		var page string
+		lea.browser = func(u string) error {
+			resp, err := http.Get(u)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			b, _ := io.ReadAll(resp.Body)
+			page = string(b)
+			return nil
+		}
+		idp.set(func(p *cliIdP) {
+			p.signsIn = idpUser{"kc-lea", "Léa Martin", "lea.martin@corp.example", []string{"/rvav-web-admins"}}
+		})
+		out, stderr := lea.run(0, "", "login", "--server", srv.URL)
+		mustContain(t, "browser login", out, "Signed in to "+srv.URL+" as Léa Martin")
+		mustContain(t, "browser login", stderr, idp.srv.URL+"/auth?")
+		mustContain(t, "the browser's page", page, "Signed in to rvav")
+		if got := idp.get(); !slices.Contains(strings.Fields(got.scope), "offline_access") ||
+			!slices.Contains(strings.Fields(got.scope), "openid") {
+			t.Fatalf("scopes asked = %q", got.scope)
+		}
+		var me api.Me
+		lea.json(&me, "whoami")
+		if len(me.Projects) != 1 || me.Projects[0].Project.Id != "prj_web" || !slices.Contains(roleKeys(me.Projects[0].Roles), "project-admin") {
+			t.Fatalf("lea's projects from her groups = %+v", me.Projects)
+		}
+
+		// An expired access token is refreshed, and the new one saved.
+		expire := func(c *rvavctl) *rvavclient.Profile {
+			ps, err := rvavclient.LoadProfiles(c.config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := ps.Profiles["default"]
+			p.OIDC.Token.Expiry = time.Now().Add(-time.Minute)
+			if err := ps.Save(); err != nil {
+				t.Fatal(err)
+			}
+			return p
+		}
+		before := expire(lea)
+		lea.json(&me, "whoami")
+		ps, _ := rvavclient.LoadProfiles(lea.config)
+		after := ps.Profiles["default"].OIDC.Token
+		if idp.get().refreshes != 1 || after.RefreshToken == before.OIDC.Token.RefreshToken || !after.Expiry.After(time.Now()) {
+			t.Fatalf("refreshes = %d, saved token %+v", idp.get().refreshes, after)
+		}
+		lea.json(&me, "whoami")
+		if idp.get().refreshes != 1 {
+			t.Fatal("a valid access token was refreshed")
+		}
+		// Once the provider refuses, sign in again.
+		idp.set(func(p *cliIdP) { p.refuseRefresh = true })
+		expire(lea)
+		_, stderr = lea.run(1, "", "whoami")
+		mustContain(t, "refused refresh", stderr, "the sign-in has expired", "Sign in again: rvavctl login")
+		idp.set(func(p *cliIdP) { p.refuseRefresh = false })
+
+		// On another device: a code to enter where a browser is.
+		marc := newRvavctl(t, ctx)
+		idp.set(func(p *cliIdP) {
+			p.signsIn = idpUser{"kc-marc", "Marc Keller", "marc.keller@corp.example", []string{"/rvav-admins", "/rvav-infra-leads"}}
+		})
+		out, stderr = marc.run(0, "", "login", "--server", srv.URL, "--device", "--profile", "prod")
+		mustContain(t, "device login", stderr, idp.srv.URL+"/activate?user_code=WDJB-MJHT", "WDJB-MJHT")
+		mustContain(t, "device login", out, "as Marc Keller")
+		if got := idp.get(); got.devicePolls != 2 || !slices.Contains(strings.Fields(got.scope), "offline_access") {
+			t.Fatalf("device polls = %d, scopes %q", got.devicePolls, got.scope)
+		}
+		marc.json(&me, "whoami", "--profile", "prod")
+		if !slices.Contains(roleKeys(me.Roles), "admin") {
+			t.Fatalf("marc's roles from his groups = %+v", me.Roles)
+		}
+		var inbox []api.ApprovalSummary
+		marc.json(&inbox, "approvals", "list", "--profile", "prod")
+
+		// A profile's sign-in goes to its own rvav only.
+		var sent []string
+		var sentMu sync.Mutex
+		other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sentMu.Lock()
+			sent = append(sent, r.Header.Get("Authorization"))
+			sentMu.Unlock()
+			reply(w, 401, map[string]string{"title": "Unauthorized"})
+		}))
+		t.Cleanup(other.Close)
+		marc.run(1, "", "whoami", "--profile", "prod", "--server", other.URL)
+		sentMu.Lock()
+		if len(sent) != 1 || sent[0] != "" {
+			t.Fatalf("another rvav got %q", sent)
+		}
+		sentMu.Unlock()
+		if b, err := os.ReadFile(marc.config); err != nil || !strings.Contains(string(b), `"refresh_token"`) {
+			t.Fatalf("saved profile: %v %s", err, b)
+		}
+		marc.run(0, "", "logout", "--profile", "prod")
+		marc.run(1, "", "whoami", "--profile", "prod")
+	})
+}
