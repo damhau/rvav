@@ -203,6 +203,9 @@ type ItemVersion struct {
 	// GroupConstants are the constants of its property groups, by group
 	// key: what bindings read as propgroup (GetVersion).
 	GroupConstants map[string]any `db:"-"`
+	// Target is what a day-2 action's designed form reads of the action's
+	// target, as resource and deployment (ADR-0050); nil for an item's.
+	Target map[string]any `db:"-"`
 }
 
 type ApprovalPolicy struct {

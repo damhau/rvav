@@ -40,7 +40,11 @@ func (s *Service) day2Actions(ctx context.Context) ([]*day2.Action, error) {
 	if err != nil {
 		return nil, err
 	}
-	return day2.Sorted(append(out, wfs...)), nil
+	out = append(out, wfs...)
+	if err := s.withDesignedForms(ctx, out); err != nil {
+		return nil, err
+	}
+	return day2.Sorted(out), nil
 }
 
 // workflowActions are the custom workflows offered as day-2 actions
@@ -60,19 +64,37 @@ func (s *Service) workflowActions(ctx context.Context) ([]*day2.Action, error) {
 }
 
 func workflowAction(w store.WorkflowRegistration) *day2.Action {
-	if !w.Enabled || !slices.Contains(w.Usages, "day2_action") || len(w.Day2) == 0 {
+	def, ok := workflowDef(w)
+	if !ok || !w.Enabled || !def.offered {
 		return nil
 	}
+	return day2.WorkflowAction(def.WorkflowDef)
+}
+
+// registeredAction is a workflow registered as a day-2 action, and whether
+// administrators offer it.
+type registeredAction struct {
+	day2.WorkflowDef
+	offered bool
+}
+
+// workflowDef is the day-2 action a workflow registered for it is,
+// offered or not (ok is false for another workflow).
+func workflowDef(w store.WorkflowRegistration) (registeredAction, bool) {
+	if !slices.Contains(w.Usages, "day2_action") || len(w.Day2) == 0 {
+		return registeredAction{}, false
+	}
 	var d api.WorkflowDay2
-	if json.Unmarshal(w.Day2, &d) != nil || d.Offered == nil || !*d.Offered {
-		return nil
+	if json.Unmarshal(w.Day2, &d) != nil {
+		return registeredAction{}, false
 	}
 	types := make([]string, len(d.Types))
 	for i, t := range d.Types {
 		types[i] = string(t)
 	}
-	return day2.WorkflowAction(day2.WorkflowDef{Key: w.Key, Name: d.Name, Type: w.WorkflowType, TaskQueue: w.TaskQueue,
-		Timeout: w.TimeoutSeconds, Types: types, Condition: deref(d.Condition), Projects: w.ProjectIDs, Schema: w.InputSchema})
+	def := day2.WorkflowDef{Key: w.Key, Name: d.Name, Type: w.WorkflowType, TaskQueue: w.TaskQueue, Timeout: w.TimeoutSeconds,
+		Types: types, Condition: deref(d.Condition), Projects: w.ProjectIDs, Schema: w.InputSchema}
+	return registeredAction{def, d.Offered != nil && *d.Offered}, true
 }
 
 // day2Action is the action with this key, native or AWX (nil when none is
@@ -88,7 +110,7 @@ func (s *Service) day2Action(ctx context.Context, key string) (*day2.Action, err
 		} else if err != nil {
 			return nil, err
 		}
-		return workflowAction(w), nil
+		return s.withDesignedForm(ctx, workflowAction(w))
 	}
 	a, err := s.Store.GetAWXAction(ctx, key)
 	if errors.Is(err, store.ErrNotFound) || err == nil && (!a.Enabled || a.Gone) {
@@ -97,7 +119,7 @@ func (s *Service) day2Action(ctx context.Context, key string) (*day2.Action, err
 	if err != nil {
 		return nil, err
 	}
-	return awxAction(a), nil
+	return s.withDesignedForm(ctx, awxAction(a))
 }
 
 // offered says whether an action's condition holds for the target. A
@@ -123,17 +145,24 @@ func (j *judge) offered(a *day2.Action, t day2.Target) bool {
 	return ok
 }
 
+// firstIP is a VM's first address ("" when it has none).
+func firstIP(vm api.VmProperties) string {
+	for _, nic := range vm.Nics {
+		if nic.IpAddresses != nil && len(*nic.IpAddresses) > 0 {
+			return (*nic.IpAddresses)[0]
+		}
+	}
+	return ""
+}
+
 // rvavContext is what an AWX job of a day-2 action gets as extra_vars.rvav,
 // as provisioning jobs do (integrations.md, launch contract).
 func rvavContext(requestID string, p *auth.Principal, d store.DeploymentRow, t day2.Target) map[string]any {
 	var resources []map[string]any
 	add := func(name string, vm api.VmProperties) {
 		r := map[string]any{"name": name, "fqdn": deref(vm.Fqdn), "moref": vm.Moref}
-		for _, nic := range vm.Nics {
-			if nic.IpAddresses != nil && len(*nic.IpAddresses) > 0 {
-				r["ip"] = (*nic.IpAddresses)[0]
-				break
-			}
+		if ip := firstIP(vm); ip != "" {
+			r["ip"] = ip
 		}
 		resources = append(resources, r)
 	}

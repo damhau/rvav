@@ -1131,6 +1131,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deployments/{deploymentId}/actions/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * An action's form for these inputs, its rules worked out
+         * @description For an action whose form an administrator designed (ADR-0050,
+         *     `ActionForm.designed`): each field's rule results and default for
+         *     the inputs given, on the target, and what is wrong with them, as
+         *     `previewRequest` does for a request form. The form shows them and
+         *     `runDeploymentAction` applies them. Defaults may read the target
+         *     (`resource`, `deployment`). Value sources that check a value against
+         *     a system are left to the run.
+         */
+        post: operations["previewDeploymentAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deployments/{deploymentId}/actions/values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve a field's dynamic options or computed value in an action's form
+         * @description `resolveFieldValues` for the form of a day-2 action, on its target:
+         *     the server resolves the field's value source for the caller in the
+         *     deployment's project and environment. For whoever may run the
+         *     action there.
+         */
+        post: operations["resolveDeploymentActionValues"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/deployments/{deploymentId}/history": {
         parameters: {
             query?: never;
@@ -1411,6 +1464,107 @@ export interface paths {
         head?: never;
         /** Choose where an AWX action is offered, its name, or turn it off */
         patch: operations["updateAwxAction"];
+        trace?: never;
+    };
+    "/admin/day2-forms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The forms designed for custom day-2 actions
+         * @description One per AWX (`awx.*`) or workflow (`wf.*`) day-2 action an
+         *     administrator designed a form for (ADR-0050), whether in use or
+         *     not. The other actions ask for their survey's or input schema's
+         *     form. Needs `extensibility.manage` (administrators).
+         */
+        get: operations["listDay2Forms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/day2-forms/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A custom day-2 action's key, an AWX template's (`awx.*`) or a workflow's (`wf.*`). */
+                action: components["parameters"]["Day2ActionPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The form designed for a custom day-2 action
+         * @description The designed form, or, before one is saved (`revision` 0), the
+         *     survey's or input schema's form to start from.
+         */
+        get: operations["getDay2Form"];
+        /**
+         * Save the form designed for a custom day-2 action
+         * @description Checked as a catalog item's form is: an inactive form may be
+         *     incomplete, as a draft; an active one (`active`) must be complete,
+         *     as a published version, and the action asks for it from its next
+         *     run. A form saved elsewhere since `base_revision` is refused (409).
+         *     Not every field fits an action's form: no file uploads, and no
+         *     wizard (the form shows in a dialog).
+         */
+        put: operations["saveDay2Form"];
+        post?: never;
+        /** Drop a designed form, so the action asks for its survey's or schema's again */
+        delete: operations["deleteDay2Form"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/day2-forms/{action}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A custom day-2 action's key, an AWX template's (`awx.*`) or a workflow's (`wf.*`). */
+                action: components["parameters"]["Day2ActionPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The saved designed form on a deployment or one of its VMs, as its users would get it
+         * @description The form designer's preview: `previewDeploymentAction` for the form
+         *     as saved, active or not, on any deployment, as the administrator.
+         */
+        post: operations["previewDay2Form"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/day2-forms/{action}/values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A custom day-2 action's key, an AWX template's (`awx.*`) or a workflow's (`wf.*`). */
+                action: components["parameters"]["Day2ActionPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve a field's value source in the saved designed form, for the designer */
+        post: operations["resolveDay2FormValues"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/admin/catalog/items": {
@@ -5204,6 +5358,14 @@ export interface components {
          *     `propgroup` (the constants of the property groups the item names).
          *     The server evaluates them on preview and submit and returns the
          *     results in `fields`; the UI shows those.
+         *
+         *     A day-2 action's designed form (ADR-0050) also reads its target:
+         *     `resource` (`id`, `type`, `name`, and for a VM `power_state`,
+         *     `cpu_count`, `memory_gb`, `disk_gb`, `guest_os`, `os_family`, `fqdn`,
+         *     `ip`, `moref`, `cluster`, `folder`, `tags` and `custom_properties`;
+         *     for a deployment `os_family` and `vms`, each with `name`, `fqdn` and
+         *     `ip`) and `deployment` (`id`, `name`, `description`, `owner_id`,
+         *     `item`, the catalog item's slug). They are empty in request forms.
          */
         UiRules: {
             /** @example inputs.environment != "prd" */
@@ -5965,6 +6127,115 @@ export interface components {
             initial_values: {
                 [key: string]: unknown;
             };
+            /**
+             * @description An administrator designed it (ADR-0050): its rules and value
+             *     sources work as a request form's, so its field states come from
+             *     `previewDeploymentAction` and its sources from
+             *     `resolveDeploymentActionValues`. Absent for the other forms.
+             */
+            designed?: boolean;
+        };
+        Day2FormQuery: {
+            action: string;
+            /** @description The VM it runs on; absent for an action on the whole deployment. */
+            resource_id?: string;
+            /** @description The form's values so far. */
+            inputs: {
+                [key: string]: unknown;
+            };
+        };
+        Day2FieldValuesQuery: {
+            action: string;
+            /** @description The VM it runs on; absent for an action on the whole deployment. */
+            resource_id?: string;
+            /** @description Input name. */
+            field: string;
+            /** @description Current form values. */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /** @description Text typed in a `search` or `user` field, as in `resolveFieldValues`. */
+            search?: string;
+        };
+        Day2FormPreview: {
+            form: components["schemas"]["ActionForm"];
+            fields: components["schemas"]["FieldStates"];
+            /** @description What a run with these inputs would be refused for, on the inputs (`/inputs/<name>`). */
+            errors: components["schemas"]["FieldError"][];
+        };
+        Day2FormDefinition: {
+            /** @description JSON Schema of the inputs, as a catalog item version's `form_schema`. */
+            form_schema: {
+                [key: string]: unknown;
+            };
+            ui_schema: components["schemas"]["UiSchema"];
+            initial_values: {
+                [key: string]: unknown;
+            };
+        };
+        Day2FormDesign: {
+            /** @example awx.install-monitoring-agent */
+            action: string;
+            /** @example Install monitoring agent */
+            name: string;
+            /**
+             * @description What runs it, an AWX template or a custom workflow.
+             * @enum {string}
+             */
+            kind: "awx" | "workflow";
+            /** @description What it runs on. */
+            types: ("vsphere.vm" | "deployment")[];
+            definition: components["schemas"]["Day2FormDefinition"];
+            /**
+             * @description Counts the saves; 0 before the first, when `definition` is the
+             *     survey's or input schema's form, to start from.
+             */
+            revision: number;
+            /** @description The action asks for this form. Otherwise, it asks for its survey's or schema's. */
+            active: boolean;
+            /**
+             * @description What the template's survey or the workflow's input schema asks
+             *     for that this form doesn't give, or gives as another type: AWX
+             *     or the workflow may refuse such a run.
+             */
+            warnings: string[];
+            /** Format: date-time */
+            updated_at?: string;
+            updated_by?: components["schemas"]["UserRef"];
+        };
+        Day2FormWrite: {
+            definition: components["schemas"]["Day2FormDefinition"];
+            /** @description The revision the change was made on (0 for the first save); another save since is refused (409). */
+            base_revision?: number;
+            /** @description Ask for this form from the next run. Unchanged when absent; a new form starts inactive. */
+            active?: boolean;
+        };
+        Day2FormSummary: {
+            action: string;
+            active: boolean;
+            revision: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        Day2FormList: {
+            items: components["schemas"]["Day2FormSummary"][];
+        };
+        Day2FormDesignerQuery: {
+            deployment_id: string;
+            /** @description The VM to preview on; absent for the whole deployment. */
+            resource_id?: string;
+            inputs: {
+                [key: string]: unknown;
+            };
+        };
+        Day2FormDesignerValuesQuery: {
+            deployment_id: string;
+            resource_id?: string;
+            field: string;
+            inputs: {
+                [key: string]: unknown;
+            };
+            search?: string;
         };
         Day2Draft: {
             action: string;
@@ -9357,6 +9628,8 @@ export interface components {
         /** @description Catalog item version ID. */
         VersionIdPath: string;
         DeploymentIdPath: string;
+        /** @description A custom day-2 action's key, an AWX template's (`awx.*`) or a workflow's (`wf.*`). */
+        Day2ActionPath: string;
         ApprovalIdPath: string;
         /** @description Request ID or number (for example `REQ-10491`). */
         RequestIdPath: string;
@@ -11037,6 +11310,69 @@ export interface operations {
             502: components["responses"]["UpstreamError"];
         };
     };
+    previewDeploymentAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Day2FormQuery"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Day2FormPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    resolveDeploymentActionValues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Day2FieldValuesQuery"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldValues"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
     listDeploymentHistory: {
         parameters: {
             query?: {
@@ -11355,6 +11691,176 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listDay2Forms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Day2FormList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getDay2Form: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A custom day-2 action's key, an AWX template's (`awx.*`) or a workflow's (`wf.*`). */
+                action: components["parameters"]["Day2ActionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Day2FormDesign"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveDay2Form: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A custom day-2 action's key, an AWX template's (`awx.*`) or a workflow's (`wf.*`). */
+                action: components["parameters"]["Day2ActionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Day2FormWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Day2FormDesign"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteDay2Form: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A custom day-2 action's key, an AWX template's (`awx.*`) or a workflow's (`wf.*`). */
+                action: components["parameters"]["Day2ActionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dropped (or there was none) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    previewDay2Form: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A custom day-2 action's key, an AWX template's (`awx.*`) or a workflow's (`wf.*`). */
+                action: components["parameters"]["Day2ActionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Day2FormDesignerQuery"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Day2FormPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    resolveDay2FormValues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A custom day-2 action's key, an AWX template's (`awx.*`) or a workflow's (`wf.*`). */
+                action: components["parameters"]["Day2ActionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Day2FormDesignerValuesQuery"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldValues"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
         };
     };
     listAdminCatalogItems: {

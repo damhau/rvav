@@ -1469,6 +1469,68 @@ paths:
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "502": { $ref: "#/components/responses/UpstreamError" }
 
+  /deployments/{deploymentId}/actions/preview:
+    parameters:
+      - { $ref: "#/components/parameters/DeploymentIdPath" }
+    post:
+      tags: [deployments]
+      operationId: previewDeploymentAction
+      summary: An action's form for these inputs, its rules worked out
+      description: |
+        For an action whose form an administrator designed (ADR-0050,
+        `ActionForm.designed`): each field's rule results and default for
+        the inputs given, on the target, and what is wrong with them, as
+        `previewRequest` does for a request form. The form shows them and
+        `runDeploymentAction` applies them. Defaults may read the target
+        (`resource`, `deployment`). Value sources that check a value against
+        a system are left to the run.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Day2FormQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day2FormPreview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /deployments/{deploymentId}/actions/values:
+    parameters:
+      - { $ref: "#/components/parameters/DeploymentIdPath" }
+    post:
+      tags: [deployments]
+      operationId: resolveDeploymentActionValues
+      summary: Resolve a field's dynamic options or computed value in an action's form
+      description: |
+        `resolveFieldValues` for the form of a day-2 action, on its target:
+        the server resolves the field's value source for the caller in the
+        deployment's project and environment. For whoever may run the
+        action there.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Day2FieldValuesQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FieldValues" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
   /deployments/{deploymentId}/history:
     parameters:
       - { $ref: "#/components/parameters/DeploymentIdPath" }
@@ -1753,6 +1815,134 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/day2-forms:
+    get:
+      tags: [admin]
+      operationId: listDay2Forms
+      summary: The forms designed for custom day-2 actions
+      description: |
+        One per AWX (`awx.*`) or workflow (`wf.*`) day-2 action an
+        administrator designed a form for (ADR-0050), whether in use or
+        not. The other actions ask for their survey's or input schema's
+        form. Needs `extensibility.manage` (administrators).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day2FormList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/day2-forms/{action}:
+    parameters:
+      - { $ref: "#/components/parameters/Day2ActionPath" }
+    get:
+      tags: [admin]
+      operationId: getDay2Form
+      summary: The form designed for a custom day-2 action
+      description: |
+        The designed form, or, before one is saved (`revision` 0), the
+        survey's or input schema's form to start from.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day2FormDesign" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: saveDay2Form
+      summary: Save the form designed for a custom day-2 action
+      description: |
+        Checked as a catalog item's form is: an inactive form may be
+        incomplete, as a draft; an active one (`active`) must be complete,
+        as a published version, and the action asks for it from its next
+        run. A form saved elsewhere since `base_revision` is refused (409).
+        Not every field fits an action's form: no file uploads, and no
+        wizard (the form shows in a dialog).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Day2FormWrite" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day2FormDesign" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteDay2Form
+      summary: Drop a designed form, so the action asks for its survey's or schema's again
+      responses:
+        "204": { description: Dropped (or there was none) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/day2-forms/{action}/preview:
+    parameters:
+      - { $ref: "#/components/parameters/Day2ActionPath" }
+    post:
+      tags: [admin]
+      operationId: previewDay2Form
+      summary: The saved designed form on a deployment or one of its VMs, as its users would get it
+      description: |
+        The form designer's preview: `previewDeploymentAction` for the form
+        as saved, active or not, on any deployment, as the administrator.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Day2FormDesignerQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Day2FormPreview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/day2-forms/{action}/values:
+    parameters:
+      - { $ref: "#/components/parameters/Day2ActionPath" }
+    post:
+      tags: [admin]
+      operationId: resolveDay2FormValues
+      summary: Resolve a field's value source in the saved designed form, for the designer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Day2FormDesignerValuesQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FieldValues" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
 
   /admin/catalog/items:
     get:
@@ -5310,6 +5500,12 @@ components:
       in: path
       required: true
       schema: { type: string }
+    Day2ActionPath:
+      name: action
+      in: path
+      required: true
+      description: A custom day-2 action's key, an AWX template's (`awx.*`) or a workflow's (`wf.*`).
+      schema: { type: string, examples: [awx.install-monitoring-agent] }
     ApprovalIdPath:
       name: approvalId
       in: path
@@ -7105,6 +7301,14 @@ components:
         `propgroup` (the constants of the property groups the item names).
         The server evaluates them on preview and submit and returns the
         results in `fields`; the UI shows those.
+
+        A day-2 action's designed form (ADR-0050) also reads its target:
+        `resource` (`id`, `type`, `name`, and for a VM `power_state`,
+        `cpu_count`, `memory_gb`, `disk_gb`, `guest_os`, `os_family`, `fqdn`,
+        `ip`, `moref`, `cluster`, `folder`, `tags` and `custom_properties`;
+        for a deployment `os_family` and `vms`, each with `name`, `fqdn` and
+        `ip`) and `deployment` (`id`, `name`, `description`, `owner_id`,
+        `item`, the catalog item's slug). They are empty in request forms.
       properties:
         visible: { type: string, examples: ['inputs.environment != "prd"'] }
         required: { type: string }
@@ -8034,6 +8238,146 @@ components:
         initial_values:
           type: object
           additionalProperties: true
+        designed:
+          type: boolean
+          description: |
+            An administrator designed it (ADR-0050): its rules and value
+            sources work as a request form's, so its field states come from
+            `previewDeploymentAction` and its sources from
+            `resolveDeploymentActionValues`. Absent for the other forms.
+
+    Day2FormQuery:
+      type: object
+      required: [action, inputs]
+      properties:
+        action: { type: string }
+        resource_id: { type: string, description: "The VM it runs on; absent for an action on the whole deployment." }
+        inputs:
+          type: object
+          description: The form's values so far.
+          additionalProperties: true
+
+    Day2FieldValuesQuery:
+      type: object
+      required: [action, field, inputs]
+      properties:
+        action: { type: string }
+        resource_id: { type: string, description: "The VM it runs on; absent for an action on the whole deployment." }
+        field: { type: string, description: Input name. }
+        inputs:
+          type: object
+          description: Current form values.
+          additionalProperties: true
+        search: { type: string, description: "Text typed in a `search` or `user` field, as in `resolveFieldValues`." }
+
+    Day2FormPreview:
+      type: object
+      required: [form, fields, errors]
+      properties:
+        form: { $ref: "#/components/schemas/ActionForm" }
+        fields: { $ref: "#/components/schemas/FieldStates" }
+        errors:
+          type: array
+          description: What a run with these inputs would be refused for, on the inputs (`/inputs/<name>`).
+          items: { $ref: "#/components/schemas/FieldError" }
+
+    Day2FormDefinition:
+      type: object
+      required: [form_schema, ui_schema, initial_values]
+      properties:
+        form_schema:
+          type: object
+          description: JSON Schema of the inputs, as a catalog item version's `form_schema`.
+          additionalProperties: true
+        ui_schema: { $ref: "#/components/schemas/UiSchema" }
+        initial_values:
+          type: object
+          additionalProperties: true
+
+    Day2FormDesign:
+      type: object
+      required: [action, name, kind, types, definition, revision, active, warnings]
+      properties:
+        action: { type: string, examples: [awx.install-monitoring-agent] }
+        name: { type: string, examples: [Install monitoring agent] }
+        kind:
+          type: string
+          enum: [awx, workflow]
+          x-enum-varnames: [Day2FormAwx, Day2FormWorkflow]
+          description: What runs it, an AWX template or a custom workflow.
+        types:
+          type: array
+          description: What it runs on.
+          items: { type: string, enum: [vsphere.vm, deployment] }
+        definition: { $ref: "#/components/schemas/Day2FormDefinition" }
+        revision:
+          type: integer
+          description: |
+            Counts the saves; 0 before the first, when `definition` is the
+            survey's or input schema's form, to start from.
+        active:
+          type: boolean
+          description: The action asks for this form. Otherwise, it asks for its survey's or schema's.
+        warnings:
+          type: array
+          description: |
+            What the template's survey or the workflow's input schema asks
+            for that this form doesn't give, or gives as another type: AWX
+            or the workflow may refuse such a run.
+          items: { type: string }
+        updated_at: { type: string, format: date-time }
+        updated_by: { $ref: "#/components/schemas/UserRef" }
+
+    Day2FormWrite:
+      type: object
+      required: [definition]
+      additionalProperties: false
+      properties:
+        definition: { $ref: "#/components/schemas/Day2FormDefinition" }
+        base_revision:
+          type: integer
+          minimum: 0
+          description: The revision the change was made on (0 for the first save); another save since is refused (409).
+        active: { type: boolean, description: "Ask for this form from the next run. Unchanged when absent; a new form starts inactive." }
+
+    Day2FormSummary:
+      type: object
+      required: [action, active, revision, updated_at]
+      properties:
+        action: { type: string }
+        active: { type: boolean }
+        revision: { type: integer }
+        updated_at: { type: string, format: date-time }
+
+    Day2FormList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Day2FormSummary" }
+
+    Day2FormDesignerQuery:
+      type: object
+      required: [deployment_id, inputs]
+      properties:
+        deployment_id: { type: string }
+        resource_id: { type: string, description: "The VM to preview on; absent for the whole deployment." }
+        inputs:
+          type: object
+          additionalProperties: true
+
+    Day2FormDesignerValuesQuery:
+      type: object
+      required: [deployment_id, field, inputs]
+      properties:
+        deployment_id: { type: string }
+        resource_id: { type: string }
+        field: { type: string }
+        inputs:
+          type: object
+          additionalProperties: true
+        search: { type: string }
 
     Day2Draft:
       type: object

@@ -2,8 +2,6 @@ package core
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -256,60 +254,11 @@ func (s *Service) auditWarnings(ctx context.Context, tx pgx.Tx, p *auth.Principa
 
 // RunAction creates the day-2 request and starts it.
 func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID string, draft api.Day2Draft) (store.RequestRow, error) {
-	d, err := s.visibleDeployment(ctx, p, deploymentID)
+	r, err := s.actionTarget(ctx, p, deploymentID, draft.Action, draft.ResourceId)
 	if err != nil {
 		return store.RequestRow{}, err
 	}
-	a, err := s.day2Action(ctx, draft.Action)
-	if err != nil {
-		return store.RequestRow{}, err
-	}
-	if a == nil {
-		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "unknown_action",
-			fmt.Sprintf("%q is not a day-2 action.", draft.Action))}}
-	}
-	if a.Direct {
-		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "direct_action",
-			a.Name+" is not a request: use its own endpoint.")}}
-	}
-	if a.Hidden && p.User.ID != SystemUserID {
-		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "unknown_action",
-			fmt.Sprintf("%q is not a day-2 action.", draft.Action))}}
-	}
-	resources, err := s.Store.ListResources(ctx, d.ID)
-	if err != nil {
-		return store.RequestRow{}, err
-	}
-	var target *day2.Target
-	for _, t := range targets(d, resources) {
-		if t.ResourceID == deref(draft.ResourceId) && a.AppliesTo(t.Type) {
-			target = &t
-			break
-		}
-	}
-	if target != nil {
-		if err := s.tagCategories(ctx, d, target); err != nil {
-			return store.RequestRow{}, err
-		}
-	}
-	if target == nil {
-		msg := a.Name + " needs one of this deployment's resources it applies to."
-		if a.AppliesTo(day2.DeploymentType) {
-			msg = a.Name + " acts on the whole deployment: leave out resource_id."
-		}
-		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/resource_id", "unknown_resource", msg)}}
-	}
-	j, err := s.judge(ctx, p, d)
-	if err != nil {
-		return store.RequestRow{}, err
-	}
-	if !j.offered(a, *target) {
-		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("/action", "not_offered",
-			fmt.Sprintf("%s is not offered for %s.", a.Name, target.ResourceName))}}
-	}
-	if dec := j.decide(a, *target, nil); dec.Denied != "" {
-		return store.RequestRow{}, fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
-	}
+	d, a, target, j := r.d, r.a, &r.t, r.j
 	c, err := s.choices(ctx, p, d, *target)
 	if err != nil {
 		return store.RequestRow{}, err
@@ -330,10 +279,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			a.Name+" takes no inputs.")}}
 	}
 	if a.Form != nil {
-		form := a.Form(*target, c)
-		schema, _ := json.Marshal(form.Schema)
-		sum := sha256.Sum256(schema)
-		errs, err := validateInputs("day2:"+hex.EncodeToString(sum[:8]), schema, inputs)
+		_, errs, err := s.formInputs(ctx, p, d, *target, a.Key, a.Form(*target, c), inputs, true)
 		if err != nil {
 			return store.RequestRow{}, err
 		}

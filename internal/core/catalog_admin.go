@@ -605,6 +605,14 @@ func (s *Service) checkVersion(ctx context.Context, itemType string, d api.Catal
 		return nil, err
 	}
 	errs := checkDefinition(itemType, d, groups, prefix, publish)
+	refs, err := s.checkFormRefs(ctx, d, prefix, publish)
+	return append(errs, refs...), err
+}
+
+// checkFormRefs checks what a form names that rvav keeps apart: the hosts
+// and secrets of its sources, its library entries, its validations'
+// checks and its images.
+func (s *Service) checkFormRefs(ctx context.Context, d api.CatalogVersionDefinition, prefix string, publish bool) ([]api.FieldError, error) {
 	refs, err := s.checkSourceRefs(ctx, d, prefix)
 	if err != nil {
 		return nil, err
@@ -618,7 +626,7 @@ func (s *Service) checkVersion(ctx context.Context, itemType string, d api.Catal
 		return nil, err
 	}
 	images, err := s.checkImages(ctx, d, prefix)
-	return slices.Concat(errs, refs, library, checks, images), err
+	return slices.Concat(refs, library, checks, images), err
 }
 
 // checkDefinition checks a version's definition as a whole, with pointers
@@ -626,6 +634,18 @@ func (s *Service) checkVersion(ctx context.Context, itemType string, d api.Catal
 // draft may be incomplete (no template named yet); to publish, it must be
 // complete.
 func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map[string]api.UiField, prefix string, publish bool) []api.FieldError {
+	errs := checkFormDef(d, groups, prefix, publish)
+	fields := maps.Clone(groups)
+	if fields == nil {
+		fields = map[string]api.UiField{}
+	}
+	maps.Copy(fields, d.UiSchema.Fields)
+	return append(errs, checkBlueprint(itemType, d.Blueprint, fields, prefix+"/blueprint", publish)...)
+}
+
+// checkFormDef checks a definition's form: its schema, layout, fields,
+// rules, sources, validations and initial values.
+func checkFormDef(d api.CatalogVersionDefinition, groups map[string]api.UiField, prefix string, publish bool) []api.FieldError {
 	var errs []api.FieldError
 	add := func(ptr, code, msg string) { errs = append(errs, fieldErr(prefix+ptr, code, msg)) }
 
@@ -719,12 +739,6 @@ func checkDefinition(itemType string, d api.CatalogVersionDefinition, groups map
 			add("/initial_values/"+name, "unknown_input", fmt.Sprintf("%q is not an input of the form's schema.", name))
 		}
 	}
-	fields := maps.Clone(groups)
-	if fields == nil {
-		fields = map[string]api.UiField{}
-	}
-	maps.Copy(fields, d.UiSchema.Fields)
-	errs = append(errs, checkBlueprint(itemType, d.Blueprint, fields, prefix+"/blueprint", publish)...)
 	return errs
 }
 

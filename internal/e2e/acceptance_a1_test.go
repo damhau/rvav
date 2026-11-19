@@ -377,6 +377,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		// through a WebSocket.
 		"console/{token}":                "not-a-console-link",
 		"actions/{key}":                  "awx.monitoring-agent",
+		"day2-forms/{action}":            "awx.monitoring-agent",
 		"versions/{versionId}":           item.PublishedVersion.Id,
 		"categories/{key}":               "compute",
 		"secrets/{name}":                 "a1-token",
@@ -701,6 +702,20 @@ func (w a1Walk) body(o a1Op) any {
 		return api.SavedViewWrite{List: api.ViewListDeployments, Name: "Expired", Query: map[string]string{"status": "expired"}}
 	case "runDeploymentAction":
 		return api.Day2Draft{Action: "power_off", ResourceId: new(w.ids["resources/{resourceId}"]), Inputs: map[string]any{}}
+	case "previewDeploymentAction":
+		return api.Day2FormQuery{Action: "power_off", ResourceId: new(w.ids["resources/{resourceId}"]), Inputs: map[string]any{}}
+	case "resolveDeploymentActionValues":
+		return api.Day2FieldValuesQuery{Action: "power_off", ResourceId: new(w.ids["resources/{resourceId}"]), Field: "reason",
+			Inputs: map[string]any{}}
+	case "saveDay2Form":
+		var def api.Day2FormDefinition
+		def.FormSchema, def.InitialValues = map[string]any{"type": "object"}, map[string]any{}
+		def.UiSchema.Fields, def.UiSchema.Layout.Kind, def.UiSchema.Layout.Sections = map[string]api.UiField{}, api.Page, []api.UiSection{}
+		return api.Day2FormWrite{Definition: def}
+	case "previewDay2Form":
+		return api.Day2FormDesignerQuery{DeploymentId: w.ids["deployments/{deploymentId}"], Inputs: map[string]any{}}
+	case "resolveDay2FormValues":
+		return api.Day2FormDesignerValuesQuery{DeploymentId: w.ids["deployments/{deploymentId}"], Field: "reason", Inputs: map[string]any{}}
 	}
 	return nil
 }

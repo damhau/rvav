@@ -248,20 +248,7 @@ func day2Vars(p *auth.Principal, d store.DeploymentRow, env store.Environment, a
 		resource["os_family"] = osFamily(deref(t.VM.GuestOs))
 	}
 	if t.Type == day2.DeploymentType {
-		// The family its VMs share, or "mixed".
-		family := ""
-		for _, r := range t.Resources {
-			if r.Type != "vsphere.vm" {
-				continue
-			}
-			switch f := osFamily(deref(r.VM.GuestOs)); family {
-			case "", f:
-				family = f
-			default:
-				family = "mixed"
-			}
-		}
-		resource["os_family"], resource["guest_os"] = family, ""
+		resource["os_family"], resource["guest_os"] = vmsFamily(t.Resources), ""
 	}
 	user := map[string]any{"id": p.User.ID, "roles": nonNilStrings(roles), "groups": nonNilStrings(p.Groups),
 		"permissions": p.PermissionsIn(d.ProjectID)}
@@ -274,6 +261,23 @@ func day2Vars(p *auth.Principal, d store.DeploymentRow, env store.Environment, a
 		"user":        user,
 		"inputs":      inputs,
 	}
+}
+
+// vmsFamily is the OS family a deployment's VMs share, or "mixed".
+func vmsFamily(resources []day2.Resource) string {
+	family := ""
+	for _, r := range resources {
+		if r.Type != "vsphere.vm" {
+			continue
+		}
+		switch f := osFamily(deref(r.VM.GuestOs)); family {
+		case "", f:
+			family = f
+		default:
+			family = "mixed"
+		}
+	}
+	return family
 }
 
 // osFamily is "windows" or "linux", from vCenter's guest OS identifier.

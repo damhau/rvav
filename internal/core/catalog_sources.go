@@ -130,13 +130,15 @@ func checkCELOf(ns string) func(string) error {
 func formVars(inputs map[string]any, proj store.Project, environment string, p *auth.Principal, v store.ItemVersion) policy.Vars {
 	user := map[string]any{"id": p.User.ID, "roles": nonNilStrings(p.Roles), "groups": nonNilStrings(p.Groups),
 		"permissions": p.PermissionsIn(proj.ID)}
-	return policy.Vars{
+	vars := policy.Vars{
 		"inputs":      inputs,
 		"environment": environment,
 		"project":     projectVars(proj),
 		"user":        user,
 		"propgroup":   groupVars(v),
 	}
+	maps.Copy(vars, v.Target)
+	return vars
 }
 
 // celValues resolves a `cel` value source: options from a list of strings
