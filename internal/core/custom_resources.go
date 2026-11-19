@@ -22,8 +22,9 @@ import (
 // Custom resources in blueprints and composites (ADR-0056).
 
 // usableResourceType is the type a blueprint or a composite step names, or
-// why it can't be used.
-func (s *Service) usableResourceType(ctx context.Context, key string) (store.ResourceType, string, error) {
+// why it can't be used in the project: turned off, or its create workflow
+// can't run there.
+func (s *Service) usableResourceType(ctx context.Context, key, projectID string) (store.ResourceType, string, error) {
 	t, err := s.Store.GetResourceType(ctx, key)
 	if errors.Is(err, store.ErrNotFound) {
 		return t, "the resource type " + key + " doesn't exist.", nil
@@ -32,6 +33,11 @@ func (s *Service) usableResourceType(ctx context.Context, key string) (store.Res
 	}
 	if !t.Enabled {
 		return t, t.Title + " is turned off: ask an administrator to turn it on.", nil
+	}
+	if c := t.Lifecycle.Create; c.Kind == "workflow" {
+		if _, why, err := s.usableWorkflow(ctx, c.Name, "resource_type", projectID); err != nil || why != "" {
+			return t, why, err
+		}
 	}
 	return t, "", nil
 }
@@ -45,7 +51,7 @@ func resourceUnit(t store.ResourceType, key, title string, with map[string]any) 
 func (s *Service) evaluateResources(ctx context.Context, ev *Evaluation) error {
 	ev.Resources = nil
 	for _, r := range ev.Blueprint.Resources {
-		t, why, err := s.usableResourceType(ctx, r.Type)
+		t, why, err := s.usableResourceType(ctx, r.Type, ev.Project.ID)
 		if err != nil {
 			return err
 		}

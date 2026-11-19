@@ -49,7 +49,8 @@ func lbDrain(_ workflow.Context, rc rvavflow.Context) (map[string]any, error) {
 	if rc.Resource == nil {
 		return nil, errors.New("no resource to drain")
 	}
-	return map[string]any{"drained": rc.Resource.Name, "vip": rc.Resource.Properties["vip"]}, nil
+	return map[string]any{"drained": rc.Resource.Name, "vip": rc.Resource.Properties["vip"],
+		"deployment_id": rc.Resource.DeploymentID, "phase": rc.Resource.Phase}, nil
 }
 
 func registerLB(env *testsuite.TestWorkflowEnvironment) {
@@ -204,7 +205,7 @@ func TestCustomResources(t *testing.T) {
 		h.waitStatus(drained.Id, owner, api.RequestStatusSucceeded)
 		var result map[string]any
 		if err := h.store.Pool.QueryRow(ctx, `select result from workflow_runs where request_id = $1`, drained.Id).Scan(&result); err != nil ||
-			result["drained"] != "farm-lb" || result["vip"] != "10.31.20.10" {
+			result["drained"] != "farm-lb" || result["vip"] != "10.31.20.10" || result["deployment_id"] != depID || result["phase"] != "day2" {
 			t.Fatalf("the drain = %v (%v)", result, err)
 		}
 
@@ -356,7 +357,9 @@ func TestCustomResourcesAWX(t *testing.T) {
 		vars = launched(r.Id, "awx.job:monitoring-agent")
 		rvav, _ = vars["rvav"].(map[string]any)
 		resource, _ := rvav["resource"].(map[string]any)
-		if resource["key"] != "alias" || resource["id"] != alias.Id {
+		vms, _ := rvav["resources"].([]any)
+		if resource["key"] != "alias" || resource["id"] != alias.Id || resource["deployment_id"] != depID ||
+			resource["phase"] != "day2" || rvav["resources"] == nil || len(vms) != 0 {
 			t.Fatalf("the action's extra vars = %v", vars)
 		}
 		if got := customOf(h, owner, depID)["alias"]; got.Properties["ttl"] != float64(300) {
@@ -497,6 +500,20 @@ func TestCustomResourceStep(t *testing.T) {
 		}
 		if left != 0 || rolledBack != string(api.StepStatusDone) {
 			t.Fatalf("after the rollback: %d custom resources left, its step %q", left, rolledBack)
+		}
+
+		// Its create workflow offered to other projects only: the request is refused.
+		var reg api.WorkflowRegistration
+		h.json("GET", "/api/v1/admin/workflows/lb-create", admin, nil, 200, &reg)
+		h.json("PUT", "/api/v1/admin/workflows/lb-create", admin, api.WorkflowRegistrationWrite{Title: reg.Title,
+			WorkflowType: reg.WorkflowType, TaskQueue: reg.TaskQueue, Usages: reg.Usages, InputSchema: &reg.InputSchema,
+			ProjectIds: &[]string{"prj_data"}}, 200, nil)
+		h.json("POST", "/api/v1/requests", owner, api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id,
+			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "web", "size": "S", "cluster": "GVA-DEV-CL01",
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "database": "orders", "role_name": "orders_ro"}},
+			422, &problem, "Idempotency-Key", uuid.NewString())
+		if len(problem.Errors) == 0 || !strings.Contains(problem.Errors[0].Message, "isn't offered to this project") {
+			t.Fatalf("a resource whose create workflow isn't offered to the project = %+v", problem.Errors)
 		}
 	})
 }

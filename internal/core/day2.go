@@ -359,7 +359,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		}
 	}
 	if day2.IsCustom(target.Type) {
-		if ops, err = s.customOps(ctx, ops, *target); err != nil {
+		if ops, err = s.customOps(ctx, ops, *target, d.ID); err != nil {
 			return store.RequestRow{}, err
 		}
 	}

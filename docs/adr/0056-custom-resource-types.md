@@ -53,8 +53,12 @@ they are now update, read and delete them.
 
 A type turned off refuses the requests and the updates of the items
 that use it ("Load balancer is turned off: ask an administrator to turn
-it on."), and publishing a version that names it. A create step
-that reaches it after its request was accepted fails. Its resources keep
+it on."), and publishing a version that names it. So does a `create`
+workflow that is off, no longer registered for resource types, or
+offered to other projects only ("The custom workflow lb-create isn't
+offered to this project."). A create step that reaches any of these
+after its request was accepted fails; `update`, `read` and `delete`
+still run, so what was made can be deleted. Its resources keep
 their day-2 actions and are deleted as before. A draft may name a type
 that doesn't exist yet; publishing needs it to exist and be on
 (`unknown_resource_type`, `disabled`).
@@ -191,7 +195,8 @@ The actions a type lists are offered on each of its resources:
   or deployments it is set for as well; one that is off, or whose
   template AWX no longer has, is offered nowhere.
 - A workflow action gets the resource in its context's `resource`, an
-  AWX action in `rvav.resource`. An AWX action on a custom resource runs
+  AWX action in `rvav.resource`, with the `phase` `day2` (its
+  `rvav.resources`, the VMs, is empty). An AWX action on a custom resource runs
   on its template's own inventory with no limit, and without refreshing
   rvav's inventory: there is no VM to target or to be powered on.
 - When the type has `read`, it runs after each action

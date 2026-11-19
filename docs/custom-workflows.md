@@ -95,7 +95,7 @@ decode it leniently. The helpers do: Python keeps unknown fields in
 | `inputs` | The form, validated against the registered input schema. A secret field arrives as `{"$secret": "<field>"}`: its value stays out of workflow histories and goes only to AWX jobs and cloud-init (S14.6). A composite's conditions and bindings see that marker too, so they can't test or transform a secret input. |
 | `steps` | A composite's earlier steps' outputs |
 | `event` | A subscription's event (`rvav.event.v1`); null otherwise |
-| `resource` | For a resource type's step: `id`, `type` (`key`, `title`), `key`, `name`, `deployment_id`, `phase` (`create`, `update`, `read`, `delete`), `inputs` and `properties`. For a day-2 action on a custom resource: `id`, `type`, `key`, `name`, `inputs` and `properties`. Null otherwise. Go: `rvavflow.Context.Resource`; Python: `Context.resource` ([ADR-0056](adr/0056-custom-resource-types.md)) |
+| `resource` | For a resource type's step: `id`, `type` (`key`, `title`), `key`, `name`, `deployment_id`, `phase` (`create`, `update`, `read`, `delete`), `inputs` and `properties`. For a day-2 action on a custom resource: the same, with `phase` `day2`. Null otherwise. Go: `rvavflow.Context.Resource`; Python: `Context.resource` ([ADR-0056](adr/0056-custom-resource-types.md)) |
 
 ### What rvav does for it
 
@@ -200,7 +200,10 @@ with `POST /api/v1/admin/workflows`:
     resources ([ADR-0056](adr/0056-custom-resource-types.md)). `create`
     and `update` get the inputs the blueprint or the composite step
     binds, `delete` and `read` the resource's properties; rvav doesn't
-    check them against the input schema.
+    check them against the input schema. A registration offered to some
+    projects only makes resources only in theirs: a request from another
+    is refused, as is a request while `create`'s registration is off or
+    not registered for resource types.
 
 Auditors read registrations, with their runs not ended and what uses
 them. A registration in use, or with runs, can only be disabled: in its

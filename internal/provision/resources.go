@@ -318,6 +318,13 @@ func (a *Activities) PrepareResource(ctx context.Context, in ResourceInput) (Res
 		} else if err != nil {
 			return ResourceCall{}, err
 		}
+		// As at submit; later steps still run, so what was made can be deleted.
+		if run.Phase == PhaseCreate && !slices.Contains(reg.Usages, "resource_type") {
+			return ResourceCall{}, permanent("the custom workflow %s isn't registered for resource types", driver.Name)
+		}
+		if run.Phase == PhaseCreate && len(reg.ProjectIDs) > 0 && !slices.Contains(reg.ProjectIDs, dep.ProjectID) {
+			return ResourceCall{}, permanent("the custom workflow %s isn't offered to this project", driver.Name)
+		}
 		call.Workflow = &WorkflowCall{Key: reg.Key, Title: reg.Title, Type: reg.WorkflowType, TaskQueue: reg.TaskQueue,
 			Timeout: reg.TimeoutSeconds, Inputs: call.Inputs, Resource: call.Resource}
 	case "awx":

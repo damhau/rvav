@@ -202,7 +202,7 @@ func (s *Service) typeAction(ctx context.Context, key string) (*day2.Action, err
 // customOps give a custom resource's action the resource (its custom
 // workflow in its context, its AWX job in rvav.resource), then read the
 // resource again when its type can (ADR-0056).
-func (s *Service) customOps(ctx context.Context, ops []day2.Op, t day2.Target) ([]day2.Op, error) {
+func (s *Service) customOps(ctx context.Context, ops []day2.Op, t day2.Target, deploymentID string) ([]day2.Op, error) {
 	var res day2.Resource
 	for _, r := range t.Resources {
 		if r.ID == t.ResourceID {
@@ -212,7 +212,8 @@ func (s *Service) customOps(ctx context.Context, ops []day2.Op, t day2.Target) (
 	var props store.CustomProps
 	_ = json.Unmarshal(res.Properties, &props)
 	resource := map[string]any{"id": res.ID, "type": map[string]any{"key": props.ResourceType.Key, "title": props.ResourceType.Title},
-		"key": props.Key, "name": res.Name, "inputs": nonNilMap(props.Inputs), "properties": nonNilMap(props.Properties)}
+		"key": props.Key, "name": res.Name, "deployment_id": deploymentID, "phase": "day2",
+		"inputs": nonNilMap(props.Inputs), "properties": nonNilMap(props.Properties)}
 	for _, op := range ops {
 		switch {
 		case op.Op == day2.OpWorkflow:
@@ -286,13 +287,17 @@ func rvavContext(requestID string, p *auth.Principal, d store.DeploymentRow, t d
 		}
 		resources = append(resources, r)
 	}
-	if t.Type == day2.DeploymentType {
+	switch {
+	case t.Type == day2.DeploymentType:
 		for _, r := range t.Resources {
 			if r.Type == "vsphere.vm" {
 				add(r.Name, r.VM)
 			}
 		}
-	} else {
+	case day2.IsCustom(t.Type):
+		// Not a VM: the job reads rvav.resource (customOps).
+		resources = []map[string]any{}
+	default:
 		add(t.ResourceName, t.VM)
 	}
 	return map[string]any{"request_id": requestID, "deployment_id": d.ID, "deployment": d.Name, "project": d.ProjectCode,

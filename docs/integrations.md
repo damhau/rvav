@@ -205,7 +205,7 @@ condition for where they are offered, and can turn them off. A run refreshes
 the inventory and launches the template on rvav's inventory with the VM as
 `limit` ([ADR-0018](adr/0018-awx-day2-actions.md)). On a custom resource,
 it runs on the template's own inventory with no limit, and gets the
-resource in `rvav.resource`
+resource in `rvav.resource` (its `phase` is `day2`; `rvav.resources`, the VMs, is empty)
 ([ADR-0056](adr/0056-custom-resource-types.md)). An administrator can
 also design the action's form in rvav's form designer: the job then gets the
 inputs that form leaves as its extra variables, and AWX still checks them

@@ -736,7 +736,7 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 		case st.Notify != nil:
 			part.notify = st.Notify
 		case st.Resource != nil:
-			t, why, err := s.usableResourceType(ctx, st.Resource.Type)
+			t, why, err := s.usableResourceType(ctx, st.Resource.Type, ev.Project.ID)
 			if err != nil {
 				return nil, err
 			}
