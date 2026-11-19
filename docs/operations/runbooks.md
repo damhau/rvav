@@ -158,10 +158,10 @@ a vCenter, or hasn't read it for 15 minutes.
 
 ## queue-backlog
 
-**RvavQueueBacklog:** events, subscription runs or notifications have
-waited more than 10 minutes.
+**RvavQueueBacklog:** events, subscription runs, notifications or audit
+events have waited more than 10 minutes.
 
-1. **Which queue:** the `queue` label. The worker sends all three.
+1. **Which queue:** the `queue` label. The worker sends all four.
 2. **events:** the worker's dispatcher is behind or stopped. Check the
    worker's logs.
 3. **subscriptions:** a webhook or AWX target failing; runs retry with
@@ -171,6 +171,13 @@ waited more than 10 minutes.
    - Fix the target, or turn the subscription off.
 4. **notifications:** the mail server, Teams or Slack refusing. The
    delivery's error names it (`RVAV_SMTP_*`, the bot's credentials).
+5. **audit:** a syslog server or webhook unreachable or refusing.
+   Administration › Audit forwarding shows each destination's last error
+   and how many events wait for it. Fix the cause (the server's
+   certificate, the client certificate, the allowed hosts, the signing
+   secret), then **Send a test event**. Saving the destination tries it
+   again at once. Nothing is lost while it waits; removing the
+   destination drops what waits for it.
 
 ## approvals-overdue
 

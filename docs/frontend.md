@@ -574,7 +574,18 @@ it.
   newest first, with search, what, project and date filters in its
   toolbar and **Load older events** in the footer; an event's time opens
   it in a side panel with its detail. **Export CSV** is the header's
-  action.
+  action. **What** filters sign-ins and failed sign-ins; **Who** says
+  **Unknown** for a sign-in rvav couldn't tie to anyone, and shows the
+  address a sign-in came from.
+- **Audit forwarding** (`features/admin/AuditForwardingPage.tsx`): the
+  syslog servers and webhooks the audit log goes to, each with its
+  events and its delivery (up to date, sending, failing with the last
+  error, what waits, the next try), refreshed every 15 s
+  ([ADR-0058](adr/0058-audit-forwarding-and-sign-ins.md)). A `Sheet`
+  adds or changes one (TLS fields only for TLS; client key and signing
+  secret from the stored secrets); the row menu sends a test event,
+  shown in a dialog, turns one off and removes one. Auditors see it
+  without the row menu.
 - A **project's page**, in tabs: **Members** (each person's roles, several
   each, given here or through a group; add someone found by name or email
   with a role, change the roles given here in a dialog, remove; a project

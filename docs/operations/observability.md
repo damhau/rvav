@@ -73,7 +73,7 @@ the compose stack and the chart's PrometheusRule. Each names its runbook.
 | RvavRequestsNotPickedUp | critical | Requests wait and none runs for 15 minutes: the workers or Temporal are down. |
 | RvavInventoryNotFollowed | warning | The sync doesn't follow a vCenter's changes for 10 minutes. |
 | RvavInventoryStale | warning | A vCenter's inventory is older than 15 minutes. |
-| RvavQueueBacklog | warning | Events, subscription runs or notifications have waited more than 10 minutes to go out. |
+| RvavQueueBacklog | warning | Events, subscription runs, notifications or audit events have waited more than 10 minutes to go out. |
 | RvavApprovalsOverdue | info | Approvals are past their due time for an hour. |
 | RvavVMsMissing | info | VMs went missing from vCenter in the last hour. |
 
@@ -102,7 +102,8 @@ call. `RVAV_LOG_LEVEL` sets the level. Secrets are never logged.
 - **Application logs:** in the site's log platform, 30 days searchable,
   1 year archived.
 - **The audit log:** in rvav's database, kept as long as the database (it
-  is the record of who did what). Export it as CSV for the archive.
+  is the record of who did what). Forward it to the SIEM (Administration
+  › Audit forwarding), or export it as CSV for the archive.
 - **Request history:** steps and their logs stay with each request in
   rvav's database.
 - **Temporal's workflow histories:** the namespace's retention, 30 days

@@ -27,7 +27,7 @@ Sidebar:  Overview · Catalog · Deployments · Resources ·
              Governance:     Projects · Roles · Policies
              Infrastructure: Integrations · Templates and networks ·
                              Onboarding · vRA import
-             Operations:     Setup · Audit log · System
+             Operations:     Setup · Audit log · Audit forwarding · System
 Top bar:  ⌘K search · project switcher · notifications · theme · user menu
 ```
 

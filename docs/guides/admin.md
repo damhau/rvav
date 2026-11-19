@@ -20,7 +20,7 @@ in four groups:
 - **Governance:** Projects, Roles, Policies.
 - **Infrastructure:** Integrations, Templates and networks (with the VM
   sizes and the tags of vCenter objects), Onboarding, vRA import.
-- **Operations:** Setup, Audit log, System.
+- **Operations:** Setup, Audit log, Audit forwarding, System.
 
 This guide names a page as **Administration › Page**, such as
 **Administration › Roles**. You can also open one from the search box
@@ -1973,10 +1973,87 @@ of the type or an item version names it.
 - **Reports:** requests by period and item, success rate, provisioning
   time, approval lead time, quota use, leases ending
   ([reports.md](../reports.md)).
-- **Audit log:** every administrative change and approver edit, with who
-  made it. Search and filter it by what changed, project and dates;
-  select an event's time to see its detail in a side panel. **Export
-  CSV** keeps it for the archive.
+- **Audit log:** every administrative change and approver edit, and every
+  sign-in, with who made it. Search and filter it by what changed,
+  project and dates; select an event's time to see its detail in a side
+  panel. **Export CSV** keeps it for the archive.
 - **Secrets:** stored secrets (domain-join accounts, webhook signing
   secrets, credentials for value sources) are sealed with the secrets key.
   They are written, never read back.
+
+### Sign-ins in the audit log
+
+The audit log records each sign-in to the web app and to rvavctl, and
+each failed one, with the address and the browser or program it came
+from ([ADR-0058](../adr/0058-audit-forwarding-and-sign-ins.md)). To see
+them, in **Audit log**, set **What** to **Sign-ins** or **Failed
+sign-ins**.
+
+| Action | What it records |
+|---|---|
+| `auth.sign_in` | A sign-in: the user, their roles and groups, the client (`web` or `rvavctl`) and the method (`oidc`, `device`, `token` or `local`). |
+| `auth.sign_in_failed` | A refusal. **Who** is **Unknown** when the identity provider refused before rvav knew who it was. The detail says the stage (`state`, `provider` or `token`), the reason, and the provider's error and description, such as `access_denied` and `User is disabled`. |
+| `auth.sign_out` | A sign-out from the web app, or `rvavctl logout`. |
+| `auth.token_used` | An API token's first use of the day (UTC), with its name. An expired token's use is a failure, once a day. |
+
+- **Where from:** the detail's `ip` and `user_agent`. Behind a reverse
+  proxy, `ip` is the client's address only if the proxy is in
+  `RVAV_TRUSTED_PROXIES`; otherwise it is the proxy's
+  ([configuration.md](../operations/configuration.md)).
+- **Reported by the client:** a failure marked `reported_by: client`
+  happened in the browser or rvavctl, before rvav saw a token. rvav can't
+  check it, and keeps at most 10 a minute from one address.
+- **No secrets:** the audit log never records a token, a code or a
+  password.
+
+### Forward the audit log to a SIEM
+
+rvav sends a copy of each audit event to the syslog servers and webhooks
+you add. Events wait in rvav until they are delivered, and an outage of
+the destination delays them without losing any. You need the
+`integrations.manage` permission; auditors see the destinations and
+their delivery without changing them.
+
+1. If the server asks rvav for a client certificate, store its private
+   key, in PEM, as a secret: **Catalog items › Secrets**. For a webhook,
+   store the secret its calls are signed with the same way.
+2. For a webhook, allow its host: **Integrations › Allowed hosts**.
+3. Go to **Audit forwarding**, then click **New destination**.
+4. Give it a **Name**, and choose its **Kind**:
+   - **Syslog server:** its **Host** and **Port** (6514 for TLS, 514
+     otherwise, when empty), the **Transport**, the **Facility** and the
+     **App name**. With TLS, paste the **CA certificates** that sign the
+     server's certificate unless the system or the CA bundle already
+     trusts them, and, for mutual TLS, the **Client certificate** with
+     the stored secret that holds its **Client key**.
+   - **Webhook:** its **URL** and the **Signing secret**.
+5. Under **Events**, tick the categories to send, such as **Sign-ins and
+   sign-outs**. To send every event, tick none.
+6. Click **Save destination**.
+7. To check it, click the destination's **⋯** menu, then **Send a test
+   event**. The dialog says what the server answered.
+
+Each row shows how delivery goes: **Up to date**, **Sending** while
+events wait, or **Failing**, with the last error, how many events wait,
+and when rvav tries again. rvav tries after 5 seconds, 30 seconds and
+1 minute, then every 5 minutes, until the destination answers; saving
+the destination tries it again at once. **Turn off** stops sending and
+queuing; **Remove** drops the events waiting for it. The audit log keeps
+every event either way.
+
+What a destination receives:
+
+- **Syslog:** one RFC 5424 message per event, framed by octet counting
+  over TLS (RFC 5425) or TCP, or one per datagram over UDP. HOSTNAME is
+  the host of rvav's address, MSGID the event's action, and MSG the event
+  in JSON: `id`, `at`, `category`, `action`, `actor`, `target_type`,
+  `target_id`, `project` and `detail`. Failed sign-ins have the warning
+  severity, other events notice. Use TCP and UDP for labs only: they
+  send in clear.
+- **Webhook:** a POST of `{"contract": "rvav.audit.v1", "events": [...]}`
+  with up to 100 events, the oldest first, signed in `X-Rvav-Signature`
+  as subscriptions' webhooks are
+  ([integrations.md](../integrations.md)). Any 2xx answer delivers them.
+
+An event can arrive twice, after a restart in the middle of a delivery:
+drop an `id` you already have.
