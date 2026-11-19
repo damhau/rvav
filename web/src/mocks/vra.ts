@@ -283,7 +283,7 @@ function plan(db: Db, st: State): S["VraPlan"] {
       read_at: st.snapshot.read_at, groups: { A: 1, B: 2, C: 1, D: 1 }, library: 2,
       items: [
         { kind: "workflow", id: "wf-tag-vm", name: "Tag VM with cost centre", category: "Corp/vCenter", runs: 790, last_run: new Date(Date.now() - 86400_000).toISOString(),
-          used_by: [{ kind: "subscription", name: "Cost centre tag", detail: "compute.provision.post, provisioning.post in rvav, blocking" }], systems: ["vCenter"],
+          used_by: [{ kind: "subscription", name: "Cost centre tag", detail: "compute.provision.post in vRA and rvav, blocking" }], systems: ["vCenter"],
           group: "A", becomes: "Built-in rvav steps or a composite item", reasons: ["It only drives vCenter: rvav's built-in steps (or a composite item chaining them) do the same."] },
         { kind: "workflow", id: "wf-ad-group", name: "Create AD group", category: "Corp/Active Directory", runs: 120, last_run: new Date(Date.now() - 3 * 86400_000).toISOString(),
           used_by: [{ kind: "catalog_item", name: "Create AD group" }], systems: ["Active Directory"], group: "B", becomes: "An AWX job template",

@@ -32,7 +32,8 @@ func TestTriageVRO(t *testing.T) {
 	}
 	if it := items["wf-tag-vm"]; it.Group != GroupNative || !slices.Equal(it.Systems, []string{"vCenter"}) ||
 		!used(it, "subscription", "Cost centre tag") || !used(it, "workflow", "Decommission application") ||
-		!reason(it, "only drives vCenter") || !reason(it, "provisioning.post in rvav, blocking") {
+		!reason(it, "only drives vCenter") ||
+		!reason(it, "(compute.provision.post in vRA and rvav, blocking): an rvav subscription on compute.provision.post runs what replaces it, but doesn't hold the request: rvav waits for subscriptions only on provisioning.pre, day2.pre and delete.pre.") {
 		t.Fatalf("tag = %+v", it)
 	}
 	if it := items["wf-ad-group"]; it.Group != GroupAWX || !reason(it, "microsoft.ad") || !used(it, "catalog_item", "Create AD group") ||
@@ -44,7 +45,8 @@ func TestTriageVRO(t *testing.T) {
 	// A subscription runs it, and a subscription doesn't run a composite item:
 	// a playbook, though its REST calls would make REST call steps.
 	if it := items["wf-cmdb-register"]; it.Group != GroupAWX || !slices.Equal(it.Systems, []string{"REST"}) || !reason(it, "ansible.builtin.uri") ||
-		!reason(it, "REST call steps") || !slices.Contains(it.Steps, StepREST) || reason(it, "may add") {
+		!reason(it, "REST call steps") || !slices.Contains(it.Steps, StepREST) || reason(it, "may add") ||
+		!reason(it, "(compute.provision.post in vRA and rvav): an rvav subscription on compute.provision.post runs what replaces it.") {
 		t.Fatalf("cmdb = %+v", it)
 	}
 	// Waits for people and days, and reaches vCenter through the workflow it
@@ -104,6 +106,23 @@ func ptr[T any](v T) *T { return &v }
 // TestStandardVRO: the vRO workflows an enterprise vRA typically has, sorted
 // and sized for the composite step kinds rvav may add (D2.1): which kinds,
 // and how many workflows need each.
+// TestRvavEvent: a VM's vRA topics are rvav's too (ADR-0049); a
+// deployment's are its request's, and rvav has no others.
+func TestRvavEvent(t *testing.T) {
+	for topic, want := range map[string]string{
+		"compute.allocation.pre": "compute.allocation.pre", "network.configure": "network.configure",
+		"compute.provision.pre": "compute.provision.pre", "compute.provision.post": "compute.provision.post",
+		"compute.removal.pre": "compute.removal.pre", "compute.removal.post": "compute.removal.post",
+		"deployment.request.pre": "provisioning.pre", "deployment.request.post": "provisioning.post",
+		"deployment.action.pre": "day2.pre", "compute.reconfigure.post": "day2.post",
+		"kubernetes.cluster.allocation.pre": "", "compute.reservation.pre": "",
+	} {
+		if got := rvavEvent(topic); got != want {
+			t.Errorf("%s: %q, want %q", topic, got, want)
+		}
+	}
+}
+
 func TestStandardVRO(t *testing.T) {
 	e := vra.StandardVRO(time.Now())
 	tr := TriageVRO(&e)

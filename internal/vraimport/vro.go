@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/vra"
 )
 
@@ -34,6 +35,11 @@ type Use struct {
 	Detail string `json:"detail,omitempty"`
 	// Disabled: it can't run (a disabled subscription).
 	Disabled bool `json:"disabled,omitempty"`
+
+	// A subscription's rvav topic, if rvav has one, and whether vRA waits
+	// for it.
+	topic    string
+	blocking bool
 }
 
 // TriageItem is one workflow or action: what it is, what uses it, and its
@@ -193,14 +199,19 @@ func TriageVRO(e *vra.Estate) Triage {
 		}
 	}
 	for _, s := range e.Subscriptions {
+		ev := rvavEvent(s.EventTopicID)
 		detail := s.EventTopicID
-		if ev := rvavEvent(s.EventTopicID); ev != "" {
+		switch ev {
+		case "":
+		case s.EventTopicID:
+			detail += " in vRA and rvav"
+		default:
 			detail += ", " + ev + " in rvav"
 		}
 		if s.Blocking {
 			detail += ", blocking"
 		}
-		u := Use{Kind: "subscription", Name: s.Name, Detail: detail, Disabled: s.Disabled}
+		u := Use{Kind: "subscription", Name: s.Name, Detail: detail, Disabled: s.Disabled, topic: ev, blocking: s.Blocking}
 		switch s.RunnableType {
 		case "extensibility.vro":
 			add("workflow:"+s.RunnableID, u)
@@ -613,23 +624,38 @@ func ansibleFor(reached []string) string {
 	return strings.Join(out, ", ")
 }
 
-// rvavEvent is the rvav topic of a vRA event topic.
+// rvavEvent is the rvav topic of a vRA event topic: a VM's are the same
+// (ADR-0049), a deployment's are its request's.
 func rvavEvent(topic string) string {
 	switch topic {
-	case "compute.allocation.pre", "compute.provision.pre", "network.configure", "deployment.request.pre":
-		return "provisioning.pre"
-	case "compute.provision.post", "deployment.request.post":
-		return "provisioning.post"
+	case outbox.ComputeAllocationPre, outbox.NetworkConfigure, outbox.ComputeProvisionPre, outbox.ComputeProvisionPost,
+		outbox.ComputeRemovalPre, outbox.ComputeRemovalPost:
+		return topic
+	case "deployment.request.pre":
+		return outbox.ProvisioningPre
+	case "deployment.request.post":
+		return outbox.ProvisioningPost
 	case "deployment.resource.action.pre", "deployment.action.pre", "compute.reconfigure.pre":
-		return "day2.pre"
+		return outbox.Day2Pre
 	case "deployment.resource.action.post", "deployment.action.post", "compute.reconfigure.post":
-		return "day2.post"
-	case "compute.removal.pre":
-		return "delete.pre"
-	case "compute.removal.post":
-		return "delete.post"
+		return outbox.Day2Post
 	}
 	return ""
+}
+
+// mayBlock lists the topics whose subscriptions may hold a request, "a, b
+// and c".
+func mayBlock() string {
+	var topics []string
+	for _, t := range outbox.Topics {
+		if outbox.MayBlock(t) {
+			topics = append(topics, t)
+		}
+	}
+	if len(topics) < 2 {
+		return strings.Join(topics, "")
+	}
+	return strings.Join(topics[:len(topics)-1], ", ") + " and " + topics[len(topics)-1]
 }
 
 // runsAlone says that a subscription or a day-2 action runs a workflow: what
@@ -651,10 +677,14 @@ func useReasons(used []Use) []string {
 			if u.Disabled {
 				continue
 			}
-			if strings.Contains(u.Detail, " in rvav") {
-				out = append(out, "The subscription "+u.Name+" runs it ("+u.Detail+"): an rvav subscription runs what replaces it. rvav's events are per request, vRA's compute events per machine.")
-			} else {
+			switch {
+			case u.topic == "":
 				out = append(out, "The subscription "+u.Name+" runs it ("+u.Detail+"): rvav has no such event, so this needs another trigger.")
+			case u.blocking && !outbox.MayBlock(u.topic):
+				out = append(out, "The subscription "+u.Name+" runs it ("+u.Detail+"): an rvav subscription on "+u.topic+
+					" runs what replaces it, but doesn't hold the request: rvav waits for subscriptions only on "+mayBlock()+".")
+			default:
+				out = append(out, "The subscription "+u.Name+" runs it ("+u.Detail+"): an rvav subscription on "+u.topic+" runs what replaces it.")
 			}
 		case "day2_action":
 			out = append(out, "The day-2 action "+u.Name+" runs it ("+u.Detail+"): an rvav custom day-2 action runs what replaces it.")
