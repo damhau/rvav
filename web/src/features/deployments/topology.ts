@@ -1,14 +1,16 @@
 // A deployment as the canvas draws it (ADR-0032), from what it holds rather
 // than from its blueprint: its VMs, the networks and NSX segments their
 // adapters are on, the security groups they are in and the firewall rules
-// between those, left to right. A component's VMs are drawn one by one up
-// to ONE_BY_ONE, in a frame named after it when the deployment has several
-// components; more are one node with their count. The creating request's
-// topology, when it can be read, gives the components their titles and the
-// order they were built in.
+// between those, and its custom resources (ADR-0056), left to right. A
+// component's VMs are drawn one by one up to ONE_BY_ONE, in a frame named
+// after it when the deployment has several components; more are one node
+// with their count. The creating request's topology, when it can be read,
+// gives the components their titles and the order they and the custom
+// resources were made in.
 import { words } from "@/components/canvas/blueprint";
 import type { CanvasEdge, CanvasGraph, CanvasGroup, CanvasLine, CanvasNode } from "@/components/canvas/graph";
 import type {
+  CustomResource,
   DeploymentDetail,
   FirewallRulesResource,
   GroupMembershipResource,
@@ -16,7 +18,8 @@ import type {
   SegmentResource,
   VmResource,
 } from "@/lib/api/types";
-import { dependsOn } from "@/lib/dependsOn";
+import { celCode, dependsOn } from "@/lib/dependsOn";
+import { labelledProperties } from "./properties";
 
 /**
  * Up to this many VMs of a component are drawn one by one: four cards
@@ -30,6 +33,10 @@ const obj = (v: unknown): Raw => (v && typeof v === "object" && !Array.isArray(v
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 export const vmNodeId = (resourceId: string) => `vm:${resourceId}`;
+export const resourceNodeId = (resourceId: string) => `resource:${resourceId}`;
+
+/** A custom resource's card shows this many of its properties; the Overview lists them all. */
+const SHOWN_PROPERTIES = 3;
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 const gb = (mb: number) => Math.round(mb / 1024);
@@ -52,6 +59,34 @@ const syncProblem = (v: VmResource) =>
 /** An adapter's number, as vCenter labels it: "Network adapter 2". */
 const adapterNumber = (label: string | undefined, index: number) =>
   /(\d+)$/.exec(label ?? "")?.[1] ?? String(index + 1);
+
+const resourceLines = (r: CustomResource): CanvasLine[] => labelledProperties(r).slice(0, SHOWN_PROPERTIES);
+
+const readsOf = (text: string, root: "components" | "resources") =>
+  [...celCode(text).matchAll(new RegExp(`(?<![\\w.])${root}\\.([a-z][a-z0-9-]*)`, "g"))].map((m) => m[1]!);
+
+/**
+ * The components and resources each custom resource of the request's
+ * topology is made after: those its depends_on names, and those its
+ * inputs read as components.<key> or resources.<key>.
+ */
+function resourcesAfter(topology: unknown): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const resources = obj(topology).resources;
+  if (!Array.isArray(resources)) return out;
+  for (const r of resources.map(obj)) {
+    const key = str(r.key);
+    if (!key) continue;
+    const named = Array.isArray(r.depends_on) ? r.depends_on.map(str) : [];
+    const texts = Object.values(obj(r.inputs)).filter((v): v is string => typeof v === "string");
+    const read = texts.flatMap((t) => [...readsOf(t, "components"), ...readsOf(t, "resources")]);
+    out.set(
+      key,
+      [...new Set([...named, ...read])].filter((k) => k && k !== key),
+    );
+  }
+  return out;
+}
 
 /** Each component's title in the request's topology. */
 function titles(topology: unknown): Map<string, string> {
@@ -78,7 +113,8 @@ export function vmsByComponent(d: DeploymentDetail): Map<string, VmResource[]> {
  * The deployment's topology: `vm:<resource ID>` for a VM drawn alone,
  * `component:<key>` for a component's VMs drawn as one, `frame:<key>`
  * around a component's VMs, `network:<name>`, `segment:<name>`,
- * `sg:<NSX ID>` for its groups, `nsx:<NSX ID>` for existing ones, `any`.
+ * `sg:<NSX ID>` for its groups, `nsx:<NSX ID>` for existing ones, `any`,
+ * `resource:<resource ID>` for a custom resource.
  */
 export function deploymentGraph(d: DeploymentDetail, topology?: unknown): CanvasGraph {
   const segments = d.resources.filter((r): r is SegmentResource => r.type === "nsx.segment");
@@ -300,6 +336,49 @@ export function deploymentGraph(d: DeploymentDetail, topology?: unknown): Canvas
     for (const n of computes) if (n.id === to.id || n.group === to.id) relate(n, said);
   }
 
-  const nodes = [...computes, ...nets.values(), ...sgs.values(), ...others.values(), ...(any ? [any] : [])];
+  const custom = new Map<string, CanvasNode>();
+  for (const r of d.resources)
+    if (r.type === "custom")
+      custom.set(
+        r.key,
+        node({
+          id: resourceNodeId(r.id),
+          kind: "resource",
+          title: r.name,
+          subtitle: r.key,
+          badge: r.resource_type.title,
+          lines: resourceLines(r),
+        }),
+      );
+  /** What a key is drawn as: a resource's node, a component's node or frame, or a small component's VMs. */
+  const drawn = (k: string): { id: string; title: string }[] =>
+    custom.has(k)
+      ? [custom.get(k)!]
+      : drawnAs.has(k)
+        ? [drawnAs.get(k)!]
+        : (byComponent.get(k) ?? []).flatMap((v) => (nodeOfVm.has(v.id) ? [nodeOfVm.get(v.id)!] : []));
+  for (const [key, after] of resourcesAfter(topology)) {
+    const to = custom.get(key);
+    if (!to) continue;
+    const before = [...new Map(after.flatMap(drawn).map((b) => [b.id, b])).values()];
+    for (const from of before)
+      edge({
+        id: `after:${from.id}>${to.id}`,
+        source: from.id,
+        target: to.id,
+        kind: "sequence",
+        description: `${to.title} made after ${from.title}`,
+      });
+    if (before.length > 0) relate(to, `Made after ${words(before.map((b) => b.title))}`);
+  }
+
+  const nodes = [
+    ...computes,
+    ...custom.values(),
+    ...nets.values(),
+    ...sgs.values(),
+    ...others.values(),
+    ...(any ? [any] : []),
+  ];
   return { kind: "vm", direction: "LR", nodes, edges, groups: frames, problems: [] };
 }

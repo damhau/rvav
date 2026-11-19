@@ -63,6 +63,7 @@ describe("sidebar", () => {
         "Form library",
         "Day-2 actions",
         "Custom workflows",
+        "Resource types",
         "Subscriptions",
       ],
       Governance: ["Projects", "Roles", "Policies"],
@@ -117,7 +118,7 @@ describe("sidebar", () => {
     db.me.roles = [...db.me.roles, { key: "reader", name: "Reader" }];
     cleanup();
     expect(adminMenuOf(await renderAndFindNav())).toEqual({
-      Catalog: ["Custom workflows", "Subscriptions"],
+      Catalog: ["Custom workflows", "Resource types", "Subscriptions"],
       Infrastructure: ["Templates and networks"],
     });
   });

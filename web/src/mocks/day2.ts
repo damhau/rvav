@@ -3,6 +3,7 @@
 import type {
   ActionForm,
   ApprovalPreview,
+  CustomResource,
   Day2Action,
   DeploymentDetail,
   FieldError,
@@ -31,6 +32,8 @@ import { type LimitAsk, limitCheck } from "./limits";
 import { userGroups, withStart } from "./logic";
 import { designedForm, designedInputs } from "./day2Forms";
 import { deploymentUsage, quotaCheck, type QuotaScope } from "./quotas";
+import { resourceTypesOf } from "./resourceTypes";
+import { workflowRegistrations } from "./extensibility";
 import type { Db, StoredRequest } from "./seed";
 import { unaccepted, warning } from "./warnings";
 
@@ -880,6 +883,14 @@ export const catalogue: MockAction[] = [
       ]),
     ops: (_vm, inputs, d) => [
       ...d.resources
+        .filter((r): r is CustomResource => r.type === "custom")
+        .map((r): Op => ({
+          key: `resource.delete@${r.name}`,
+          title: `Delete ${r.resource_type.title.toLowerCase()} ${r.name}`,
+          system: "rvav",
+          apply: () => {},
+        })),
+      ...d.resources
         .filter((r): r is VmResource => r.type === "vsphere.vm")
         .map((r) => vcenter(`vsphere.destroy@${r.name}`, `Delete VM ${r.name}`, () => {})),
       {
@@ -914,7 +925,7 @@ export const catalogue: MockAction[] = [
 
 // The request in the way of an action on vm (or on the whole deployment):
 // actions on different VMs run side by side, as on the server.
-export const busy = (db: Db, d: DeploymentDetail, vm?: VmResource) =>
+export const busy = (db: Db, d: DeploymentDetail, vm?: { id: string }) =>
   db.requests.find(
     (r) =>
       r.request.deployment_ids?.includes(d.id) &&
@@ -1205,7 +1216,43 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
       });
     }
   }
+  for (const r of d.resources) if (r.type === "custom") out.push(...customActions(db, d, r));
   return out;
+}
+
+/**
+ * The day-2 actions its type offers on a custom resource (ADR-0056): its
+ * custom workflows and AWX actions, run with the resource's properties.
+ */
+function customActions(db: Db, d: DeploymentDetail, r: CustomResource): Day2Action[] {
+  const type = resourceTypesOf(db).find((t) => t.key === r.resource_type.key);
+  const held = db.me.projects.find((p) => p.project.id === d.project.id);
+  const runs =
+    db.me.roles.some((x) => x.key === "admin") ||
+    Boolean(held?.roles.some((x) => x.key === "member" || x.key === "project-admin"));
+  return (type?.actions ?? []).map((key) => {
+    const wf = key.startsWith("wf.") ? workflowRegistrations(db).find((w) => `wf.${w.key}` === key) : undefined;
+    const name = wf ? (wf.day2?.name ?? wf.title) : key.replace(/^awx\./, "");
+    const active = busy(db, d, r);
+    const reason = active
+      ? `${active.request.number} is still running on this deployment.`
+      : d.status !== "ready"
+        ? `The deployment is ${d.status}.`
+        : !runs
+          ? `Your role in ${d.project.name} does not allow ${name}.`
+          : null;
+    return {
+      key,
+      name,
+      group: "automation",
+      resource_id: r.id,
+      resource_name: r.name,
+      enabled: reason === null,
+      ...(reason ? { disabled_reason: reason } : {}),
+      destructive: false,
+      approval: { required: false, reasons: [] },
+    };
+  });
 }
 
 /** An action's form on its target, for its preview and its sources, as the server's actionTarget. */
@@ -1294,6 +1341,8 @@ export function runAction(
   },
   number: string,
 ): RunResult {
+  const custom = d.resources.find((r): r is CustomResource => r.id === draft.resource_id && r.type === "custom");
+  if (custom) return runCustomAction(db, d, custom, draft.action, draft.inputs ?? {}, number);
   const vm = d.resources.find((r): r is VmResource => r.id === draft.resource_id && r.type === "vsphere.vm");
   const a =
     catalogue.find((x) => x.key === draft.action && Boolean(x.deployment) === !vm) ??
@@ -1391,6 +1440,64 @@ export function runAction(
         }
       : undefined,
   };
+}
+
+/** A day-2 action on a custom resource: one step, its type's workflow or AWX job. */
+function runCustomAction(
+  db: Db,
+  d: DeploymentDetail,
+  r: CustomResource,
+  key: string,
+  inputs: Inputs,
+  number: string,
+): RunResult {
+  const listed = customActions(db, d, r).find((a) => a.key === key);
+  if (!listed) return { error: { status: 422, title: `“${key}” is not a day-2 action.`, field: "/action" } };
+  if (!listed.enabled) {
+    const reason = listed.disabled_reason ?? "Not available.";
+    return { error: { status: reason.startsWith("Your role") ? 403 : 409, title: reason } };
+  }
+  const awx = key.startsWith("awx.");
+  const steps = requestSteps(
+    [
+      {
+        key: awx ? `awx.job:${key.slice(4)}` : `workflow:${key.slice(3)}`,
+        title: listed.name,
+        detail: `On ${r.resource_type.title.toLowerCase()} ${r.name}`,
+        system: awx ? "awx" : "rvav",
+        apply: () => {},
+      },
+    ],
+    false,
+    `No day-2 policy asks for approval in ${d.environment}`,
+  );
+  const request: ServiceRequest = {
+    id: `req_${number.slice(4)}`,
+    number,
+    kind: "day2",
+    action: { key, name: listed.name },
+    deployment_id: d.id,
+    resource: { id: r.id, name: r.name },
+    title: `${listed.name} · ${r.name}`,
+    status: "running",
+    catalog_item: { ...d.catalog_item, type: db.items.find((i) => i.id === d.catalog_item.id)?.type ?? "vm_blueprint" },
+    version: d.version,
+    project: d.project,
+    environment: d.environment,
+    requester: db.me.user,
+    inputs,
+    count: 1,
+    submitted_at: now(),
+    scheduled_at: null,
+    started_at: now(),
+    finished_at: null,
+    deployment_ids: [d.id],
+    current_step: null,
+    progress: { done: 0, total: steps.length },
+    error: null,
+  };
+  d.status = "updating";
+  return { stored: { request, steps, logs: {} } };
 }
 
 /** Apply a finished day-2 step to the mock deployment; false when the step is not one. */

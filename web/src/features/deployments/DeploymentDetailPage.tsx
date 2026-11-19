@@ -13,6 +13,7 @@ import { Panel } from "@/components/ui/panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tip } from "@/components/ui/tooltip";
 import type {
+  CustomResource,
   Day2Action,
   DeploymentDetail,
   DnsRecordResource,
@@ -27,6 +28,7 @@ import type {
 import { cn, fullDate, leaseLabel, newIdempotencyKey } from "@/lib/utils";
 import { q } from "@/lib/query";
 import { ActionDialog, ActionsMenu, DeploymentActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
+import { CustomResourcesPanel } from "./CustomResources";
 import { RemoteAccessPanel } from "./RemoteAccess";
 import { VmPropertiesSheet } from "./VmProperties";
 
@@ -619,6 +621,11 @@ function Overview({
         <Panel title="Virtual machines" description="Live from vCenter" flush>
           <VmTable deploymentId={d.id} vms={vms} actions={actions} onPick={onPick} onOpen={onOpen} />
         </Panel>
+        <CustomResourcesPanel
+          resources={d.resources.filter((r): r is CustomResource => r.type === "custom")}
+          actions={actions}
+          onPick={onPick}
+        />
         <Panel title="Network and addresses">
           <Network ips={ips} dns={dns} segments={segments} dhcp={vms.filter((v) => v.vm.dhcp)} />
         </Panel>
@@ -752,6 +759,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
             <DeploymentActionsMenu
               deploymentId={deploymentId}
               actions={actions}
+              custom={d.resources.flatMap((r) => (r.type === "custom" ? [r.id] : []))}
               loading={actionsQ.isPending}
               failed={actionsQ.isError}
               onRetry={() => void actionsQ.refetch()}

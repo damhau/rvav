@@ -56,6 +56,7 @@ import { governanceHandlers } from "./governance";
 import { quotaHandlers } from "./quotas";
 import { limitHandlers } from "./limits";
 import { extensibilityHandlers } from "./extensibility";
+import { resourceTypeHandlers } from "./resourceTypes";
 import { notificationHandlers } from "./notifications";
 import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
@@ -421,6 +422,17 @@ export const handlers = [
         gone: false,
         synced_at: new Date().toISOString(),
       },
+      // Run by the load-balancer resource type (ADR-0056), not in the catalog.
+      ...["create-load-balancer", "delete-load-balancer"].map((name, i): S["AwxTemplate"] => ({
+        template_id: 21 + i,
+        name,
+        workflow: false,
+        survey_changed: false,
+        survey_diff: [],
+        warnings: [],
+        gone: false,
+        synced_at: new Date().toISOString(),
+      })),
       {
         template_id: 9,
         name: "configure-vm",
@@ -461,6 +473,7 @@ export const handlers = [
   ...fileHandlers(db, base, wait),
   ...reportHandlers(db, base, wait),
   ...extensibilityHandlers(db, base, wait),
+  ...resourceTypeHandlers(db, base, wait),
   ...notificationHandlers(db, base, wait),
   ...signInHandlers(base, wait),
   ...draftHandlers(db, base, wait),

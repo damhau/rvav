@@ -18,6 +18,7 @@ import {
   Network,
   Package,
   Server,
+  Shapes,
   Shield,
   ShieldCheck,
   Split,
@@ -56,6 +57,7 @@ export function NodeIcon({ node, className }: { node: CanvasNode; className?: st
           segment: Waypoints,
           security_group: Shield,
           nsx_group: ShieldCheck,
+          resource: Shapes,
           any: Globe,
         }[node.kind];
   return <Icon className={cn("size-3.5 shrink-0 text-muted", className)} aria-hidden />;

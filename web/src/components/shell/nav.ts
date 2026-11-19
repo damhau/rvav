@@ -17,6 +17,7 @@ import {
   ScanSearch,
   ScrollText,
   Server,
+  Shapes,
   ShieldUser,
   SquareCheckBig,
   Webhook,
@@ -86,6 +87,13 @@ export const adminGroups: AdminGroup[] = [
         to: "/admin/workflows",
         label: "Custom workflows",
         icon: Workflow,
+        show: (me) => can(me, "extensibility.read"),
+      },
+      {
+        to: "/admin/resource-types",
+        label: "Resource types",
+        icon: Shapes,
+        keywords: ["custom resources", "load balancers"],
         show: (me) => can(me, "extensibility.read"),
       },
       {

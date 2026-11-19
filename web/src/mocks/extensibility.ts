@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { celCheck } from "./cel";
 import { audited } from "./governance";
+import { typesUsingWorkflow } from "./resourceTypes";
 import type { Db } from "./seed";
 
 type S = components["schemas"];
@@ -366,6 +367,40 @@ function state(db: Db): ExtState {
       created_at: ago(60 * 24 * 2),
     },
   ];
+  // What runs custom resource types (ADR-0056): their delete, and a day-2 action on their resources.
+  const resourceWorkflow = (
+    key: string,
+    title: string,
+    properties: Record<string, unknown>,
+    more: Partial<S["WorkflowRegistration"]> = {},
+  ): S["WorkflowRegistration"] => ({
+    key,
+    title,
+    workflow_type: `${key}.v1`,
+    task_queue: "platform-workflows",
+    input_schema: { type: "object", properties },
+    timeout_seconds: 3600,
+    project_ids: [],
+    usages: ["resource_type"],
+    enabled: true,
+    running: 0,
+    used_by: [],
+    created_at: ago(60 * 24 * 30),
+    ...more,
+  });
+  workflows.push(
+    resourceWorkflow("lb-delete", "Delete a load balancer", { vip: { type: "string", title: "Virtual IP" } }),
+    resourceWorkflow("dns-alias", "DNS alias", { fqdn: { type: "string", title: "Alias" } }),
+    resourceWorkflow(
+      "lb-drain",
+      "Drain a load balancer",
+      { member: { type: "string", title: "Member" } },
+      {
+        usages: ["day2_action"],
+        day2: { name: "Drain", types: ["deployment"], condition: "", offered: false },
+      },
+    ),
+  );
   d.extensibility = { subs, runs, workflows, seq: 0 };
   return d.extensibility;
 }
@@ -577,6 +612,7 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
           used_by: [
             ...w.used_by,
             ...st.subs.filter((s) => s.target.workflow?.key === w.key).map((s) => `subscription ${s.name}`),
+            ...typesUsingWorkflow(db, w.key ?? ""),
           ],
         })),
       });
@@ -632,7 +668,10 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
           undefined,
           "Runs of it haven't ended: disable it instead, and remove it once they have.",
         );
-      const users = st.subs.filter((s) => s.target.workflow?.key === w.key).map((s) => `subscription ${s.name}`);
+      const users = [
+        ...st.subs.filter((s) => s.target.workflow?.key === w.key).map((s) => `subscription ${s.name}`),
+        ...typesUsingWorkflow(db, w.key ?? ""),
+      ];
       if (users.length > 0)
         return problem(409, "Conflict", undefined, `It is used by ${users.join(", ")}: disable it instead.`);
       st.workflows.splice(i, 1);

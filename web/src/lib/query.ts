@@ -283,6 +283,7 @@ export const adm = {
       call(api.GET("/admin/onboarding/runs/{runId}", { params: { path: { runId } }, signal })),
     ),
   workflows: () => get(["admin", "workflows"], (signal) => call(api.GET("/admin/workflows", { signal }))),
+  resourceTypes: () => get(["admin", "resource-types"], (signal) => call(api.GET("/admin/resource-types", { signal }))),
   secrets: () => get(["admin", "secrets"], (signal) => call(api.GET("/admin/secrets", { signal }))),
   users: (search: string) =>
     get(["users", search], (signal) =>

@@ -747,6 +747,22 @@ export function createDb(now = Date.now()): Db {
       r.vm.dhcp = true;
       for (const nic of r.vm.nics.slice(0, 1)) nic.dhcp = true;
     }
+    // A load balancer in front of them, made by its resource type's AWX template (ADR-0056).
+    edge.resources.push({
+      id: id("res"),
+      type: "custom",
+      name: "web-prd-edge-lb",
+      sync_state: "in_sync",
+      resource_type: { key: "load-balancer", title: "Load balancer" },
+      key: "lb",
+      properties: {
+        vip: "10.21.10.200",
+        pool: "pool-web-prd-edge",
+        port: 443,
+        members: ["web-prd-edge001", "web-prd-edge002"],
+      },
+      property_titles: { vip: "Virtual IP", pool: "Pool", port: "Port" },
+    });
   }
 
   // On NSX (ADR-0028): a segment made for it, a group with the rules into it,

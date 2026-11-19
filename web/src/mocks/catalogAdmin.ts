@@ -929,6 +929,12 @@ export function secretInputsOf(db: Db, item: StoredItem): Set<string> {
   );
 }
 
+/** Every saved version's blueprint, with its item's slug and the version's state. */
+export const itemBlueprints = (db: Db) =>
+  db.items.flatMap((i) =>
+    (state(db).versions[i.id] ?? []).map((v) => ({ slug: i.slug, state: v.state, blueprint: v.definition.blueprint })),
+  );
+
 /** The blueprint of the item's published version. */
 export function publishedBlueprint(db: Db, item: StoredItem): Record<string, unknown> | undefined {
   const published = (state(db).versions[item.id] ?? []).find((v) => v.state === "published");

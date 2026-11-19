@@ -33,10 +33,10 @@ export default function DeploymentTopology({
 }) {
   const byComponent = useMemo(() => vmsByComponent(d), [d]);
   const request = d.created_by_request_id;
-  // Only a deployment of several components has titles and a build order to learn from it.
+  // Only a deployment of several components, or with custom resources, has titles and a build order to learn from it.
   const topology = useQuery({
     ...q.requestTopology(request ?? ""),
-    enabled: Boolean(request) && byComponent.size > 1,
+    enabled: Boolean(request) && (byComponent.size > 1 || d.resources.some((r) => r.type === "custom")),
     retry: false,
   });
   const graph = useMemo(() => deploymentGraph(d, topology.data?.topology), [d, topology.data]);

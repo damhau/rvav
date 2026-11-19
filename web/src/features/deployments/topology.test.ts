@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DeploymentDetail, Resource, VmNic, VmResource } from "@/lib/api/types";
+import type { CustomResource, DeploymentDetail, Resource, VmNic, VmResource } from "@/lib/api/types";
 import { layoutGraph } from "@/components/canvas/layout";
 import { db } from "@/mocks/seed";
 import { deploymentGraph, ONE_BY_ONE } from "./topology";
@@ -139,6 +139,49 @@ describe("a deployment's topology", () => {
     expect(g.nodes.find((n) => n.id === "component:worker")!.relations).toContain(
       "Built after Database and Web servers",
     );
+  });
+
+  it("draws a custom resource with its type and titled properties, after what its inputs read", () => {
+    const lb = (key: string, name: string): CustomResource => ({
+      id: `res_${name}`,
+      type: "custom",
+      name,
+      sync_state: "in_sync",
+      resource_type: { key: "load-balancer", title: "Load balancer" },
+      key,
+      properties: { members: ["web01", "web02"], vip: "10.31.10.200", pool: "pool-web", port: 443 },
+      property_titles: { vip: "Virtual IP", pool: "Pool", port: "Port" },
+    });
+    const g = deploymentGraph(deployment([vm("web01"), vm("web02"), lb("lb", "web-lb"), lb("dns", "web-alias")]), {
+      kind: "vm",
+      components: [{ key: "vm", title: "Web" }],
+      resources: [
+        {
+          key: "lb",
+          type: "load-balancer",
+          inputs: { members: "components.vm.map(v, v.name)", note: "'resources.dns'" },
+        },
+        { key: "dns", type: "dns-alias", depends_on: ["lb"] },
+      ],
+    });
+    expect(g.nodes.find((n) => n.id === "resource:res_web-lb")).toMatchObject({
+      kind: "resource",
+      title: "web-lb",
+      subtitle: "lb",
+      badge: "Load balancer",
+      lines: [
+        { label: "Virtual IP", text: "10.31.10.200" },
+        { label: "Pool", text: "pool-web" },
+        { label: "Port", text: "443" },
+      ],
+      relations: ["Made after web01 and web02"],
+    });
+    expect(g.edges.filter((e) => e.kind === "sequence").map((e) => [e.source, e.target])).toEqual([
+      ["vm:res_web01", "resource:res_web-lb"],
+      ["vm:res_web02", "resource:res_web-lb"],
+      ["resource:res_web-lb", "resource:res_web-alias"],
+    ]);
+    expect(deploymentGraph(deployment([lb("lb", "web-lb")])).edges).toEqual([]);
   });
 
   it("names components by their keys, with no build order, when the request's topology is unknown", () => {

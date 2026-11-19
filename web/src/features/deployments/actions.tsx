@@ -362,11 +362,13 @@ export function ActionsMenu({
 
 /**
  * Every action of a deployment in one menu: its own and its VM's for one VM;
- * for several, its own, then a submenu per VM.
+ * for several, its own, then a submenu per VM. Its custom resources' come
+ * last, a submenu each.
  */
 export function DeploymentActionsMenu({
   deploymentId,
   actions,
+  custom = [],
   loading,
   failed,
   onRetry,
@@ -374,19 +376,23 @@ export function DeploymentActionsMenu({
 }: {
   deploymentId: string;
   actions: Day2Action[];
+  /** Its custom resources' IDs: their actions aren't a VM's. */
+  custom?: string[];
   loading: boolean;
   /** The actions couldn't be read: the menu says so, and offers to read them again. */
   failed?: boolean;
   onRetry?: () => void;
   onPick: (a: Day2Action) => void;
 }) {
-  const vms = [
+  const targets = [
     ...new Map(
       actions.filter((a) => a.resource_id).map((a) => [a.resource_id!, a.resource_name ?? a.resource_id!]),
     ).entries(),
   ];
+  const vms = targets.filter(([id]) => !custom.includes(id));
+  const resources = targets.filter(([id]) => custom.includes(id));
   const single = vms.length === 1 ? vms[0]![0] : undefined;
-  const top = single ? actions : actions.filter((a) => !a.resource_id);
+  const top = actions.filter((a) => !a.resource_id || a.resource_id === single);
   return (
     <Menu>
       <MenuTrigger asChild>
@@ -425,6 +431,20 @@ export function DeploymentActionsMenu({
                         onPick={onPick}
                         consoleLink={{ deploymentId, resourceId: id }}
                       />
+                    </MenuSubContent>
+                  </MenuSub>
+                ))}
+              </>
+            )}
+            {resources.length > 0 && (
+              <>
+                <MenuSeparator />
+                <MenuLabel>Custom resources</MenuLabel>
+                {resources.map(([id, name]) => (
+                  <MenuSub key={id}>
+                    <MenuSubTrigger>{name}</MenuSubTrigger>
+                    <MenuSubContent className="min-w-60">
+                      <ActionItems actions={actions.filter((a) => a.resource_id === id)} onPick={onPick} />
                     </MenuSubContent>
                   </MenuSub>
                 ))}

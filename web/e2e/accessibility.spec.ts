@@ -44,6 +44,7 @@ const pages = [
   "/admin/day2-actions",
   "/admin/day2-actions/awx.install-monitoring-agent/form",
   "/admin/workflows",
+  "/admin/resource-types",
   "/admin/onboarding",
   "/admin/vra-import",
   "/admin/subscriptions",

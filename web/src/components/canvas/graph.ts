@@ -21,6 +21,7 @@ export type CanvasNodeKind =
   | "segment" // an NSX segment made for each deployment
   | "security_group" // an NSX group made for each deployment
   | "nsx_group" // an existing NSX group, or groups chosen in the form
+  | "resource" // a custom resource: a resource type's load balancer, DNS alias…
   | "any"; // any source, in a firewall rule
 
 /** A line of detail under a node's title. */
@@ -31,7 +32,7 @@ export interface CanvasLine {
 }
 
 export interface CanvasNode {
-  /** Stable: `step:<key>`, `component:<key>`, `vm:<resource ID>`, `segment:<key>`, `sg:<key>`, `nsx:<id>`, `network:<expr>`, `inputs`, `end`, `any`. */
+  /** Stable: `step:<key>`, `component:<key>`, `vm:<resource ID>`, `segment:<key>`, `sg:<key>`, `nsx:<id>`, `network:<expr>`, `resource:<resource ID>`, `inputs`, `end`, `any`. */
   id: string;
   kind: CanvasNodeKind;
   title: string;
