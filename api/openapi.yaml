@@ -5263,6 +5263,95 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /admin/resource-types:
+    get:
+      tags: [admin]
+      operationId: listResourceTypes
+      summary: Custom resource types (ADR-0056)
+      description: |
+        Each type with how many resources it has and what uses it. Needs
+        `extensibility.read` (administrators and auditors).
+      responses:
+        "200":
+          description: The types, by key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResourceTypeList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createResourceType
+      summary: Define a custom resource type
+      description: |
+        A custom workflow or an AWX template creates its resources and
+        another deletes them; one may update them and one read them again.
+        Needs `extensibility.manage` (administrators).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResourceTypeWrite" }
+      responses:
+        "201":
+          description: Defined
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResourceType" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/resource-types/{key}:
+    parameters:
+      - { $ref: "#/components/parameters/KeyPath" }
+    get:
+      tags: [admin]
+      operationId: getResourceType
+      summary: One custom resource type
+      responses:
+        "200":
+          description: The type
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResourceType" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: updateResourceType
+      summary: Change a custom resource type (its key stays)
+      description: |
+        Resources made before keep their properties: the type's workflows
+        and templates as they are now delete, update and read them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResourceTypeWrite" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResourceType" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteResourceType
+      summary: Remove a type no item uses and no deployment has (else disable it)
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /tokens:
     get:
       tags: [identity]
@@ -8951,6 +9040,7 @@ components:
         - $ref: "#/components/schemas/SecurityGroupResource"
         - $ref: "#/components/schemas/FirewallRulesResource"
         - $ref: "#/components/schemas/GroupMembershipResource"
+        - $ref: "#/components/schemas/CustomResource"
       discriminator:
         propertyName: type
         mapping:
@@ -8963,6 +9053,7 @@ components:
           nsx.group: "#/components/schemas/SecurityGroupResource"
           nsx.policy: "#/components/schemas/FirewallRulesResource"
           nsx.membership: "#/components/schemas/GroupMembershipResource"
+          custom: "#/components/schemas/CustomResource"
 
     ResourceBase:
       type: object
@@ -10047,6 +10138,34 @@ components:
                   type: array
                   description: The groups those missing tags take the VM out of, their firewall rules no longer applying to it.
                   items: { $ref: "#/components/schemas/GroupRef" }
+    CustomResource:
+      description: |
+        A resource of a custom resource type (ADR-0056): the type's custom
+        workflow or AWX template made it, and deletes it with the deployment.
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, resource_type, key, properties]
+          properties:
+            type: { const: custom }
+            resource_type:
+              type: object
+              required: [key, title]
+              properties:
+                key: { type: string, examples: [load-balancer] }
+                title: { type: string, examples: [Load balancer] }
+            key:
+              type: string
+              description: "Its key in the blueprint (`resources[].key`), or the key of the composite step that made it."
+              examples: [lb]
+            properties:
+              type: object
+              description: What its create returned, or its last update or read.
+              additionalProperties: true
+            property_titles:
+              type: object
+              description: The titles the type's property schema gives its properties.
+              additionalProperties: { type: string }
     GroupRef:
       description: An NSX security group, by its ID and name.
       type: object
@@ -12374,7 +12493,7 @@ components:
     # ── Custom workflows (ADR-0022) ──
     WorkflowUsage:
       type: string
-      enum: [catalog_item, day2_action, subscription_target, composite_step]
+      enum: [catalog_item, day2_action, subscription_target, composite_step, resource_type]
     WorkflowDay2:
       type: object
       description: "How it is offered as the day-2 action `wf.<key>`."
@@ -12440,3 +12559,70 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/WorkflowRegistration" }
+
+    # ── Custom resource types (ADR-0056) ──
+    ResourceTypeDriver:
+      type: object
+      description: What runs one step of a custom resource's life.
+      required: [kind, name]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [workflow, awx]
+          x-enum-varnames: [ResourceDriverWorkflow, ResourceDriverAwx]
+          description: "`workflow`: a custom workflow registered for resource types; `awx`: an AWX job template."
+        name:
+          type: string
+          minLength: 1
+          description: The custom workflow's key, or the AWX job template's name.
+          examples: [lb-create, Create load balancer]
+    ResourceTypeWrite:
+      type: object
+      required: [title, create, delete]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{1,40}$"
+          description: "Its name in blueprints (`resources[].type`) and composite steps (`resource.type`), set when it is defined (ignored on update)."
+          examples: [load-balancer]
+        title: { type: string, minLength: 1, maxLength: 80, examples: [Load balancer] }
+        description: { type: string, maxLength: 2000 }
+        create: { $ref: "#/components/schemas/ResourceTypeDriver" }
+        delete: { $ref: "#/components/schemas/ResourceTypeDriver" }
+        update: { $ref: "#/components/schemas/ResourceTypeDriver" }
+        read: { $ref: "#/components/schemas/ResourceTypeDriver" }
+        property_schema:
+          type: object
+          description: |
+            JSON Schema of its properties: what create returns (a custom
+            workflow's result, an AWX job's artifacts). Blueprints and later
+            steps may read the properties it lists; their titles label them
+            on the deployment page.
+          additionalProperties: true
+        actions:
+          type: array
+          description: "The day-2 actions offered on its resources: custom workflows (`wf.<key>`) and AWX actions (`awx.<template>`)."
+          items: { type: string, examples: [wf.lb-drain] }
+        enabled: { type: boolean, description: "Items may use it. A disabled type's resources are still deleted." }
+    ResourceType:
+      allOf:
+        - $ref: "#/components/schemas/ResourceTypeWrite"
+        - type: object
+          required: [key, property_schema, actions, enabled, resources, used_by, created_at, updated_at]
+          properties:
+            resources: { type: integer, description: How many resources of it deployments have. }
+            used_by:
+              type: array
+              description: The items whose published or draft versions use it.
+              items: { type: string }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+    ResourceTypeList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ResourceType" }

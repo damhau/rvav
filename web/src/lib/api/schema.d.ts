@@ -4010,6 +4010,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/resource-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Custom resource types (ADR-0056)
+         * @description Each type with how many resources it has and what uses it. Needs
+         *     `extensibility.read` (administrators and auditors).
+         */
+        get: operations["listResourceTypes"];
+        put?: never;
+        /**
+         * Define a custom resource type
+         * @description A custom workflow or an AWX template creates its resources and
+         *     another deletes them; one may update them and one read them again.
+         *     Needs `extensibility.manage` (administrators).
+         */
+        post: operations["createResourceType"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/resource-types/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        /** One custom resource type */
+        get: operations["getResourceType"];
+        /**
+         * Change a custom resource type (its key stays)
+         * @description Resources made before keep their properties: the type's workflows
+         *     and templates as they are now delete, update and read them.
+         */
+        put: operations["updateResourceType"];
+        post?: never;
+        /** Remove a type no item uses and no deployment has (else disable it) */
+        delete: operations["deleteResourceType"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens": {
         parameters: {
             query?: never;
@@ -6662,7 +6714,7 @@ export interface components {
         DeploymentPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["Deployment"][];
         };
-        Resource: components["schemas"]["VmResource"] | components["schemas"]["IpAddressResource"] | components["schemas"]["DnsRecordResource"] | components["schemas"]["DrsRuleResource"] | components["schemas"]["SegmentResource"] | components["schemas"]["SubnetResource"] | components["schemas"]["SecurityGroupResource"] | components["schemas"]["FirewallRulesResource"] | components["schemas"]["GroupMembershipResource"];
+        Resource: components["schemas"]["VmResource"] | components["schemas"]["IpAddressResource"] | components["schemas"]["DnsRecordResource"] | components["schemas"]["DrsRuleResource"] | components["schemas"]["SegmentResource"] | components["schemas"]["SubnetResource"] | components["schemas"]["SecurityGroupResource"] | components["schemas"]["FirewallRulesResource"] | components["schemas"]["GroupMembershipResource"] | components["schemas"]["CustomResource"];
         ResourceBase: {
             id: string;
             type: string;
@@ -7621,6 +7673,39 @@ export interface components {
              * @enum {string}
              */
             type: "nsx.membership";
+        };
+        /**
+         * @description A resource of a custom resource type (ADR-0056): the type's custom
+         *     workflow or AWX template made it, and deletes it with the deployment.
+         */
+        CustomResource: components["schemas"]["ResourceBase"] & {
+            /** @constant */
+            type: "custom";
+            resource_type: {
+                /** @example load-balancer */
+                key: string;
+                /** @example Load balancer */
+                title: string;
+            };
+            /**
+             * @description Its key in the blueprint (`resources[].key`), or the key of the composite step that made it.
+             * @example lb
+             */
+            key: string;
+            /** @description What its create returned, or its last update or read. */
+            properties: {
+                [key: string]: unknown;
+            };
+            /** @description The titles the type's property schema gives its properties. */
+            property_titles?: {
+                [key: string]: string;
+            };
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "custom";
         };
         /** @description An NSX security group, by its ID and name. */
         GroupRef: {
@@ -9516,7 +9601,7 @@ export interface components {
             items: components["schemas"]["SubscriptionRun"][];
         };
         /** @enum {string} */
-        WorkflowUsage: "catalog_item" | "day2_action" | "subscription_target" | "composite_step";
+        WorkflowUsage: "catalog_item" | "day2_action" | "subscription_target" | "composite_step" | "resource_type";
         /** @description How it is offered as the day-2 action `wf.<key>`. */
         WorkflowDay2: {
             /** @example Decommission */
@@ -9563,6 +9648,60 @@ export interface components {
         };
         WorkflowRegistrationList: {
             items: components["schemas"]["WorkflowRegistration"][];
+        };
+        /** @description What runs one step of a custom resource's life. */
+        ResourceTypeDriver: {
+            /**
+             * @description `workflow`: a custom workflow registered for resource types; `awx`: an AWX job template.
+             * @enum {string}
+             */
+            kind: "workflow" | "awx";
+            /**
+             * @description The custom workflow's key, or the AWX job template's name.
+             * @example lb-create
+             * @example Create load balancer
+             */
+            name: string;
+        };
+        ResourceTypeWrite: {
+            /**
+             * @description Its name in blueprints (`resources[].type`) and composite steps (`resource.type`), set when it is defined (ignored on update).
+             * @example load-balancer
+             */
+            key?: string;
+            /** @example Load balancer */
+            title: string;
+            description?: string;
+            create: components["schemas"]["ResourceTypeDriver"];
+            delete: components["schemas"]["ResourceTypeDriver"];
+            update?: components["schemas"]["ResourceTypeDriver"];
+            read?: components["schemas"]["ResourceTypeDriver"];
+            /**
+             * @description JSON Schema of its properties: what create returns (a custom
+             *     workflow's result, an AWX job's artifacts). Blueprints and later
+             *     steps may read the properties it lists; their titles label them
+             *     on the deployment page.
+             */
+            property_schema?: {
+                [key: string]: unknown;
+            };
+            /** @description The day-2 actions offered on its resources: custom workflows (`wf.<key>`) and AWX actions (`awx.<template>`). */
+            actions?: string[];
+            /** @description Items may use it. A disabled type's resources are still deleted. */
+            enabled?: boolean;
+        };
+        ResourceType: components["schemas"]["ResourceTypeWrite"] & {
+            /** @description How many resources of it deployments have. */
+            resources: number;
+            /** @description The items whose published or draft versions use it. */
+            used_by: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ResourceTypeList: {
+            items: components["schemas"]["ResourceType"][];
         };
     };
     responses: {
@@ -16334,6 +16473,135 @@ export interface operations {
         };
     };
     deleteWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listResourceTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The types, by key */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceTypeList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createResourceType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceTypeWrite"];
+            };
+        };
+        responses: {
+            /** @description Defined */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceType"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getResourceType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceType"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateResourceType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: components["parameters"]["KeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceTypeWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceType"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteResourceType: {
         parameters: {
             query?: never;
             header?: never;

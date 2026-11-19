@@ -520,6 +520,22 @@ func Resource(r store.Resource, links map[string]store.VCenterLink) (api.Resourc
 		}
 		err := out.FromGroupMembershipResource(v)
 		return out, err == nil
+	case "custom":
+		var p store.CustomProps
+		if err := json.Unmarshal(r.Properties, &p); err != nil {
+			return out, false
+		}
+		v := api.CustomResource{Id: r.ID, Name: r.Name, SyncState: api.SyncState(r.SyncState), Type: "custom", Key: p.Key,
+			Properties: p.Properties}
+		if v.Properties == nil {
+			v.Properties = map[string]any{}
+		}
+		v.ResourceType.Key, v.ResourceType.Title = p.ResourceType.Key, p.ResourceType.Title
+		if len(p.Titles) > 0 {
+			v.PropertyTitles = &p.Titles
+		}
+		err := out.FromCustomResource(v)
+		return out, err == nil
 	case "vsphere.drs_rule":
 		var v api.DrsRuleResource
 		_ = json.Unmarshal(r.Properties, &v)

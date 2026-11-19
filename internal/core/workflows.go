@@ -24,7 +24,7 @@ import (
 var (
 	workflowKey  = regexp.MustCompile(`^[a-z][a-z0-9-]{1,40}$`)
 	workflowType = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]*\.v[0-9]+$`)
-	usages       = []string{"catalog_item", "day2_action", "subscription_target", "composite_step"}
+	usages       = []string{"catalog_item", "day2_action", "subscription_target", "composite_step", "resource_type"}
 )
 
 func presentWorkflow(w store.WorkflowRegistration, use store.WorkflowUse) api.WorkflowRegistration {

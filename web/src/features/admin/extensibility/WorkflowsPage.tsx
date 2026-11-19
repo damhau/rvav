@@ -34,6 +34,7 @@ export const usageLabel: Record<Usage, string> = {
   day2_action: "Day-2 action",
   subscription_target: "Subscription target",
   composite_step: "Composite step",
+  resource_type: "Resource type",
 };
 
 const days = (seconds: number) => {

@@ -1989,6 +1989,24 @@ func (e RequestStatus) Valid() bool {
 	}
 }
 
+// Defines values for ResourceTypeDriverKind.
+const (
+	ResourceDriverAwx      ResourceTypeDriverKind = "awx"
+	ResourceDriverWorkflow ResourceTypeDriverKind = "workflow"
+)
+
+// Valid indicates whether the value is a known member of the ResourceTypeDriverKind enum.
+func (e ResourceTypeDriverKind) Valid() bool {
+	switch e {
+	case ResourceDriverAwx:
+		return true
+	case ResourceDriverWorkflow:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RoleScope.
 const (
 	RoleScopeAny     RoleScope = "any"
@@ -2945,6 +2963,7 @@ const (
 	WorkflowUsageCatalogItem        WorkflowUsage = "catalog_item"
 	WorkflowUsageCompositeStep      WorkflowUsage = "composite_step"
 	WorkflowUsageDay2Action         WorkflowUsage = "day2_action"
+	WorkflowUsageResourceType       WorkflowUsage = "resource_type"
 	WorkflowUsageSubscriptionTarget WorkflowUsage = "subscription_target"
 )
 
@@ -2956,6 +2975,8 @@ func (e WorkflowUsage) Valid() bool {
 	case WorkflowUsageCompositeStep:
 		return true
 	case WorkflowUsageDay2Action:
+		return true
+	case WorkflowUsageResourceType:
 		return true
 	case WorkflowUsageSubscriptionTarget:
 		return true
@@ -4724,6 +4745,37 @@ type ControlEventType string
 // `project.properties.<key>`. Keys are letters, digits, `.`, `_` and
 // `-`, starting with a letter.
 type CustomProperties map[string]string
+
+// CustomResource A resource of a custom resource type (ADR-0056): the type's custom
+// workflow or AWX template made it, and deletes it with the deployment.
+type CustomResource struct {
+	Id string `json:"id"`
+
+	// Key Its key in the blueprint (`resources[].key`), or the key of the composite step that made it.
+	//
+	// Examples: lb
+	Key  string `json:"key"`
+	Name string `json:"name"`
+
+	// Properties What its create returned, or its last update or read.
+	Properties map[string]interface{} `json:"properties"`
+
+	// PropertyTitles The titles the type's property schema gives its properties.
+	PropertyTitles *map[string]string `json:"property_titles,omitempty"`
+	ResourceType   struct {
+		// Key Examples: load-balancer
+		Key string `json:"key"`
+
+		// Title Examples: Load balancer
+		Title string `json:"title"`
+	} `json:"resource_type"`
+
+	// SyncState `drifted`: changed in vCenter outside rvav (size, disks, adapters'
+	// networks or power), until changed back or accepted. `missing`: no
+	// longer found in vCenter.
+	SyncState SyncState   `json:"sync_state"`
+	Type      interface{} `json:"type"`
+}
 
 // Day2Action defines model for Day2Action.
 type Day2Action struct {
@@ -8183,6 +8235,105 @@ type ResourceBase struct {
 	Type      string    `json:"type"`
 }
 
+// ResourceType defines model for ResourceType.
+type ResourceType struct {
+	// Actions The day-2 actions offered on its resources: custom workflows (`wf.<key>`) and AWX actions (`awx.<template>`).
+	Actions []string `json:"actions"`
+
+	// Create What runs one step of a custom resource's life.
+	Create    ResourceTypeDriver `json:"create"`
+	CreatedAt time.Time          `json:"created_at"`
+
+	// Delete What runs one step of a custom resource's life.
+	Delete      ResourceTypeDriver `json:"delete"`
+	Description *string            `json:"description,omitempty"`
+
+	// Enabled Items may use it. A disabled type's resources are still deleted.
+	Enabled bool `json:"enabled"`
+
+	// Key Its name in blueprints (`resources[].type`) and composite steps (`resource.type`), set when it is defined (ignored on update).
+	//
+	// Examples: load-balancer
+	Key string `json:"key"`
+
+	// PropertySchema JSON Schema of its properties: what create returns (a custom
+	// workflow's result, an AWX job's artifacts). Blueprints and later
+	// steps may read the properties it lists; their titles label them
+	// on the deployment page.
+	PropertySchema map[string]interface{} `json:"property_schema"`
+
+	// Read What runs one step of a custom resource's life.
+	Read *ResourceTypeDriver `json:"read,omitempty"`
+
+	// Resources How many resources of it deployments have.
+	Resources int `json:"resources"`
+
+	// Title Examples: Load balancer
+	Title string `json:"title"`
+
+	// Update What runs one step of a custom resource's life.
+	Update    *ResourceTypeDriver `json:"update,omitempty"`
+	UpdatedAt time.Time           `json:"updated_at"`
+
+	// UsedBy The items whose published or draft versions use it.
+	UsedBy []string `json:"used_by"`
+}
+
+// ResourceTypeDriver What runs one step of a custom resource's life.
+type ResourceTypeDriver struct {
+	// Kind `workflow`: a custom workflow registered for resource types; `awx`: an AWX job template.
+	Kind ResourceTypeDriverKind `json:"kind"`
+
+	// Name The custom workflow's key, or the AWX job template's name.
+	//
+	// Examples: lb-create, Create load balancer
+	Name string `json:"name"`
+}
+
+// ResourceTypeDriverKind `workflow`: a custom workflow registered for resource types; `awx`: an AWX job template.
+type ResourceTypeDriverKind string
+
+// ResourceTypeList defines model for ResourceTypeList.
+type ResourceTypeList struct {
+	Items []ResourceType `json:"items"`
+}
+
+// ResourceTypeWrite defines model for ResourceTypeWrite.
+type ResourceTypeWrite struct {
+	// Actions The day-2 actions offered on its resources: custom workflows (`wf.<key>`) and AWX actions (`awx.<template>`).
+	Actions *[]string `json:"actions,omitempty"`
+
+	// Create What runs one step of a custom resource's life.
+	Create ResourceTypeDriver `json:"create"`
+
+	// Delete What runs one step of a custom resource's life.
+	Delete      ResourceTypeDriver `json:"delete"`
+	Description *string            `json:"description,omitempty"`
+
+	// Enabled Items may use it. A disabled type's resources are still deleted.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Key Its name in blueprints (`resources[].type`) and composite steps (`resource.type`), set when it is defined (ignored on update).
+	//
+	// Examples: load-balancer
+	Key *string `json:"key,omitempty"`
+
+	// PropertySchema JSON Schema of its properties: what create returns (a custom
+	// workflow's result, an AWX job's artifacts). Blueprints and later
+	// steps may read the properties it lists; their titles label them
+	// on the deployment page.
+	PropertySchema *map[string]interface{} `json:"property_schema,omitempty"`
+
+	// Read What runs one step of a custom resource's life.
+	Read *ResourceTypeDriver `json:"read,omitempty"`
+
+	// Title Examples: Load balancer
+	Title string `json:"title"`
+
+	// Update What runs one step of a custom resource's life.
+	Update *ResourceTypeDriver `json:"update,omitempty"`
+}
+
 // ResourceUpdatedEvent A resource changed, for example a power state or IP reported by vCenter.
 type ResourceUpdatedEvent struct {
 	At   time.Time `json:"at"`
@@ -10924,6 +11075,12 @@ type UpdatePropertyGroupJSONRequestBody = PropertyGroupWrite
 // SetGlobalQuotasJSONRequestBody defines body for SetGlobalQuotas for application/json ContentType.
 type SetGlobalQuotasJSONRequestBody = GlobalQuotaList
 
+// CreateResourceTypeJSONRequestBody defines body for CreateResourceType for application/json ContentType.
+type CreateResourceTypeJSONRequestBody = ResourceTypeWrite
+
+// UpdateResourceTypeJSONRequestBody defines body for UpdateResourceType for application/json ContentType.
+type UpdateResourceTypeJSONRequestBody = ResourceTypeWrite
+
 // CreateRoleAssignmentJSONRequestBody defines body for CreateRoleAssignment for application/json ContentType.
 type CreateRoleAssignmentJSONRequestBody = RoleAssignmentWrite
 
@@ -11913,6 +12070,40 @@ func (t *Resource) MergeGroupMembershipResource(v GroupMembershipResource) error
 	return err
 }
 
+// AsCustomResource returns the union data inside the Resource as a CustomResource
+func (t Resource) AsCustomResource() (CustomResource, error) {
+	var body CustomResource
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCustomResource overwrites any union data inside the Resource as the provided CustomResource
+func (t *Resource) FromCustomResource(v CustomResource) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"custom"}`))
+	t.union = b
+	return err
+}
+
+// MergeCustomResource performs a merge with any union data inside the Resource, using the provided CustomResource
+func (t *Resource) MergeCustomResource(v CustomResource) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"custom"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t Resource) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"type"`
@@ -11927,6 +12118,8 @@ func (t Resource) ValueByDiscriminator() (interface{}, error) {
 		return nil, err
 	}
 	switch discriminator {
+	case "custom":
+		return t.AsCustomResource()
 	case "dns.record":
 		return t.AsDnsRecordResource()
 	case "ipam.address":
@@ -13634,6 +13827,66 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /admin/quotas (the `SetGlobalQuotas` operationId).
 	SetGlobalQuotas(ctx context.Context, body SetGlobalQuotasJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListResourceTypes Custom resource types (ADR-0056)
+	//
+	// Each type with how many resources it has and what uses it. Needs
+	// `extensibility.read` (administrators and auditors).
+	//
+	// Corresponds with GET /admin/resource-types (the `ListResourceTypes` operationId).
+	ListResourceTypes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateResourceTypeWithBody Define a custom resource type
+	//
+	// A custom workflow or an AWX template creates its resources and
+	// another deletes them; one may update them and one read them again.
+	// Needs `extensibility.manage` (administrators).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/resource-types (the `CreateResourceType` operationId).
+	CreateResourceTypeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateResourceType Define a custom resource type
+	//
+	// A custom workflow or an AWX template creates its resources and
+	// another deletes them; one may update them and one read them again.
+	// Needs `extensibility.manage` (administrators).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/resource-types (the `CreateResourceType` operationId).
+	CreateResourceType(ctx context.Context, body CreateResourceTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteResourceType Remove a type no item uses and no deployment has (else disable it)
+	//
+	// Corresponds with DELETE /admin/resource-types/{key} (the `DeleteResourceType` operationId).
+	DeleteResourceType(ctx context.Context, key KeyPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetResourceType One custom resource type
+	//
+	// Corresponds with GET /admin/resource-types/{key} (the `GetResourceType` operationId).
+	GetResourceType(ctx context.Context, key KeyPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateResourceTypeWithBody Change a custom resource type (its key stays)
+	//
+	// Resources made before keep their properties: the type's workflows
+	// and templates as they are now delete, update and read them.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/resource-types/{key} (the `UpdateResourceType` operationId).
+	UpdateResourceTypeWithBody(ctx context.Context, key KeyPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateResourceType Change a custom resource type (its key stays)
+	//
+	// Resources made before keep their properties: the type's workflows
+	// and templates as they are now delete, update and read them.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/resource-types/{key} (the `UpdateResourceType` operationId).
+	UpdateResourceType(ctx context.Context, key KeyPath, body UpdateResourceTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRoleAssignments The roles users hold for all of rvav (`access.read`)
 	//
@@ -18522,6 +18775,136 @@ func (c *Client) SetGlobalQuotasWithBody(ctx context.Context, contentType string
 // Corresponds with PUT /admin/quotas (the `SetGlobalQuotas` operationId).
 func (c *Client) SetGlobalQuotas(ctx context.Context, body SetGlobalQuotasJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetGlobalQuotasRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListResourceTypes Custom resource types (ADR-0056)
+//
+// Each type with how many resources it has and what uses it. Needs
+// `extensibility.read` (administrators and auditors).
+//
+// Corresponds with GET /admin/resource-types (the `ListResourceTypes` operationId).
+func (c *Client) ListResourceTypes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListResourceTypesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateResourceTypeWithBody Define a custom resource type
+//
+// A custom workflow or an AWX template creates its resources and
+// another deletes them; one may update them and one read them again.
+// Needs `extensibility.manage` (administrators).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/resource-types (the `CreateResourceType` operationId).
+func (c *Client) CreateResourceTypeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateResourceTypeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateResourceType Define a custom resource type
+//
+// A custom workflow or an AWX template creates its resources and
+// another deletes them; one may update them and one read them again.
+// Needs `extensibility.manage` (administrators).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/resource-types (the `CreateResourceType` operationId).
+func (c *Client) CreateResourceType(ctx context.Context, body CreateResourceTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateResourceTypeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteResourceType Remove a type no item uses and no deployment has (else disable it)
+//
+// Corresponds with DELETE /admin/resource-types/{key} (the `DeleteResourceType` operationId).
+func (c *Client) DeleteResourceType(ctx context.Context, key KeyPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteResourceTypeRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetResourceType One custom resource type
+//
+// Corresponds with GET /admin/resource-types/{key} (the `GetResourceType` operationId).
+func (c *Client) GetResourceType(ctx context.Context, key KeyPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetResourceTypeRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateResourceTypeWithBody Change a custom resource type (its key stays)
+//
+// Resources made before keep their properties: the type's workflows
+// and templates as they are now delete, update and read them.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/resource-types/{key} (the `UpdateResourceType` operationId).
+func (c *Client) UpdateResourceTypeWithBody(ctx context.Context, key KeyPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateResourceTypeRequestWithBody(c.Server, key, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateResourceType Change a custom resource type (its key stays)
+//
+// Resources made before keep their properties: the type's workflows
+// and templates as they are now delete, update and read them.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/resource-types/{key} (the `UpdateResourceType` operationId).
+func (c *Client) UpdateResourceType(ctx context.Context, key KeyPath, body UpdateResourceTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateResourceTypeRequest(c.Server, key, body)
 	if err != nil {
 		return nil, err
 	}
@@ -26917,6 +27300,188 @@ func NewSetGlobalQuotasRequestWithBody(server string, contentType string, body i
 	return req, nil
 }
 
+// NewListResourceTypesRequest constructs an http.Request for the ListResourceTypes method
+func NewListResourceTypesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/resource-types")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateResourceTypeRequest calls the generic CreateResourceType builder with application/json body
+func NewCreateResourceTypeRequest(server string, body CreateResourceTypeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateResourceTypeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateResourceTypeRequestWithBody constructs an http.Request for the CreateResourceType method, with any body, and a specified content type
+func NewCreateResourceTypeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/resource-types")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteResourceTypeRequest constructs an http.Request for the DeleteResourceType method
+func NewDeleteResourceTypeRequest(server string, key KeyPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/resource-types/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetResourceTypeRequest constructs an http.Request for the GetResourceType method
+func NewGetResourceTypeRequest(server string, key KeyPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/resource-types/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateResourceTypeRequest calls the generic UpdateResourceType builder with application/json body
+func NewUpdateResourceTypeRequest(server string, key KeyPath, body UpdateResourceTypeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateResourceTypeRequestWithBody(server, key, "application/json", bodyReader)
+}
+
+// NewUpdateResourceTypeRequestWithBody constructs an http.Request for the UpdateResourceType method, with any body, and a specified content type
+func NewUpdateResourceTypeRequestWithBody(server string, key KeyPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/resource-types/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListRoleAssignmentsRequest constructs an http.Request for the ListRoleAssignments method
 func NewListRoleAssignmentsRequest(server string, params *ListRoleAssignmentsParams) (*http.Request, error) {
 	var err error
@@ -34848,6 +35413,72 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /admin/quotas (the `SetGlobalQuotas` operationId).
 	SetGlobalQuotasWithResponse(ctx context.Context, body SetGlobalQuotasJSONRequestBody, reqEditors ...RequestEditorFn) (*SetGlobalQuotasResponse, error)
+
+	// ListResourceTypesWithResponse Custom resource types (ADR-0056)
+	//
+	// Each type with how many resources it has and what uses it. Needs
+	// `extensibility.read` (administrators and auditors).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/resource-types (the `ListResourceTypes` operationId).
+	ListResourceTypesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListResourceTypesResponse, error)
+
+	// CreateResourceTypeWithBodyWithResponse Define a custom resource type
+	//
+	// A custom workflow or an AWX template creates its resources and
+	// another deletes them; one may update them and one read them again.
+	// Needs `extensibility.manage` (administrators).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/resource-types (the `CreateResourceType` operationId).
+	CreateResourceTypeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateResourceTypeResponse, error)
+
+	// CreateResourceTypeWithResponse Define a custom resource type
+	//
+	// A custom workflow or an AWX template creates its resources and
+	// another deletes them; one may update them and one read them again.
+	// Needs `extensibility.manage` (administrators).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/resource-types (the `CreateResourceType` operationId).
+	CreateResourceTypeWithResponse(ctx context.Context, body CreateResourceTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateResourceTypeResponse, error)
+
+	// DeleteResourceTypeWithResponse Remove a type no item uses and no deployment has (else disable it)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /admin/resource-types/{key} (the `DeleteResourceType` operationId).
+	DeleteResourceTypeWithResponse(ctx context.Context, key KeyPath, reqEditors ...RequestEditorFn) (*DeleteResourceTypeResponse, error)
+
+	// GetResourceTypeWithResponse One custom resource type
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/resource-types/{key} (the `GetResourceType` operationId).
+	GetResourceTypeWithResponse(ctx context.Context, key KeyPath, reqEditors ...RequestEditorFn) (*GetResourceTypeResponse, error)
+
+	// UpdateResourceTypeWithBodyWithResponse Change a custom resource type (its key stays)
+	//
+	// Resources made before keep their properties: the type's workflows
+	// and templates as they are now delete, update and read them.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/resource-types/{key} (the `UpdateResourceType` operationId).
+	UpdateResourceTypeWithBodyWithResponse(ctx context.Context, key KeyPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateResourceTypeResponse, error)
+
+	// UpdateResourceTypeWithResponse Change a custom resource type (its key stays)
+	//
+	// Resources made before keep their properties: the type's workflows
+	// and templates as they are now delete, update and read them.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/resource-types/{key} (the `UpdateResourceType` operationId).
+	UpdateResourceTypeWithResponse(ctx context.Context, key KeyPath, body UpdateResourceTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateResourceTypeResponse, error)
 
 	// ListRoleAssignmentsWithResponse The roles users hold for all of rvav (`access.read`)
 	//
@@ -44428,6 +45059,323 @@ func (r SetGlobalQuotasResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetGlobalQuotasResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListResourceTypesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ResourceTypeList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListResourceTypesResponse) GetJSON200() *ResourceTypeList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListResourceTypesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListResourceTypesResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListResourceTypesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListResourceTypesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListResourceTypesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListResourceTypesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateResourceTypeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ResourceType
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateResourceTypeResponse) GetJSON201() *ResourceType {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateResourceTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateResourceTypeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateResourceTypeResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateResourceTypeResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateResourceTypeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateResourceTypeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateResourceTypeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateResourceTypeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteResourceTypeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteResourceTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteResourceTypeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteResourceTypeResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteResourceTypeResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteResourceTypeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteResourceTypeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteResourceTypeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteResourceTypeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetResourceTypeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ResourceType
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetResourceTypeResponse) GetJSON200() *ResourceType {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetResourceTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetResourceTypeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetResourceTypeResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetResourceTypeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetResourceTypeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetResourceTypeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetResourceTypeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateResourceTypeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ResourceType
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateResourceTypeResponse) GetJSON200() *ResourceType {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateResourceTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateResourceTypeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateResourceTypeResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateResourceTypeResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateResourceTypeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateResourceTypeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateResourceTypeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateResourceTypeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -55133,6 +56081,114 @@ func (c *ClientWithResponses) SetGlobalQuotasWithResponse(ctx context.Context, b
 	return ParseSetGlobalQuotasResponse(rsp)
 }
 
+// ListResourceTypesWithResponse Custom resource types (ADR-0056)
+//
+// Each type with how many resources it has and what uses it. Needs
+// `extensibility.read` (administrators and auditors).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/resource-types (the `ListResourceTypes` operationId).
+func (c *ClientWithResponses) ListResourceTypesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListResourceTypesResponse, error) {
+	rsp, err := c.ListResourceTypes(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListResourceTypesResponse(rsp)
+}
+
+// CreateResourceTypeWithBodyWithResponse Define a custom resource type
+//
+// A custom workflow or an AWX template creates its resources and
+// another deletes them; one may update them and one read them again.
+// Needs `extensibility.manage` (administrators).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/resource-types (the `CreateResourceType` operationId).
+func (c *ClientWithResponses) CreateResourceTypeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateResourceTypeResponse, error) {
+	rsp, err := c.CreateResourceTypeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateResourceTypeResponse(rsp)
+}
+
+// CreateResourceTypeWithResponse Define a custom resource type
+//
+// A custom workflow or an AWX template creates its resources and
+// another deletes them; one may update them and one read them again.
+// Needs `extensibility.manage` (administrators).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/resource-types (the `CreateResourceType` operationId).
+func (c *ClientWithResponses) CreateResourceTypeWithResponse(ctx context.Context, body CreateResourceTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateResourceTypeResponse, error) {
+	rsp, err := c.CreateResourceType(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateResourceTypeResponse(rsp)
+}
+
+// DeleteResourceTypeWithResponse Remove a type no item uses and no deployment has (else disable it)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /admin/resource-types/{key} (the `DeleteResourceType` operationId).
+func (c *ClientWithResponses) DeleteResourceTypeWithResponse(ctx context.Context, key KeyPath, reqEditors ...RequestEditorFn) (*DeleteResourceTypeResponse, error) {
+	rsp, err := c.DeleteResourceType(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteResourceTypeResponse(rsp)
+}
+
+// GetResourceTypeWithResponse One custom resource type
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/resource-types/{key} (the `GetResourceType` operationId).
+func (c *ClientWithResponses) GetResourceTypeWithResponse(ctx context.Context, key KeyPath, reqEditors ...RequestEditorFn) (*GetResourceTypeResponse, error) {
+	rsp, err := c.GetResourceType(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetResourceTypeResponse(rsp)
+}
+
+// UpdateResourceTypeWithBodyWithResponse Change a custom resource type (its key stays)
+//
+// Resources made before keep their properties: the type's workflows
+// and templates as they are now delete, update and read them.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/resource-types/{key} (the `UpdateResourceType` operationId).
+func (c *ClientWithResponses) UpdateResourceTypeWithBodyWithResponse(ctx context.Context, key KeyPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateResourceTypeResponse, error) {
+	rsp, err := c.UpdateResourceTypeWithBody(ctx, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateResourceTypeResponse(rsp)
+}
+
+// UpdateResourceTypeWithResponse Change a custom resource type (its key stays)
+//
+// Resources made before keep their properties: the type's workflows
+// and templates as they are now delete, update and read them.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/resource-types/{key} (the `UpdateResourceType` operationId).
+func (c *ClientWithResponses) UpdateResourceTypeWithResponse(ctx context.Context, key KeyPath, body UpdateResourceTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateResourceTypeResponse, error) {
+	rsp, err := c.UpdateResourceType(ctx, key, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateResourceTypeResponse(rsp)
+}
+
 // ListRoleAssignmentsWithResponse The roles users hold for all of rvav (`access.read`)
 //
 // Those given here, and those rvav sets itself (the local
@@ -63943,6 +64999,251 @@ func ParseSetGlobalQuotasResponse(rsp *http.Response) (*SetGlobalQuotasResponse,
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListResourceTypesResponse parses an HTTP response from a ListResourceTypesWithResponse call
+func ParseListResourceTypesResponse(rsp *http.Response) (*ListResourceTypesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListResourceTypesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ResourceTypeList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateResourceTypeResponse parses an HTTP response from a CreateResourceTypeWithResponse call
+func ParseCreateResourceTypeResponse(rsp *http.Response) (*CreateResourceTypeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateResourceTypeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ResourceType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteResourceTypeResponse parses an HTTP response from a DeleteResourceTypeWithResponse call
+func ParseDeleteResourceTypeResponse(rsp *http.Response) (*DeleteResourceTypeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteResourceTypeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetResourceTypeResponse parses an HTTP response from a GetResourceTypeWithResponse call
+func ParseGetResourceTypeResponse(rsp *http.Response) (*GetResourceTypeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetResourceTypeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ResourceType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateResourceTypeResponse parses an HTTP response from a UpdateResourceTypeWithResponse call
+func ParseUpdateResourceTypeResponse(rsp *http.Response) (*UpdateResourceTypeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateResourceTypeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ResourceType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationFailed

@@ -100,3 +100,35 @@ func (s *Server) UpdateWorkflow(w http.ResponseWriter, r *http.Request, key api.
 func (s *Server) DeleteWorkflow(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
 	s.replyEmpty(w, r, s.Core.DeleteWorkflowRegistration(r.Context(), principal(r), key))
 }
+
+func (s *Server) ListResourceTypes(w http.ResponseWriter, r *http.Request) {
+	items, err := s.Core.ResourceTypes(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.ResourceTypeList{Items: items}, err)
+}
+
+func (s *Server) CreateResourceType(w http.ResponseWriter, r *http.Request) {
+	var b api.ResourceTypeWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveResourceType(r.Context(), principal(r), "", true, b)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
+
+func (s *Server) GetResourceType(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
+	out, err := s.Core.GetResourceType(r.Context(), principal(r), key)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) UpdateResourceType(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
+	var b api.ResourceTypeWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveResourceType(r.Context(), principal(r), key, false, b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) DeleteResourceType(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
+	s.replyEmpty(w, r, s.Core.DeleteResourceType(r.Context(), principal(r), key))
+}

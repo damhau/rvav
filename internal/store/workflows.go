@@ -74,7 +74,8 @@ type WorkflowUse struct {
 }
 
 // WorkflowUses says, for each registration, what uses it: catalog items
-// (published or draft versions), subscriptions, and its runs not ended.
+// (published or draft versions), subscriptions, resource types, and its
+// runs not ended.
 func (s *Store) WorkflowUses(ctx context.Context) (map[string]WorkflowUse, error) {
 	out := map[string]WorkflowUse{}
 	rows, err := s.Pool.Query(ctx, `select w.key,
@@ -82,7 +83,10 @@ func (s *Store) WorkflowUses(ctx context.Context) (map[string]WorkflowUse, error
 			array(select distinct 'item ' || i.slug from catalog_item_versions v join catalog_items i on i.id = v.item_id
 				where v.state in ('draft', 'published') and (v.blueprint->>'workflow' = w.key
 					or jsonb_path_exists(v.blueprint, '$.**.workflow ? (@ == $k)', jsonb_build_object('k', w.key)))
-				union select 'subscription ' || s.name from subscriptions s where s.target->'workflow'->>'key' = w.key)
+				union select 'subscription ' || s.name from subscriptions s where s.target->'workflow'->>'key' = w.key
+				union select 'resource type ' || t.key from resource_types t
+					where jsonb_path_exists(t.lifecycle, '$.* ? (@.kind == "workflow" && @.name == $k)', jsonb_build_object('k', w.key))
+						or 'wf.' || w.key = any(t.actions))
 		from workflow_registrations w`)
 	if err != nil {
 		return nil, err
