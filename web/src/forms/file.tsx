@@ -1,7 +1,7 @@
 // A file the requester attaches (F1.2, ADR-0040). It goes to rvav once
 // chosen, which checks its type, size and content and keeps it for the
 // request; the form holds its record.
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useMutationState } from "@tanstack/react-query";
 import { Download, FileText, LoaderCircle, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -13,6 +13,22 @@ import { cn } from "@/lib/utils";
 import type { WidgetProps } from "./widgets";
 
 const defaultMB = 10;
+
+const sendingKey = ["forms", "file"];
+
+/** The files the form's file fields are still sending: until they're sent, it can't be submitted. */
+export function useSendingFiles(): string[] {
+  return useMutationState({
+    filters: { mutationKey: sendingKey, status: "pending" },
+    select: (m) => (m.state.variables as File).name,
+  });
+}
+
+/** What the form says while files are still sending, if any. */
+export function sendingText(names: string[]): string | undefined {
+  if (names.length === 0) return undefined;
+  return `Wait until ${names.join(", ")} ${names.length === 1 ? "is" : "are"} sent.`;
+}
 
 /** Whether an input's value is a file's record. */
 export function isFileRef(v: unknown): v is FileRef {
@@ -84,6 +100,7 @@ export function FileWidget({
   const [dragging, setDragging] = useState(false);
   const file = isFileRef(value) ? value : undefined;
   const upload = useMutation({
+    mutationKey: sendingKey,
     mutationFn: (f: File) =>
       call(
         api.POST("/forms/files", {

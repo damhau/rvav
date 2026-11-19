@@ -232,7 +232,8 @@ func (s *Service) fileField(ctx context.Context, p *auth.Principal, q api.Upload
 
 // evaluateFiles puts in each file input the record of the file it names:
 // one the requester attached that still waits for its request (once
-// submitted, ofRequest, the request's), of a type and size the field takes.
+// submitted, ofRequest, the request's; on an update, one the deployment
+// has), of a type and size the field takes.
 func (s *Service) evaluateFiles(ctx context.Context, p *auth.Principal, ev *Evaluation, ui api.UiSchema, ofRequest bool) error {
 	for _, name := range sortedKeys(ui.Fields) {
 		f := ui.Fields[name]
@@ -247,8 +248,8 @@ func (s *Service) evaluateFiles(ctx context.Context, p *auth.Principal, ev *Eval
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
-		if err != nil || file.OwnerID != p.User.ID ||
-			!ofRequest && (file.RequestID != nil || time.Since(file.CreatedAt) > store.FileWait) {
+		if err != nil || !ev.kept[id] && (file.OwnerID != p.User.ID ||
+			!ofRequest && (file.RequestID != nil || time.Since(file.CreatedAt) > store.FileWait)) {
 			ev.Errors = append(ev.Errors, fieldErr(at, "gone", "This file no longer waits for a request: attach it again."))
 			continue
 		}
@@ -261,7 +262,8 @@ func (s *Service) evaluateFiles(ctx context.Context, p *auth.Principal, ev *Eval
 	return nil
 }
 
-// attachFiles gives a submitted request the files its inputs name.
+// attachFiles gives a submitted request the files its inputs name, but
+// those an update keeps from its deployment.
 func (s *Service) attachFiles(ctx context.Context, db store.DB, requestID, ownerID string, ev *Evaluation) error {
 	var ui api.UiSchema
 	if err := json.Unmarshal(ev.Version.UISchema, &ui); err != nil {
@@ -270,7 +272,7 @@ func (s *Service) attachFiles(ctx context.Context, db store.DB, requestID, owner
 	var files []string
 	for _, name := range slices.Sorted(maps.Keys(ui.Fields)) {
 		if v, ok := ev.Inputs[name].(map[string]any); ok && ui.Fields[name].Widget == api.UiWidgetFile {
-			if id, ok := v["id"].(string); ok {
+			if id, ok := v["id"].(string); ok && !ev.kept[id] {
 				files = append(files, id)
 			}
 		}

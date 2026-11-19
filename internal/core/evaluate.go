@@ -81,6 +81,9 @@ type Evaluation struct {
 	Update map[string]any
 	// validate is set when the form's validations run (ADR-0043).
 	validate bool
+	// kept are the files of the deployment an update evaluates: its
+	// inputs may name them again, and they stay its first request's.
+	kept map[string]bool
 }
 
 type LeaseInfo struct {
@@ -117,7 +120,14 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 // evaluateWith is evaluate; with validate, the form's validations run once
 // its inputs pass its own checks.
 func (s *Service) evaluateWith(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest, validate bool) (*Evaluation, error) {
-	ev := &Evaluation{Inputs: map[string]any{}, validate: validate}
+	return s.evaluateKeeping(ctx, p, d, strict, ofRequest, validate, nil)
+}
+
+// evaluateKeeping is evaluateWith for an update, whose inputs may name
+// the deployment's files, kept.
+func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest, validate bool,
+	kept map[string]bool) (*Evaluation, error) {
+	ev := &Evaluation{Inputs: map[string]any{}, validate: validate, kept: kept}
 	for k, v := range d.Inputs {
 		ev.Inputs[k] = v
 	}

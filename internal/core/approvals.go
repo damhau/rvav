@@ -489,7 +489,7 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRo
 	}
 	// The request keeps the version it was submitted with, even if the item
 	// was republished or withdrawn since.
-	ev, err := s.evaluate(ctx, requester, draft, true, true)
+	ev, err := s.evaluateKeeping(ctx, requester, draft, true, true, true, filesOf(req.Inputs))
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

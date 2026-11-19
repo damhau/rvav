@@ -1020,7 +1020,11 @@ The file goes to rvav when the requester chooses it, before the request
 (`POST /forms/files`). rvav checks its size, its extension, and that its
 content is what the extension says, whatever type the browser claims: a
 `.csv` that holds a PDF is refused. It keeps the file in its database with
-the request. A file attached but never requested goes after a day. AWX's
+the request. The form waits until each file is sent before it submits,
+saves a draft or goes to its next page. An update may name the
+deployment's files again: they stay its first request's, and a new file
+goes to the update request. A file attached but never requested goes
+after a day. AWX's
 extra variables, workflows and events get the file's record. A playbook
 that needs the content downloads it with `GET /api/v1/files/{id}` and a
 token of an account allowed to: the requester, the request's approvers,
@@ -1108,9 +1112,9 @@ ui_schema:
     server works the rules out again over those inputs until they stop
     changing, so a requester can't set a read-only field through a
     hidden one.
-  - An approver's edit works the request's inputs out again: a field
-    the requester emptied stays empty, though the stored inputs leave it
-    out.
+  - An approver's edit, and an update that keeps the deployment's
+    version, work the inputs out again: a field the requester emptied
+    stays empty, though the stored inputs leave it out.
   - A default rule doesn't see its own field's input. Defaults can read
     each other: the server works them out again until they stop
     changing. A rule that fails, or reads an input that has no value

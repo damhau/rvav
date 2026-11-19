@@ -222,6 +222,9 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 		if err := s.Store.InsertRequest(ctx, tx, req); err != nil {
 			return err
 		}
+		if err := s.attachFiles(ctx, tx, req.ID, p.User.ID, ev); err != nil {
+			return err
+		}
 		if err := s.Store.InsertSteps(ctx, tx, stepsOf(req.ID, plan.Steps(ev.Env.Name))); err != nil {
 			return err
 		}
@@ -291,12 +294,21 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 	if u.from, err = s.Store.GetVersion(ctx, d.VersionID); err != nil {
 		return nil, err
 	}
-	inputs := draft.Inputs
+	inputs := maps.Clone(draft.Inputs)
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
-	ev, err := s.evaluate(ctx, p, api.RequestDraft{CatalogItemId: d.ItemID, VersionId: draft.VersionId, ProjectId: d.ProjectID,
-		Environment: d.Environment, Inputs: inputs, Justification: draft.Justification}, strict, false)
+	// On its own version, a field the deployment has no input for was
+	// emptied: it stays so unless the update gives it a value.
+	if draft.VersionId == d.VersionID {
+		var had map[string]any
+		_ = json.Unmarshal(d.Inputs, &had)
+		var ui api.UiSchema
+		_ = json.Unmarshal(u.from.UISchema, &ui)
+		keepEmptied(ui, had, inputs)
+	}
+	ev, err := s.evaluateKeeping(ctx, p, api.RequestDraft{CatalogItemId: d.ItemID, VersionId: draft.VersionId, ProjectId: d.ProjectID,
+		Environment: d.Environment, Inputs: inputs, Justification: draft.Justification}, strict, false, strict, filesOf(d.Inputs))
 	if errors.Is(err, ErrNotFound) {
 		return nil, &ConflictError{Msg: d.ItemName + " is no longer offered in " + d.ProjectName + ": its deployments can't be updated."}
 	}
@@ -931,6 +943,21 @@ func (s *Service) addVMs(ctx context.Context, tx pgx.Tx, u *updatePlan) ([]provi
 		comps = append(comps, c)
 	}
 	return vms, comps, nil, nil
+}
+
+// filesOf are the files inputs name.
+func filesOf(inputs json.RawMessage) map[string]bool {
+	var had map[string]any
+	_ = json.Unmarshal(inputs, &had)
+	out := map[string]bool{}
+	for _, v := range had {
+		if ref, ok := v.(map[string]any); ok {
+			if id, ok := ref["id"].(string); ok {
+				out[id] = true
+			}
+		}
+	}
+	return out
 }
 
 // sameInputs says whether the inputs are those the deployment has; secret

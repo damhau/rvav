@@ -20,6 +20,7 @@ import { FormRenderer, shownFields, type FormHandle, type PageInputs } from "@/f
 import { Attention, fieldControl, type Unplaced } from "@/forms/attention";
 import { sentInputs, withDefaults } from "@/forms/defaults";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
+import { sendingText, useSendingFiles } from "@/forms/file";
 import { api, call, isApiError } from "@/lib/api/client";
 import type {
   CatalogItem,
@@ -171,6 +172,7 @@ function Summary({
   composite,
   previewError,
   onRetryPreview,
+  holding,
 }: {
   preview: RequestPreview | undefined;
   /** Why the summary couldn't be worked out, when it couldn't. */
@@ -189,6 +191,8 @@ function Summary({
   oneDeployment: boolean;
   /** A composite item: what each of its VM steps builds. */
   composite: boolean;
+  /** Why it can't be submitted yet: a file still sending. */
+  holding?: string;
 }) {
   const approval = preview?.approval;
   const post = Array.isArray(values.post_config) && !oneDeployment ? (values.post_config as string[]) : [];
@@ -253,10 +257,22 @@ function Summary({
         actions={fetching && <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />}
         footer={
           <>
-            <Button type="button" onClick={onSaveDraft} disabled={savingDraft}>
+            {holding && (
+              <span role="status" className="mr-auto text-caption text-muted">
+                {holding}
+              </span>
+            )}
+            <Button type="button" onClick={onSaveDraft} disabled={savingDraft || Boolean(holding)}>
               Save as draft
             </Button>
-            {onSubmit && <SubmitButton onClick={onSubmit} pending={pending} approval={approval?.required} />}
+            {onSubmit && (
+              <SubmitButton
+                onClick={onSubmit}
+                pending={pending}
+                approval={approval?.required}
+                holding={Boolean(holding)}
+              />
+            )}
           </>
         }
       >
@@ -344,9 +360,19 @@ function Summary({
   );
 }
 
-function SubmitButton({ onClick, pending, approval }: { onClick: () => void; pending: boolean; approval?: boolean }) {
+function SubmitButton({
+  onClick,
+  pending,
+  approval,
+  holding,
+}: {
+  onClick: () => void;
+  pending: boolean;
+  approval?: boolean;
+  holding?: boolean;
+}) {
   return (
-    <Button variant="primary" type="button" onClick={onClick} disabled={pending}>
+    <Button variant="primary" type="button" onClick={onClick} disabled={pending || holding}>
       {pending && <LoaderCircle className="animate-spin" aria-hidden />}
       {approval ? "Submit for approval" : "Submit request"}
     </Button>
@@ -581,6 +607,7 @@ function RequestFormBody({
     submit.mutate(draft);
   };
   const stepped = form.ui_schema.layout.kind === "wizard";
+  const holding = sendingText(useSendingFiles());
 
   // What the item builds, drawn when there is more to it than one VM on a
   // network (the summary says that much): a composite's steps, an item's
@@ -745,8 +772,10 @@ function RequestFormBody({
                 onClick={submitDraft}
                 pending={submit.isPending}
                 approval={shownPreview?.approval.required}
+                holding={Boolean(holding)}
               />
             ),
+            holding,
             leadingRows: [
               { label: "Environment", value: environments.find((e) => e.key === environment)?.name ?? environment },
             ],
@@ -787,6 +816,7 @@ function RequestFormBody({
           scheduled={later && Boolean(startAt)}
           oneDeployment={Boolean(form.one_deployment)}
           composite={item.type === "composite"}
+          holding={holding}
         />
       </aside>
     </div>

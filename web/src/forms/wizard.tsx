@@ -40,6 +40,8 @@ export interface WizardOptions {
   submit?: ReactNode;
   /** Rows the review lists first, for what leads the form. */
   leadingRows?: ReviewRow[];
+  /** Why the form can't go on yet, such as a file still sending: Next waits, and this says why. */
+  holding?: string;
 }
 
 export function Wizard({
@@ -85,7 +87,7 @@ export function Wizard({
   };
   const next = async () => {
     const part = step.part;
-    if (!part || busy.current) return;
+    if (!part || busy.current || options.holding) return;
     let states = fieldStates;
     busy.current = true;
     setChecking(true);
@@ -222,10 +224,15 @@ export function Wizard({
           </Button>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {options.holding && (
+            <span role="status" className="text-caption text-muted">
+              {options.holding}
+            </span>
+          )}
           {step.key === REVIEW ? (
             options.submit
           ) : (
-            <Button variant="primary" onClick={() => void next()}>
+            <Button variant="primary" onClick={() => void next()} disabled={Boolean(options.holding)}>
               {checking && <LoaderCircle className="animate-spin" aria-hidden />}
               Next
               <ArrowRight aria-hidden />

@@ -19,6 +19,7 @@ import { FormRenderer, shownFields, type FormHandle } from "@/forms/FormRenderer
 import { Attention, fieldControl, type Unplaced } from "@/forms/attention";
 import { defaulted, sentInputs } from "@/forms/defaults";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
+import { sendingText, useSendingFiles } from "@/forms/file";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { CatalogItem, DeploymentDetail, RequestForm, UpdateDraft, UpdatePreview } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
@@ -63,6 +64,7 @@ function Summary({
   formErrors,
   pending,
   onReview,
+  holding,
 }: {
   preview: UpdatePreview | undefined;
   error: unknown;
@@ -71,6 +73,8 @@ function Summary({
   formErrors: string[];
   pending: boolean;
   onReview: () => void;
+  /** Why the update can't be reviewed yet: a file still sending. */
+  holding?: string;
 }) {
   const blocked = !preview || !preview.allowed || preview.refused.length > 0 || preview.unchanged;
   return (
@@ -80,10 +84,22 @@ function Summary({
         flush
         actions={fetching && <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />}
         footer={
-          <Button variant="primary" type="button" onClick={onReview} disabled={blocked || pending}>
-            {pending && <LoaderCircle className="animate-spin" aria-hidden />}
-            Review the update
-          </Button>
+          <>
+            {holding && (
+              <span role="status" className="mr-auto text-caption text-muted">
+                {holding}
+              </span>
+            )}
+            <Button
+              variant="primary"
+              type="button"
+              onClick={onReview}
+              disabled={blocked || pending || Boolean(holding)}
+            >
+              {pending && <LoaderCircle className="animate-spin" aria-hidden />}
+              Review the update
+            </Button>
+          </>
         }
       >
         {!preview && error ? (
@@ -322,6 +338,7 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
     if (checked.allowed && checked.refused.length === 0)
       setConfirm({ preview: checked, body: { ...checking, ...(justification ? { justification } : {}) } });
   };
+  const holding = sendingText(useSendingFiles());
   const secrets = Object.entries(d.inputs).some(([k, v]) => v === masked && fields[k]?.secret);
   const reason = (
     <Panel as="fieldset" title="Reason">
@@ -358,10 +375,16 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
           wizard={{
             review: reason,
             submit: (
-              <Button variant="primary" type="button" onClick={() => void review()} disabled={submit.isPending}>
+              <Button
+                variant="primary"
+                type="button"
+                onClick={() => void review()}
+                disabled={submit.isPending || Boolean(holding)}
+              >
                 Review the update
               </Button>
             ),
+            holding,
           }}
         />
         {form.ui_schema.layout.kind !== "wizard" && reason}
@@ -375,6 +398,7 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
           formErrors={formErrors}
           pending={submit.isPending}
           onReview={() => void review()}
+          holding={holding}
         />
       </aside>
       {confirm && (

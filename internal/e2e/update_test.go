@@ -2,6 +2,8 @@ package e2e
 
 import (
 	"context"
+	"maps"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -53,6 +55,75 @@ func webFarm(v2 bool) api.CatalogVersionDefinition {
 	def.UiSchema.Layout.Kind = api.Page
 	def.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: "Farm", Fields: fields}}
 	return def
+}
+
+// TestUpdateKeepsFilesAndEmptied: a deployment whose item has a file
+// field and a default the requester emptied. An update with its own
+// inputs keeps its file and leaves the default out, so nothing changes;
+// one with a new file attaches it to the update request.
+func TestUpdateKeepsFilesAndEmptied(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, owner = "mkeller", "tnguyen"
+		def := webFarm(false)
+		props := def.FormSchema["properties"].(map[string]any)
+		props["spec"] = map[string]any{"type": "object"}
+		props["proxy"] = map[string]any{"type": "string"}
+		def.UiSchema.Fields["spec"] = api.UiField{Widget: api.UiWidgetFile, Label: "Spec", Accept: &[]string{".csv"}, MaxSizeMb: new(1)}
+		def.UiSchema.Fields["proxy"] = api.UiField{Widget: api.UiWidgetText, Label: "Proxy", Rules: &api.UiRules{Default: new(`"proxy.corp:3128"`)}}
+		def.UiSchema.Layout.Sections[0].Fields = append(def.UiSchema.Layout.Sections[0].Fields, "spec", "proxy")
+		var item api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "web-farm", Name: "Web farm",
+			Summary: "Web servers.", Category: "compute", Type: api.VmBlueprint, Definition: &def}, 201, &item)
+		h.json("POST", "/api/v1/admin/catalog/items/web-farm/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/web-farm/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+		v1 := item.DraftVersion.Id
+		upload := func(content string) map[string]any {
+			t.Helper()
+			var ref api.FileRef
+			h.json("POST", "/api/v1/forms/files?"+url.Values{"version_id": {v1}, "project_id": {"prj_web"}, "field": {"spec"}, "name": {"spec.csv"}}.Encode(),
+				owner, rawYAML(content), 201, &ref, "Content-Type", "text/csv")
+			return map[string]any{"id": ref.Id, "name": ref.Name, "size": ref.Size, "content_type": ref.ContentType, "sha256": ref.Sha256}
+		}
+		first := upload("port,source\n443,10.0.0.0/8\n")
+		var built api.Request
+		h.json("POST", "/api/v1/requests", owner, api.RequestDraft{CatalogItemId: item.Id, VersionId: v1, ProjectId: "prj_web",
+			Environment: "dev", Inputs: map[string]any{"app": "farm", "web_nodes": 1, "size": "S", "cluster": "GVA-DEV-CL01",
+				"network": "dvpg-app-dev-vl310", "spec": first, "proxy": nil}}, 202, &built, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(built.Id, nil)
+		h.waitStatus(built.Id, owner, api.RequestStatusSucceeded)
+		depID := (*built.DeploymentIds)[0]
+		var dep api.DeploymentDetail
+		h.json("GET", "/api/v1/deployments/"+depID, owner, nil, 200, &dep)
+		if _, ok := dep.Inputs["proxy"]; ok {
+			t.Fatalf("the deployment has the default the requester emptied: %v", dep.Inputs)
+		}
+
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/deployments/"+depID+"/update", owner, api.UpdateDraft{VersionId: v1, Inputs: dep.Inputs}, 422, &problem,
+			"Idempotency-Key", uuid.NewString())
+		if len(problem.Errors) != 1 || deref(problem.Errors[0].Code) != "no_change" {
+			t.Fatalf("an update with the deployment's own inputs = %+v", problem.Errors)
+		}
+
+		in := maps.Clone(dep.Inputs)
+		in["spec"] = upload("port,source\n8443,10.0.0.0/8\n")
+		var upd api.Request
+		h.json("POST", "/api/v1/deployments/"+depID+"/update", owner, api.UpdateDraft{VersionId: v1, Inputs: in}, 202, &upd,
+			"Idempotency-Key", uuid.NewString())
+		for id, want := range map[string]string{first["id"].(string): built.Id, in["spec"].(map[string]any)["id"].(string): upd.Id} {
+			var reqID *string
+			if err := h.store.Pool.QueryRow(ctx, `select request_id from request_files where id = $1`, id).Scan(&reqID); err != nil || reqID == nil || *reqID != want {
+				t.Errorf("file %s is the request %v's, want %s (%v)", id, reqID, want, err)
+			}
+		}
+		if got := *upd.Inputs; got["proxy"] != nil {
+			t.Errorf("the update gave the emptied field its default: %v", got)
+		}
+	})
 }
 
 // TestUpdateDeployment updates a deployment (X1.4, ADR-0042): an input
