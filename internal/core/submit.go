@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -247,10 +248,12 @@ func (s *Service) CanReadRequest(ctx context.Context, p *auth.Principal, r store
 	return s.Store.IsRequestApprover(ctx, r.ID, p.User.ID, p.Groups)
 }
 
-// CanSeeRequest is true for the requester, and whoever sees the
-// deployments of the request's owner in its project.
+// CanSeeRequest is true for the requester, whoever sees the deployments of
+// the request's owner in its project, and the owner now of a deployment it
+// created or changed, who reads its history.
 func CanSeeRequest(p *auth.Principal, r store.RequestRow) bool {
-	return r.RequesterID == p.User.ID || SeesDeployment(p, r.ProjectID, r.ProjectSharing, r.OwnerID)
+	return r.RequesterID == p.User.ID || SeesDeployment(p, r.ProjectID, r.ProjectSharing, r.OwnerID) ||
+		slices.Contains(r.DeploymentOwnerIDs, p.User.ID)
 }
 
 // Cancel stops a request. Waiting requests end at once; running ones stop

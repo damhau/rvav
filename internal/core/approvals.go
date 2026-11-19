@@ -124,20 +124,33 @@ func (s *Service) ListApprovals(ctx context.Context, p *auth.Principal, params a
 	if err != nil {
 		return api.ApprovalPage{}, err
 	}
-	ids := make([]string, len(page.Items))
+	ids, requestIDs := make([]string, len(page.Items)), make([]string, len(page.Items))
 	for i, lv := range page.Items {
-		ids[i] = lv.ID
+		ids[i], requestIDs[i] = lv.ID, lv.RequestID
 	}
 	votes, err := s.Store.Votes(ctx, s.Store.Pool, ids)
 	if err != nil {
 		return api.ApprovalPage{}, err
 	}
+	requests, err := s.Store.RequestsByID(ctx, requestIDs)
+	if err != nil {
+		return api.ApprovalPage{}, err
+	}
+	counts, err := s.Store.LevelCounts(ctx, requestIDs)
+	if err != nil {
+		return api.ApprovalPage{}, err
+	}
+	dels, err := s.Store.Delegates(ctx, ids)
+	if err != nil {
+		return api.ApprovalPage{}, err
+	}
 	out := api.ApprovalPage{Items: []api.ApprovalSummary{}, Total: total}
 	for _, lv := range page.Items {
-		l, err := s.levelContext(ctx, lv)
-		if err != nil {
-			return out, err
+		r, ok := requests[lv.RequestID]
+		if !ok {
+			return out, store.ErrNotFound
 		}
+		l := loadedLevel{lv: lv, req: r, count: counts[lv.RequestID], delegates: dels[lv.ID]}
 		out.Items = append(out.Items, summary(l, l.canDecide(p, votes[lv.ID])))
 	}
 	if page.Next != nil {

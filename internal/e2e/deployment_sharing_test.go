@@ -135,9 +135,10 @@ func TestDeploymentSharing(t *testing.T) {
 				h.json("GET", "/api/v1/deployments/"+d.id, c.user, nil, want, nil)
 				h.json("GET", "/api/v1/deployments/"+d.id+"/history", c.user, nil, want, nil)
 				h.json("GET", "/api/v1/deployments/"+d.id+"/actions", c.user, nil, actionsWant, nil)
-				// A request shows to who made it and whom it was for.
+				// A request shows to who made it, whom it was for, and who
+				// owns its deployment now.
 				reqWant := 404
-				if len(c.sees) == 2 || c.user == owner {
+				if c.user == owner || slices.Contains(c.sees, d.id) {
 					reqWant = 200
 				}
 				h.json("GET", "/api/v1/requests/"+d.built.Id, c.user, nil, reqWant, nil)

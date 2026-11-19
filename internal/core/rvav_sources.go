@@ -57,11 +57,17 @@ func (s *Service) rvavOptions(ctx context.Context, p *auth.Principal, proj store
 		}
 		return out, err
 	case "rvav.deployments":
-		page, err := s.Store.ListDeployments(ctx, store.DeploymentFilter{ProjectID: proj.ID, Sort: "name", Limit: 500})
+		sc, err := s.DeploymentScope(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		f := store.DeploymentFilter{Projects: sc.Projects, OwnOnly: sc.OwnOnly, Viewer: sc.Viewer, ProjectID: proj.ID, Sort: "name", Limit: 500}
+		if item := params["item"]; item != "" {
+			f.Items = []string{item}
+		}
+		page, err := s.Store.ListDeployments(ctx, f)
 		for _, d := range page.Items {
-			if item := params["item"]; (item == "" || d.ItemSlug == item) && SeesDeployment(p, d.ProjectID, d.ProjectSharing, d.OwnerID) {
-				out = append(out, option(d.ID, d.Name, d.ItemName+" · "+d.Environment))
-			}
+			out = append(out, option(d.ID, d.Name, d.ItemName+" · "+d.Environment))
 		}
 		return out, err
 	case "rvav.vms":

@@ -103,6 +103,15 @@ func (s *Service) SaveRequestDraft(ctx context.Context, p *auth.Principal, id st
 		errs = append(errs, fieldErr("/draft/project_id", "unknown", "No such project, or not one you request in."))
 	case err != nil:
 		return api.SavedDraft{}, err
+	case item.ID != "":
+		// An item not shared with the caller answers as one that doesn't
+		// exist (ADR-0019).
+		if shared, err := s.SharedWithRequester(ctx, p, item.ID, project.ID); err != nil {
+			return api.SavedDraft{}, err
+		} else if !shared {
+			errs = []api.FieldError{fieldErr("/draft/catalog_item_id", "unknown", "No such catalog item."),
+				fieldErr("/draft/version_id", "unknown", "Not a version of this item.")}
+		}
 	}
 	if w.Name != nil && len([]rune(*w.Name)) > 120 {
 		errs = append(errs, fieldErr("/name", "too_long", "At most 120 characters."))

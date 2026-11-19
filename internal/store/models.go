@@ -224,22 +224,24 @@ type Request struct {
 // RequestRow is a request joined with the names the API shows next to it.
 type RequestRow struct {
 	Request
-	ItemSlug         string   `db:"item_slug"`
-	ItemName         string   `db:"item_name"`
-	ItemType         string   `db:"item_type"`
-	VersionNumber    string   `db:"version_number"`
-	ProjectCode      string   `db:"project_code"`
-	ProjectName      string   `db:"project_name"`
-	ProjectSharing   string   `db:"project_sharing"`
-	RequesterName    string   `db:"requester_name"`
-	RequesterEmail   string   `db:"requester_email"`
-	OnBehalfOfName   *string  `db:"on_behalf_of_name"`
-	OnBehalfOfEmail  *string  `db:"on_behalf_of_email"`
-	DeploymentIDs    []string `db:"deployment_ids"`
-	StepsDone        int      `db:"steps_done"`
-	StepsTotal       int      `db:"steps_total"`
-	CurrentStepID    *string  `db:"current_step_id"`
-	CurrentStepTitle *string  `db:"current_step_title"`
+	ItemSlug        string   `db:"item_slug"`
+	ItemName        string   `db:"item_name"`
+	ItemType        string   `db:"item_type"`
+	VersionNumber   string   `db:"version_number"`
+	ProjectCode     string   `db:"project_code"`
+	ProjectName     string   `db:"project_name"`
+	ProjectSharing  string   `db:"project_sharing"`
+	RequesterName   string   `db:"requester_name"`
+	RequesterEmail  string   `db:"requester_email"`
+	OnBehalfOfName  *string  `db:"on_behalf_of_name"`
+	OnBehalfOfEmail *string  `db:"on_behalf_of_email"`
+	DeploymentIDs   []string `db:"deployment_ids"`
+	// DeploymentOwnerIDs own the deployments in DeploymentIDs now.
+	DeploymentOwnerIDs []string `db:"deployment_owner_ids"`
+	StepsDone          int      `db:"steps_done"`
+	StepsTotal         int      `db:"steps_total"`
+	CurrentStepID      *string  `db:"current_step_id"`
+	CurrentStepTitle   *string  `db:"current_step_title"`
 }
 
 type Step struct {

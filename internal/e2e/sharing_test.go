@@ -101,6 +101,7 @@ func TestItemSharing(t *testing.T) {
 				Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
 					"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}}
 		}
+		h.json("POST", "/api/v1/me/drafts", "tnguyen", api.SavedDraftWrite{Draft: draft(web)}, 201, nil)
 		computeFor := map[string]int{}
 		for _, u := range []string{"afavre", "cdubois"} {
 			computeFor[u] = counted(u, web)
@@ -164,7 +165,6 @@ func TestItemSharing(t *testing.T) {
 		h.json("DELETE", "/api/v1/admin/roles/ordering", "mkeller", nil, 409, nil)
 
 		// Thomas's saved draft stays once the item is no longer for him; submitting it is refused.
-		h.json("POST", "/api/v1/me/drafts", "tnguyen", api.SavedDraftWrite{Draft: draft(web)}, 201, nil)
 		var drafts api.SavedDraftList
 		h.json("GET", "/api/v1/me/drafts", "tnguyen", nil, 200, &drafts)
 		if len(drafts.Items) != 1 || listed("tnguyen", web) {

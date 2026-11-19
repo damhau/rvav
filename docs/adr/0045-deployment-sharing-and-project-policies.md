@@ -5,7 +5,7 @@
 - Extends the roles of [ADR-0034](0034-custom-roles.md), the approvers of
   [ADR-0041](0041-approvers-by-role.md) and the policy administration of
   [ADR-0020](0020-administration.md). G1.3 (#155).
-- Amended by G1.4 (#156): how approvals combine across scopes.
+- Amended by G1.4 (#156): how approvals combine across scopes; a deployment's owner reads its requests.
 
 ## Context
 A vRA project has a **Deployment sharing** setting: on, every member sees
@@ -33,7 +33,9 @@ didn't list the deployments its holder owned in the project (B4).
   deployment of the project, as before.
 - **With `owner_only`,** a member sees the deployments they own
   (requested, requested for them, or handed over to them) and the requests
-  they made or own. A new project permission, `deployments.read_all`,
+  they made or own. They own the requests that built or changed a
+  deployment they own now: whoever takes a deployment over opens its
+  history. A new project permission, `deployments.read_all`,
   shows every one: the built-in Project admin, Supervisor, Auditor and
   Administrator hold it, and a custom role may.
 - **Approvers read the request they are asked to approve,** whatever the

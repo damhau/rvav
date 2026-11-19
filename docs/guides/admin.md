@@ -580,7 +580,8 @@ You need `project.members.manage` there, which project admins hold.
 With **Owners only**:
 - a member sees the deployments they own: those they requested, those
   requested for them, and those handed over to them. They see the
-  requests they made or that were made for them;
+  requests they made, those made for them, and those that built or
+  changed a deployment they own;
 - whoever holds `deployments.read_all` in the project sees all of them:
   project admins, supervisors, auditors and administrators, and the
   custom roles you give it;

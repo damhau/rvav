@@ -248,6 +248,9 @@ func (a *Activities) setOwner(ctx context.Context, in OpInput) (string, error) {
 	if err := a.Store.SetDeploymentOwner(ctx, a.Store.Pool, d.ID, owner.ID); err != nil {
 		return "", err
 	}
+	// Streams following the deployment decided who sees it when they
+	// subscribed: in an owner_only project the old owner no longer does.
+	a.Events.AccessChanged(ctx)
 	a.Events.Deployment(ctx, d.ID)
 	a.Events.Notify(ctx, store.NewNotification{UserID: owner.ID, Kind: "owner_changed", Title: "You now own " + d.Name,
 		Body: d.OwnerName + " handed it over to you.", Level: "info", Link: "/deployments/" + d.ID, DeploymentID: &d.ID,
@@ -341,6 +344,7 @@ func (a *Activities) setProject(ctx context.Context, in OpInput) (string, error)
 	if err := a.Store.SetDeploymentProject(ctx, a.Store.Pool, d.ID, project.ID); err != nil {
 		return "", err
 	}
+	a.Events.AccessChanged(ctx)
 	a.Events.Deployment(ctx, d.ID)
 	return "From " + d.ProjectName + " to " + project.Name, nil
 }

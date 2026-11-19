@@ -93,6 +93,12 @@ func (s *Server) setFavourite(w http.ResponseWriter, r *http.Request, itemID str
 	p := principal(r)
 	it, err := s.Store.GetItem(r.Context(), itemID, p.User.ID)
 	if err == nil {
+		var shared bool
+		if shared, err = s.Core.SharedAnywhere(r.Context(), p, it.ID); err == nil && !shared {
+			err = store.ErrNotFound
+		}
+	}
+	if err == nil {
 		err = s.Store.SetFavourite(r.Context(), p.User.ID, it.ID, on)
 	}
 	if err != nil {

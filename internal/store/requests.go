@@ -23,6 +23,8 @@ select r.id, r.number, r.item_id, r.version_id, r.project_id, r.environment, r.t
        case when r.deployment_id is not null then array[r.deployment_id]
             else coalesce((select array_agg(d.id order by d.created_at) from deployments d
                            where d.created_by_request_id = r.id), '{}') end as deployment_ids,
+       array(select d.owner_id from deployments d
+             where d.id = r.deployment_id or r.deployment_id is null and d.created_by_request_id = r.id) as deployment_owner_ids,
        (select count(*) from request_steps s where s.request_id = r.id and s.parent_id is null
           and s.status in ('done', 'skipped'))::int as steps_done,
        (select count(*) from request_steps s where s.request_id = r.id and s.parent_id is null)::int as steps_total,
@@ -70,6 +72,17 @@ func (s *Store) GetRequestIn(ctx context.Context, db DB, idOrNumber string) (Req
 	return r, notFound(err)
 }
 
+// RequestsByID reads requests by ID.
+func (s *Store) RequestsByID(ctx context.Context, ids []string) (map[string]RequestRow, error) {
+	rows, _ := s.Pool.Query(ctx, requestRowSelect+` where r.id = any($1)`, ids)
+	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[RequestRow])
+	out := make(map[string]RequestRow, len(list))
+	for _, r := range list {
+		out[r.ID] = r
+	}
+	return out, err
+}
+
 type RequestFilter struct {
 	// Projects limits results to these projects; nil means all projects.
 	Projects []string
@@ -88,7 +101,8 @@ type RequestFilter struct {
 }
 
 // ListRequests returns requests newest first. A request is visible when it is
-// in one of Projects, or the viewer requested or owns it.
+// in one of Projects, or the viewer requested or owns it, or owns a
+// deployment it created or changed.
 func (s *Store) ListRequests(ctx context.Context, f RequestFilter) (Page[RequestRow], error) {
 	afterTime, afterID := time.Time{}, ""
 	if f.After != nil {
@@ -99,7 +113,9 @@ func (s *Store) ListRequests(ctx context.Context, f RequestFilter) (Page[Request
 		afterTime, afterID = t, f.After.ID
 	}
 	rows, _ := s.Pool.Query(ctx, requestRowSelect+`
-		where ((($1 or r.project_id = any($2)) and r.project_id <> all($12::text[])) or r.requester_id = $3 or r.owner_id = $3)
+		where ((($1 or r.project_id = any($2)) and r.project_id <> all($12::text[])) or r.requester_id = $3 or r.owner_id = $3
+		       or exists (select 1 from deployments d where d.owner_id = $3
+		                  and (d.id = r.deployment_id or r.deployment_id is null and d.created_by_request_id = r.id)))
 		  and ($4 = '' or r.project_id = $4)
 		  and (cardinality($5::text[]) = 0 or r.status = any($5))
 		  and ($6 = '' or r.requester_id = $6)

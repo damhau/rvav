@@ -34,6 +34,7 @@ func TestRequestDrafts(t *testing.T) {
 		var item api.AdminCatalogItem
 		h.json("POST", "/api/v1/admin/catalog/items", "mkeller", api.CatalogItemCreate{Slug: "rhel-secret", Name: "RHEL with a password",
 			Summary: "A VM and its root password.", Category: "compute", Type: api.VmBlueprint, Definition: &def}, 201, &item)
+		h.json("PUT", "/api/v1/admin/catalog/items/rhel-secret/entitlements", "mkeller", api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
 
 		draft := api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id, ProjectId: "prj_web", Environment: "dev",
 			Inputs: map[string]any{"role": "app", "size": "M", "root_password": "hunter2", "ssh_key": "-----BEGIN"}, Count: new(3),

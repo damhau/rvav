@@ -170,6 +170,20 @@ func (s *Store) ApprovalsForRequest(ctx context.Context, requestID string) ([]Ap
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Approval])
 }
 
+// LevelCounts are how many policy levels each request has.
+func (s *Store) LevelCounts(ctx context.Context, requestIDs []string) (map[string]int, error) {
+	rows, _ := s.Pool.Query(ctx, `select request_id, count(*)::int from approvals
+		where request_id = any($1) and workflow_id is null group by request_id`, requestIDs)
+	out := map[string]int{}
+	var id string
+	var n int
+	_, err := pgx.ForEachRow(rows, []any{&id, &n}, func() error {
+		out[id] = n
+		return nil
+	})
+	return out, err
+}
+
 // AllApprovalsForRequest are its policy levels and the approvals its custom
 // workflows asked for.
 func (s *Store) AllApprovalsForRequest(ctx context.Context, requestID string) ([]Approval, error) {

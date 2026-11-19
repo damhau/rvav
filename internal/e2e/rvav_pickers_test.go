@@ -171,5 +171,20 @@ func TestRvavPickers(t *testing.T) {
 				t.Errorf("AWX got %s = %#v, want %#v", k, vars[k], want)
 			}
 		}
+
+		// Owners only, with more deployments than a page of choices: the
+		// requester's own are still offered, and only those (ADR-0045).
+		h.json("PUT", "/api/v1/projects/prj_web/deployment-sharing", admin, api.DeploymentSharingWrite{DeploymentSharing: api.OwnerOnly}, 200, nil)
+		for i := range 501 {
+			id := "dep_web_lea" + strconv.Itoa(i)
+			if err := h.store.InsertDeployment(ctx, h.store.Pool, store.Deployment{ID: id, Name: "aaa-" + strconv.Itoa(1000+i),
+				Status: "ready", ProjectID: "prj_web", Environment: "dev", ItemID: "itm_rhel9-server", VersionID: "ver_rhel9-server_1",
+				OwnerID: "usr_lmartin", ExpiryAction: "power_off_then_delete"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := offered("deployment", "", map[string]any{}); !slices.Equal(got, []string{"dep_web_app"}) {
+			t.Errorf("an owner's deployments offered under owners only = %v", got)
+		}
 	})
 }

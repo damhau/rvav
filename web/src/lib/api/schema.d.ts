@@ -297,7 +297,9 @@ export interface paths {
         /**
          * Save a request to finish later
          * @description A draft is the request as filled so far, unchecked; it is only the
-         *     caller's. Values of secret fields are not kept.
+         *     caller's. Values of secret fields are not kept. An item not shared
+         *     with the caller in the draft's project answers 422 at
+         *     `/draft/catalog_item_id`, as one that doesn't exist.
          */
         post: operations["createRequestDraft"];
         delete?: never;
@@ -437,7 +439,8 @@ export interface paths {
          * Who sees the project's deployments (`project.members.manage` there)
          * @description `all_members`, every project's default: whoever sees the project sees
          *     its deployments and requests. `owner_only`: each member sees the
-         *     deployments they own and the requests they made or own; whoever
+         *     deployments they own and the requests they made or own, a
+         *     deployment's requests among them; whoever
          *     holds `deployments.read_all` there (project admins, supervisors,
          *     auditors and administrators) still sees all of them (ADR-0045).
          *     Audited as `project.sharing.set`; open event streams end with
@@ -539,7 +542,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Add an item to the caller's favourites */
+        /**
+         * Add an item to the caller's favourites
+         * @description An item shared with the caller in none of the projects they see
+         *     answers 404, as one that doesn't exist (ADR-0019).
+         */
         put: operations["addFavourite"];
         post?: never;
         /** Remove an item from the caller's favourites */
@@ -693,9 +700,10 @@ export interface paths {
         };
         /**
          * Requests visible to the caller
-         * @description Those of every project the caller sees, and those they made or own.
-         *     In a project whose deployments show to their owners only, those
-         *     they made or own unless they hold `deployments.read_all` there.
+         * @description Those of every project the caller sees, and those they made or own:
+         *     made for them, or that built or changed a deployment they own. In a
+         *     project whose deployments show to their owners only, those they made
+         *     or own unless they hold `deployments.read_all` there.
          */
         get: operations["listRequests"];
         put?: never;

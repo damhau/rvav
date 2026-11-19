@@ -223,8 +223,8 @@ projects**: a **Project** column then names each one's project.
 
 A project may show its deployments to their owners only. You then see the
 deployments you own (you requested them, they were requested for you, or
-they were handed over to you) and the requests you made, but not your
-colleagues'. Project admins and supervisors still see all of them. To
+they were handed over to you) and their requests, and the requests you
+made, but not your colleagues'. Project admins and supervisors still see all of them. To
 let a colleague look after one of yours, hand it over to them. You always
 see the deployments you own, whatever your role in their project.
 

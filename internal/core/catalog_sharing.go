@@ -42,6 +42,24 @@ func (s *Service) SharedWithRequester(ctx context.Context, p *auth.Principal, it
 	return inProject && withYou, err
 }
 
+// SharedAnywhere says whether the principal finds an item in the catalog
+// of any project they see.
+func (s *Service) SharedAnywhere(ctx context.Context, p *auth.Principal, itemID string) (bool, error) {
+	page, err := s.Store.ListProjects(ctx, p.Projects(auth.ProjectSee), 500, nil)
+	if err != nil {
+		return false, err
+	}
+	for _, pr := range page.Items {
+		if pr.ArchivedAt != nil {
+			continue
+		}
+		if shared, err := s.SharedWithRequester(ctx, p, itemID, pr.ID); err != nil || shared {
+			return shared, err
+		}
+	}
+	return false, nil
+}
+
 // CatalogItemEntitlements is who may request an item, in which projects.
 func (s *Service) CatalogItemEntitlements(ctx context.Context, p *auth.Principal, idOrSlug string) (api.CatalogEntitlements, error) {
 	it, err := s.adminItem(ctx, p, idOrSlug)
