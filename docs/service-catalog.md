@@ -1026,7 +1026,7 @@ ui_schema:
   - CEL expression over other fields.
 - **Cascading dependencies**: a field declares `dependsOn` and re-resolves when
   those fields change (cluster → datastores → networks → subnets).
-- **Conditional rules** (CEL): visible, required, read-only, value.
+- **Conditional rules** (CEL): visible, required, read-only, default, value.
 - **Validation**: JSON Schema constraints, regex, CEL cross-field rules, async
   server-side validation (for example "hostname free in DNS").
 - **Layout**: sections and their columns, shown on one page, as a wizard
@@ -1045,7 +1045,9 @@ ui_schema:
   mapping, cached; only the hosts listed for REST value sources, in
   Administration › Integrations › Allowed hosts or `RVAV_REST_SOURCE_HOSTS`, the list a composite's REST calls share; no redirects,
   5 s and 1 MB at most) and `cel` (options or a value over the inputs,
-  project, user and environment). Dependencies re-resolve a field when the
+  project, user and environment). On a field that takes one value, a
+  `rest` or `cel` source gives its default, or a computed field's value
+  (see Defaults below). Dependencies re-resolve a field when the
   inputs it depends on change. A search field passes its text to the
   source (`${search}`, `search`) or keeps the options that contain it. A
   tree field's options name their `parent`.
@@ -1063,6 +1065,69 @@ ui_schema:
 - Rules are evaluated on the server, in the preview and again on submit:
   a computed value becomes the input, and a field a rule makes required is
   checked.
+- Defaults (F1.4): a field's `default` rule, CEL over the other inputs,
+  the environment, the project and the user, fills the field while the
+  requester hasn't given it a value. Unlike a `value` rule's, the field
+  stays editable.
+  - The form shows the default as the field's value, and the default
+    follows the inputs it reads. Once the requester changes the field,
+    even to empty it, the field keeps their value: a later change to
+    those inputs leaves it alone.
+  - The server works the defaults out on preview and submit, with the
+    other rules. An input the request leaves out takes its field's
+    default; `null` for a field with a default means the requester
+    emptied it, and it gets none. A read-only field takes its default
+    too. The other rules see the defaults.
+  - A default rule doesn't see its own field's input. Defaults can read
+    each other: the server works them out again until they stop
+    changing. A rule that fails, or reads an input that has no value
+    yet, gives no default, and the designer's preview says why.
+  - A wizard's review step lists the defaults among the values that
+    will be sent.
+  - On a field that takes one value (`text`, `textarea`, `number`,
+    `slider`, `date`, `datetime`, `toggle`), a `rest` or `cel` value
+    source gives the field its default instead of options. A `rest`
+    source's default is what the `value` JSONPath finds in the first
+    item the `items` JSONPath finds, or in the answer itself without
+    `items`; a `cel` source's is its `value` expression. On a `computed`
+    field, the source gives the value, which the server works out again
+    on preview and submit, whatever the request says. The value takes
+    the input's type: a text input takes a number as its digits. A
+    source that fails gives no default and holds nothing up. The field's
+    `depends_on` names the inputs its source reads: the server works out
+    the sources in that order, after the default rules, then the default
+    rules again, so a default rule can read a source's default.
+  - A field has one default at most. On save, rvav refuses a `default`
+    rule beside a `value` rule, an initial value or a source that gives
+    a default, and an initial value beside such a source, at
+    `/rules/default` or `/value_source`. A computed, file, information,
+    image or link field takes no `default` rule.
+  - Day-2 action forms (an AWX template's survey, a workflow's inputs)
+    have no rules: their defaults are the constants the survey or the
+    schema gives.
+
+  ```yaml
+  ui_schema:
+    fields:
+      host:
+        widget: text
+        label: Host name
+        rules: { default: 'inputs.app + "-" + environment' }
+      owner:
+        widget: text
+        label: Owner
+        depends_on: [app]
+        value_source:
+          kind: rest
+          params:
+            url: https://cmdb.corp.example/apps/${inputs.app}
+            secret: cmdb
+            value: $.owner.login
+      cores:
+        widget: number
+        label: vCPUs
+        value_source: { kind: cel, params: { value: 'environment == "prd" ? 4 : 2' } }
+  ```
 - Layouts (`ui_schema.layout.kind`, F1.3), for how the sections show, in
   their order:
   - `page`: every section on one page. A definition without a kind has
@@ -1099,8 +1164,8 @@ ui_schema:
   `awx.credentials` pickers, so a requester's choice is checked as the
   item's form checks it.
 
-Not built yet: async server-side validation rules, and the group and AWX
-host pickers.
+Not built yet: async server-side validation rules, the group and AWX
+host pickers, and a way to put a changed field back to its default.
 
 ## 4. Requesting
 

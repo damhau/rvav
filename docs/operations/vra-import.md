@@ -224,7 +224,10 @@ them to keep the version the items name.
 
 | vRA form | rvav |
 |---|---|
-| Labels, placeholders, signposts (help), defaults | The fields'. |
+| Labels, placeholders, signposts (help), constant defaults | The fields'. A constant default is the field's initial value. |
+| A default bound to a field (`bind`), or to an operation on fields and constants (`concatenate`, `add`, `subtract`, `multiply`, `divide`) | The field's `default` rule, in CEL: `{"bind": "hostName"}` is `inputs.hostName`, and ``{"bind": {"values": ["hostName", "`.corp.example`"], "operator": "concatenate"}}`` (a constant between backquotes) is `inputs.hostName + ".corp.example"`. The requester can change the field; until they do, it follows the fields it reads. An operation's numbers are worked out as decimals. On a field read-only in vRA's form, it's the field's `value` rule instead, which the requester can't change. A bind to a field that isn't an input of the template, or another operator, is reported (unmapped): write the rule. |
+| A default from a vRO action (`scriptAction`) | Reported (unmapped): give the field a REST value source, which gives a text, number, date or toggle field its default. |
+| A conditional default (values, each with its condition) | Reported (unmapped): write a `default` rule (CEL). |
 | Static value lists | Choices. |
 | `textField`, `textArea`, `dropDown`, `radio`, `checkbox`, `integerField`, `decimalField`, `passwordField`, `datetime`, `multiSelect`, `multiValuePicker`, `dualList`, `datagrid`, `objectField` | text, textarea, select, radio cards, toggle, number, number (a decimal on a `number` input), secret, datetime, multiselect, multiselect, dual list, table, group of fields. |
 | `datetime` on a date input | date: a `date` input keeps `format: date`, a `date-time` one `format: date-time`, which the server checks. |
@@ -238,7 +241,7 @@ them to keep the version the items name.
 | Pages and sections | One page keeps its sections. Several pages become tabs, as vRA shows them: one tab per page, with the fields of its sections in their order. To show them one after the other instead, choose the wizard layout in the form designer. |
 | Required, pattern, lengths, minimum and maximum | The form's checks. |
 | Values from vRO actions or external sources | Reported: give the field an rvav value source (REST or CEL). A `multiSelect`, `multiValuePicker` or `dualList` without choices of its own becomes tags, which take any value typed: once it has a source, make it a multi-select or a dual list again. |
-| Conditions on visibility or read-only | Reported: write an rvav rule (CEL). |
+| Conditions on visibility or read-only | Reported: write an rvav rule (CEL). A field read-only in vRA's form is editable in rvav's (a warning), unless its default is bound: then its `value` rule computes it. |
 
 ## Deployments
 

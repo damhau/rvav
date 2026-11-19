@@ -12,13 +12,15 @@ import (
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/vra"
 )
 
 // TestVRAFormFieldTypes: a vRA form's date and time, decimal, password,
 // tag, multi-select, dual list and datagrid fields import as rvav's, which
-// the server accepts as they are; a secret's default stays out of the item,
-// and widgets rvav has none of are reported (F1.1).
+// the server accepts as they are; a secret's default stays out of the item;
+// widgets rvav has none of are reported (F1.1), and a bound default is a
+// default rule (F1.4).
 func TestVRAFormFieldTypes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -44,6 +46,7 @@ func TestVRAFormFieldTypes(t *testing.T) {
 			{"unmapped", "form.owners", "it is tags"},
 			{"unmapped", "inputs.ports", "A list of integer values"},
 			{"warning", "form.apiToken", "default isn't kept"},
+			{"info", "form.fqdn", "its default rule is inputs.hostName"},
 		} {
 			if !slices.ContainsFunc(plan.Notes, func(n api.VraNote) bool {
 				return string(n.Level) == want.level && n.Where == want.where && strings.Contains(n.Text, want.text)
@@ -72,6 +75,18 @@ func TestVRAFormFieldTypes(t *testing.T) {
 		}
 		if cols := v.Definition.UiSchema.Fields["disks"].Columns; cols == nil || len(*cols) != 4 || (*cols)[0].Label != "Size (GB)" {
 			t.Errorf("disks columns = %+v", cols)
+		}
+		// vRA's bound default is a default rule, which the designer's preview works out.
+		if r := v.Definition.UiSchema.Fields["fqdn"].Rules; r == nil || deref(r.Default) != `inputs.hostName + ".corp.example"` {
+			t.Errorf("fqdn rules = %+v", r)
+		}
+		var designed api.DesignerPreview
+		h.json("POST", "/api/v1/admin/catalog/items/"+id+"/versions/"+it.Versions[0].Id+"/preview", admin,
+			api.DesignerPreviewQuery{ProjectId: "prj_web", Environment: new(api.EnvironmentKey("dev")), AsUserId: new(seed.UserID("tnguyen")),
+				Inputs: map[string]any{"hostName": "web01"}},
+			200, &designed)
+		if designed.Fields["fqdn"].Default != "web01.corp.example" {
+			t.Errorf("fqdn's default in the preview = %+v", designed.Fields["fqdn"])
 		}
 		body, _ := json.Marshal(v)
 		for _, secret := range []string{"changeme", "tok-123"} {

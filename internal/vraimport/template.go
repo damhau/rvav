@@ -1026,14 +1026,13 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				} else if fd.Display != "" {
 					note(Unmapped, where, "Shown as "+fd.Display+" in vRA, which rvav has no widget for: shown as "+fmt.Sprint(field["widget"])+".")
 				}
+				readOnly := false
 				for k, v := range fd.State {
 					if b, ok := v.(bool); ok {
 						if k == "visible" && !b {
 							note(Warning, where, "Hidden in vRA's form: shown in rvav's. Remove it from the form if nothing needs it.")
 						}
-						if k == "read-only" && b {
-							note(Warning, where, "Read-only in vRA's form: editable in rvav's.")
-						}
+						readOnly = readOnly || k == "read-only" && b
 						continue
 					}
 					note(Unmapped, where, fmt.Sprintf("Its %s depends on other fields in vRA (a condition): write an rvav rule (CEL) for it.", k))
@@ -1048,10 +1047,14 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				if h, _ := sch["signpost"].(string); h != "" {
 					field["help"] = h
 				}
+				worked := false
 				if d, ok := sch["default"]; ok && field["secret"] == true {
 					noDefault()
 				} else if ok {
-					initial[fd.ID] = d
+					worked = formDefault(fd.ID, d, readOnly, props, field, initial, where, note)
+				}
+				if readOnly && !worked {
+					note(Warning, where, "Read-only in vRA's form: editable in rvav's.")
 				}
 				if field["widget"] == "datagrid" || field["widget"] == "object" {
 					formColumns(field, sch)

@@ -792,6 +792,22 @@ An item's tabs:
   aren't checked. The layout changes only how the form shows: rvav
   checks a request the same way whatever it is.
 
+  To fill a field from other inputs and leave it editable, give it a
+  **Default** rule, in CEL, such as `inputs.app + "-" + environment`.
+  The form shows the default until the requester changes the field, and
+  updates it as the inputs it reads change. Once the requester changes
+  the field, even to empty it, the field keeps their value. A request
+  that leaves the field out gets the default, and a wizard's review
+  lists it. A **Computed value** rule instead gives a value the
+  requester can't change. On a text, number, date or toggle field, a
+  REST or CEL **Value source** gives the field its default: for REST,
+  set **Item** and **Value** to the JSONPaths of the value in the
+  answer; for CEL, write a **Value** expression. On a computed field,
+  the source gives its value. A field takes one default: rvav refuses a
+  default rule beside an initial value, a computed value or a source
+  that gives a default. When a default can't be worked out, the field's
+  properties say why, under **Rules**.
+
   Each field type has its own settings
   ([field types](../service-catalog.md#field-types)):
   - a number can **Allow decimals**, with a minimum, a maximum and a step;

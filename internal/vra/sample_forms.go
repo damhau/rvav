@@ -86,6 +86,10 @@ inputs:
     type: array
     items:
       type: string
+  hostName:
+    type: string
+  fqdn:
+    type: string
 resources:
   Cloud_vSphere_Machine_1:
     type: Cloud.vSphere.Machine
@@ -112,7 +116,9 @@ const fieldTypesForm = `{"layout":{"pages":[{"id":"page_general","title":"Server
 {"id":"text_notice","display":"text","state":{"visible":true,"read-only":false}},
 {"id":"image_zones","display":"image","state":{"visible":true,"read-only":false}},
 {"id":"image_logo","display":"image","state":{"visible":true,"read-only":false}},
-{"id":"link_sizes","display":"link","state":{"visible":true,"read-only":false}}]}]}]},
+{"id":"link_sizes","display":"link","state":{"visible":true,"read-only":false}},
+{"id":"hostName","display":"textField","state":{"visible":true,"read-only":false}},
+{"id":"fqdn","display":"textField","state":{"visible":true,"read-only":false}}]}]}]},
 "schema":{
 "environment":{"label":"Environment","type":{"dataType":"string","isMultiple":false},"valueList":[{"label":"Development","value":"dev"},{"label":"Production","value":"prd"}],"constraints":{"required":true}},
 "window":{"label":"Maintenance window","type":{"dataType":"dateTime","isMultiple":false}},
@@ -130,5 +136,7 @@ const fieldTypesForm = `{"layout":{"pages":[{"id":"page_general","title":"Server
 "text_notice":{"label":"Text","type":{"dataType":"string","isMultiple":false},"default":"Ask the network team before you open a port."},
 "image_zones":{"label":"Network zones","type":{"dataType":"string","isMultiple":false},"default":"https://wiki.corp.example/img/zones.png"},
 "image_logo":{"label":"Logo","type":{"dataType":"string","isMultiple":false},"default":"data:image/png;base64,iVBORw0KGgo="},
-"link_sizes":{"label":"VM sizes explained","type":{"dataType":"string","isMultiple":false},"default":"https://wiki.corp.example/vm-sizes"}},
+"link_sizes":{"label":"VM sizes explained","type":{"dataType":"string","isMultiple":false},"default":"https://wiki.corp.example/vm-sizes"},
+"hostName":{"label":"Host name","type":{"dataType":"string","isMultiple":false}},
+"fqdn":{"label":"FQDN","type":{"dataType":"string","isMultiple":false},"default":{"bind":{"values":["hostName","` + "`.corp.example`" + `"],"operator":"concatenate"}}}},
 "options":{"externalValidations":[]}}`
