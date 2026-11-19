@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -350,20 +351,26 @@ func (a *Activities) deleteResources(ctx context.Context, in OpInput) (string, e
 		return "", err
 	}
 	var done []string
+	var failed []error
 	for _, r := range list {
 		if id := argStr(in.Op.Args, "resource"); id != "" && r.ID != id {
 			continue
 		}
 		what, err := a.deleteResource(ctx, r)
 		if err != nil {
-			return "", fmt.Errorf("%s %s: %w", r.Type, r.Name, err)
+			err = fmt.Errorf("%s %s: %w", r.Type, r.Name, err)
+			if !in.Op.KeepGoing {
+				return "", err
+			}
+			failed = append(failed, err)
+			continue
 		}
 		a.Events.Deployment(ctx, in.DeploymentID)
 		if what != "" {
 			done = append(done, what)
 		}
 	}
-	return strings.Join(done, ", "), nil
+	return strings.Join(done, ", "), errors.Join(failed...)
 }
 
 // setLease ends the deployment's lease the given number of days from now.

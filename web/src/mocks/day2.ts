@@ -27,6 +27,8 @@ interface Op {
   detail?: string;
   system: Step["system"];
   apply: (d: DeploymentDetail, vm: VmResource | undefined) => void;
+  // The step's detail once it is done.
+  done?: string;
 }
 
 interface MockAction {
@@ -623,7 +625,20 @@ export const catalogue: MockAction[] = [
     destructive: true,
     typeName: true,
     confirm: "Deletes the VMs and releases their IP addresses and DNS records. This can't be undone.",
-    ops: (_vm, _i, d) => [
+    form: () =>
+      form("If a step fails", [
+        [
+          "ignore_failures",
+          { type: "boolean" },
+          {
+            label: "Go on past failures",
+            widget: "toggle",
+            help: "Go on past steps in vCenter, EfficientIP or NSX that fail. What they don't delete stays there: the request lists it, and rvav forgets it.",
+          },
+          false,
+        ],
+      ]),
+    ops: (_vm, inputs, d) => [
       ...d.resources
         .filter((r): r is VmResource => r.type === "vsphere.vm")
         .map((r) => vcenter(`vsphere.destroy@${r.name}`, `Delete VM ${r.name}`, () => {})),
@@ -641,6 +656,18 @@ export const catalogue: MockAction[] = [
           dep.resources = [];
         },
       },
+      ...(inputs.ignore_failures === true
+        ? [
+            {
+              key: "rvav.left",
+              title: "Forget what was left",
+              detail: "What failed steps didn't delete",
+              system: "rvav" as const,
+              done: "Nothing was left",
+              apply: () => {},
+            },
+          ]
+        : []),
     ],
   },
 ];
@@ -846,6 +873,7 @@ export function completeDay2Step(d: DeploymentDetail, s: Step): boolean {
   pending.delete(s.id);
   const vm = d.resources.find((r): r is VmResource => r.type === "vsphere.vm");
   op.apply(d, vm);
+  if (op.done) s.detail = op.done;
   return true;
 }
 

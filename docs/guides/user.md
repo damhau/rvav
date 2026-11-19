@@ -301,7 +301,14 @@ requests, with their own steps:
 - **Ownership:** hand over to someone else, or move to another project.
 - **The AWX actions your organisation offers** (install an agent, and so
   on).
-- **Delete.**
+- **Delete.** A step that fails in vCenter, EfficientIP or NSX stops the
+  deletion, and the deployment shows as failed: delete it again once the
+  cause is fixed. To finish deleting it anyway, select **Go on past steps
+  in vCenter, EfficientIP or NSX that fail**. rvav passes over each step
+  that fails, and the last step, **Forget what was left**, lists what
+  stays there. rvav forgets it and the deployment shows as deleted: delete what
+  was left in vCenter, EfficientIP or NSX, or have an administrator
+  onboard a VM that was left.
 
 An action that loses something, such as Delete, Power off or Revert to a
 snapshot, asks first and says what changes. Delete also asks you to type the

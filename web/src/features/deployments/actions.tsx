@@ -140,10 +140,14 @@ export function ActionDialog({
         }
         className="w-[min(560px,calc(100vw-32px))]"
         onOpenAutoFocus={(e) => {
-          // What it asks first (a field, the reason, the name to type) rather than Close.
-          const field = (e.target as HTMLElement).querySelector<HTMLElement>(
-            "form :is(input, textarea, select, [role=combobox]):not([disabled]):not([readonly])",
-          );
+          // What it asks first (a field, the reason, the name to type) rather than Close; a risky
+          // action's options, such as Delete's, come after the name to type.
+          const root = e.target as HTMLElement;
+          const field =
+            (mustType ? root.querySelector<HTMLElement>("#action-confirm") : null) ??
+            root.querySelector<HTMLElement>(
+              "form :is(input, textarea, select, [role=combobox]):not([disabled]):not([readonly])",
+            );
           if (field) {
             e.preventDefault();
             field.focus();

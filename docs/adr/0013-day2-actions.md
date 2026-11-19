@@ -68,6 +68,14 @@ deployments deleted; retrying it afterwards builds everything again, if its
 VM names are still free. Both are for the requester, the owner and project
 admins, and are audited.
 
+A day-2 action stops at its first failed step, except for an operation
+marked to keep going: its step stays failed and the next one runs. When
+asked (`ignore_failures`, X1.3, #143), Delete marks its steps in vCenter,
+EfficientIP and NSX this way, each of them tries all its resources, and a
+last step lists what they left and forgets it. The request succeeds and
+the deployment is deleted. rvav's own steps, such as the lease check,
+still stop it.
+
 ## Consequences
 - One timeline, inbox and audit model for everything users do.
 - Actions are code, reviewed and tested; custom actions (AWX, custom

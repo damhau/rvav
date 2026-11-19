@@ -1125,7 +1125,8 @@ first says what stops. A subscription's row opens its page, where
   NSX. Only those who may change the project (administrators) are
   offered it; day-2 policies can still refuse it or ask for approval.
 - **EfficientIP reconcile** (**Integrations › Checks**): addresses and records
-  tagged as rvav's that no deployment owns, left by failures or restores.
+  tagged as rvav's that no deployment owns, left by failures or restores,
+  or by a deletion that went on past failed steps.
   Delete them there, or adopt their VM.
 
 ## Watching

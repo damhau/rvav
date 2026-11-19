@@ -94,6 +94,8 @@ type Op struct {
 	System string         `json:"system"`
 	Op     string         `json:"op"`
 	Args   map[string]any `json:"args,omitempty"`
+	// KeepGoing: when it fails, the action goes on with the next operation.
+	KeepGoing bool `json:"keep_going,omitempty"`
 }
 
 // Action is a native day-2 action.

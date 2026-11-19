@@ -185,59 +185,87 @@ func init() {
 			}
 			return ""
 		},
+		Form: func(Target, Choices) *api.ActionForm {
+			f := form("If a step fails", toggle(InputIgnoreFailures, "Go on past failures",
+				"Go on past steps in vCenter, EfficientIP or NSX that fail. What they don't delete stays there: "+
+					"the request lists it, and rvav forgets it."))
+			// Set by rvav's own deletion when a lease ends, not shown.
+			f.Schema["properties"].(map[string]any)["lease"] = map[string]any{"type": "boolean"}
+			return f
+		},
 		Ops: func(t Target, in map[string]any) []Op {
-			var ops []Op
-			if in["lease"] == true {
-				ops = append(ops, leaseCheck()) // deleting because the lease ended
+			ops := deleteOps(t, in)
+			if in[InputIgnoreFailures] != true {
+				return ops
 			}
-			// The DRS rules keeping a component's VMs apart, first (ADR-0024).
-			var rules []string
-			for _, r := range t.Resources {
-				if r.Type == "vsphere.drs_rule" {
-					rules = append(rules, r.Name)
-				}
+			// rvav's own steps, such as the lease check, still stop it.
+			for i := range ops {
+				ops[i].KeepGoing = ops[i].System != "rvav"
 			}
-			if len(rules) > 0 {
-				ops = append(ops, Op{Key: "vsphere.drs_rule.delete", Title: "Remove the DRS rules", Detail: strings.Join(rules, ", "),
-					System: "vcenter", Op: "delete_resources", Args: map[string]any{"type": "vsphere.drs_rule"}})
-			}
-			deleteAll := func(typ, key, title, system string) {
-				var names []string
-				for _, r := range t.Resources {
-					if r.Type == typ {
-						names = append(names, r.Name)
-					}
-				}
-				if len(names) > 0 {
-					ops = append(ops, Op{Key: key, Title: title, Detail: strings.Join(names, ", "), System: system,
-						Op: "delete_resources", Args: map[string]any{"type": typ}})
-				}
-			}
-			// The VMs out of their NSX groups first (ADR-0028).
-			deleteAll("nsx.membership", "nsx.membership.delete", "Take the VMs out of their NSX groups", "nsx")
-			for _, r := range t.Resources {
-				if r.Type == vmType {
-					ops = append(ops, vcenter("vsphere.destroy@"+r.Name, "Delete VM "+r.Name, "destroy_vm", map[string]any{"resource": r.ID}))
-				}
-			}
-			// The firewall rules, then the groups they name; NSX segments
-			// made for the deployment after the addresses on them, their
-			// subnets last (ADR-0028).
-			for _, typ := range []struct{ typ, key, title, system string }{
-				{"dns.record", "dns.delete", "Delete the DNS records", "efficientip"},
-				{"ipam.address", "ipam.release", "Release the IP addresses", "efficientip"},
-				{"nsx.policy", "nsx.policy.delete", "Delete the firewall rules", "nsx"},
-				{"nsx.group", "nsx.group.delete", "Delete the NSX security groups", "nsx"},
-				{"nsx.segment", "nsx.segment.delete", "Delete the NSX segments", "nsx"},
-				{"ipam.subnet", "ipam.subnet.delete", "Delete the segments' subnets", "efficientip"},
-				// A generated private key not downloaded is forgotten (ADR-0039).
-				{"guest.access", "rvav.access.forget", "Forget the remote access", "rvav"},
-			} {
-				deleteAll(typ.typ, typ.key, typ.title, typ.system)
-			}
-			return ops
+			return append(ops, Op{Key: KeyLeft, Title: "Forget what was left", Detail: "What failed steps didn't delete",
+				System: "rvav", Op: OpForget, Args: map[string]any{"left": true}})
 		},
 	})
+}
+
+// InputIgnoreFailures is Delete's option to go on past failed steps (B18),
+// and KeyLeft its last step, which lists what they left and forgets it.
+const (
+	InputIgnoreFailures = "ignore_failures"
+	KeyLeft             = "rvav.left"
+)
+
+func deleteOps(t Target, in map[string]any) []Op {
+	var ops []Op
+	if in["lease"] == true {
+		ops = append(ops, leaseCheck()) // deleting because the lease ended
+	}
+	// The DRS rules keeping a component's VMs apart, first (ADR-0024).
+	var rules []string
+	for _, r := range t.Resources {
+		if r.Type == "vsphere.drs_rule" {
+			rules = append(rules, r.Name)
+		}
+	}
+	if len(rules) > 0 {
+		ops = append(ops, Op{Key: "vsphere.drs_rule.delete", Title: "Remove the DRS rules", Detail: strings.Join(rules, ", "),
+			System: "vcenter", Op: "delete_resources", Args: map[string]any{"type": "vsphere.drs_rule"}})
+	}
+	deleteAll := func(typ, key, title, system string) {
+		var names []string
+		for _, r := range t.Resources {
+			if r.Type == typ {
+				names = append(names, r.Name)
+			}
+		}
+		if len(names) > 0 {
+			ops = append(ops, Op{Key: key, Title: title, Detail: strings.Join(names, ", "), System: system,
+				Op: "delete_resources", Args: map[string]any{"type": typ}})
+		}
+	}
+	// The VMs out of their NSX groups first (ADR-0028).
+	deleteAll("nsx.membership", "nsx.membership.delete", "Take the VMs out of their NSX groups", "nsx")
+	for _, r := range t.Resources {
+		if r.Type == vmType {
+			ops = append(ops, vcenter("vsphere.destroy@"+r.Name, "Delete VM "+r.Name, "destroy_vm", map[string]any{"resource": r.ID}))
+		}
+	}
+	// The firewall rules, then the groups they name; NSX segments
+	// made for the deployment after the addresses on them, their
+	// subnets last (ADR-0028).
+	for _, typ := range []struct{ typ, key, title, system string }{
+		{"dns.record", "dns.delete", "Delete the DNS records", "efficientip"},
+		{"ipam.address", "ipam.release", "Release the IP addresses", "efficientip"},
+		{"nsx.policy", "nsx.policy.delete", "Delete the firewall rules", "nsx"},
+		{"nsx.group", "nsx.group.delete", "Delete the NSX security groups", "nsx"},
+		{"nsx.segment", "nsx.segment.delete", "Delete the NSX segments", "nsx"},
+		{"ipam.subnet", "ipam.subnet.delete", "Delete the segments' subnets", "efficientip"},
+		// A generated private key not downloaded is forgotten (ADR-0039).
+		{"guest.access", "rvav.access.forget", "Forget the remote access", "rvav"},
+	} {
+		deleteAll(typ.typ, typ.key, typ.title, typ.system)
+	}
+	return ops
 }
 
 func deref(s *string) string {

@@ -361,6 +361,10 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 					ResourceID: p.Day2.ResourceID, Moref: p.Day2.Moref, Op: op}
 				err = workflow.ExecuteActivity(ctx, a.RunOp, in).Get(ctx, nil)
 			}
+			// Its step says it failed; a cancel still stops the action.
+			if err != nil && op.KeepGoing && !temporal.IsCanceledError(err) && !errors.Is(ctx.Err(), workflow.ErrCanceled) {
+				continue
+			}
 			if err != nil {
 				return op.Key, err
 			}

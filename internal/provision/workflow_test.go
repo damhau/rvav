@@ -396,6 +396,36 @@ func TestDay2RunsOpsThenFinishes(t *testing.T) {
 	}
 }
 
+// A failed operation that keeps going, such as a step of a deletion asked
+// to go on past failures (B18), doesn't stop the action: it succeeds.
+func TestDay2GoesOnPastFailures(t *testing.T) {
+	env := newEnv(t)
+	var a *Activities
+	info := Info{RequestID: "req_3", ProjectID: "prj_web", Status: "queued", Plan: Plan{Kind: "day2", Day2: &Day2{
+		Action: "delete", DeploymentID: "dep_1", After: "deleted",
+		Ops: []day2.Op{{Key: "vsphere.destroy@app01", Op: "destroy_vm", KeepGoing: true}, {Key: "dns.delete", Op: "delete_resources", KeepGoing: true},
+			{Key: day2.KeyLeft, Op: day2.OpForget}},
+	}}}
+	var ran []string
+	env.OnActivity(a.LoadPlan, mock.Anything, "req_3").Return(info, nil)
+	env.OnActivity(a.MarkRunning, mock.Anything, "req_3").Return(true, nil)
+	env.OnActivity(a.RunOp, mock.Anything, mock.Anything).Return(func(_ context.Context, in OpInput) error {
+		ran = append(ran, in.Op.Key)
+		if in.Op.Key == "vsphere.destroy@app01" {
+			return temporal.NewNonRetryableApplicationError("The VM is locked", "Permanent", nil)
+		}
+		return nil
+	})
+	env.OnActivity(a.Finish, mock.Anything, FinishInput{RequestID: "req_3", ProjectID: "prj_web", Outcome: "succeeded"}).Return(nil)
+	env.ExecuteWorkflow(Provision, "req_3")
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"vsphere.destroy@app01", "dns.delete", day2.KeyLeft}; !slices.Equal(ran, want) {
+		t.Fatalf("ops = %v, want %v", ran, want)
+	}
+}
+
 // The test environment runs the two activities on their own goroutines.
 type fakeHousekeeper struct{ calls atomic.Int32 }
 

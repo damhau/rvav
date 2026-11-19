@@ -223,6 +223,28 @@ test("unregister a VM, then its deployment (X1.3)", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("delete a deployment going on past failures, then see what was left (X1.3)", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/deployments");
+  await page.getByRole("link", { name: "web-dev-api", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "web-dev-api" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  const del = page.getByRole("dialog", { name: "Delete · web-dev-api" });
+  await del.getByRole("checkbox", { name: /^Go on past steps in vCenter/ }).check();
+  await del.getByRole("textbox", { name: /to confirm/ }).fill("web-dev-api");
+  await del.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByText("Deleted", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("tablist", { name: "Deployment sections" }).getByRole("tab", { name: "History" }).click();
+  await page.getByRole("region", { name: "History" }).getByRole("link", { name: "Delete" }).click();
+  await expect(page.getByText("Forget what was left")).toBeVisible();
+  await expect(page.getByText("Nothing was left")).toBeVisible({ timeout: 15_000 });
+  expect(errors).toEqual([]);
+});
+
 test("an auditor is offered no action on a VM, not even its console", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "auditor"));
   await page.goto("/deployments");

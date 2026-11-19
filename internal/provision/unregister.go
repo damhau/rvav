@@ -14,6 +14,7 @@ import (
 // forget releases from rvav the deployment's resources, or one VM's own
 // (day2.OwnResources), as they are when it runs: their rows go, nothing
 // outside rvav changes (X1.3). Forgetting what is gone already is nothing.
+// After a deletion that went on past failures, it says what they left.
 func (a *Activities) forget(ctx context.Context, in OpInput) (string, error) {
 	list, err := a.Store.ListResources(ctx, in.DeploymentID)
 	if err != nil {
@@ -37,7 +38,7 @@ func (a *Activities) forget(ctx context.Context, in OpInput) (string, error) {
 			return !slices.ContainsFunc(own, func(o day2.Resource) bool { return o.ID == r.ID })
 		})
 	}
-	var vms []string
+	var vms, left []string
 	err = a.Store.Tx(ctx, func(tx pgx.Tx) error {
 		for _, r := range list {
 			// A generated private key not downloaded goes with the
@@ -53,6 +54,7 @@ func (a *Activities) forget(ctx context.Context, in OpInput) (string, error) {
 			if r.Type == "vsphere.vm" {
 				vms = append(vms, r.Name)
 			}
+			left = append(left, leftName(r))
 		}
 		return a.Store.RefreshDeploymentSyncState(ctx, tx, in.DeploymentID)
 	})
@@ -60,8 +62,26 @@ func (a *Activities) forget(ctx context.Context, in OpInput) (string, error) {
 		return "", err
 	}
 	a.Events.Deployment(ctx, in.DeploymentID)
-	if len(vms) == 0 {
+	switch {
+	case in.Op.Args["left"] == true && len(left) == 0:
+		return "Nothing was left", nil
+	case in.Op.Args["left"] == true:
+		return "Left: " + strings.Join(left, ", "), nil
+	case len(vms) == 0:
 		return "", nil
 	}
 	return "Left in vCenter: " + strings.Join(vms, ", "), nil
+}
+
+var leftKinds = map[string]string{
+	"vsphere.vm": "VM", "vsphere.drs_rule": "DRS rule", "dns.record": "DNS record", "ipam.address": "IP address",
+	"nsx.membership": "NSX group membership of", "nsx.policy": "firewall rule", "nsx.group": "NSX group",
+	"nsx.segment": "NSX segment", "ipam.subnet": "subnet", AccessResource: "remote access",
+}
+
+func leftName(r store.Resource) string {
+	if kind, ok := leftKinds[r.Type]; ok {
+		return kind + " " + r.Name
+	}
+	return r.Type + " " + r.Name
 }
