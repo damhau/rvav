@@ -49,7 +49,8 @@ func TestGroupSecretInputs(t *testing.T) {
 
 		var problem struct{ Errors []api.FieldError }
 		for folder, read := range map[string]string{"apps/${inputs.pw}": "pw", "apps/${inputs.token.lowerAscii()}": "token",
-			"apps/${inputs['pw']}": "pw, token"} {
+			"apps/${inputs['pw']}": "pw", "apps/${inputs[inputs.token]}": "pw, token",
+			`apps/${["pw"].map(k, inputs[k])[0]}`: "pw, token"} {
 			def := item(map[string]any{"os_family": "linux", "domain": "corp.example"}, folder)
 			h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "grp-folder", Name: "f", Summary: "f",
 				Category: "compute", Type: api.VmBlueprint, Definition: &def}, 422, &problem)
