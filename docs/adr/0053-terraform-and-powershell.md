@@ -2,7 +2,8 @@
 
 - Status: accepted
 - Date: 2026-11-19
-- Builds on the client and sign-in of [ADR-0051](0051-command-line.md).
+- Builds on the client and sign-in of [ADR-0051](0051-command-line.md)
+  and the inputs rvav fills in of [ADR-0055](0055-inputs-left-out.md).
   O1.2 (#168).
 
 ## Context
@@ -106,15 +107,40 @@ member `prj_web/usr_afavre`, a project's secret `prj_web/cmdb-hook`.
 The resources cover what rvav governs with: projects and catalog items;
 approval, day-2, naming, lease and deployment limit policies, lease
 rules and quotas; roles, their assignments, project members and group
-mappings; secrets and event subscriptions. Infrastructure (vCenters,
-templates, placement) stays in the web app: it is set up once, and its
-objects come from vCenter.
+mappings; secrets and event subscriptions. And deployments, below.
+Infrastructure (vCenters, templates, placement) stays in the web app: it
+is set up once, and its objects come from vCenter.
 
 A catalog item's `definition` is the version Terraform writes: a change
 makes a new version, published (deprecating the one before) unless
 `publish` is false, which keeps it as the item's draft. A version
 published in the web app shows as a diff, and the next apply publishes the
 configuration's again.
+
+### Deployments are requests
+`rvav_deployment` makes requests, as a person does in the web app, and
+waits for each until it ends, approvals included:
+- **Create** requests the item with the configuration's `inputs` only:
+  rvav fills in the others from the form
+  ([ADR-0055](0055-inputs-left-out.md)), so a configuration says what it
+  cares about. Without `version`, the newest the project may request.
+- **A change of `inputs` or `version`** is an update request
+  ([ADR-0042](0042-deployment-updates.md)): the deployment's other inputs
+  as they are, those given over them, and on a new version its new
+  fields' initial values, as the web app's update form starts. One rvav
+  says changes nothing is no request. rvav refuses what it can't do in
+  place, a smaller disk: Terraform says so, and doesn't replace the
+  deployment.
+- **A change of `name` or `description`** runs Edit deployment.
+- **Destroy** runs Delete. A change of project, environment or item
+  replaces the deployment.
+
+A refresh reads the deployment's values of the inputs the configuration
+gives, so that one changed in the web app is a diff; the others aren't
+Terraform's. A secret input's value never comes back, so its change in
+the web app isn't seen. A request that fails leaves the deployment
+tainted, to be deleted and requested again by the next apply. Stopping
+Terraform while it waits doesn't stop the request.
 
 ## Consequences
 - A change of the API's write schemas needs the provider's schema changed

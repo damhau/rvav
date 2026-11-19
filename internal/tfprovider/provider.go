@@ -28,11 +28,17 @@ const Address = "registry.terraform.io/damhau/rvav"
 
 // New returns the provider of this version.
 func New(version string) func() provider.Provider {
-	return func() provider.Provider { return &rvavProvider{version: version} }
+	return NewPolling(version, 2*time.Second)
+}
+
+// NewPolling is New, reading a request it waits for every poll.
+func NewPolling(version string, poll time.Duration) func() provider.Provider {
+	return func() provider.Provider { return &rvavProvider{version: version, poll: poll} }
 }
 
 type rvavProvider struct {
 	version string
+	poll    time.Duration
 	// getenv and configPath stand in for the process's in tests.
 	getenv     func(string) string
 	configPath string
@@ -100,7 +106,7 @@ func (p *rvavProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		resp.Diagnostics.AddError("Can't connect to rvav", err.Error())
 		return
 	}
-	cn := &conn{api: c, server: server, poll: 2 * time.Second}
+	cn := &conn{api: c, server: server, poll: p.poll}
 	resp.ResourceData, resp.DataSourceData = cn, cn
 }
 
@@ -180,6 +186,7 @@ func (p *rvavProvider) Resources(context.Context) []func() resource.Resource {
 		newGroupMappingResource,
 		newSubscriptionResource,
 		newSecretResource,
+		newDeploymentResource,
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	install "github.com/hashicorp/hc-install"
 	"github.com/hashicorp/hc-install/checkpoint"
@@ -68,7 +69,7 @@ func newTerraform(t *testing.T, h *harness, user string) terraformAs {
 	h.json("POST", "/api/v1/tokens", user, api.ApiTokenCreate{Name: "terraform"}, 201, &made)
 	return terraformAs{
 		factories: map[string]func() (tfprotov6.ProviderServer, error){
-			"rvav": providerserver.NewProtocol6WithError(tfprovider.New("test")()),
+			"rvav": providerserver.NewProtocol6WithError(tfprovider.NewPolling("test", 20*time.Millisecond)()),
 		},
 		provider: fmt.Sprintf("provider \"rvav\" {\n  url   = %q\n  token = %q\n}\n", h.srv.URL, made.Token),
 	}

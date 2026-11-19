@@ -246,6 +246,13 @@ func (h *harness) json(method, path, user string, body any, want int, out any, h
 // runWorkflow executes the request's workflow with the real activities.
 func (h *harness) runWorkflow(requestID string, setup func(env *testsuite.TestWorkflowEnvironment)) {
 	h.t.Helper()
+	if err := h.execute(requestID, setup); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// execute is runWorkflow for any goroutine: it returns what went wrong.
+func (h *harness) execute(requestID string, setup func(env *testsuite.TestWorkflowEnvironment)) error {
 	var s testsuite.WorkflowTestSuite
 	s.SetLogger(nil)
 	env := s.NewTestWorkflowEnvironment()
@@ -257,12 +264,13 @@ func (h *harness) runWorkflow(requestID string, setup func(env *testsuite.TestWo
 	}
 	env.ExecuteWorkflow(provision.Provision, requestID)
 	if !env.IsWorkflowCompleted() {
-		h.t.Fatalf("workflow for %s did not complete", requestID)
+		return fmt.Errorf("workflow for %s did not complete", requestID)
 	}
 	// A cancelled workflow reports a canceled error even after it cleaned up.
 	if err := env.GetWorkflowError(); err != nil && !temporal.IsCanceledError(err) {
-		h.t.Fatalf("workflow for %s: %v", requestID, err)
+		return fmt.Errorf("workflow for %s: %v", requestID, err)
 	}
+	return nil
 }
 
 func setup(t *testing.T, ctx context.Context, c *vim25.Client) *harness {

@@ -91,12 +91,15 @@ func (r *restResource) Create(ctx context.Context, req resource.CreateRequest, r
 		resp.Diagnostics.AddError("Invalid configuration", err.Error())
 		return
 	}
+	// An object with an error is one made that then failed: Terraform keeps
+	// it, tainted.
 	obj, err := r.create(ctx, r.conn, body)
+	if obj != nil {
+		r.put(&resp.State, &resp.Diagnostics, obj, req.Plan.Raw)
+	}
 	if err != nil {
 		resp.Diagnostics.AddError("rvav refused to create the "+title(r.name), err.Error())
-		return
 	}
-	r.put(&resp.State, &resp.Diagnostics, obj, req.Plan.Raw)
 }
 
 func (r *restResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
