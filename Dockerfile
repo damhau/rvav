@@ -7,7 +7,10 @@ COPY api ./api
 COPY cmd ./cmd
 COPY internal ./internal
 COPY migrations ./migrations
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/rvav ./cmd/rvav \
+# rvav with Go's FIPS 140-3 module, v1.0.0 (CMVP certificate #5247); RVAV_FIPS
+# turns the mode on at run time (ADR-0060). off builds with Go's own release.
+ARG GOFIPS140=v1.0.0
+RUN CGO_ENABLED=0 GOFIPS140=$GOFIPS140 go build -trimpath -ldflags="-s -w" -o /out/rvav ./cmd/rvav \
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/rvav-vcsim ./cmd/rvav-vcsim
 
 FROM gcr.io/distroless/static-debian12:nonroot

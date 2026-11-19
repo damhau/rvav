@@ -14,8 +14,11 @@ TRIVY       := aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528
 check: gen-check lint-spec lint-chart check-nginx vet test test-e2e test-ansible test-python web-check ## Everything CI checks on every push (the browser tests run daily: web-e2e)
 check-quick: gen-check lint-spec vet test web-quick ## The fast part, before a push: no end-to-end, browser, chart, Ansible or Python tests (CI runs them)
 
+# rvav with Go's FIPS 140-3 module, as in its image (ADR-0060); off for Go's own.
+GOFIPS140 ?= v1.0.0
+
 build: ## Build rvav, rvav-vcsim, rvavctl and the Terraform provider into ./bin
-	$(GO) build -o $(BIN)/rvav ./cmd/rvav
+	GOFIPS140=$(GOFIPS140) $(GO) build -o $(BIN)/rvav ./cmd/rvav
 	$(GO) build -o $(BIN)/rvav-vcsim ./cmd/rvav-vcsim
 	$(GO) build -o $(BIN)/rvavctl ./cmd/rvavctl
 	$(GO) build -o $(BIN)/terraform-provider-rvav ./cmd/terraform-provider-rvav

@@ -90,6 +90,12 @@ sync:
     requests: { cpu: 100m, memory: 128Mi }
     limits: { memory: 512Mi }
 
+# FIPS 140-3 mode (docs/operations/fips.md): "off", "on" or "only", in
+# quotes, for the migrations and every process; wins over config.RVAV_FIPS.
+# The image is built with Go's FIPS 140-3 module either way.
+fips:
+  mode: ""
+
 # Every rvav pod applies the database migrations as it starts (one at a
 # time, under a lock), in an init container.
 migrate:

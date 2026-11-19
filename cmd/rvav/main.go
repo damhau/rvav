@@ -1,5 +1,7 @@
 // Command rvav runs the rvav processes: the HTTP API, the Temporal worker
 // and the vCenter inventory sync, plus admin and development helpers.
+//
+//go:debug fips140=off
 package main
 
 import (
@@ -22,6 +24,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/nsx"
@@ -78,6 +81,13 @@ Configuration comes from RVAV_* environment variables; see .env.example.
 `
 
 func main() {
+	// A build with GOFIPS140 turns FIPS 140-3 mode on unless told otherwise,
+	// hence go:debug fips140=off above: RVAV_FIPS turns it on as the process
+	// starts, so that one image serves both (ADR-0060).
+	if err := fips.Apply(); err != nil {
+		fmt.Fprintf(os.Stderr, "rvav: %v\n", err)
+		os.Exit(2)
+	}
 	if len(os.Args) < 2 || os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "help" {
 		fmt.Print(usage)
 		return
@@ -125,6 +135,9 @@ func run(ctx context.Context, cmd string, args []string) error {
 	}
 	log := logger(cfg.LogLevel).With("process", cmd)
 	slog.SetDefault(log)
+	if cmd == "api" || cmd == "worker" || cmd == "sync" || cmd == "dev" || cmd == "migrate" {
+		log.Info("FIPS 140-3", "mode", fips.Current(), "module", fips.Module())
+	}
 
 	switch cmd {
 	case "migrate":

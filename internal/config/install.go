@@ -5,6 +5,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/damhau/rvav/internal/fips"
 )
 
 // InstallSetting is a setting given in the environment only (ADR-0030),
@@ -35,6 +37,8 @@ var Install = []InstallSetting{
 		return strings.Join(s, ", ")
 	}},
 	{"RVAV_DRAIN_TIMEOUT", false, func(c Config) string { return c.DrainTimeout.String() }},
+	// The mode in effect, which GODEBUG may also have set.
+	{"RVAV_FIPS", false, func(Config) string { return string(fips.Current()) }},
 	{"RVAV_ADMIN_PASSWORD", true, nil},
 	{"RVAV_AUTH_MODE", false, func(c Config) string { return c.Auth.Mode }},
 	{"RVAV_ALLOW_DEV_AUTH", false, func(c Config) string { return onOff(c.Auth.AllowDev) }},

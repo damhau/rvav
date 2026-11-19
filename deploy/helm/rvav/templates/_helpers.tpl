@@ -39,6 +39,26 @@ app.kubernetes.io/component: {{ .component }}
 - { name: RVAV_ALLOW_DEV_AUTH, value: "" }
 {{- end }}
 
+{{/* fips.mode, which YAML 1.1 reads as a boolean when on or off isn't
+     quoted; empty leaves RVAV_FIPS to config (off when not set). */}}
+{{- define "rvav.fipsMode" -}}
+{{- $m := .Values.fips.mode -}}
+{{- if kindIs "bool" $m }}{{ $m = ternary "on" "off" $m }}{{ end -}}
+{{- if not (has (toString (default "" $m)) (list "" "off" "on" "only")) }}
+{{- fail (printf "fips.mode is %v: give off, on or only" $m) }}
+{{- end -}}
+{{- default "" $m -}}
+{{- end }}
+
+{{/* Every rvav container's environment: SSO only, and the FIPS 140-3
+     mode, the same for the migrations and the processes (ADR-0060). */}}
+{{- define "rvav.env" -}}
+{{ include "rvav.ssoOnly" . }}
+{{- with include "rvav.fipsMode" .root }}
+- { name: RVAV_FIPS, value: {{ . | quote }} }
+{{- end }}
+{{- end }}
+
 {{/* Replicas on different nodes when they can be. */}}
 {{- define "rvav.spread" -}}
 {{- if .root.Values.spreadAcrossNodes }}
@@ -111,7 +131,7 @@ spec:
           imagePullPolicy: {{ .root.Values.image.pullPolicy }}
           args: ["migrate"{{ if and .root.Values.migrate.seed (eq .component "api") }}, "-seed"{{ end }}]
           envFrom: {{ include "rvav.envFrom" .root | nindent 12 }}
-          env: {{ include "rvav.ssoOnly" . | nindent 12 }}
+          env: {{ include "rvav.env" . | nindent 12 }}
           securityContext: {{ toYaml .root.Values.securityContext | nindent 12 }}
       containers:
         - name: {{ .component }}
@@ -119,7 +139,7 @@ spec:
           imagePullPolicy: {{ .root.Values.image.pullPolicy }}
           args: [{{ .component | quote }}]
           envFrom: {{ include "rvav.envFrom" .root | nindent 12 }}
-          env: {{ include "rvav.ssoOnly" . | nindent 12 }}
+          env: {{ include "rvav.env" . | nindent 12 }}
           ports:
             - { name: http, containerPort: 8080 }
             - { name: metrics, containerPort: 9090 }
