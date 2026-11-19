@@ -107,18 +107,22 @@ export function SignInPage({
     setBusy(true);
     setError(null);
     try {
-      const { data, response } = await api.POST("/auth/sign-in", { body: { username, password } });
+      const { data, error: body, response } = await api.POST("/auth/sign-in", { body: { username, password } });
       if (data) {
         signedInLocally();
         globalThis.location.assign(data.password_change_required ? CHANGE_PASSWORD_PATH : target());
         return;
       }
+      const problem: Problem | undefined = body;
       if (response.status === 429) {
         const seconds = Number(response.headers.get("Retry-After") ?? "1") || 1;
         wait.start(seconds);
         setError("Too many failed attempts in a row. Wait before trying again.");
       } else if (response.status === 401) {
         setError("The username or password is wrong.");
+      } else if (response.status === 409 && problem?.detail) {
+        // In FIPS 140-only mode, a password hash it refuses: what to do instead (ADR-0060).
+        setError(problem.detail);
       } else {
         setError("Signing in didn't work. Try again in a moment.");
       }

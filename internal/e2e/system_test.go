@@ -14,6 +14,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/buildinfo"
 	"github.com/damhau/rvav/internal/config"
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -58,8 +59,13 @@ func TestSystemPage(t *testing.T) {
 		if sys.Version != buildinfo.Version() || sys.Schema < 48 || sys.Revision != vc.Revision {
 			t.Fatalf("system = %s %d %d", sys.Version, sys.Schema, sys.Revision)
 		}
-		if len(sys.Processes) != 1 || sys.Processes[0].Id != worker.ID || sys.Processes[0].Version != "1.4.0" || sys.Processes[0].Revision != 0 {
+		if len(sys.Processes) != 1 || sys.Processes[0].Id != worker.ID || sys.Processes[0].Version != "1.4.0" || sys.Processes[0].Revision != 0 ||
+			sys.Processes[0].Fips.Mode != api.FipsOff {
 			t.Fatalf("processes = %+v", sys.Processes)
+		}
+		// The API's own FIPS 140-3 mode (ADR-0060).
+		if sys.Fips.Mode != api.FipsStatusMode(fips.Current()) || sys.Fips.Module != fips.Module() || sys.Fips.Module == "" {
+			t.Fatalf("FIPS 140-3 = %+v", sys.Fips)
 		}
 		if len(sys.Settings) != 2 || sys.Settings[0].Kind != api.IntegrationKindVcenter || sys.Settings[0].Applies != api.Applying ||
 			sys.Settings[0].Revision != vc.Revision || sys.Settings[0].UpdatedBy == nil || sys.Settings[0].UpdatedBy.Name != "Marc Keller" ||

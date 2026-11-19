@@ -26,6 +26,7 @@ import (
 	"github.com/damhau/rvav/internal/app"
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/integrations/awx"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
@@ -226,6 +227,11 @@ func TestInstallSettingsOnly(t *testing.T) {
 		defer in.stop()
 		in.until("the processes to record themselves", func() bool { return len(in.processes()) == 3 })
 		in.ready()
+		for role, p := range in.processes() {
+			if p.FIPSMode != string(fips.Current()) || p.FIPSModule != fips.Module() {
+				t.Errorf("the %s records FIPS 140-3 mode %q, module %q", role, p.FIPSMode, p.FIPSModule)
+			}
+		}
 		worker := in.procs["worker"].current.Load()
 		if _, err := worker.IPAM.NextFree(ctx, efficientip.Subnet{}); !errors.Is(err, efficientip.ErrNotSet) {
 			t.Fatalf("EfficientIP not set: %v", err)

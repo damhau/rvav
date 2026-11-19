@@ -9,7 +9,13 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/buildinfo"
 	"github.com/damhau/rvav/internal/config"
+	"github.com/damhau/rvav/internal/fips"
 )
+
+// FIPSStatus is this process's FIPS 140-3 mode and module (ADR-0060).
+func FIPSStatus() api.FipsStatus {
+	return api.FipsStatus{Mode: api.FipsStatusMode(fips.Current()), Module: fips.Module()}
+}
 
 // System is the System page (U1.5, ADR-0030), read only: the version, the
 // schema, each process and the settings revision it runs, the settings
@@ -23,7 +29,7 @@ func (s *Service) System(ctx context.Context, p *auth.Principal) (api.System, er
 	if err != nil {
 		return api.System{}, err
 	}
-	out := api.System{Version: buildinfo.Version(), Revision: procs.Revision, Processes: procs.Items,
+	out := api.System{Version: buildinfo.Version(), Fips: FIPSStatus(), Revision: procs.Revision, Processes: procs.Items,
 		Settings: []api.SettingsRevision{}, Install: []api.InstallSetting{}}
 	if out.Schema, err = s.Store.SchemaVersion(ctx); err != nil {
 		return api.System{}, err

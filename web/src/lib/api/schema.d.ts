@@ -64,7 +64,9 @@ export interface paths {
          *     the provider's users sign in with it instead. From the third failure
          *     in a row, attempts are refused for a while (`429`). A username or
          *     password longer than allowed is a failed sign-in (`401`), as a
-         *     wrong one is.
+         *     wrong one is. In FIPS 140-only mode a password still kept as an
+         *     argon2id hash is refused (`409`) until `rvav admin reset-password`
+         *     sets it again (ADR-0060).
          */
         post: operations["signIn"];
         delete?: never;
@@ -9913,6 +9915,24 @@ export interface components {
             started_at: string;
             /** Format: date-time */
             seen_at: string;
+            fips: components["schemas"]["FipsStatus"];
+        };
+        /** @description How a process uses Go's FIPS 140-3 module (ADR-0060), as RVAV_FIPS set it when the process started. */
+        FipsStatus: {
+            /**
+             * @description off - no FIPS 140 mode.
+             *     on - the module's approved algorithms where rvav and Go choose.
+             *     only - also refuses every algorithm the module doesn't approve.
+             * @enum {string}
+             */
+            mode: "off" | "on" | "only";
+            /**
+             * @description The version of the Go Cryptographic Module the process was built
+             *     with: v1.0.0 in rvav's images; "latest" in a build without
+             *     GOFIPS140, which uses its Go release's module, not a validated one.
+             * @example v1.0.0
+             */
+            module: string;
         };
         ProcessList: {
             items: components["schemas"]["Process"][];
@@ -9951,6 +9971,7 @@ export interface components {
         System: {
             /** @description The version of the API answering. */
             version: string;
+            fips: components["schemas"]["FipsStatus"];
             /**
              * Format: int64
              * @description The last database migration applied.
@@ -10864,6 +10885,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -10890,6 +10912,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
             429: components["responses"]["TooManyRequests"];
         };

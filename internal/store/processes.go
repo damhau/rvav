@@ -18,6 +18,9 @@ type Process struct {
 	State     string    `db:"state"`
 	StartedAt time.Time `db:"started_at"`
 	SeenAt    time.Time `db:"seen_at"`
+	// FIPSMode and FIPSModule: its FIPS 140-3 mode (ADR-0060).
+	FIPSMode   string `db:"fips_mode"`
+	FIPSModule string `db:"fips_module"`
 }
 
 // SeeProcess records a process as running now, in its state, and forgets
@@ -26,9 +29,10 @@ type Process struct {
 func (s *Store) SeeProcess(ctx context.Context, p Process, before time.Time) error {
 	_, err := s.Pool.Exec(ctx, `with gone as (delete from processes where id <> $1
 			and (seen_at < $7 or (state = 'restarting' and role = $2 and host = $3)))
-		insert into processes (id, role, host, version, revision, state) values ($1, $2, $3, $4, $5, $6)
+		insert into processes (id, role, host, version, revision, state, fips_mode, fips_module)
+			values ($1, $2, $3, $4, $5, $6, coalesce(nullif($8, ''), 'off'), $9)
 		on conflict (id) do update set revision = excluded.revision, state = excluded.state, seen_at = now()`,
-		p.ID, p.Role, p.Host, p.Version, p.Revision, p.State, before)
+		p.ID, p.Role, p.Host, p.Version, p.Revision, p.State, before, p.FIPSMode, p.FIPSModule)
 	return err
 }
 
@@ -49,7 +53,7 @@ func (s *Store) ProcessRestarting(ctx context.Context, id string) error {
 // Processes are those seen since then, and those restarting, by role and
 // host.
 func (s *Store) Processes(ctx context.Context, since time.Time) ([]Process, error) {
-	rows, _ := s.Pool.Query(ctx, `select id, role, host, version, revision, state, started_at, seen_at from processes
+	rows, _ := s.Pool.Query(ctx, `select id, role, host, version, revision, state, started_at, seen_at, fips_mode, fips_module from processes
 		where seen_at >= $1 or state = 'restarting' order by role, host, started_at`, since)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Process])
 }

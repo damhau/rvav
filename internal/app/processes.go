@@ -12,6 +12,7 @@ import (
 
 	"github.com/damhau/rvav/internal/buildinfo"
 	"github.com/damhau/rvav/internal/core"
+	"github.com/damhau/rvav/internal/fips"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -52,7 +53,7 @@ const forgetAfter = 10 * time.Minute
 func (a *App) Run(ctx context.Context, role string, run func(context.Context) error) error {
 	host, _ := os.Hostname()
 	p := store.Process{ID: processID(host, role), Role: role, Host: host, Version: buildinfo.Version(),
-		Revision: a.SettingsRevision, State: "running"}
+		Revision: a.SettingsRevision, State: "running", FIPSMode: string(fips.Current()), FIPSModule: fips.Module()}
 	if err := a.Store.SeeProcess(ctx, p, time.Now().Add(-forgetAfter)); err != nil {
 		return fmt.Errorf("record the process: %w", err)
 	}

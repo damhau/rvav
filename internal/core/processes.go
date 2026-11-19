@@ -37,7 +37,8 @@ func (s *Service) Processes(ctx context.Context, p *auth.Principal) (api.Process
 	}
 	for _, r := range rows {
 		out.Items = append(out.Items, api.Process{Id: r.ID, Role: api.ProcessRole(r.Role), Host: r.Host, Version: r.Version,
-			Revision: r.Revision, State: api.ProcessState(r.State), StartedAt: r.StartedAt, SeenAt: r.SeenAt})
+			Revision: r.Revision, State: api.ProcessState(r.State), StartedAt: r.StartedAt, SeenAt: r.SeenAt,
+			Fips: api.FipsStatus{Mode: api.FipsStatusMode(r.FIPSMode), Module: r.FIPSModule}})
 	}
 	return out, nil
 }

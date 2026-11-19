@@ -31,6 +31,32 @@ const states: Record<S["Process"]["state"], string> = {
   restarting: "Starting again",
 };
 
+const fipsModes: Record<S["FipsStatus"]["mode"], string> = {
+  off: "Off",
+  on: "On",
+  only: "Only",
+};
+
+const fipsMeans: Record<S["FipsStatus"]["mode"], string> = {
+  off: "no FIPS 140 mode",
+  on: "approved algorithms where rvav and Go choose",
+  only: "other algorithms refused",
+};
+
+// "latest": built without GOFIPS140, with its Go release's module.
+const fipsModule = (module: string) =>
+  module === "latest" ? "Go's module, not a validated one" : `Go Cryptographic Module ${module}`;
+
+function Fips({ status }: { status: S["FipsStatus"] }) {
+  return (
+    <>
+      {fipsModes[status.mode]}
+      <span className="text-muted">: {fipsMeans[status.mode]}</span>
+      <span className="ml-1.5 font-mono text-secondary text-faint">{fipsModule(status.module)}</span>
+    </>
+  );
+}
+
 function Applies({ value }: { value: S["SettingsRevision"]["applies"] }) {
   const Icon = value === "applying" ? LoaderCircle : value === "applied" ? CircleCheck : Clock;
   return (
@@ -58,6 +84,7 @@ function When({ iso }: { iso: string }) {
 // No column sorts: the page has nothing to press, and each list is short.
 function Processes({ system }: { system: S["System"] }) {
   const versions = new Set(system.processes.map((p) => p.version));
+  const modes = new Set(system.processes.map((p) => p.fips.mode));
   const columns: Column<S["Process"]>[] = [
     {
       id: "process",
@@ -80,6 +107,11 @@ function Processes({ system }: { system: S["System"] }) {
         </>
       ),
     },
+    {
+      id: "fips",
+      header: "FIPS 140-3",
+      cell: (p) => <span title={fipsModule(p.fips.module)}>{fipsModes[p.fips.mode]}</span>,
+    },
     { id: "state", header: "State", cell: (p) => states[p.state] },
     { id: "started", header: "Started", cell: (p) => <When iso={p.started_at} /> },
   ];
@@ -90,12 +122,20 @@ function Processes({ system }: { system: S["System"] }) {
         columns={columns}
         rows={system.processes}
         rowKey={(p) => p.id}
-        minWidth={640}
+        minWidth={720}
         toolbar={
-          versions.size > 1 && (
-            <p role="status" className="text-secondary text-warn">
-              Processes run {versions.size} versions: an upgrade is under way, or a process was left behind.
-            </p>
+          (versions.size > 1 || modes.size > 1) && (
+            <div role="status" className="space-y-1 text-secondary text-warn">
+              {versions.size > 1 && (
+                <p>Processes run {versions.size} versions: an upgrade is under way, or a process was left behind.</p>
+              )}
+              {modes.size > 1 && (
+                <p>
+                  Processes run in {modes.size} FIPS 140-3 modes: give each the same{" "}
+                  <span className="font-mono">RVAV_FIPS</span>, then start them again.
+                </p>
+              )}
+            </div>
           )
         }
         empty={
@@ -243,6 +283,7 @@ export function SystemPage() {
             <KeyValues
               items={[
                 { label: "Version", value: <span className="font-mono text-secondary">{d.version}</span> },
+                { label: "FIPS 140-3 mode", value: <Fips status={d.fips} /> },
                 { label: "Database schema", value: `Migration ${d.schema}` },
                 { label: "Connection settings", value: `Revision ${d.revision}` },
               ]}

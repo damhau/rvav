@@ -1104,6 +1104,27 @@ func (e EventTopicKey) Valid() bool {
 	}
 }
 
+// Defines values for FipsStatusMode.
+const (
+	FipsOff  FipsStatusMode = "off"
+	FipsOn   FipsStatusMode = "on"
+	FipsOnly FipsStatusMode = "only"
+)
+
+// Valid indicates whether the value is a known member of the FipsStatusMode enum.
+func (e FipsStatusMode) Valid() bool {
+	switch e {
+	case FipsOff:
+		return true
+	case FipsOn:
+		return true
+	case FipsOnly:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FirewallRuleAction.
 const (
 	ALLOW  FirewallRuleAction = "ALLOW"
@@ -6130,6 +6151,24 @@ type FileRef struct {
 	Size int64 `json:"size"`
 }
 
+// FipsStatus How a process uses Go's FIPS 140-3 module (ADR-0060), as RVAV_FIPS set it when the process started.
+type FipsStatus struct {
+	// Mode off - no FIPS 140 mode.
+	// on - the module's approved algorithms where rvav and Go choose.
+	// only - also refuses every algorithm the module doesn't approve.
+	Mode FipsStatusMode `json:"mode"`
+
+	// Module The version of the Go Cryptographic Module the process was built
+	// with: v1.0.0 in rvav's images; "latest" in a build without
+	// GOFIPS140, which uses its Go release's module, not a validated one.
+	Module string `json:"module"`
+}
+
+// FipsStatusMode off - no FIPS 140 mode.
+// on - the module's approved algorithms where rvav and Go choose.
+// only - also refuses every algorithm the module doesn't approve.
+type FipsStatusMode string
+
 // FirewallRule A distributed firewall rule into one of the deployment's groups.
 type FirewallRule struct {
 	Action FirewallRuleAction `json:"action"`
@@ -8212,6 +8251,9 @@ type Problem struct {
 
 // Process defines model for Process.
 type Process struct {
+	// Fips How a process uses Go's FIPS 140-3 module (ADR-0060), as RVAV_FIPS set it when the process started.
+	Fips FipsStatus `json:"fips"`
+
 	// Host The host name (a pod's name on Kubernetes).
 	Host string `json:"host"`
 	Id   string `json:"id"`
@@ -9871,6 +9913,8 @@ type SyslogTransport string
 
 // System defines model for System.
 type System struct {
+	// Fips How a process uses Go's FIPS 140-3 module (ADR-0060), as RVAV_FIPS set it when the process started.
+	Fips      FipsStatus       `json:"fips"`
 	Install   []InstallSetting `json:"install"`
 	Processes []Process        `json:"processes"`
 
@@ -15836,7 +15880,9 @@ type ClientInterface interface {
 	// the provider's users sign in with it instead. From the third failure
 	// in a row, attempts are refused for a while (`429`). A username or
 	// password longer than allowed is a failed sign-in (`401`), as a
-	// wrong one is.
+	// wrong one is. In FIPS 140-only mode a password still kept as an
+	// argon2id hash is refused (`409`) until `rvav admin reset-password`
+	// sets it again (ADR-0060).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -15850,7 +15896,9 @@ type ClientInterface interface {
 	// the provider's users sign in with it instead. From the third failure
 	// in a row, attempts are refused for a while (`429`). A username or
 	// password longer than allowed is a failed sign-in (`401`), as a
-	// wrong one is.
+	// wrong one is. In FIPS 140-only mode a password still kept as an
+	// argon2id hash is refused (`409`) until `rvav admin reset-password`
+	// sets it again (ADR-0060).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -22366,7 +22414,9 @@ func (c *Client) ChangePassword(ctx context.Context, body ChangePasswordJSONRequ
 // the provider's users sign in with it instead. From the third failure
 // in a row, attempts are refused for a while (`429`). A username or
 // password longer than allowed is a failed sign-in (`401`), as a
-// wrong one is.
+// wrong one is. In FIPS 140-only mode a password still kept as an
+// argon2id hash is refused (`409`) until `rvav admin reset-password`
+// sets it again (ADR-0060).
 //
 // Takes any type of body and a specified content type.
 //
@@ -22390,7 +22440,9 @@ func (c *Client) SignInWithBody(ctx context.Context, contentType string, body io
 // the provider's users sign in with it instead. From the third failure
 // in a row, attempts are refused for a while (`429`). A username or
 // password longer than allowed is a failed sign-in (`401`), as a
-// wrong one is.
+// wrong one is. In FIPS 140-only mode a password still kept as an
+// argon2id hash is refused (`409`) until `rvav admin reset-password`
+// sets it again (ADR-0060).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -39978,7 +40030,9 @@ type ClientWithResponsesInterface interface {
 	// the provider's users sign in with it instead. From the third failure
 	// in a row, attempts are refused for a while (`429`). A username or
 	// password longer than allowed is a failed sign-in (`401`), as a
-	// wrong one is.
+	// wrong one is. In FIPS 140-only mode a password still kept as an
+	// argon2id hash is refused (`409`) until `rvav admin reset-password`
+	// sets it again (ADR-0060).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -39992,7 +40046,9 @@ type ClientWithResponsesInterface interface {
 	// the provider's users sign in with it instead. From the third failure
 	// in a row, attempts are refused for a while (`429`). A username or
 	// password longer than allowed is a failed sign-in (`401`), as a
-	// wrong one is.
+	// wrong one is. In FIPS 140-only mode a password still kept as an
+	// argon2id hash is refused (`409`) until `rvav admin reset-password`
+	// sets it again (ADR-0060).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -54107,6 +54163,8 @@ type ChangePasswordResponse struct {
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationFailed
 	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
@@ -54128,6 +54186,11 @@ func (r ChangePasswordResponse) GetApplicationproblemJSON401() *Unauthorized {
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r ChangePasswordResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r ChangePasswordResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
 }
 
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
@@ -54188,6 +54251,8 @@ type SignInResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
 	ApplicationproblemJSON429 *TooManyRequests
 	// Headers200 the parsed response headers for an HTTP 200 response
@@ -54209,6 +54274,11 @@ func (r SignInResponse) GetApplicationproblemJSON400() *BadRequest {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r SignInResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r SignInResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
 }
 
 // GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
@@ -63615,7 +63685,9 @@ func (c *ClientWithResponses) ChangePasswordWithResponse(ctx context.Context, bo
 // the provider's users sign in with it instead. From the third failure
 // in a row, attempts are refused for a while (`429`). A username or
 // password longer than allowed is a failed sign-in (`401`), as a
-// wrong one is.
+// wrong one is. In FIPS 140-only mode a password still kept as an
+// argon2id hash is refused (`409`) until `rvav admin reset-password`
+// sets it again (ADR-0060).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -63635,7 +63707,9 @@ func (c *ClientWithResponses) SignInWithBodyWithResponse(ctx context.Context, co
 // the provider's users sign in with it instead. From the third failure
 // in a row, attempts are refused for a while (`429`). A username or
 // password longer than allowed is a failed sign-in (`401`), as a
-// wrong one is.
+// wrong one is. In FIPS 140-only mode a password still kept as an
+// argon2id hash is refused (`409`) until `rvav admin reset-password`
+// sets it again (ADR-0060).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -75437,6 +75511,13 @@ func ParseChangePasswordResponse(rsp *http.Response) (*ChangePasswordResponse, e
 		}
 		response.ApplicationproblemJSON403 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationFailed
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -75503,6 +75584,13 @@ func ParseSignInResponse(rsp *http.Response) (*SignInResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest TooManyRequests

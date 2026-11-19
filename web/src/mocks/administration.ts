@@ -166,11 +166,15 @@ function processesNow(a: AdminState): S["Process"][] {
       state,
       started_at: p.started_at,
       seen_at: new Date().toISOString(),
+      fips: MOCK_FIPS,
     };
   });
 }
 
 const now = () => new Date().toISOString();
+
+/** The mock install runs in FIPS 140-only mode, as RVAV_FIPS says below. */
+const MOCK_FIPS: S["FipsStatus"] = { mode: "only", module: "v1.0.0" };
 
 /** An install's settings, in config.Install's order. */
 const MOCK_INSTALL: S["InstallSetting"][] = (
@@ -182,6 +186,7 @@ const MOCK_INSTALL: S["InstallSetting"][] = (
     ["RVAV_PUBLIC_URL", "https://rvav.corp.example", false, true],
     ["RVAV_CORS_ORIGINS", "", false, false],
     ["RVAV_DRAIN_TIMEOUT", "5m0s", false, false],
+    ["RVAV_FIPS", "only", false, true],
     ["RVAV_ADMIN_PASSWORD", undefined, true, false],
     ["RVAV_AUTH_MODE", "oidc", false, false],
     ["RVAV_ALLOW_DEV_AUTH", "off", false, false],
@@ -2211,6 +2216,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       }).sort((x, y) => y.revision - x.revision);
       return HttpResponse.json({
         version: "1.4.0",
+        fips: MOCK_FIPS,
         schema: 49,
         revision: Math.max(0, ...connections),
         processes,

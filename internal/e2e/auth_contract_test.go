@@ -84,8 +84,9 @@ func TestAuthContract(t *testing.T) {
 			}
 		}
 
-		// Sign-in lists what it sends: 429 is TestLocalAdmin's.
-		got := append(slices.Clone(sent["POST /auth/sign-in"]), http.StatusTooManyRequests)
+		// Sign-in lists what it sends: 429 is TestLocalAdmin's, 409
+		// TestLocalAdminInFIPSOnlyMode's.
+		got := append(slices.Clone(sent["POST /auth/sign-in"]), http.StatusTooManyRequests, http.StatusConflict)
 		slices.Sort(got)
 		got = slices.Compact(got)
 		if want := listed("POST", "/auth/sign-in"); !slices.Equal(got, want) {

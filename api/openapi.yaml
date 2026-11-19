@@ -92,7 +92,9 @@ paths:
         the provider's users sign in with it instead. From the third failure
         in a row, attempts are refused for a while (`429`). A username or
         password longer than allowed is a failed sign-in (`401`), as a
-        wrong one is.
+        wrong one is. In FIPS 140-only mode a password still kept as an
+        argon2id hash is refused (`409`) until `rvav admin reset-password`
+        sets it again (ADR-0060).
       security: []
       requestBody:
         required: true
@@ -111,6 +113,7 @@ paths:
               schema: { $ref: "#/components/schemas/SignInResult" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /auth/password:
@@ -131,6 +134,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
@@ -12918,7 +12922,7 @@ components:
         updated_by: { $ref: "#/components/schemas/UserRef" }
     Process:
       type: object
-      required: [id, role, host, version, revision, state, started_at, seen_at]
+      required: [id, role, host, version, revision, state, started_at, seen_at, fips]
       properties:
         id: { type: string, example: rvav-worker-7d9f-2k4xq/worker/1f3a }
         role:
@@ -12938,6 +12942,27 @@ components:
             restarting - it exited for them, and its supervisor hasn't started it again yet.
         started_at: { type: string, format: date-time }
         seen_at: { type: string, format: date-time }
+        fips: { $ref: "#/components/schemas/FipsStatus" }
+    FipsStatus:
+      type: object
+      description: How a process uses Go's FIPS 140-3 module (ADR-0060), as RVAV_FIPS set it when the process started.
+      required: [mode, module]
+      properties:
+        mode:
+          type: string
+          enum: ["off", "on", "only"]
+          x-enum-varnames: [FipsOff, FipsOn, FipsOnly]
+          description: |
+            off - no FIPS 140 mode.
+            on - the module's approved algorithms where rvav and Go choose.
+            only - also refuses every algorithm the module doesn't approve.
+        module:
+          type: string
+          description: |
+            The version of the Go Cryptographic Module the process was built
+            with: v1.0.0 in rvav's images; "latest" in a build without
+            GOFIPS140, which uses its Go release's module, not a validated one.
+          example: v1.0.0
     ProcessList:
       type: object
       required: [items, revision]
@@ -12985,11 +13010,12 @@ components:
           description: Set in the environment; otherwise the default applies.
     System:
       type: object
-      required: [version, schema, revision, processes, settings, install]
+      required: [version, fips, schema, revision, processes, settings, install]
       properties:
         version:
           type: string
           description: The version of the API answering.
+        fips: { $ref: "#/components/schemas/FipsStatus" }
         schema:
           type: integer
           format: int64

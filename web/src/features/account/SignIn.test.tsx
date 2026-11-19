@@ -1,6 +1,8 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { server } from "@/mocks/node";
 import { MOCK_ADMIN_PASSWORD } from "@/mocks/signIn";
 import { ChangePasswordPage, SignInPage } from "./SignIn";
 
@@ -73,6 +75,23 @@ describe("the sign-in page", () => {
     expect(submit).toBeEnabled();
     await user.click(submit);
     await waitFor(() => expect(assign).toHaveBeenCalledWith("/change-password"));
+  });
+
+  it("says what to do when FIPS 140-only mode refuses the password's hash", async () => {
+    const detail =
+      "The local administrator's password hash uses argon2id, which FIPS 140-only mode (RVAV_FIPS=only) refuses: set a new password with rvav admin reset-password, or sign in once with RVAV_FIPS=on, which hashes it again with PBKDF2";
+    server.use(
+      http.post("*/api/v1/auth/sign-in", () =>
+        HttpResponse.json({ title: "Conflict", status: 409, detail }, { status: 409 }),
+      ),
+    );
+    const user = userEvent.setup();
+    render(<SignInPage provider={false} />);
+    await user.type(screen.getByLabelText("Username"), "admin");
+    await user.type(screen.getByLabelText("Password"), MOCK_ADMIN_PASSWORD);
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(detail);
+    expect(assign).not.toHaveBeenCalled();
   });
 });
 

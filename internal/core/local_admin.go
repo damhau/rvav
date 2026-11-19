@@ -82,6 +82,9 @@ func (s *Service) SignIn(ctx context.Context, username, password string, now tim
 	if err != nil {
 		return "", false, err
 	}
+	if err := s.hashAllowed(ctx, acc); err != nil {
+		return "", false, err
+	}
 	acc, right, err := s.attempt(ctx, acc.UserID, password, now)
 	if err != nil {
 		return "", false, err
@@ -94,12 +97,40 @@ func (s *Service) SignIn(ctx context.Context, username, password string, now tim
 	if err := s.Store.LocalSignInSucceeded(ctx, acc.UserID); err != nil {
 		return "", false, err
 	}
+	if auth.NeedsRehash(acc.PasswordHash) {
+		s.rehash(ctx, acc, password)
+	}
 	id := auth.NewSessionID()
 	if err := s.Store.CreateSession(ctx, auth.HashToken(id), acc.UserID, now, now.Add(auth.SessionMax), auth.SessionIdle); err != nil {
 		return "", false, err
 	}
 	s.auditSignIn(ctx, &acc.UserID, "auth.sign_in", acc.UserID, map[string]any{"password_change_required": acc.MustChange, "method": "local"})
 	return id, acc.MustChange, nil
+}
+
+// hashAllowed refuses, before it counts as an attempt, a password this
+// process may not check: an argon2id hash in FIPS 140-only mode (ADR-0060).
+func (s *Service) hashAllowed(ctx context.Context, acc store.LocalAccount) error {
+	err := auth.CheckHash(acc.PasswordHash)
+	if err == nil {
+		return nil
+	}
+	s.auditSignIn(ctx, &acc.UserID, "auth.sign_in_failed", acc.UserID,
+		map[string]any{"reason": "password hash refused in FIPS 140-only mode", "method": "local"})
+	return &ConflictError{Msg: err.Error()}
+}
+
+// rehash keeps a password that was right as the hash this process makes:
+// PBKDF2 in FIPS 140 mode, so that FIPS 140-only mode checks it later. The
+// sign-in succeeds either way.
+func (s *Service) rehash(ctx context.Context, acc store.LocalAccount, password string) {
+	hash, err := auth.HashPassword(ctx, password)
+	if err == nil {
+		err = s.Store.RehashLocalPassword(ctx, acc.UserID, acc.PasswordHash, hash)
+	}
+	if err != nil {
+		s.Log.Warn("the local administrator's password is still kept as an argon2id hash", "err", err)
+	}
 }
 
 // attempt checks a password of a local account, counted as a failure
@@ -140,6 +171,9 @@ func (s *Service) ChangePassword(ctx context.Context, p *auth.Principal, current
 	// Checked first, so that a new password refused isn't a failure.
 	if errs := checkNewPassword(acc.Username, current, next); len(errs) > 0 {
 		return &ValidationError{Errors: errs}
+	}
+	if err := s.hashAllowed(ctx, acc); err != nil {
+		return err
 	}
 	acc, right, err := s.attempt(ctx, acc.UserID, current, now)
 	if err != nil {

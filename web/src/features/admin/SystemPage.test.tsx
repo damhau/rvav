@@ -1,6 +1,8 @@
 import { screen, within } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, call } from "@/lib/api/client";
+import { server } from "@/mocks/node";
 import { resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
@@ -17,10 +19,12 @@ describe("System page", () => {
     const install = await screen.findByRole("region", { name: "This install" });
     expect(install).toHaveTextContent("Version1.4.0");
     expect(install).toHaveTextContent("Migration 49");
+    expect(install).toHaveTextContent("FIPS 140-3 modeOnly: other algorithms refusedGo Cryptographic Module v1.0.0");
 
     const procs = within(screen.getByRole("table", { name: "Processes" })).getAllByRole("row");
     expect(procs).toHaveLength(5);
-    expect(procs[1]).toHaveTextContent(/API.*rvav-api-7d9f-2k4xq.*1\.4\.0.*Running/);
+    expect(procs[1]).toHaveTextContent(/API.*rvav-api-7d9f-2k4xq.*1\.4\.0.*Only.*Running/);
+    expect(screen.queryByText(/FIPS 140-3 modes/)).toBeNull();
 
     const saved = screen.getByRole("table", { name: "Settings saved in Administration" });
     expect(within(saved).getByRole("row", { name: /vCenter/ })).toHaveTextContent(/Applied/);
@@ -79,6 +83,27 @@ describe("System page", () => {
     const saved = await screen.findByRole("table", { name: "Settings saved in Administration" });
     expect(within(saved).getByRole("link", { name: "Console" })).toHaveAttribute("href", "/admin/integrations/vcenter");
     expect(within(saved).getByRole("link", { name: "vCenter" })).toHaveAttribute("href", "/admin/integrations/vcenter");
+  });
+
+  it("says when processes run in different FIPS 140-3 modes", async () => {
+    const system = await call(api.GET("/admin/system"));
+    const [first, ...others] = system.processes;
+    server.use(
+      http.get("*/api/v1/admin/system", () =>
+        HttpResponse.json({
+          ...system,
+          fips: { mode: "off", module: "latest" },
+          processes: [{ ...first!, fips: { mode: "off", module: "latest" } }, ...others],
+        }),
+      ),
+    );
+    renderApp("/admin/system");
+    const install = await screen.findByRole("region", { name: "This install" });
+    expect(install).toHaveTextContent("FIPS 140-3 modeOff: no FIPS 140 modeGo's module, not a validated one");
+    const processes = screen.getByRole("region", { name: "Processes" });
+    expect(within(processes).getByRole("status")).toHaveTextContent(
+      "Processes run in 2 FIPS 140-3 modes: give each the same RVAV_FIPS, then start them again.",
+    );
   });
 
   it("on a new install, nothing is saved in Administration yet", async () => {
