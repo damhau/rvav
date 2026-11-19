@@ -2,12 +2,37 @@
 // functions over the form schema, UI schema and initial values, so the three
 // stay in step. The server checks the result when the draft is saved.
 import { ownSources } from "@/forms/useFieldValues";
-import type { CatalogVersionDefinition, FieldError, UiColumn, UiField, UiWidget } from "@/lib/api/types";
+import type { CatalogVersionDefinition, FieldError, UiColumn, UiField, UiSchema, UiWidget } from "@/lib/api/types";
 
 export { ownSources };
 
 export type Def = CatalogVersionDefinition;
 export type Prop = Record<string, unknown>;
+export type LayoutKind = UiSchema["layout"]["kind"];
+
+/** How a form's sections show. */
+export const layouts: { value: LayoutKind; label: string; hint: string }[] = [
+  { value: "page", label: "One page", hint: "Every section on one page." },
+  { value: "wizard", label: "Wizard", hint: "A page per section, with Back and Next, then a review before submit." },
+  { value: "tabs", label: "Tabs", hint: "A tab per section." },
+];
+
+/** What a section is in the form's layout: a section, a wizard's page or a tab. */
+export function partWord(def: Def): { one: string; One: string } {
+  const one = { page: "section", wizard: "page", tabs: "tab" }[layoutOf(def)];
+  return { one, One: one.charAt(0).toUpperCase() + one.slice(1) };
+}
+
+/** The form's layout; none said is one page. */
+export function layoutOf(def: Def): LayoutKind {
+  return def.ui_schema.layout.kind || "page";
+}
+
+export function setLayout(def: Def, kind: LayoutKind): Def {
+  return edit(def, (d) => {
+    d.ui_schema.layout.kind = kind;
+  });
+}
 
 export const widgetLabels: Record<UiWidget, string> = {
   text: "Text",
@@ -200,7 +225,7 @@ export function addSection(def: Def): { def: Def; key: string } {
   const key = `section_${n}`;
   return {
     def: edit(def, (d) => {
-      d.ui_schema.layout.sections.push({ key, title: "New section", columns: 2, fields: [] });
+      d.ui_schema.layout.sections.push({ key, title: `New ${partWord(def).one}`, columns: 2, fields: [] });
     }),
     key,
   };

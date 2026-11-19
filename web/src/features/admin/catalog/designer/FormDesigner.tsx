@@ -10,7 +10,7 @@ import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { FormRenderer } from "@/forms/FormRenderer";
+import { FormRenderer, type PageInputs } from "@/forms/FormRenderer";
 import { api, call } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemVersion, FieldStates } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
@@ -61,6 +61,7 @@ function Preview({
   me,
   initialValues,
   onStates,
+  showing,
 }: {
   item: AdminCatalogItem;
   draftId: string;
@@ -70,13 +71,16 @@ function Preview({
   me: string;
   initialValues: Record<string, unknown>;
   onStates: (s: FieldStates | undefined) => void;
+  /** The section of the designer's selection, whose page or tab the preview shows. */
+  showing?: string;
 }) {
+  const qc = useQueryClient();
   const projects = item.entitlements.projects ?? [];
   const environments = useQuery(q.environments());
   const { users, list, asUser } = usePreviewUsers(ctx.projectId, ctx.asUserId, me);
   const inputs = useDebounced(ctx.values, 300);
   // Keyed on the server's revision of the draft: the same revision is the same form.
-  const preview = useQuery({
+  const previewOf = (values: Record<string, unknown>) => ({
     queryKey: [
       ...keys.catalogAdmin.all,
       "designer-preview",
@@ -86,29 +90,44 @@ function Preview({
       ctx.projectId,
       asUser,
       ctx.environment,
-      inputs,
+      values,
     ],
-    queryFn: ({ signal }) =>
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
       call(
         api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/preview", {
           params: { path: { itemId: item.id, versionId: draftId } },
-          body: { project_id: ctx.projectId, environment: ctx.environment, as_user_id: asUser, inputs },
+          body: { project_id: ctx.projectId, environment: ctx.environment, as_user_id: asUser, inputs: values },
           signal,
         }),
       ),
+  });
+  const preview = useQuery({
+    ...previewOf(inputs),
     enabled: Boolean(ctx.projectId && asUser),
     placeholderData: keepPreviousData,
   });
-  const states = preview.data?.fields;
+  // A wizard's page as Next checked it: what shows until the inputs or the context change.
+  const [checkedPage, setCheckedPage] = useState<{ key: string; data: NonNullable<typeof preview.data> }>();
+  const shown = checkedPage?.key === JSON.stringify(previewOf(ctx.values).queryKey) ? checkedPage.data : preview.data;
+  const states = shown?.fields;
   useEffect(() => onStates(states), [states, onStates]);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [checkAll, setCheckAll] = useState(false);
   const errors = Object.fromEntries(
-    (preview.data?.errors ?? [])
+    (shown?.errors ?? [])
       .map((e) => [e.field.replace(/^\/inputs\//, ""), e.message] as const)
       .filter(([name]) => checkAll || checked.has(name)),
   );
-  const problemCount = preview.data?.errors.length ?? 0;
+  const problemCount = shown?.errors.length ?? 0;
+  const checkPage = async (inputsOf: PageInputs) => {
+    const asked = previewOf(ctx.values);
+    const data = await qc.fetchQuery(asked);
+    setCheckedPage({ key: JSON.stringify(asked.queryKey), data });
+    const names = inputsOf(data.fields);
+    setChecked((s) => new Set([...s, ...names]));
+    const found = new Set(data.errors.map((e) => e.field.replace(/^\/inputs\//, "").split("/")[0]));
+    return { problems: names.filter((n) => found.has(n)), fields: data.fields };
+  };
   return (
     <Panel
       title="Preview"
@@ -155,15 +174,17 @@ function Preview({
       )}
       {preview.isPending && asUser !== "" && <Skeleton className="h-64" />}
       {preview.isError && <ErrorState error={preview.error} onRetry={() => void preview.refetch()} />}
-      {preview.data && (
+      {shown && (
         <>
           <FormRenderer
-            form={preview.data.form}
+            form={shown.form}
             values={ctx.values}
             onChange={(name, v) => setCtx((c) => ({ ...c, values: { ...c.values, [name]: v } }))}
             onBlur={(name) => setChecked((s) => new Set(s).add(name))}
             errors={errors}
-            fieldStates={preview.data.fields}
+            fieldStates={shown.fields}
+            showing={showing}
+            wizard={{ check: checkPage }}
             ctx={{
               versionId: draftId,
               projectId: ctx.projectId,
@@ -332,6 +353,11 @@ function Designer({ item, draft, copy }: { item: AdminCatalogItem; draft: Catalo
             me={me.user.id}
             initialValues={def.initial_values}
             onStates={setStates}
+            showing={
+              selection?.kind === "section"
+                ? selection.key
+                : def.ui_schema.layout.sections.find((s) => selection && s.fields.includes(selection.name))?.key
+            }
           />
         </div>
         <Properties

@@ -386,6 +386,13 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
         message: `${name} is required but is not an input of the form's schema, so no request could pass.`,
       });
   });
+  const kind = def.ui_schema.layout.kind as string;
+  if (kind && !["page", "wizard", "tabs"].includes(kind))
+    errors.push({
+      field: `${prefix}/ui_schema/layout/kind`,
+      code: "invalid",
+      message: `"${kind}" is no layout: use page, wizard or tabs.`,
+    });
   const keys = new Set<string>();
   def.ui_schema.layout.sections.forEach((sec, i) => {
     if (!sec.key.trim())

@@ -22,6 +22,7 @@ import {
   moveToSection,
   namePattern,
   ownSources,
+  partWord,
   props,
   removeColumn,
   removeField,
@@ -490,7 +491,7 @@ function FieldProperties({
             options={widgetOptions}
           />
         </Field>
-        <Field label="Section" htmlFor="prop-section">
+        <Field label={partWord(def).One} htmlFor="prop-section">
           <Select
             id="prop-section"
             value={section?.key ?? ""}
@@ -1097,6 +1098,7 @@ function SectionProperties({
 }) {
   const [keyError, setKeyError] = useState("");
   const s = def.ui_schema.layout.sections.find((x) => x.key === sectionKey);
+  const { one } = partWord(def);
   if (!s) return null;
   return (
     <div className="flex flex-col gap-3">
@@ -1114,9 +1116,9 @@ function SectionProperties({
           className={mono}
           value={s.key}
           onCommit={(k) => {
-            if (!k.trim()) return setKeyError("Give the section a key.");
+            if (!k.trim()) return setKeyError(`Give the ${one} a key.`);
             if (def.ui_schema.layout.sections.some((x) => x.key === k))
-              return setKeyError(`Another section has the key "${k}".`);
+              return setKeyError(`Another ${one} has the key "${k}".`);
             setKeyError("");
             onChange(updateSection(def, s.key, { key: k }));
             onSelect({ kind: "section", key: k });
@@ -1151,7 +1153,7 @@ function SectionProperties({
             focusLater("designer-add-section");
           }}
         >
-          Remove section
+          Remove {one}
         </Button>
       </div>
     </div>
@@ -1178,9 +1180,10 @@ export function Properties({
 }) {
   const sectionIndex =
     selection?.kind === "section" ? def.ui_schema.layout.sections.findIndex((s) => s.key === selection.key) : -1;
+  const word = partWord(def);
   return (
-    <Panel title={selection?.kind === "section" ? "Section" : "Properties"}>
-      {!selection && <p className="text-secondary text-muted">Choose a field or a section to change it.</p>}
+    <Panel title={selection?.kind === "section" ? word.One : "Properties"}>
+      {!selection && <p className="text-secondary text-muted">Choose a field or a {word.one} to change it.</p>}
       {selection?.kind === "field" && (
         <FieldProperties
           key={selection.name}

@@ -7,12 +7,16 @@ import {
   addSection,
   isColumnRequired,
   isDecimal,
+  layoutOf,
   moveField,
+  moveSection,
+  partWord,
   removeColumn,
   removeField,
   renameField,
   setDecimal,
   setInitial,
+  setLayout,
   setRequired,
   setRule,
   setWidget,
@@ -34,6 +38,23 @@ const empty: Def = {
 const prop = (def: Def, name: string) => (def.form_schema.properties as Record<string, unknown>)[name];
 
 describe("form designer model", () => {
+  it("sets the layout, which names the sections pages or tabs", () => {
+    let def = addSection(addSection(empty).def).def;
+    expect(layoutOf(def)).toBe("page");
+    expect(partWord(def)).toEqual({ one: "section", One: "Section" });
+    def = setLayout(def, "wizard");
+    expect(def.ui_schema.layout.kind).toBe("wizard");
+    expect(partWord(def).one).toBe("page");
+    def = addSection(def).def;
+    expect(def.ui_schema.layout.sections.map((s) => s.title)).toEqual(["New section", "New section", "New page"]);
+    def = moveSection(def, "section_3", -1);
+    expect(def.ui_schema.layout.sections.map((s) => s.key)).toEqual(["section_1", "section_3", "section_2"]);
+    expect(partWord(setLayout(def, "tabs"))).toEqual({ one: "tab", One: "Tab" });
+    expect(
+      layoutOf({ ...def, ui_schema: { ...def.ui_schema, layout: { ...def.ui_schema.layout, kind: "" as never } } }),
+    ).toBe("page");
+  });
+
   it("adds fields with a schema, a UI field and a place in a section", () => {
     let { def, name } = addField(empty, "text");
     expect(name).toBe("text");
