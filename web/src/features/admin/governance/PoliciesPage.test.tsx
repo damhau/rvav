@@ -146,6 +146,43 @@ describe("Policies", () => {
   });
 
   it(
+    "makes a lease rule for small VMs, whose lifetime is no shorter than its maximum",
+    { timeout: 15_000 },
+    async () => {
+      const user = userEvent.setup();
+      renderApp("/admin/policies?tab=lease");
+      const region = await screen.findByRole("region", { name: "Lease rules" });
+      await user.click(await within(region).findByRole("button", { name: "New lease rule" }));
+      const sheet = await screen.findByRole("dialog", { name: "New lease rule" });
+      await user.click(within(sheet).getByRole("textbox", { name: "Name" }));
+      await user.paste("Small VMs");
+      await user.click(within(sheet).getByRole("textbox", { name: "Applies when (CEL)" }));
+      await user.paste('inputs.size == "S"');
+      await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
+      await user.click(await screen.findByRole("option", { name: "Development" }));
+      const lifetime = within(sheet).getByRole("spinbutton", { name: "Lifetime, in days" });
+      await user.type(lifetime, "20");
+      await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
+      expect(await within(sheet).findByText("The maximum can't be longer than the lifetime.")).toBeInTheDocument();
+      await user.clear(lifetime);
+      await user.type(lifetime, "60");
+      await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
+      expect(await screen.findByText("Small VMs saved")).toBeInTheDocument();
+
+      const row = await within(region).findByRole("row", { name: /Small VMs/ });
+      expect(row).toHaveTextContent("Development, every project");
+      expect(row).toHaveTextContent('inputs.size == "S"');
+      expect(row).toHaveTextContent("7 days, up to 30");
+      expect(row).toHaveTextContent("Lives 60 days at most");
+      expect(adminState(db).leaseRules[0]).toMatchObject({
+        environment: "dev",
+        max_lifetime_days: 60,
+        set_by_admin: true,
+      });
+    },
+  );
+
+  it(
     "previews and saves a naming policy whose counter starts at 100 and moves by 10",
     { timeout: 15_000 },
     async () => {
@@ -292,6 +329,55 @@ describe("Policies as a project admin", () => {
     expect(await within(sheet).findByText("Development allows 2 extensions at most.")).toBeInTheDocument();
     expect(within(sheet).getByText("Development gives 7 grace days at most.")).toBeInTheDocument();
     expect(within(sheet).getByText("Development's leases end with power off then delete.")).toBeInTheDocument();
+  });
+
+  it("keeps their lease rule within the environment's lease, and reads the rules an administrator set", async () => {
+    localStorage.setItem("rvav.mock.as", "project-admin");
+    resetDb();
+    adminState(db).leaseRules.push({
+      id: "lsr_gpu",
+      name: "GPU servers",
+      condition: 'item.slug == "gpu-server"',
+      environment: null,
+      project_id: "prj_web",
+      priority: 10,
+      default_days: 14,
+      max_days: 30,
+      max_extensions: 0,
+      grace_days: 3,
+      expiry_action: "delete",
+      enforcement: "hard",
+      max_lifetime_days: 90,
+      set_by_admin: true,
+    });
+    const user = userEvent.setup();
+    renderApp("/admin/policies?tab=lease");
+    const region = await screen.findByRole("region", { name: "Lease rules" });
+    const set = await within(region).findByRole("row", { name: /GPU servers/ });
+    expect(set).toHaveTextContent("Set by an administrator");
+    expect(set).toHaveTextContent("Lives 90 days at most");
+    expect(within(set).queryByRole("button", { name: /^Actions for/ })).toBeNull();
+
+    await user.click(within(region).getByRole("button", { name: "New lease rule" }));
+    const sheet = await screen.findByRole("dialog", { name: "New lease rule" });
+    await user.click(within(sheet).getByRole("textbox", { name: "Name" }));
+    await user.paste("Long builds");
+    await user.click(within(sheet).getByRole("textbox", { name: "Applies when (CEL)" }));
+    await user.paste("true");
+    await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
+    await user.click(await screen.findByRole("option", { name: "Development" }));
+    const max = within(sheet).getByRole("spinbutton", { name: "At most, in days" });
+    await user.clear(max);
+    await user.type(max, "120");
+    await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
+    expect(await within(sheet).findByText("Development allows 90 days at most.")).toBeInTheDocument();
+    await user.clear(max);
+    await user.type(max, "60");
+    await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
+    expect(await screen.findByText("Long builds saved")).toBeInTheDocument();
+    const mine = await within(region).findByRole("row", { name: /Long builds/ });
+    expect(mine).not.toHaveTextContent("Set by an administrator");
+    expect(within(mine).getByRole("button", { name: "Actions for Long builds" })).toBeInTheDocument();
   });
 });
 

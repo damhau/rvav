@@ -1,4 +1,4 @@
-// Policies (S9, ADR-0020): approval, day-2, lease and naming policies, and
+// Policies (S9, ADR-0020): approval, day-2, lease and naming policies, lease rules (ADR-0048), and
 // what applies for a project, environment, item or action. Conditions are CEL,
 // checked by the server on sample variables when saved.
 import { useNavigate } from "@tanstack/react-router";
@@ -11,6 +11,7 @@ import { usePolicyRights } from "./policies/shared";
 import { ApprovalPolicies } from "./policies/ApprovalPolicies";
 import { Day2Policies } from "./policies/Day2Policies";
 import { LeasePolicies } from "./policies/LeasePolicies";
+import { LeaseRules } from "./policies/LeaseRules";
 import { NamingPolicies } from "./policies/NamingPolicies";
 import { WhatApplies } from "./policies/WhatApplies";
 
@@ -53,8 +54,9 @@ export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
         <TabsContent value="day2" className="pt-4">
           <Day2Policies rights={rights} />
         </TabsContent>
-        <TabsContent value="lease" className="pt-4">
+        <TabsContent value="lease" className="flex flex-col gap-4 pt-4">
           <LeasePolicies rights={rights} />
+          <LeaseRules rights={rights} />
         </TabsContent>
         {naming && (
           <TabsContent value="naming" className="pt-4">

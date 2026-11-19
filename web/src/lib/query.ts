@@ -208,6 +208,7 @@ export const adm = {
       call(api.GET("/admin/projects/{projectId}/quotas", { params: { path: { projectId } }, signal })),
     ),
   leases: () => get(["admin", "leases"], (signal) => call(api.GET("/admin/lease-policies", { signal }))),
+  leaseRules: () => get(["admin", "lease-rules"], (signal) => call(api.GET("/admin/lease-rules", { signal }))),
   approvals: () =>
     get(["admin", "approval-policies"], (signal) => call(api.GET("/admin/approval-policies", { signal }))),
   day2: () => get(["admin", "day2-policies"], (signal) => call(api.GET("/admin/day2-policies", { signal }))),

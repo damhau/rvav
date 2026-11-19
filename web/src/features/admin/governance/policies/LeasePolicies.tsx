@@ -21,11 +21,106 @@ import { enforcementOptions, SetByAdmin, useProjects, useRefreshPolicies, type P
 type S = components["schemas"];
 type Lease = S["LeasePolicy"];
 
-const expiryLabels: Record<S["LeaseExpiryAction"], string> = {
+export const expiryLabels: Record<S["LeaseExpiryAction"], string> = {
   power_off_then_delete: "Power off, then delete after the grace period",
   delete: "Delete after the grace period",
   notify_only: "Only tell the owner",
 };
+
+type Terms = Pick<
+  Lease,
+  "default_days" | "max_days" | "max_extensions" | "grace_days" | "expiry_action" | "enforcement" | "max_lifetime_days"
+>;
+
+/** What a lease policy or rule gives, in a table cell. */
+export function LeaseSummary({ lease }: { lease: Terms }) {
+  return (
+    <span className="text-secondary">
+      {lease.default_days ? `${lease.default_days} days, up to ${lease.max_days ?? "no limit"}` : "None"}
+      {lease.max_lifetime_days != null && (
+        <span className="block text-muted">Lives {lease.max_lifetime_days} days at most</span>
+      )}
+      {lease.enforcement === "soft" && <span className="block text-muted">Soft: longer warns</span>}
+    </span>
+  );
+}
+
+/** The fields of what a lease policy or rule gives (ADR-0014, ADR-0048). */
+export function LeaseTermsFields<T extends Terms>({
+  id,
+  f,
+  setF,
+  errors,
+}: {
+  id: string;
+  f: T;
+  setF: (f: T) => void;
+  errors: Record<string, string>;
+}) {
+  const days = (k: "default_days" | "max_days" | "max_lifetime_days", label: string, hint: string) => (
+    <Field label={label} htmlFor={`${id}-${k}`} error={errors[`/${k}`]} hint={hint}>
+      <Input
+        id={`${id}-${k}`}
+        type="number"
+        min={1}
+        value={f[k] ?? ""}
+        onChange={(e) => setF({ ...f, [k]: e.target.value === "" ? null : Number(e.target.value) })}
+      />
+    </Field>
+  );
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        {days("default_days", "Lease, in days", "Empty for none")}
+        {days("max_days", "At most, in days", "Empty for none")}
+        <Field label="Extensions" htmlFor={`${id}-ext`} error={errors["/max_extensions"]}>
+          <Input
+            id={`${id}-ext`}
+            type="number"
+            min={0}
+            value={f.max_extensions}
+            onChange={(e) => setF({ ...f, max_extensions: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label="Grace, in days" htmlFor={`${id}-grace`} error={errors["/grace_days"]}>
+          <Input
+            id={`${id}-grace`}
+            type="number"
+            min={0}
+            value={f.grace_days}
+            onChange={(e) => setF({ ...f, grace_days: Number(e.target.value) })}
+          />
+        </Field>
+      </div>
+      {days(
+        "max_lifetime_days",
+        "Lifetime, in days",
+        "How long a deployment lives in all, from its creation. An extension past it needs approval. Empty for no limit",
+      )}
+      <Field label="When it expires" htmlFor={`${id}-action`} error={errors["/expiry_action"]}>
+        <Select
+          id={`${id}-action`}
+          value={f.expiry_action}
+          onChange={(v) => setF({ ...f, expiry_action: v as S["LeaseExpiryAction"] })}
+          options={Object.entries(expiryLabels).map(([value, label]) => ({ value, label }))}
+        />
+      </Field>
+      <Field
+        label="Enforcement"
+        htmlFor={`${id}-enforcement`}
+        error={errors["/enforcement"]}
+        hint="Soft: a longer lease, one more extension or one past the lifetime warns the requester instead of being refused or approved."
+      >
+        <Select
+          id={`${id}-enforcement`}
+          value={f.enforcement ?? "hard"}
+          onChange={(v) => setF({ ...f, enforcement: v as S["PolicyEnforcement"] })}
+          options={enforcementOptions}
+        />
+      </Field>
+    </>
+  );
+}
 
 function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) {
   const envs = useQuery(q.environments());
@@ -57,17 +152,6 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
       failed(e, "Not saved");
     },
   });
-  const days = (k: "default_days" | "max_days", label: string) => (
-    <Field label={label} htmlFor={`lease-${k}`} error={errors[`/${k}`]} hint="Empty for none">
-      <Input
-        id={`lease-${k}`}
-        type="number"
-        min={1}
-        value={f[k] ?? ""}
-        onChange={(e) => setF({ ...f, [k]: e.target.value === "" ? null : Number(e.target.value) })}
-      />
-    </Field>
-  );
   return (
     <Sheet
       open
@@ -105,48 +189,8 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
             options={projects.options("Every project")}
           />
         </Field>
-        {days("default_days", "Lease, in days")}
-        {days("max_days", "At most, in days")}
-        <Field label="Extensions" htmlFor="lease-ext" error={errors["/max_extensions"]}>
-          <Input
-            id="lease-ext"
-            type="number"
-            min={0}
-            value={f.max_extensions}
-            onChange={(e) => setF({ ...f, max_extensions: Number(e.target.value) })}
-          />
-        </Field>
-        <Field label="Grace, in days" htmlFor="lease-grace" error={errors["/grace_days"]}>
-          <Input
-            id="lease-grace"
-            type="number"
-            min={0}
-            value={f.grace_days}
-            onChange={(e) => setF({ ...f, grace_days: Number(e.target.value) })}
-          />
-        </Field>
       </div>
-      <Field label="When it expires" htmlFor="lease-action" error={errors["/expiry_action"]}>
-        <Select
-          id="lease-action"
-          value={f.expiry_action}
-          onChange={(v) => setF({ ...f, expiry_action: v as S["LeaseExpiryAction"] })}
-          options={Object.entries(expiryLabels).map(([value, label]) => ({ value, label }))}
-        />
-      </Field>
-      <Field
-        label="Enforcement"
-        htmlFor="lease-enforcement"
-        error={errors["/enforcement"]}
-        hint="Soft: a longer lease, or one more extension, warns the requester instead of being refused or approved."
-      >
-        <Select
-          id="lease-enforcement"
-          value={f.enforcement ?? "hard"}
-          onChange={(v) => setF({ ...f, enforcement: v as S["PolicyEnforcement"] })}
-          options={enforcementOptions}
-        />
-      </Field>
+      <LeaseTermsFields id="lease" f={f} setF={setF} errors={errors} />
     </Sheet>
   );
 }
@@ -195,12 +239,7 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
     {
       id: "lease",
       header: "Lease",
-      cell: (l) => (
-        <span className="text-secondary">
-          {l.default_days ? `${l.default_days} days, up to ${l.max_days ?? "no limit"}` : "None"}
-          {l.enforcement === "soft" && <span className="block text-muted">Soft: longer warns</span>}
-        </span>
-      ),
+      cell: (l) => <LeaseSummary lease={l} />,
     },
     {
       id: "extensions",
@@ -221,7 +260,7 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
   return (
     <Panel
       title="Lease policies"
-      description={`How long deployments live in each environment, and what happens when the lease ends.${
+      description={`How long deployments live in each environment, and what happens when the lease ends. A lease rule that matches comes first.${
         rights.global ? "" : " You change your projects' own, no looser than every project's."
       }`}
       flush

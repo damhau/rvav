@@ -205,6 +205,20 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
     .click();
   await expect(leases.getByRole("row", { name: /Web Platform/ })).toBeHidden();
 
+  // Lease rules, tried first: a lifetime no shorter than the maximum.
+  const rules = page.getByRole("region", { name: "Lease rules" });
+  await rules.getByRole("button", { name: "New lease rule" }).click();
+  const rule = page.getByRole("dialog", { name: "New lease rule" });
+  await rule.getByRole("textbox", { name: "Name" }).fill("Small VMs");
+  await rule.getByRole("textbox", { name: "Applies when (CEL)" }).fill('inputs.size == "S"');
+  await choose(page, "Environment", "Development");
+  await rule.getByRole("spinbutton", { name: "Lifetime, in days" }).fill("20");
+  await rule.getByRole("button", { name: "Save lease rule" }).click();
+  await expect(rule.getByText("The maximum can't be longer than the lifetime.")).toBeVisible();
+  await rule.getByRole("spinbutton", { name: "Lifetime, in days" }).fill("60");
+  await rule.getByRole("button", { name: "Save lease rule" }).click();
+  await expect(rules.getByRole("row", { name: /Small VMs/ })).toContainText("Lives 60 days at most");
+
   // Naming: preview the next names, then save.
   await page.getByRole("tab", { name: "Naming" }).click();
   await page.getByRole("button", { name: "New naming policy" }).click();

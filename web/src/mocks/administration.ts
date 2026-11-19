@@ -8,6 +8,7 @@ import type { components } from "@/lib/api/schema";
 import { adminItemOf } from "./catalogAdmin";
 import { celCheck } from "./cel";
 import { audited } from "./governance";
+import { leaseTermsErrors, looserLease, looserRule, orderedRules } from "./leases";
 import { clusters, datastoreClusters, datastores, hostsOf, networks, resourcePools, tags, VCENTER } from "./inventory";
 import type { Db } from "./seed";
 import { userGroups } from "./logic";
@@ -48,6 +49,9 @@ interface AdminState {
   naming: S["NamingPolicy"][];
   quotas: Record<string, S["QuotaLimit"][]>;
   leases: S["LeasePolicy"][];
+  /** Lease rules (ADR-0048), and the rule that decided each deployment's lease. */
+  leaseRules: S["LeaseRule"][];
+  leaseRuleOf: Record<string, string>;
   approvals: S["ApprovalPolicy"][];
   day2: S["Day2Policy"][];
   integrations: Record<
@@ -356,6 +360,8 @@ export function adminState(db: Db): AdminState {
       { environment: "tst", project_id: null, default_days: 30, max_days: 90, max_extensions: 2, grace_days: 7, expiry_action: "power_off_then_delete" },
       { environment: "prd", project_id: null, default_days: null, max_days: null, max_extensions: 0, grace_days: 7, expiry_action: "notify_only" },
     ], // prettier-ignore
+    leaseRules: [],
+    leaseRuleOf: {},
     approvals: [
       {
         id: "pol_prd_vm", name: "Production VMs", reason: "Production VMs need sign-off", condition: 'environment == "prd"',
@@ -1790,27 +1796,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const env = st().leases.find((x) => x.environment === l.environment && !x.project_id);
       const environment = db.environments.find((e) => e.key === l.environment);
       if (!environment) return invalid([err("/environment", `"${l.environment}" is not an environment.`)]);
-      const name = environment.name;
       // As the server's looserLease: a project admin's override gives no more than the environment's.
-      const looser: S["FieldError"][] = [];
-      if (!policies.global() && env) {
-        if (env.default_days != null && l.default_days == null)
-          looser.push(err("/default_days", `Deployments in ${name} get a lease: give them one.`));
-        if (env.max_days != null && (l.max_days == null || l.max_days > env.max_days))
-          looser.push(err("/max_days", `${name} allows ${env.max_days} days at most.`));
-        if (l.max_extensions > env.max_extensions)
-          looser.push(err("/max_extensions", `${name} allows ${env.max_extensions} extensions at most.`));
-        if (l.grace_days > env.grace_days)
-          looser.push(err("/grace_days", `${name} gives ${env.grace_days} grace days at most.`));
-        const rank = { notify_only: 0, power_off_then_delete: 1, delete: 2 };
-        if (rank[l.expiry_action] < rank[env.expiry_action])
-          looser.push(err("/expiry_action", `${name}'s leases end with ${env.expiry_action.replaceAll("_", " ")}.`));
-        if (l.enforcement === "soft" && env.enforcement !== "soft")
-          looser.push(err("/enforcement", `${name}'s lease is hard: its overrides are too.`));
-      }
-      if (looser.length) return invalid(looser);
-      if (l.default_days != null && l.max_days != null && l.default_days > l.max_days)
-        return invalid([err("/default_days", "The default can't be longer than the maximum.")]);
+      const errors = !policies.global() && env ? looserLease(l, env, environment.name) : [];
+      errors.push(...leaseTermsErrors(l));
+      if (errors.length) return invalid(errors);
       const list = st().leases;
       const i = list.findIndex(same);
       if (i >= 0) list[i] = l;
@@ -1831,6 +1820,65 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (refused) return refused;
       list.splice(i, 1);
       audited(db, "policy.lease.delete", "lease_policy", url.searchParams.get("environment") ?? "");
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.get(`${base}/admin/lease-rules`, async () => {
+      await wait();
+      if (!policies.reads()) return forbidden("you may not read policies");
+      return HttpResponse.json({ items: orderedRules(st().leaseRules).filter((r) => policies.shows(r.project_id)) });
+    }),
+    ...(["post", "put"] as const).map((method) =>
+      http[method](`${base}/admin/lease-rules${method === "put" ? "/:id" : ""}`, async ({ params, request }) => {
+        await wait();
+        const w = (await request.json()) as S["LeaseRuleWrite"];
+        const id = method === "put" ? String(params.id) : next("lsr");
+        const was = st().leaseRules.find((r) => r.id === id);
+        if (method === "put" && (!was || !policies.shows(was.project_id))) return problem(404, "Not found");
+        if (!policies.writes(w.project_id)) return refusedPolicy(w.project_id);
+        const refused = refusedChange(was);
+        if (refused) return refused;
+        const errors: S["FieldError"][] = [];
+        if (!w.name.trim()) errors.push(err("/name", "Give the rule a name."));
+        if (!w.condition.trim())
+          errors.push(
+            err("/condition", 'Which deployments does it give this lease? For example item.slug == "gpu-server".'),
+          );
+        else checkCel(w.condition, "/condition", errors);
+        if (w.environment && !db.environments.some((e) => e.key === w.environment))
+          errors.push(err("/environment", `"${w.environment}" is not an environment.`));
+        if (w.project_id && !project(w.project_id)) errors.push(err("/project_id", "There is no such project."));
+        const rule: S["LeaseRule"] = {
+          ...w,
+          name: w.name.trim(),
+          id,
+          environment: w.environment || null,
+          project_id: w.project_id || null,
+          priority: w.priority ?? 100,
+          enforcement: w.enforcement ?? "hard",
+          set_by_admin: policies.global(),
+        };
+        errors.push(...leaseTermsErrors(rule));
+        // As the server's looserRule: no more than administrators set, wherever it may apply.
+        if (!errors.length && !policies.global() && rule.project_id)
+          errors.push(...looserRule(db, rule.project_id, rule.environment, rule));
+        if (errors.length) return invalid(errors);
+        const list = st().leaseRules;
+        const i = list.findIndex((r) => r.id === id);
+        if (i >= 0) list[i] = rule;
+        else list.push(rule);
+        audited(db, `policy.lease_rule.${method === "post" ? "create" : "update"}`, "lease_rule", id);
+        return HttpResponse.json(rule, { status: method === "post" ? 201 : 200 });
+      }),
+    ),
+    http.delete(`${base}/admin/lease-rules/:id`, async ({ params }) => {
+      await wait();
+      const list = st().leaseRules;
+      const i = list.findIndex((r) => r.id === params.id && policies.shows(r.project_id));
+      if (i < 0) return problem(404, "Not found");
+      const refused = refusedChange(list[i]);
+      if (refused) return refused;
+      list.splice(i, 1);
+      audited(db, "policy.lease_rule.delete", "lease_rule", String(params.id));
       return new HttpResponse(null, { status: 204 });
     }),
     ...(
