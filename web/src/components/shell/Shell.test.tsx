@@ -69,7 +69,7 @@ describe("sidebar", () => {
       ],
       Governance: ["Projects", "Roles", "Policies"],
       Infrastructure: ["Integrations", "Templates and networks", "Onboarding", "vRA import"],
-      Operations: ["Setup", "Audit log", "Audit forwarding", "System"],
+      Operations: ["Setup", "Branding", "Notification templates", "Audit log", "Audit forwarding", "System"],
     });
     // Every entry has its icon, and the groups' headings aren't stops on the way.
     for (const link of within(nav).getAllByRole("link").slice(1))

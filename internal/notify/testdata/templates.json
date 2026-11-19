@@ -1,0 +1,1463 @@
+{
+  "functions": [
+    {
+      "name": "date",
+      "type": "function",
+      "description": "Writes a date in the template's language, in UTC: {{date .Lease.ExpiresAt}}."
+    },
+    {
+      "name": "join",
+      "type": "function",
+      "description": "Joins a list with a separator: {{join .Approval.Reasons \"; \"}}."
+    }
+  ],
+  "kinds": [
+    {
+      "kind": "request_submitted",
+      "name": "Request submitted",
+      "when": "To the requester, and the owner when on behalf, once a request is submitted.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Request.Number",
+          "type": "text",
+          "description": "The request's number, such as REQ-10077."
+        },
+        {
+          "name": ".Request.Title",
+          "type": "text",
+          "description": "The request's title."
+        },
+        {
+          "name": ".Request.Item",
+          "type": "text",
+          "description": "The name of the catalog item requested."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The request's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The request's environment, such as prd."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Submitted: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Submitted: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p>Your request <strong>{{.Request.Number}}</strong> was submitted. You will hear when it is decided or done.</p>",
+            "subject": "Submitted: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Your request {{.Request.Number}} was submitted. You will hear when it is decided or done."
+          },
+          "fr": {
+            "html": "<p>Votre demande <strong>{{.Request.Number}}</strong> a été soumise. Vous serez informé quand elle sera décidée ou terminée.</p>",
+            "subject": "Soumise : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Votre demande {{.Request.Number}} a été soumise. Vous serez informé quand elle sera décidée ou terminée."
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "Submitted: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Your request {{.Request.Number}} was submitted. You will hear when it is decided or done."
+          },
+          "fr": {
+            "subject": "Soumise : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Votre demande {{.Request.Number}} a été soumise. Vous serez informé quand elle sera décidée ou terminée."
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "Submitted: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Your request {{.Request.Number}} was submitted. You will hear when it is decided or done."
+          },
+          "fr": {
+            "subject": "Soumise : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Votre demande {{.Request.Number}} a été soumise. Vous serez informé quand elle sera décidée ou terminée."
+          }
+        }
+      }
+    },
+    {
+      "kind": "approval_needed",
+      "name": "Approval needed",
+      "when": "To each approver of a level when it opens, is delegated or escalated to them, or a custom workflow asks them.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Request.Number",
+          "type": "text",
+          "description": "The request's number, such as REQ-10077."
+        },
+        {
+          "name": ".Request.Title",
+          "type": "text",
+          "description": "The request's title."
+        },
+        {
+          "name": ".Request.Item",
+          "type": "text",
+          "description": "The name of the catalog item requested."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The request's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The request's environment, such as prd."
+        },
+        {
+          "name": ".Approval.Name",
+          "type": "text",
+          "description": "The approval level's name."
+        },
+        {
+          "name": ".Approval.Reasons",
+          "type": "list of text",
+          "description": "Why the request needs approval: one reason per policy."
+        },
+        {
+          "name": ".Approval.Why",
+          "type": "text",
+          "description": "delegated or escalated when the approval came to the person so; empty otherwise."
+        },
+        {
+          "name": ".Body",
+          "type": "text",
+          "description": "Why it needs approval, or the custom workflow's message."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Approval.Name": "Infrastructure leads",
+          ".Approval.Reasons": [
+            "Production VMs need the infrastructure leads' approval",
+            "8 vCPU is above the project's size for prd"
+          ],
+          ".Approval.Why": "",
+          ".Body": "Production VMs need the infrastructure leads' approval; 8 vCPU is above the project's size for prd",
+          ".Link": "https://rvav.corp.example/approvals/apr_sample",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Approval needed: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Approval.Name": "Infrastructure leads",
+          ".Approval.Reasons": [
+            "Production VMs need the infrastructure leads' approval",
+            "8 vCPU is above the project's size for prd"
+          ],
+          ".Approval.Why": "",
+          ".Body": "Production VMs need the infrastructure leads' approval; 8 vCPU is above the project's size for prd",
+          ".Link": "https://rvav.corp.example/approvals/apr_sample",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Approval needed: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p><strong>{{.Request.Number}}</strong> waits for your decision{{if .Approval.Name}} ({{.Approval.Name}}){{end}}.</p>{{if .Approval.Reasons}}\n<p style=\"margin:8px 0\">Why it needs approval:</p><ul style=\"margin:0;padding-left:20px\">{{range .Approval.Reasons}}<li>{{.}}</li>{{end}}</ul>{{end}}{{if and .Body (ne .Body (join .Approval.Reasons \"; \"))}}\n<p style=\"margin:8px 0;color:#59636e\">{{.Body}}</p>{{end}}",
+            "subject": "{{if eq .Approval.Why \"delegated\"}}Approval delegated to you{{else if eq .Approval.Why \"escalated\"}}Approval escalated to you{{else}}Approval needed{{end}}: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} waits for your decision{{if .Approval.Name}} ({{.Approval.Name}}){{end}}.{{if .Approval.Reasons}}\nWhy it needs approval: {{join .Approval.Reasons \"; \"}}{{end}}{{if and .Body (ne .Body (join .Approval.Reasons \"; \"))}}\n{{.Body}}{{end}}"
+          },
+          "fr": {
+            "html": "<p><strong>{{.Request.Number}}</strong> attend votre décision{{if .Approval.Name}} ({{.Approval.Name}}){{end}}.</p>{{if .Approval.Reasons}}\n<p style=\"margin:8px 0\">Pourquoi une approbation :</p><ul style=\"margin:0;padding-left:20px\">{{range .Approval.Reasons}}<li>{{.}}</li>{{end}}</ul>{{end}}{{if and .Body (ne .Body (join .Approval.Reasons \"; \"))}}\n<p style=\"margin:8px 0;color:#59636e\">{{.Body}}</p>{{end}}",
+            "subject": "{{if eq .Approval.Why \"delegated\"}}Approbation déléguée à vous{{else if eq .Approval.Why \"escalated\"}}Approbation remontée à vous{{else}}Approbation requise{{end}} : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} attend votre décision{{if .Approval.Name}} ({{.Approval.Name}}){{end}}.{{if .Approval.Reasons}}\nPourquoi une approbation : {{join .Approval.Reasons \" ; \"}}{{end}}{{if and .Body (ne .Body (join .Approval.Reasons \"; \"))}}\n{{.Body}}{{end}}"
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "{{if eq .Approval.Why \"delegated\"}}Approval delegated to you{{else if eq .Approval.Why \"escalated\"}}Approval escalated to you{{else}}Approval needed{{end}}: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} waits for your decision{{if .Approval.Name}} ({{.Approval.Name}}){{end}}.{{if .Approval.Reasons}}\nWhy it needs approval: {{join .Approval.Reasons \"; \"}}{{end}}{{if and .Body (ne .Body (join .Approval.Reasons \"; \"))}}\n{{.Body}}{{end}}"
+          },
+          "fr": {
+            "subject": "{{if eq .Approval.Why \"delegated\"}}Approbation déléguée à vous{{else if eq .Approval.Why \"escalated\"}}Approbation remontée à vous{{else}}Approbation requise{{end}} : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} attend votre décision{{if .Approval.Name}} ({{.Approval.Name}}){{end}}.{{if .Approval.Reasons}}\nPourquoi une approbation : {{join .Approval.Reasons \" ; \"}}{{end}}{{if and .Body (ne .Body (join .Approval.Reasons \"; \"))}}\n{{.Body}}{{end}}"
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "{{if eq .Approval.Why \"delegated\"}}Approval delegated to you{{else if eq .Approval.Why \"escalated\"}}Approval escalated to you{{else}}Approval needed{{end}}: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} waits for your decision{{if .Approval.Name}} ({{.Approval.Name}}){{end}}.{{if .Approval.Reasons}}\nWhy it needs approval: {{join .Approval.Reasons \"; \"}}{{end}}{{if and .Body (ne .Body (join .Approval.Reasons \"; \"))}}\n{{.Body}}{{end}}"
+          },
+          "fr": {
+            "subject": "{{if eq .Approval.Why \"delegated\"}}Approbation déléguée à vous{{else if eq .Approval.Why \"escalated\"}}Approbation remontée à vous{{else}}Approbation requise{{end}} : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} attend votre décision{{if .Approval.Name}} ({{.Approval.Name}}){{end}}.{{if .Approval.Reasons}}\nPourquoi une approbation : {{join .Approval.Reasons \" ; \"}}{{end}}{{if and .Body (ne .Body (join .Approval.Reasons \"; \"))}}\n{{.Body}}{{end}}"
+          }
+        }
+      }
+    },
+    {
+      "kind": "request_approved",
+      "name": "Request approved",
+      "when": "To the requester, once the last level approved.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Request.Number",
+          "type": "text",
+          "description": "The request's number, such as REQ-10077."
+        },
+        {
+          "name": ".Request.Title",
+          "type": "text",
+          "description": "The request's title."
+        },
+        {
+          "name": ".Request.Item",
+          "type": "text",
+          "description": "The name of the catalog item requested."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The request's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The request's environment, such as prd."
+        },
+        {
+          "name": ".Body",
+          "type": "text",
+          "description": "The approvers' comments, if any."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Body": "Fine for Black Friday.",
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Approved: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Body": "Fine for Black Friday.",
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Approved: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p>Your request <strong>{{.Request.Number}}</strong> was approved. It runs now, or when it was scheduled.</p>{{if .Body}}\n<p style=\"margin:8px 0;color:#59636e\">{{.Body}}</p>{{end}}",
+            "subject": "Approved: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Your request {{.Request.Number}} was approved. It runs now, or when it was scheduled.{{if .Body}}\n{{.Body}}{{end}}"
+          },
+          "fr": {
+            "html": "<p>Votre demande <strong>{{.Request.Number}}</strong> a été approuvée. Elle s'exécute maintenant, ou à l'heure prévue.</p>{{if .Body}}\n<p style=\"margin:8px 0;color:#59636e\">{{.Body}}</p>{{end}}",
+            "subject": "Approuvée : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Votre demande {{.Request.Number}} a été approuvée. Elle s'exécute maintenant, ou à l'heure prévue.{{if .Body}}\n{{.Body}}{{end}}"
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "Approved: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Your request {{.Request.Number}} was approved. It runs now, or when it was scheduled.{{if .Body}}\n{{.Body}}{{end}}"
+          },
+          "fr": {
+            "subject": "Approuvée : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Votre demande {{.Request.Number}} a été approuvée. Elle s'exécute maintenant, ou à l'heure prévue.{{if .Body}}\n{{.Body}}{{end}}"
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "Approved: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Your request {{.Request.Number}} was approved. It runs now, or when it was scheduled.{{if .Body}}\n{{.Body}}{{end}}"
+          },
+          "fr": {
+            "subject": "Approuvée : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Votre demande {{.Request.Number}} a été approuvée. Elle s'exécute maintenant, ou à l'heure prévue.{{if .Body}}\n{{.Body}}{{end}}"
+          }
+        }
+      }
+    },
+    {
+      "kind": "request_rejected",
+      "name": "Request rejected",
+      "when": "To the requester, once a level rejected.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Request.Number",
+          "type": "text",
+          "description": "The request's number, such as REQ-10077."
+        },
+        {
+          "name": ".Request.Title",
+          "type": "text",
+          "description": "The request's title."
+        },
+        {
+          "name": ".Request.Item",
+          "type": "text",
+          "description": "The name of the catalog item requested."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The request's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The request's environment, such as prd."
+        },
+        {
+          "name": ".Body",
+          "type": "text",
+          "description": "The approver's comment: why it was rejected."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Body": "Use the shared front-end pool instead.",
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Rejected: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Body": "Use the shared front-end pool instead.",
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Rejected: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p>Your request <strong>{{.Request.Number}}</strong> was rejected. Nothing was built or changed.</p>{{if .Body}}\n<p style=\"margin:8px 0\"><span style=\"color:#59636e\">Comments:</span> {{.Body}}</p>{{end}}",
+            "subject": "Rejected: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Your request {{.Request.Number}} was rejected. Nothing was built or changed.{{if .Body}}\nComments: {{.Body}}{{end}}"
+          },
+          "fr": {
+            "html": "<p>Votre demande <strong>{{.Request.Number}}</strong> a été refusée. Rien n'a été créé ni modifié.</p>{{if .Body}}\n<p style=\"margin:8px 0\"><span style=\"color:#59636e\">Commentaires :</span> {{.Body}}</p>{{end}}",
+            "subject": "Refusée : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Votre demande {{.Request.Number}} a été refusée. Rien n'a été créé ni modifié.{{if .Body}}\nCommentaires : {{.Body}}{{end}}"
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "Rejected: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Your request {{.Request.Number}} was rejected. Nothing was built or changed.{{if .Body}}\nComments: {{.Body}}{{end}}"
+          },
+          "fr": {
+            "subject": "Refusée : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Votre demande {{.Request.Number}} a été refusée. Rien n'a été créé ni modifié.{{if .Body}}\nCommentaires : {{.Body}}{{end}}"
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "Rejected: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Your request {{.Request.Number}} was rejected. Nothing was built or changed.{{if .Body}}\nComments: {{.Body}}{{end}}"
+          },
+          "fr": {
+            "subject": "Refusée : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Votre demande {{.Request.Number}} a été refusée. Rien n'a été créé ni modifié.{{if .Body}}\nCommentaires : {{.Body}}{{end}}"
+          }
+        }
+      }
+    },
+    {
+      "kind": "request_succeeded",
+      "name": "Request done",
+      "when": "To the owner, and the requester when on behalf, once a request is done.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Request.Number",
+          "type": "text",
+          "description": "The request's number, such as REQ-10077."
+        },
+        {
+          "name": ".Request.Title",
+          "type": "text",
+          "description": "The request's title."
+        },
+        {
+          "name": ".Request.Item",
+          "type": "text",
+          "description": "The name of the catalog item requested."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The request's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The request's environment, such as prd."
+        },
+        {
+          "name": ".Ready",
+          "type": "yes/no",
+          "description": "Yes when the request built what was asked for, rather than changed it."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Ready": true,
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Ready: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Ready": true,
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Ready: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p>{{if .Ready}}<strong>{{.Request.Number}}</strong> is done: what you asked for is ready.{{else}}<strong>{{.Request.Number}}</strong> is done.{{end}}</p>",
+            "subject": "{{if .Ready}}Ready{{else}}Done{{end}}: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{if .Ready}}{{.Request.Number}} is done: what you asked for is ready.{{else}}{{.Request.Number}} is done.{{end}}"
+          },
+          "fr": {
+            "html": "<p>{{if .Ready}}<strong>{{.Request.Number}}</strong> est terminée : ce que vous avez demandé est prêt.{{else}}<strong>{{.Request.Number}}</strong> est terminée.{{end}}</p>",
+            "subject": "{{if .Ready}}Prêt{{else}}Terminée{{end}} : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{if .Ready}}{{.Request.Number}} est terminée : ce que vous avez demandé est prêt.{{else}}{{.Request.Number}} est terminée.{{end}}"
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "{{if .Ready}}Ready{{else}}Done{{end}}: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{if .Ready}}{{.Request.Number}} is done: what you asked for is ready.{{else}}{{.Request.Number}} is done.{{end}}"
+          },
+          "fr": {
+            "subject": "{{if .Ready}}Prêt{{else}}Terminée{{end}} : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{if .Ready}}{{.Request.Number}} est terminée : ce que vous avez demandé est prêt.{{else}}{{.Request.Number}} est terminée.{{end}}"
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "{{if .Ready}}Ready{{else}}Done{{end}}: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{if .Ready}}{{.Request.Number}} is done: what you asked for is ready.{{else}}{{.Request.Number}} is done.{{end}}"
+          },
+          "fr": {
+            "subject": "{{if .Ready}}Prêt{{else}}Terminée{{end}} : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{if .Ready}}{{.Request.Number}} est terminée : ce que vous avez demandé est prêt.{{else}}{{.Request.Number}} est terminée.{{end}}"
+          }
+        }
+      }
+    },
+    {
+      "kind": "request_failed",
+      "name": "Request failed",
+      "when": "To the owner, and the requester when on behalf, once a request failed.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Request.Number",
+          "type": "text",
+          "description": "The request's number, such as REQ-10077."
+        },
+        {
+          "name": ".Request.Title",
+          "type": "text",
+          "description": "The request's title."
+        },
+        {
+          "name": ".Request.Item",
+          "type": "text",
+          "description": "The name of the catalog item requested."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The request's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The request's environment, such as prd."
+        },
+        {
+          "name": ".Body",
+          "type": "text",
+          "description": "What went wrong."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Body": "No datastore of GVA-PRD-CL02 has 200 GB free.",
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Failed: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Body": "No datastore of GVA-PRD-CL02 has 200 GB free.",
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Failed: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p><strong>{{.Request.Number}}</strong> failed.</p>{{if .Body}}\n<p style=\"margin:8px 0\"><span style=\"color:#59636e\">What went wrong:</span> {{.Body}}</p>{{end}}\n<p style=\"margin:8px 0\">Open it to see the step that failed, then try it again or roll it back.</p>",
+            "subject": "Failed: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} failed.{{if .Body}}\nWhat went wrong: {{.Body}}{{end}}\nOpen it to see the step that failed, then try it again or roll it back."
+          },
+          "fr": {
+            "html": "<p><strong>{{.Request.Number}}</strong> a échoué.</p>{{if .Body}}\n<p style=\"margin:8px 0\"><span style=\"color:#59636e\">Ce qui n'a pas marché :</span> {{.Body}}</p>{{end}}\n<p style=\"margin:8px 0\">Ouvrez-la pour voir l'étape en échec, puis relancez-la ou annulez ce qu'elle a fait.</p>",
+            "subject": "Échec : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} a échoué.{{if .Body}}\nCe qui n'a pas marché : {{.Body}}{{end}}\nOuvrez-la pour voir l'étape en échec, puis relancez-la ou annulez ce qu'elle a fait."
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "Failed: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} failed.{{if .Body}}\nWhat went wrong: {{.Body}}{{end}}\nOpen it to see the step that failed, then try it again or roll it back."
+          },
+          "fr": {
+            "subject": "Échec : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} a échoué.{{if .Body}}\nCe qui n'a pas marché : {{.Body}}{{end}}\nOuvrez-la pour voir l'étape en échec, puis relancez-la ou annulez ce qu'elle a fait."
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "Failed: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} failed.{{if .Body}}\nWhat went wrong: {{.Body}}{{end}}\nOpen it to see the step that failed, then try it again or roll it back."
+          },
+          "fr": {
+            "subject": "Échec : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Request.Number}} a échoué.{{if .Body}}\nCe qui n'a pas marché : {{.Body}}{{end}}\nOuvrez-la pour voir l'étape en échec, puis relancez-la ou annulez ce qu'elle a fait."
+          }
+        }
+      }
+    },
+    {
+      "kind": "request_rolled_back",
+      "name": "Request rolled back",
+      "when": "To the owner, once what a failed request built was deleted.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Request.Number",
+          "type": "text",
+          "description": "The request's number, such as REQ-10077."
+        },
+        {
+          "name": ".Request.Title",
+          "type": "text",
+          "description": "The request's title."
+        },
+        {
+          "name": ".Request.Item",
+          "type": "text",
+          "description": "The name of the catalog item requested."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The request's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The request's environment, such as prd."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Rolled back: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "Rolled back: RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p>What <strong>{{.Request.Number}}</strong> had built was deleted.</p>",
+            "subject": "Rolled back: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "What {{.Request.Number}} had built was deleted."
+          },
+          "fr": {
+            "html": "<p>Ce que <strong>{{.Request.Number}}</strong> avait créé a été supprimé.</p>",
+            "subject": "Annulée : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Ce que {{.Request.Number}} avait créé a été supprimé."
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "Rolled back: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "What {{.Request.Number}} had built was deleted."
+          },
+          "fr": {
+            "subject": "Annulée : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Ce que {{.Request.Number}} avait créé a été supprimé."
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "Rolled back: {{.Request.Title}} ({{.Request.Number}})",
+            "text": "What {{.Request.Number}} had built was deleted."
+          },
+          "fr": {
+            "subject": "Annulée : {{.Request.Title}} ({{.Request.Number}})",
+            "text": "Ce que {{.Request.Number}} avait créé a été supprimé."
+          }
+        }
+      }
+    },
+    {
+      "kind": "lease_expiring",
+      "name": "Lease ending",
+      "when": "To the deployment's owner, 7 days and 1 day before its lease ends.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Deployment.Name",
+          "type": "text",
+          "description": "The deployment's name."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The deployment's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The deployment's environment, such as prd."
+        },
+        {
+          "name": ".Lease.ExpiresAt",
+          "type": "date",
+          "description": "When the lease ends: write {{date .Lease.ExpiresAt}}."
+        },
+        {
+          "name": ".Lease.Days",
+          "type": "number",
+          "description": "Days left: 7 or 1."
+        },
+        {
+          "name": ".Lease.ExpiryAction",
+          "type": "text",
+          "description": "What happens then: power_off_then_delete, delete or notify_only."
+        },
+        {
+          "name": ".Body",
+          "type": "text",
+          "description": "What happens then, in English."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Body": "Its VMs are then powered off.",
+          ".Deployment.Name": "web-prd-front01",
+          ".Lease.Days": 7,
+          ".Lease.ExpiresAt": "26 November 2026 at 09:30 UTC",
+          ".Lease.ExpiryAction": "power_off_then_delete",
+          ".Link": "https://rvav.corp.example/deployments/dep_sample",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Title": "The lease of web-prd-front01 ends in 7 days",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Body": "Its VMs are then powered off.",
+          ".Deployment.Name": "web-prd-front01",
+          ".Lease.Days": 7,
+          ".Lease.ExpiresAt": "26 novembre 2026 à 09:30 UTC",
+          ".Lease.ExpiryAction": "power_off_then_delete",
+          ".Link": "https://rvav.corp.example/deployments/dep_sample",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Title": "The lease of web-prd-front01 ends in 7 days",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p>The lease of <strong>{{.Deployment.Name}}</strong> ends on {{date .Lease.ExpiresAt}}.</p>\n<p style=\"margin:8px 0\">{{if eq .Lease.ExpiryAction \"power_off_then_delete\"}}Its VMs are then powered off, and deleted after the grace period, unless you extend the lease.{{else if eq .Lease.ExpiryAction \"delete\"}}It is then deleted, unless you extend the lease.{{else}}Extend it if you still need it.{{end}}</p>",
+            "subject": "The lease of {{.Deployment.Name}} ends {{if eq .Lease.Days 1}}within a day{{else}}in {{.Lease.Days}} days{{end}}",
+            "text": "The lease of {{.Deployment.Name}} ends on {{date .Lease.ExpiresAt}}. {{if eq .Lease.ExpiryAction \"power_off_then_delete\"}}Its VMs are then powered off, and deleted after the grace period, unless you extend the lease.{{else if eq .Lease.ExpiryAction \"delete\"}}It is then deleted, unless you extend the lease.{{else}}Extend it if you still need it.{{end}}"
+          },
+          "fr": {
+            "html": "<p>Le bail de <strong>{{.Deployment.Name}}</strong> se termine le {{date .Lease.ExpiresAt}}.</p>\n<p style=\"margin:8px 0\">{{if eq .Lease.ExpiryAction \"power_off_then_delete\"}}Ses VM seront alors arrêtées, puis supprimées après le délai de grâce, sauf si vous prolongez le bail.{{else if eq .Lease.ExpiryAction \"delete\"}}Il sera alors supprimé, sauf si vous prolongez le bail.{{else}}Prolongez-le si vous en avez encore besoin.{{end}}</p>",
+            "subject": "Le bail de {{.Deployment.Name}} se termine {{if eq .Lease.Days 1}}d'ici un jour{{else}}dans {{.Lease.Days}} jours{{end}}",
+            "text": "Le bail de {{.Deployment.Name}} se termine le {{date .Lease.ExpiresAt}}. {{if eq .Lease.ExpiryAction \"power_off_then_delete\"}}Ses VM seront alors arrêtées, puis supprimées après le délai de grâce, sauf si vous prolongez le bail.{{else if eq .Lease.ExpiryAction \"delete\"}}Il sera alors supprimé, sauf si vous prolongez le bail.{{else}}Prolongez-le si vous en avez encore besoin.{{end}}"
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "The lease of {{.Deployment.Name}} ends {{if eq .Lease.Days 1}}within a day{{else}}in {{.Lease.Days}} days{{end}}",
+            "text": "The lease of {{.Deployment.Name}} ends on {{date .Lease.ExpiresAt}}. {{if eq .Lease.ExpiryAction \"power_off_then_delete\"}}Its VMs are then powered off, and deleted after the grace period, unless you extend the lease.{{else if eq .Lease.ExpiryAction \"delete\"}}It is then deleted, unless you extend the lease.{{else}}Extend it if you still need it.{{end}}"
+          },
+          "fr": {
+            "subject": "Le bail de {{.Deployment.Name}} se termine {{if eq .Lease.Days 1}}d'ici un jour{{else}}dans {{.Lease.Days}} jours{{end}}",
+            "text": "Le bail de {{.Deployment.Name}} se termine le {{date .Lease.ExpiresAt}}. {{if eq .Lease.ExpiryAction \"power_off_then_delete\"}}Ses VM seront alors arrêtées, puis supprimées après le délai de grâce, sauf si vous prolongez le bail.{{else if eq .Lease.ExpiryAction \"delete\"}}Il sera alors supprimé, sauf si vous prolongez le bail.{{else}}Prolongez-le si vous en avez encore besoin.{{end}}"
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "The lease of {{.Deployment.Name}} ends {{if eq .Lease.Days 1}}within a day{{else}}in {{.Lease.Days}} days{{end}}",
+            "text": "The lease of {{.Deployment.Name}} ends on {{date .Lease.ExpiresAt}}. {{if eq .Lease.ExpiryAction \"power_off_then_delete\"}}Its VMs are then powered off, and deleted after the grace period, unless you extend the lease.{{else if eq .Lease.ExpiryAction \"delete\"}}It is then deleted, unless you extend the lease.{{else}}Extend it if you still need it.{{end}}"
+          },
+          "fr": {
+            "subject": "Le bail de {{.Deployment.Name}} se termine {{if eq .Lease.Days 1}}d'ici un jour{{else}}dans {{.Lease.Days}} jours{{end}}",
+            "text": "Le bail de {{.Deployment.Name}} se termine le {{date .Lease.ExpiresAt}}. {{if eq .Lease.ExpiryAction \"power_off_then_delete\"}}Ses VM seront alors arrêtées, puis supprimées après le délai de grâce, sauf si vous prolongez le bail.{{else if eq .Lease.ExpiryAction \"delete\"}}Il sera alors supprimé, sauf si vous prolongez le bail.{{else}}Prolongez-le si vous en avez encore besoin.{{end}}"
+          }
+        }
+      }
+    },
+    {
+      "kind": "lease_expired",
+      "name": "Lease ended",
+      "when": "To the deployment's owner, once its lease ended.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Deployment.Name",
+          "type": "text",
+          "description": "The deployment's name."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The deployment's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The deployment's environment, such as prd."
+        },
+        {
+          "name": ".Lease.GraceDays",
+          "type": "number",
+          "description": "Days before the deployment is deleted; 0 when its policy keeps it running."
+        },
+        {
+          "name": ".Body",
+          "type": "text",
+          "description": "What happens now, in English."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Body": "Its VMs are powered off.",
+          ".Deployment.Name": "web-prd-front01",
+          ".Lease.GraceDays": 7,
+          ".Link": "https://rvav.corp.example/deployments/dep_sample",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Title": "The lease of web-prd-front01 ended",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Body": "Its VMs are powered off.",
+          ".Deployment.Name": "web-prd-front01",
+          ".Lease.GraceDays": 7,
+          ".Link": "https://rvav.corp.example/deployments/dep_sample",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Title": "The lease of web-prd-front01 ended",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p>The lease of <strong>{{.Deployment.Name}}</strong> ended.</p>\n<p style=\"margin:8px 0\">{{if .Lease.GraceDays}}Its VMs are powered off; it is deleted in {{.Lease.GraceDays}} days unless you extend the lease.{{else}}Its policy keeps it running: delete it when you no longer need it.{{end}}</p>",
+            "subject": "The lease of {{.Deployment.Name}} ended",
+            "text": "The lease of {{.Deployment.Name}} ended. {{if .Lease.GraceDays}}Its VMs are powered off; it is deleted in {{.Lease.GraceDays}} days unless you extend the lease.{{else}}Its policy keeps it running: delete it when you no longer need it.{{end}}"
+          },
+          "fr": {
+            "html": "<p>Le bail de <strong>{{.Deployment.Name}}</strong> est terminé.</p>\n<p style=\"margin:8px 0\">{{if .Lease.GraceDays}}Ses VM sont arrêtées ; il sera supprimé dans {{.Lease.GraceDays}} jours sauf si vous prolongez le bail.{{else}}Sa politique le laisse fonctionner : supprimez-le quand vous n'en avez plus besoin.{{end}}</p>",
+            "subject": "Le bail de {{.Deployment.Name}} est terminé",
+            "text": "Le bail de {{.Deployment.Name}} est terminé. {{if .Lease.GraceDays}}Ses VM sont arrêtées ; il sera supprimé dans {{.Lease.GraceDays}} jours sauf si vous prolongez le bail.{{else}}Sa politique le laisse fonctionner : supprimez-le quand vous n'en avez plus besoin.{{end}}"
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "The lease of {{.Deployment.Name}} ended",
+            "text": "The lease of {{.Deployment.Name}} ended. {{if .Lease.GraceDays}}Its VMs are powered off; it is deleted in {{.Lease.GraceDays}} days unless you extend the lease.{{else}}Its policy keeps it running: delete it when you no longer need it.{{end}}"
+          },
+          "fr": {
+            "subject": "Le bail de {{.Deployment.Name}} est terminé",
+            "text": "Le bail de {{.Deployment.Name}} est terminé. {{if .Lease.GraceDays}}Ses VM sont arrêtées ; il sera supprimé dans {{.Lease.GraceDays}} jours sauf si vous prolongez le bail.{{else}}Sa politique le laisse fonctionner : supprimez-le quand vous n'en avez plus besoin.{{end}}"
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "The lease of {{.Deployment.Name}} ended",
+            "text": "The lease of {{.Deployment.Name}} ended. {{if .Lease.GraceDays}}Its VMs are powered off; it is deleted in {{.Lease.GraceDays}} days unless you extend the lease.{{else}}Its policy keeps it running: delete it when you no longer need it.{{end}}"
+          },
+          "fr": {
+            "subject": "Le bail de {{.Deployment.Name}} est terminé",
+            "text": "Le bail de {{.Deployment.Name}} est terminé. {{if .Lease.GraceDays}}Ses VM sont arrêtées ; il sera supprimé dans {{.Lease.GraceDays}} jours sauf si vous prolongez le bail.{{else}}Sa politique le laisse fonctionner : supprimez-le quand vous n'en avez plus besoin.{{end}}"
+          }
+        }
+      }
+    },
+    {
+      "kind": "owner_changed",
+      "name": "Deployment handed over",
+      "when": "To the new owner of a deployment.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Deployment.Name",
+          "type": "text",
+          "description": "The deployment's name."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The deployment's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The deployment's environment, such as prd."
+        },
+        {
+          "name": ".PreviousOwner",
+          "type": "text",
+          "description": "Who handed it over."
+        },
+        {
+          "name": ".Body",
+          "type": "text",
+          "description": "Who handed it over, as a sentence in English."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Body": "",
+          ".Deployment.Name": "web-prd-front01",
+          ".Link": "https://rvav.corp.example/deployments/dep_sample",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".PreviousOwner": "Léa Martin",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Title": "You now own web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Body": "",
+          ".Deployment.Name": "web-prd-front01",
+          ".Link": "https://rvav.corp.example/deployments/dep_sample",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".PreviousOwner": "Léa Martin",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Title": "You now own web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p>{{.PreviousOwner}} handed <strong>{{.Deployment.Name}}</strong> over to you: you now decide its lease and its changes.</p>",
+            "subject": "You now own {{.Deployment.Name}}",
+            "text": "{{.PreviousOwner}} handed {{.Deployment.Name}} over to you: you now decide its lease and its changes."
+          },
+          "fr": {
+            "html": "<p>{{.PreviousOwner}} vous a confié <strong>{{.Deployment.Name}}</strong> : c'est vous qui décidez désormais de son bail et de ses changements.</p>",
+            "subject": "{{.Deployment.Name}} est maintenant à vous",
+            "text": "{{.PreviousOwner}} vous a confié {{.Deployment.Name}} : c'est vous qui décidez désormais de son bail et de ses changements."
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "You now own {{.Deployment.Name}}",
+            "text": "{{.PreviousOwner}} handed {{.Deployment.Name}} over to you: you now decide its lease and its changes."
+          },
+          "fr": {
+            "subject": "{{.Deployment.Name}} est maintenant à vous",
+            "text": "{{.PreviousOwner}} vous a confié {{.Deployment.Name}} : c'est vous qui décidez désormais de son bail et de ses changements."
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "You now own {{.Deployment.Name}}",
+            "text": "{{.PreviousOwner}} handed {{.Deployment.Name}} over to you: you now decide its lease and its changes."
+          },
+          "fr": {
+            "subject": "{{.Deployment.Name}} est maintenant à vous",
+            "text": "{{.PreviousOwner}} vous a confié {{.Deployment.Name}} : c'est vous qui décidez désormais de son bail et de ses changements."
+          }
+        }
+      }
+    },
+    {
+      "kind": "step_message",
+      "name": "Message from a composite",
+      "when": "To those a composite's message step names, when it runs.",
+      "variables": [
+        {
+          "name": ".Portal",
+          "type": "text",
+          "description": "The portal's name, set in Administration › Branding."
+        },
+        {
+          "name": ".User.Name",
+          "type": "text",
+          "description": "The name of the person it is sent to."
+        },
+        {
+          "name": ".Link",
+          "type": "text",
+          "description": "The address of what it is about in the portal."
+        },
+        {
+          "name": ".Preferences",
+          "type": "text",
+          "description": "The address of the person's notification preferences."
+        },
+        {
+          "name": ".Title",
+          "type": "text",
+          "description": "The notification's title as the portal's notification centre shows it, in English."
+        },
+        {
+          "name": ".Locale",
+          "type": "text",
+          "description": "The template's language: en or fr."
+        },
+        {
+          "name": ".Request.Number",
+          "type": "text",
+          "description": "The request's number, such as REQ-10077."
+        },
+        {
+          "name": ".Request.Title",
+          "type": "text",
+          "description": "The request's title."
+        },
+        {
+          "name": ".Request.Item",
+          "type": "text",
+          "description": "The name of the catalog item requested."
+        },
+        {
+          "name": ".Project.Name",
+          "type": "text",
+          "description": "The request's project."
+        },
+        {
+          "name": ".Project.Environment",
+          "type": "text",
+          "description": "The request's environment, such as prd."
+        },
+        {
+          "name": ".Body",
+          "type": "text",
+          "description": "The message the step wrote."
+        }
+      ],
+      "sample": {
+        "en": {
+          ".Body": "The load balancer pool is ready.\nAdd the DNS alias by Friday.",
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "en",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "A message about RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        },
+        "fr": {
+          ".Body": "The load balancer pool is ready.\nAdd the DNS alias by Friday.",
+          ".Link": "https://rvav.corp.example/requests/REQ-10077",
+          ".Locale": "fr",
+          ".Portal": "rvav",
+          ".Preferences": "https://rvav.corp.example/notifications",
+          ".Project.Environment": "prd",
+          ".Project.Name": "Web Platform",
+          ".Request.Item": "RHEL 9 server",
+          ".Request.Number": "REQ-10077",
+          ".Request.Title": "RHEL 9 server web-prd-front01",
+          ".Title": "A message about RHEL 9 server web-prd-front01",
+          ".User.Name": "Thomas Nguyen"
+        }
+      },
+      "defaults": {
+        "email": {
+          "en": {
+            "html": "<p style=\"white-space:pre-line\">{{.Body}}</p>",
+            "subject": "A message about {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Body}}"
+          },
+          "fr": {
+            "html": "<p style=\"white-space:pre-line\">{{.Body}}</p>",
+            "subject": "Un message à propos de {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Body}}"
+          }
+        },
+        "slack": {
+          "en": {
+            "subject": "A message about {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Body}}"
+          },
+          "fr": {
+            "subject": "Un message à propos de {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Body}}"
+          }
+        },
+        "teams": {
+          "en": {
+            "subject": "A message about {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Body}}"
+          },
+          "fr": {
+            "subject": "Un message à propos de {{.Request.Title}} ({{.Request.Number}})",
+            "text": "{{.Body}}"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -62,6 +62,8 @@ import { variableHandlers } from "./variables";
 import { scheduleHandlers, type DraftCheck } from "./schedules";
 import { auditForwardingHandlers } from "./auditForwarding";
 import { notificationHandlers } from "./notifications";
+import { brandingHandlers } from "./branding";
+import { notificationTemplateHandlers } from "./notificationTemplates";
 import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
 import { sharedWith, sharingHandlers } from "./sharing";
@@ -428,9 +430,11 @@ function submitted(key: string, raw: string, res: RunResult) {
 }
 
 export const handlers = [
-  // Every call needs a bearer token, as with the real API.
+  // Every call needs a bearer token, as with the real API, but the branding the sign-in page and <img> read.
   http.all(`${base}/*`, ({ request }) => {
-    if (!authorized(request)) return problem(401, "unauthorized", "Sign in again", "Your session has expired.");
+    const open = request.method === "GET" && /\/api\/v1\/branding(\/|$)/.test(new URL(request.url).pathname);
+    if (!open && !authorized(request))
+      return problem(401, "unauthorized", "Sign in again", "Your session has expired.");
     return undefined;
   }),
 
@@ -515,6 +519,8 @@ export const handlers = [
   ...scheduleHandlers(db, base, wait, scheduleCheck),
   ...auditForwardingHandlers(db, base, wait),
   ...notificationHandlers(db, base, wait),
+  ...brandingHandlers(db, base, wait),
+  ...notificationTemplateHandlers(db, base, wait),
   ...signInHandlers(base, wait),
   ...draftHandlers(db, base, wait),
   ...sharingHandlers(db, base, wait),

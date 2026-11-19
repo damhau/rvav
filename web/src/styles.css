@@ -196,6 +196,25 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* The portal's logos (ADR-0059): the dark theme's, where there is one, in place of the light one. */
+.brand-logo-dark {
+  display: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand-logo-light {
+    display: none;
+  }
+  :root:not([data-theme="light"]) .brand-logo-dark {
+    display: block;
+  }
+}
+:root[data-theme="dark"] .brand-logo-light {
+  display: none;
+}
+:root[data-theme="dark"] .brand-logo-dark {
+  display: block;
+}
+
 /*
   Text for screen readers (sr-only) is positioned absolutely: in a table that
   scrolls sideways it would escape a scroll container that isn't positioned

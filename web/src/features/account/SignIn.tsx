@@ -15,6 +15,8 @@ import {
   signedInLocally,
   trialResult,
 } from "@/lib/auth";
+import { useBranding } from "@/lib/branding";
+import { BrandMark } from "@/components/shell/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 
@@ -25,17 +27,13 @@ function target() {
 }
 
 function Screen({ title, lead, children }: { title: string; lead: React.ReactNode; children: React.ReactNode }) {
+  const { name } = useBranding();
   return (
     <main className="flex min-h-dvh items-start justify-center bg-bg px-4 pt-[12vh] pb-10 text-fg">
       <div className="flex w-full max-w-[360px] flex-col gap-6">
         <div className="flex items-center gap-2">
-          <span
-            aria-hidden
-            className="flex size-[22px] items-center justify-center rounded-sm bg-fg font-mono text-caption font-medium text-bg"
-          >
-            rv
-          </span>
-          <span className="text-body font-semibold tracking-[-0.01em]">rvav</span>
+          <BrandMark />
+          <span className="min-w-0 truncate text-body font-semibold tracking-[-0.01em]">{name}</span>
         </div>
         <div className="flex flex-col gap-1.5">
           <h1 className="text-title font-semibold">{title}</h1>
@@ -97,6 +95,7 @@ export function SignInPage({
   provider?: boolean;
   problem?: ReturnType<typeof signInProblem>;
 }) {
+  const { name } = useBranding();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(problem === "provider" ? providerDown : null);
@@ -133,7 +132,7 @@ export function SignInPage({
 
   return (
     <Screen
-      title="Sign in to rvav"
+      title={`Sign in to ${name}`}
       lead={
         problem === "api"
           ? "rvav's API isn't answering: it may be starting again with newer settings."

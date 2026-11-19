@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { isApiError } from "@/lib/api/client";
 import { initAuth } from "@/lib/auth";
+import { loadBranding } from "@/lib/branding";
 import { isMock } from "@/lib/env";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
 import { createAppRouter } from "./router";
@@ -33,7 +34,7 @@ async function boot() {
     const { startMocks } = await import("./mocks/browser");
     await startMocks();
   }
-  const state = await initAuth();
+  const [state] = await Promise.all([initAuth(), loadBranding()]);
   if (state === "redirecting") return;
   if (state === "trial") {
     const { TrialWindowPage } = await import("@/features/account/SignIn");

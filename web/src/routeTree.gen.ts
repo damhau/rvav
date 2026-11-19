@@ -21,6 +21,7 @@ import { Route as TokensRouteImport } from "./routes/tokens"
 import { Route as AdminIndexRouteImport } from "./routes/admin/index"
 import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
 import { Route as AdminAuditForwardingRouteImport } from "./routes/admin/audit-forwarding"
+import { Route as AdminBrandingRouteImport } from "./routes/admin/branding"
 import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-actions"
 import { Route as AdminFormLibraryRouteImport } from "./routes/admin/form-library"
 import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastructure"
@@ -42,6 +43,8 @@ import { Route as AdminCatalogItemsIndexRouteImport } from "./routes/admin/catal
 import { Route as AdminCatalogItemsItemIdRouteImport } from "./routes/admin/catalog-items/$itemId"
 import { Route as AdminIntegrationsIndexRouteImport } from "./routes/admin/integrations/index"
 import { Route as AdminIntegrationsKindRouteImport } from "./routes/admin/integrations/$kind"
+import { Route as AdminNotificationTemplatesIndexRouteImport } from "./routes/admin/notification-templates/index"
+import { Route as AdminNotificationTemplatesKindRouteImport } from "./routes/admin/notification-templates/$kind"
 import { Route as AdminOnboardingIndexRouteImport } from "./routes/admin/onboarding/index"
 import { Route as AdminProjectsIndexRouteImport } from "./routes/admin/projects/index"
 import { Route as AdminProjectsProjectIdRouteImport } from "./routes/admin/projects/$projectId"
@@ -115,6 +118,11 @@ const AdminAuditRoute = AdminAuditRouteImport.update({
 const AdminAuditForwardingRoute = AdminAuditForwardingRouteImport.update({
   id: "/audit-forwarding",
   path: "/audit-forwarding",
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminBrandingRoute = AdminBrandingRouteImport.update({
+  id: "/branding",
+  path: "/branding",
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminDay2ActionsRoute = AdminDay2ActionsRouteImport.update({
@@ -222,6 +230,18 @@ const AdminIntegrationsKindRoute = AdminIntegrationsKindRouteImport.update({
   path: "/integrations/$kind",
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminNotificationTemplatesIndexRoute =
+  AdminNotificationTemplatesIndexRouteImport.update({
+    id: "/notification-templates/",
+    path: "/notification-templates/",
+    getParentRoute: () => AdminRouteRoute,
+  } as any)
+const AdminNotificationTemplatesKindRoute =
+  AdminNotificationTemplatesKindRouteImport.update({
+    id: "/notification-templates/$kind",
+    path: "/notification-templates/$kind",
+    getParentRoute: () => AdminRouteRoute,
+  } as any)
 const AdminOnboardingIndexRoute = AdminOnboardingIndexRouteImport.update({
   id: "/onboarding/",
   path: "/onboarding/",
@@ -309,6 +329,7 @@ export interface FileRoutesByFullPath {
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/audit-forwarding": typeof AdminAuditForwardingRoute
+  "/admin/branding": typeof AdminBrandingRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
@@ -329,6 +350,7 @@ export interface FileRoutesByFullPath {
   "/requests/": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/admin/integrations/$kind": typeof AdminIntegrationsKindRoute
+  "/admin/notification-templates/$kind": typeof AdminNotificationTemplatesKindRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
   "/admin/roles/$roleKey": typeof AdminRolesRoleKeyRoute
   "/admin/roles/new": typeof AdminRolesNewRoute
@@ -337,6 +359,7 @@ export interface FileRoutesByFullPath {
   "/deployments/$deploymentId/update": typeof DeploymentsDeploymentIdUpdateRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/admin/integrations/": typeof AdminIntegrationsIndexRoute
+  "/admin/notification-templates/": typeof AdminNotificationTemplatesIndexRoute
   "/admin/onboarding/": typeof AdminOnboardingIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
   "/admin/roles/": typeof AdminRolesIndexRoute
@@ -357,6 +380,7 @@ export interface FileRoutesByTo {
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/audit-forwarding": typeof AdminAuditForwardingRoute
+  "/admin/branding": typeof AdminBrandingRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
@@ -377,6 +401,7 @@ export interface FileRoutesByTo {
   "/requests": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/admin/integrations/$kind": typeof AdminIntegrationsKindRoute
+  "/admin/notification-templates/$kind": typeof AdminNotificationTemplatesKindRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
   "/admin/roles/$roleKey": typeof AdminRolesRoleKeyRoute
   "/admin/roles/new": typeof AdminRolesNewRoute
@@ -385,6 +410,7 @@ export interface FileRoutesByTo {
   "/deployments/$deploymentId/update": typeof DeploymentsDeploymentIdUpdateRoute
   "/admin/catalog-items": typeof AdminCatalogItemsIndexRoute
   "/admin/integrations": typeof AdminIntegrationsIndexRoute
+  "/admin/notification-templates": typeof AdminNotificationTemplatesIndexRoute
   "/admin/onboarding": typeof AdminOnboardingIndexRoute
   "/admin/projects": typeof AdminProjectsIndexRoute
   "/admin/roles": typeof AdminRolesIndexRoute
@@ -407,6 +433,7 @@ export interface FileRoutesById {
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/audit-forwarding": typeof AdminAuditForwardingRoute
+  "/admin/branding": typeof AdminBrandingRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
   "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
@@ -427,6 +454,7 @@ export interface FileRoutesById {
   "/requests/": typeof RequestsIndexRoute
   "/admin/catalog-items/$itemId": typeof AdminCatalogItemsItemIdRoute
   "/admin/integrations/$kind": typeof AdminIntegrationsKindRoute
+  "/admin/notification-templates/$kind": typeof AdminNotificationTemplatesKindRoute
   "/admin/projects/$projectId": typeof AdminProjectsProjectIdRoute
   "/admin/roles/$roleKey": typeof AdminRolesRoleKeyRoute
   "/admin/roles/new": typeof AdminRolesNewRoute
@@ -435,6 +463,7 @@ export interface FileRoutesById {
   "/deployments/$deploymentId_/update": typeof DeploymentsDeploymentIdUpdateRoute
   "/admin/catalog-items/": typeof AdminCatalogItemsIndexRoute
   "/admin/integrations/": typeof AdminIntegrationsIndexRoute
+  "/admin/notification-templates/": typeof AdminNotificationTemplatesIndexRoute
   "/admin/onboarding/": typeof AdminOnboardingIndexRoute
   "/admin/projects/": typeof AdminProjectsIndexRoute
   "/admin/roles/": typeof AdminRolesIndexRoute
@@ -458,6 +487,7 @@ export interface FileRouteTypes {
     | "/tokens"
     | "/admin/audit"
     | "/admin/audit-forwarding"
+    | "/admin/branding"
     | "/admin/day2-actions"
     | "/admin/form-library"
     | "/admin/infrastructure"
@@ -478,6 +508,7 @@ export interface FileRouteTypes {
     | "/requests/"
     | "/admin/catalog-items/$itemId"
     | "/admin/integrations/$kind"
+    | "/admin/notification-templates/$kind"
     | "/admin/projects/$projectId"
     | "/admin/roles/$roleKey"
     | "/admin/roles/new"
@@ -486,6 +517,7 @@ export interface FileRouteTypes {
     | "/deployments/$deploymentId/update"
     | "/admin/catalog-items/"
     | "/admin/integrations/"
+    | "/admin/notification-templates/"
     | "/admin/onboarding/"
     | "/admin/projects/"
     | "/admin/roles/"
@@ -506,6 +538,7 @@ export interface FileRouteTypes {
     | "/tokens"
     | "/admin/audit"
     | "/admin/audit-forwarding"
+    | "/admin/branding"
     | "/admin/day2-actions"
     | "/admin/form-library"
     | "/admin/infrastructure"
@@ -526,6 +559,7 @@ export interface FileRouteTypes {
     | "/requests"
     | "/admin/catalog-items/$itemId"
     | "/admin/integrations/$kind"
+    | "/admin/notification-templates/$kind"
     | "/admin/projects/$projectId"
     | "/admin/roles/$roleKey"
     | "/admin/roles/new"
@@ -534,6 +568,7 @@ export interface FileRouteTypes {
     | "/deployments/$deploymentId/update"
     | "/admin/catalog-items"
     | "/admin/integrations"
+    | "/admin/notification-templates"
     | "/admin/onboarding"
     | "/admin/projects"
     | "/admin/roles"
@@ -555,6 +590,7 @@ export interface FileRouteTypes {
     | "/tokens"
     | "/admin/audit"
     | "/admin/audit-forwarding"
+    | "/admin/branding"
     | "/admin/day2-actions"
     | "/admin/form-library"
     | "/admin/infrastructure"
@@ -575,6 +611,7 @@ export interface FileRouteTypes {
     | "/requests/"
     | "/admin/catalog-items/$itemId"
     | "/admin/integrations/$kind"
+    | "/admin/notification-templates/$kind"
     | "/admin/projects/$projectId"
     | "/admin/roles/$roleKey"
     | "/admin/roles/new"
@@ -583,6 +620,7 @@ export interface FileRouteTypes {
     | "/deployments/$deploymentId_/update"
     | "/admin/catalog-items/"
     | "/admin/integrations/"
+    | "/admin/notification-templates/"
     | "/admin/onboarding/"
     | "/admin/projects/"
     | "/admin/roles/"
@@ -699,6 +737,13 @@ declare module "@tanstack/react-router" {
       path: "/audit-forwarding"
       fullPath: "/admin/audit-forwarding"
       preLoaderRoute: typeof AdminAuditForwardingRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    "/admin/branding": {
+      id: "/admin/branding"
+      path: "/branding"
+      fullPath: "/admin/branding"
+      preLoaderRoute: typeof AdminBrandingRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     "/admin/day2-actions": {
@@ -848,6 +893,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminIntegrationsKindRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    "/admin/notification-templates/": {
+      id: "/admin/notification-templates/"
+      path: "/notification-templates"
+      fullPath: "/admin/notification-templates/"
+      preLoaderRoute: typeof AdminNotificationTemplatesIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    "/admin/notification-templates/$kind": {
+      id: "/admin/notification-templates/$kind"
+      path: "/notification-templates/$kind"
+      fullPath: "/admin/notification-templates/$kind"
+      preLoaderRoute: typeof AdminNotificationTemplatesKindRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     "/admin/onboarding/": {
       id: "/admin/onboarding/"
       path: "/onboarding"
@@ -952,6 +1011,7 @@ declare module "@tanstack/react-router" {
 interface AdminRouteRouteChildren {
   AdminAuditRoute: typeof AdminAuditRoute
   AdminAuditForwardingRoute: typeof AdminAuditForwardingRoute
+  AdminBrandingRoute: typeof AdminBrandingRoute
   AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
   AdminFormLibraryRoute: typeof AdminFormLibraryRoute
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
@@ -966,12 +1026,14 @@ interface AdminRouteRouteChildren {
   AdminIndexRoute: typeof AdminIndexRoute
   AdminCatalogItemsItemIdRoute: typeof AdminCatalogItemsItemIdRoute
   AdminIntegrationsKindRoute: typeof AdminIntegrationsKindRoute
+  AdminNotificationTemplatesKindRoute: typeof AdminNotificationTemplatesKindRoute
   AdminProjectsProjectIdRoute: typeof AdminProjectsProjectIdRoute
   AdminRolesRoleKeyRoute: typeof AdminRolesRoleKeyRoute
   AdminRolesNewRoute: typeof AdminRolesNewRoute
   AdminSubscriptionsSubscriptionIdRoute: typeof AdminSubscriptionsSubscriptionIdRoute
   AdminCatalogItemsIndexRoute: typeof AdminCatalogItemsIndexRoute
   AdminIntegrationsIndexRoute: typeof AdminIntegrationsIndexRoute
+  AdminNotificationTemplatesIndexRoute: typeof AdminNotificationTemplatesIndexRoute
   AdminOnboardingIndexRoute: typeof AdminOnboardingIndexRoute
   AdminProjectsIndexRoute: typeof AdminProjectsIndexRoute
   AdminRolesIndexRoute: typeof AdminRolesIndexRoute
@@ -983,6 +1045,7 @@ interface AdminRouteRouteChildren {
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminAuditRoute: AdminAuditRoute,
   AdminAuditForwardingRoute: AdminAuditForwardingRoute,
+  AdminBrandingRoute: AdminBrandingRoute,
   AdminDay2ActionsRoute: AdminDay2ActionsRoute,
   AdminFormLibraryRoute: AdminFormLibraryRoute,
   AdminInfrastructureRoute: AdminInfrastructureRoute,
@@ -997,12 +1060,14 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminIndexRoute: AdminIndexRoute,
   AdminCatalogItemsItemIdRoute: AdminCatalogItemsItemIdRoute,
   AdminIntegrationsKindRoute: AdminIntegrationsKindRoute,
+  AdminNotificationTemplatesKindRoute: AdminNotificationTemplatesKindRoute,
   AdminProjectsProjectIdRoute: AdminProjectsProjectIdRoute,
   AdminRolesRoleKeyRoute: AdminRolesRoleKeyRoute,
   AdminRolesNewRoute: AdminRolesNewRoute,
   AdminSubscriptionsSubscriptionIdRoute: AdminSubscriptionsSubscriptionIdRoute,
   AdminCatalogItemsIndexRoute: AdminCatalogItemsIndexRoute,
   AdminIntegrationsIndexRoute: AdminIntegrationsIndexRoute,
+  AdminNotificationTemplatesIndexRoute: AdminNotificationTemplatesIndexRoute,
   AdminOnboardingIndexRoute: AdminOnboardingIndexRoute,
   AdminProjectsIndexRoute: AdminProjectsIndexRoute,
   AdminRolesIndexRoute: AdminRolesIndexRoute,

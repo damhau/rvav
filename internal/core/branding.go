@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 
@@ -327,6 +328,16 @@ func (s *Service) NotificationTemplate(ctx context.Context, p *auth.Principal, k
 	return out, nil
 }
 
+// sentence is a template problem as a field shows it: "It is empty."
+func sentence(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	s = string(unicode.ToUpper(r)) + s[size:]
+	if !strings.HasSuffix(s, ".") {
+		s += "."
+	}
+	return s
+}
+
 // checkedTemplate is a template to save or preview: its problems, per
 // part, are a ValidationError.
 func checkedTemplate(kind api.NotificationKind, w api.NotificationTemplateWrite) (notify.Parts, error) {
@@ -340,7 +351,7 @@ func checkedTemplate(kind api.NotificationKind, w api.NotificationTemplateWrite)
 	if problems := notify.Check(string(kind), string(w.Channel), string(w.Locale), parts); len(problems) > 0 {
 		errs := make([]api.FieldError, len(problems))
 		for i, pr := range problems {
-			errs[i] = fieldErr("/"+pr.Part, "template", pr.Message)
+			errs[i] = fieldErr("/"+pr.Part, "template", sentence(pr.Message))
 		}
 		return parts, &ValidationError{Errors: errs}
 	}
@@ -417,7 +428,7 @@ func (s *Service) PreviewNotificationTemplate(ctx context.Context, p *auth.Princ
 	pv, problems := notify.PreviewOf(string(kind), string(w.Channel), string(w.Locale), parts, b, s.Config.PublicURL)
 	if len(problems) > 0 {
 		return api.NotificationTemplatePreview{}, &ValidationError{Errors: []api.FieldError{
-			fieldErr("/"+problems[0].Part, "template", problems[0].Message)}}
+			fieldErr("/"+problems[0].Part, "template", sentence(problems[0].Message))}}
 	}
 	out := api.NotificationTemplatePreview{Subject: pv.Message.Subject, Text: pv.Message.Text}
 	switch w.Channel {

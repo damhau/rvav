@@ -2,10 +2,12 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useId, type ReactNode } from "react";
 import { Tip } from "@/components/ui/tooltip";
+import { useBranding } from "@/lib/branding";
 import { useLiveStatus } from "@/lib/live/LiveProvider";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { cn } from "@/lib/utils";
+import { BrandMark } from "./BrandMark";
 import { adminMenu, mainPages } from "./nav";
 
 const row = "relative flex items-center rounded-md hover:bg-sunken hover:text-fg [&_svg]:shrink-0";
@@ -61,6 +63,7 @@ function LiveIndicator({ rail }: { rail: boolean }) {
  */
 export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNavigate?: () => void }) {
   const { projectId, me } = useCurrentProject();
+  const branding = useBranding();
   const groups = adminMenu(me);
   const running = useInfiniteQuery(q.requests({ projectId, status: ["running", "queued", "cancelling"], limit: 50 }));
   const runningCount = running.data?.pages.reduce((n, p) => n + p.items.length, 0) ?? 0;
@@ -116,13 +119,10 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
           className={cn("flex items-center gap-2 rounded-md py-0.5 text-fg", rail ? "justify-center px-1" : "px-1.5")}
           onClick={onNavigate}
         >
-          <span
-            aria-hidden
-            className="flex size-[22px] shrink-0 items-center justify-center rounded-sm bg-fg font-mono text-caption font-medium text-bg"
-          >
-            rv
+          <BrandMark className={rail ? "max-w-[22px]" : undefined} />
+          <span className={rail ? "sr-only" : "min-w-0 truncate text-body font-semibold tracking-[-0.01em]"}>
+            {branding.name}
           </span>
-          <span className={rail ? "sr-only" : "text-body font-semibold tracking-[-0.01em]"}>rvav</span>
           <span className={rail ? "sr-only" : "ml-auto text-caption text-faint"}>GVA</span>
         </Link>
       </div>

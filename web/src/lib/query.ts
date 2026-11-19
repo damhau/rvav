@@ -7,7 +7,10 @@ import type {
   CatalogItemType,
   DeploymentStatusFilter,
   EnvironmentKey,
+  NotificationKind,
   RequestStatus,
+  TemplateChannel,
+  TemplateLocale,
   ViewList,
   VmPowerState,
 } from "./api/types";
@@ -291,6 +294,18 @@ export const adm = {
   resourceTypes: () => get(["admin", "resource-types"], (signal) => call(api.GET("/admin/resource-types", { signal }))),
   variables: () => get(["admin", "variables"], (signal) => call(api.GET("/admin/variables", { signal }))),
   secrets: () => get(["admin", "secrets"], (signal) => call(api.GET("/admin/secrets", { signal }))),
+  branding: () => get(["branding"], (signal) => call(api.GET("/branding", { signal }))),
+  notificationTemplates: () =>
+    get(["admin", "notification-templates"], (signal) => call(api.GET("/admin/notification-templates", { signal }))),
+  notificationTemplate: (kind: NotificationKind, channel: TemplateChannel, locale: TemplateLocale) =>
+    get(["admin", "notification-templates", kind, channel, locale], (signal) =>
+      call(
+        api.GET("/admin/notification-templates/{kind}", {
+          params: { path: { kind }, query: { channel, locale } },
+          signal,
+        }),
+      ),
+    ),
   users: (search: string) =>
     get(["users", search], (signal) =>
       call(api.GET("/users", { params: { query: { q: search, limit: 20 } }, signal })),

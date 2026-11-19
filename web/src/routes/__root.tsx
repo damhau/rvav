@@ -6,6 +6,7 @@ import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { AppShell } from "@/components/shell/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useBranding } from "@/lib/branding";
 import { LiveProvider } from "@/lib/live/LiveProvider";
 import { ProjectProvider } from "@/lib/project";
 
@@ -14,11 +15,12 @@ export interface RouterContext {
 }
 
 function Boot({ state }: { state: "loading" | Error }) {
+  const { name } = useBranding();
   return (
     <div className="flex h-full items-center justify-center p-6">
       {state === "loading" ? (
         <p className="text-muted" role="status">
-          Loading rvav…
+          Loading {name}…
         </p>
       ) : (
         <ErrorState

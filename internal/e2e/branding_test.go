@@ -238,7 +238,7 @@ func TestNotificationTemplates(t *testing.T) {
 			Html:    new("<p>This broke: <b>{{.Body}}</b></p>")}
 		bad := email
 		bad.Subject = "{{.Title"
-		refused(bad, "/subject", "line 1")
+		refused(bad, "/subject", "Line 1: ")
 		bad = email
 		bad.Text = "{{.Deployment.Owner}}"
 		refused(bad, "/text", ".Deployment is not a variable of this kind")
@@ -249,7 +249,7 @@ func TestNotificationTemplates(t *testing.T) {
 			Subject: "Failed: {{.Title}}", Text: "*{{.Title}}* failed on {{.Portal}}: {{.Body}}"}
 		bad = slack
 		bad.Html = new("<p>x</p>")
-		refused(bad, "/html", "only emails")
+		refused(bad, "/html", "Only emails have an HTML part.")
 		h.json("PUT", path+"/request_failed", "tnguyen", email, 403, nil)
 
 		var preview api.NotificationTemplatePreview

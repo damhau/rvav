@@ -109,10 +109,10 @@ func (d Data) escaped(esc func(string) string) Data {
 // Variable is one a template may use.
 type Variable struct {
 	// Name as a template writes it: .Request.Number.
-	Name string
+	Name string `json:"name"`
 	// Type: text, number, yes/no, date or list of text.
-	Type        string
-	Description string
+	Type        string `json:"type"`
+	Description string `json:"description"`
 }
 
 // Kind is a notification kind whose templates administrators edit.
