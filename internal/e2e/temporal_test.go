@@ -193,12 +193,18 @@ func settle(t *testing.T, ctx context.Context, tc client.Client, requestID strin
 // that names a directory (docs/operations/upgrades.md).
 func recordHistory(t *testing.T, ctx context.Context, tc client.Client, requestID, name string) {
 	t.Helper()
+	recordWorkflow(t, ctx, tc, provision.WorkflowID(requestID), name)
+}
+
+// recordWorkflow is recordHistory for any workflow, by its ID.
+func recordWorkflow(t *testing.T, ctx context.Context, tc client.Client, workflowID, name string) {
+	t.Helper()
 	dir := os.Getenv("RVAV_RECORD_HISTORIES")
 	if dir == "" {
 		return
 	}
 	var h historypb.History
-	iter := tc.GetWorkflowHistory(ctx, provision.WorkflowID(requestID), "", false, enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
+	iter := tc.GetWorkflowHistory(ctx, workflowID, "", false, enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
 	for iter.HasNext() {
 		ev, err := iter.Next()
 		if err != nil {

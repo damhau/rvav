@@ -73,7 +73,11 @@ workflows in flight fails there, not in production. The histories in
   before `poll-last-check` (#125) on the end-to-end tests' dev server;
 - a build in two rounds (T1.7): a database on DHCP, then web servers whose
   cloud-init reads its address, with a key pair rvav made, recorded by
-  `TestT1Acceptance`.
+  `TestT1Acceptance`;
+- a deployment's life after it is built (X1.6): an update that grows a
+  disk on each VM and adds one, a disk removed, a VM unregistered, and an
+  onboarding plan's run that adopts it again, recorded by
+  `TestX1Acceptance`.
 
 Add a history whenever a workflow gains a path:
 
