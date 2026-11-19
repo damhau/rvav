@@ -2862,6 +2862,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/lease-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lease rules, in the order they are tried
+         * @description A lease rule gives the deployments its CEL condition matches a
+         *     lease of their own, before the environment's lease policy and a
+         *     project's override (ADR-0048). With `policies.read`, every rule.
+         *     With `project.policies.manage` in projects (project admins), the
+         *     global rules and those of these projects.
+         */
+        get: operations["listLeaseRules"];
+        put?: never;
+        /**
+         * Add a lease rule
+         * @description A global rule needs `policies.manage`. A project's, that or
+         *     `project.policies.manage` in the project (project admins): a
+         *     project admin's rule can't give more than the environment's lease,
+         *     or the project's override an administrator set, each refused with
+         *     the code `looser` (ADR-0048). Audited.
+         */
+        post: operations["createLeaseRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/lease-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a lease rule
+         * @description As adding one; a project's rule an administrator set
+         *     (`set_by_admin`) is refused (403) to its project admins. Audited.
+         */
+        put: operations["updateLeaseRule"];
+        post?: never;
+        /**
+         * Remove a lease rule (its deployments get the environment's or project's lease)
+         * @description As changing it: `policies.manage`, or `project.policies.manage` in
+         *     its project unless an administrator set it (`set_by_admin`).
+         *     Audited.
+         */
+        delete: operations["deleteLeaseRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/approval-policies": {
         parameters: {
             query?: never;
@@ -5342,14 +5403,7 @@ export interface components {
             approval: components["schemas"]["ApprovalPreview"];
             /** @description What soft policies warn about; submitting needs their `id` in `accepted_warnings`, or `accept_warnings`. */
             warnings?: components["schemas"]["PolicyWarning"][];
-            lease?: {
-                default_days?: number | null;
-                max_days?: number | null;
-                /** Format: date-time */
-                expires_at?: string | null;
-                /** @description Soft when a longer lease than `max_days` only warns (ADR-0045). */
-                enforcement?: components["schemas"]["PolicyEnforcement"];
-            };
+            lease?: components["schemas"]["PreviewLease"];
             /**
              * @description What each component of a VM item builds (ADR-0024), in its
              *     order; a single-VM item has one, `vm`. A composite has one
@@ -6108,6 +6162,21 @@ export interface components {
              *     `extensions_max` warns the owner instead of asking for approval.
              */
             enforcement?: components["schemas"]["PolicyEnforcement"];
+            /**
+             * @description What sets the lease now, by name: the lease rule its request
+             *     matched, the project's override (`Web Platform in
+             *     Development`) or the environment's lease policy
+             *     (`Development`). Null without a lease policy (ADR-0048).
+             */
+            policy?: string | null;
+            /** @description How long the deployment may live in all, from its creation; null for no limit. */
+            max_lifetime_days?: number | null;
+            /**
+             * Format: date-time
+             * @description Its creation plus `max_lifetime_days`: an extension past it
+             *     needs approval, or warns when the policy is soft.
+             */
+            lifetime_ends_at?: string | null;
         };
         /**
          * @description `drifted`: changed in vCenter outside rvav (size, disks, adapters'
@@ -8024,11 +8093,60 @@ export interface components {
              */
             enforcement?: components["schemas"]["PolicyEnforcement"];
             /**
+             * @description How long a deployment lives in all, in days from its creation
+             *     (ADR-0048). A request for a longer lease, or an extension past
+             *     it, is refused or asks the project's approvers, or warns when
+             *     the policy is soft. Null for no limit. Not shorter than `max_days`.
+             */
+            max_lifetime_days?: number | null;
+            /**
              * @description An administrator (`policies.manage`) wrote it last: a project's
              *     admins read the override but don't change or remove it
              *     (ADR-0045).
              */
             readonly set_by_admin?: boolean;
+        };
+        LeaseRuleWrite: {
+            name: string;
+            /**
+             * @description CEL over what approval conditions read: inputs, environment,
+             *     project, item, vm, vms, user, quota, request and update. On
+             *     submit, a condition that can't be evaluated applies the rule
+             *     when it gives no more than the lease without it.
+             */
+            condition: string;
+            /** @description Null for every environment. */
+            environment?: components["schemas"]["EnvironmentKey"] | null;
+            /** @description A project's rule; null for every project. */
+            project_id?: string | null;
+            /** @description Lower first; 100 when absent. On a tie, global rules first, then by name. */
+            priority?: number;
+            /** @description Null for no lease. */
+            default_days?: number | null;
+            max_days?: number | null;
+            max_extensions: number;
+            grace_days: number;
+            expiry_action: components["schemas"]["LeaseExpiryAction"];
+            enforcement?: components["schemas"]["PolicyEnforcement"];
+            /**
+             * @description How long a deployment lives in all, in days from its creation
+             *     (ADR-0048). A request for a longer lease, or an extension past
+             *     it, is refused or asks the project's approvers, or warns when
+             *     the policy is soft. Null for no limit. Not shorter than `max_days`.
+             */
+            max_lifetime_days?: number | null;
+        };
+        LeaseRule: components["schemas"]["LeaseRuleWrite"] & {
+            id: string;
+            /**
+             * @description An administrator (`policies.manage`) wrote it last: a
+             *     project's admins read it but don't change or remove it
+             *     (ADR-0045). False for a project admin's own.
+             */
+            set_by_admin: boolean;
+        };
+        LeaseRuleList: {
+            items: components["schemas"]["LeaseRule"][];
         };
         /** @enum {string} */
         PolicyEnforcement: "hard" | "soft";
@@ -8052,6 +8170,25 @@ export interface components {
          * @enum {string}
          */
         LeaseExpiryAction: "power_off_then_delete" | "delete" | "notify_only";
+        /** @description The lease a request gets. */
+        PreviewLease: {
+            default_days?: number | null;
+            max_days?: number | null;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** @description Soft when a longer lease than `max_days` only warns (ADR-0045). */
+            enforcement?: components["schemas"]["PolicyEnforcement"];
+            /**
+             * @description What decides the lease, by name: a lease rule, the
+             *     project's override or the environment's lease policy
+             *     (ADR-0048). Null without a lease policy.
+             */
+            policy?: string | null;
+            /** @description Extensions the owner may make without approval. */
+            max_extensions?: number;
+            /** @description How long the deployment may live in all; null for no limit. */
+            max_lifetime_days?: number | null;
+        };
         LeasePolicyList: {
             items: components["schemas"]["LeasePolicy"][];
         };
@@ -8163,7 +8300,7 @@ export interface components {
         PolicyExplainQuery: {
             project_id: string;
             environment: components["schemas"]["EnvironmentKey"];
-            /** @description A catalog item, for approval policies. */
+            /** @description A catalog item, for approval policies and lease rules. */
             item_id?: string;
             /** @description A day-2 action key, for day-2 policies. */
             action?: string;
@@ -13691,6 +13828,108 @@ export interface operations {
             };
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listLeaseRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseRuleList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createLeaseRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaseRuleWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseRule"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateLeaseRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaseRuleWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseRule"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteLeaseRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
             cookie?: never;
         };
         requestBody?: never;

@@ -85,12 +85,13 @@ func (s *Service) choices(ctx context.Context, p *auth.Principal, d store.Deploy
 		c.SnapshotMaxAgeDays = *env.SnapshotMaxAgeDays
 	}
 	if t.Type == day2.DeploymentType {
-		lease, err := s.Store.LeasePolicy(ctx, d.ProjectID, d.Environment)
-		if err != nil {
-			return c, err
+		c.LeaseDefaultDays, c.LeaseMaxDays, c.LeaseMaxExtensions = d.LeaseDefaultDays, d.LeaseMaxDays, derefInt(d.LeaseMaxExtensions)
+		c.LeaseSoft = deref(d.LeaseEnforcement) == store.EnforcementSoft
+		c.LeasePolicy = deref(d.LeasePolicy)
+		if d.LeaseMaxLifetimeDays != nil {
+			c.LeaseLifetimeDays = d.LeaseMaxLifetimeDays
+			c.LeaseLifetimeLeft = present.Ptr(lifetimeLeft(d.CreatedAt, *d.LeaseMaxLifetimeDays, time.Now()))
 		}
-		c.LeaseDefaultDays, c.LeaseMaxDays, c.LeaseMaxExtensions = lease.DefaultDays, lease.MaxDays, lease.MaxExtensions
-		c.LeaseSoft = lease.Enforcement == store.EnforcementSoft
 		if c.Members, err = s.memberChoices(ctx, d); err != nil {
 			return c, err
 		}
@@ -200,6 +201,12 @@ func presentAction(a *day2.Action, t day2.Target, c day2.Choices, dec decision, 
 		out.Warnings = &dec.Warnings
 	}
 	return out
+}
+
+// lifetimeLeft is the whole days a deployment created at created may
+// still live at now, with a lifetime of days (ADR-0048); 0 once past it.
+func lifetimeLeft(created time.Time, days int, now time.Time) int {
+	return max(int(created.AddDate(0, 0, days).Sub(now)/(24*time.Hour)), 0)
 }
 
 func leaseWarning(c day2.Choices, why string) api.PolicyWarning {

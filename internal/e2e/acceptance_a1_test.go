@@ -325,6 +325,9 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	var naming api.NamingPolicy
 	h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "A1 names",
 		Template: "{project}-{environment}-{role}{seq:03}", Offers: fin}, 201, &naming)
+	var leaseRule api.LeaseRule
+	h.json("POST", "/api/v1/admin/lease-rules", admin, api.LeaseRuleWrite{Name: "A1 leases", Condition: `item.slug == "a1"`,
+		ProjectId: new("prj_fin"), DefaultDays: new(7), MaxDays: new(14), GraceDays: 7, ExpiryAction: api.PowerOffThenDelete}, 201, &leaseRule)
 	h.json("POST", "/api/v1/admin/templates", admin, api.VmTemplateWrite{Key: "ubuntu", Label: "Ubuntu 24.04",
 		Sources: sourceOn("", "tpl-ubuntu24.04-2026.10"), OsFamily: api.VmTemplateWriteOsFamilyLinux, Offers: fin}, 201, nil)
 	h.json("POST", "/api/v1/admin/sizes", admin, api.SizePresetWrite{Key: "M", Label: "Medium", Vcpu: 4, MemoryGb: 16, DiskGb: 80,
@@ -385,6 +388,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"templates/{key}":            first("/api/v1/admin/templates").Items[0].Key,
 		"sizes/{key}":                first("/api/v1/admin/sizes").Items[0].Key,
 		"naming-policies/{id}":       naming.Id,
+		"lease-rules/{id}":           leaseRule.Id,
 		"approval-policies/{id}":     first("/api/v1/admin/approval-policies").Items[0].Id,
 		"day2-policies/{id}":         first("/api/v1/admin/day2-policies").Items[0].Id,
 		"integrations/{kind}":        "awx",

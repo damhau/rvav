@@ -101,6 +101,11 @@ type LeaseInfo struct {
 	ExpiryAction  string
 	// Soft: a lease longer than MaxDays warns (ADR-0045).
 	Soft bool
+	// Policy names what decides the lease, and RuleID the lease rule
+	// that does, if one does (ADR-0048).
+	Policy          string
+	RuleID          *string
+	MaxLifetimeDays *int
 }
 
 var quotaOrder = []string{"vcpu", "memory_gb", "storage_gb", "vm_count"}
@@ -305,7 +310,7 @@ func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.
 	if err := s.evaluateApproval(ctx, p, ev, strict); err != nil {
 		return nil, err
 	}
-	if err := s.evaluateLease(ctx, ev, d.LeaseDays); err != nil {
+	if err := s.evaluateLease(ctx, p, ev, d.LeaseDays, strict); err != nil {
 		return nil, err
 	}
 	return ev, nil
@@ -782,28 +787,27 @@ func quotaLabel(res string) string {
 	return "VMs"
 }
 
-func (s *Service) evaluateLease(ctx context.Context, ev *Evaluation, requested *int) error {
+func (s *Service) evaluateLease(ctx context.Context, p *auth.Principal, ev *Evaluation, requested *int, strict bool) error {
 	if (ev.Blueprint.Kind != blueprint.KindVM && !ev.compositeVMs()) || ev.Env.Key == "" {
 		return nil
 	}
-	pol, err := s.Store.LeasePolicy(ctx, ev.Project.ID, ev.Env.Key)
+	c, err := s.chooseLease(ctx, ev.Project, ev.Env, PolicyVars(ev, p), strict, false)
 	if err != nil {
 		return err
 	}
-	ev.Lease = LeaseInfo{DefaultDays: pol.DefaultDays, MaxDays: pol.MaxDays, MaxExtensions: pol.MaxExtensions, ExpiryAction: pol.ExpiryAction,
-		Soft: pol.Enforcement == store.EnforcementSoft}
-	days := pol.DefaultDays
+	ev.Lease = LeaseInfo{DefaultDays: c.DefaultDays, MaxDays: c.MaxDays, MaxExtensions: c.MaxExtensions, ExpiryAction: c.ExpiryAction,
+		Soft: c.Enforcement == store.EnforcementSoft, Policy: c.Policy, MaxLifetimeDays: c.MaxLifetimeDays}
+	if c.Rule != nil {
+		ev.Lease.RuleID = &c.Rule.ID
+	}
+	days := c.DefaultDays
 	if requested != nil {
 		days = requested
 	}
-	switch {
-	case days == nil || pol.MaxDays == nil || *days <= *pol.MaxDays:
-	case pol.Enforcement == store.EnforcementSoft:
-		ev.Warnings = append(ev.Warnings, present.Warning("Lease in "+ev.Env.Name,
-			fmt.Sprintf("Leases in %s should be at most %d days.", ev.Env.Name, *pol.MaxDays)))
-	default:
-		ev.Errors = append(ev.Errors, fieldErr("/lease_days", "too_long",
-			fmt.Sprintf("Leases in %s can be at most %d days.", ev.Env.Name, *pol.MaxDays)))
+	if why := leaseTooLong(c, ev.Env.Name, days); why != "" && c.Enforcement == store.EnforcementSoft {
+		ev.Warnings = append(ev.Warnings, present.Warning("Lease in "+ev.Env.Name, why))
+	} else if why != "" {
+		ev.Errors = append(ev.Errors, fieldErr("/lease_days", "too_long", why))
 	}
 	if days != nil && *days < 1 {
 		ev.Errors = append(ev.Errors, fieldErr("/lease_days", "too_short", "A lease is at least one day."))
@@ -816,22 +820,38 @@ func (s *Service) evaluateLease(ctx context.Context, ev *Evaluation, requested *
 	return nil
 }
 
-func (ev *Evaluation) previewLease() *struct {
-	DefaultDays *int                   `json:"default_days,omitempty"`
-	Enforcement *api.PolicyEnforcement `json:"enforcement,omitempty"`
-	ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
-	MaxDays     *int                   `json:"max_days,omitempty"`
-} {
+// leaseTooLong says why a lease of days is longer than c allows, "" when
+// it isn't: the maximum, or the lifetime when it is shorter (ADR-0048).
+// Worded as a soft policy's warning when c is soft.
+func leaseTooLong(c leaseChoice, envName string, days *int) string {
+	verb := map[bool][2]string{false: {"can be", "live"}, true: {"should be", "should live"}}[c.Enforcement == store.EnforcementSoft]
+	where := "in " + envName
+	if c.Rule != nil {
+		where = "under " + c.Rule.Name
+	} else if c.Policy != "" {
+		where = "in " + c.Policy
+	}
+	switch {
+	case days == nil:
+	case c.MaxLifetimeDays != nil && *days > *c.MaxLifetimeDays && (c.MaxDays == nil || *c.MaxLifetimeDays < *c.MaxDays):
+		return fmt.Sprintf("Deployments %s %s %d days at most.", where, verb[1], *c.MaxLifetimeDays)
+	case c.MaxDays != nil && *days > *c.MaxDays:
+		return fmt.Sprintf("Leases %s %s at most %d days.", where, verb[0], *c.MaxDays)
+	}
+	return ""
+}
+
+func (ev *Evaluation) previewLease() *api.PreviewLease {
 	enforcement := api.PolicyEnforcementHard
 	if ev.Lease.Soft {
 		enforcement = api.PolicyEnforcementSoft
 	}
-	return &struct {
-		DefaultDays *int                   `json:"default_days,omitempty"`
-		Enforcement *api.PolicyEnforcement `json:"enforcement,omitempty"`
-		ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
-		MaxDays     *int                   `json:"max_days,omitempty"`
-	}{DefaultDays: ev.Lease.DefaultDays, Enforcement: &enforcement, MaxDays: ev.Lease.MaxDays, ExpiresAt: ev.Lease.ExpiresAt}
+	out := &api.PreviewLease{DefaultDays: ev.Lease.DefaultDays, Enforcement: &enforcement, MaxDays: ev.Lease.MaxDays,
+		ExpiresAt: ev.Lease.ExpiresAt, MaxExtensions: &ev.Lease.MaxExtensions, MaxLifetimeDays: ev.Lease.MaxLifetimeDays}
+	if ev.Lease.Policy != "" {
+		out.Policy = &ev.Lease.Policy
+	}
+	return out
 }
 
 // Preview turns an evaluation into the API response.

@@ -98,7 +98,8 @@ func (s *Service) SetProjectQuotas(ctx context.Context, p *auth.Principal, proje
 func presentLeasePolicy(l store.LeasePolicy) api.LeasePolicy {
 	return api.LeasePolicy{Environment: l.Environment, ProjectId: l.ProjectID, DefaultDays: l.DefaultDays, MaxDays: l.MaxDays,
 		MaxExtensions: l.MaxExtensions, GraceDays: l.GraceDays, ExpiryAction: api.LeaseExpiryAction(l.ExpiryAction),
-		Enforcement: present.Ptr(api.PolicyEnforcement(cmp.Or(l.Enforcement, store.EnforcementHard))), SetByAdmin: &l.SetByAdmin}
+		Enforcement: present.Ptr(api.PolicyEnforcement(cmp.Or(l.Enforcement, store.EnforcementHard))), SetByAdmin: &l.SetByAdmin,
+		MaxLifetimeDays: l.MaxLifetimeDays}
 }
 
 // enforcement checks a policy's enforcement, hard when not given.
@@ -170,6 +171,7 @@ func (s *Service) SetLeasePolicy(ctx context.Context, p *auth.Principal, l api.L
 	if err != nil {
 		return api.LeasePolicy{}, err
 	}
+	terms, termErrs := leaseTerms(l.DefaultDays, l.MaxDays, l.MaxExtensions, l.GraceDays, l.ExpiryAction, l.Enforcement, l.MaxLifetimeDays)
 	env, err := s.Store.GetEnvironment(ctx, l.Environment)
 	if errors.Is(err, store.ErrNotFound) {
 		errs = append(errs, fieldErr("/environment", "unknown", fmt.Sprintf("%q is not an environment.", l.Environment)))
@@ -181,35 +183,16 @@ func (s *Service) SetLeasePolicy(ctx context.Context, p *auth.Principal, l api.L
 		} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return api.LeasePolicy{}, err
 		}
-		looser, err := s.looserLease(ctx, env, l)
+		looser, err := s.looserLease(ctx, env, terms)
 		if err != nil {
 			return api.LeasePolicy{}, err
 		}
 		errs = append(errs, looser...)
 	}
-	for ptr, v := range map[string]*int{"/default_days": l.DefaultDays, "/max_days": l.MaxDays} {
-		if v != nil && *v < 1 {
-			errs = append(errs, fieldErr(ptr, "minimum", "At least a day, or none."))
-		}
-	}
-	if l.DefaultDays != nil && l.MaxDays != nil && *l.DefaultDays > *l.MaxDays {
-		errs = append(errs, fieldErr("/default_days", "maximum", "The default can't be longer than the maximum."))
-	}
-	if l.MaxExtensions < 0 || l.GraceDays < 0 {
-		errs = append(errs, fieldErr("/max_extensions", "minimum", "Extensions and grace days are zero or more."))
-	}
-	switch l.ExpiryAction {
-	case api.PowerOffThenDelete, api.Delete, api.NotifyOnly:
-	default:
-		errs = append(errs, fieldErr("/expiry_action", "enum", "power_off_then_delete, delete or notify_only."))
-	}
-	enf, enfErrs := enforcement(l.Enforcement)
-	if errs = append(errs, enfErrs...); len(errs) > 0 {
+	if errs = append(errs, termErrs...); len(errs) > 0 {
 		return api.LeasePolicy{}, &ValidationError{Errors: errs}
 	}
-	row := store.LeasePolicy{Environment: l.Environment, ProjectID: project, DefaultDays: l.DefaultDays, MaxDays: l.MaxDays,
-		MaxExtensions: l.MaxExtensions, GraceDays: l.GraceDays, ExpiryAction: string(l.ExpiryAction), Enforcement: enf,
-		SetByAdmin: p.Everywhere(auth.PoliciesManage)}
+	row := store.LeasePolicy{Environment: l.Environment, ProjectID: project, LeaseTerms: terms, SetByAdmin: p.Everywhere(auth.PoliciesManage)}
 	if err := s.Store.SetLeasePolicy(ctx, row); err != nil {
 		return api.LeasePolicy{}, err
 	}
@@ -219,7 +202,7 @@ func (s *Service) SetLeasePolicy(ctx context.Context, p *auth.Principal, l api.L
 
 // looserLease says what a project admin's override gives beyond the
 // environment's lease, which they can't raise (ADR-0045).
-func (s *Service) looserLease(ctx context.Context, env store.Environment, l api.LeasePolicy) ([]api.FieldError, error) {
+func (s *Service) looserLease(ctx context.Context, env store.Environment, l store.LeaseTerms) ([]api.FieldError, error) {
 	all, err := s.Store.LeasePolicies(ctx)
 	if err != nil {
 		return nil, err
@@ -228,28 +211,7 @@ func (s *Service) looserLease(ctx context.Context, env store.Environment, l api.
 	if i < 0 {
 		return nil, nil
 	}
-	e := all[i]
-	var errs []api.FieldError
-	if e.DefaultDays != nil && l.DefaultDays == nil {
-		errs = append(errs, fieldErr("/default_days", "looser", "Deployments in "+env.Name+" get a lease: give them one."))
-	}
-	if e.MaxDays != nil && (l.MaxDays == nil || *l.MaxDays > *e.MaxDays) {
-		errs = append(errs, fieldErr("/max_days", "looser", fmt.Sprintf("%s allows %d days at most.", env.Name, *e.MaxDays)))
-	}
-	if l.MaxExtensions > e.MaxExtensions {
-		errs = append(errs, fieldErr("/max_extensions", "looser", fmt.Sprintf("%s allows %d extensions at most.", env.Name, e.MaxExtensions)))
-	}
-	if l.GraceDays > e.GraceDays {
-		errs = append(errs, fieldErr("/grace_days", "looser", fmt.Sprintf("%s gives %d grace days at most.", env.Name, e.GraceDays)))
-	}
-	rank := map[string]int{"notify_only": 0, "power_off_then_delete": 1, "delete": 2}
-	if rank[string(l.ExpiryAction)] < rank[e.ExpiryAction] {
-		errs = append(errs, fieldErr("/expiry_action", "looser", env.Name+"'s leases end with "+strings.ReplaceAll(e.ExpiryAction, "_", " ")+"."))
-	}
-	if l.Enforcement != nil && *l.Enforcement == api.PolicyEnforcementSoft && e.Enforcement != store.EnforcementSoft {
-		errs = append(errs, fieldErr("/enforcement", "looser", env.Name+"'s lease is hard: its overrides are too."))
-	}
-	return errs, nil
+	return looser(l, all[i].LeaseTerms, env.Name), nil
 }
 
 func (s *Service) DeleteLeaseOverride(ctx context.Context, p *auth.Principal, environment, projectID string) error {
@@ -706,7 +668,7 @@ func (s *Service) ExplainPolicies(ctx context.Context, p *auth.Principal, q api.
 	if q.Inputs != nil {
 		inputs = *q.Inputs
 	}
-	if out.Lease, err = s.explainLease(ctx, proj, env); err != nil {
+	if out.Lease, err = s.explainLease(ctx, as, proj, env, q.ItemId, inputs, full); err != nil {
 		return out, err
 	}
 	if out.Naming, err = s.explainNaming(ctx, proj, env, full); err != nil {
@@ -732,51 +694,42 @@ func (s *Service) ExplainPolicies(ctx context.Context, p *auth.Principal, q api.
 	return out, nil
 }
 
-func (s *Service) explainLease(ctx context.Context, proj store.Project, env store.Environment) (api.PolicyDecision, error) {
-	dec := api.PolicyDecision{Considered: []api.PolicyConsidered{}}
-	all, err := s.Store.LeasePolicies(ctx)
+// explainLease says which lease applies (ADR-0048): the lease rules first,
+// read with the item and inputs given, then the project's override and the
+// environment's lease.
+func (s *Service) explainLease(ctx context.Context, as *auth.Principal, proj store.Project, env store.Environment, itemID *string,
+	inputs map[string]any, full bool) (api.PolicyDecision, error) {
+	ev := &Evaluation{Inputs: inputs, Env: env, Project: proj, Count: 1}
+	if itemID != nil && *itemID != "" {
+		item, err := s.Store.GetItem(ctx, *itemID, as.User.ID)
+		if errors.Is(err, store.ErrNotFound) {
+			return api.PolicyDecision{}, &ValidationError{Errors: []api.FieldError{fieldErr("/item_id", "unknown", "There is no such item.")}}
+		} else if err != nil {
+			return api.PolicyDecision{}, err
+		}
+		ev.Item = item
+	}
+	c, err := s.chooseLease(ctx, proj, env, PolicyVars(ev, as), false, full)
 	if err != nil {
-		return dec, err
+		return api.PolicyDecision{}, err
 	}
-	var own, override *store.LeasePolicy
-	for i, l := range all {
-		switch {
-		case l.Environment == env.Key && l.ProjectID == nil:
-			own = &all[i]
-		case l.Environment == env.Key && *l.ProjectID == proj.ID:
-			override = &all[i]
-		}
-	}
-	consider := func(l *store.LeasePolicy, id, name string, applies bool, why string) {
-		if l != nil {
-			dec.Considered = append(dec.Considered, api.PolicyConsidered{Id: id, Name: name, Applies: applies, Why: why})
-		}
-	}
-	consider(override, "lease:"+env.Key+":"+proj.ID, proj.Name+" in "+env.Name, true, "The project's own lease in this environment.")
-	consider(own, "lease:"+env.Key, env.Name, override == nil, map[bool]string{true: "The environment's lease.",
-		false: "The project's own lease overrides it."}[override == nil])
-	l := override
-	if l == nil {
-		l = own
-	}
-	if l == nil {
-		msg := "No lease: deployments here don't expire."
-		dec.Outcome = &msg
-		return dec, nil
-	}
-	name := env.Name
-	if l == override {
-		name = proj.Name + " in " + env.Name
-	}
-	dec.DecidedBy = &name
+	dec := api.PolicyDecision{Considered: c.Considered}
 	msg := "No lease: deployments here don't expire."
-	if l.DefaultDays != nil {
-		msg = fmt.Sprintf("Deployments get %d days", *l.DefaultDays)
-		if l.MaxDays != nil {
-			msg += fmt.Sprintf(", up to %d with up to %d extensions", *l.MaxDays, l.MaxExtensions)
+	if c.Policy != "" {
+		dec.DecidedBy = &c.Policy
+	}
+	if c.DefaultDays != nil {
+		msg = fmt.Sprintf("Deployments get %d days", *c.DefaultDays)
+		if c.MaxDays != nil {
+			msg += fmt.Sprintf(", up to %d with up to %d extensions", *c.MaxDays, c.MaxExtensions)
 		}
-		msg += "; at the end: " + strings.ReplaceAll(l.ExpiryAction, "_", " ") + "."
-		if l.Enforcement == store.EnforcementSoft {
+		msg += "; at the end: " + strings.ReplaceAll(c.ExpiryAction, "_", " ") + "."
+		if c.MaxLifetimeDays != nil && c.Enforcement != store.EnforcementSoft {
+			msg += fmt.Sprintf(" They live %d days at most: an extension past that needs approval.", *c.MaxLifetimeDays)
+		} else if c.MaxLifetimeDays != nil {
+			msg += fmt.Sprintf(" They live %d days at most.", *c.MaxLifetimeDays)
+		}
+		if c.Enforcement == store.EnforcementSoft {
 			msg += " Going beyond it warns the requester, who may go on."
 		}
 	}

@@ -90,6 +90,12 @@ type Choices struct {
 	LeaseDefaultDays, LeaseMaxDays *int
 	LeaseMaxExtensions             int
 	LeaseSoft                      bool
+	// LeasePolicy names what sets the lease: a lease rule, the project's
+	// override or the environment (ADR-0048).
+	LeasePolicy string
+	// LeaseLifetimeDays is how long the deployment may live in all, and
+	// LeaseLifetimeLeft the whole days of it left; nil for no limit.
+	LeaseLifetimeDays, LeaseLifetimeLeft *int
 }
 
 // Op is one step of a day-2 request. The workflow runs Op with Args.

@@ -15,15 +15,16 @@ import (
 const deploymentRowSelect = `
 select d.id, d.name, d.description, d.status, d.project_id, d.environment, d.item_id, d.version_id, d.owner_id,
        d.created_by_request_id, d.created_at, d.lease_expires_at, d.lease_extensions_used,
-       d.lease_extensions_max, d.expiry_action, d.sync_state, d.inputs, d.lease_reminded, d.lease_expired_at,
+       d.lease_extensions_max, d.expiry_action, d.lease_rule_id, d.sync_state, d.inputs, d.lease_reminded, d.lease_expired_at,
        p.code as project_code, p.name as project_name, p.deployment_sharing as project_sharing, i.slug as item_slug, i.name as item_name, i.type as item_type,
        v.number as version_number, u.name as owner_name, u.email as owner_email,
        (select count(*) from resources r where r.deployment_id = d.id and r.type = 'vsphere.vm')::int as vm_count,
        (select count(*) from resources r where r.deployment_id = d.id and r.type = 'vsphere.vm'
           and r.properties->'vm'->>'power_state' = 'on')::int as vms_powered_on,
        pa.ip as primary_ip, pa.fqdn as primary_fqdn,
-       lp.max_days as lease_max_days, lp.max_extensions as lease_max_extensions, lp.grace_days as lease_grace_days,
-       lp.enforcement as lease_enforcement
+       lp.policy as lease_policy, lp.default_days as lease_default_days, lp.max_days as lease_max_days,
+       lp.max_extensions as lease_max_extensions, lp.grace_days as lease_grace_days,
+       lp.enforcement as lease_enforcement, lp.max_lifetime_days as lease_max_lifetime_days
 from deployments d
 join projects p on p.id = d.project_id
 join catalog_items i on i.id = d.item_id
@@ -33,16 +34,27 @@ left join lateral (select r.properties->>'address' as ip, r.properties->>'fqdn' 
                    from resources r where r.deployment_id = d.id and r.type = 'ipam.address'
                    and strpos(r.name, ':') = 0
                    order by r.created_at limit 1) pa on true
-left join lateral (select max_days, max_extensions, grace_days, enforcement from lease_policies lp
-                   where lp.environment = d.environment and (lp.project_id = d.project_id or lp.project_id is null)
-                   order by lp.project_id nulls last limit 1) lp on true`
+left join lateral (select x.* from (
+                     select 0 as rank, lr.name as policy, lr.default_days, lr.max_days, lr.max_extensions, lr.grace_days,
+                            lr.enforcement, lr.max_lifetime_days
+                     from lease_rules lr where lr.id = d.lease_rule_id
+                     and (lr.project_id is null or lr.project_id = d.project_id)
+                     and (lr.environment is null or lr.environment = d.environment)
+                     union all
+                     select case when lp.project_id is null then 2 else 1 end,
+                            case when lp.project_id is null then e.name else p.name || ' in ' || e.name end,
+                            lp.default_days, lp.max_days, lp.max_extensions, lp.grace_days, lp.enforcement, lp.max_lifetime_days
+                     from lease_policies lp join environments e on e.key = lp.environment
+                     where lp.environment = d.environment and (lp.project_id = d.project_id or lp.project_id is null)
+                   ) x order by x.rank limit 1) lp on true`
 
 func (s *Store) InsertDeployment(ctx context.Context, db DB, d Deployment) error {
 	_, err := db.Exec(ctx, `insert into deployments (id, name, status, project_id, environment, item_id, version_id,
-		owner_id, created_by_request_id, lease_expires_at, lease_extensions_max, expiry_action, inputs, description)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+		owner_id, created_by_request_id, lease_expires_at, lease_extensions_max, expiry_action, inputs, description, lease_rule_id)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
 		d.ID, d.Name, d.Status, d.ProjectID, d.Environment, d.ItemID, d.VersionID, d.OwnerID,
-		d.CreatedByRequestID, d.LeaseExpiresAt, d.LeaseExtensionsMax, d.ExpiryAction, jsonOr(d.Inputs, "{}"), d.Description)
+		d.CreatedByRequestID, d.LeaseExpiresAt, d.LeaseExtensionsMax, d.ExpiryAction, jsonOr(d.Inputs, "{}"), d.Description,
+		d.LeaseRuleID)
 	return err
 }
 

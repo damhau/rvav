@@ -32,6 +32,14 @@ func init() {
 				}
 				help = fmt.Sprintf("Up to %d days %s. %s", *c.LeaseMaxDays, within, help)
 			}
+			if c.LeaseLifetimeLeft != nil {
+				days = max(min(days, *c.LeaseLifetimeLeft), 1)
+				left := fmt.Sprintf("%d days", *c.LeaseLifetimeLeft)
+				if *c.LeaseLifetimeLeft == 1 {
+					left = "1 day"
+				}
+				help += fmt.Sprintf(" %s of its %d-day lifetime left.", left, *c.LeaseLifetimeDays)
+			}
 			return form("New lease", number("days", "Days from now", help, 1, 3650, days))
 		},
 		Approval: func(t Target, c Choices, in map[string]any) string {
@@ -46,6 +54,14 @@ func init() {
 					return fmt.Sprintf("Longer than the %d days the lease policy allows.", *c.LeaseMaxDays)
 				}
 				return fmt.Sprintf("Longer than the %d days allowed without approval", *c.LeaseMaxDays)
+			}
+			// Whatever extensions are left (ADR-0048). Before the inputs are
+			// known, only a lifetime already reached says so.
+			if left := c.LeaseLifetimeLeft; left != nil && (in == nil && *left == 0 || in != nil && intInput(in, "days") > *left) {
+				if c.LeaseSoft {
+					return fmt.Sprintf("Past the %d-day lifetime the lease policy allows.", *c.LeaseLifetimeDays)
+				}
+				return fmt.Sprintf("Past the %d-day lifetime allowed without approval", *c.LeaseLifetimeDays)
 			}
 			return ""
 		},

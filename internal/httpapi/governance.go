@@ -186,6 +186,33 @@ func (s *Server) SetLeasePolicy(w http.ResponseWriter, r *http.Request) {
 	s.reply(w, r, http.StatusOK, out, err)
 }
 
+func (s *Server) ListLeaseRules(w http.ResponseWriter, r *http.Request) {
+	items, err := s.Core.LeaseRules(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.LeaseRuleList{Items: items}, err)
+}
+
+func (s *Server) CreateLeaseRule(w http.ResponseWriter, r *http.Request) {
+	var b api.LeaseRuleWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveLeaseRule(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
+
+func (s *Server) DeleteLeaseRule(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	s.replyEmpty(w, r, s.Core.DeleteLeaseRule(r.Context(), principal(r), id))
+}
+
+func (s *Server) UpdateLeaseRule(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	var b api.LeaseRuleWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveLeaseRule(r.Context(), principal(r), id, b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
 func (s *Server) ListNamingPolicies(w http.ResponseWriter, r *http.Request) {
 	items, err := s.Core.NamingPolicies(r.Context(), principal(r))
 	s.reply(w, r, http.StatusOK, api.NamingPolicyList{Items: items}, err)

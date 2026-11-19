@@ -119,15 +119,35 @@ type NetworkSubnet struct {
 // LeasePolicy is the lease policy of an environment, or a project's
 // override of it (ADR-0014).
 type LeasePolicy struct {
-	Environment   string  `db:"environment"`
-	ProjectID     *string `db:"project_id"`
-	DefaultDays   *int    `db:"default_days"`
-	MaxDays       *int    `db:"max_days"`
-	MaxExtensions int     `db:"max_extensions"`
-	GraceDays     int     `db:"grace_days"`
-	ExpiryAction  string  `db:"expiry_action"`
-	Enforcement   string  `db:"enforcement"`
-	SetByAdmin    bool    `db:"set_by_admin"`
+	Environment string  `db:"environment"`
+	ProjectID   *string `db:"project_id"`
+	LeaseTerms
+	SetByAdmin bool `db:"set_by_admin"`
+}
+
+// LeaseTerms are what a lease policy or rule gives (ADR-0014, ADR-0048).
+type LeaseTerms struct {
+	DefaultDays   *int   `db:"default_days"`
+	MaxDays       *int   `db:"max_days"`
+	MaxExtensions int    `db:"max_extensions"`
+	GraceDays     int    `db:"grace_days"`
+	ExpiryAction  string `db:"expiry_action"`
+	Enforcement   string `db:"enforcement"`
+	// MaxLifetimeDays is how long a deployment lives in all, from its creation.
+	MaxLifetimeDays *int `db:"max_lifetime_days"`
+}
+
+// LeaseRule gives the deployments its condition matches a lease of their
+// own, before the environment's lease and the project's override.
+type LeaseRule struct {
+	ID          string  `db:"id"`
+	Name        string  `db:"name"`
+	Condition   string  `db:"condition"`
+	Environment *string `db:"environment"`
+	ProjectID   *string `db:"project_id"`
+	Priority    int     `db:"priority"`
+	LeaseTerms
+	SetByAdmin bool `db:"set_by_admin"`
 }
 
 type Category struct {
@@ -275,23 +295,25 @@ type LogLine struct {
 }
 
 type Deployment struct {
-	ID                  string          `db:"id"`
-	Name                string          `db:"name"`
-	Description         string          `db:"description"`
-	Status              string          `db:"status"`
-	ProjectID           string          `db:"project_id"`
-	Environment         string          `db:"environment"`
-	ItemID              string          `db:"item_id"`
-	VersionID           string          `db:"version_id"`
-	OwnerID             string          `db:"owner_id"`
-	CreatedByRequestID  *string         `db:"created_by_request_id"`
-	CreatedAt           time.Time       `db:"created_at"`
-	LeaseExpiresAt      *time.Time      `db:"lease_expires_at"`
-	LeaseExtensionsUsed int             `db:"lease_extensions_used"`
-	LeaseExtensionsMax  *int            `db:"lease_extensions_max"`
-	ExpiryAction        string          `db:"expiry_action"`
-	SyncState           string          `db:"sync_state"`
-	Inputs              json.RawMessage `db:"inputs"`
+	ID                  string     `db:"id"`
+	Name                string     `db:"name"`
+	Description         string     `db:"description"`
+	Status              string     `db:"status"`
+	ProjectID           string     `db:"project_id"`
+	Environment         string     `db:"environment"`
+	ItemID              string     `db:"item_id"`
+	VersionID           string     `db:"version_id"`
+	OwnerID             string     `db:"owner_id"`
+	CreatedByRequestID  *string    `db:"created_by_request_id"`
+	CreatedAt           time.Time  `db:"created_at"`
+	LeaseExpiresAt      *time.Time `db:"lease_expires_at"`
+	LeaseExtensionsUsed int        `db:"lease_extensions_used"`
+	LeaseExtensionsMax  *int       `db:"lease_extensions_max"`
+	ExpiryAction        string     `db:"expiry_action"`
+	// LeaseRuleID is the lease rule its request matched (ADR-0048).
+	LeaseRuleID *string         `db:"lease_rule_id"`
+	SyncState   string          `db:"sync_state"`
+	Inputs      json.RawMessage `db:"inputs"`
 	// LeaseReminded are the reminders sent for the current lease (7d, 1d);
 	// LeaseExpiredAt is when its expiry powered the VMs off.
 	LeaseReminded  []string   `db:"lease_reminded"`
@@ -315,11 +337,15 @@ type DeploymentRow struct {
 	VMsPoweredOn   int     `db:"vms_powered_on"`
 	PrimaryIP      *string `db:"primary_ip"`
 	PrimaryFQDN    *string `db:"primary_fqdn"`
-	// The lease policy that applies now.
-	LeaseMaxDays       *int    `db:"lease_max_days"`
-	LeaseMaxExtensions *int    `db:"lease_max_extensions"`
-	LeaseGraceDays     *int    `db:"lease_grace_days"`
-	LeaseEnforcement   *string `db:"lease_enforcement"`
+	// The lease policy that applies now: the rule its request matched
+	// while it applies, else the project's override or the environment's.
+	LeasePolicy          *string `db:"lease_policy"`
+	LeaseDefaultDays     *int    `db:"lease_default_days"`
+	LeaseMaxDays         *int    `db:"lease_max_days"`
+	LeaseMaxExtensions   *int    `db:"lease_max_extensions"`
+	LeaseGraceDays       *int    `db:"lease_grace_days"`
+	LeaseEnforcement     *string `db:"lease_enforcement"`
+	LeaseMaxLifetimeDays *int    `db:"lease_max_lifetime_days"`
 }
 
 type Resource struct {

@@ -3787,6 +3787,89 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/lease-rules:
+    get:
+      tags: [admin]
+      operationId: listLeaseRules
+      summary: Lease rules, in the order they are tried
+      description: |
+        A lease rule gives the deployments its CEL condition matches a
+        lease of their own, before the environment's lease policy and a
+        project's override (ADR-0048). With `policies.read`, every rule.
+        With `project.policies.manage` in projects (project admins), the
+        global rules and those of these projects.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeaseRuleList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createLeaseRule
+      summary: Add a lease rule
+      description: |
+        A global rule needs `policies.manage`. A project's, that or
+        `project.policies.manage` in the project (project admins): a
+        project admin's rule can't give more than the environment's lease,
+        or the project's override an administrator set, each refused with
+        the code `looser` (ADR-0048). Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LeaseRuleWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeaseRule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/lease-rules/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    put:
+      tags: [admin]
+      operationId: updateLeaseRule
+      summary: Change a lease rule
+      description: |
+        As adding one; a project's rule an administrator set
+        (`set_by_admin`) is refused (403) to its project admins. Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LeaseRuleWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeaseRule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteLeaseRule
+      summary: Remove a lease rule (its deployments get the environment's or project's lease)
+      description: |
+        As changing it: `policies.manage`, or `project.policies.manage` in
+        its project unless an administrator set it (`set_by_admin`).
+        Audited.
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /admin/approval-policies:
     get:
       tags: [admin]
@@ -7224,15 +7307,7 @@ components:
           type: array
           description: What soft policies warn about; submitting needs their `id` in `accepted_warnings`, or `accept_warnings`.
           items: { $ref: "#/components/schemas/PolicyWarning" }
-        lease:
-          type: object
-          properties:
-            default_days: { type: [integer, "null"] }
-            max_days: { type: [integer, "null"] }
-            expires_at: { type: [string, "null"], format: date-time }
-            enforcement:
-              $ref: "#/components/schemas/PolicyEnforcement"
-              description: Soft when a longer lease than `max_days` only warns (ADR-0045).
+        lease: { $ref: "#/components/schemas/PreviewLease" }
         components:
           type: array
           description: |
@@ -8237,6 +8312,22 @@ components:
             The enforcement of the lease policy that applies now, when the
             deployment expires. Soft: an extension beyond `max_days` or
             `extensions_max` warns the owner instead of asking for approval.
+        policy:
+          type: [string, "null"]
+          description: |
+            What sets the lease now, by name: the lease rule its request
+            matched, the project's override (`Web Platform in
+            Development`) or the environment's lease policy
+            (`Development`). Null without a lease policy (ADR-0048).
+        max_lifetime_days:
+          type: [integer, "null"]
+          description: How long the deployment may live in all, from its creation; null for no limit.
+        lifetime_ends_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            Its creation plus `max_lifetime_days`: an extension past it
+            needs approval, or warns when the policy is soft.
 
     SyncState:
       type: string
@@ -10577,6 +10668,14 @@ components:
             an extension beyond it or `max_extensions` asks the project's
             approvers. Soft: both warn the requester, who may go on. A
             project admin's override of a hard policy stays hard.
+        max_lifetime_days:
+          type: [integer, "null"]
+          minimum: 1
+          description: |
+            How long a deployment lives in all, in days from its creation
+            (ADR-0048). A request for a longer lease, or an extension past
+            it, is refused or asks the project's approvers, or warns when
+            the policy is soft. Null for no limit. Not shorter than `max_days`.
         set_by_admin:
           type: boolean
           readOnly: true
@@ -10584,6 +10683,64 @@ components:
             An administrator (`policies.manage`) wrote it last: a project's
             admins read the override but don't change or remove it
             (ADR-0045).
+    LeaseRuleWrite:
+      type: object
+      required: [name, condition, max_extensions, grace_days, expiry_action]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        condition:
+          type: string
+          description: |
+            CEL over what approval conditions read: inputs, environment,
+            project, item, vm, vms, user, quota, request and update. On
+            submit, a condition that can't be evaluated applies the rule
+            when it gives no more than the lease without it.
+        environment:
+          description: Null for every environment.
+          oneOf:
+            - $ref: "#/components/schemas/EnvironmentKey"
+            - type: "null"
+        project_id:
+          type: [string, "null"]
+          description: A project's rule; null for every project.
+        priority:
+          type: integer
+          description: Lower first; 100 when absent. On a tie, global rules first, then by name.
+        default_days: { type: [integer, "null"], minimum: 1, description: Null for no lease. }
+        max_days: { type: [integer, "null"], minimum: 1 }
+        max_extensions: { type: integer, minimum: 0 }
+        grace_days: { type: integer, minimum: 0 }
+        expiry_action: { $ref: "#/components/schemas/LeaseExpiryAction" }
+        enforcement: { $ref: "#/components/schemas/PolicyEnforcement" }
+        max_lifetime_days:
+          type: [integer, "null"]
+          minimum: 1
+          description: |
+            How long a deployment lives in all, in days from its creation
+            (ADR-0048). A request for a longer lease, or an extension past
+            it, is refused or asks the project's approvers, or warns when
+            the policy is soft. Null for no limit. Not shorter than `max_days`.
+    LeaseRule:
+      allOf:
+        - $ref: "#/components/schemas/LeaseRuleWrite"
+        - type: object
+          required: [id, priority, enforcement, set_by_admin]
+          properties:
+            id: { type: string }
+            set_by_admin:
+              type: boolean
+              description: |
+                An administrator (`policies.manage`) wrote it last: a
+                project's admins read it but don't change or remove it
+                (ADR-0045). False for a project admin's own.
+    LeaseRuleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/LeaseRule" }
     PolicyEnforcement:
       type: string
       enum: [hard, soft]
@@ -10604,6 +10761,24 @@ components:
       type: string
       description: "At the end of a lease: power off, then delete after the grace period; delete; or only tell the owner."
       enum: [power_off_then_delete, delete, notify_only]
+    PreviewLease:
+      type: object
+      description: The lease a request gets.
+      properties:
+        default_days: { type: [integer, "null"] }
+        max_days: { type: [integer, "null"] }
+        expires_at: { type: [string, "null"], format: date-time }
+        enforcement:
+          $ref: "#/components/schemas/PolicyEnforcement"
+          description: Soft when a longer lease than `max_days` only warns (ADR-0045).
+        policy:
+          type: [string, "null"]
+          description: |
+            What decides the lease, by name: a lease rule, the
+            project's override or the environment's lease policy
+            (ADR-0048). Null without a lease policy.
+        max_extensions: { type: integer, description: Extensions the owner may make without approval. }
+        max_lifetime_days: { type: [integer, "null"], description: How long the deployment may live in all; null for no limit. }
     LeasePolicyList:
       type: object
       required: [items]
@@ -10740,7 +10915,7 @@ components:
       properties:
         project_id: { type: string }
         environment: { $ref: "#/components/schemas/EnvironmentKey" }
-        item_id: { type: string, description: "A catalog item, for approval policies." }
+        item_id: { type: string, description: "A catalog item, for approval policies and lease rules." }
         action: { type: string, description: "A day-2 action key, for day-2 policies." }
         inputs: { type: object, additionalProperties: true, description: Sample inputs for the conditions. }
         as_user_id: { type: string, description: Whose roles the day-2 policies see; default the caller. }

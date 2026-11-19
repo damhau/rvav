@@ -96,14 +96,14 @@ func (s *Store) DeleteDay2Policy(ctx context.Context, id string) error {
 // LeasePolicies lists environments' policies and projects' overrides.
 func (s *Store) LeasePolicies(ctx context.Context) ([]LeasePolicy, error) {
 	rows, _ := s.Pool.Query(ctx, `select environment, project_id, default_days, max_days, max_extensions, grace_days, expiry_action,
-		enforcement, set_by_admin from lease_policies order by environment, project_id nulls first`)
+		enforcement, max_lifetime_days, set_by_admin from lease_policies order by environment, project_id nulls first`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[LeasePolicy])
 }
 
 // LeaseOverride returns a project's override of an environment's policy.
 func (s *Store) LeaseOverride(ctx context.Context, environment, projectID string) (LeasePolicy, error) {
 	rows, _ := s.Pool.Query(ctx, `select environment, project_id, default_days, max_days, max_extensions, grace_days, expiry_action,
-		enforcement, set_by_admin from lease_policies where environment = $1 and project_id = $2`, environment, projectID)
+		enforcement, max_lifetime_days, set_by_admin from lease_policies where environment = $1 and project_id = $2`, environment, projectID)
 	p, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[LeasePolicy])
 	return p, notFound(err)
 }
@@ -111,12 +111,51 @@ func (s *Store) LeaseOverride(ctx context.Context, environment, projectID string
 // SetLeasePolicy sets an environment's policy or a project's override.
 func (s *Store) SetLeasePolicy(ctx context.Context, l LeasePolicy) error {
 	_, err := s.Pool.Exec(ctx, `insert into lease_policies (environment, project_id, default_days, max_days, max_extensions,
-		grace_days, expiry_action, enforcement, set_by_admin) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		grace_days, expiry_action, enforcement, set_by_admin, max_lifetime_days) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		on conflict (environment, (coalesce(project_id, ''))) do update set default_days = excluded.default_days,
 		max_days = excluded.max_days, max_extensions = excluded.max_extensions, grace_days = excluded.grace_days,
-		expiry_action = excluded.expiry_action, enforcement = excluded.enforcement, set_by_admin = excluded.set_by_admin`,
+		expiry_action = excluded.expiry_action, enforcement = excluded.enforcement, set_by_admin = excluded.set_by_admin,
+		max_lifetime_days = excluded.max_lifetime_days`,
 		l.Environment, l.ProjectID, l.DefaultDays, l.MaxDays, l.MaxExtensions, l.GraceDays, l.ExpiryAction,
-		cmp.Or(l.Enforcement, EnforcementHard), l.SetByAdmin)
+		cmp.Or(l.Enforcement, EnforcementHard), l.SetByAdmin, l.MaxLifetimeDays)
+	return err
+}
+
+const leaseRuleColumns = `id, name, condition, environment, project_id, priority, default_days, max_days, max_extensions,
+	grace_days, expiry_action, enforcement, max_lifetime_days, set_by_admin`
+
+// LeaseRules lists the lease rules in the order they are tried: by
+// priority, global ones first on a tie, then by name (ADR-0048).
+func (s *Store) LeaseRules(ctx context.Context) ([]LeaseRule, error) {
+	rows, _ := s.Pool.Query(ctx, `select `+leaseRuleColumns+` from lease_rules
+		order by priority, project_id nulls first, name, id`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[LeaseRule])
+}
+
+func (s *Store) GetLeaseRule(ctx context.Context, id string) (LeaseRule, error) {
+	rows, _ := s.Pool.Query(ctx, `select `+leaseRuleColumns+` from lease_rules where id = $1`, id)
+	r, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[LeaseRule])
+	return r, notFound(err)
+}
+
+func (s *Store) SaveLeaseRule(ctx context.Context, r LeaseRule) error {
+	_, err := s.Pool.Exec(ctx, `insert into lease_rules (`+leaseRuleColumns+`)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		on conflict (id) do update set name = excluded.name, condition = excluded.condition,
+		environment = excluded.environment, project_id = excluded.project_id, priority = excluded.priority,
+		default_days = excluded.default_days, max_days = excluded.max_days, max_extensions = excluded.max_extensions,
+		grace_days = excluded.grace_days, expiry_action = excluded.expiry_action, enforcement = excluded.enforcement,
+		max_lifetime_days = excluded.max_lifetime_days, set_by_admin = excluded.set_by_admin`,
+		r.ID, r.Name, r.Condition, r.Environment, r.ProjectID, r.Priority, r.DefaultDays, r.MaxDays, r.MaxExtensions,
+		r.GraceDays, r.ExpiryAction, cmp.Or(r.Enforcement, EnforcementHard), r.MaxLifetimeDays, r.SetByAdmin)
+	return err
+}
+
+func (s *Store) DeleteLeaseRule(ctx context.Context, id string) error {
+	tag, err := s.Pool.Exec(ctx, `delete from lease_rules where id = $1`, id)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
 	return err
 }
 

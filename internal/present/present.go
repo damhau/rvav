@@ -290,6 +290,11 @@ func Deployment(d store.DeploymentRow) api.Deployment {
 		if d.LeaseEnforcement != nil {
 			out.Lease.Enforcement = Ptr(api.PolicyEnforcement(*d.LeaseEnforcement))
 		}
+		out.Lease.Policy = d.LeasePolicy
+		if d.LeaseMaxLifetimeDays != nil {
+			out.Lease.MaxLifetimeDays = d.LeaseMaxLifetimeDays
+			out.Lease.LifetimeEndsAt = Ptr(d.CreatedAt.AddDate(0, 0, *d.LeaseMaxLifetimeDays))
+		}
 	}
 	if d.LeaseGraceDays != nil {
 		out.Lease.GraceDays = Ptr(*d.LeaseGraceDays)
