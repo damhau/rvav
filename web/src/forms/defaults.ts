@@ -6,10 +6,10 @@ import type { FieldStates, UiField, UiWidget } from "@/lib/api/types";
 
 const valueWidgets: UiWidget[] = ["text", "textarea", "number", "slider", "date", "datetime", "toggle"];
 
-/** A field whose `rest` or `cel` source gives it one value: a computed field's, another's default. */
+/** A field whose `rest`, `cel` or `library` source gives it one value: a computed field's, another's default. */
 export function singleSource(ui: UiField): boolean {
   const kind = ui.value_source?.kind;
-  if ((kind !== "rest" && kind !== "cel") || ui.secret) return false;
+  if ((kind !== "rest" && kind !== "cel" && kind !== "library") || ui.secret) return false;
   return ui.widget === "computed" || valueWidgets.includes(ui.widget);
 }
 

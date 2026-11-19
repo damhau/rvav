@@ -8,6 +8,7 @@ import {
   Import,
   Layers,
   LayoutGrid,
+  Library,
   List,
   ListChecks,
   Package,
@@ -66,6 +67,13 @@ export const adminGroups: AdminGroup[] = [
         label: "Property groups",
         icon: Boxes,
         keywords: ["inputs", "constants", "propgroup"],
+        show: (me) => can(me, "catalog.manage"),
+      },
+      {
+        to: "/admin/form-library",
+        label: "Form library",
+        icon: Library,
+        keywords: ["value sources", "validations", "vro actions", "external sources"],
         show: (me) => can(me, "catalog.manage"),
       },
       {

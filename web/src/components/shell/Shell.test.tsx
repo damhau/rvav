@@ -57,7 +57,14 @@ describe("sidebar", () => {
       "Reports",
     ]);
     expect(adminMenuOf(nav)).toEqual({
-      Catalog: ["Catalog items", "Property groups", "Day-2 actions", "Custom workflows", "Subscriptions"],
+      Catalog: [
+        "Catalog items",
+        "Property groups",
+        "Form library",
+        "Day-2 actions",
+        "Custom workflows",
+        "Subscriptions",
+      ],
       Governance: ["Projects", "Roles", "Policies"],
       Infrastructure: ["Integrations", "Templates and networks", "Onboarding", "vRA import"],
       Operations: ["Setup", "Audit log", "System"],

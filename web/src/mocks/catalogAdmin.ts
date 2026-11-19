@@ -14,6 +14,19 @@ import { constraintWarnings } from "./constraints";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { workflowRegistrations } from "./extensibility";
 import { fileProblems, imageProblem } from "./files";
+import {
+  checkProblems,
+  entryAt,
+  entryProblems,
+  entryVersions,
+  libraryKey,
+  libraryOf,
+  libraryRefProblems,
+  libraryRefs,
+  storedEntry,
+  testEntry,
+  type StoredEntry,
+} from "./formLibrary";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
 import type { Db, StoredItem } from "./seed";
 
@@ -112,6 +125,89 @@ function groupAt(db: Db, key: string, version = 0): S["PropertyGroup"] | undefin
     .filter((i) => (st.versions[i.id] ?? []).some((v) => v.state !== "draft" && names(v)))
     .map((i) => i.slug);
   return { ...g, versions: all.map((x) => x.version), used_by: usedBy };
+}
+
+/** An entry as served: its versions, and every item's version that names it. */
+function entryServed(db: Db, e: StoredEntry): S["FormLibraryEntry"] {
+  const st = state(db);
+  const usedBy: S["FormLibraryItemUse"][] = [];
+  for (const item of [...db.items].sort((a, b) => a.slug.localeCompare(b.slug)))
+    for (const v of [...(st.versions[item.id] ?? [])].reverse())
+      for (const r of libraryRefs(v.definition.ui_schema, ""))
+        if (r.key === e.key && !usedBy.some((u) => u.version_id === v.id && u.entry_version === r.version))
+          usedBy.push({
+            item_id: item.id,
+            slug: item.slug,
+            name: item.name,
+            version_id: v.id,
+            number: v.number,
+            state: v.state,
+            entry_version: r.version,
+          });
+  return { ...e, versions: entryVersions(db, e.key), used_by: usedBy };
+}
+
+/** The definition naming version of entry key wherever it names an earlier one, or null when it names none. */
+function bumped(def: Definition, key: string, version: number): Definition | null {
+  const d = structuredClone(def);
+  let changed = false;
+  for (const f of Object.values(d.ui_schema.fields)) {
+    const src = f.value_source;
+    if (src?.kind === "library" && src.name === key && (src.version ?? 0) < version) {
+      src.version = version;
+      changed = true;
+    }
+  }
+  for (const v of d.ui_schema.validations ?? [])
+    if (v.kind === "library" && v.name === key && (v.version ?? 0) < version) {
+      v.version = version;
+      changed = true;
+    }
+  return changed ? d : null;
+}
+
+/** As the server's libraryDrafts: a draft naming the new version for each item whose draft or published version names an earlier one. */
+function libraryDrafts(db: Db, key: string, version: number): S["FormLibraryDraft"][] {
+  const st = state(db);
+  const out: S["FormLibraryDraft"][] = [];
+  for (const item of [...db.items].sort((a, b) => a.slug.localeCompare(b.slug))) {
+    const versions = st.versions[item.id] ?? [];
+    const from = versions.find((v) => v.state === "draft") ?? versions.find((v) => v.state === "published");
+    const def = from && bumped(from.definition, key, version);
+    if (!from || !def) continue;
+    const errors = check(def, "/definition");
+    if (errors.length) {
+      out.push({
+        item_id: item.id,
+        slug: item.slug,
+        name: item.name,
+        number: from.number,
+        created: false,
+        problem: `With version ${version} of ${key}, its form wouldn't pass the designer's checks: ${errors[0]!.message}`,
+      });
+      continue;
+    }
+    if (from.state === "draft") {
+      from.definition = def;
+      from.revision += 1;
+      out.push({ item_id: item.id, slug: item.slug, name: item.name, number: from.number, created: false });
+      continue;
+    }
+    const number = nextNumber(versions);
+    versions.unshift({
+      id: uid("ver"),
+      number,
+      state: "draft",
+      changelog: `Uses version ${version} of ${key}, from the form library.`,
+      created_at: now(),
+      created_by: { id: db.me.user.id, name: db.me.user.name },
+      deployments: 0,
+      revision: 1,
+      definition: def,
+    });
+    out.push({ item_id: item.id, slug: item.slug, name: item.name, number, created: true });
+  }
+  return out;
 }
 
 const builtinSources = [
@@ -347,6 +443,27 @@ function defaultProblems(def: Definition, prefix: string): S["FieldError"][] {
   return errors;
 }
 
+/** A form's validations, as the server's checkValidations has them (ADR-0043). */
+function validationProblems(def: Definition, props: Record<string, unknown>, prefix: string): S["FieldError"][] {
+  const errors: S["FieldError"][] = [];
+  const keys = new Set<string>();
+  (def.ui_schema.validations ?? []).forEach((v, i) => {
+    const at = `${prefix}/ui_schema/validations/${i}`;
+    const add = (field: string, code: string, message: string) => errors.push({ field: at + field, code, message });
+    if (!libraryKey.test(v.key)) add("/key", "pattern", "Letters, digits and underscores, starting with a letter.");
+    else if (keys.has(v.key)) add("/key", "duplicate", `The form has two validations ${v.key}.`);
+    keys.add(v.key);
+    (v.fields ?? []).forEach((f, j) => {
+      if (!(f in props)) add(`/fields/${j}`, "unknown_input", `"${f}" is not an input of the form's schema.`);
+    });
+    if (v.kind === "rest" || v.kind === "cel")
+      errors.push(...checkProblems(v.kind, v.params ?? {}, `${at}/params`, "inputs"));
+    else if (v.kind !== "library")
+      add("/kind", "invalid", "A validation is rest, cel, or an entry of the form library (library).");
+  });
+  return errors;
+}
+
 function check(def: Definition, prefix: string): S["FieldError"][] {
   const errors: S["FieldError"][] = [];
   const props = (def.form_schema as { properties?: Record<string, unknown> }).properties ?? {};
@@ -434,6 +551,7 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
   errors.push(...searchProblems(def, prefix, false));
   errors.push(...fileProblems(def, prefix, false));
   errors.push(...defaultProblems(def, prefix));
+  errors.push(...validationProblems(def, props, prefix));
   const required = (def.form_schema as { required?: string[] }).required ?? [];
   required.forEach((name, i) => {
     if (!(name in props))
@@ -1035,7 +1153,10 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       if (v.state !== "draft")
         return problem(409, "Conflict", undefined, "Only a draft can change: make a draft from this version.");
       const u = (await request.json()) as S["CatalogItemVersionUpdate"];
-      const errors = check(u.definition, "/definition");
+      const errors = [
+        ...check(u.definition, "/definition"),
+        ...libraryRefProblems(db, u.definition.ui_schema, "/definition", false),
+      ];
       if (errors.length) return problem(422, "Some inputs need attention", errors);
       if (u.base_revision !== undefined && u.base_revision !== v.revision)
         return problem(
@@ -1076,6 +1197,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         ...shownProblems(v.definition, "/definition", true),
         ...searchProblems(v.definition, "/definition", true),
         ...fileProblems(v.definition, "/definition", true),
+        ...libraryRefProblems(db, v.definition.ui_schema, "/definition", true),
       ];
       if (incomplete.length) return problem(422, "Some inputs need attention", incomplete);
       for (const x of versionsOf(item))
@@ -1388,6 +1510,99 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       st.propertyGroups = st.propertyGroups.filter((x) => x.key !== g.key);
       return new HttpResponse(null, { status: 204 });
     }),
+    http.get(`${base}/admin/form-library`, async () => {
+      await wait();
+      const keys = [...new Set(libraryOf(db).map((e) => e.key))].sort();
+      return HttpResponse.json({ items: keys.map((k) => entryServed(db, entryAt(db, k)!)) });
+    }),
+    http.post(`${base}/admin/form-library`, async ({ request }) => {
+      await wait();
+      const w = (await request.json()) as S["FormLibraryEntryWrite"];
+      const key = w.key ?? "";
+      const errors = [
+        ...(libraryKey.test(key)
+          ? []
+          : [
+              {
+                field: "/key",
+                code: "pattern",
+                message: "Letters, digits and underscores, starting with a letter: forms name it by its key.",
+              },
+            ]),
+        ...entryProblems(w),
+      ];
+      if (errors.length) return problem(422, "Some inputs need attention", errors);
+      if (entryAt(db, key))
+        return problem(
+          409,
+          "Conflict",
+          undefined,
+          `The form library has an entry "${key}": save it as a new version instead.`,
+        );
+      libraryOf(db).push(storedEntry(key, 1, w));
+      return HttpResponse.json(entryServed(db, entryAt(db, key)!), { status: 201 });
+    }),
+    http.post(`${base}/admin/form-library/test`, async ({ request }) => {
+      await wait();
+      const t = (await request.json()) as S["FormLibraryTest"];
+      const errors = entryProblems(t.entry, "/entry");
+      if (errors.length) return problem(422, "Some inputs need attention", errors);
+      const project = db.projects.find((p) => p.id === t.project_id);
+      const out = testEntry(t, {
+        environment: t.environment ?? "",
+        project: project ? { id: project.id, code: project.code, name: project.name } : {},
+        user: { id: db.me.user.id, roles: [], groups: userGroups[db.me.user.id] ?? [] },
+      });
+      if ("failure" in out) return problem(400, "Bad request", undefined, out.failure);
+      return HttpResponse.json(out);
+    }),
+    http.get(`${base}/admin/form-library/:key`, async ({ params, request }) => {
+      await wait();
+      const version = Number(new URL(request.url).searchParams.get("version") ?? 0);
+      const e = entryAt(db, String(params.key), version);
+      return e ? HttpResponse.json(entryServed(db, e)) : problem(404, "Not found");
+    }),
+    http.put(`${base}/admin/form-library/:key`, async ({ params, request }) => {
+      await wait();
+      const w = (await request.json()) as S["FormLibraryEntryWrite"];
+      const latest = entryAt(db, String(params.key));
+      if (!latest) return problem(404, "Not found");
+      const errors = [
+        ...(w.key !== undefined && w.key !== latest.key
+          ? [{ field: "/key", code: "invalid", message: "An entry's key doesn't change." }]
+          : []),
+        ...(w.use !== latest.use
+          ? [
+              {
+                field: "/use",
+                code: "invalid",
+                message: `This entry is a ${latest.use}: forms use it as one. Add another entry instead.`,
+              },
+            ]
+          : []),
+        ...entryProblems(w),
+      ];
+      if (errors.length) return problem(422, "Some inputs need attention", errors);
+      const next = storedEntry(latest.key, latest.version + 1, w);
+      libraryOf(db).push(next);
+      return HttpResponse.json({ ...entryServed(db, next), drafts: libraryDrafts(db, next.key, next.version) });
+    }),
+    http.delete(`${base}/admin/form-library/:key`, async ({ params }) => {
+      await wait();
+      const e = entryAt(db, String(params.key));
+      if (!e) return problem(404, "Not found");
+      const users = [
+        ...new Set(
+          entryServed(db, e)
+            .used_by.filter((u) => u.state !== "draft")
+            .map((u) => u.slug),
+        ),
+      ];
+      if (users.length) return problem(409, "Conflict", undefined, `Items use this entry: ${users.join(", ")}.`);
+      const d = db as Db & { formLibrary?: StoredEntry[] };
+      d.formLibrary = libraryOf(db).filter((x) => x.key !== e.key);
+      return new HttpResponse(null, { status: 204 });
+    }),
     http.get(`${base}/admin/catalog/preview-users`, async ({ request }) => {
       await wait();
       const project = db.projects.find((p) => p.id === new URL(request.url).searchParams.get("project_id"));
@@ -1413,7 +1628,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       if (!found) return problem(404, "Not found");
       if (!found.member) return notMember(db, found.user.id);
       const env = q.environment ?? "dev";
-      const fields = fieldStates(found.form, q.inputs, {
+      const fields = fieldStates(db, found.form, q.inputs, {
         environment: env,
         project: { id: project.id, code: project.code, name: project.name },
         user: found.user,

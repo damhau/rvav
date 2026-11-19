@@ -26,6 +26,7 @@ import { toText } from "@/lib/utils";
 import { namingTemplate, placed, placementFolder } from "./administration";
 import { celBool, celEval } from "./cel";
 import { multiParts, partVMs, previewComponents } from "./components";
+import { bound, entryVars, validationErrors } from "./formLibrary";
 import { clusters, datastores, dnsZones, networks, prefix, sizes, vmFolders, type SizeKey } from "./inventory";
 import type { Db, StoredItem } from "./seed";
 
@@ -152,18 +153,25 @@ function resolveSource(
 ): FieldValues | null {
   const stored = (designer?.form ?? db.forms[item.id])?.ui_schema.fields[field];
   const ui = stored && withOwnSource(stored);
-  const source = ui?.value_source;
+  let source = ui?.value_source;
   if (!ui || !source) return null;
+  let ctx: Record<string, unknown> = {
+    inputs,
+    search,
+    environment: env,
+    project: { id: project.id, code: project.code, name: project.name },
+    user: designer?.user ?? { id: db.me.user.id, roles: [], groups: [] },
+  };
+  if (source.kind === "library") {
+    // As the server: an entry whose required parameter has no value gives nothing.
+    const b = bound(db, source.name ?? "", source.version ?? 0, source.params ?? {}, ctx);
+    if (!b) return singleSource(ui) ? { field, cache_seconds: 30 } : { field, options: [], cache_seconds: 30 };
+    source = { kind: b.entry.kind, params: b.entry.params, search: b.entry.search };
+    ctx = entryVars(b.params, ctx);
+  }
   const params = resolveParams(source.params, inputs);
   if (source.kind === "cel") {
     // Throws on a broken expression; the handler answers 400.
-    const ctx = {
-      inputs,
-      search,
-      environment: env,
-      project: { id: project.id, code: project.code, name: project.name },
-      user: designer?.user ?? { id: db.me.user.id, roles: [], groups: [] },
-    };
     const p = source.params ?? {};
     const value = typeof p.value === "string" ? String(celEval(p.value, ctx)) : undefined;
     const list = typeof p.options === "string" ? celEval(p.options, ctx) : undefined;
@@ -557,19 +565,33 @@ export function applyStates(
 }
 
 /** A draft's inputs as the rules leave them, with each field's state and the problems found. */
+const varsOf = (db: Db, project: Project, draft: RequestDraft) => ({
+  environment: draft.environment,
+  project: { id: project.id, code: project.code, name: project.name },
+  user: { id: db.me.user.id, roles: [], groups: userGroups[db.me.user.id] ?? [] },
+});
+
 export function ruled(db: Db, item: StoredItem, project: Project, draft: RequestDraft) {
   const inputs = { ...draft.inputs };
-  const fields = fieldStates(db.forms[item.id], inputs, {
-    environment: draft.environment,
-    project: { id: project.id, code: project.code, name: project.name },
-    user: { id: db.me.user.id, roles: [], groups: userGroups[db.me.user.id] ?? [] },
-  });
+  const fields = fieldStates(db, db.forms[item.id], inputs, varsOf(db, project, draft));
   const errors = applyStates(db.forms[item.id], fields, inputs, (x) => validateInputs(db, item, x));
   return { inputs, fields, errors };
 }
 
-export function preview(db: Db, item: StoredItem, project: Project, draft: RequestDraft): RequestPreview {
+/**
+ * What the server's evaluation finds: with validate (submit, the review step), the form's
+ * validations run once its inputs pass the form's own checks (ADR-0043).
+ */
+export function preview(
+  db: Db,
+  item: StoredItem,
+  project: Project,
+  draft: RequestDraft,
+  validate = false,
+): RequestPreview {
   const { inputs, fields, errors } = ruled(db, item, project, draft);
+  if (validate && errors.length === 0)
+    errors.push(...validationErrors(db, db.forms[item.id], { ...varsOf(db, project, draft), inputs }));
   const count = draft.count ?? 1;
   if (count < 1 || count > 20) errors.push({ field: "/count", code: "range", message: "Between 1 and 20." });
   if (multiParts(item.slug, inputs) && count !== 1)
@@ -690,6 +712,7 @@ const restValue = "svc-01";
  * the default rules again, then the other rules over every default.
  */
 export function fieldStates(
+  db: Db,
   form: RequestForm | undefined,
   inputs: Record<string, unknown>,
   vars: Record<string, unknown>,
@@ -703,7 +726,7 @@ export function fieldStates(
     Object.entries(inputs).filter(([k, v]) => v !== null || !fields[k] || !defaulted(fields[k])),
   );
   const first = ruleDefaults(fields, vars, given, has).defaults;
-  const sources = sourceDefaults(fields, schema.properties ?? {}, vars, filled(given, first, has), has);
+  const sources = sourceDefaults(db, fields, schema.properties ?? {}, vars, filled(given, first, has), has);
   const base = { ...filled(given, sources.defaults, has), ...sources.values };
   const { defaults: ruled, failed } = ruleDefaults(fields, vars, base, has);
   const ctx = { ...vars, inputs: filled(base, ruled, has) };
@@ -786,6 +809,7 @@ function ruleDefaults(
 
 /** As the server's sourceDefaults: a field's after those its depends_on names. */
 function sourceDefaults(
+  db: Db,
   fields: RequestForm["ui_schema"]["fields"],
   props: Props,
   vars: Record<string, unknown>,
@@ -805,14 +829,21 @@ function sourceDefaults(
     if (ready.length === 0) ready = waiting;
     for (const name of ready) {
       const ui = fields[name]!;
-      const params = ui.value_source?.params ?? {};
+      let src = ui.value_source;
+      let ctx: Record<string, unknown> = { ...vars, inputs: work, search: "" };
+      if (src?.kind === "library") {
+        const b = bound(db, src.name ?? "", src.version ?? 0, src.params ?? {}, ctx);
+        src = b ? { kind: b.entry.kind, params: b.entry.params } : undefined;
+        if (b) ctx = entryVars(b.params, ctx);
+      }
+      const params = src?.params ?? {};
       let v: unknown;
       try {
         v =
-          ui.value_source?.kind === "rest"
+          src?.kind === "rest"
             ? restValue
             : typeof params.value === "string"
-              ? celEval(params.value, { ...vars, inputs: work, search: "" }, true)
+              ? celEval(params.value, ctx, true)
               : undefined;
       } catch (e) {
         failed[name] = `value source: ${String(e)}`;

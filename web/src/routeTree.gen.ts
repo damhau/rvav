@@ -20,6 +20,7 @@ import { Route as TokensRouteImport } from "./routes/tokens"
 import { Route as AdminIndexRouteImport } from "./routes/admin/index"
 import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
 import { Route as AdminDay2ActionsRouteImport } from "./routes/admin/day2-actions"
+import { Route as AdminFormLibraryRouteImport } from "./routes/admin/form-library"
 import { Route as AdminInfrastructureRouteImport } from "./routes/admin/infrastructure"
 import { Route as AdminOnboardingRouteImport } from "./routes/admin/onboarding"
 import { Route as AdminPoliciesRouteImport } from "./routes/admin/policies"
@@ -102,6 +103,11 @@ const AdminAuditRoute = AdminAuditRouteImport.update({
 const AdminDay2ActionsRoute = AdminDay2ActionsRouteImport.update({
   id: "/day2-actions",
   path: "/day2-actions",
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminFormLibraryRoute = AdminFormLibraryRouteImport.update({
+  id: "/form-library",
+  path: "/form-library",
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminInfrastructureRoute = AdminInfrastructureRouteImport.update({
@@ -258,6 +264,7 @@ export interface FileRoutesByFullPath {
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
+  "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
@@ -298,6 +305,7 @@ export interface FileRoutesByTo {
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
+  "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
@@ -340,6 +348,7 @@ export interface FileRoutesById {
   "/tokens": typeof TokensRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/day2-actions": typeof AdminDay2ActionsRoute
+  "/admin/form-library": typeof AdminFormLibraryRoute
   "/admin/infrastructure": typeof AdminInfrastructureRoute
   "/admin/onboarding": typeof AdminOnboardingRoute
   "/admin/policies": typeof AdminPoliciesRoute
@@ -383,6 +392,7 @@ export interface FileRouteTypes {
     | "/tokens"
     | "/admin/audit"
     | "/admin/day2-actions"
+    | "/admin/form-library"
     | "/admin/infrastructure"
     | "/admin/onboarding"
     | "/admin/policies"
@@ -423,6 +433,7 @@ export interface FileRouteTypes {
     | "/tokens"
     | "/admin/audit"
     | "/admin/day2-actions"
+    | "/admin/form-library"
     | "/admin/infrastructure"
     | "/admin/onboarding"
     | "/admin/policies"
@@ -464,6 +475,7 @@ export interface FileRouteTypes {
     | "/tokens"
     | "/admin/audit"
     | "/admin/day2-actions"
+    | "/admin/form-library"
     | "/admin/infrastructure"
     | "/admin/onboarding"
     | "/admin/policies"
@@ -592,6 +604,13 @@ declare module "@tanstack/react-router" {
       path: "/day2-actions"
       fullPath: "/admin/day2-actions"
       preLoaderRoute: typeof AdminDay2ActionsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    "/admin/form-library": {
+      id: "/admin/form-library"
+      path: "/form-library"
+      fullPath: "/admin/form-library"
+      preLoaderRoute: typeof AdminFormLibraryRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     "/admin/infrastructure": {
@@ -796,6 +815,7 @@ declare module "@tanstack/react-router" {
 interface AdminRouteRouteChildren {
   AdminAuditRoute: typeof AdminAuditRoute
   AdminDay2ActionsRoute: typeof AdminDay2ActionsRoute
+  AdminFormLibraryRoute: typeof AdminFormLibraryRoute
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
   AdminOnboardingRoute: typeof AdminOnboardingRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
@@ -821,6 +841,7 @@ interface AdminRouteRouteChildren {
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminAuditRoute: AdminAuditRoute,
   AdminDay2ActionsRoute: AdminDay2ActionsRoute,
+  AdminFormLibraryRoute: AdminFormLibraryRoute,
   AdminInfrastructureRoute: AdminInfrastructureRoute,
   AdminOnboardingRoute: AdminOnboardingRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,

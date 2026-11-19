@@ -580,7 +580,8 @@ export const handlers = [
     const item = itemByKey(draft.catalog_item_id);
     const project = projectById(draft.project_id);
     if (!item || !project) return notFound("Catalog item or project");
-    return json<S["RequestPreview"]>(preview(db, item, project, draft));
+    const validate = new URL(request.url).searchParams.get("validate") === "true";
+    return json<S["RequestPreview"]>(preview(db, item, project, draft, validate));
   }),
 
   http.get(`${base}/requests`, async ({ request }) => {
@@ -619,10 +620,13 @@ export const handlers = [
     if (!can(db.me, "request.submit", project.id)) {
       return problem(403, "forbidden", "You can't request items in this project");
     }
-    const check = preview(db, item, project, draft);
+    const check = preview(db, item, project, draft, true);
     // As the server: the inputs after the rules, so a field they hide isn't checked.
     const errors = check.errors.filter(
-      (e) => e.field.startsWith("/inputs/") || ["", "/environment", "/count", "/scheduled_at"].includes(e.field),
+      (e) =>
+        e.field.startsWith("/inputs/") ||
+        e.field.startsWith("/validations/") ||
+        ["", "/environment", "/count", "/scheduled_at"].includes(e.field),
     );
     if (errors.length) {
       return problem(
