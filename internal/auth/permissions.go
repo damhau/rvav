@@ -62,7 +62,7 @@ var Catalogue = []PermissionInfo{
 	{RequestSubmit, true, "Requests", "Request from the project's catalog and save drafts; own deployments there, and move one into it."},
 	{RequestOnBehalf, true, "Requests", "Request for someone else."},
 	{RequestManage, true, "Requests", "Cancel, retry and roll back anyone's request in the project."},
-	{ApprovalProject, true, "Approvals", "Be asked with the project's admins, as when a lease is extended beyond its policy; held only from a role given in the project."},
+	{ApprovalProject, true, "Approvals", "Be one of the project's approvers, asked when a lease is extended beyond its policy; held only from a role given in the project."},
 	{ProjectMembersManage, true, "Projects", "Add and remove the project's members, and change their roles."},
 	{ProjectSettingsRead, true, "Projects", "See the project's administration: its placement, quotas and the policies that apply there; for all of rvav, every project's."},
 	{ProjectUpdate, true, "Projects", "Change the project's details and environments, or archive it."},
@@ -147,8 +147,9 @@ func (r Role) Assignable(projectID string) bool {
 	})
 }
 
-// BuiltinRoles are today's roles (ADR-0020), unchanged. None grants a day-2
-// action: for them, the day-2 policies decide alone, as before.
+// BuiltinRoles are the roles of ADR-0020, unchanged, and the supervisor.
+// None grants a day-2 action: for them, the day-2 policies decide alone, as
+// before.
 var BuiltinRoles = []Role{
 	{Key: "admin", Name: "Administrator", BuiltIn: true, Global: true, Permissions: allPermissions()},
 	{Key: "catalog-admin", Name: "Catalog admin", BuiltIn: true, Global: true, Permissions: []Permission{CatalogManage}},
@@ -164,6 +165,9 @@ var BuiltinRoles = []Role{
 		ProjectSettingsRead, AuditRead}},
 	{Key: "member", Name: "Member", BuiltIn: true, Permissions: []Permission{ProjectSee, RequestSubmit}},
 	{Key: "viewer", Name: "Viewer", BuiltIn: true, Permissions: []Permission{ProjectSee}},
+	// ADR-0041: approves and sees, but neither requests nor runs day-2
+	// actions.
+	{Key: "supervisor", Name: "Supervisor", BuiltIn: true, Permissions: []Permission{ProjectSee, ApprovalProject}},
 }
 
 func allPermissions() []Permission {

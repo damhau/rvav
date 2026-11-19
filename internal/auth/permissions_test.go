@@ -268,6 +268,29 @@ func TestCustomRoles(t *testing.T) {
 	}
 }
 
+// TestSupervisor: a supervisor sees the project and is one of its approvers,
+// and nothing else (ADR-0041).
+func TestSupervisor(t *testing.T) {
+	g := Compute([]Assignment{{Role: "supervisor", ProjectID: "prj_a"}}, BuiltinRole)
+	for _, c := range Catalogue {
+		want := c.ID == ProjectSee || c.ID == ApprovalProject
+		if got := g.In(c.ID, "prj_a"); got != want {
+			t.Errorf("a supervisor holds %s: %v", c.ID, got)
+		}
+		if g.In(c.ID, "prj_b") {
+			t.Errorf("a supervisor holds %s outside their project", c.ID)
+		}
+	}
+	for _, group := range Day2Groups {
+		if g.RunsDay2(group, "power_on", "prj_a") {
+			t.Errorf("a supervisor runs day-2 %s", group)
+		}
+	}
+	if r := mustBuiltin(t, "supervisor"); r.Global || !r.Assignable("prj_a") || r.Assignable("") || ValidRoleKey("supervisor") {
+		t.Errorf("the supervisor is given in a project only, and no custom role takes its key: %+v", r)
+	}
+}
+
 func TestValidRoleKey(t *testing.T) {
 	for key, want := range map[string]bool{"vm-operator": true, "read-only": true, "admin": false, "member": false,
 		"user": false, "owner": false, "new": false, "Operator": false, "o": false, "vm operator": false} {

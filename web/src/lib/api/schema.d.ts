@@ -6910,7 +6910,7 @@ export interface components {
             priority: number;
             /** @description Action keys or patterns (delete, snapshot_*, awx.*, *). */
             actions?: string[];
-            /** @description owner, viewer, member, project-admin, admin, or a custom role's key; empty for anyone. */
+            /** @description owner, viewer, member, project-admin, supervisor, admin, or a custom role's key; empty for anyone. */
             roles?: string[];
             /** @default true */
             condition: string;

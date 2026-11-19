@@ -43,7 +43,7 @@ func TestRolesAPI(t *testing.T) {
 		h.json("GET", "/api/v1/admin/roles", "tnguyen", nil, 403, nil)
 		var roles api.RoleList
 		h.json("GET", "/api/v1/admin/roles", admin, nil, 200, &roles)
-		if len(roles.Items) != 7 || !roles.Items[0].BuiltIn {
+		if len(roles.Items) != 8 || !roles.Items[0].BuiltIn {
 			t.Fatalf("roles = %+v", roles.Items)
 		}
 		h.json("PATCH", "/api/v1/admin/roles/member", admin, api.RoleUpdate{Name: new("Members")}, 409, nil)
@@ -55,6 +55,7 @@ func TestRolesAPI(t *testing.T) {
 		h.json("POST", "/api/v1/admin/roles", "lmartin", operator, 403, nil)
 		for _, bad := range []api.RoleCreate{
 			{Key: "admin", Name: "x", Permissions: []string{"project.see"}},
+			{Key: "supervisor", Name: "x", Permissions: []string{"project.see"}},
 			{Key: "owner", Name: "x", Permissions: []string{"project.see"}},
 			{Key: "new", Name: "x", Permissions: []string{"project.see"}},
 			{Key: "Bad!", Name: "x", Permissions: []string{"project.see"}},

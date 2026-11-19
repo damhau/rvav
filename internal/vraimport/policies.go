@@ -57,7 +57,7 @@ var roleKeys = map[string]string{
 	"ROLE:project_member":        "member",
 	"ROLE:project_administrator": "project-admin",
 	"ROLE:project_viewer":        "viewer",
-	"ROLE:project_supervisor":    "project-admin",
+	"ROLE:project_supervisor":    "supervisor",
 }
 
 // PlanPolicies says what each of the estate's policies becomes.

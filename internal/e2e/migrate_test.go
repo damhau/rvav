@@ -150,3 +150,71 @@ func TestMigrateRoles(t *testing.T) {
 		t.Fatalf("up again: %v", err)
 	}
 }
+
+// TestMigrateSupervisor: the built-in supervisor (ADR-0041) takes its key
+// from a custom role made before, whose holders and day-2 policies keep it
+// as supervisor-custom. Down takes the built-in one away, and up again.
+func TestMigrateSupervisor(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Pool.Exec(ctx, `drop schema public cascade; create schema public`); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := pgx.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := stdlib.OpenDB(*cfg)
+	defer db.Close()
+	goose.SetBaseFS(migrations.FS)
+	if err := goose.SetDialect("postgres"); err != nil {
+		t.Fatal(err)
+	}
+	const before = 70
+	if err := goose.UpToContext(ctx, db, ".", before); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `insert into users (id, subject, name) values ('usr_a', 'a', 'A');
+		insert into projects (id, code, name) values ('prj_a', 'a1', 'A');
+		insert into roles (key, name, permissions) values ('supervisor', 'Our supervisor', '{project.see,day2.power}');
+		insert into project_members (project_id, user_id, role) values ('prj_a', 'usr_a', 'supervisor');
+		insert into group_mappings (id, oidc_group, project_id, role) values ('gmp_1', 'leads', 'prj_a', 'supervisor');
+		insert into day2_policies (id, name, roles, effect) values ('d2p_1', 'Supervisors', '{member,supervisor}', 'allow')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx, databaseURL); err != nil {
+		t.Fatal(err)
+	}
+	var custom, member, mapping, policy string
+	var builtIn bool
+	if err := st.Pool.QueryRow(ctx, `select (select name || ' ' || array_to_string(permissions, ',') from roles where key = 'supervisor-custom'),
+		(select role from project_members where user_id = 'usr_a'), (select role from group_mappings where id = 'gmp_1'),
+		(select array_to_string(roles, ',') from day2_policies where id = 'd2p_1'),
+		(select built_in from roles where key = 'supervisor')`).Scan(&custom, &member, &mapping, &policy, &builtIn); err != nil {
+		t.Fatal(err)
+	}
+	if custom != "Our supervisor project.see,day2.power" || member != "supervisor-custom" || mapping != "supervisor-custom" ||
+		policy != "member,supervisor-custom" || !builtIn {
+		t.Fatalf("after the upgrade: %q, %s, %s, %s, built in %v", custom, member, mapping, policy, builtIn)
+	}
+	if _, err := st.Pool.Exec(ctx, `insert into project_members (project_id, user_id, role) values ('prj_a', 'usr_a', 'supervisor')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.DownToContext(ctx, db, ".", before); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := st.Pool.Query(ctx, `select role from project_members order by role`)
+	if roles, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || !slices.Equal(roles, []string{"supervisor-custom"}) {
+		t.Fatalf("members after down: %v, %v", roles, err)
+	}
+	if err := store.Migrate(ctx, databaseURL); err != nil {
+		t.Fatalf("up again: %v", err)
+	}
+}

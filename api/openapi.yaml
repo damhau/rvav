@@ -9141,7 +9141,7 @@ components:
           items: { type: string }
         roles:
           type: array
-          description: owner, viewer, member, project-admin, admin, or a custom role's key; empty for anyone.
+          description: owner, viewer, member, project-admin, supervisor, admin, or a custom role's key; empty for anyone.
           items: { type: string }
         condition: { type: string, default: "true" }
         effect: { type: string, enum: [allow, deny, approval] }

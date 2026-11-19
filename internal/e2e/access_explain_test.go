@@ -130,10 +130,10 @@ func TestAccessExplanation(t *testing.T) {
 			}
 			return out
 		}
-		if got := keys("lmartin"); !slices.Equal(got, []string{"member", "project-admin", "viewer", "requester"}) {
+		if got := keys("lmartin"); !slices.Equal(got, []string{"member", "project-admin", "supervisor", "viewer", "requester"}) {
 			t.Fatalf("a project admin may give %v", got)
 		}
-		if got := keys(admin); !slices.Equal(got, []string{"member", "project-admin", "viewer", "requester", "vm-operator"}) {
+		if got := keys(admin); !slices.Equal(got, []string{"member", "project-admin", "supervisor", "viewer", "requester", "vm-operator"}) {
 			t.Fatalf("an administrator may give %v", got)
 		}
 		h.json("GET", "/api/v1/projects/prj_web/assignable-roles", "tnguyen", nil, 403, nil)

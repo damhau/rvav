@@ -130,7 +130,7 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
         label="Roles"
         htmlFor="d2-roles"
         error={errorAt(errors, "/roles")}
-        hint="owner, member, project-admin, admin; empty for anyone"
+        hint="owner, member, project-admin, supervisor, admin; empty for anyone"
       >
         <Input
           id="d2-roles"

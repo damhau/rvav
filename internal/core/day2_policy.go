@@ -123,8 +123,8 @@ func (dec decision) reasons() []string {
 
 // day2Roles are the principal's roles on the deployment, as day-2 policies
 // name them: owner, the strongest built-in role in its project
-// (project-admin for administrators), admin, and the custom roles held
-// there or for all of rvav.
+// (project-admin for administrators), admin, supervisor, and the custom
+// roles held there or for all of rvav.
 func day2Roles(p *auth.Principal, d store.DeploymentRow) []string {
 	var roles []string
 	if d.OwnerID == p.User.ID {
@@ -141,7 +141,7 @@ func day2Roles(p *auth.Principal, d store.DeploymentRow) []string {
 		roles = append(roles, string(*given))
 	}
 	for _, k := range append(slices.Clone(p.RolesIn(d.ProjectID)), p.Roles...) {
-		if r, ok := p.Role(k); ok && !r.BuiltIn && !slices.Contains(roles, k) {
+		if r, ok := p.Role(k); ok && (!r.BuiltIn || k == "supervisor") && !slices.Contains(roles, k) {
 			roles = append(roles, k)
 		}
 	}

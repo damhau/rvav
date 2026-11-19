@@ -572,6 +572,7 @@ or only for all of rvav. The built-in roles can't be changed:
 | Project admin | In a project | Seeing it, requesting (for others too), its requests, approvals, members, settings and audit log. |
 | Member | In a project | Seeing it and requesting. |
 | Viewer | In a project | Seeing it. |
+| Supervisor | In a project | Seeing it, its deployments included, and approving: it is one of the project's approvers (`approval.project`), asked when a lease is extended beyond its policy. It doesn't request or run day-2 actions. |
 | User | To everyone | Nothing. |
 
 To give someone less, or a mix, make a role of your own in

@@ -23,7 +23,7 @@ import (
 
 var (
 	quotaResources = []string{"vcpu", "memory_gb", "storage_gb", "vm_count"}
-	day2RoleNames  = []string{"owner", "viewer", "member", "project-admin", "admin"}
+	day2RoleNames  = []string{"owner", "viewer", "member", "project-admin", "supervisor", "admin"}
 )
 
 // ── Quotas ──────────────────────────────────────────────────────────────
@@ -444,7 +444,7 @@ func (s *Service) SaveDay2Policy(ctx context.Context, p *auth.Principal, id stri
 			continue
 		}
 		if stored, err := s.Store.GetRole(ctx, r); errors.Is(err, store.ErrNotFound) || err == nil && stored.BuiltIn {
-			errs = append(errs, fieldErr(fmt.Sprintf("/roles/%d", i), "enum", "owner, viewer, member, project-admin, admin or a custom role's key."))
+			errs = append(errs, fieldErr(fmt.Sprintf("/roles/%d", i), "enum", "owner, viewer, member, project-admin, supervisor, admin or a custom role's key."))
 		} else if err != nil {
 			return api.Day2Policy{}, err
 		}

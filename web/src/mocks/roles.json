@@ -28,7 +28,7 @@
       "id": "approval.project",
       "scope": "project",
       "area": "Approvals",
-      "summary": "Be asked with the project's admins, as when a lease is extended beyond its policy; held only from a role given in the project."
+      "summary": "Be one of the project's approvers, asked when a lease is extended beyond its policy; held only from a role given in the project."
     },
     {
       "id": "project.members.manage",
@@ -281,6 +281,15 @@
       "scope": "project",
       "permissions": [
         "project.see"
+      ]
+    },
+    {
+      "key": "supervisor",
+      "name": "Supervisor",
+      "scope": "project",
+      "permissions": [
+        "project.see",
+        "approval.project"
       ]
     }
   ]
