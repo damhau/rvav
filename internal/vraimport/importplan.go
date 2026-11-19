@@ -103,6 +103,19 @@ type ProjectPlan struct {
 	// values stay. PropertiesUnmapped are those rvav can't take.
 	PropertiesAdd      map[string]string `json:"properties_add,omitempty"`
 	PropertiesUnmapped []string          `json:"properties_unmapped,omitempty"`
+	// DeploymentSharing is what vRA's Deployment sharing becomes, and
+	// RvavDeploymentSharing the rvav project's: an administrator or the
+	// project's admin sets it, the import doesn't (ADR-0045).
+	DeploymentSharing     string `json:"deployment_sharing"`
+	RvavDeploymentSharing string `json:"rvav_deployment_sharing,omitempty"`
+}
+
+// deploymentSharing is what vRA's Deployment sharing becomes in rvav.
+func deploymentSharing(p vra.Project) string {
+	if p.SharedResources != nil && !*p.SharedResources {
+		return "owner_only"
+	}
+	return "all_members"
 }
 
 // Summary counts what the import would do.
@@ -161,11 +174,12 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 		}
 	}
 	for _, vp := range e.Projects {
-		pp := ProjectPlan{VRAID: vp.ID, Name: vp.Name, PlacementPolicy: vp.PlacementPolicy, Strategy: strategyFor(vp.PlacementPolicy)}
+		pp := ProjectPlan{VRAID: vp.ID, Name: vp.Name, PlacementPolicy: vp.PlacementPolicy, Strategy: strategyFor(vp.PlacementPolicy),
+			DeploymentSharing: deploymentSharing(vp)}
 		proj, how := mapProject(r, vp.ID, vp.Name)
 		pp.How = how
 		if proj != nil {
-			pp.RvavProjectID, pp.RvavProjectName = proj.ID, proj.Name
+			pp.RvavProjectID, pp.RvavProjectName, pp.RvavDeploymentSharing = proj.ID, proj.Name, proj.DeploymentSharing
 			pp.PropertiesAdd, pp.PropertiesUnmapped = projectProperties(vp.Properties, proj.Properties)
 		}
 		pp.Items = len(e.ItemsFor(vp.ID))

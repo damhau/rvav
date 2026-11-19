@@ -6453,6 +6453,15 @@ export interface components {
             };
             /** @description The vRA project's custom properties rvav can't take: a name or value it refuses, or no room left. */
             properties_unmapped?: string[];
+            /**
+             * @description What vRA's Deployment sharing (`sharedResources`, on when absent)
+             *     becomes: `all_members` when on, `owner_only` when off. The import
+             *     doesn't change the rvav project's; an administrator or its project
+             *     admin sets it in the project's settings (ADR-0045).
+             */
+            deployment_sharing: components["schemas"]["DeploymentSharing"];
+            /** @description The rvav project's, when it maps to one. */
+            rvav_deployment_sharing?: components["schemas"]["DeploymentSharing"];
         };
         /**
          * @description The rvav property group a vRA property group becomes (ADR-0038):
@@ -6606,6 +6615,12 @@ export interface components {
             vra_project?: string;
             /** @description The rvav setting an administrator sets for it; the import doesn't change policies. */
             becomes: string;
+            /**
+             * @description The rvav policy's enforcement, from vRA's `enforcementType`, where
+             *     rvav's has one: a lease policy, or a day-2 policy with the effect
+             *     approval. Absent for the others; the notes say why (ADR-0045).
+             */
+            enforcement?: components["schemas"]["PolicyEnforcement"];
             notes: components["schemas"]["VraNote"][];
         };
         VraImportRequest: {

@@ -88,6 +88,23 @@ An approval policy's approvers read as a level's
 A day-2 policy's `ROLE:project_supervisor` authority becomes the
 `supervisor` role.
 
+A policy's `enforcementType` gives the rvav policy's enforcement where
+rvav's policy has one ([ADR-0045](../adr/0045-deployment-sharing-and-project-policies.md)):
+
+| vRA policy | rvav |
+|---|---|
+| A `SOFT` lease policy | A lease policy with the enforcement **Soft**: going beyond it warns the requester, who may go on. A project's override of a hard environment lease can't be soft, so the plan says when only an administrator can make it soft. |
+| A `SOFT` day-2 policy | Its allowed actions become day-2 policies with the effect allow, which have no enforcement: a project's policy tried before them decides. |
+| A `SOFT` approval policy | An approval policy, which always applies. To only warn the requester, make a soft day-2 policy with the effect approval instead. |
+| A `SOFT` quota or other policy | The same as a hard one: the plan says rvav's has no enforcement. |
+| A policy for one project | Its rvav project's admins can write it under **Administration › Policies**. A global hard policy still wins over it. |
+
+A vRA project's **Deployment sharing** (`sharedResources`, on when
+absent) isn't imported either. The **Deployment sharing** column of the
+**Projects** tab says what it becomes: **All members** when it's on,
+**Owners only** when it's off. When the rvav project's differs, set it
+in the **Deployment sharing** panel of the project's **Members** tab.
+
 vRA's **Update** of a deployment is rvav's **Update**
 ([ADR-0042](../adr/0042-deployment-updates.md)):
 

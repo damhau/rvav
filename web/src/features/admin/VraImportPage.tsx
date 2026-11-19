@@ -333,6 +333,12 @@ function ProjectsTab({ plan }: { plan: Plan }) {
       cell: (p) => <ProjectProperties p={p} />,
     },
     {
+      id: "sharing",
+      header: "Deployment sharing",
+      sortValue: (p) => sharingLabels[p.deployment_sharing],
+      cell: (p) => <ProjectSharing p={p} />,
+    },
+    {
       id: "items",
       header: "Items shared",
       sortValue: (p) => p.items,
@@ -364,6 +370,26 @@ function ProjectsTab({ plan }: { plan: Plan }) {
           )
         }
       />
+    </>
+  );
+}
+
+const sharingLabels: Record<S["DeploymentSharing"], string> = {
+  all_members: "All members",
+  owner_only: "Owners only",
+};
+
+// The import leaves the rvav project's deployment sharing alone: say where it differs.
+function ProjectSharing({ p }: { p: S["VraProjectPlan"] }) {
+  const rvav = p.rvav_deployment_sharing;
+  return (
+    <>
+      {sharingLabels[p.deployment_sharing]}
+      {rvav && rvav !== p.deployment_sharing && (
+        <div className="text-caption text-muted">
+          {p.rvav_project_name} has {sharingLabels[rvav].toLowerCase()}: set it in the project's Members tab.
+        </div>
+      )}
     </>
   );
 }
@@ -737,6 +763,7 @@ function PoliciesTab({ plan }: { plan: Plan }) {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-body font-medium">{p.name}</h3>
             <Badge tone="outline">{p.type}</Badge>
+            {p.enforcement && <Badge tone={p.enforcement === "soft" ? "warn" : "neutral"}>{p.enforcement}</Badge>}
             <span className="text-secondary text-muted">{p.vra_project ? `In ${p.vra_project}` : "Every project"}</span>
           </div>
           <p className="mt-1 mb-2 text-secondary">Becomes: {p.becomes}</p>

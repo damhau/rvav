@@ -3,6 +3,7 @@ package vraimport
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,7 +21,10 @@ type PolicyPlan struct {
 	Type       string `json:"type"` // approval, lease, day2, quota, limit, other
 	VRAProject string `json:"vra_project,omitempty"`
 	Becomes    string `json:"becomes"`
-	Notes      []Note `json:"notes"`
+	// Enforcement is the rvav policy's, hard or soft, where rvav's policy
+	// has one (lease and day-2 deny or approval policies, ADR-0045).
+	Enforcement string `json:"enforcement,omitempty"`
+	Notes       []Note `json:"notes"`
 }
 
 // vRA's day-2 actions, by rvav's action keys.
@@ -76,16 +80,31 @@ func PlanPolicies(e *vra.Estate) []PolicyPlan {
 		}
 		var def map[string]any
 		_ = json.Unmarshal(p.Definition, &def)
-		if p.EnforcementType == "SOFT" {
-			note(Warning, "enforcementType", "It is soft in vRA: other policies may override it. rvav's policies apply by priority.")
+		soft := strings.EqualFold(p.EnforcementType, "SOFT")
+		if pl.VRAProject != "" && slices.Contains([]string{vra.PolicyApproval, vra.PolicyLease, vra.PolicyDay2}, p.TypeID) {
+			note(Info, "projectId", "For one project: its project admins can write it in rvav (Administration › Policies), "+
+				"and a global hard policy still wins over it.")
 		}
 		switch p.TypeID {
 		case vra.PolicyApproval:
 			pl.Type = "approval"
 			planApproval(&pl, p, def, note, scope)
+			if soft {
+				note(Warning, "enforcementType", "It is soft in vRA: other policies may override it. rvav's approval policies "+
+					"all apply; to only warn the requester, make it a soft day-2 policy with the effect approval instead.")
+			}
 		case vra.PolicyLease:
 			pl.Type = "lease"
 			pl.Becomes = "The lease policy of " + scope + " (Administration › Policies › Leases), for each of its environments"
+			pl.Enforcement = "hard"
+			if soft {
+				pl.Enforcement = "soft"
+				note(Info, "enforcementType", "Soft: set the lease policy's enforcement to soft. Going beyond it warns the requester, who may go on.")
+			}
+			if soft && pl.VRAProject != "" {
+				note(Warning, "enforcementType", "A project's override of a hard environment lease can't be soft: "+
+					"only an administrator can make the environment's lease soft.")
+			}
 			if v, ok := num(def["leaseTermMax"]); ok {
 				note(Info, "leaseTermMax", fmt.Sprintf("Maximum days: %d.", v))
 			}
@@ -102,6 +121,10 @@ func PlanPolicies(e *vra.Estate) []PolicyPlan {
 		case vra.PolicyDay2:
 			pl.Type = "day2"
 			planDay2(&pl, def, note, scope)
+			if soft {
+				note(Info, "enforcementType", "It is soft in vRA: a project's own policy may override it. In rvav an allow has no "+
+					"enforcement: a project's policy tried before it decides.")
+			}
 		case vra.PolicyQuota:
 			pl.Type = "quota"
 			pl.Becomes = "The quotas of " + scope + " (Administration › Projects › Quotas)"
@@ -130,6 +153,9 @@ func PlanPolicies(e *vra.Estate) []PolicyPlan {
 			pl.Becomes = "Nothing"
 			note(Unmapped, "typeId", p.TypeID+" has no rvav equivalent.")
 		}
+		if soft && slices.Contains([]string{"quota", "sharing", "limit", "other"}, pl.Type) {
+			note(Warning, "enforcementType", "It is soft in vRA: rvav's "+pl.Type+" settings have no enforcement, they always apply.")
+		}
 		out = append(out, pl)
 	}
 	return out
@@ -140,6 +166,7 @@ func planApproval(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(st
 	day2 := len(actions) > 0 && !contains(actions, "Deployment.Create")
 	if day2 {
 		pl.Becomes = "A day-2 policy with the effect approval, in " + scope + " (Administration › Policies › Day-2)"
+		pl.Enforcement = "hard"
 		var keys, unknown []string
 		for _, a := range actions {
 			if k, ok := day2Keys[a]; ok {

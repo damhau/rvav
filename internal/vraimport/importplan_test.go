@@ -62,3 +62,24 @@ func TestPlanImport(t *testing.T) {
 		t.Fatalf("summary = %+v", s)
 	}
 }
+
+// TestPlanDeploymentSharing: vRA's Deployment sharing, on unless turned
+// off, is the rvav project's deployment sharing to set (ADR-0045).
+func TestPlanDeploymentSharing(t *testing.T) {
+	e := vra.SampleEstate(time.Now())
+	r := Rvav{Now: time.Now(), ProjectMap: map[string]string{}, Projects: []RvavProject{
+		{ID: "prj_web", Name: "Web Platform", DeploymentSharing: "all_members"},
+		{ID: "prj_data", Name: "Data Services", DeploymentSharing: "all_members"}}}
+	p := PlanImport(&e, r, ImportState{Links: map[string]Link{}, Items: map[string]ItemState{}, Slugs: map[string]string{}})
+	got := map[string][2]string{}
+	for _, pp := range p.Projects {
+		got[pp.VRAID] = [2]string{pp.DeploymentSharing, pp.RvavDeploymentSharing}
+	}
+	want := map[string][2]string{"vra-prj-web": {"all_members", "all_members"}, "vra-prj-data": {"owner_only", "all_members"},
+		"vra-prj-legacy": {"all_members", ""}}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("%s = %v, want %v", id, got[id], w)
+		}
+	}
+}

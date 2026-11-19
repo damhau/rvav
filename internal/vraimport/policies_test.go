@@ -107,3 +107,45 @@ func TestPlanApprovalUpdates(t *testing.T) {
 		t.Fatalf("update only = %+v", p)
 	}
 }
+
+// TestPlanEnforcement: vRA's soft lease policy is a soft rvav one, a soft
+// approval of catalog requests stays hard, and a project's policy says
+// its project admins can write it (G1.3, ADR-0045).
+func TestPlanEnforcement(t *testing.T) {
+	e := vra.Estate{Projects: []vra.Project{{ID: "vp", Name: "Web Platform"}}, Policies: []vra.Policy{
+		{ID: "lease", Name: "lease", TypeID: vra.PolicyLease, EnforcementType: "SOFT", Definition: json.RawMessage(`{"leaseTermMax":30}`)},
+		{ID: "project-lease", Name: "project lease", TypeID: vra.PolicyLease, EnforcementType: "SOFT", ProjectID: "vp",
+			Definition: json.RawMessage(`{"leaseTermMax":30}`)},
+		{ID: "hard-lease", Name: "hard lease", TypeID: vra.PolicyLease, EnforcementType: "HARD", Definition: json.RawMessage(`{}`)},
+		{ID: "approval", Name: "approval", TypeID: vra.PolicyApproval, EnforcementType: "SOFT",
+			Definition: json.RawMessage(`{"level":1,"approvers":["USER:a@corp.example"],"actions":["Deployment.Create"]}`)},
+		{ID: "day2-approval", Name: "day-2 approval", TypeID: vra.PolicyApproval, EnforcementType: "HARD",
+			Definition: json.RawMessage(`{"level":1,"approvers":["USER:a@corp.example"],"actions":["Deployment.Delete"]}`)},
+		{ID: "quota", Name: "quota", TypeID: vra.PolicyQuota, EnforcementType: "SOFT", Definition: json.RawMessage(`{}`)},
+	}}
+	by := map[string]PolicyPlan{}
+	for _, p := range PlanPolicies(&e) {
+		by[p.VRAID] = p
+	}
+	note := func(p PolicyPlan, level, text string) bool {
+		return slices.ContainsFunc(p.Notes, func(n Note) bool { return n.Level == level && strings.Contains(n.Text, text) })
+	}
+	if p := by["lease"]; p.Enforcement != "soft" || !note(p, Info, "set the lease policy's enforcement to soft") || note(p, Info, "project admins") {
+		t.Fatalf("soft lease = %+v", p)
+	}
+	if p := by["project-lease"]; p.Enforcement != "soft" || !note(p, Info, "its project admins can write it") || !note(p, Warning, "can't be soft") {
+		t.Fatalf("a project's soft lease = %+v", p)
+	}
+	if p := by["hard-lease"]; p.Enforcement != "hard" || note(p, Info, "enforcement") {
+		t.Fatalf("hard lease = %+v", p)
+	}
+	if p := by["approval"]; p.Enforcement != "" || !note(p, Warning, "soft day-2 policy with the effect approval") {
+		t.Fatalf("soft approval = %+v", p)
+	}
+	if p := by["day2-approval"]; p.Enforcement != "hard" {
+		t.Fatalf("day-2 approval = %+v", p)
+	}
+	if p := by["quota"]; p.Enforcement != "" || !note(p, Warning, "no enforcement") {
+		t.Fatalf("soft quota = %+v", p)
+	}
+}

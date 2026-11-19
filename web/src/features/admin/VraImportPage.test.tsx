@@ -26,6 +26,30 @@ describe("vRA import", () => {
     expect(strategy("vra-prj-legacy")).toHaveTextContent(/^None$/);
   });
 
+  it("says what vRA's deployment sharing becomes, and where the rvav project's differs", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=projects");
+    const table = await screen.findByRole("table", { name: "vRA projects" });
+    const sharing = (id: string) => (within(table).getByText(id).closest("tr") as HTMLTableRowElement).cells[4];
+    expect(sharing("vra-prj-web")).toHaveTextContent(/^All members$/);
+    expect(sharing("vra-prj-data")).toHaveTextContent(/^Owners only$/);
+
+    await user.click(within(table).getByRole("combobox", { name: "rvav project for Data Services" }));
+    await user.click(await screen.findByRole("option", { name: "Data Engineering" }));
+    await waitFor(() =>
+      expect(sharing("vra-prj-data")).toHaveTextContent(
+        /^Owners onlyData Engineering has all members: set it in the project's Members tab\.$/,
+      ),
+    );
+  });
+
+  it("gives each lease policy its enforcement", async () => {
+    renderApp("/admin/vra-import?tab=policies");
+    const lease = await screen.findByRole("region", { name: "Development leases" });
+    expect(within(lease).getByText("soft")).toBeInTheDocument();
+    expect(lease).toHaveTextContent("its project admins can write it");
+  });
+
   it("adds vRA's custom properties and property groups when the catalog is imported", { timeout: 15_000 }, async () => {
     const user = userEvent.setup();
     renderApp("/admin/vra-import?tab=projects");

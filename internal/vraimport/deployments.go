@@ -40,6 +40,8 @@ type RvavProject struct {
 	Members []string
 	// Properties are its custom properties (ADR-0038).
 	Properties map[string]string
+	// DeploymentSharing is who sees its deployments (ADR-0045).
+	DeploymentSharing string
 }
 
 // Lease is an rvav lease policy's limits for a project's environment.

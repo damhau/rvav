@@ -82,6 +82,8 @@ const vraProjects: {
   strategy?: S["PlacementStrategy"];
   /** vRA's custom properties of the project. */
   properties?: Record<string, string>;
+  /** vRA's Deployment sharing, on when absent. */
+  shared_resources?: boolean;
 }[] = [
   {
     id: "vra-prj-web",
@@ -90,7 +92,7 @@ const vraProjects: {
     strategy: "spread",
     properties: { backupPolicy: "silver", costCenter: "CC-1001", "cost center": "CC-1001" },
   },
-  { id: "vra-prj-data", name: "Data Services" },
+  { id: "vra-prj-data", name: "Data Services", shared_resources: false },
   { id: "vra-prj-legacy", name: "Legacy Apps" },
 ];
 
@@ -155,7 +157,9 @@ function plan(db: Db, st: State): S["VraPlan"] {
     const [how, id, name] = rvavOf(db, st, v);
     const items = templates.filter((t) => t.shared.includes(v.id)).length;
     const deployments = vraDeployments.filter((d) => d.project === v.id).length;
+    const sharing = db.projects.find((p) => p.id === id)?.deployment_sharing;
     return { vra_id: v.id, name: v.name, how, rvav_project_id: id, rvav_project_name: name, items, deployments,
+      deployment_sharing: v.shared_resources === false ? "owner_only" : "all_members", rvav_deployment_sharing: id ? (sharing ?? "all_members") : undefined,
       placement_policy: v.placement_policy, strategy: v.strategy, ...(id ? projectProperties(db, v.properties, id) : {}) }; // prettier-ignore
   });
   const project = (id: string) => projects.find((p) => p.vra_id === id)!;
@@ -264,7 +268,10 @@ function plan(db: Db, st: State): S["VraPlan"] {
       { vra_id: "pol-approval-prd", name: "Production needs a lead", type: "approval", becomes: "An approval policy for catalog requests, in every project (Administration › Policies › Approvals)",
         notes: [{ level: "info", where: "criteria", text: 'Condition: environment == "prd"' }, { level: "info", where: "approvers", text: "Level 1: infra-leads@corp.example, any of them." }] },
       { vra_id: "pol-lease-dev", name: "Development leases", type: "lease", vra_project: "Web Platform", becomes: "The lease policy of the project Web Platform maps to (Administration › Policies › Leases), for each of its environments",
-        notes: [{ level: "info", where: "leaseTermMax", text: "Maximum days: 30." }, { level: "info", where: "leaseGrace", text: "Grace days: 7, between the end of the lease and the deletion." }] },
+        enforcement: "soft", notes: [{ level: "info", where: "projectId", text: "For one project: its project admins can write it in rvav (Administration › Policies), and a global hard policy still wins over it." },
+          { level: "info", where: "enforcementType", text: "Soft: set the lease policy's enforcement to soft. Going beyond it warns the requester, who may go on." },
+          { level: "warning", where: "enforcementType", text: "A project's override of a hard environment lease can't be soft: only an administrator can make the environment's lease soft." },
+          { level: "info", where: "leaseTermMax", text: "Maximum days: 30." }, { level: "info", where: "leaseGrace", text: "Grace days: 7, between the end of the lease and the deletion." }] },
       { vra_id: "pol-limit", name: "Deployment limit", type: "limit", becomes: "The sizes of the items requested in every project",
         notes: [{ level: "unmapped", where: "limits", text: "rvav has no limit per deployment: the sizes an item offers bound each request." }] },
     ],

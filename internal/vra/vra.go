@@ -34,6 +34,9 @@ type Project struct {
 	// PlacementPolicy is how vRA chooses where the project's machines go:
 	// DEFAULT, SPREAD or SPREAD_MEMORY (BINPACK on a cloud zone).
 	PlacementPolicy string `json:"placementPolicy,omitempty"`
+	// SharedResources is the project's Deployment sharing: its members see
+	// each other's deployments. vRA's default, when absent, is on.
+	SharedResources *bool `json:"sharedResources,omitempty"`
 }
 
 // CustomNaming is one of vRA's custom names (Infrastructure › Custom

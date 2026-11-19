@@ -45,7 +45,8 @@ func (s *Service) vraRvav(ctx context.Context, e *vra.Estate, projectMap map[str
 		if err != nil {
 			return r, err
 		}
-		rp := vraimport.RvavProject{ID: p.ID, Name: p.Name, Environments: p.Environments, Members: members, Properties: p.Properties}
+		rp := vraimport.RvavProject{ID: p.ID, Name: p.Name, Environments: p.Environments, Members: members, Properties: p.Properties,
+			DeploymentSharing: p.DeploymentSharing}
 		r.Projects = append(r.Projects, rp)
 	}
 	secrets, err := s.Store.Secrets(ctx)

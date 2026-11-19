@@ -30,7 +30,7 @@ func SampleEstate(now time.Time) Estate {
 				MachineNamingTemplate: "web-${input.environment}-${input.role}${###}", Properties: map[string]string{"costCenter": "CC-1001"},
 				PlacementPolicy: "SPREAD"},
 			{ID: "vra-prj-data", Name: "Data Services", Administrators: []Principal{user("marc.keller@corp.example")},
-				Members: []Principal{user("lea.martin@corp.example")}},
+				Members: []Principal{user("lea.martin@corp.example")}, SharedResources: new(false)},
 			{ID: "vra-prj-legacy", Name: "Legacy Apps", Administrators: []Principal{user("former.admin@corp.example")}},
 		},
 		Blueprints: []Blueprint{

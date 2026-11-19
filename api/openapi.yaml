@@ -8654,7 +8654,7 @@ components:
         note: { type: string, maxLength: 500 }
     VraProjectPlan:
       type: object
-      required: [vra_id, name, how, items, deployments]
+      required: [vra_id, name, how, items, deployments, deployment_sharing]
       properties:
         vra_id: { type: string }
         name: { type: string }
@@ -8681,6 +8681,16 @@ components:
           type: array
           items: { type: string }
           description: "The vRA project's custom properties rvav can't take: a name or value it refuses, or no room left."
+        deployment_sharing:
+          $ref: "#/components/schemas/DeploymentSharing"
+          description: |
+            What vRA's Deployment sharing (`sharedResources`, on when absent)
+            becomes: `all_members` when on, `owner_only` when off. The import
+            doesn't change the rvav project's; an administrator or its project
+            admin sets it in the project's settings (ADR-0045).
+        rvav_deployment_sharing:
+          $ref: "#/components/schemas/DeploymentSharing"
+          description: The rvav project's, when it maps to one.
     VraPropertyGroupPlan:
       type: object
       description: |
@@ -8842,6 +8852,12 @@ components:
         type: { type: string, description: "approval, lease, day2, quota, limit or other." }
         vra_project: { type: string, description: The vRA project it applies to; all when empty. }
         becomes: { type: string, description: The rvav setting an administrator sets for it; the import doesn't change policies. }
+        enforcement:
+          $ref: "#/components/schemas/PolicyEnforcement"
+          description: |
+            The rvav policy's enforcement, from vRA's `enforcementType`, where
+            rvav's has one: a lease policy, or a day-2 policy with the effect
+            approval. Absent for the others; the notes say why (ADR-0045).
         notes:
           type: array
           items: { $ref: "#/components/schemas/VraNote" }
