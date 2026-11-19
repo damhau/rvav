@@ -89,7 +89,7 @@ function RuleSheet({
     >
       <div className="grid grid-cols-[1fr_120px] gap-3">
         <Field label="Name" htmlFor="lr-name" error={errors["/name"]}>
-          <Input id="lr-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+          <Input id="lr-name" value={f.name} maxLength={120} onChange={(e) => setF({ ...f, name: e.target.value })} />
         </Field>
         <Field label="Priority" htmlFor="lr-priority" hint="Lower first">
           <Input id="lr-priority" type="number" value={priority} onChange={(e) => setPriority(e.target.value)} />

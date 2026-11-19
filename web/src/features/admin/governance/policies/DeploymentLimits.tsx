@@ -122,7 +122,7 @@ function PolicySheet({
     >
       <div className="grid grid-cols-[1fr_120px] gap-3">
         <Field label="Name" htmlFor="dl-name" error={errors["/name"]}>
-          <Input id="dl-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+          <Input id="dl-name" value={f.name} maxLength={120} onChange={(e) => setF({ ...f, name: e.target.value })} />
         </Field>
         <Field label="Priority" htmlFor="dl-priority" hint="Lower first">
           <Input id="dl-priority" type="number" value={priority} onChange={(e) => setPriority(e.target.value)} />

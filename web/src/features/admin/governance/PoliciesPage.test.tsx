@@ -163,7 +163,9 @@ describe("Policies", () => {
       const lifetime = within(sheet).getByRole("spinbutton", { name: "Lifetime, in days" });
       await user.type(lifetime, "20");
       await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
-      expect(await within(sheet).findByText("The maximum can't be longer than the lifetime.")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(lifetime).toHaveAccessibleDescription("The maximum can't be longer than the lifetime."),
+      );
       await user.clear(lifetime);
       await user.type(lifetime, "60");
       await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));

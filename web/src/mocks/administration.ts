@@ -7,7 +7,7 @@ import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { adminItemOf } from "./catalogAdmin";
 import { celCheck } from "./cel";
-import { audited } from "./governance";
+import { audited, policyNameTooLong } from "./governance";
 import { chooseLease, leaseTermsErrors, looserLease, looserRule, orderedRules, type LeaseTerms } from "./leases";
 import { clusters, datastoreClusters, datastores, hostsOf, networks, resourcePools, tags, VCENTER } from "./inventory";
 import type { Db } from "./seed";
@@ -1860,7 +1860,9 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         const refused = refusedChange(was);
         if (refused) return refused;
         const errors: S["FieldError"][] = [];
-        if (!w.name.trim()) errors.push(err("/name", "Give the rule a name."));
+        const long = policyNameTooLong(w.name);
+        if (!w.name.trim()) errors.push({ field: "/name", code: "required", message: "Give the rule a name." });
+        else if (long) errors.push(long);
         if (!w.condition.trim())
           errors.push(
             err("/condition", 'Which deployments does it give this lease? For example item.slug == "gpu-server".'),

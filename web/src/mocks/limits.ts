@@ -3,7 +3,7 @@
 // on top; and what they add to previews and What applies here.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
-import { audited } from "./governance";
+import { audited, policyNameTooLong } from "./governance";
 import type { Db } from "./seed";
 import { warning } from "./warnings";
 
@@ -258,7 +258,9 @@ export function limitHandlers(db: Db, base: string, wait: () => Promise<void>) {
     if (was && !changes(was)) return forbidden();
     const errors: S["FieldError"][] = [];
     if (unknown) errors.push({ field: "/project_id", code: "unknown", message: "There is no such project." });
+    const long = policyNameTooLong(w.name);
     if (!w.name.trim()) errors.push({ field: "/name", code: "required", message: "Give the policy a name." });
+    else if (long) errors.push(long);
     if (w.environment && !db.environments.some((e) => e.key === w.environment))
       errors.push({ field: "/environment", code: "unknown", message: `"${w.environment}" is not an environment.` });
     let set = false;

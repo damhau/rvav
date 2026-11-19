@@ -26,11 +26,11 @@ export function leaseTermsErrors(l: LeaseTerms): S["FieldError"][] {
   if (l.default_days != null && l.max_days != null && l.default_days > l.max_days)
     errors.push(invalidErr("/default_days", "maximum", "The default can't be longer than the maximum."));
   if (l.max_lifetime_days != null && l.max_days != null && l.max_days > l.max_lifetime_days)
-    errors.push(invalidErr("/max_days", "maximum", "The maximum can't be longer than the lifetime."));
+    errors.push(invalidErr("/max_lifetime_days", "minimum", "The maximum can't be longer than the lifetime."));
   else if (l.max_lifetime_days != null && l.default_days != null && l.default_days > l.max_lifetime_days)
-    errors.push(invalidErr("/default_days", "maximum", "The default can't be longer than the lifetime."));
-  if (l.max_extensions < 0 || l.grace_days < 0)
-    errors.push(invalidErr("/max_extensions", "minimum", "Extensions and grace days are zero or more."));
+    errors.push(invalidErr("/max_lifetime_days", "minimum", "The default can't be longer than the lifetime."));
+  if (l.max_extensions < 0) errors.push(invalidErr("/max_extensions", "minimum", "Extensions are zero or more."));
+  if (l.grace_days < 0) errors.push(invalidErr("/grace_days", "minimum", "Grace days are zero or more."));
   return errors;
 }
 

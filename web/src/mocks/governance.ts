@@ -64,6 +64,12 @@ export function audited(
   });
 }
 
+/** As the server's policyNameLength: a lease rule's or a deployment limit policy's name, the spec's 120 characters at most. */
+export function policyNameTooLong(name: string): S["FieldError"] | undefined {
+  if ([...name.trim()].length <= 120) return undefined;
+  return { field: "/name", code: "too_long", message: "120 characters at most." };
+}
+
 function problem(status: number, title: string, errors?: S["FieldError"][]) {
   return HttpResponse.json(
     { type: "https://rvav.dev/problems/x", title, status, request_id: "req_mock", ...(errors ? { errors } : {}) },

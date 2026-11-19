@@ -214,7 +214,9 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await choose(page, "Environment", "Development");
   await rule.getByRole("spinbutton", { name: "Lifetime, in days" }).fill("20");
   await rule.getByRole("button", { name: "Save lease rule" }).click();
-  await expect(rule.getByText("The maximum can't be longer than the lifetime.")).toBeVisible();
+  await expect(rule.getByRole("spinbutton", { name: "Lifetime, in days" })).toHaveAccessibleDescription(
+    "The maximum can't be longer than the lifetime.",
+  );
   await rule.getByRole("spinbutton", { name: "Lifetime, in days" }).fill("60");
   await rule.getByRole("button", { name: "Save lease rule" }).click();
   await expect(rules.getByRole("row", { name: /Small VMs/ })).toContainText("Lives 60 days at most");
