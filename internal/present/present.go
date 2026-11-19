@@ -263,7 +263,7 @@ func StepTree(steps []store.Step) []api.Step {
 
 func Deployment(d store.DeploymentRow) api.Deployment {
 	out := api.Deployment{
-		Id: d.ID, Name: d.Name, Status: api.DeploymentStatus(d.Status),
+		Id: d.ID, Name: d.Name, Description: d.Description, Status: api.DeploymentStatus(d.Status),
 		Project:            ProjectRef(d.ProjectID, d.ProjectCode, d.ProjectName),
 		Environment:        d.Environment,
 		Version:            api.CatalogItemVersionRef{Id: d.VersionID, Number: d.VersionNumber},

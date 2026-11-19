@@ -87,6 +87,32 @@ describe("request form against the mock API", () => {
     expect(await screen.findByText("web-dev-app001")).toBeInTheDocument();
   }, 15000);
 
+  it("names the deployment and says what it is for, refusing a name the project's deployments hold", async () => {
+    const user = userEvent.setup();
+    const { router } = await openForm();
+    await placed();
+    const name = screen.getByLabelText("Name (optional)");
+    expect(name).toHaveAccessibleDescription("Unique in Web Platform. Left empty, rvav names it.");
+    await user.type(name, "WEB-PRD-FRONT");
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"));
+    expect(name).toHaveAccessibleDescription(/Web Platform already has a deployment named web-prd-front\./);
+    await waitFor(() => expect(name).toHaveFocus());
+
+    await user.clear(name);
+    await user.type(name, "Payroll API");
+    await user.type(screen.getByLabelText("Description (optional)"), "Pay slips for the staff portal.");
+    const summary = screen.getByRole("region", { name: "Summary" });
+    await waitFor(() => expect(summary).toHaveTextContent("DeploymentPayroll API"));
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/requests/REQ-10491"));
+    expect(db.requests[0]!.request.justification).toBeUndefined();
+
+    await user.click(await screen.findByRole("link", { name: "Open deployment" }, { timeout: 5000 }));
+    await screen.findByRole("heading", { name: "Payroll API" }, { timeout: 5000 });
+    expect(screen.getByText("Pay slips for the staff portal.")).toBeInTheDocument();
+  }, 15000);
+
   it("warns of a lease longer than a soft lease allows, and submits anyway", async () => {
     adminState(db).leases.find((l) => l.environment === "dev" && !l.project_id)!.enforcement = "soft";
     const user = userEvent.setup();

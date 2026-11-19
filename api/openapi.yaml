@@ -6516,6 +6516,12 @@ components:
             The item builds one deployment however many VMs (a blueprint with
             components, ADR-0024): how many of each is in the form, and the
             request's `count` stays 1.
+        names_deployments:
+          type: boolean
+          description: |
+            The item makes deployments (a VM item, or a composite with a VM
+            step), so a request may give their `deployment_name` and
+            `deployment_description`.
         topology:
           type: object
           additionalProperties: true
@@ -7018,6 +7024,21 @@ components:
           type: string
           maxLength: 2000
           description: Shown to approvers.
+        deployment_name:
+          type: string
+          maxLength: 80
+          description: |
+            What to call the deployment, instead of the name rvav gives (its
+            VM's, or its item's and the request number). One line, unique
+            among the project's deployments not deleted, whatever the case,
+            and not a name the VM naming policy gives (its prefix and a
+            number). A request that makes several deployments names them
+            `<name> 1`, `<name> 2` and so on. Refused (422, `no_deployment`)
+            for an item that makes none.
+        deployment_description:
+          type: string
+          maxLength: 2000
+          description: What the deployment is for, shown with it. Approvers read `justification`.
         lease_days:
           type: [integer, "null"]
           minimum: 1
@@ -7094,6 +7115,10 @@ components:
         names:
           type: array
           description: VM names the naming policy would give, one per VM.
+          items: { type: string }
+        deployment_names:
+          type: array
+          description: The names the request's deployments take from `deployment_name`, when it gives one.
           items: { type: string }
         addresses:
           type: array
@@ -8049,10 +8074,15 @@ components:
 
     Deployment:
       type: object
-      required: [id, name, status, project, environment, catalog_item, version, owner, created_at, lease, vm_count, vms_powered_on, sync_state]
+      required: [id, name, description, status, project, environment, catalog_item, version, owner, created_at, lease, vm_count, vms_powered_on, sync_state]
       properties:
         id: { type: string }
-        name: { type: string }
+        name:
+          type: string
+          description: Unique among the project's deployments not deleted.
+        description:
+          type: string
+          description: What it is for, as given at request; empty when nobody gave one.
         status: { $ref: "#/components/schemas/DeploymentStatus" }
         project: { $ref: "#/components/schemas/ProjectRef" }
         environment: { $ref: "#/components/schemas/EnvironmentKey" }

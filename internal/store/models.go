@@ -277,6 +277,7 @@ type LogLine struct {
 type Deployment struct {
 	ID                  string          `db:"id"`
 	Name                string          `db:"name"`
+	Description         string          `db:"description"`
 	Status              string          `db:"status"`
 	ProjectID           string          `db:"project_id"`
 	Environment         string          `db:"environment"`

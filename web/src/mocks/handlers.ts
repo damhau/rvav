@@ -54,6 +54,7 @@ import { draftHandlers } from "./drafts";
 import { sharedWith, sharingHandlers } from "./sharing";
 import { listingHandlers, seesDeployment, visibleDeployments } from "./listing";
 import { faults } from "./faults";
+import { namesDeployments } from "./deploymentNames";
 import { demand, preview, resolveField, ruled, summarize, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import {
@@ -173,13 +174,15 @@ function createDeployment(
   host: string | null,
   number: string,
   leaseDays?: number | null,
+  named?: StoredRequest["named"],
 ): DeploymentDetail | null {
   if (vmCount(item, count, inputs) === 0 || !host) return null;
   const production = db.environments.find((e) => e.key === environment)?.production ?? false;
   const days = leaseDays ?? (production ? null : 30);
   const dep: DeploymentDetail = {
     id: `dep_${(db.seq.id++).toString(36)}`,
-    name: host.replace(/\d+$/, ""),
+    name: named?.name ?? host.replace(/\d+$/, ""),
+    description: named?.description ?? "",
     status: "provisioning",
     project: { id: project.id, code: project.code, name: project.name },
     environment,
@@ -234,7 +237,17 @@ function provisionApproved(stored: StoredRequest, outcome: string, detail: strin
   const [, policy, ...rest] = steps;
   if (policy) Object.assign(policy, { title: outcome, detail, status: "done", finished_at: new Date().toISOString() });
   stored.steps = [stored.steps[0]!, ...(policy ? [policy] : []), ...rest];
-  const dep = createDeployment(item, project, r.environment, r.inputs ?? {}, r.count ?? 1, host, r.number);
+  const dep = createDeployment(
+    item,
+    project,
+    r.environment,
+    r.inputs ?? {},
+    r.count ?? 1,
+    host,
+    r.number,
+    undefined,
+    stored.named,
+  );
   if (dep) r.deployment_ids = [dep.id];
   if (host) {
     rememberHost(r.id, host);
@@ -587,7 +600,10 @@ export const handlers = [
       );
     if (projectId && item.projectIds.includes(projectId) && !sharedWith(db, item, projectId))
       return notFound("Catalog item");
-    return json<S["RequestForm"]>(db.forms[item.id]!);
+    return json<S["RequestForm"]>({
+      ...db.forms[item.id]!,
+      ...(namesDeployments(item) ? { names_deployments: true } : {}),
+    });
   }),
 
   http.post(`${base}/forms/values`, async ({ request }) => {
@@ -680,7 +696,9 @@ export const handlers = [
       (e) =>
         e.field.startsWith("/inputs/") ||
         e.field.startsWith("/validations/") ||
-        ["", "/environment", "/count", "/scheduled_at"].includes(e.field),
+        ["", "/environment", "/count", "/scheduled_at", "/deployment_name", "/deployment_description"].includes(
+          e.field,
+        ),
     );
     if (errors.length) {
       return problem(
@@ -706,10 +724,23 @@ export const handlers = [
     const { steps, host } = planSteps(item, project, draft.environment, inputs, approval);
     const now = new Date().toISOString();
     const deploymentIds: string[] = [];
+    const description = (draft.deployment_description ?? "").trim();
+    const named =
+      check.deployment_names || description ? { name: check.deployment_names?.[0], description } : undefined;
     const dep =
       approval || later
         ? null
-        : createDeployment(item, project, draft.environment, inputs, draft.count ?? 1, host, number, draft.lease_days);
+        : createDeployment(
+            item,
+            project,
+            draft.environment,
+            inputs,
+            draft.count ?? 1,
+            host,
+            number,
+            draft.lease_days,
+            named,
+          );
     if (dep) deploymentIds.push(dep.id);
     const req: ServiceRequest = {
       id,
@@ -736,7 +767,7 @@ export const handlers = [
       error: null,
       ...(warnings.length ? { warnings } : {}),
     };
-    const stored = { request: req, steps, logs: {} };
+    const stored: StoredRequest = { request: req, steps, logs: {}, ...(named ? { named } : {}) };
     db.requests.unshift(stored);
     if (host) rememberHost(id, host);
     if (approval) {

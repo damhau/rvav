@@ -62,6 +62,8 @@ type ApprovalPreview = RequestPreview["approval"];
 /** The request's own options, by the key their errors map to (`mapFieldErrors`). */
 const requestOptions: Record<string, string> = {
   $environment: "Environment",
+  $deployment_name: "Deployment name",
+  $deployment_description: "Description",
   $count: "How many",
   $scheduled_at: "Start at",
   $on_behalf_of: "For someone else",
@@ -72,6 +74,10 @@ function controlOf(name: string): HTMLElement | null {
   switch (name) {
     case "$environment":
       return document.querySelector('[aria-labelledby="env-label"] [aria-checked="true"]');
+    case "$deployment_name":
+      return document.getElementById("deployment-name");
+    case "$deployment_description":
+      return document.getElementById("deployment-description");
     case "$count":
       return document.getElementById("count");
     case "$scheduled_at":
@@ -88,6 +94,8 @@ export interface FormStart {
   environment?: string;
   inputs?: Record<string, unknown>;
   justification?: string;
+  deploymentName?: string;
+  deploymentDescription?: string;
   leaseDays?: number | null;
   count?: number;
   scheduledAt?: string | null;
@@ -213,7 +221,11 @@ function Summary({
   const post = Array.isArray(values.post_config) && !oneDeployment ? (values.post_config as string[]) : [];
   const single = !oneDeployment;
   const placement = single ? preview?.components?.[0]?.placement : undefined;
+  const deployments = preview?.deployment_names;
   const rows = [
+    deployments?.length
+      ? { label: deployments.length > 1 ? "Deployments" : "Deployment", value: deployments.join(", ") }
+      : null,
     single && preview?.names?.length
       ? { label: preview.names.length > 1 ? "Names" : "Name", value: preview.names.join(", "), mono: true }
       : null,
@@ -461,6 +473,9 @@ function RequestFormBody({
   // goes: the previews that follow are all later than the check.
   const [checked, setChecked] = useState<{ since: RequestDraft; preview: RequestPreview }>();
   const [justification, setJustification] = useState(start?.justification ?? "");
+  const [deploymentName, setDeploymentName] = useState(start?.deploymentName ?? "");
+  const [description, setDescription] = useState(start?.deploymentDescription ?? "");
+  const named = Boolean(form.names_deployments);
   const [leaseDays, setLeaseDays] = useState<number | null>(start?.leaseDays ?? null);
   const [count, setCount] = useState(String(start?.count ?? 1));
   const [later, setLater] = useState(Boolean(start?.scheduledAt));
@@ -484,6 +499,8 @@ function RequestFormBody({
       inputs: sentInputs(form.ui_schema.fields, values),
       count: many ? Math.max(1, Number(count) || 1) : 1,
       ...(justification ? { justification } : {}),
+      ...(named && deploymentName.trim() ? { deployment_name: deploymentName } : {}),
+      ...(named && description.trim() ? { deployment_description: description } : {}),
       lease_days: leaseDays,
       ...(later && startAt ? { scheduled_at: new Date(startAt).toISOString() } : {}),
       ...(onBehalfOf && canActForOthers ? { on_behalf_of: onBehalfOf.id } : {}),
@@ -497,6 +514,9 @@ function RequestFormBody({
       form.ui_schema.fields,
       values,
       justification,
+      named,
+      deploymentName,
+      description,
       leaseDays,
       many,
       count,
@@ -604,6 +624,7 @@ function RequestFormBody({
   const placed = [
     "$environment",
     ...shownFields(form, shownPreview?.fields),
+    ...(named ? ["$deployment_name", "$deployment_description"] : []),
     ...(many ? ["$count"] : []),
     ...(later ? ["$scheduled_at"] : []),
     ...(canActForOthers ? ["$on_behalf_of"] : []),
@@ -688,8 +709,50 @@ function RequestFormBody({
       ? [7, 14, 30, 60, 90, ...(soft ? [180, 365] : [])].filter((d) => soft || d <= (lease.max_days ?? 90))
       : [];
 
+  const shownNames = shownPreview?.deployment_names;
   const requestPanels = (
     <>
+      {named && (
+        <Panel as="fieldset" title="Deployment">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Field
+              label="Name (optional)"
+              htmlFor="deployment-name"
+              hint={
+                shownNames && shownNames.length > 1
+                  ? `Named ${shownNames[0]} to ${shownNames[shownNames.length - 1]}.`
+                  : `Unique in ${project.name}. Left empty, rvav names it.`
+              }
+              error={fieldErrors.$deployment_name}
+            >
+              <Input
+                id="deployment-name"
+                value={deploymentName}
+                onChange={(e) => {
+                  setDeploymentName(e.target.value);
+                  clearServerError("$deployment_name");
+                }}
+              />
+            </Field>
+            <Field
+              label="Description (optional)"
+              htmlFor="deployment-description"
+              hint="What it is for, shown with it."
+              error={fieldErrors.$deployment_description}
+            >
+              <Textarea
+                id="deployment-description"
+                rows={2}
+                value={description}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  clearServerError("$deployment_description");
+                }}
+              />
+            </Field>
+          </div>
+        </Panel>
+      )}
       <Panel as="fieldset" title="Lease and reason">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field
@@ -918,6 +981,8 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
         environment: saved.data.draft.environment,
         inputs: saved.data.draft.inputs,
         justification: saved.data.draft.justification,
+        deploymentName: saved.data.draft.deployment_name,
+        deploymentDescription: saved.data.draft.deployment_description,
         leaseDays: saved.data.draft.lease_days,
         count: saved.data.draft.count,
         scheduledAt: saved.data.draft.scheduled_at,

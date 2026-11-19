@@ -30,6 +30,8 @@ export interface StoredRequest {
   request: ServiceRequest;
   steps: Step[];
   logs: Record<string, LogLine[]>;
+  /** The name and description its deployment takes once approved, when it gave them. */
+  named?: { name?: string; description: string };
 }
 
 export interface StoredItem extends CatalogItem {
@@ -501,6 +503,7 @@ export function createDb(now = Date.now()): Db {
     vms: VmSpec[];
     inputs: Record<string, unknown>;
     requestNumber?: string;
+    description?: string;
   }
   const deployment = (s: DepSpec): DeploymentDetail => {
     const resources = s.vms.flatMap((v) => vmResources(v));
@@ -509,6 +512,7 @@ export function createDb(now = Date.now()): Db {
     return {
       id: id("dep"),
       name: s.name,
+      description: s.description ?? "",
       status: s.status ?? "ready",
       project: ref(s.project),
       environment: s.env,
@@ -555,6 +559,7 @@ export function createDb(now = Date.now()): Db {
       createdMin: 60 * 24 * 41,
       leaseDays: null,
       requestNumber: "REQ-10233",
+      description: "The public website's front ends, behind the load balancer.",
       vms: [
         { name: "web-prd-front001", env: "prd", ip: "10.21.10.37", memGb: 8, cpuPct: 37, memPct: 61 },
         { name: "web-prd-front002", env: "prd", ip: "10.21.10.54", memGb: 8, cpuPct: 33, memPct: 58 },

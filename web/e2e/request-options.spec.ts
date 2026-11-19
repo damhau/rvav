@@ -11,6 +11,9 @@ test("save a request as a draft, resume it and submit it", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Request RHEL 9 server" })).toBeVisible();
   await page.getByRole("textbox", { name: "Role" }).fill("batch");
   await page.getByRole("spinbutton", { name: "How many" }).fill("3");
+  await page.getByRole("textbox", { name: "Name (optional)" }).fill("Batch reports");
+  const summary = page.getByRole("region", { name: "Summary" });
+  await expect(summary).toContainText("DeploymentsBatch reports 1, Batch reports 2, Batch reports 3");
   await page.getByRole("button", { name: "Save as draft" }).click();
   await expect(page.getByText("Draft saved")).toBeVisible();
 
@@ -20,6 +23,7 @@ test("save a request as a draft, resume it and submit it", async ({ page }) => {
   await drafts.getByRole("link", { name: "Resume" }).click();
   await expect(page.getByRole("textbox", { name: "Role" })).toHaveValue("batch");
   await expect(page.getByRole("spinbutton", { name: "How many" })).toHaveValue("3");
+  await expect(page.getByRole("textbox", { name: "Name (optional)" })).toHaveValue("Batch reports");
   await page.getByRole("button", { name: "Submit request" }).click();
   await expect(page).toHaveURL(/\/requests\/REQ-\d+$/);
 

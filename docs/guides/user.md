@@ -55,13 +55,24 @@ one to ask your project admin or administrator for.
    follow what you fill in. **List** gives the same as a list; select a
    node to read all it says. A step that calls a REST API shows its method
    and the values it reads, not the address.
-4. **Lease and reason:** how long you need it, within what the environment
+4. **Deployment** (for an item that makes deployments): optionally, a
+   name and a description of what it is for.
+   - Left empty, rvav names the deployment after its VM, or after the item
+     and the request number.
+   - A name you give is unique in the project, whatever the case: the
+     form refuses one a deployment of the project already has, and a VM
+     name the project's naming gives, such as `web-dev-app007`.
+   - When the request makes several deployments, they are numbered:
+     `Payroll 1`, `Payroll 2`.
+   - The description shows with the deployment. Approvers read the
+     reason, not the description.
+5. **Lease and reason:** how long you need it, within what the environment
    allows. In production the reason is what approvers read.
-5. **Options:**
+6. **Options:**
    - how many;
    - when to start (now, or at a set time);
    - for someone else: they own it and are told.
-6. **Submit request**, at the foot of the summary (**Submit for approval**
+7. **Submit request**, at the foot of the summary (**Submit for approval**
    when someone must approve it). A field with a problem says what it is
    under the field.
 
@@ -78,7 +89,8 @@ administrator chooses:
   and the focus moves to that input. **Back** returns to the page before.
   The last step, **Review**, lists what you entered, page by page, with
   passwords and other secrets hidden. **Change** goes back to a page. The
-  lease, the reason, the options and **Submit request** are on that step.
+  deployment's name, the lease, the reason, the options and **Submit
+  request** are on that step.
 - **Tabs:** one tab per section. To move between tabs, use the arrow keys.
   A tab holding an input that needs fixing shows a warning mark and says
   how many need fixing.

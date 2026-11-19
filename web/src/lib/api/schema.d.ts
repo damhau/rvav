@@ -4815,6 +4815,12 @@ export interface components {
              */
             one_deployment?: boolean;
             /**
+             * @description The item makes deployments (a VM item, or a composite with a VM
+             *     step), so a request may give their `deployment_name` and
+             *     `deployment_description`.
+             */
+            names_deployments?: boolean;
+            /**
              * @description What the item builds, for the request form to draw (ADR-0032): the
              *     part of the version's blueprint the canvas shows, in the
              *     blueprint's own shape, lists keeping their positions. A VM item's
@@ -5193,6 +5199,18 @@ export interface components {
             on_behalf_of?: string;
             /** @description Shown to approvers. */
             justification?: string;
+            /**
+             * @description What to call the deployment, instead of the name rvav gives (its
+             *     VM's, or its item's and the request number). One line, unique
+             *     among the project's deployments not deleted, whatever the case,
+             *     and not a name the VM naming policy gives (its prefix and a
+             *     number). A request that makes several deployments names them
+             *     `<name> 1`, `<name> 2` and so on. Refused (422, `no_deployment`)
+             *     for an item that makes none.
+             */
+            deployment_name?: string;
+            /** @description What the deployment is for, shown with it. Approvers read `justification`. */
+            deployment_description?: string;
             /** @description Null for the policy default, or no lease where the policy allows it. */
             lease_days?: number | null;
             /**
@@ -5250,6 +5268,8 @@ export interface components {
             errors: components["schemas"]["FieldError"][];
             /** @description VM names the naming policy would give, one per VM. */
             names?: string[];
+            /** @description The names the request's deployments take from `deployment_name`, when it gives one. */
+            deployment_names?: string[];
             /** @description Next free IP addresses, as a hint only. Reserved when the request starts. */
             addresses?: string[];
             placement?: {
@@ -5964,7 +5984,10 @@ export interface components {
         };
         Deployment: {
             id: string;
+            /** @description Unique among the project's deployments not deleted. */
             name: string;
+            /** @description What it is for, as given at request; empty when nobody gave one. */
+            description: string;
             status: components["schemas"]["DeploymentStatus"];
             project: components["schemas"]["ProjectRef"];
             environment: components["schemas"]["EnvironmentKey"];

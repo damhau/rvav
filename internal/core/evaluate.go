@@ -72,6 +72,11 @@ type Evaluation struct {
 	OverSoft   []string
 	Lease      LeaseInfo
 	OnBehalfOf *store.User
+	// DeploymentName is the name the request gives its deployments, and
+	// DeploymentNames theirs from it; Description what they are for.
+	DeploymentName  string
+	DeploymentNames []string
+	Description     string
 	// Fields are the form's rule results for these inputs.
 	Fields api.FieldStates
 	Errors []api.FieldError
@@ -286,6 +291,9 @@ func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.
 		if err := s.evaluateComposite(ctx, p, ev, strict); err != nil {
 			return nil, err
 		}
+	}
+	if err := s.evaluateDeployments(ctx, ev, d); err != nil {
+		return nil, err
 	}
 	if err := s.evaluateSecrets(ctx, ev); err != nil {
 		return nil, err
@@ -833,6 +841,9 @@ func (ev *Evaluation) Preview() api.RequestPreview {
 	}
 	if ev.Names != nil {
 		out.Names = present.Ptr(ev.Names)
+	}
+	if ev.DeploymentNames != nil {
+		out.DeploymentNames = present.Ptr(ev.DeploymentNames)
 	}
 	if ev.Addresses != nil {
 		out.Addresses = present.Ptr(ev.Addresses)

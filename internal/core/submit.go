@@ -94,6 +94,9 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			if err != nil {
 				return err
 			}
+			if err := s.claimDeploymentNames(ctx, tx, ev, deps, req.Number); err != nil {
+				return err
+			}
 			deployments, plan.VMs, plan.Components = append(deployments, deps...), vms, comps
 			plan.Segments, plan.Security = planSegments(ev, vms), planSecurity(ev, vms)
 			if len(comps) > 0 {
@@ -131,6 +134,9 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 					}
 				}
 				plan.Composite = append(plan.Composite, c)
+			}
+			if err := s.claimDeploymentNames(ctx, tx, ev, deployments, req.Number); err != nil {
+				return err
 			}
 			req.Title = ev.Item.Name + titleSuffix(ev.Version.UISchema, ev.Inputs)
 		case blueprint.KindWorkflow:

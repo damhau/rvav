@@ -326,7 +326,7 @@ expression's cost limit.
 | `awx_templates` | Post-configuration AWX templates, by key |
 | `rollback_on_failure` | Delete what was built when a step fails |
 | `components` | Groups of VMs, built as one deployment: `key`, `title`, `count` (0 to 20, a number or CEL), `anti_affinity`, `depends_on` (keys of the components it is built after), and any of `naming`, `template`, `library`, `guest`, `bindings`, `disks`, `nics`, `ipam`, `ipv6`, `tags`, `storage_policy`, `provisioning`, `linked_clone`, `groups`, `constraints`, `folder`, `prevent_delete`, which win over the blueprint's (guest field by field, bindings key by key, constraints kind by kind), and `properties`, added to the blueprint's key by key |
-| `deployment_name` | With components, the deployment's naming template, without `{seq}`; else the item's name and the request number |
+| `deployment_name` | With components, the deployment's naming template, without `{seq}`; else the item's name and the request number. A name the project's live deployments already hold gets the request number after it. A name the requester gives wins ([ADR-0046](adr/0046-deployment-names-and-versions.md)) |
 
 Without `components` the blueprint builds one VM, and a request for
 several makes one deployment per VM; with them, one deployment holding

@@ -27,6 +27,7 @@ import { adminState, leasePolicyOf, namingTemplate, placed, placementFolder, rol
 import { celBool, celEval } from "./cel";
 import { warning } from "./warnings";
 import { multiParts, partVMs, previewComponents } from "./components";
+import { requestedNames } from "./deploymentNames";
 import { roleRefs } from "./roles";
 import { bound, entryVars, validationErrors } from "./formLibrary";
 import { clusters, datastores, dnsZones, networks, prefix, sizes, vmFolders, type SizeKey } from "./inventory";
@@ -743,6 +744,8 @@ export function preview(
     : vms > 0
       ? vmNames(db, project, draft.environment, item.slug === "postgres-cluster" ? `pg${role}` : role, vms)
       : [];
+  const named = requestedNames(db, item, project, draft, inputs, names);
+  errors.push(...named.errors);
   const network = typeof inputs.network === "string" ? inputs.network : "";
   const next = network ? nextFreeIp(db, network) : null;
   const production = db.environments.find((e) => e.key === draft.environment)?.production ?? false;
@@ -759,6 +762,7 @@ export function preview(
     errors,
     fields,
     names,
+    ...(named.names ? { deployment_names: named.names } : {}),
     addresses: next ? [next.ip] : [],
     placement:
       vms > 0 && item.type === "vm_blueprint"

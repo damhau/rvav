@@ -148,6 +148,14 @@ func (s *Server) GetRequestForm(w http.ResponseWriter, r *http.Request, itemID a
 	}
 	out.OneDeployment = core.OneDeployment(ver.Blueprint)
 	out.Topology = core.Topology(ver.Blueprint)
+	names, err := s.Core.MakesDeployments(r.Context(), ver.Blueprint)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if names {
+		out.NamesDeployments = &names
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 

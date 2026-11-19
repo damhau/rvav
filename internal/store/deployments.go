@@ -13,7 +13,7 @@ import (
 )
 
 const deploymentRowSelect = `
-select d.id, d.name, d.status, d.project_id, d.environment, d.item_id, d.version_id, d.owner_id,
+select d.id, d.name, d.description, d.status, d.project_id, d.environment, d.item_id, d.version_id, d.owner_id,
        d.created_by_request_id, d.created_at, d.lease_expires_at, d.lease_extensions_used,
        d.lease_extensions_max, d.expiry_action, d.sync_state, d.inputs, d.lease_reminded, d.lease_expired_at,
        p.code as project_code, p.name as project_name, p.deployment_sharing as project_sharing, i.slug as item_slug, i.name as item_name, i.type as item_type,
@@ -39,11 +39,41 @@ left join lateral (select max_days, max_extensions, grace_days, enforcement from
 
 func (s *Store) InsertDeployment(ctx context.Context, db DB, d Deployment) error {
 	_, err := db.Exec(ctx, `insert into deployments (id, name, status, project_id, environment, item_id, version_id,
-		owner_id, created_by_request_id, lease_expires_at, lease_extensions_max, expiry_action, inputs)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		owner_id, created_by_request_id, lease_expires_at, lease_extensions_max, expiry_action, inputs, description)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		d.ID, d.Name, d.Status, d.ProjectID, d.Environment, d.ItemID, d.VersionID, d.OwnerID,
-		d.CreatedByRequestID, d.LeaseExpiresAt, d.LeaseExtensionsMax, d.ExpiryAction, jsonOr(d.Inputs, "{}"))
+		d.CreatedByRequestID, d.LeaseExpiresAt, d.LeaseExtensionsMax, d.ExpiryAction, jsonOr(d.Inputs, "{}"), d.Description)
 	return err
+}
+
+// LockDeploymentNames holds these names in a project until the
+// transaction ends, so two requests can't both take one. They are held
+// whatever their case, in one order, so two holders never deadlock.
+func (s *Store) LockDeploymentNames(ctx context.Context, tx pgx.Tx, projectID string, names []string) error {
+	keys := lowered(names)
+	slices.Sort(keys)
+	for _, k := range slices.Compact(keys) {
+		if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtext('rvav.deployment:' || $1 || ':' || $2))`, projectID, k); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TakenDeploymentNames are those of the names that a deployment of the
+// project other than except, not deleted, holds whatever the case.
+func (s *Store) TakenDeploymentNames(ctx context.Context, db DB, projectID, except string, names []string) ([]string, error) {
+	rows, _ := db.Query(ctx, `select name from deployments where project_id = $1 and status <> 'deleted'
+		and lower(name) = any($2) and id <> $3 order by name`, projectID, lowered(names), except)
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+func lowered(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = strings.ToLower(n)
+	}
+	return out
 }
 
 func (s *Store) GetDeployment(ctx context.Context, id string) (DeploymentRow, error) {

@@ -93,7 +93,9 @@ Subscription (event → awx template | webhook)
 - **Deployment**: logical group of resources created by one request. Has owner,
   project, catalog item version, inputs, lease expiry, and status. Its
   version and inputs are those of the request that created it, or of its
-  last update that succeeded.
+  last update that succeeded. Its name is unique among the project's live
+  deployments, whatever the case, and its description says what it is for
+  ([ADR-0046](adr/0046-deployment-names-and-versions.md)).
 - **Resource**: `type` (`vsphere.vm` | `ipam.address` | `dns.record` |
   `vsphere.drs_rule`), external ID (VM MoRef plus instance UUID, IP ID, ...),
   properties (JSONB), sync state (`in_sync` | `drifted` | `missing`). A VM's

@@ -556,6 +556,8 @@ function Details({ d }: { d: DeploymentDetail }) {
     { label: "Project", value: d.project.name },
     { label: "Created", value: <Time iso={d.created_at} /> },
   ];
+  if (d.description)
+    items.unshift({ label: "Description", value: <span className="whitespace-pre-line">{d.description}</span> });
   if (d.created_by_request_id)
     items.push({
       label: "Created by",
