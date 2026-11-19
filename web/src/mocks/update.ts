@@ -91,6 +91,13 @@ function nextNames(db: Db, d: DeploymentDetail, vms: VmResource[], c: Component,
   return Array.from({ length: n }, (_, i) => `${prefix}${String(highest + 1 + i).padStart(digits.length, "0")}`);
 }
 
+/** Where a VM is, as its properties say. */
+function placed(v: VmResource, setting: "cluster" | "datastore" | "network") {
+  if (setting === "cluster") return v.vm.cluster ?? "";
+  if (setting === "datastore") return v.vm.disks[0]?.datastore ?? "";
+  return v.vm.nics[0]?.network ?? "";
+}
+
 function findVm(d: DeploymentDetail, name: string) {
   return d.resources.find((r): r is VmResource => r.type === "vsphere.vm" && r.name === name);
 }
@@ -113,7 +120,12 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   const base = { environment: d.environment, catalog_item_id: item.id, project_id: project.id, count: 1 };
   // The seed's deployments have inputs their form doesn't: only the form's count.
   const props = (db.forms[item.id]?.schema as { properties?: Inputs } | undefined)?.properties ?? {};
-  const kept = Object.fromEntries(Object.entries(d.inputs).filter(([k]) => k in props));
+  // As the server: a deployment adopted without inputs had its version's initial values. One with some
+  // keeps them as they are, as a key left out can be a default the requester emptied.
+  const kept =
+    Object.keys(d.inputs ?? {}).length === 0
+      ? { ...(db.forms[item.id]?.initial_values ?? {}) }
+      : Object.fromEntries(Object.entries(d.inputs).filter(([k]) => k in props));
   const before = ruled(db, item, project, { ...base, version_id: d.version.id, inputs: kept }).inputs;
   const { inputs, fields, errors } = ruled(db, item, project, { ...base, version_id: version, inputs: draft.inputs });
   if (draft.version_id !== version)
@@ -132,6 +144,20 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   const builds: { c: Component; vms: VmResource[]; add: number; remove: VmResource[]; jobs: string[] }[] = [];
   const resized: { vm: string; cpu: number; memGb: number }[] = [];
   const grown: { vm: string; gb: number }[] = [];
+  const removeVm = (component: string, vm: VmResource) => {
+    changes.push({
+      kind: "vm_remove",
+      component,
+      vm: vm.name,
+      title: `Delete ${vm.name}`,
+      detail: "With its disks, address and DNS records.",
+      destructive: true,
+    });
+    delta.vcpu -= vm.vm.cpu_count;
+    delta.memory_gb -= vm.vm.memory_mb / 1024;
+    delta.storage_gb -= vm.vm.disks.reduce((s, x) => s + x.capacity_gb, 0);
+    delta.vm_count -= 1;
+  };
 
   for (const c of componentsOf(item, inputs, vmCount)) {
     const old = had.get(c.key);
@@ -144,6 +170,8 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
       for (const setting of ["cluster", "datastore", "network"] as const) {
         const [was, is] = [text(before[setting]), text(inputs[setting])];
         if (was === is) continue;
+        // Never recorded, as for a VM adopted: nothing moves where every VM is already there.
+        if (was === "" && vms.every((v) => placed(v, setting) === is)) continue;
         refuse(
           setting,
           setting === "network"
@@ -207,20 +235,7 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
     delta.storage_gb += add * size.diskGb;
     delta.vm_count += add;
     const remove = vms.slice(c.count);
-    for (const vm of remove) {
-      changes.push({
-        kind: "vm_remove",
-        component: c.key,
-        vm: vm.name,
-        title: `Delete ${vm.name}`,
-        detail: "With its disks, address and DNS records.",
-        destructive: true,
-      });
-      delta.vcpu -= vm.vm.cpu_count;
-      delta.memory_gb -= vm.vm.memory_mb / 1024;
-      delta.storage_gb -= vm.vm.disks.reduce((s, x) => s + x.capacity_gb, 0);
-      delta.vm_count -= 1;
-    }
+    for (const vm of remove) removeVm(c.key, vm);
     const jobs = c.post.filter((j) => failed || !old?.post.includes(j));
     if (kept.length)
       for (const j of jobs)
@@ -236,24 +251,12 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   for (const [key, old] of had) {
     if (builds.some((b) => b.c.key === key)) continue;
     const remove = vmsOf(d, item, old);
-    for (const vm of remove) {
-      changes.push({
-        kind: "vm_remove",
-        component: key,
-        vm: vm.name,
-        title: `Delete ${vm.name}`,
-        detail: "With its disks, address and DNS records.",
-        destructive: true,
-      });
-      delta.vcpu -= vm.vm.cpu_count;
-      delta.memory_gb -= vm.vm.memory_mb / 1024;
-      delta.vm_count -= 1;
-    }
+    for (const vm of remove) removeVm(key, vm);
     builds.push({ c: { ...old, count: 0 }, vms: [], add: 0, remove, jobs: [] });
   }
-  // As the server runs them: the kept VMs' changes, the removals, then what is added and the jobs.
-  const order = ["disk_extend", "resize", "vm_remove", "vm_add", "job"];
-  changes.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+  // As the server lists them: each kept VM's changes in place, then the VMs added, those removed, the jobs.
+  const group: Partial<Record<UpdateChange["kind"], number>> = { vm_add: 1, vm_remove: 2, job: 3 };
+  changes.sort((a, b) => (group[a.kind] ?? 0) - (group[b.kind] ?? 0));
 
   const q = db.quota[project.id];
   const quota: QuotaImpact[] = q

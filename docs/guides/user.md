@@ -416,7 +416,9 @@ update builds the VMs that are missing and runs the AWX jobs again. If
 the update fails, the deployment keeps its version and inputs: retry the
 request from its page once the cause is fixed.
 
-When nothing changes, **Review the update** stays unavailable. Approvers
+When nothing changes, or a change is refused, **Review the update** stays
+unavailable beside the summary. In a form with steps, the review step's
+**Review the update** says why instead of asking you to confirm. Approvers
 can't change an update's inputs: if they reject it, change it and update
 again.
 

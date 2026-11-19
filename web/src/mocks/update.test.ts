@@ -79,6 +79,49 @@ describe("the mocks' updates", () => {
     ).rejects.toMatchObject({ body: { errors: [{ code: "no_change" }] } });
   });
 
+  it("list each VM's changes in place together, then the jobs, as the server does", async () => {
+    const d = named("web-prd-cache");
+    const p = await preview(d, { ...d.inputs, size: "L", post_config: ["linux-baseline", "idm-join"] });
+    expect(p.changes.map((c) => [c.kind, c.vm ?? null])).toEqual([
+      ["disk_extend", "web-prd-cache001"],
+      ["resize", "web-prd-cache001"],
+      ["disk_extend", "web-prd-cache002"],
+      ["resize", "web-prd-cache002"],
+      ["job", null],
+    ]);
+  });
+
+  it("start a deployment adopted without inputs from its version's initial values, refusing nothing", async () => {
+    const item = db.items.find((i) => i.slug === "rhel9-server")!;
+    await api("POST", "/admin/onboarding", {
+      vms: [{ vcenter: "vc01.corp.example", moref: "vm-9152" }],
+      project_id: "prj_web",
+      environment: "dev",
+      owner_id: db.me.user.id,
+      catalog_item_id: item.id,
+    });
+    const d = named("app-old01");
+    expect(d.inputs).toEqual({});
+    const form = db.forms[item.id]!;
+    // What the form sends before any edit: its initial values, and the first cluster, datastore and network.
+    const p = await preview(d, {
+      ...form.initial_values,
+      cluster: "GVA-DEV-CL01",
+      datastore: "vsan-gva-dev-cl01",
+      network: "dvpg-app-dev-vl310",
+    });
+    expect(p.refused).toEqual([]);
+    expect(p.changes).toEqual([]);
+    const moved = await preview(d, { ...form.initial_values, cluster: "GVA-TST-CL01" });
+    expect(moved.refused.map((x) => x.setting)).toEqual(["cluster"]);
+  });
+
+  it("offer no update of the PostgreSQL cluster's deployment, an item made of others", async () => {
+    const d = named("data-prd-pg-ledger");
+    expect(d.catalog_item.slug).toBe("postgres-cluster");
+    await expect(preview(d, d.inputs)).rejects.toThrow(/: 409$/);
+  });
+
   it("scale a multi-VM deployment out and in, the names continuing", async () => {
     const draft = {
       catalog_item_id: "itm_webapp",
@@ -117,6 +160,10 @@ describe("the mocks' updates", () => {
       ["vm_remove", third[2], true],
     ]);
     expect(inward.quota.find((q) => q.resource === "vm_count")?.adding).toBe(-2);
+    const disks = (name: string) =>
+      d.resources.find((r): r is VmResource => r.type === "vsphere.vm" && r.name === name)!.vm.disks;
+    const freed = [third[1]!, third[2]!].flatMap(disks).reduce((n, x) => n + x.capacity_gb, 0);
+    expect(inward.quota.find((q) => q.resource === "storage_gb")?.adding).toBe(-freed);
     await apply(d, { ...d.inputs, web_nodes: 1 });
     expect(vms(d).filter((n) => n.includes("shopweb"))).toEqual([third[0]]);
     expect(d.resources.some((r) => r.type === "dns.record" && r.name.startsWith(`${third[2]}.`))).toBe(false);

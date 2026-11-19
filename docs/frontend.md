@@ -886,9 +886,14 @@ navigates instead of opening a dialog) opens
   changes (`unchanged`), something is refused or not allowed.
 - **Review** fetches a fresh preview, then asks in a `ConfirmDialog` that
   lists what the update deletes; it is `danger` when it deletes anything.
+  When that preview is unchanged, refused or not allowed (`blockedBy`),
+  it asks nothing: an alert below the reason says why and takes the focus.
+  It is the wizard's only check, as its submit button stays enabled.
   The submit sends an `Idempotency-Key`, and opens the request.
 - The mock API plans in `mocks/update.ts`, as the server does: changes,
-  refusals, quota on the net change, names from the counter on scale out.
+  in the server's order (each kept VM's in place, then the VMs added,
+  those removed, the jobs), refusals, quota on the net change, names from
+  the counter on scale out.
 
 ## Multi-VM items
 

@@ -56,7 +56,7 @@ and a deployment that failed half-way was retried or deleted.
     operations;
   - `resize`: CPU and memory, through Resize;
   - `nic_add`, `nic_remove`, `nic_move`: DHCP adapters only;
-  - `vm_remove`, then `vm_add`;
+  - `vm_add`, then `vm_remove`;
   - `job`: the AWX jobs the new version adds run on the VMs kept, and each
     VM added runs all its component's jobs as it is built.
 - **rvav records which of its blueprint's disks each disk of a VM is**

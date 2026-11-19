@@ -61,6 +61,82 @@ describe("the update page against the mock API", () => {
     );
     expect(within(summary).getByRole("button", { name: "Review the update" })).toBeDisabled();
   }, 15_000);
+
+  it("refuses nothing on a deployment adopted without inputs, before any edit", async () => {
+    const item = db.items.find((i) => i.slug === "rhel9-server")!;
+    const adopted = await fetch("http://localhost/api/v1/admin/onboarding", {
+      method: "POST",
+      headers: { Authorization: "Bearer test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vms: [{ vcenter: "vc01.corp.example", moref: "vm-9152" }],
+        project_id: "prj_web",
+        environment: "dev",
+        owner_id: db.me.user.id,
+        catalog_item_id: item.id,
+      }),
+    });
+    expect(adopted.ok).toBe(true);
+    renderApp(`/deployments/${named("app-old01").id}/update`);
+    const summary = await screen.findByRole("region", { name: "What the update does" }, { timeout: 5000 });
+    expect(
+      await within(summary).findByText(
+        "Nothing changes on the VMs: the deployment keeps the new inputs.",
+        {},
+        { timeout: 5000 },
+      ),
+    ).toBeVisible();
+    expect(within(summary).queryByRole("list", { name: "Refused" })).not.toBeInTheDocument();
+    expect(within(summary).getByRole("button", { name: "Review the update" })).toBeEnabled();
+  }, 15_000);
+});
+
+describe("the update page with a wizard form", () => {
+  const asWizard = (name: string) => {
+    const form = db.forms[named(name).catalog_item.id]!;
+    form.ui_schema.layout.kind = "wizard";
+  };
+  const toReview = async (user: ReturnType<typeof userEvent.setup>, steps: number) => {
+    for (let i = 0; i < steps; i++) await user.click(await screen.findByRole("button", { name: "Next" }));
+  };
+  const wizardReview = () => {
+    const summary = screen.getByRole("region", { name: "What the update does" });
+    return screen
+      .getAllByRole("button", { name: "Review the update" })
+      .find((b) => !summary.contains(b)) as HTMLElement;
+  };
+
+  it("says why it stops at Review when nothing changes, instead of asking", async () => {
+    asWizard("web-prd-front");
+    const user = userEvent.setup();
+    renderApp(`/deployments/${named("web-prd-front").id}/update`);
+    const summary = await screen.findByRole("region", { name: "What the update does" }, { timeout: 5000 });
+    await within(summary).findByText("Change an input to see what the update does.", {}, { timeout: 5000 });
+    await toReview(user, 4);
+    await user.click(wizardReview());
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "web-prd-front already has this version and these inputs: change an input to update it.",
+    );
+    expect(alert).toHaveFocus();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  }, 20_000);
+
+  it("lists what it refuses at Review", async () => {
+    asWizard("web-dev-api");
+    const user = userEvent.setup();
+    renderApp(`/deployments/${named("web-dev-api").id}/update`);
+    const summary = await screen.findByRole("region", { name: "What the update does" }, { timeout: 5000 });
+    await toReview(user, 1);
+    await user.click(await screen.findByRole("radio", { name: /^Large/ }));
+    await within(summary).findByRole("list", { name: "Refused" }, { timeout: 5000 });
+    await toReview(user, 3);
+    await user.click(wizardReview());
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("These changes can't be made in place.");
+    expect(alert).toHaveTextContent("web-dev-api004 has snapshots");
+    expect(alert).toHaveFocus();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  }, 20_000);
 });
 
 describe("the values an update starts from", () => {
@@ -91,5 +167,9 @@ describe("the values an update starts from", () => {
 
   it("start a newer version's new fields as on a new request", () => {
     expect(startValues(form("ver_2"), d)).toEqual({ size: "M", added: "new" });
+  });
+
+  it("start a deployment adopted without inputs as a new request, emptying nothing", () => {
+    expect(startValues(form("ver_1"), { ...d, inputs: {} })).toEqual({ added: "new" });
   });
 });

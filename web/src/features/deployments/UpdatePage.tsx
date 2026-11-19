@@ -34,21 +34,35 @@ const masked = "••••";
  * The form's values to start from: the deployment's inputs, but not its
  * secrets, which are given again. On its own version, a field it has no
  * value for was emptied, and stays empty rather than take its default; a
- * newer version's new fields start as on a new request.
+ * newer version's new fields start as on a new request, as do those of a
+ * deployment adopted without inputs.
  */
 export function startValues(form: RequestForm, d: DeploymentDetail): Record<string, unknown> {
   const props = (form.schema as { properties?: Record<string, unknown> }).properties ?? {};
   const fields = form.ui_schema.fields;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(d.inputs)) if (k in props && v !== masked && !fields[k]?.secret) out[k] = v;
-  const same = form.version_id === d.version.id;
+  const fresh = form.version_id !== d.version.id || Object.keys(d.inputs).length === 0;
   for (const k of Object.keys(props)) {
     if (k in d.inputs) continue;
     const ui = fields[k];
-    if (same && ui && defaulted(ui) && !ui.secret) out[k] = null;
-    else if (!same && k in form.initial_values) out[k] = form.initial_values[k];
+    if (!fresh && ui && defaulted(ui) && !ui.secret) out[k] = null;
+    else if (fresh && k in form.initial_values) out[k] = form.initial_values[k];
   }
   return out;
+}
+
+/** Why a checked update can't go on to its confirmation; null when it can. */
+export function blockedBy(p: UpdatePreview, name: string): { title: string; reasons: string[] } | null {
+  if (!p.allowed) return { title: p.reason ?? `${name} can't be updated now.`, reasons: [] };
+  if (p.refused.length > 0)
+    return {
+      title: "These changes can't be made in place. Change them back, or delete the deployment and request it again.",
+      reasons: p.refused.map((r) => r.reason),
+    };
+  if (p.unchanged)
+    return { title: `${name} already has this version and these inputs: change an input to update it.`, reasons: [] };
+  return null;
 }
 
 /** "3.1 → 3.2", or "3.2" when the version stays. */
@@ -230,9 +244,12 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
   const [justification, setJustification] = useState("");
   // The update as Review checked it, while the dialog asks to confirm it.
   const [confirm, setConfirm] = useState<{ preview: UpdatePreview; body: UpdateDraft } | null>(null);
+  // Why Review stopped short of the confirmation, and how often: each time moves the focus to it.
+  const [blocked, setBlocked] = useState<{ title: string; reasons: string[]; at: number } | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
   const formRef = useRef<FormHandle>(null);
   const attentionRef = useRef<HTMLDivElement>(null);
+  const blockedRef = useRef<HTMLDivElement>(null);
   const fields = form.ui_schema.fields;
 
   const body = useMemo(
@@ -278,6 +295,7 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
       void qc.invalidateQueries({ queryKey: keys.deployments.actions(d.id) });
       void qc.invalidateQueries({ queryKey: keys.deployments.history(d.id) });
       void qc.invalidateQueries({ queryKey: keys.requests.lists() });
+      void qc.invalidateQueries({ queryKey: keys.vms.all });
       toast.success(`${r.number} submitted`, {
         description: r.status === "pending_approval" ? "Waiting for approval." : "The update has started.",
       });
@@ -322,8 +340,12 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
   useEffect(() => {
     if (refusals) focusFirstRef.current();
   }, [refusals]);
+  useEffect(() => {
+    if (blocked) blockedRef.current?.focus();
+  }, [blocked]);
 
   const setValue = (name: string, value: unknown) => {
+    setBlocked(null);
     setValues((v) => (Object.hasOwn(v, name) && v[name] === value ? v : { ...v, [name]: value }));
     if (serverErrors?.fields[name]) setServerErrors((s) => s && { ...s, fields: { ...s.fields, [name]: "" } });
   };
@@ -355,15 +377,20 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
       setRefusals((n) => n + 1);
       return;
     }
-    if (checked.allowed && checked.refused.length === 0)
-      setConfirm({
-        preview: checked,
-        body: {
-          ...checking,
-          ...(justification ? { justification } : {}),
-          ...(checked.warnings?.length ? { accept_warnings: true } : {}),
-        },
-      });
+    const why = blockedBy(checked, d.name);
+    if (why) {
+      setBlocked({ ...why, at: Date.now() });
+      return;
+    }
+    setBlocked(null);
+    setConfirm({
+      preview: checked,
+      body: {
+        ...checking,
+        ...(justification ? { justification } : {}),
+        ...(checked.warnings?.length ? { accept_warnings: true } : {}),
+      },
+    });
   };
   const holding = sendingText(useSendingFiles());
   const secrets = Object.entries(d.inputs).some(([k, v]) => v === masked && fields[k]?.secret);
@@ -379,6 +406,23 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
         />
       </Field>
     </Panel>
+  );
+  const note = blocked && (
+    <div
+      ref={blockedRef}
+      role="alert"
+      tabIndex={-1}
+      className="flex flex-col gap-1.5 rounded-lg border border-bad/40 bg-bad-soft px-4 py-3 text-secondary outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      <span className="font-medium text-bad">{blocked.title}</span>
+      {blocked.reasons.length > 0 && (
+        <ul className="flex list-disc flex-col gap-1 pl-4">
+          {blocked.reasons.map((r, i) => (
+            <li key={`${r}-${i}`}>{r}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 
   return (
@@ -400,7 +444,12 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
           fieldStates={p?.fields}
           ref={formRef}
           wizard={{
-            review: reason,
+            review: (
+              <>
+                {reason}
+                {note}
+              </>
+            ),
             submit: (
               <Button
                 variant="primary"
@@ -414,7 +463,12 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
             holding,
           }}
         />
-        {form.ui_schema.layout.kind !== "wizard" && reason}
+        {form.ui_schema.layout.kind !== "wizard" && (
+          <>
+            {reason}
+            {note}
+          </>
+        )}
       </div>
       <aside className="flex min-w-0 flex-[1_1_320px] flex-col self-stretch">
         <Summary

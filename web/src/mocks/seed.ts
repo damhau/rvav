@@ -534,7 +534,9 @@ export function createDb(now = Date.now()): Db {
       resources,
     };
   };
-  const [rhel, ubuntu, windows, pg] = items as [StoredItem, StoredItem, StoredItem, StoredItem];
+  const [rhel, ubuntu, windows, pg] = ["rhel9-server", "ubuntu-server", "windows-server", "postgres-cluster"].map(
+    (slug) => items.find((i) => i.slug === slug)!,
+  ) as [StoredItem, StoredItem, StoredItem, StoredItem];
   const deployments: DeploymentDetail[] = [
     deployment({
       name: "web-prd-front",

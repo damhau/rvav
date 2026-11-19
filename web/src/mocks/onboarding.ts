@@ -6,6 +6,7 @@ import type { components } from "@/lib/api/schema";
 import type { DeploymentDetail, DnsRecordResource, IpAddressResource, Project, VmResource } from "@/lib/api/types";
 import { leasePolicyOf, rolesGiven } from "./administration";
 import { seededBlueprint } from "./blueprints";
+import { clusters, datastores, networks } from "./inventory";
 import { heldIn } from "./roles";
 import type { Db, StoredItem } from "./seed";
 
@@ -214,6 +215,12 @@ function existingDestination(
   return { dep, component: componentOf(item, key, at, errors), item };
 }
 
+/** The first network of a cluster's environment, as the inventory has no adapters. */
+const networkOf = (cluster = "") => {
+  const env = clusters.find((c) => c.name === cluster)?.env;
+  return networks.find((n) => n.env === env)?.name ?? "";
+};
+
 function resourcesOf(group: Unmanaged[], component: string) {
   const resources: DeploymentDetail["resources"] = [];
   let addresses = 0;
@@ -226,8 +233,8 @@ function resourcesOf(group: Unmanaged[], component: string) {
       vm: {
         moref: vm.moref, instance_uuid: `4219${vm.moref.slice(3)}-0000-4000-8000-000000000000`, vcenter: vm.vcenter,
         power_state: vm.power_state, guest_state: vm.power_state === "on" ? "running" : "not_running", guest_os: vm.guest_os,
-        cpu_count: vm.cpu_count, memory_mb: vm.memory_mb, disks: [{ label: "Hard disk 1", capacity_gb: 80 }],
-        nics: [{ network: "dvpg-app-prd-vl210", label: "Network adapter 1", ...(ip ? { ip_addresses: [ip] } : {}) }],
+        cpu_count: vm.cpu_count, memory_mb: vm.memory_mb, disks: [{ label: "Hard disk 1", capacity_gb: 80, datastore: datastores[vm.cluster ?? ""]?.[0]?.name }],
+        nics: [{ network: networkOf(vm.cluster), label: "Network adapter 1", ...(ip ? { ip_addresses: [ip] } : {}) }],
         cluster: vm.cluster, host: vm.host, ...(ipam && fqdn ? { fqdn } : {}), snapshot_count: 0, component,
       },
     } satisfies VmResource); // prettier-ignore
