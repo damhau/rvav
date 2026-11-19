@@ -57,8 +57,14 @@ var day2 = &set{names: []string{"action", "resource", "deployment", "project", "
 
 // composite is for a composite item's bindings and step conditions
 // (ADR-0022): its inputs, the outputs of earlier steps, its property
-// groups' constants and the shared variables (ADR-0057).
-var composite = &set{names: []string{"inputs", "steps", "environment", "project", "propgroup", "vars"}, strings: map[string]bool{"environment": true}}
+// groups' constants and the shared variables; a loop's pass reads its item
+// and position, a catch path and the error handler what failed (ADR-0057).
+var composite = &set{names: []string{"inputs", "steps", "environment", "project", "propgroup", "vars", "each", "index", "error"},
+	strings: map[string]bool{"environment": true}}
+
+// signalEvents is for a wait for an event (ADR-0057): the event's data, as a
+// subscription reads it, and the waiting request's id and earlier steps.
+var signalEvents = &set{names: append(slices.Clone(events.names), "waiting"), strings: map[string]bool{"environment": true}}
 
 // custom is for the inputs of a blueprint's custom resources (ADR-0056),
 // worked out once the deployment's VMs are built: their components and the
@@ -254,6 +260,15 @@ func EvalBuild(expr string, vars Vars) (any, error) { return build.eval(expr, va
 
 // EventBool evaluates a subscription's condition on an event's data.
 func EventBool(expr string, vars Vars) (bool, error) { return events.boolean(expr, vars) }
+
+// SignalEventBool evaluates a wait's condition on an event (ADR-0057).
+func SignalEventBool(expr string, vars Vars) (bool, error) { return signalEvents.boolean(expr, vars) }
+
+// CheckSignalEvent compiles a wait's condition on an event.
+func CheckSignalEvent(expr string) error {
+	_, err := signalEvents.program(expr)
+	return err
+}
 
 // CheckEvent compiles a subscription's condition without evaluating it.
 func CheckEvent(expr string) error {

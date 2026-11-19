@@ -223,6 +223,15 @@ their times and tasks.
   approved. The graph shows it **Waiting**. Select it, or open **Timeline**, to
   see what it waits for and until when, and what its last check found. There is
   nothing for you to do, and Cancel request stops it at once.
+- **Waiting for a signal:** a composite's step can wait until another
+  system sends the request a signal, or until something happens in rvav,
+  such as another request finishing. The graph shows it **Waiting**, and
+  the timeline says what for and until when. Those who manage the
+  project's requests send a signal with `rvavctl requests signal` or the
+  API; you can't send it yourself.
+- **Loops and catch paths:** a step that runs once for each item of a list
+  shows each pass under it on the timeline. A step that failed but whose
+  failure was handled stays **Failed**, and the request goes on.
 - **A branch:** a composite can take one way or another, depending on what you
   asked for or what an earlier step found. On the graph each way says **taken** or
   **not taken** once it has chosen, and the steps of the others show **Skipped**,

@@ -209,6 +209,7 @@ rvavctl catalog request rhel9-server --env dev --inputs server.yaml --input size
 | `rvavctl requests wait REQ-10001` | Waits until it ends. `--timeout 30m` gives up after 30 minutes. |
 | `rvavctl requests cancel REQ-10001` | Cancels a request that is waiting or running. |
 | `rvavctl requests retry REQ-10001` | Runs a failed request again from the step that failed. |
+| `rvavctl requests signal REQ-10001 cab-approved` | Sends the signal a composite step waits for. `--data '{"by": "me"}'` gives what it brings, `--data -` reads it from standard input. |
 
 You can name a request by its number or its ID. `wait`, and `--wait` on
 the commands that make requests, exit with `0` when the request succeeds

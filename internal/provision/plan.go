@@ -52,6 +52,10 @@ type Plan struct {
 	// Composite is set on requests of composite items (ADR-0022), instead
 	// of VMs, AWX or Workflow.
 	Composite []CompositeStep `json:"composite,omitempty"`
+	// GroupCatch is the catch path of a composite's parallel groups, by
+	// group; OnError its default error handler (ADR-0057).
+	GroupCatch map[int][]CompositeStep `json:"group_catch,omitempty"`
+	OnError    []CompositeStep         `json:"on_error,omitempty"`
 	// Components are a multi-VM blueprint's (ADR-0024): VMs say which they
 	// belong to, and each has its guest, anti-affinity and post-
 	// configuration (PostConfig and Guest are then unused).
@@ -238,10 +242,34 @@ type CompositeStep struct {
 	// Resource makes a custom resource (ADR-0056) in a VM step's
 	// deployment, its inputs With.
 	Resource *ResourceUnit `json:"resource,omitempty"`
+	// Signal waits for a signal or an event, ForEach repeats the step over
+	// a list, Catch runs when it fails (ADR-0057).
+	Signal  *blueprint.Signal  `json:"signal,omitempty"`
+	ForEach *blueprint.ForEach `json:"for_each,omitempty"`
+	Catch   []CompositeStep    `json:"catch,omitempty"`
 }
 
-// stepDefs are the steps of a composite step in the timeline, in order.
+// stepDefs are the steps of a composite step in the timeline, in order, its
+// catch path's after it.
 func (c CompositeStep) stepDefs() []StepDef {
+	steps := c.ownStepDefs()
+	if c.ForEach != nil && len(steps) > 0 {
+		steps[0].Detail = forEachPlanned(c.ForEach)
+	}
+	return append(steps, catchSteps(c.Catch)...)
+}
+
+// catchSteps are a catch path's steps, or the error handler's.
+func catchSteps(list []CompositeStep) []StepDef {
+	var steps []StepDef
+	for _, x := range list {
+		steps = append(steps, x.stepDefs()...)
+	}
+	return steps
+}
+
+// ownStepDefs are the steps of a composite step itself.
+func (c CompositeStep) ownStepDefs() []StepDef {
 	var steps []StepDef
 	parent := c.StepKey()
 	switch {
@@ -295,6 +323,8 @@ func (c CompositeStep) stepDefs() []StepDef {
 		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "Sends a message", System: "rvav", Status: "pending"})
 	case c.Resource != nil:
 		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: "Custom resource · " + c.Resource.Type, System: c.Resource.System, Status: "pending"})
+	case c.Signal != nil:
+		steps = append(steps, StepDef{Key: parent, Title: c.Title, Detail: signalPlanned(c.Signal), System: "wait", Status: "pending"})
 	}
 	return steps
 }
@@ -890,9 +920,13 @@ func (p Plan) Steps(environment string) []StepDef {
 			StepDef{Key: KeyReady, Title: "Done", System: "rvav", Status: "pending"})
 	}
 	if len(p.Composite) > 0 {
-		for _, c := range p.Composite {
+		for i, c := range p.Composite {
 			steps = append(steps, c.stepDefs()...)
+			if i == len(p.Composite)-1 || p.Composite[i+1].Group != c.Group {
+				steps = append(steps, catchSteps(p.GroupCatch[c.Group])...)
+			}
 		}
+		steps = append(steps, catchSteps(p.OnError)...)
 		return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
 	}
 	steps = append(steps, p.segmentSteps()...)

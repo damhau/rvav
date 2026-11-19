@@ -27,6 +27,7 @@ type NotifyInput struct {
 	StepKey   string           `json:"step_key"`
 	Notify    blueprint.Notify `json:"notify"`
 	Steps     map[string]any   `json:"steps,omitempty"`
+	Extra     map[string]any   `json:"extra,omitempty"`
 }
 
 // stepMessageKey is what makes a step's message reach each person once, whichever
@@ -55,6 +56,7 @@ func (a *Activities) SendStepMessage(ctx context.Context, in NotifyInput) (map[s
 	if err != nil {
 		return nil, err
 	}
+	addExtra(vars, in.Extra)
 	sensitive, err := a.secretInputValues(ctx, in.RequestID)
 	if err != nil {
 		return nil, permanent("%v", err)

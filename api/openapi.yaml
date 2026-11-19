@@ -1178,6 +1178,40 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /requests/{requestId}/signal/{name}:
+    parameters:
+      - { $ref: "#/components/parameters/RequestIdPath" }
+      - name: name
+        in: path
+        required: true
+        description: The signal a composite step waits for, as its `signal.name` says.
+        schema: { type: string, pattern: "^[a-z0-9][a-z0-9_.-]{0,62}$" }
+    post:
+      tags: [requests]
+      operationId: signalRequest
+      summary: Send the signal a composite step waits for
+      description: |
+        The step that waits for this signal goes on, the body as its outputs,
+        which later steps read as `steps.<key>`. Those with
+        `request.manage` in the request's project send it; the requester
+        can't, so a wait the item puts in their way stays there. The body
+        goes into the request's history: send no secret (ADR-0057).
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "202":
+          description: The step has it
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignalReceipt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /requests/{requestId}/retry:
     parameters:
       - { $ref: "#/components/parameters/RequestIdPath" }
@@ -7800,9 +7834,10 @@ components:
             `awx_templates` (titles only), `bindings` (`network`, `groups`,
             `template`, `post_config` only) and `components` with the same
             and their `key`, `title`, `count` and `anti_affinity`; a
-            composite's `kind`, `rollback_on_failure` and `steps` (`key`,
-            `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `wait`, `poll`,
-            `branch`, `notify`, `when`, `undo`, `parallel`), each binding in
+            composite's `kind`, `rollback_on_failure`, `on_error` and `steps`
+            (`key`, `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `wait`,
+            `poll`, `signal`, `branch`, `notify`, `resource`, `for_each`,
+            `when`, `undo`, `catch`, `parallel`), each binding in
             `with` reduced to the `steps.<key>` it names, of an `ask` only
             whether the requester or owner is asked, its timeout and its form's
             keys: no names, groups or texts, of a `poll`'s call only what a
@@ -9473,6 +9508,13 @@ components:
               type: array
               description: Scripts of VMware's HTML console client (WMKS) to load, in order, for example jQuery, jQuery UI and `wmks.min.js`.
               items: { type: string }
+
+    SignalReceipt:
+      type: object
+      required: [step, received_at]
+      properties:
+        step: { type: string, description: "The key of the step that has it, such as `step:cab`." }
+        received_at: { type: string, format: date-time }
 
     StepStatus:
       type: string

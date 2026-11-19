@@ -431,7 +431,10 @@ note warns only of decisions that nest beyond what cases say, or that compensate
 - **ADR-0007:** the integration library stays AWX and Ansible, and level 2
   stays the default for anything with logic. A REST call is a level-1 step
   for what is one request and its answer. A flow of calls that needs loops,
-  paging or error handling is a playbook or a custom workflow.
+  paging or error handling is a playbook or a custom workflow. (Since
+  [ADR-0057](0057-run-data-variables-schedules-and-loops.md), a composite
+  loops over a list and catches a step's failure; paging stays a
+  playbook's.)
 - **ADR-0011:** a wait reuses a level's row, its timeout and its channels. It
   differs where it answers another question: a level asks whether a request may
   run, a wait asks something in the middle of its run. So it has no approval

@@ -15,7 +15,7 @@ what the step was given, and showed neither: a failed REST call's body, or
 the extra variables a job got, were in Temporal's history at best, with
 the secrets an operator must not read. The rest of E1.5, vRO's
 configuration elements, recurring schedules, loops, error handling and
-signals, follows in the sections below as each part lands.
+signals, follows in the sections below.
 
 ## Decision
 
@@ -158,6 +158,73 @@ The request form offers **Again and again, on a schedule** under **Start**
 for those items, and **Schedules**, from the requests page, lists the
 project's with their next and last runs.
 
+### Loops, catch paths and signals
+vRO's workflows loop over an array, catch an exception around a few items
+or the whole schema, and wait for a signal or a custom event. ADR-0033
+left these to a playbook or a custom workflow; the vRO triage counts them
+in workflows that are otherwise a composite's, so a composite gets each,
+narrowly.
+
+- **A loop** is a modifier on a step: `for_each: {items, parallel}`. Its
+  list is CEL, read when the step begins, of at most 100 items; up to 10
+  passes run at once. Each pass is a step of its own on the timeline,
+  `step:<key>/each:<n>`, and reads `each` and `index` in its `with`, its
+  `when` and a REST call's URL and body. The loop's outputs are
+  `{items, count}`, each pass's outputs in the list's order. A pass that
+  fails stops those not begun and fails the loop. A Retry reads the list
+  again and keeps the passes done, by position.
+- What can't loop, and why: a VM step (its VMs are planned at submit, so
+  its item's count is the way), a custom resource step (one resource of its
+  deployment, under the step's key, rolled back by its type's delete step
+  as ADR-0056 has it: a loop would make several under one key), a wait of
+  any kind (a pass waiting across runs of the workflow, its state in a row
+  per step), a branch, and a step with an `undo` (each pass would need its
+  own).
+- **A catch path**, `catch: [steps]`, sits on a step, a side's step or a
+  parallel group, not on a step inside a group: a group's steps stop
+  together, so one path handles them. On a failure the running siblings
+  stop, the path runs with `error.step` and `error.message`, and the
+  composite goes on. The failed step stays failed on the timeline, with
+  `{caught: true, error}` as outputs, which counts as done: later steps
+  read `steps.<key>.caught`, and a Retry doesn't run it again. A path that
+  fails fails the request.
+- **The error handler**, the composite's `on_error`, runs on a failure
+  nothing caught, before the undo steps and the rollback; the request still
+  fails. It runs again on each failure, a Retry's too, since each is a new
+  incident to report.
+- Catch paths and the handler hold AWX jobs, workflows, REST calls and
+  messages: steps that run once with nothing to wait for or undo. What
+  can't have a catch path: a VM step, a custom resource step or a group
+  with either, since what they built is the rollback's to delete and the
+  request can't go on past it (ADR-0056 keeps a resource's undo with its
+  type), and a branch, whose sides' steps take one each.
+- **A wait for a signal**, `signal: {name | event, when, timeout,
+  on_timeout}`, keeps its state in `signal_waits`, one row per step, as an
+  ask keeps its level: the workflow waits on a channel per step
+  (`rvav.signal.<key>`), reads the row on a signal and each hour, and
+  continues as new on a long wait. A signal lost (the API down between
+  storing it and telling the workflow) is read at the next recheck.
+- `POST /requests/{id}/signal/{name}` stores the body, a JSON object of at
+  most 64 KiB, in the open wait and signals the workflow; it answers 202
+  with the step's key. It needs `request.manage` in the request's project,
+  the role a script's API token has, and the requester lacks: a wait the
+  item puts in their way is not theirs to lift. Nothing waiting is a 409,
+  not a signal kept for later, so a signal sent too early is seen at once.
+  Each is audited, `request.signal`.
+- A wait for an event takes the first of its topic, among events after it
+  began (`after_seq`) and of the request's own project, that its CEL
+  `when` picks, over the event's variables and `waiting` (the request and
+  its steps before the wait). The dispatcher matches it in the round that
+  hands events to subscriptions, in the same transaction, and signals the
+  workflows once that commits. The project bound keeps another project's
+  data, which becomes the step's outputs, from its requester.
+- The workflow code is behind `workflow.GetVersion("composite-flow")`, read
+  only when a plan has a loop, a catch path, a handler or a signal, so a
+  workflow in flight replays as before. The histories `composite-flow`
+  (a loop, a caught failure and a wait that continues as new) and
+  `composite-signal` (its next run, taking the signal) are replayed by
+  `TestReplayHistories`.
+
 ## Consequences
 - An author sees why a step failed from what it was given, without reading
   Temporal's history or the worker's logs.
@@ -175,3 +242,14 @@ project's with their next and last runs.
 - Temporal holds when a schedule runs; rvav's table holds what it runs.
   A restore takes both to the same moment (they share the PostgreSQL
   server), and a Temporal schedule rvav no longer knows does nothing.
+- ADR-0033's line, a flow that needs loops or error handling is a
+  playbook's or a custom workflow's, moves: a composite loops over a list
+  and catches a step's failure. Paging an API, nested loops and a loop of
+  waits stay a playbook's or a custom workflow's.
+- A caught failure leaves a failed step in a request that succeeds: the
+  timeline and the reports count it as failed, and the run data shows why.
+- Another system moves a request on with a project manager's token, and
+  sees nothing of it but the step's key in the answer. A wait for an event
+  ties a request to what happens elsewhere in its project; an event that
+  came before it waited doesn't count, so the order of two requests
+  matters, and the timeout is the way out.

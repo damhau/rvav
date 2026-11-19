@@ -94,6 +94,10 @@ Subscription (event → awx template | webhook)
   not. Its Temporal schedule starts each run; each run is recorded with
   the request it started or why it started none
   ([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)).
+- **SignalWait**: a composite step waiting for a signal by name or an
+  event by topic: its condition, deadline, what came and when, closed
+  when it timed out or was stopped; one per step of a request
+  ([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)).
 - **RequestEvent**: timeline entries (step key, parent step, status, message,
   started/finished, external reference such as an AWX job ID).
 - **Approval**: the policy that triggered it, level, approvers (users, groups,

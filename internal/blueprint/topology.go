@@ -285,6 +285,8 @@ var (
 		"poll":     topologyPoll,
 		"notify":   topologyNotify,
 		"resource": fields{"type": asIs{}, "deployment": asIs{}},
+		"signal":   fields{"name": asIs{}, "event": asIs{}, "when": cel{}, "timeout": asIs{}, "on_timeout": asIs{}},
+		"for_each": fields{"items": cel{}, "parallel": asIs{}},
 		"when":     cel{},
 		"with":     stepRefs,
 		"undo":     fields{"job_template": asIs{}, "workflow": asIs{}, "rest": topologyREST, "with": stepRefs},
@@ -304,4 +306,7 @@ func init() {
 		"cases": each{fields{"title": asIs{}, "when": cel{}, "steps": each{topologyStep}}},
 		"else":  each{topologyStep},
 	}
+	// A catch path and the default error handler are steps as any other.
+	topologyStep["catch"] = each{topologyStep}
+	compositeTopology["on_error"] = each{topologyStep}
 }

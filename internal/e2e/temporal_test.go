@@ -330,12 +330,19 @@ func recordHistory(t *testing.T, ctx context.Context, tc client.Client, requestI
 // recordWorkflow is recordHistory for any workflow, by its ID.
 func recordWorkflow(t *testing.T, ctx context.Context, tc client.Client, workflowID, name string) {
 	t.Helper()
+	recordRun(t, ctx, tc, workflowID, "", name)
+}
+
+// recordRun is recordWorkflow for one of its runs: a run that continued as
+// new, the last when runID is empty.
+func recordRun(t *testing.T, ctx context.Context, tc client.Client, workflowID, runID, name string) {
+	t.Helper()
 	dir := os.Getenv("RVAV_RECORD_HISTORIES")
 	if dir == "" {
 		return
 	}
 	var h historypb.History
-	iter := tc.GetWorkflowHistory(ctx, workflowID, "", false, enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
+	iter := tc.GetWorkflowHistory(ctx, workflowID, runID, false, enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
 	for iter.HasNext() {
 		ev, err := iter.Next()
 		if err != nil {

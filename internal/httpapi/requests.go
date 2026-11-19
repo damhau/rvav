@@ -269,3 +269,16 @@ func (s *Server) CancelRequest(w http.ResponseWriter, r *http.Request, requestID
 	}
 	writeJSON(w, http.StatusAccepted, present.Request(row, s.secretFields(r, row.VersionID)))
 }
+
+func (s *Server) SignalRequest(w http.ResponseWriter, r *http.Request, requestID api.RequestIdPath, name string) {
+	var payload map[string]any
+	if !s.decodeOptional(w, r, &payload) {
+		return
+	}
+	got, err := s.Core.Signal(r.Context(), principal(r), requestID, name, payload)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, api.SignalReceipt{Step: got.StepKey, ReceivedAt: *got.ReceivedAt})
+}

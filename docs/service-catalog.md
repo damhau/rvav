@@ -42,7 +42,8 @@ its VMs are planned at submit), the others may use
 job's `job_id`, a workflow's result, a REST call's `status` and `json`, a
 person's `answered`, `by`, `comment` and `answer`, a wait's `until`, a poll's
 `status`, `json` and `met`, a branch's `case`, a message's `told`, a custom
-resource's properties.
+resource's properties, what a signal or an event brought, a loop's `items`
+and `count`, and a caught step's `caught` and `error`.
 
 An AWX step's `with` value, or its undo's, can be a stored secret:
 `with: {password: "${secret.db-admin}"}`, the whole value. The job gets the
@@ -315,6 +316,149 @@ resources**, with the inputs of their create step and the properties of
 their property schema. Such a step has no undo, and its **Deployment**
 names the VM step it joins when several come before it. The canvas marks
 it **Resource**.
+
+#### A step that waits for a signal
+Stops the run until another system says it may go on: a change board
+approves, a backup finishes
+([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)). It
+waits for a signal sent to the request by name, or for one of rvav's
+[events](#8-extensibility-event-subscriptions):
+
+```yaml
+  - key: cab
+    title: The change board approves
+    signal:
+      name: cab-approved
+      timeout: 72h
+  - key: backup
+    title: Wait for the backup host
+    signal:
+      event: provisioning.post
+      when: "item.slug == 'backup-host' && environment == 'prod'"
+      timeout: 4h
+      on_timeout: continue
+```
+
+| Field | What it is |
+|---|---|
+| `signal.name` | The signal to wait for: lower-case letters, digits, dots, dashes and underscores. Unique in the composite |
+| `signal.event` | Instead of `name`: the topic of an event to wait for |
+| `signal.when` | For an event only: CEL giving true or false over the event's variables, as a subscription's condition reads them, and `waiting`: the request that waits (`waiting.request.id`, `.number`) and its steps before this one (`waiting.steps`). Optional: without it, the first event of the topic is taken |
+| `signal.timeout` | How long it waits, from a minute to 90 days. Required |
+| `signal.on_timeout` | `fail`, the default, or `continue`, which goes on |
+
+Those with `request.manage` in the request's project send a signal, from
+a script or another system with their API token:
+
+```sh
+curl -X POST -H "Authorization: Bearer $RVAV_TOKEN" -H "Content-Type: application/json" \
+  -d '{"by": "the change board", "change": "CHG0042"}' \
+  https://rvav.corp.example/api/v1/requests/REQ-10042/signal/cab-approved
+```
+
+or `rvavctl requests signal REQ-10042 cab-approved --data '{"by": "the change board"}'`.
+The answer is a 202 naming the step. The requester can't send it, so a wait
+the item puts in their way stays there. A signal sent when no step of the
+request waits for it is refused with a 409: it isn't kept for later. Its
+body, a JSON object of at most 64 KiB, is the step's outputs, which later
+steps read as `steps.cab.by`, and it is in the request's history: send no
+secret. Each signal is audited (`request.signal`).
+
+An event counts only if it happens once the step waits, and only one of
+the request's own project. Its data, as a subscription gets it, is the
+step's outputs: `steps.backup.request.number`, say.
+
+At the deadline, `continue` goes on with `steps.<key>.timed_out` true; read
+it with `has(steps.backup.timed_out)`, since a step that got its signal
+has only what came. A wait for a signal has no `with` or `undo`, can't
+loop and isn't on a catch path. Cancelling the request stops it at once.
+**Retry** waits again, with its whole timeout. A requester's form shows
+what it waits for and how long.
+
+#### A loop
+Runs one step once for each item of a list, such as each host of an input
+([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)):
+
+```yaml
+  - key: agents
+    title: Install the agent
+    awx: {job_template: monitoring-agent}
+    for_each:
+      items: inputs.hosts
+      parallel: 3
+    with: {target: each, position: index}
+```
+
+| Field | What it is |
+|---|---|
+| `for_each.items` | CEL giving a list, over `inputs`, `steps` before it, `environment` and `project`. At most 100 items |
+| `for_each.parallel` | How many passes run at once, up to 10. 0 or 1 runs one after the other |
+
+The step's `with`, `when` and a REST call's URL and body read `each`, the
+item, and `index`, from 0. `when` is read for each pass, so a pass can be
+skipped. An item step that isn't a VM, an AWX job, a custom workflow, a
+REST call and a message can loop. A VM step can't: its VMs are planned
+when the request is submitted, so give its item a count instead. Nor can a
+custom resource step, one resource of its deployment under the step's key,
+a wait or a branch. A loop has no `undo`.
+
+The timeline shows each pass under the step. Later steps read
+`steps.<key>.items`, each pass's outputs in the list's order, and
+`steps.<key>.count`. A pass that fails fails the step: passes not begun are
+skipped, those running finish. **Retry** reads the list again and keeps the
+passes that were done, by their position.
+
+#### A catch path and an error handler
+A catch path runs when its step fails, and the request goes on; the error
+handler runs when a failure nothing catches fails the request
+([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)):
+
+```yaml
+steps:
+  - key: dns
+    rest: {method: POST, url: "https://ipam.corp.example/api/records", body: "{'name': inputs.name}"}
+    catch:
+      - key: dns_ticket
+        rest: {method: POST, url: "https://itsm.corp.example/api/incidents",
+               body: "{'summary': 'DNS record failed: ' + error.message}"}
+  - parallel:
+      - key: backup
+        awx: {job_template: backup-agent}
+      - key: monitoring
+        awx: {job_template: monitoring-agent}
+    catch:
+      - key: tell_ops
+        notify: {group: ops, message: "${error.step} failed on ${inputs.name}."}
+on_error:
+  - key: incident
+    rest: {method: POST, url: "https://itsm.corp.example/api/incidents",
+           body: "{'summary': 'Request failed at ' + error.step + ': ' + error.message}"}
+```
+
+| Field | What it is |
+|---|---|
+| `catch` | On a step, a side's step or a parallel group: the steps that run, in order, when it fails |
+| `on_error` | Beside `steps`: the steps that run, in order, when a failure fails the request |
+
+Their steps read `error.step`, the key of the step that failed (a loop's,
+when one of its passes did), and `error.message`, what it said. They are
+AWX jobs, custom workflows, REST calls and messages, which run once: no
+wait, branch, loop, parallel group, custom resource, VM step, `undo` or
+catch path of their own.
+
+When a step with a catch path fails, the steps of its group that were
+running stop, its catch path runs, and the request goes on. The step
+stays **Failed** on the timeline, its outputs `caught` (true) and `error`,
+so a later step can read `has(steps.dns.caught)`. A step of a parallel
+group has no catch path of its own: put it on the group. A VM step, a
+custom resource step, a group with one of them, and a branch have none:
+what they built is the rollback's to delete, so the request can't go on
+past them. When the step succeeds, its catch path is skipped. If the
+catch path fails, the request fails.
+
+The error handler runs before the undo steps and the rollback, and the
+request still fails. It runs again on each failure, a Retry's too, and is
+skipped when nothing fails.
 
 #### A run's data
 A request's page shows what each step was given and what it gave

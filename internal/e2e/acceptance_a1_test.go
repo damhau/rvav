@@ -425,6 +425,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"resource-types/{key}":           "a1-lb",
 		"variables/{key}":                "a1.site",
 		"schedules/{scheduleId}":         schedule.Id,
+		"signal/{name}":                  "a1-signal",
 		"tokens/{id}":                    token.Id,
 		"files/{fileId}":                 attached,
 		"images/{imageId}":               picture,
@@ -724,6 +725,8 @@ func (w a1Walk) body(o a1Op) any {
 	case "createSchedule":
 		return api.ScheduleWrite{Name: "A1", CatalogItemId: w.draft.CatalogItemId, VersionId: w.draft.VersionId, ProjectId: w.draft.ProjectId,
 			Environment: w.draft.Environment, Inputs: w.draft.Inputs, EveryMinutes: new(60)}
+	case "signalRequest":
+		return map[string]any{"by": "A1"}
 	case "createRequestDraft", "updateRequestDraft":
 		return api.SavedDraftWrite{Draft: w.draft}
 	case "createSavedView", "updateSavedView":

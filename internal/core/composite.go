@@ -47,12 +47,17 @@ type compositePart struct {
 	// resource is a custom resource (ADR-0056), in the deployment of the VM
 	// step it names by key.
 	resource *provision.ResourceUnit
+	// signal waits for a signal or an event; catch is the step's catch path,
+	// planned (ADR-0057).
+	signal *blueprint.Signal
+	catch  []provision.CompositeStep
 }
 
 // planned is a part as a plan holds it, but for what a VM step reserves, which
 // the request's transaction does.
 func (part compositePart) planned() provision.CompositeStep {
-	c := provision.CompositeStep{Key: part.step.Key, Title: part.title, Group: part.group, When: part.step.When, Undo: part.undo}
+	c := provision.CompositeStep{Key: part.step.Key, Title: part.title, Group: part.group, When: part.step.When, Undo: part.undo,
+		ForEach: part.step.ForEach, Catch: part.catch}
 	switch {
 	case part.job != nil:
 		c.AWX, c.With = part.job, part.step.With
@@ -73,6 +78,8 @@ func (part compositePart) planned() provision.CompositeStep {
 	case part.resource != nil:
 		r := *part.resource
 		c.Resource, c.With = &r, part.step.With
+	case part.signal != nil:
+		c.Signal = part.signal
 	}
 	return c
 }
@@ -112,6 +119,9 @@ func eachStep(b blueprint.Blueprint, ptr string, visit func(s blueprint.Composit
 		for j, p := range s.Parallel {
 			walk(p, fmt.Sprintf("%s/parallel/%d", at, j))
 		}
+		for j, x := range s.Catch {
+			walk(x, fmt.Sprintf("%s/catch/%d", at, j))
+		}
 		if s.Branch != nil {
 			for i, c := range s.Branch.Cases {
 				for j, x := range c.Steps {
@@ -125,6 +135,9 @@ func eachStep(b blueprint.Blueprint, ptr string, visit func(s blueprint.Composit
 	}
 	for g, st := range b.Steps {
 		walk(st, fmt.Sprintf("%s/steps/%d", ptr, g))
+	}
+	for j, x := range b.OnError {
+		walk(x, fmt.Sprintf("%s/on_error/%d", ptr, j))
 	}
 }
 
@@ -144,7 +157,11 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 		return errs
 	}
 	seen := map[string]int{} // key -> group
+	signals := map[string]bool{}
+	// catching: the steps checked are a catch path's or the error handler's.
+	catching := false
 	var step func(s blueprint.CompositeStep, sp string, g int, side *sideScope)
+	var catchPath func(list []blueprint.CompositeStep, at string, g int)
 	step = func(s blueprint.CompositeStep, sp string, g int, side *sideScope) {
 		if !compositeKey.MatchString(s.Key) {
 			errs = append(errs, fieldErr(sp+"/key", "pattern", "A key of lower-case letters, digits and underscores."))
@@ -152,13 +169,33 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 			errs = append(errs, fieldErr(sp+"/key", "duplicate", "Another step has the key "+s.Key+"."))
 		}
 		kinds := 0
-		for _, set := range []bool{s.Item != "", s.AWX != nil, s.Workflow != "", s.REST != nil, s.Ask != nil, s.Wait != nil, s.Poll != nil, s.Branch != nil, s.Notify != nil, s.Resource != nil} {
+		for _, set := range []bool{s.Item != "", s.AWX != nil, s.Workflow != "", s.REST != nil, s.Ask != nil, s.Wait != nil, s.Poll != nil, s.Branch != nil, s.Notify != nil, s.Resource != nil, s.Signal != nil} {
 			if set {
 				kinds++
 			}
 		}
 		if kinds != 1 {
-			errs = append(errs, fieldErr(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait, poll, branch, notify or resource."))
+			errs = append(errs, fieldErr(sp, "one_of", "A step is one of: item, awx, workflow, rest, ask, wait, poll, signal, branch, notify or resource."))
+		}
+		if s.Signal != nil {
+			if len(s.With) > 0 {
+				errs = append(errs, fieldErr(sp+"/with", "invalid", "A wait for a signal has no inputs: what comes is its outputs."))
+			}
+			if s.Undo != nil {
+				errs = append(errs, fieldErr(sp+"/undo", "invalid", "A wait for a signal has nothing to undo."))
+			}
+			if n := s.Signal.Name; n != "" {
+				if signals[n] {
+					errs = append(errs, fieldErr(sp+"/signal/name", "duplicate", "Another step waits for the signal "+n+": a signal names the one step it is for."))
+				}
+				signals[n] = true
+			}
+			errs = append(errs, checkSignal(*s.Signal, sp+"/signal")...)
+		}
+		if len(s.Catch) > 0 {
+			if why := caughtRefused(s); why != "" {
+				errs = append(errs, fieldErr(sp+"/catch", "invalid", why))
+			}
 		}
 		if s.Resource != nil {
 			if s.Resource.Type == "" {
@@ -174,6 +211,10 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 		var exprs, undoExprs []stepExpr
 		if s.When != "" {
 			exprs = append(exprs, stepExpr{sp + "/when", s.When})
+		}
+		if s.ForEach != nil {
+			loopErrs, loopExprs := checkForEach(s, sp)
+			errs, exprs = append(errs, loopErrs...), append(exprs, loopExprs...)
 		}
 		for _, k := range sortedKeys(s.With) {
 			// ${secret.name} isn't CEL: the worker opens it (ADR-0038).
@@ -278,6 +319,10 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 				errs = append(errs, fieldErr(x.at, "invalid", "Not valid CEL: "+err.Error()))
 				return
 			}
+			if why := flowVarsRead(x.expr, s.ForEach != nil, catching); why != "" {
+				errs = append(errs, fieldErr(x.at, "invalid", why))
+				return
+			}
 			for _, m := range stepRef.FindAllStringSubmatch(x.expr, -1) {
 				gr, ok := seen[m[1]]
 				switch {
@@ -325,16 +370,34 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 				default:
 					step(x, xp, g, scope)
 					scope.open[x.Key] = true
+					catchPath(x.Catch, xp+"/catch", g)
 				}
 			}
+		}
+	}
+	// A catch path's steps run in order after the step or group failed; they
+	// read what came before it, and later groups may read them.
+	catchPath = func(list []blueprint.CompositeStep, at string, g int) {
+		scope := &sideScope{open: map[string]bool{}, others: map[string]bool{}}
+		catching = true
+		defer func() { catching = false }()
+		for j, x := range list {
+			xp := fmt.Sprintf("%s/%d", at, j)
+			if why := catchRefused(x); why != "" {
+				errs = append(errs, fieldErr(xp, "invalid", why))
+				continue
+			}
+			step(x, xp, g, scope)
+			scope.open[x.Key] = true
 		}
 	}
 	for g, st := range b.Steps {
 		list, at := []blueprint.CompositeStep{st}, fmt.Sprintf("%s/steps/%d", ptr, g)
 		if len(st.Parallel) > 0 {
 			list = st.Parallel
-			if st.Key != "" || st.Item != "" || st.AWX != nil || st.Workflow != "" || st.REST != nil || st.Ask != nil || st.Wait != nil || st.Poll != nil || st.Branch != nil || st.Notify != nil {
-				errs = append(errs, fieldErr(at, "invalid", "A parallel group only lists steps."))
+			if st.Key != "" || st.Item != "" || st.AWX != nil || st.Workflow != "" || st.REST != nil || st.Ask != nil || st.Wait != nil || st.Poll != nil || st.Branch != nil || st.Notify != nil ||
+				st.Signal != nil || st.Resource != nil || st.ForEach != nil || st.Undo != nil {
+				errs = append(errs, fieldErr(at, "invalid", "A parallel group only lists steps, and its catch path."))
 			}
 		}
 		for j, s := range list {
@@ -349,10 +412,26 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 					errs = append(errs, fieldErr(sp, "invalid", "A branch can't run in a parallel group: put it before or after the group."))
 					continue
 				}
+				if len(s.Catch) > 0 {
+					errs = append(errs, fieldErr(sp+"/catch", "invalid", "A step of a parallel group has no catch path of its own: put it on the group."))
+				}
+				if len(st.Catch) > 0 {
+					if why := caughtRefused(s); why != "" {
+						errs = append(errs, fieldErr(at+"/catch", "invalid", why))
+					}
+				}
 			}
 			step(s, sp, g, nil)
+			if len(st.Parallel) == 0 {
+				catchPath(s.Catch, sp+"/catch", g)
+			}
+		}
+		if len(st.Parallel) > 0 {
+			catchPath(st.Catch, at+"/catch", g)
 		}
 	}
+	// The error handler runs after any step: it reads them all.
+	catchPath(b.OnError, ptr+"/on_error", len(b.Steps))
 	return errs
 }
 
@@ -564,6 +643,20 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 	// One step, or nil if it was refused. A step on a side of a branch runs only
 	// if its side is taken, so it can't be a VM, planned at submit.
 	var evalStep func(st blueprint.CompositeStep, group int, onSide bool) (*compositePart, error)
+	// catchOf is a catch path's steps, planned: none is a VM step.
+	catchOf := func(list []blueprint.CompositeStep, group int) ([]provision.CompositeStep, error) {
+		var out []provision.CompositeStep
+		for _, x := range list {
+			sub, err := evalStep(x, group, true)
+			if err != nil {
+				return nil, err
+			}
+			if sub != nil {
+				out = append(out, sub.planned())
+			}
+		}
+		return out, nil
+	}
 	evalStep = func(st blueprint.CompositeStep, group int, onSide bool) (*compositePart, error) {
 		part := compositePart{step: st, group: group, title: st.Title}
 		label := st.Key
@@ -593,8 +686,14 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 			switch bp.Kind {
 			case blueprint.KindVM:
 				if onSide {
-					add("", "invalid", label+": a VM is planned when the request is submitted, before a branch chooses, so it can't be on a side of one.")
+					add("", "invalid", label+": a VM is planned when the request is submitted, before a branch chooses or a step fails, so it can't be on a side of a branch or on a catch path.")
 					return nil, nil
+				}
+				if st.ForEach != nil {
+					add("", "invalid", label+": a VM step can't loop: its VMs are planned when the request is submitted. Give its item a count instead.")
+				}
+				if len(st.Catch) > 0 {
+					add("", "invalid", label+": a VM step has no catch path: what it built is the rollback's to delete, so the request can't go on past it.")
 				}
 				if st.Undo != nil {
 					add("", "invalid", label+": a VM isn't undone by a job or workflow; a failure deletes it.")
@@ -739,6 +838,8 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 			part.branch = plan
 		case st.Notify != nil:
 			part.notify = st.Notify
+		case st.Signal != nil:
+			part.signal = st.Signal
 		case st.Resource != nil:
 			t, why, err := s.usableResourceType(ctx, st.Resource.Type, ev.Project.ID)
 			if err != nil {
@@ -790,6 +891,12 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 		if part.title == "" {
 			part.title = st.Key
 		}
+		if len(st.Catch) > 0 {
+			var err error
+			if part.catch, err = catchOf(st.Catch, group); err != nil {
+				return nil, err
+			}
+		}
 		return &part, nil
 	}
 	for i, st := range steps {
@@ -800,6 +907,27 @@ func (s *Service) evaluateComposite(ctx context.Context, p *auth.Principal, ev *
 		if part != nil {
 			ev.Composite = append(ev.Composite, *part)
 		}
+	}
+	for g, st := range ev.Blueprint.Steps {
+		if len(st.Parallel) == 0 || len(st.Catch) == 0 {
+			continue
+		}
+		for _, part := range ev.Composite {
+			if part.group == g && part.sub != nil {
+				add("", "invalid", fmt.Sprintf("Step group %d has a VM step, so it has no catch path: what it built is the rollback's to delete, so the request can't go on past it.", g+1))
+			}
+		}
+		list, err := catchOf(st.Catch, g)
+		if err != nil {
+			return err
+		}
+		if ev.GroupCatch == nil {
+			ev.GroupCatch = map[int][]provision.CompositeStep{}
+		}
+		ev.GroupCatch[g] = list
+	}
+	if ev.OnError, err = catchOf(ev.Blueprint.OnError, len(ev.Blueprint.Steps)); err != nil {
+		return err
 	}
 	// Policies see the first VM and how many there are in all.
 	vms := 0

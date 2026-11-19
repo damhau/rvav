@@ -157,6 +157,7 @@ func (s *Service) submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 				}
 				plan.Composite = append(plan.Composite, c)
 			}
+			plan.GroupCatch, plan.OnError = ev.GroupCatch, ev.OnError
 			bindResourceSteps(plan.Composite, stepDeployments)
 			if err := s.claimDeploymentNames(ctx, tx, ev, deployments, req.Number); err != nil {
 				return err

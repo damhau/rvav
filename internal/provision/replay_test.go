@@ -23,7 +23,9 @@ import (
 // segment in security groups, and a composite whose VM step is (N1, N2);
 // then a poll whose last check was read after its deadline (#125); then a
 // build in two rounds, a database on DHCP and web servers reading its
-// address, with a generated key (T1.7). A change to workflow code goes
+// address, with a generated key (T1.7); then a composite's loop and catch
+// path, and its wait for a signal across continue-as-new (E1.5). A change
+// to workflow code goes
 // behind workflow.GetVersion until no workflow in flight can predate it.
 func TestReplayHistories(t *testing.T) {
 	files, err := filepath.Glob("testdata/histories/*.json")

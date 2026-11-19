@@ -83,9 +83,10 @@ func takeBranch(ctx workflow.Context, info Info, c CompositeStep, outputs map[st
 		in.Cases = append(in.Cases, BranchChoice{Title: s.Title, When: s.When})
 	}
 	for _, side := range c.Branch.Sides() {
-		keys := make([]string, len(side))
-		for i, s := range side {
-			keys[i] = s.StepKey()
+		keys := make([]string, 0, len(side))
+		for _, s := range side {
+			keys = append(keys, s.StepKey())
+			keys = append(keys, stepKeys(s.Catch)...)
 		}
 		in.Sides = append(in.Sides, keys)
 	}

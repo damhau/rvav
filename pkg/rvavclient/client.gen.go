@@ -8824,9 +8824,10 @@ type RequestForm struct {
 	// `awx_templates` (titles only), `bindings` (`network`, `groups`,
 	// `template`, `post_config` only) and `components` with the same
 	// and their `key`, `title`, `count` and `anti_affinity`; a
-	// composite's `kind`, `rollback_on_failure` and `steps` (`key`,
-	// `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `wait`, `poll`,
-	// `branch`, `notify`, `when`, `undo`, `parallel`), each binding in
+	// composite's `kind`, `rollback_on_failure`, `on_error` and `steps`
+	// (`key`, `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `wait`,
+	// `poll`, `signal`, `branch`, `notify`, `resource`, `for_each`,
+	// `when`, `undo`, `catch`, `parallel`), each binding in
 	// `with` reduced to the `steps.<key>` it names, of an `ask` only
 	// whether the requester or owner is asked, its timeout and its form's
 	// keys: no names, groups or texts, of a `poll`'s call only what a
@@ -9569,6 +9570,14 @@ type SignInRequest struct {
 type SignInResult struct {
 	// PasswordChangeRequired The password must be changed before anything else.
 	PasswordChangeRequired bool `json:"password_change_required"`
+}
+
+// SignalReceipt defines model for SignalReceipt.
+type SignalReceipt struct {
+	ReceivedAt time.Time `json:"received_at"`
+
+	// Step The key of the step that has it, such as `step:cab`.
+	Step string `json:"step"`
 }
 
 // SizePreset defines model for SizePreset.
@@ -11910,6 +11919,9 @@ type PreviewRequestParams struct {
 	Validate *bool `form:"validate,omitempty" json:"validate,omitempty"`
 }
 
+// SignalRequestJSONBody defines parameters for SignalRequest.
+type SignalRequestJSONBody map[string]interface{}
+
 // GetStepLogParams defines parameters for GetStepLog.
 type GetStepLogParams struct {
 	// Offset The `next_offset` from the previous chunk. Start at 0.
@@ -12298,6 +12310,9 @@ type CreateRequestJSONRequestBody = RequestDraft
 
 // PreviewRequestJSONRequestBody defines body for PreviewRequest for application/json ContentType.
 type PreviewRequestJSONRequestBody = RequestDraft
+
+// SignalRequestJSONRequestBody defines body for SignalRequest for application/json ContentType.
+type SignalRequestJSONRequestBody SignalRequestJSONBody
 
 // CreateScheduleJSONRequestBody defines body for CreateSchedule for application/json ContentType.
 type CreateScheduleJSONRequestBody = ScheduleWrite
@@ -16751,6 +16766,32 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /requests/{requestId}/rollback (the `RollbackRequest` operationId).
 	RollbackRequest(ctx context.Context, requestId RequestIdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SignalRequestWithBody Send the signal a composite step waits for
+	//
+	// The step that waits for this signal goes on, the body as its outputs,
+	// which later steps read as `steps.<key>`. Those with
+	// `request.manage` in the request's project send it; the requester
+	// can't, so a wait the item puts in their way stays there. The body
+	// goes into the request's history: send no secret (ADR-0057).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
+	SignalRequestWithBody(ctx context.Context, requestId RequestIdPath, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SignalRequest Send the signal a composite step waits for
+	//
+	// The step that waits for this signal goes on, the body as its outputs,
+	// which later steps read as `steps.<key>`. Those with
+	// `request.manage` in the request's project send it; the requester
+	// can't, so a wait the item puts in their way stays there. The body
+	// goes into the request's history: send no secret (ADR-0057).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
+	SignalRequest(ctx context.Context, requestId RequestIdPath, name string, body SignalRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRequestSteps The request timeline, as a tree of steps
 	//
@@ -24176,6 +24217,52 @@ func (c *Client) RetryRequest(ctx context.Context, requestId RequestIdPath, reqE
 // Corresponds with POST /requests/{requestId}/rollback (the `RollbackRequest` operationId).
 func (c *Client) RollbackRequest(ctx context.Context, requestId RequestIdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRollbackRequestRequest(c.Server, requestId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SignalRequestWithBody Send the signal a composite step waits for
+//
+// The step that waits for this signal goes on, the body as its outputs,
+// which later steps read as `steps.<key>`. Those with
+// `request.manage` in the request's project send it; the requester
+// can't, so a wait the item puts in their way stays there. The body
+// goes into the request's history: send no secret (ADR-0057).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
+func (c *Client) SignalRequestWithBody(ctx context.Context, requestId RequestIdPath, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSignalRequestRequestWithBody(c.Server, requestId, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SignalRequest Send the signal a composite step waits for
+//
+// The step that waits for this signal goes on, the body as its outputs,
+// which later steps read as `steps.<key>`. Those with
+// `request.manage` in the request's project send it; the requester
+// can't, so a wait the item puts in their way stays there. The body
+// goes into the request's history: send no secret (ADR-0057).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
+func (c *Client) SignalRequest(ctx context.Context, requestId RequestIdPath, name string, body SignalRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSignalRequestRequest(c.Server, requestId, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -36348,6 +36435,60 @@ func NewRollbackRequestRequest(server string, requestId RequestIdPath) (*http.Re
 	return req, nil
 }
 
+// NewSignalRequestRequest calls the generic SignalRequest builder with application/json body
+func NewSignalRequestRequest(server string, requestId RequestIdPath, name string, body SignalRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSignalRequestRequestWithBody(server, requestId, name, "application/json", bodyReader)
+}
+
+// NewSignalRequestRequestWithBody constructs an http.Request for the SignalRequest method, with any body, and a specified content type
+func NewSignalRequestRequestWithBody(server string, requestId RequestIdPath, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "requestId", requestId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/requests/%s/signal/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListRequestStepsRequest constructs an http.Request for the ListRequestSteps method
 func NewListRequestStepsRequest(server string, requestId RequestIdPath) (*http.Request, error) {
 	var err error
@@ -40991,6 +41132,32 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /requests/{requestId}/rollback (the `RollbackRequest` operationId).
 	RollbackRequestWithResponse(ctx context.Context, requestId RequestIdPath, reqEditors ...RequestEditorFn) (*RollbackRequestResponse, error)
+
+	// SignalRequestWithBodyWithResponse Send the signal a composite step waits for
+	//
+	// The step that waits for this signal goes on, the body as its outputs,
+	// which later steps read as `steps.<key>`. Those with
+	// `request.manage` in the request's project send it; the requester
+	// can't, so a wait the item puts in their way stays there. The body
+	// goes into the request's history: send no secret (ADR-0057).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
+	SignalRequestWithBodyWithResponse(ctx context.Context, requestId RequestIdPath, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SignalRequestResponse, error)
+
+	// SignalRequestWithResponse Send the signal a composite step waits for
+	//
+	// The step that waits for this signal goes on, the body as its outputs,
+	// which later steps read as `steps.<key>`. Those with
+	// `request.manage` in the request's project send it; the requester
+	// can't, so a wait the item puts in their way stays there. The body
+	// goes into the request's history: send no secret (ADR-0057).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
+	SignalRequestWithResponse(ctx context.Context, requestId RequestIdPath, name string, body SignalRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*SignalRequestResponse, error)
 
 	// ListRequestStepsWithResponse The request timeline, as a tree of steps
 	//
@@ -58212,6 +58379,82 @@ func (r RollbackRequestResponse) ContentType() string {
 	return ""
 }
 
+type SignalRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *SignalReceipt
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r SignalRequestResponse) GetJSON202() *SignalReceipt {
+	return r.JSON202
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SignalRequestResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SignalRequestResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SignalRequestResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r SignalRequestResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SignalRequestResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SignalRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SignalRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SignalRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SignalRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListRequestStepsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -65185,6 +65428,44 @@ func (c *ClientWithResponses) RollbackRequestWithResponse(ctx context.Context, r
 		return nil, err
 	}
 	return ParseRollbackRequestResponse(rsp)
+}
+
+// SignalRequestWithBodyWithResponse Send the signal a composite step waits for
+//
+// The step that waits for this signal goes on, the body as its outputs,
+// which later steps read as `steps.<key>`. Those with
+// `request.manage` in the request's project send it; the requester
+// can't, so a wait the item puts in their way stays there. The body
+// goes into the request's history: send no secret (ADR-0057).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
+func (c *ClientWithResponses) SignalRequestWithBodyWithResponse(ctx context.Context, requestId RequestIdPath, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SignalRequestResponse, error) {
+	rsp, err := c.SignalRequestWithBody(ctx, requestId, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSignalRequestResponse(rsp)
+}
+
+// SignalRequestWithResponse Send the signal a composite step waits for
+//
+// The step that waits for this signal goes on, the body as its outputs,
+// which later steps read as `steps.<key>`. Those with
+// `request.manage` in the request's project send it; the requester
+// can't, so a wait the item puts in their way stays there. The body
+// goes into the request's history: send no secret (ADR-0057).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
+func (c *ClientWithResponses) SignalRequestWithResponse(ctx context.Context, requestId RequestIdPath, name string, body SignalRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*SignalRequestResponse, error) {
+	rsp, err := c.SignalRequest(ctx, requestId, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSignalRequestResponse(rsp)
 }
 
 // ListRequestStepsWithResponse The request timeline, as a tree of steps
@@ -78562,6 +78843,67 @@ func ParseRollbackRequestResponse(rsp *http.Response) (*RollbackRequestResponse,
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSignalRequestResponse parses an HTTP response from a SignalRequestWithResponse call
+func ParseSignalRequestResponse(rsp *http.Response) (*SignalRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SignalRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest SignalReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	}
 

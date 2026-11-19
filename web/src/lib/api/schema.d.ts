@@ -953,6 +953,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/requests/{requestId}/signal/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+                /** @description The signal a composite step waits for, as its `signal.name` says. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the signal a composite step waits for
+         * @description The step that waits for this signal goes on, the body as its outputs,
+         *     which later steps read as `steps.<key>`. Those with
+         *     `request.manage` in the request's project send it; the requester
+         *     can't, so a wait the item puts in their way stays there. The body
+         *     goes into the request's history: send no secret (ADR-0057).
+         */
+        post: operations["signalRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/requests/{requestId}/retry": {
         parameters: {
             query?: never;
@@ -5757,9 +5786,10 @@ export interface components {
              *     `awx_templates` (titles only), `bindings` (`network`, `groups`,
              *     `template`, `post_config` only) and `components` with the same
              *     and their `key`, `title`, `count` and `anti_affinity`; a
-             *     composite's `kind`, `rollback_on_failure` and `steps` (`key`,
-             *     `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `wait`, `poll`,
-             *     `branch`, `notify`, `when`, `undo`, `parallel`), each binding in
+             *     composite's `kind`, `rollback_on_failure`, `on_error` and `steps`
+             *     (`key`, `title`, `item`, `awx`, `workflow`, `rest`, `ask`, `wait`,
+             *     `poll`, `signal`, `branch`, `notify`, `resource`, `for_each`,
+             *     `when`, `undo`, `catch`, `parallel`), each binding in
              *     `with` reduced to the `steps.<key>` it names, of an `ask` only
              *     whether the requester or owner is asked, its timeout and its form's
              *     keys: no names, groups or texts, of a `poll`'s call only what a
@@ -7062,6 +7092,12 @@ export interface components {
                 /** @description Scripts of VMware's HTML console client (WMKS) to load, in order, for example jQuery, jQuery UI and `wmks.min.js`. */
                 sdk_urls: string[];
             };
+        };
+        SignalReceipt: {
+            /** @description The key of the step that has it, such as `step:cab`. */
+            step: string;
+            /** Format: date-time */
+            received_at: string;
         };
         /** @enum {string} */
         StepStatus: "pending" | "running" | "done" | "failed" | "skipped" | "cancelled";
@@ -12176,6 +12212,42 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    signalRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Request ID or number (for example `REQ-10491`). */
+                requestId: components["parameters"]["RequestIdPath"];
+                /** @description The signal a composite step waits for, as its `signal.name` says. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description The step has it */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalReceipt"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     retryRequest: {

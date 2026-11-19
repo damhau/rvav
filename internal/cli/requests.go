@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -16,10 +18,11 @@ var finalStatus = map[rvavclient.RequestStatus]bool{rvavclient.RequestStatusSucc
 	rvavclient.RequestStatusFailed: true, rvavclient.RequestStatusRejected: true, rvavclient.RequestStatusCancelled: true}
 
 func (a *app) requestsCmd() *cobra.Command {
-	c := &cobra.Command{Use: "requests", Short: "Requests: follow, wait for, cancel or retry them"}
+	c := &cobra.Command{Use: "requests", Short: "Requests: follow, wait for, cancel, retry or signal them"}
 	c.AddCommand(a.requestsListCmd(), a.requestsShowCmd(), a.requestsWaitCmd(),
 		a.requestActionCmd("cancel", "Cancel a request that is waiting or running", cancelRequest),
-		a.requestActionCmd("retry", "Run a failed request again from its failed step", retryRequest))
+		a.requestActionCmd("retry", "Run a failed request again from its failed step", retryRequest),
+		a.requestsSignalCmd())
 	return c
 }
 
@@ -323,4 +326,56 @@ func retryRequest(ctx context.Context, c *rvavclient.ClientWithResponses, id str
 		return nil, nil, nil, err
 	}
 	return r.HTTPResponse, r.Body, r.JSON202, nil
+}
+
+func (a *app) requestsSignalCmd() *cobra.Command {
+	var data string
+	cmd := &cobra.Command{
+		Use:   "signal REQUEST NAME",
+		Short: "Send the signal a composite step of a request waits for",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body, err := a.signalData(data)
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			c, err := a.connect(ctx)
+			if err != nil {
+				return err
+			}
+			r, err := c.SignalRequestWithResponse(ctx, args[0], args[1], body)
+			if err != nil {
+				return err
+			}
+			if err := rvavclient.Check(r.HTTPResponse, r.Body); err != nil {
+				return err
+			}
+			if a.jsonOut() {
+				return a.printJSON(rawJSON(r.Body))
+			}
+			_, err = fmt.Fprintf(a.Out, "%s took the signal %s.\n", strings.TrimPrefix(r.JSON202.Step, "step:"), args[1])
+			return err
+		},
+	}
+	cmd.Flags().StringVarP(&data, "data", "d", "", "what the signal brings, a JSON object; - reads it from standard input")
+	return cmd
+}
+
+func (a *app) signalData(data string) (map[string]any, error) {
+	if data == "-" {
+		b, err := io.ReadAll(a.In)
+		if err != nil {
+			return nil, err
+		}
+		data = string(b)
+	}
+	body := map[string]any{}
+	if strings.TrimSpace(data) == "" {
+		return body, nil
+	}
+	if err := json.Unmarshal([]byte(data), &body); err != nil {
+		return nil, fmt.Errorf("--data: a JSON object: %w", err)
+	}
+	return body, nil
 }

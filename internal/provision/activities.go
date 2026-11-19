@@ -342,7 +342,7 @@ func (a *Activities) LoadPlan(ctx context.Context, requestID string) (Info, erro
 		// A composite step's own steps count too (step:<key>/…), and a
 		// component's (component:<key>/…).
 		top := s.ParentID == nil || strings.HasPrefix(s.Key, KeyStep) || strings.HasPrefix(s.Key, KeyComponent)
-		if top && s.Status == "done" && s.Key != KeySubmit && s.Key != KeyPolicy && s.Key != KeyPlacement {
+		if top && (s.Status == "done" || caughtStep(s.Outputs)) && s.Key != KeySubmit && s.Key != KeyPolicy && s.Key != KeyPlacement {
 			info.Done = append(info.Done, s.Key)
 		}
 		if len(s.Outputs) > 0 && strings.HasPrefix(s.Key, KeyStep) {

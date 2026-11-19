@@ -1,0 +1,215 @@
+package e2e
+
+import (
+	"context"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/vmware/govmomi/simulator"
+	"github.com/vmware/govmomi/vim25"
+	"go.temporal.io/sdk/testsuite"
+
+	"github.com/damhau/rvav/internal/api"
+)
+
+func loopOf(step map[string]any, items string, parallel int) map[string]any {
+	step["for_each"] = map[string]any{"items": items, "parallel": parallel}
+	return step
+}
+
+func caught(step map[string]any, catch ...any) map[string]any {
+	step["catch"] = catch
+	return step
+}
+
+func signalOf(key string, signal map[string]any) map[string]any {
+	return map[string]any{"key": key, "title": "Wait for " + key, "signal": signal}
+}
+
+// failing is a REST step that fails: the change API answers its check 500.
+func failing(c *changeAPI, key string) map[string]any {
+	return map[string]any{"key": key, "title": "Check " + key, "rest": map[string]any{"method": "GET", "url": c.URL + "/api/change/" + key, "accept": []any{200}}}
+}
+
+// TestCompositeFlow: a composite's loops, catch paths, error handler and
+// waits for a signal (ADR-0057): what is refused when saved, what each pass,
+// path and handler runs and reads, and a signal sent through the API.
+func TestCompositeFlow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, requester = "mkeller", "tnguyen"
+		rig := askRig{t: t, h: h, ctx: ctx, admin: admin}
+		change := newChangeAPI(t)
+		h.svc.REST.Hosts = []string{change.URL}
+
+		var problem struct{ Errors []api.FieldError }
+		bad := askDefinition(false,
+			loopOf(waitFor("loopwait", "1h"), "[1, 2]", 0),
+			loopOf(posting(change, "loopundo", "{}"), "[1]", 0),
+			loopOf(posting(change, "toowide", "{}"), "[1]", 11),
+			loopOf(posting(change, "nolist", "{}"), "", 0),
+			posting(change, "noeach", "{'x': each}"),
+			posting(change, "noerror", "{'x': error.message}"),
+			caught(posting(change, "waitcatch", "{}"), waitFor("waits", "1h")),
+			signalOf("both", map[string]any{"name": "go", "event": "request.submitted", "timeout": "1h"}),
+			signalOf("short", map[string]any{"name": "Go Now", "timeout": "1s"}),
+			signalOf("dup1", map[string]any{"name": "same", "timeout": "1h"}),
+			signalOf("dup2", map[string]any{"name": "same", "timeout": "1h", "when": "true"}),
+			map[string]any{"parallel": []any{caught(posting(change, "inner", "{}"), messageOf("tellinner", map[string]any{"requester": true, "message": "x"}))}},
+		)
+		bad.Blueprint["steps"].([]any)[1].(map[string]any)["undo"] = map[string]any{"job_template": "x"}
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "bad-flow", Name: "Bad", Summary: "Bad.",
+			Category: "compute", Type: api.Composite, Definition: &bad}, 422, &problem)
+		const prefix = "/definition/blueprint/steps/"
+		var want []string
+		for _, w := range []string{"0/for_each", "1/undo", "2/for_each/parallel", "3/for_each/items", "4/rest/body", "5/rest/body",
+			"6/catch/0", "7/signal", "8/signal/name", "8/signal/timeout", "10/signal/name", "10/signal/when", "11/parallel/0/catch"} {
+			want = append(want, prefix+w)
+		}
+		wantFields(t, "a bad flow", problem.Errors, want...)
+		if t.Failed() {
+			t.FailNow()
+		}
+
+		// A loop, two at a time: each pass posts its item, the next step
+		// reads them all; the catch path and the handler aren't needed.
+		looped := rig.publishDefinition("flow-loop", askDefinition(false,
+			caught(loopOf(posting(change, "each", "{'host': each, 'at': index}"), "['a', 'b', 'c']", 2),
+				posting(change, "fix", "{'fixed': error.step}")),
+			posting(change, "after", "{'count': steps.each.count, 'first': steps.each.items[0]}"),
+		))
+		change.script()
+		req := rig.submit(requester, looped)
+		rig.run(req.Id)
+		if r := rig.get(req.Id, requester); r.Status != api.RequestStatusSucceeded {
+			t.Fatalf("the loop = %s", r.Status)
+		}
+		got := change.got()
+		var hosts []string
+		for _, b := range got[:3] {
+			hosts = append(hosts, b["host"].(string))
+		}
+		slices.Sort(hosts)
+		if len(got) != 4 || !slices.Equal(hosts, []string{"a", "b", "c"}) || got[3]["count"] != float64(3) {
+			t.Fatalf("what the loop posted = %v", got)
+		}
+		steps := rig.steps(req.Id, requester)
+		for _, k := range []string{"step:each/each:0", "step:each/each:1", "step:each/each:2", "step:each"} {
+			if steps[k].Status != api.StepStatusDone {
+				t.Fatalf("%s = %+v", k, steps[k])
+			}
+		}
+		if s := steps["step:fix"]; s.Status != api.StepStatusSkipped || deref(s.Detail) != "Nothing failed before it." {
+			t.Fatalf("the catch path not needed = %+v", s)
+		}
+		if out := rig.outputs(req.Id, "step:each"); len(out["items"].([]any)) != 3 {
+			t.Fatalf("the loop's outputs = %v", out)
+		}
+
+		// A pass fails, in order: the one after doesn't begin, the catch path
+		// reads what failed, and the composite goes on.
+		change.script(changeAnswer{200, map[string]any{}}, changeAnswer{500, map[string]any{}})
+		passes := rig.publishDefinition("flow-pass", askDefinition(false,
+			caught(loopOf(failing(change, "pass"), "['x', 'y', 'z']", 1),
+				posting(change, "fix", "{'fixed': error.step, 'why': error.message}")),
+			posting(change, "after", "{'caught': steps.pass.caught}"),
+		))
+		req = rig.submit(requester, passes)
+		rig.run(req.Id)
+		if r := rig.get(req.Id, requester); r.Status != api.RequestStatusSucceeded {
+			t.Fatalf("a pass caught = %s", r.Status)
+		}
+		steps = rig.steps(req.Id, requester)
+		if steps["step:pass/each:0"].Status != api.StepStatusDone || steps["step:pass/each:1"].Status != api.StepStatusFailed ||
+			steps["step:pass/each:2"].Status != api.StepStatusSkipped || steps["step:pass"].Status != api.StepStatusFailed {
+			t.Fatalf("the passes = %+v %+v %+v %+v", steps["step:pass/each:0"], steps["step:pass/each:1"], steps["step:pass/each:2"], steps["step:pass"])
+		}
+		got = change.got()
+		if len(got) != 2 || got[0]["fixed"] != "pass" || got[1]["caught"] != true {
+			t.Fatalf("the catch path posted = %v", got)
+		}
+
+		// A parallel group's catch path; then a failure nothing catches: the
+		// handler runs and reads it, and the request fails.
+		change.script(changeAnswer{500, map[string]any{}})
+		withHandler := askDefinition(false,
+			map[string]any{"parallel": []any{posting(change, "one", "{'one': 1}"), failing(change, "two")},
+				"catch": []any{posting(change, "groupfix", "{'group': error.step}")}},
+			failing(change, "three"))
+		withHandler.Blueprint["on_error"] = []any{posting(change, "ticket", "{'failed': error.step}")}
+		handled := rig.publishDefinition("flow-handled", withHandler)
+		req = rig.submit(requester, handled)
+		rig.run(req.Id)
+		if r := rig.get(req.Id, requester); r.Status != api.RequestStatusFailed {
+			t.Fatalf("a failure nothing caught = %s", r.Status)
+		}
+		got = change.got()
+		var said []string
+		for _, b := range got {
+			for k, v := range b {
+				if s, ok := v.(string); ok {
+					said = append(said, k+"="+s)
+				}
+			}
+		}
+		slices.Sort(said)
+		if !slices.Equal(said, []string{"failed=three", "group=two"}) {
+			t.Fatalf("the group's catch path and the handler posted %v", got)
+		}
+		steps = rig.steps(req.Id, requester)
+		if steps["step:ticket"].Status != api.StepStatusDone || steps["step:groupfix"].Status != api.StepStatusDone || steps["step:two"].Status != api.StepStatusFailed {
+			t.Fatalf("ticket %+v, groupfix %+v, two %+v", steps["step:ticket"], steps["step:groupfix"], steps["step:two"])
+		}
+
+		// A signal by its name: the requester can't send it, a project admin
+		// does, what it brings is its outputs; nothing else waits for one.
+		signalled := rig.publishDefinition("flow-signal", askDefinition(false,
+			signalOf("cab", map[string]any{"name": "cab-approved", "timeout": "72h"}),
+			posting(change, "after", "{'by': steps.cab.by}"),
+		))
+		change.script()
+		req = rig.submit(requester, signalled)
+		rig.run(req.Id, moment{time.Minute, func(env *testsuite.TestWorkflowEnvironment) {
+			if s := rig.steps(req.Id, requester)["step:cab"]; s.Status != api.StepStatusRunning || deref(s.Detail) != "Waiting for the signal cab-approved" {
+				t.Errorf("waiting = %+v", s)
+			}
+			h.json("POST", "/api/v1/requests/"+req.Id+"/signal/cab-approved", requester, map[string]any{"by": "me"}, 403, nil)
+			h.json("POST", "/api/v1/requests/"+req.Id+"/signal/other", admin, map[string]any{}, 409, nil)
+			var receipt api.SignalReceipt
+			h.json("POST", "/api/v1/requests/"+req.Id+"/signal/cab-approved", admin, map[string]any{"by": "the board"}, 202, &receipt)
+			if receipt.Step != "step:cab" {
+				t.Errorf("receipt = %+v", receipt)
+			}
+			h.json("POST", "/api/v1/requests/"+req.Id+"/signal/cab-approved", admin, map[string]any{}, 409, nil)
+			rig.deliver(env)
+		}})
+		if r := rig.get(req.Id, requester); r.Status != api.RequestStatusSucceeded {
+			t.Fatalf("signalled = %s", r.Status)
+		}
+		if got := change.got(); len(got) != 1 || got[0]["by"] != "the board" {
+			t.Fatalf("after the signal = %v", got)
+		}
+		if n := rig.count(`select count(*) from audit_events where action = 'request.signal' and target_id = $1`, req.Id); n != 1 {
+			t.Fatalf("audited %d times", n)
+		}
+
+		// Nothing comes: on_timeout continue goes on with timed_out.
+		quiet := rig.publishDefinition("flow-quiet", askDefinition(false,
+			signalOf("quiet", map[string]any{"name": "never", "timeout": "1h", "on_timeout": "continue"}),
+			posting(change, "after", "{'timed_out': steps.quiet.timed_out}"),
+		))
+		change.script()
+		req = rig.submit(requester, quiet)
+		rig.run(req.Id)
+		if got := change.got(); rig.get(req.Id, requester).Status != api.RequestStatusSucceeded || len(got) != 1 || got[0]["timed_out"] != true {
+			t.Fatalf("timed out: %s, %v", rig.get(req.Id, requester).Status, got)
+		}
+		if s := rig.steps(req.Id, requester)["step:quiet"]; deref(s.Detail) != "No signal never came in 1h, so it went on." {
+			t.Fatalf("timed out = %+v", s)
+		}
+	})
+}

@@ -101,6 +101,11 @@ type Blueprint struct {
 	// RollbackOnFailure deletes what was created when a step fails. When
 	// false, resources are kept so someone can look at the failure.
 	RollbackOnFailure bool `json:"rollback_on_failure,omitempty"`
+
+	// OnError is a composite's default error handler (ADR-0057): steps run
+	// in order when a failure isn't caught, before the undo and rollback.
+	// The request still fails.
+	OnError []CompositeStep `json:"on_error,omitempty"`
 }
 
 // Resource is a custom resource of a deployment (ADR-0056): Type is a
@@ -753,6 +758,12 @@ type CompositeStep struct {
 	Branch   *Branch       `json:"branch,omitempty"`
 	Notify   *Notify       `json:"notify,omitempty"`
 	Resource *ResourceStep `json:"resource,omitempty"`
+	Signal   *Signal       `json:"signal,omitempty"`
+	// ForEach runs the step once for each item of a list (ADR-0057).
+	ForEach *ForEach `json:"for_each,omitempty"`
+	// Catch runs in order when the step, or the parallel group it is
+	// written on, fails: once it has run, the composite goes on.
+	Catch []CompositeStep `json:"catch,omitempty"`
 	// With binds the step's inputs: strings are CEL over inputs and the
 	// outputs of earlier steps (steps.<key>), other values are as they are.
 	With map[string]any `json:"with,omitempty"`
@@ -760,6 +771,39 @@ type CompositeStep struct {
 	When     string          `json:"when,omitempty"`
 	Undo     *CompositeUndo  `json:"undo,omitempty"`
 	Parallel []CompositeStep `json:"parallel,omitempty"`
+}
+
+// ForEach repeats a step over a list (ADR-0057): each pass reads its item as
+// each and its position as index.
+type ForEach struct {
+	// Items is CEL over inputs and steps.<key> giving a list.
+	Items string `json:"items"`
+	// Parallel is how many passes run at once: 1, the default, runs them in
+	// order.
+	Parallel int `json:"parallel,omitempty"`
+}
+
+// MaxForEachPasses and MaxForEachParallel bound a loop: its passes are steps
+// of the request, and Temporal's history holds each one.
+const (
+	MaxForEachPasses   = 100
+	MaxForEachParallel = 10
+)
+
+// Signal waits for a signal (ADR-0057): a call to the request's
+// signal/<name>, or an event; one of the two. What it brings is the step's
+// outputs.
+type Signal struct {
+	Name string `json:"name,omitempty"`
+	// Event is an event's topic; When, CEL over the event as a
+	// subscription's condition reads it and waiting (this request's id and
+	// earlier steps), picks the one.
+	Event string `json:"event,omitempty"`
+	When  string `json:"when,omitempty"`
+	// Timeout is a Go duration, and OnTimeout what it does: fail (the
+	// default) or continue.
+	Timeout   string `json:"timeout"`
+	OnTimeout string `json:"on_timeout,omitempty"`
 }
 
 // Branch runs one side of a choice (ADR-0033): the first case whose condition

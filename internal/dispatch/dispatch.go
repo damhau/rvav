@@ -120,6 +120,9 @@ type Dispatcher struct {
 	Now func() time.Time
 	// Workers is how many attempts run at once; 8 when zero.
 	Workers int
+	// Signal tells a workflow that a composite step's wait got its event
+	// (ADR-0057).
+	Signal func(ctx context.Context, workflowID, stepKey string) error
 
 	init     sync.Once
 	slots    chan struct{}
@@ -198,7 +201,9 @@ func (d *Dispatcher) round(ctx context.Context) (int, error) {
 // blocking ones run in the request's workflow.
 func (d *Dispatcher) fanOut(ctx context.Context) (int, error) {
 	var n int
+	var told []store.SignalTarget
 	err := d.Store.Tx(ctx, func(tx pgx.Tx) error {
+		told = nil
 		events, err := d.Store.UndispatchedEvents(ctx, tx, 100)
 		if err != nil || len(events) == 0 {
 			return err
@@ -231,10 +236,18 @@ func (d *Dispatcher) fanOut(ctx context.Context) (int, error) {
 					return err
 				}
 			}
+			got, err := d.eventWaits(ctx, tx, ev)
+			if err != nil {
+				return err
+			}
+			told = append(told, got...)
 			done = append(done, ev.ID)
 		}
 		return d.Store.MarkDispatched(ctx, tx, done)
 	})
+	if err == nil {
+		d.tell(ctx, told)
+	}
 	return n, err
 }
 

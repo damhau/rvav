@@ -23,8 +23,10 @@ type stepResult struct {
 	out    map[string]any
 	failed string
 	err    error
-	// skipped: its condition was false, so there is nothing to undo.
+	// skipped: its condition was false, so there is nothing to undo;
+	// stopped too: a sibling's failure ended its wait.
 	skipped bool
+	stopped bool
 }
 
 // runComposite runs a composite item's steps. On a failure with rollback,
@@ -50,34 +52,41 @@ func runComposite(ctx workflow.Context, info Info) (string, error) {
 		if c := group[0]; c.Branch != nil {
 			side, out, err := takeBranch(ctx, info, c, outputs)
 			if err != nil {
-				if p.Rollback {
-					undoComposite(ctx, info, done, outputs)
-				}
+				failComposite(ctx, info, done, outputs, c.StepKey(), err)
 				return c.StepKey(), err
 			}
 			outputs[c.Key] = out
 			for _, s := range side {
-				if failed, err := runGroup(ctx, info, []CompositeStep{s}, outputs, &done); err != nil {
+				if failed, err := runGroup(ctx, info, []CompositeStep{s}, outputs, &done, s.Catch); err != nil {
 					return failed, err
 				}
 			}
 			continue
 		}
-		if failed, err := runGroup(ctx, info, group, outputs, &done); err != nil {
+		catch := p.GroupCatch[g]
+		if len(group) == 1 && len(catch) == 0 {
+			catch = group[0].Catch
+		}
+		if failed, err := runGroup(ctx, info, group, outputs, &done, catch); err != nil {
 			return failed, err
 		}
+	}
+	if len(p.OnError) > 0 && flowOn(ctx) {
+		var a *Activities
+		_ = workflow.ExecuteActivity(ctx, a.SkipSteps, info.RequestID, info.ProjectID, stepKeys(p.OnError), "Nothing failed.").Get(ctx, nil)
 	}
 	return "", nil
 }
 
 // runGroup runs steps at the same time, adding what they give to outputs and
-// those done to done. When one fails, what is done so far is undone if the
-// request says so, and it says which failed; errContinueAsNew says a step left
-// to wait in a new run.
-func runGroup(ctx workflow.Context, info Info, group []CompositeStep, outputs map[string]any, done *[]CompositeStep) (string, error) {
+// those done to done. When one fails, its catch path runs if it has one, and
+// the composite goes on once it has (ADR-0057); else what is done so far is
+// undone if the request says so, and it says which failed. errContinueAsNew
+// says a step left to wait in a new run.
+func runGroup(ctx workflow.Context, info Info, group []CompositeStep, outputs map[string]any, done *[]CompositeStep, catch []CompositeStep) (string, error) {
 	results := make([]stepResult, len(group))
 	if len(group) == 1 {
-		results[0] = runCompositeStep(ctx, ctx, info, group[0], outputs)
+		results[0] = runCompositeStep(ctx, ctx, info, group[0], outputs, nil)
 	} else {
 		// Read only while the group runs.
 		before := make(map[string]any, len(outputs))
@@ -92,7 +101,7 @@ func runGroup(ctx workflow.Context, info Info, group []CompositeStep, outputs ma
 			wg.Add(1)
 			workflow.Go(ctx, func(gctx workflow.Context) {
 				defer wg.Done()
-				results[i] = runCompositeStep(gctx, stop, info, c, before)
+				results[i] = runCompositeStep(gctx, stop, info, c, before, nil)
 				if err := results[i].err; err != nil && !errors.Is(err, errContinueAsNew) {
 					stopWaits()
 				}
@@ -103,16 +112,22 @@ func runGroup(ctx workflow.Context, info Info, group []CompositeStep, outputs ma
 	}
 	var failed *stepResult
 	var again []CompositeStep
+	var stopped []string
 	for i, c := range group {
 		if errors.Is(results[i].err, errContinueAsNew) {
 			again = append(again, c)
+			stopped = append(stopped, c.StepKey())
 			continue
 		}
 		if results[i].err != nil {
 			if failed == nil {
 				failed = &results[i]
 			}
+			stopped = append(stopped, c.StepKey())
 			continue
+		}
+		if results[i].stopped {
+			stopped = append(stopped, c.StepKey())
 		}
 		if results[i].skipped {
 			continue
@@ -128,13 +143,22 @@ func runGroup(ctx workflow.Context, info Info, group []CompositeStep, outputs ma
 			var a *Activities
 			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, c.StepKey(), "cancelled", stoppedBySibling).Get(ctx, nil)
 		}
-		if info.Plan.Rollback {
-			undoComposite(ctx, info, *done, outputs)
+		if len(catch) > 0 && !temporal.IsCanceledError(failed.err) && flowOn(ctx) {
+			key, err := runCatch(ctx, info, failed.failed, errMessage(failed.err), stopped, catch, outputs)
+			if err == nil {
+				return "", nil
+			}
+			failed = &stepResult{failed: key, err: err}
 		}
+		failComposite(ctx, info, *done, outputs, failed.failed, failed.err)
 		return failed.failed, failed.err
 	}
 	if len(again) > 0 {
 		return "", errContinueAsNew
+	}
+	if len(catch) > 0 && flowOn(ctx) {
+		var a *Activities
+		_ = workflow.ExecuteActivity(ctx, a.SkipSteps, info.RequestID, info.ProjectID, stepKeys(catch), notFailed).Get(ctx, nil)
 	}
 	return "", nil
 }
@@ -163,10 +187,19 @@ func beforeVMs(ctx workflow.Context, info Info, c CompositeStep, key string) (st
 }
 
 // runCompositeStep runs one step and returns its outputs. A step that waits
-// (for a person, a time or a condition) stops waiting when stop is cancelled.
-func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, outputs map[string]any) stepResult {
+// (for a person, a time, a condition or a signal) stops waiting when stop is
+// cancelled. extra is what a catch path's steps read besides (error).
+func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, outputs map[string]any, extra map[string]any) stepResult {
+	if c.ForEach != nil && flowOn(ctx) {
+		return runLoop(ctx, info, c, outputs)
+	}
+	return runStepAs(ctx, stop, info, c, c.StepKey(), outputs, extra)
+}
+
+// runStepAs runs a step under key: its own, or a loop's pass's, which reads
+// its item and position in extra.
+func runStepAs(ctx, stop workflow.Context, info Info, c CompositeStep, key string, outputs map[string]any, extra map[string]any) stepResult {
 	var a *Activities
-	key := c.StepKey()
 	if info.done(key) {
 		return stepResult{out: info.Outputs[key]}
 	}
@@ -174,7 +207,7 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 	var secretVars map[string]string
 	if c.When != "" || len(c.With) > 0 {
 		var r Resolved
-		in := ResolveInput{RequestID: info.RequestID, When: c.When, With: c.With, Steps: outputs}
+		in := ResolveInput{RequestID: info.RequestID, When: c.When, With: c.With, Steps: outputs, Extra: extra}
 		if err := workflow.ExecuteActivity(ctx, a.ResolveStep, in).Get(ctx, &r); err != nil {
 			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(ctx, nil)
 			return stepResult{failed: key, err: err}
@@ -219,6 +252,9 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 		for k, v := range info.Plan.Context {
 			ctxVars[k] = v
 		}
+		for k, v := range extra {
+			ctxVars[k] = v
+		}
 		vars["rvav"] = ctxVars
 		in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Job: job, ExtraVars: vars, Secrets: secretVars}
 		if err := workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil); err != nil {
@@ -233,13 +269,13 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 		}
 		out = result
 	case c.REST != nil:
-		in := RESTInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Call: *c.REST, Steps: outputs}
+		in := RESTInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Call: *c.REST, Steps: outputs, Extra: extra}
 		if err := workflow.ExecuteActivity(restCtx(ctx, c.REST.Method), a.RunREST, in).Get(ctx, &out); err != nil {
 			// A timeout never reached the activity's own record of it.
 			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(ctx, nil)
 			return stepResult{failed: key, err: err}
 		}
-	case c.Ask != nil, c.Wait != nil, c.Poll != nil:
+	case c.Ask != nil, c.Wait != nil, c.Poll != nil, c.Signal != nil:
 		var result map[string]any
 		var stopped bool
 		var err error
@@ -248,6 +284,11 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 			result, stopped, err = runAsk(ctx, stop, info, c)
 		case c.Wait != nil:
 			result, stopped, err = runWait(ctx, stop, info, c)
+		case c.Signal != nil:
+			if !flowOn(ctx) {
+				break
+			}
+			result, stopped, err = runSignal(ctx, stop, info, c, outputs)
 		default:
 			result, stopped, err = runPoll(ctx, stop, info, c)
 		}
@@ -258,7 +299,7 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(ctx, nil)
 			return stepResult{failed: key, err: err}
 		case stopped:
-			return stepResult{skipped: true}
+			return stepResult{skipped: true, stopped: true}
 		}
 		out = result
 	case c.Resource != nil:
@@ -273,7 +314,7 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 		}
 		out = result
 	case c.Notify != nil:
-		in := NotifyInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Notify: *c.Notify, Steps: outputs}
+		in := NotifyInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Notify: *c.Notify, Steps: outputs, Extra: extra}
 		if err := workflow.ExecuteActivity(ctx, a.SendStepMessage, in).Get(ctx, &out); err != nil {
 			// A timeout never reached the activity's own record of it.
 			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", errMessage(err)).Get(ctx, nil)
@@ -366,6 +407,8 @@ type ResolveInput struct {
 	When      string         `json:"when,omitempty"`
 	With      map[string]any `json:"with,omitempty"`
 	Steps     map[string]any `json:"steps,omitempty"`
+	// Extra is a loop's pass's each and index, a catch path's error.
+	Extra map[string]any `json:"extra,omitempty"`
 }
 
 // Resolved says whether the step runs, and with what: Secrets are the
@@ -383,6 +426,7 @@ func (a *Activities) ResolveStep(ctx context.Context, in ResolveInput) (Resolved
 	if err != nil {
 		return Resolved{}, err
 	}
+	addExtra(vars, in.Extra)
 	return resolveStep(in, vars)
 }
 
@@ -459,6 +503,14 @@ func (a *Activities) stepVars(ctx context.Context, requestID string, steps map[s
 	return policy.Vars{"inputs": inputs, "steps": steps, "environment": r.Environment,
 		"project": map[string]any{"id": r.ProjectID, "code": r.ProjectCode, "name": r.ProjectName, "properties": props}, "propgroup": groups,
 		"vars": shared}, nil
+}
+
+// addExtra gives an expression what a loop's pass or a catch path reads
+// besides: each and index, or error.
+func addExtra(vars policy.Vars, extra map[string]any) {
+	for k, v := range extra {
+		vars[k] = v
+	}
 }
 
 // MarkStep sets a composite step's status, with why when it failed or was

@@ -298,6 +298,10 @@ func TestCLI(t *testing.T) {
 		mustContain(t, "failed request's wait", stderr, failing.Number+" failed", "idm : join realm")
 		out, _ = lea.run(0, "", "requests", "retry", failing.Number)
 		mustContain(t, "retry", out, failing.Number)
+		_, stderr = script.run(1, `{"by": "a script"}`, "requests", "signal", failing.Number, "cab-approved", "--data", "-")
+		mustContain(t, "a signal nothing waits for", stderr, "signal")
+		_, stderr = script.run(1, "", "requests", "signal", failing.Number, "cab-approved", "--data", "[1]")
+		mustContain(t, "a signal that isn't an object", stderr, "--data: a JSON object")
 
 		// Cancel a request waiting for approval.
 		var edge api.Request

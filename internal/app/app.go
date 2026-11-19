@@ -679,7 +679,13 @@ func (a *App) Dispatcher() *dispatch.Dispatcher {
 	if tc, err := a.Temporal(); err == nil {
 		t.Workflow = &dispatch.Workflow{Client: tc, Store: a.Store, TaskQueue: a.Cfg.Temporal.TaskQueue}
 	}
-	return &dispatch.Dispatcher{Store: a.Store, Log: a.Log, Targets: t}
+	d := &dispatch.Dispatcher{Store: a.Store, Log: a.Log, Targets: t}
+	if tc, err := a.Temporal(); err == nil {
+		d.Signal = func(ctx context.Context, workflowID, stepKey string) error {
+			return tc.SignalWorkflow(ctx, workflowID, "", provision.SignalStep(stepKey), nil)
+		}
+	}
+	return d
 }
 
 // AuditLog sends audit events to the syslog servers and webhooks set in

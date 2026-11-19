@@ -40,6 +40,7 @@ type RESTInput struct {
 	StepKey   string             `json:"step_key"`
 	Call      blueprint.RESTCall `json:"call"`
 	Steps     map[string]any     `json:"steps,omitempty"`
+	Extra     map[string]any     `json:"extra,omitempty"`
 }
 
 // restCtx runs a call of this method. A method that can be repeated is
@@ -89,6 +90,7 @@ func (a *Activities) callREST(ctx context.Context, in RESTInput) (map[string]any
 	if err != nil {
 		return nil, err
 	}
+	addExtra(vars, in.Extra)
 	sensitive, err := a.secretInputValues(ctx, in.RequestID)
 	if err != nil {
 		return nil, permanent("%v", err)

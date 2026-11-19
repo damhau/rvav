@@ -54,6 +54,10 @@ type Evaluation struct {
 	joinable  []string
 	// Composite are a composite item's steps, evaluated.
 	Composite []compositePart
+	// GroupCatch and OnError are its parallel groups' catch paths and its
+	// error handler, planned (ADR-0057).
+	GroupCatch map[int][]provision.CompositeStep
+	OnError    []provision.CompositeStep
 	// Resources are a VM blueprint's custom resources (ADR-0056), their
 	// types checked.
 	Resources []provision.ResourceUnit
