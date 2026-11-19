@@ -182,3 +182,82 @@ func TestDeploymentLimits(t *testing.T) {
 		}
 	})
 }
+
+// TestHardGlobalLimitsHold checks that a hard global deployment limit
+// holds whichever policy decides, counted in its own environments
+// (ADR-0047): a project admin's soft policy, or one for one environment,
+// tightens it and never loosens it.
+func TestHardGlobalLimitsHold(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		d := buildVM(h, simulator.VPX())
+		const web, admin, padmin, path = "prj_web", "mkeller", "lmartin", "/api/v1/admin/deployment-limit-policies"
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id="+web, padmin, nil, 200, &form)
+		draft := api.RequestDraft{CatalogItemId: d.built.CatalogItem.Id, VersionId: form.VersionId, ProjectId: web, Environment: "dev",
+			Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
+				"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}}
+		accepting := draft
+		accepting.AcceptWarnings = new(true)
+		submit := func(d api.RequestDraft) (int, string) {
+			code, body, _ := h.do("POST", "/api/v1/requests", "tnguyen", d, "Idempotency-Key", uuid.NewString())
+			return code, string(body)
+		}
+		soft := api.PolicyEnforcementSoft
+
+		// Léa's soft 1 GB warns; the hard global 2 GB still refuses the 4 GB of size S.
+		var global, project api.DeploymentLimitPolicy
+		h.json("POST", path, admin, api.DeploymentLimitPolicyWrite{Name: "rvav memory", MemoryGbPerDeployment: new(2)}, 201, &global)
+		h.json("POST", path, padmin, api.DeploymentLimitPolicyWrite{Name: "Web memory", ProjectId: new(web), Priority: new(10),
+			MemoryGbPerDeployment: new(1), Enforcement: &soft}, 201, &project)
+		const overGlobal = "Deployments in Web Platform may have at most 2 GB of memory under rvav memory, and this one would have 4."
+		if code, body := submit(accepting); code != 422 || !strings.Contains(body, overGlobal) {
+			t.Fatalf("submit past the hard global memory limit = %d %s", code, body)
+		}
+		var pv api.RequestPreview
+		h.json("POST", "/api/v1/requests/preview", "tnguyen", draft, 200, &pv)
+		var memory api.DeploymentLimitLine
+		for _, l := range valueOf(pv.Limits) {
+			if l.Kind == api.MemoryGbPerDeployment {
+				memory = l
+			}
+		}
+		if pv.Valid || memory.Policy != "rvav memory" || !memory.Exceeds || len(valueOf(pv.Warnings)) != 1 {
+			t.Fatalf("preview: valid %v, memory %+v, warnings %+v", pv.Valid, memory, valueOf(pv.Warnings))
+		}
+		h.json("DELETE", path+"/"+project.Id, padmin, nil, 204, nil)
+		h.json("DELETE", path+"/"+global.Id, admin, nil, 204, nil)
+
+		// Thomas's deployment is in Test: Léa's limit for dev counts none, the global one counts it.
+		if _, err := h.store.Pool.Exec(ctx, `update deployments set environment = 'tst' where id = $1`, d.id); err != nil {
+			t.Fatal(err)
+		}
+		h.json("POST", path, admin, api.DeploymentLimitPolicyWrite{Name: "One each", DeploymentsPerUser: new(1)}, 201, nil)
+		h.json("POST", path, padmin, api.DeploymentLimitPolicyWrite{Name: "One each in dev", ProjectId: new(web), Environment: new("dev"),
+			Priority: new(10), DeploymentsPerUser: new(1)}, 201, nil)
+		const overEach = "Each user may have at most 1 deployment in Web Platform under One each, and you would have 2. " +
+			"Delete one, or ask an administrator to raise the limit."
+		if code, body := submit(draft); code != 422 || !strings.Contains(body, overEach) {
+			t.Fatalf("a second deployment past the global count = %d %s", code, body)
+		}
+		var ex api.PolicyExplanation
+		h.json("POST", "/api/v1/admin/policies/explain", padmin, api.PolicyExplainQuery{ProjectId: web, Environment: "dev",
+			AsUserId: new(seed.UserID("tnguyen"))}, 200, &ex)
+		if len(ex.Limits.Lines) != 1 || ex.Limits.Lines[0].Policy != "One each" || valueOf(ex.Limits.Lines[0].Used) != 1 {
+			t.Fatalf("explained limits = %+v", ex.Limits.Lines)
+		}
+		why := map[string]api.PolicyConsidered{}
+		for _, c := range ex.Limits.Considered {
+			why[c.Name] = c
+		}
+		if c := why["One each in dev"]; !c.Applies || c.Why != "Its deployments per user gives way to the global One each, hard and stricter." {
+			t.Fatalf("One each in dev considered: %+v", c)
+		}
+		if c := why["One each"]; !c.Applies || c.Why != "Decides deployments per user." {
+			t.Fatalf("One each considered: %+v", c)
+		}
+	})
+}

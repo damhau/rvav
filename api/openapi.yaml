@@ -11125,7 +11125,12 @@ components:
           items: { $ref: "#/components/schemas/DeploymentLimitPolicy" }
     DeploymentLimitLine:
       type: object
-      description: A deployment limit that applies to a request or an update, and where it stands with it.
+      description: |
+        A deployment limit that applies to a request or an update, and
+        where it stands with it. One line per limit: of the policies that
+        hold it (the one that decides and every hard global one), a hard
+        one gone over, else a soft one, else the one with the least room
+        left.
       required: [kind, limit, value, exceeds, enforcement, policy]
       properties:
         kind: { $ref: "#/components/schemas/DeploymentLimitKind" }
@@ -11139,7 +11144,7 @@ components:
           type: boolean
           description: The request goes over the limit; an update only when it grows the deployment.
         enforcement: { $ref: "#/components/schemas/PolicyEnforcement" }
-        policy: { type: string, description: "The policy that decides this limit, by name." }
+        policy: { type: string, description: "The policy whose limit this is, by name." }
         environment:
           $ref: "#/components/schemas/EnvironmentKey"
           description: The policy's environment, when it is for one.
@@ -11149,7 +11154,10 @@ components:
       properties:
         lines:
           type: array
-          description: The limits that apply here, each with the policy that decides it.
+          description: |
+            The limits that apply here, one line per limit: of the
+            policies that hold it (the one that decides and every hard
+            global one), the one with the least room left.
           items: { $ref: "#/components/schemas/PolicyLimitLine" }
         considered:
           type: array

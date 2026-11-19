@@ -83,13 +83,15 @@ applies to each project on its own: its deployment count is per project.
 - **Each limit is decided on its own.** The enabled policies that apply
   (global or the project's, for every environment or the request's) are
   tried by priority, global first on a tie, and the first that sets the
-  limit decides. When it is a project's, the first global one that sets
-  the limit after it still decides if it is hard and stricter: a lower
-  limit, or the same limit when the project's is soft. A soft global
-  policy doesn't win over a project's. So a project admin tightens a
-  limit, and loosens only a soft one, as with day-2 policies. A project
-  admin's policy is not checked against the global ones when written:
-  the combining keeps a hard global limit.
+  limit decides. Every hard global policy that sets it holds too, each
+  counted in its own environment or in all, whatever the numbers: a
+  change fits each of them. A soft global policy gives way to a
+  project's tried before it. So a project admin tightens a hard global
+  limit and never loosens it: not with a soft policy, nor with one for a
+  single environment, which counts only that environment's deployments
+  while the global one counts all. A project admin's policy is not
+  checked against the global ones when written: the combining keeps
+  every hard global limit.
 - **What counts:** a project's deployments not deleted, in the policy's
   environment when it has one. Failed deployments count, and so do those
   of requests not done yet, waiting for approval included: their rows
@@ -114,9 +116,11 @@ applies to each project on its own: its deployment count is per project.
   ADR-0045; it doesn't ask for approval. Approver edits don't warn: the
   requester accepted at submit.
 - **Previews list the limits that apply** (`RequestPreview.limits`,
-  `UpdatePreview.limits`), each with the policy that decides, and **What
-  applies here** lists them with the count the explained user, or the
-  project, has now (`PolicyExplanation.limits`).
+  `UpdatePreview.limits`), one line per limit: of the policies that hold
+  it, a hard one gone over, else a soft one, else the one with the least
+  room left. **What applies here** lists them the same way, with the
+  count the explained user, or the project, has now
+  (`PolicyExplanation.limits`).
 
 ### Storage
 Migration 00081 adds `user_quotas` (a project, or null for rvav) and
@@ -133,6 +137,10 @@ Migration 00083 adds `deployment_limit_policies`.
   and a limit on deployments differ for multi-VM items.
 - A soft deployment limit warns and lets the requester go on; one that
   should hold for approval is a soft quota, or an approval policy.
+- Until C2.4 (#160), a hard global limit held over a project's policy
+  only when its number was lower: a project admin's soft policy, or one
+  for a single environment, loosened it. Each hard global limit now holds
+  on its own.
 - The vRA importer's plan maps each quota level to the rvav level that
   counts the same, and a deployment limit policy's vCPU, memory and count
   to an rvav one, with vRA's enforcement. A user level of a policy for

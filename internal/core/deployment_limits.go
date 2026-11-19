@@ -142,69 +142,87 @@ func (s *Service) DeleteDeploymentLimitPolicy(ctx context.Context, p *auth.Princ
 	return nil
 }
 
-// limitChoice is the policy that decides a limit, and the limit.
+// limitChoice is a policy that holds a limit, and the limit.
 type limitChoice struct {
 	pol   store.DeploymentLimitPolicy
 	limit int
 }
 
 // limitsHere are the deployment limits for a project and environment, each
-// decided on its own (ADR-0047): the policies are tried by priority, the
+// held on its own (ADR-0047): the policies are tried by priority, the
 // global and the project's together, and the first enabled one that sets
-// the limit decides. When it is a project's, the first global one that
-// sets it after still decides if it is hard and stricter, as day-2
-// policies combine (ADR-0045). why says, per policy that applies, what it
-// decides and what it gives way on; decides, whether it decides any.
-func limitsHere(all []store.DeploymentLimitPolicy, projectID, env string) (chosen map[api.DeploymentLimitKind]limitChoice,
-	why map[string]string, decides map[string]bool) {
-	chosen, why, decides = map[api.DeploymentLimitKind]limitChoice{}, map[string]string{}, map[string]bool{}
-	gave := map[string][]string{}
+// the limit decides. Every hard global policy that sets it holds too, each
+// counted in its own environment or all, so a project's policy tightens a
+// hard global limit and never loosens it; a soft global one gives way to a
+// project's tried first. The deciding policy comes first.
+func limitsHere(all []store.DeploymentLimitPolicy, projectID, env string) map[api.DeploymentLimitKind][]limitChoice {
+	held := map[api.DeploymentLimitKind][]limitChoice{}
 	for _, k := range limitKinds {
-		var first *limitChoice
 		for _, pol := range all {
 			v := limitOf(pol, k)
 			if v == nil || !limitApplies(pol, projectID, env) {
 				continue
 			}
-			if first == nil {
-				first = &limitChoice{pol: pol, limit: *v}
-				if pol.ProjectID == nil {
-					break
-				}
-				continue
+			if len(held[k]) == 0 || pol.ProjectID == nil && pol.Enforcement != store.EnforcementSoft {
+				held[k] = append(held[k], limitChoice{pol: pol, limit: *v})
 			}
-			if pol.ProjectID != nil {
-				continue
-			}
-			stricter := *v < first.limit || *v == first.limit && first.pol.Enforcement == store.EnforcementSoft
-			if pol.Enforcement != store.EnforcementSoft && stricter {
-				gave[first.pol.ID] = append(gave[first.pol.ID], fmt.Sprintf("Its %s gives way to the global %s, hard and stricter.",
-					limitNames[k], pol.Name))
-				first = &limitChoice{pol: pol, limit: *v}
-			}
-			break
-		}
-		if first != nil {
-			chosen[k] = *first
 		}
 	}
-	names := map[string][]string{}
+	return held
+}
+
+// tightestLimit is the one of the limits held with the least room left,
+// the earliest on a tie.
+func tightestLimit(held []limitChoice, room func(limitChoice) int) limitChoice {
+	best := held[0]
+	for _, c := range held[1:] {
+		if room(c) < room(best) {
+			best = c
+		}
+	}
+	return best
+}
+
+// limitReasons says, per policy that holds a limit, what it decides: the
+// limits shown are its own, a deciding policy's other limits give way to a
+// hard global one with less room, and a hard global one's not shown hold
+// too.
+func limitReasons(held map[api.DeploymentLimitKind][]limitChoice, shown map[api.DeploymentLimitKind]limitChoice) (
+	why map[string]string, holds map[string]bool) {
+	why, holds = map[string]string{}, map[string]bool{}
+	decided, gave, also := map[string][]string{}, map[string][]string{}, map[string][]string{}
+	var order []string
 	for _, k := range limitKinds {
-		if c, ok := chosen[k]; ok {
-			names[c.pol.ID] = append(names[c.pol.ID], limitNames[k])
+		for i, c := range held[k] {
+			id := c.pol.ID
+			if !holds[id] {
+				order = append(order, id)
+			}
+			holds[id] = true
+			switch {
+			case shown[k].pol.ID == id:
+				decided[id] = append(decided[id], limitNames[k])
+			case i == 0:
+				gave[id] = append(gave[id], fmt.Sprintf("Its %s gives way to the global %s, hard and stricter.", limitNames[k], shown[k].pol.Name))
+			default:
+				also[id] = append(also[id], limitNames[k])
+			}
 		}
 	}
-	for _, pol := range all {
+	for _, id := range order {
 		var parts []string
-		if len(names[pol.ID]) > 0 {
-			decides[pol.ID] = true
-			parts = append(parts, "Decides "+joinNames(names[pol.ID])+".")
+		if len(decided[id]) > 0 {
+			parts = append(parts, "Decides "+joinNames(decided[id])+".")
 		}
-		if parts = append(parts, gave[pol.ID]...); len(parts) > 0 {
-			why[pol.ID] = strings.Join(parts, " ")
+		parts = append(parts, gave[id]...)
+		if n := len(also[id]); n > 0 {
+			verb := map[bool]string{true: "holds", false: "hold"}[n == 1]
+			parts = append(parts, fmt.Sprintf("Its %s %s too: a hard global limit applies on top of the policy that decides.",
+				joinNames(also[id]), verb))
 		}
+		why[id] = strings.Join(parts, " ")
 	}
-	return chosen, why, decides
+	return why, holds
 }
 
 func limitApplies(pol store.DeploymentLimitPolicy, projectID, env string) bool {
@@ -238,8 +256,8 @@ func (s *Service) checkLimits(ctx context.Context, ask limitAsk) (limitCheck, er
 	if err != nil || len(all) == 0 {
 		return out, err
 	}
-	chosen, _, _ := limitsHere(all, ask.Project.ID, ask.Env)
-	if len(chosen) == 0 {
+	held := limitsHere(all, ask.Project.ID, ask.Env)
+	if len(held) == 0 {
 		return out, nil
 	}
 	counts, err := s.Store.DeploymentCounts(ctx, ask.Project.ID, ask.OwnerID)
@@ -247,41 +265,64 @@ func (s *Service) checkLimits(ctx context.Context, ask limitAsk) (limitCheck, er
 		return out, err
 	}
 	for _, k := range limitKinds {
-		c, ok := chosen[k]
-		if !ok {
-			continue
+		var lines []api.DeploymentLimitLine
+		for _, c := range held[k] {
+			owned, inProject := countIn(counts, c.pol.Environment)
+			var value, add int
+			switch k {
+			case api.DeploymentsPerUser:
+				value, add = owned+ask.ToOwner, ask.ToOwner
+			case api.DeploymentsPerProject:
+				value, add = inProject+ask.ToProject, ask.ToProject
+			case api.VcpuPerDeployment:
+				value, add = ask.VCPU, ask.AddVCPU
+			case api.MemoryGbPerDeployment:
+				value, add = ask.MemoryGB, ask.AddMemory
+			}
+			count := k == api.DeploymentsPerUser || k == api.DeploymentsPerProject
+			if count && add == 0 || !count && value == 0 {
+				continue
+			}
+			line := api.DeploymentLimitLine{Kind: k, Limit: c.limit, Value: value, Exceeds: add > 0 && value > c.limit,
+				Enforcement: api.PolicyEnforcement(c.pol.Enforcement), Policy: c.pol.Name, Environment: c.pol.Environment}
+			lines = append(lines, line)
+			if !line.Exceeds {
+				continue
+			}
+			soft := c.pol.Enforcement == store.EnforcementSoft
+			msg := ask.limitMessage(k, c, value, soft)
+			if soft {
+				out.Soft = append(out.Soft, present.Warning(c.pol.Name, msg))
+			} else if _, ok := out.Hard[k]; !ok {
+				out.Hard[k] = msg
+			}
 		}
-		owned, held := countIn(counts, c.pol.Environment)
-		var value, add int
-		switch k {
-		case api.DeploymentsPerUser:
-			value, add = owned+ask.ToOwner, ask.ToOwner
-		case api.DeploymentsPerProject:
-			value, add = held+ask.ToProject, ask.ToProject
-		case api.VcpuPerDeployment:
-			value, add = ask.VCPU, ask.AddVCPU
-		case api.MemoryGbPerDeployment:
-			value, add = ask.MemoryGB, ask.AddMemory
-		}
-		count := k == api.DeploymentsPerUser || k == api.DeploymentsPerProject
-		if count && add == 0 || !count && value == 0 {
-			continue
-		}
-		line := api.DeploymentLimitLine{Kind: k, Limit: c.limit, Value: value, Exceeds: add > 0 && value > c.limit,
-			Enforcement: api.PolicyEnforcement(c.pol.Enforcement), Policy: c.pol.Name, Environment: c.pol.Environment}
-		out.Lines = append(out.Lines, line)
-		if !line.Exceeds {
-			continue
-		}
-		soft := c.pol.Enforcement == store.EnforcementSoft
-		msg := ask.limitMessage(k, c, value, soft)
-		if soft {
-			out.Soft = append(out.Soft, present.Warning(c.pol.Name, msg))
-		} else {
-			out.Hard[k] = msg
+		if len(lines) > 0 {
+			out.Lines = append(out.Lines, bindingLine(lines))
 		}
 	}
 	return out, nil
+}
+
+// bindingLine is the one line shown of a limit's: the first hard one gone
+// over, else the first soft one, else the one with the least room left.
+func bindingLine(lines []api.DeploymentLimitLine) api.DeploymentLimitLine {
+	rank := func(l api.DeploymentLimitLine) int {
+		switch {
+		case l.Exceeds && l.Enforcement != api.PolicyEnforcementSoft:
+			return 0
+		case l.Exceeds:
+			return 1
+		}
+		return 2
+	}
+	best := lines[0]
+	for _, l := range lines[1:] {
+		if r, b := rank(l), rank(best); r < b || r == b && r == 2 && l.Limit-l.Value < best.Limit-best.Value {
+			best = l
+		}
+	}
+	return best
 }
 
 // countIn sums the counts in env, or in every environment when env is nil.
@@ -496,7 +537,8 @@ func (s *Service) day2Limits(ctx context.Context, p *auth.Principal, a *day2.Act
 }
 
 // explainLimits says which policy decides each deployment limit in a
-// project and environment, counting what as owns there.
+// project and environment, counting what as owns there: of the limits
+// held, the one with the least room left.
 func (s *Service) explainLimits(ctx context.Context, as *auth.Principal, proj store.Project, env store.Environment,
 	full bool) (api.PolicyLimits, error) {
 	out := api.PolicyLimits{Lines: []api.PolicyLimitLine{}, Considered: []api.PolicyConsidered{}}
@@ -504,27 +546,37 @@ func (s *Service) explainLimits(ctx context.Context, as *auth.Principal, proj st
 	if err != nil || len(all) == 0 {
 		return out, err
 	}
-	chosen, why, decides := limitsHere(all, proj.ID, env.Key)
+	held := limitsHere(all, proj.ID, env.Key)
 	counts, err := s.Store.DeploymentCounts(ctx, proj.ID, as.User.ID)
 	if err != nil {
 		return out, err
 	}
-	for _, k := range limitKinds {
-		c, ok := chosen[k]
-		if !ok {
-			continue
-		}
-		line := api.PolicyLimitLine{Kind: k, Limit: c.limit, Enforcement: api.PolicyEnforcement(c.pol.Enforcement), Policy: c.pol.Name,
-			Environment: c.pol.Environment}
-		owned, held := countIn(counts, c.pol.Environment)
+	used := func(k api.DeploymentLimitKind, c limitChoice) *int {
+		owned, inProject := countIn(counts, c.pol.Environment)
 		switch k {
 		case api.DeploymentsPerUser:
-			line.Used = &owned
+			return &owned
 		case api.DeploymentsPerProject:
-			line.Used = &held
+			return &inProject
 		}
-		out.Lines = append(out.Lines, line)
+		return nil
 	}
+	shown := map[api.DeploymentLimitKind]limitChoice{}
+	for _, k := range limitKinds {
+		if len(held[k]) == 0 {
+			continue
+		}
+		c := tightestLimit(held[k], func(c limitChoice) int {
+			if n := used(k, c); n != nil {
+				return c.limit - *n
+			}
+			return c.limit
+		})
+		shown[k] = c
+		out.Lines = append(out.Lines, api.PolicyLimitLine{Kind: k, Limit: c.limit, Enforcement: api.PolicyEnforcement(c.pol.Enforcement),
+			Policy: c.pol.Name, Environment: c.pol.Environment, Used: used(k, c)})
+	}
+	why, holds := limitReasons(held, shown)
 	for _, pol := range all {
 		if !full && pol.ProjectID != nil && *pol.ProjectID != proj.ID {
 			continue
@@ -537,10 +589,8 @@ func (s *Service) explainLimits(ctx context.Context, as *auth.Principal, proj st
 			c.Why = "Only for another project."
 		case pol.Environment != nil && *pol.Environment != env.Key:
 			c.Why = "Only for " + *pol.Environment + "."
-		case decides[pol.ID]:
+		case holds[pol.ID]:
 			c.Applies, c.Why = true, why[pol.ID]
-		case why[pol.ID] != "":
-			c.Why = why[pol.ID]
 		default:
 			c.Why = "A policy tried before it decides each of its limits."
 		}

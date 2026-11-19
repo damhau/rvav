@@ -8454,7 +8454,13 @@ export interface components {
         DeploymentLimitPolicyList: {
             items: components["schemas"]["DeploymentLimitPolicy"][];
         };
-        /** @description A deployment limit that applies to a request or an update, and where it stands with it. */
+        /**
+         * @description A deployment limit that applies to a request or an update, and
+         *     where it stands with it. One line per limit: of the policies that
+         *     hold it (the one that decides and every hard global one), a hard
+         *     one gone over, else a soft one, else the one with the least room
+         *     left.
+         */
         DeploymentLimitLine: {
             kind: components["schemas"]["DeploymentLimitKind"];
             /** @description The most the policy allows. */
@@ -8467,13 +8473,17 @@ export interface components {
             /** @description The request goes over the limit; an update only when it grows the deployment. */
             exceeds: boolean;
             enforcement: components["schemas"]["PolicyEnforcement"];
-            /** @description The policy that decides this limit, by name. */
+            /** @description The policy whose limit this is, by name. */
             policy: string;
             /** @description The policy's environment, when it is for one. */
             environment?: components["schemas"]["EnvironmentKey"];
         };
         PolicyLimits: {
-            /** @description The limits that apply here, each with the policy that decides it. */
+            /**
+             * @description The limits that apply here, one line per limit: of the
+             *     policies that hold it (the one that decides and every hard
+             *     global one), the one with the least room left.
+             */
             lines: components["schemas"]["PolicyLimitLine"][];
             considered: components["schemas"]["PolicyConsidered"][];
         };

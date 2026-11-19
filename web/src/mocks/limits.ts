@@ -1,6 +1,6 @@
 // Deployment limit policies (ADR-0047), as the server's deployment_limits.go:
-// each limit decided on its own by priority, a hard stricter global policy
-// winning over a project's; and what they add to previews and What applies here.
+// each limit decided on its own by priority, every hard global policy holding
+// on top; and what they add to previews and What applies here.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { audited } from "./governance";
@@ -48,42 +48,51 @@ const appliesHere = (p: Policy, projectId: string, env: string) =>
 
 const joinNames = (n: string[]) => (n.length < 2 ? (n[0] ?? "") : `${n.slice(0, -1).join(", ")} and ${n.at(-1)}`);
 
-/** As the server's limitsHere: the policy deciding each limit, and why each policy decides what it does. */
+/** As the server's limitsHere: per limit, the deciding policy first, then every other hard global one that sets it. */
 export function limitsHere(db: Db, projectId: string, env: string) {
   const all = ordered(limitState(db).policies);
-  const chosen: Partial<Record<Kind, Choice>> = {};
-  const gave: Record<string, string[]> = {};
+  const held: Partial<Record<Kind, Choice[]>> = {};
   for (const k of limitKinds) {
-    let first: Choice | undefined;
     for (const pol of all) {
       const v = pol[k];
       if (v == null || !appliesHere(pol, projectId, env)) continue;
-      if (!first) {
-        first = { pol, limit: v };
-        if (!pol.project_id) break;
-        continue;
-      }
-      if (pol.project_id) continue;
-      const stricter = v < first.limit || (v === first.limit && first.pol.enforcement === "soft");
-      if (pol.enforcement !== "soft" && stricter) {
-        (gave[first.pol.id] ??= []).push(`Its ${kindNames[k]} gives way to the global ${pol.name}, hard and stricter.`);
-        first = { pol, limit: v };
-      }
-      break;
+      const list = (held[k] ??= []);
+      if (list.length === 0 || (!pol.project_id && pol.enforcement !== "soft")) list.push({ pol, limit: v });
     }
-    if (first) chosen[k] = first;
   }
+  return { all, held };
+}
+
+/** As the server's limitReasons: what each policy holding a limit decides, given the one shown per limit. */
+function limitReasons(held: Partial<Record<Kind, Choice[]>>, shown: Partial<Record<Kind, Choice>>) {
   const decided: Record<string, string[]> = {};
+  const gave: Record<string, string[]> = {};
+  const also: Record<string, string[]> = {};
+  const order: string[] = [];
   for (const k of limitKinds) {
-    const c = chosen[k];
-    if (c) (decided[c.pol.id] ??= []).push(kindNames[k]);
+    (held[k] ?? []).forEach((c, i) => {
+      const id = c.pol.id;
+      if (!order.includes(id)) order.push(id);
+      if (shown[k]?.pol.id === id) (decided[id] ??= []).push(kindNames[k]);
+      else if (i === 0)
+        (gave[id] ??= []).push(`Its ${kindNames[k]} gives way to the global ${shown[k]!.pol.name}, hard and stricter.`);
+      else (also[id] ??= []).push(kindNames[k]);
+    });
   }
   const why: Record<string, string> = {};
-  for (const pol of all) {
-    const parts = [...(decided[pol.id] ? [`Decides ${joinNames(decided[pol.id]!)}.`] : []), ...(gave[pol.id] ?? [])];
-    if (parts.length) why[pol.id] = parts.join(" ");
+  for (const id of order) {
+    const a = also[id] ?? [];
+    why[id] = [
+      ...(decided[id] ? [`Decides ${joinNames(decided[id])}.`] : []),
+      ...(gave[id] ?? []),
+      ...(a.length
+        ? [
+            `Its ${joinNames(a)} ${a.length === 1 ? "holds" : "hold"} too: a hard global limit applies on top of the policy that decides.`,
+          ]
+        : []),
+    ].join(" ");
   }
-  return { all, chosen, why, decides: (id: string) => Boolean(decided[id]) };
+  return why;
 }
 
 /** A project's deployments not deleted, in env when given, and those ownerId owns. */
@@ -113,71 +122,95 @@ export type LimitAsk = {
 
 const deployments = (n: number) => (n === 1 ? "1 deployment" : `${n} deployments`);
 
-/** As the server's checkLimits: the lines, the hard limits passed in words, and the soft ones' warnings. */
+/** As the server's checkLimits: one line per limit, the hard limits passed in words, and the soft ones' warnings. */
 export function limitCheck(db: Db, sc: LimitScope, ask: LimitAsk) {
-  const { chosen } = limitsHere(db, sc.project.id, sc.env.key);
+  const { held } = limitsHere(db, sc.project.id, sc.env.key);
   const lines: S["DeploymentLimitLine"][] = [];
   const hard: string[] = [];
   const soft: S["PolicyWarning"][] = [];
   for (const k of limitKinds) {
-    const c = chosen[k];
-    if (!c) continue;
-    const n = counted(db, sc.project.id, sc.owner.id, c.pol.environment);
-    const [value, add] = {
-      deployments_per_user: [n.owned + ask.toOwner, ask.toOwner],
-      deployments_per_project: [n.all + ask.toProject, ask.toProject],
-      vcpu_per_deployment: [ask.vcpu, ask.addVcpu],
-      memory_gb_per_deployment: [ask.memory, ask.addMemory],
-    }[k] as [number, number];
-    if (isCount(k) ? add === 0 : value === 0) continue;
-    const exceeds = add > 0 && value > c.limit;
-    lines.push({
-      kind: k,
-      limit: c.limit,
-      value,
-      exceeds,
-      enforcement: c.pol.enforcement ?? "hard",
-      policy: c.pol.name,
-      ...(c.pol.environment ? { environment: c.pol.environment } : {}),
-    });
-    if (!exceeds) continue;
-    const isSoft = c.pol.enforcement === "soft";
-    const where = c.pol.environment ? `${sc.project.name} (${sc.env.name})` : sc.project.name;
-    const may = isSoft ? "should" : "may";
-    const which = ask.many ? "the largest" : "this one";
-    const msg = {
-      deployments_per_user: `Each user ${may} have at most ${deployments(c.limit)} in ${where} under ${c.pol.name}, and ${sc.you ? "you" : sc.owner.name} would have ${value}.`,
-      deployments_per_project: `${where} ${may} have at most ${deployments(c.limit)} under ${c.pol.name}, and it would have ${value}.`,
-      vcpu_per_deployment: `Deployments in ${where} ${may} have at most ${c.limit} vCPU under ${c.pol.name}, and ${which} would have ${value}.`,
-      memory_gb_per_deployment: `Deployments in ${where} ${may} have at most ${c.limit} GB of memory under ${c.pol.name}, and ${which} would have ${value}.`,
-    }[k];
-    if (isSoft) {
-      soft.push(warning(c.pol.name, msg));
-      continue;
+    const here: S["DeploymentLimitLine"][] = [];
+    let refused = false;
+    for (const c of held[k] ?? []) {
+      const n = counted(db, sc.project.id, sc.owner.id, c.pol.environment);
+      const [value, add] = {
+        deployments_per_user: [n.owned + ask.toOwner, ask.toOwner],
+        deployments_per_project: [n.all + ask.toProject, ask.toProject],
+        vcpu_per_deployment: [ask.vcpu, ask.addVcpu],
+        memory_gb_per_deployment: [ask.memory, ask.addMemory],
+      }[k] as [number, number];
+      if (isCount(k) ? add === 0 : value === 0) continue;
+      const exceeds = add > 0 && value > c.limit;
+      here.push({
+        kind: k,
+        limit: c.limit,
+        value,
+        exceeds,
+        enforcement: c.pol.enforcement ?? "hard",
+        policy: c.pol.name,
+        ...(c.pol.environment ? { environment: c.pol.environment } : {}),
+      });
+      if (!exceeds) continue;
+      const isSoft = c.pol.enforcement === "soft";
+      const where = c.pol.environment ? `${sc.project.name} (${sc.env.name})` : sc.project.name;
+      const may = isSoft ? "should" : "may";
+      const which = ask.many ? "the largest" : "this one";
+      const msg = {
+        deployments_per_user: `Each user ${may} have at most ${deployments(c.limit)} in ${where} under ${c.pol.name}, and ${sc.you ? "you" : sc.owner.name} would have ${value}.`,
+        deployments_per_project: `${where} ${may} have at most ${deployments(c.limit)} under ${c.pol.name}, and it would have ${value}.`,
+        vcpu_per_deployment: `Deployments in ${where} ${may} have at most ${c.limit} vCPU under ${c.pol.name}, and ${which} would have ${value}.`,
+        memory_gb_per_deployment: `Deployments in ${where} ${may} have at most ${c.limit} GB of memory under ${c.pol.name}, and ${which} would have ${value}.`,
+      }[k];
+      if (isSoft) {
+        soft.push(warning(c.pol.name, msg));
+        continue;
+      }
+      if (refused) continue;
+      refused = true;
+      const whom = !c.pol.project_id || c.pol.set_by_admin ? "an administrator" : "a project admin";
+      hard.push(`${msg} ${isCount(k) ? "Delete one" : "Choose a smaller size"}, or ask ${whom} to raise the limit.`);
     }
-    const whom = !c.pol.project_id || c.pol.set_by_admin ? "an administrator" : "a project admin";
-    hard.push(`${msg} ${isCount(k) ? "Delete one" : "Choose a smaller size"}, or ask ${whom} to raise the limit.`);
+    if (here.length) lines.push(bindingLine(here));
   }
   return { lines, hard, soft };
 }
 
-/** What applies here's limits, counting what userId owns. */
+/** As the server's bindingLine: the first hard limit gone over, else the first soft one, else the least room left. */
+function bindingLine(lines: S["DeploymentLimitLine"][]) {
+  const rank = (l: S["DeploymentLimitLine"]) => (l.exceeds ? (l.enforcement === "soft" ? 1 : 0) : 2);
+  return lines.reduce((best, l) => {
+    const r = rank(l);
+    const b = rank(best);
+    return r < b || (r === b && r === 2 && l.limit - l.value < best.limit - best.value) ? l : best;
+  });
+}
+
+/** What applies here's limits, counting what userId owns: of those held, the one with the least room left. */
 export function explainLimits(db: Db, projectId: string, env: string, userId: string): S["PolicyLimits"] {
-  const { all, chosen, why, decides } = limitsHere(db, projectId, env);
-  const lines: S["PolicyLimitLine"][] = [];
-  for (const k of limitKinds) {
-    const c = chosen[k];
-    if (!c) continue;
+  const { all, held } = limitsHere(db, projectId, env);
+  const used = (k: Kind, c: Choice) => {
     const n = counted(db, projectId, userId, c.pol.environment);
+    return k === "deployments_per_user" ? n.owned : k === "deployments_per_project" ? n.all : undefined;
+  };
+  const lines: S["PolicyLimitLine"][] = [];
+  const shown: Partial<Record<Kind, Choice>> = {};
+  for (const k of limitKinds) {
+    const list = held[k];
+    if (!list?.length) continue;
+    const room = (c: Choice) => c.limit - (used(k, c) ?? 0);
+    const c = list.reduce((best, c) => (room(c) < room(best) ? c : best));
+    shown[k] = c;
+    const u = used(k, c);
     lines.push({
       kind: k,
       limit: c.limit,
       enforcement: c.pol.enforcement ?? "hard",
       policy: c.pol.name,
       ...(c.pol.environment ? { environment: c.pol.environment } : {}),
-      ...(k === "deployments_per_user" ? { used: n.owned } : k === "deployments_per_project" ? { used: n.all } : {}),
+      ...(u === undefined ? {} : { used: u }),
     });
   }
+  const why = limitReasons(held, shown);
   const considered = all
     .filter((p) => db.me.permissions.includes("policies.read") || !p.project_id || p.project_id === projectId)
     .map((p) => {
@@ -186,8 +219,8 @@ export function explainLimits(db: Db, projectId: string, env: string, userId: st
       if (p.project_id && p.project_id !== projectId)
         return { ...base, applies: false, why: "Only for another project." };
       if (p.environment && p.environment !== env) return { ...base, applies: false, why: `Only for ${p.environment}.` };
-      if (decides(p.id)) return { ...base, applies: true, why: why[p.id]! };
-      return { ...base, applies: false, why: why[p.id] ?? "A policy tried before it decides each of its limits." };
+      if (why[p.id] !== undefined) return { ...base, applies: true, why: why[p.id]! };
+      return { ...base, applies: false, why: "A policy tried before it decides each of its limits." };
     });
   return { lines, considered };
 }

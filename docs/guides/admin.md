@@ -800,11 +800,18 @@ each VM; a composite item is as large as its largest step.
 
 Each limit is decided on its own: the first enabled policy, by priority,
 that sets it and applies to the request's project and environment
-decides. A global policy comes first on a tie. When a project's policy
-decides, the first global policy after it that sets the same limit still
-wins if it's hard and stricter: a lower limit, or the same limit when the
-project's is soft. **What applies here** lists each limit with the policy
-that decides it, and says why the others don't.
+decides. A global policy comes first on a tie. Every hard global policy
+that sets the same limit holds too, each counting in its own environment
+or in all, and a request must fit all of them. So a project's policy,
+hard or soft, tightens a hard global limit and never loosens it. For
+example, with a global limit of 1 deployment per user and a project's
+limit of 1 per user in `dev`, a user who has a deployment in `tst` can't
+request one in `dev`. A soft global policy gives way to a project's
+policy tried before it. To tighten a limit, give the project's policy a
+lower priority than the global one: a project's policy tried after the
+one that decides doesn't apply. **What applies here** lists each limit
+with the policy nearest to being reached, and says why the others don't
+decide it.
 
 rvav checks the limits:
 - on a new request, as the form is filled and when it's submitted;
@@ -929,8 +936,9 @@ Project and global policies combine as follows:
   lease an administrator set, is skipped: the next rule, or the lease
   policies, decide.
 - **Deployment limits:** each limit is decided on its own, by the first
-  policy by priority that sets it. A hard global policy that is stricter
-  still wins over a project's (see [Deployment limits](#deployment-limits)).
+  policy by priority that sets it. Every hard global policy that sets it
+  holds too, so a project's policy only tightens it (see
+  [Deployment limits](#deployment-limits)).
 
 **What applies here** names the policy that decides and says why, for
 example when a global policy wins over the project's.
