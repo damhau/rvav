@@ -15,6 +15,7 @@ import type {
 import { chars, maxAskAnswer } from "@/lib/composite";
 import { toText } from "@/lib/utils";
 import { networks, sizes, type SizeKey } from "./inventory";
+import { levelAsks } from "./logic";
 
 /** A level as stored: everything but what depends on who is looking. */
 export type StoredApproval = Omit<Approval, "can_decide" | "editable_fields" | "overdue">;
@@ -153,6 +154,7 @@ export function openLevels(
   const levels: StoredApproval[] = [];
   for (const p of approval.policies) {
     for (const l of p.levels) {
+      const asks = levelAsks.get(l);
       const key = l.approvers.map((u) => u.id).join(",");
       const same = levels.find((x) => x.approvers.map((u) => u.id).join(",") === key);
       if (same) {
@@ -174,7 +176,9 @@ export function openLevels(
         escalated: false,
         justification: request.justification,
         facts: factsFor(request.inputs ?? {}, host),
-        group: null,
+        group: asks?.group ?? null,
+        ...(asks?.roles.length ? { roles: asks.roles } : {}),
+        ...(asks?.manager ? { manager: true } : {}),
         approvers: l.approvers,
         mode: l.mode ?? "any",
         votes: [],

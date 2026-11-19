@@ -18,6 +18,8 @@ import type {
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
 import { adminState, leasePolicyOf } from "./administration";
+import { celBool } from "./cel";
+import { userGroups } from "./logic";
 import type { Db, StoredRequest } from "./seed";
 
 type PolicyWarning = components["schemas"]["PolicyWarning"];
@@ -727,33 +729,75 @@ function approvalReason(a: MockAction, d: DeploymentDetail, inputs?: Inputs): st
   return "";
 }
 
+const osFamily = (guestOS?: string | null) => (guestOS?.toLowerCase().includes("windows") ? "windows" : "linux");
+
+/** What a day-2 policy's condition sees, as the server's day2Vars; inputs are unknown when listing. */
+function day2Vars(db: Db, a: MockAction, d: DeploymentDetail, roles: Set<string>, vm?: VmResource, inputs?: Inputs) {
+  const env = db.environments.find((e) => e.key === d.environment);
+  const families = [
+    ...new Set(d.resources.filter((r): r is VmResource => r.type === "vsphere.vm").map((r) => osFamily(r.vm.guest_os))),
+  ];
+  return {
+    action: { key: a.key, group: a.group, destructive: Boolean(a.destructive) },
+    resource: vm
+      ? {
+          type: "vsphere.vm",
+          name: vm.name,
+          power_state: vm.vm.power_state,
+          cpu_count: vm.vm.cpu_count,
+          memory_gb: Math.floor(vm.vm.memory_mb / 1024),
+          guest_os: vm.vm.guest_os ?? "",
+          os_family: osFamily(vm.vm.guest_os),
+        }
+      : {
+          type: "deployment",
+          name: d.name,
+          guest_os: "",
+          os_family: families.length > 1 ? "mixed" : (families[0] ?? ""),
+        },
+    deployment: { id: d.id, name: d.name, owner_id: d.owner.id },
+    project: { id: d.project.id, code: d.project.code, name: d.project.name },
+    environment: { key: d.environment, name: env?.name ?? d.environment, production: env?.production ?? false },
+    user: {
+      id: db.me.user.id,
+      roles: [...roles],
+      groups: userGroups[db.me.user.id] ?? [],
+      permissions: db.me.projects.find((p) => p.project.id === d.project.id)?.permissions ?? db.me.permissions,
+    },
+    inputs: inputs ?? null,
+    quota: { over_soft: false, over: [] },
+  };
+}
+
 /**
  * The day-2 policy that decides an action, as the server's first match by
- * priority (ADR-0045); the mock tries those whose condition is "true" only.
+ * priority (ADR-0045), with the mock's CEL. A condition that fails to
+ * evaluate leaves its policy out, as when the server lists actions.
  */
-function deciding(db: Db, a: MockAction, d: DeploymentDetail) {
+function deciding(db: Db, a: MockAction, d: DeploymentDetail, vm?: VmResource, inputs?: Inputs) {
   const roles = new Set([
     ...db.me.roles.map((r) => r.key),
     ...(db.me.projects.find((p) => p.project.id === d.project.id)?.roles.map((r) => r.key) ?? []),
     ...(d.owner.id === db.me.user.id ? ["owner"] : []),
   ]);
   const names = (p: string) => p === "*" || p === a.key || (p.endsWith("*") && a.key.startsWith(p.slice(0, -1)));
+  const vars = day2Vars(db, a, d, roles, vm, inputs);
   return adminState(db)
     .day2.filter(
       (p) =>
         p.enabled &&
         (!p.project_id || p.project_id === d.project.id) &&
-        p.condition.trim() === "true" &&
         (p.actions ?? []).some(names) &&
-        ((p.roles ?? []).length === 0 || (p.roles ?? []).some((r) => roles.has(r))),
+        ((p.roles ?? []).length === 0 || (p.roles ?? []).some((r) => roles.has(r))) &&
+        celBool(p.condition, vars, false),
     )
     .sort((x, y) => x.priority - y.priority)[0];
 }
 
 /** What a soft policy, or a soft lease, warns about instead of refusing or asking for approval. */
-function warningsFor(db: Db, a: MockAction, d: DeploymentDetail, leaseWhy: string): PolicyWarning[] {
+function warningsFor(db: Db, a: MockAction, d: DeploymentDetail, leaseWhy: string, vm?: VmResource): PolicyWarning[] {
   const out: PolicyWarning[] = [];
-  const pol = deciding(db, a, d);
+  const pol = deciding(db, a, d, vm);
   if (pol && pol.effect !== "allow" && pol.enforcement === "soft")
     out.push({
       policy: pol.name,
@@ -785,8 +829,8 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
     Boolean(held?.roles.some((r) => r.key === "member" || r.key === "project-admin")) ||
     can(db.me, `day2.${a.group}`, d.project.id) ||
     can(db.me, `day2.${a.group}:${a.key}`, d.project.id);
-  const hardDeny = (a: MockAction) => {
-    const pol = deciding(db, a, d);
+  const hardDeny = (a: MockAction, vm?: VmResource) => {
+    const pol = deciding(db, a, d, vm);
     return pol?.effect === "deny" && pol.enforcement !== "soft" ? pol.reason || `${pol.name} doesn't allow it.` : null;
   };
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
@@ -807,12 +851,12 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
             ? `The deployment is ${d.status}.`
             : null) ??
         (runs(a) ? null : `Your role in ${d.project.name} does not allow ${a.name}.`) ??
-        hardDeny(a) ??
+        hardDeny(a, vm) ??
         a.unavailable?.(vm, d) ??
         null;
       const why = approvalReason(a, d);
       const lease = a.key === "extend_lease" ? why : "";
-      const warnings = reason === null ? warningsFor(db, a, d, lease) : [];
+      const warnings = reason === null ? warningsFor(db, a, d, lease, vm) : [];
       const asks = why !== "" && !(lease && leaseSoft(db, d));
       out.push({
         key: a.key,

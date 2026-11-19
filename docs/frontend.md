@@ -667,6 +667,11 @@ holds the auditor's permissions for all of rvav. `member` is a member of
 Web Platform and Data, whose Web Platform shows deployments to their
 owners only and has a soft day-2 policy on power off: G1.3's browser spec
 (`e2e/g1-sharing.spec.ts`) starts from what the project admin did there.
+As on the server, the mock decides day-2 actions with their policies'
+conditions (`mocks/cel.ts`), applies the approval policies saved in
+**Policies** to new requests, levels asking project roles or the
+requester's manager included, and sends events and notifications under
+owners only to those who see what they're about.
 `rvav.mock.fresh` set to `1` makes it a new
 install: no environments, projects, items or integration settings, and
 the setup checklist open (`e2e/setup.spec.ts` follows it).

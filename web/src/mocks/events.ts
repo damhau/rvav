@@ -11,6 +11,8 @@ export interface Envelope {
   userId?: string;
   /** Approval events go to these users (the level's approvers). */
   userIds?: string[];
+  /** Who still gets it where they see only their own deployments (ADR-0045): the requester and owner, or the deployment's owner. */
+  viewers?: string[];
 }
 
 type Listener = (e: Envelope) => void;
@@ -49,11 +51,26 @@ export const bus = {
   },
 };
 
-/** Does this event belong on a stream opened with these topics? */
-export function matches(env: Envelope, topics: string[], projectId: string | null, viewerId?: string): boolean {
+/**
+ * Does this event belong on a stream opened with these topics? seesAll says
+ * whether the viewer sees every event of a project: not where they see only
+ * their own deployments, as the server's hub.
+ */
+export function matches(
+  env: Envelope,
+  topics: string[],
+  projectId: string | null,
+  viewerId?: string,
+  seesAll?: (projectId: string) => boolean,
+): boolean {
   const t = env.event.type;
   const inProject = !projectId || env.projectId === projectId;
+  const projectEvent = t.startsWith("request.") || t === "deployment.updated" || t === "resource.updated";
+  // A request or deployment followed was one the viewer could open.
+  const followedOnly =
+    projectEvent && !!env.projectId && !!seesAll && !seesAll(env.projectId) && !env.viewers?.includes(viewerId ?? "");
   for (const topic of topics) {
+    if (followedOnly && !topic.startsWith("request:") && !topic.startsWith("deployment:")) continue;
     if (topic === "requests" && t.startsWith("request.") && inProject) return true;
     if (topic === "deployments" && (t === "deployment.updated" || t === "resource.updated") && inProject) return true;
     if (topic === "notifications" && t === "notification") return true;

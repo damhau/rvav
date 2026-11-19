@@ -1263,6 +1263,7 @@ export const handlers = [
     const topics = list(url, "topics");
     const projectId = url.searchParams.get("project_id");
     const lastId = request.headers.get("Last-Event-ID");
+    const seesAll = (id: string) => seesDeployment(db, { project: { id }, owner: { id: "" } });
     const encoder = new TextEncoder();
     let unsubscribe = () => {};
     let heartbeat: ReturnType<typeof setInterval> | undefined;
@@ -1285,10 +1286,13 @@ export const handlers = [
         if (lastId) {
           const missed = bus.since(lastId);
           if (missed === null) control("resync");
-          else missed.filter((env) => matches(env, topics, projectId, db.me.user.id)).forEach((env) => send(env.event));
+          else
+            missed
+              .filter((env) => matches(env, topics, projectId, db.me.user.id, seesAll))
+              .forEach((env) => send(env.event));
         }
         unsubscribe = bus.subscribe((env) => {
-          if (matches(env, topics, projectId, db.me.user.id)) send(env.event);
+          if (matches(env, topics, projectId, db.me.user.id, seesAll)) send(env.event);
         });
         heartbeat = setInterval(() => control("heartbeat"), 15_000);
         request.signal.addEventListener("abort", () => {

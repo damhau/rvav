@@ -23,9 +23,10 @@ import { computedBy, defaulted, singleSource } from "@/forms/defaults";
 import { withOwnSource } from "@/forms/useFieldValues";
 import { can } from "@/lib/can";
 import { toText } from "@/lib/utils";
-import { leasePolicyOf, namingTemplate, placed, placementFolder } from "./administration";
+import { adminState, leasePolicyOf, namingTemplate, placed, placementFolder, rolesGiven } from "./administration";
 import { celBool, celEval } from "./cel";
 import { multiParts, partVMs, previewComponents } from "./components";
+import { roleRefs } from "./roles";
 import { bound, entryVars, validationErrors } from "./formLibrary";
 import { clusters, datastores, dnsZones, networks, prefix, sizes, vmFolders, type SizeKey } from "./inventory";
 import type { Db, StoredItem } from "./seed";
@@ -485,7 +486,86 @@ export function demand(item: StoredItem, inputs: Inputs, count: number): Record<
   };
 }
 
-export function approvalFor(db: Db, item: StoredItem, env: EnvironmentKey, inputs: Inputs): ApprovalPreview {
+/** Whom a preview's level asks besides its named approvers, for the levels a request opens. */
+export const levelAsks = new WeakMap<
+  object,
+  { group: string | null; roles: components["schemas"]["RoleRef"][]; manager: boolean }
+>();
+
+/**
+ * The approval policies an administrator saved, as the server applies them:
+ * enabled, for the project or global, for the item's type, and whose
+ * condition holds. Each level asks its users, its group's members, whoever
+ * holds its roles in the project and the requester's manager, never the
+ * requester. The seeded production policy stays hard-coded in approvalFor.
+ */
+function savedApprovals(
+  db: Db,
+  item: StoredItem,
+  env: EnvironmentKey,
+  inputs: Inputs,
+  project: Pick<Project, "id" | "code" | "name">,
+): ApprovalPreview["policies"] {
+  const me = db.me.user.id;
+  const size = sizes[inputs.size as SizeKey];
+  const vars = {
+    environment: env,
+    inputs,
+    project: { id: project.id, code: project.code, name: project.name, properties: {} },
+    item: { slug: item.slug, category: item.category, type: item.type },
+    vm: { vcpu: size?.vcpu ?? 0, memory_gb: size?.memoryGb ?? 0, disk_gb: size?.diskGb ?? 0, count: 1 },
+    user: {
+      id: me,
+      roles: db.me.roles.map((r) => r.key),
+      groups: userGroups[me] ?? [],
+      permissions: db.me.permissions,
+    },
+    request: { kind: "provision" },
+    quota: { over_soft: false, over: [] },
+  };
+  const out: ApprovalPreview["policies"] = [];
+  for (const pol of adminState(db).approvals) {
+    if (pol.id === "pol_prd_vm" || !pol.enabled) continue;
+    if (pol.project_id && pol.project_id !== project.id) continue;
+    if (pol.item_type && pol.item_type !== item.type) continue;
+    if (!celBool(pol.condition, vars, false)) continue;
+    if (pol.auto_approve && celBool(pol.auto_approve, vars, false)) continue;
+    out.push({
+      policy_id: pol.id,
+      name: pol.name,
+      reason: pol.reason || pol.name,
+      levels: pol.levels.map((l) => {
+        const ids = new Set(l.approvers ?? []);
+        for (const u of db.users) {
+          if (u.id === me) continue;
+          if (l.group && (userGroups[u.id] ?? []).includes(l.group)) ids.add(u.id);
+          if (l.roles?.some((k) => rolesGiven(db, project.id, u.id).includes(k))) ids.add(u.id);
+        }
+        if (l.manager && managers[me]) ids.add(managers[me]);
+        const level = {
+          name: l.name,
+          mode: l.mode ?? "any",
+          approvers: db.users.filter((u) => ids.has(u.id)),
+        };
+        levelAsks.set(level, {
+          group: l.group ?? null,
+          roles: roleRefs(db, l.roles ?? []),
+          manager: Boolean(l.manager),
+        });
+        return level;
+      }),
+    });
+  }
+  return out;
+}
+
+export function approvalFor(
+  db: Db,
+  item: StoredItem,
+  env: EnvironmentKey,
+  inputs: Inputs,
+  project?: Pick<Project, "id" | "code" | "name">,
+): ApprovalPreview {
   const leads = {
     name: "Infrastructure leads",
     approvers: db.users.filter((u) => u.id === "usr_mkeller"),
@@ -510,6 +590,7 @@ export function approvalFor(db: Db, item: StoredItem, env: EnvironmentKey, input
       levels: [leads],
     });
   }
+  if (project) policies.push(...savedApprovals(db, item, env, inputs, project));
   return { required: policies.length > 0, policies, typical_wait_seconds: policies.length ? 7200 : null };
 }
 
@@ -521,6 +602,15 @@ export const userGroups: Record<string, string[]> = {
   usr_sbrunner: ["rvav-data"],
   usr_afavre: ["rvav-core", "rvav-network"],
   usr_cdubois: ["rvav-infra-heads"],
+};
+
+/** The mock users' managers, as the server's seed and its identity provider give them (ADR-0041). */
+export const managers: Record<string, string> = {
+  usr_tnguyen: "usr_lmartin",
+  usr_lmartin: "usr_mkeller",
+  usr_sbrunner: "usr_mkeller",
+  usr_afavre: "usr_mkeller",
+  usr_mkeller: "usr_cdubois",
 };
 
 /**
@@ -688,7 +778,7 @@ export function preview(
         : undefined,
     ...(components ? { components } : {}),
     quota,
-    approval: approvalFor(db, item, draft.environment, inputs),
+    approval: approvalFor(db, item, draft.environment, inputs, project),
     ...(warnings.length ? { warnings } : {}),
     lease: {
       default_days: leaseDefault,

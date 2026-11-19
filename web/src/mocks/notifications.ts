@@ -3,6 +3,7 @@
 // up; Teams finds nobody; Slack isn't set up.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
+import { seesDeployment } from "./listing";
 import type { Db } from "./seed";
 
 type S = components["schemas"];
@@ -109,8 +110,34 @@ function preferences(db: Db): S["NotificationPreferences"] {
   };
 }
 
+/**
+ * The seeded notifications are everyone's; the server notifies only those
+ * concerned. Kept: those about a deployment or request the viewer sees,
+ * which owners only takes away (ADR-0045).
+ */
+function concerns(db: Db, n: S["Notification"]): boolean {
+  const [, kind, key] = n.link?.split("/") ?? [];
+  const me = db.me.user.id;
+  if (kind === "deployments") {
+    const d = db.deployments.find((x) => x.id === key);
+    return !d || seesDeployment(db, d);
+  }
+  if (kind === "requests") {
+    const r = db.requests.find((x) => x.request.number === key || x.request.id === key)?.request;
+    return (
+      !r ||
+      seesDeployment(db, {
+        project: r.project,
+        owner: { id: r.requester.id === me || r.on_behalf_of?.id === me ? me : r.requester.id },
+      })
+    );
+  }
+  return true;
+}
+
 export function notificationHandlers(db: Db, base: string, wait: () => Promise<void>) {
-  const unread = () => state(db).items.filter((n) => !n.read_at).length;
+  const mine = () => state(db).items.filter((n) => concerns(db, n));
+  const unread = () => mine().filter((n) => !n.read_at).length;
   return [
     http.get(`${base}/me/notifications`, async ({ request }) => {
       await wait();
@@ -118,7 +145,7 @@ export function notificationHandlers(db: Db, base: string, wait: () => Promise<v
       const onlyUnread = url.searchParams.get("unread") === "true";
       const limit = Number(url.searchParams.get("limit") ?? 50);
       const start = Number(url.searchParams.get("cursor") ?? 0);
-      const all = state(db).items.filter((n) => !onlyUnread || !n.read_at);
+      const all = mine().filter((n) => !onlyUnread || !n.read_at);
       const items = all.slice(start, start + limit);
       return HttpResponse.json({
         items,
@@ -134,7 +161,7 @@ export function notificationHandlers(db: Db, base: string, wait: () => Promise<v
           { field: "/ids", code: "required", message: "Say which, or all." },
         ]);
       const now = new Date().toISOString();
-      for (const n of state(db).items) if (!n.read_at && (b.all || b.ids?.includes(n.id))) n.read_at = now;
+      for (const n of mine()) if (!n.read_at && (b.all || b.ids?.includes(n.id))) n.read_at = now;
       return HttpResponse.json({ unread: unread() });
     }),
     http.get(`${base}/me/notification-preferences`, async () => {

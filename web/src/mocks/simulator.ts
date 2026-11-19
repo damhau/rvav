@@ -398,6 +398,10 @@ function publish(stored: StoredRequest | null, event: Omit<LiveEvent, "id" | "at
     requestNumber: stored?.request.number,
     deploymentId: dep?.id,
     userId: stored?.request.requester.id,
+    viewers:
+      event.type === "request.updated" && stored
+        ? [stored.request.requester.id, ...(stored.request.on_behalf_of ? [stored.request.on_behalf_of.id] : [])]
+        : dep && [dep.owner.id],
   });
 }
 

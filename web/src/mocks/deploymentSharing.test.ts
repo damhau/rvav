@@ -5,7 +5,9 @@
 // policies only, and a soft policy warns until the requester goes on.
 import { afterEach, describe, expect, it } from "vitest";
 import { api, call, isApiError } from "@/lib/api/client";
-import type { RequestDraft } from "@/lib/api/types";
+import type { LiveEvent, RequestDraft } from "@/lib/api/types";
+import { adminState } from "./administration";
+import { matches, type Envelope } from "./events";
 import { db, resetDb } from "./seed";
 
 const web = "prj_web";
@@ -216,5 +218,120 @@ describe("the mocks' deployment sharing", () => {
     });
     const req = await call(api.POST("/requests", { params: key(), body: { ...draft, accept_warnings: true } }));
     expect(req.warnings).toEqual([warning]);
+  });
+});
+
+describe("what the mocks tell a member of an owners-only project", () => {
+  it("streams them the events of their own requests and deployments, and of those they follow", () => {
+    const env = (type: LiveEvent["type"], extra: Partial<Envelope> = {}): Envelope => ({
+      event: { id: "evt_1", type, at: "", data: {} } as unknown as LiveEvent,
+      projectId: web,
+      ...extra,
+    });
+    const ownOnly = () => false;
+    const theirs = env("deployment.updated", { deploymentId: "dep_1", viewers: ["usr_me"] });
+    const others = env("deployment.updated", { deploymentId: "dep_2", viewers: ["usr_other"] });
+    expect(matches(theirs, ["deployments"], null, "usr_me", ownOnly)).toBe(true);
+    expect(matches(others, ["deployments"], null, "usr_me", ownOnly)).toBe(false);
+    expect(matches(others, ["deployment:dep_2"], null, "usr_me", ownOnly)).toBe(true);
+    expect(matches(others, ["deployments"], null, "usr_me", () => true)).toBe(true);
+    const step = env("request.step", { requestId: "req_1", viewers: undefined });
+    expect(matches(step, ["requests"], null, "usr_me", ownOnly)).toBe(false);
+    expect(matches(step, ["request:req_1"], null, "usr_me", ownOnly)).toBe(true);
+    // Approvals go to their approvers, whatever they see of the project.
+    expect(matches(env("approval.updated", { userIds: ["usr_me"] }), ["approvals"], null, "usr_me", ownOnly)).toBe(
+      true,
+    );
+  });
+
+  it("notifies them only of what they see", async () => {
+    as("member");
+    const seen = await call(api.GET("/me/notifications"));
+    const front = db.deployments.find((d) => d.name === "web-prd-front")!;
+    expect(seen.items.some((n) => n.link === `/deployments/${front.id}`)).toBe(true);
+    front.owner = db.deployments.find((d) => d.name === "web-dev-api")!.owner;
+    const now = await call(api.GET("/me/notifications"));
+    expect(now.items.some((n) => n.link === `/deployments/${front.id}`)).toBe(false);
+    expect(now.unread).toBe(seen.unread - 1);
+  });
+
+  it("decides day-2 actions with the policies whose condition holds", async () => {
+    as("member");
+    adminState(db).day2.push({
+      id: "d2p_prd_power",
+      name: "No power-off in production",
+      reason: "Production VMs stay on: ask the on-call team.",
+      priority: 5,
+      actions: ["power_off"],
+      roles: [],
+      condition: 'environment.production && resource.type == "vsphere.vm"',
+      effect: "deny",
+      enforcement: "hard",
+      project_id: null,
+      enabled: true,
+    });
+    const powerOff = async (name: string) => {
+      const d = db.deployments.find((x) => x.name === name)!;
+      const actions = await call(
+        api.GET("/deployments/{deploymentId}/actions", { params: { path: { deploymentId: d.id } } }),
+      );
+      return actions.items.find((a) => a.key === "power_off" && a.resource_id);
+    };
+    expect(await powerOff("web-prd-front")).toMatchObject({
+      enabled: false,
+      disabled_reason: "Production VMs stay on: ask the on-call team.",
+    });
+    expect(await powerOff("web-tst-search")).toMatchObject({ enabled: true });
+  });
+});
+
+describe("the mocks' approval levels", () => {
+  it("ask a saved policy's project role holders and the requester's manager", async () => {
+    adminState(db).approvals.push({
+      id: "pol_dev_web",
+      name: "Web Platform in development",
+      reason: "Development requests in Web Platform need a look",
+      condition: 'environment == "dev"',
+      item_type: null,
+      project_id: web,
+      priority: 50,
+      enabled: true,
+      levels: [
+        { name: "Members", roles: ["member"], mode: "any" },
+        { name: "Manager", manager: true, mode: "any" },
+      ],
+    });
+    const draft: RequestDraft = {
+      catalog_item_id: "itm_webapp",
+      version_id: db.items.find((i) => i.id === "itm_webapp")!.version.id,
+      project_id: web,
+      environment: "dev",
+      inputs: {
+        app: "shop",
+        web_nodes: 2,
+        size: "M",
+        cluster: "GVA-DEV-CL01",
+        datastore: "vsan-gva-dev-cl01",
+        network: "dvpg-app-dev-vl310",
+      },
+      count: 1,
+      lease_days: 30,
+    };
+    const preview = await call(api.POST("/requests/preview", { body: draft }));
+    expect(preview.approval.policies.map((p) => p.name)).toContain("Web Platform in development");
+    const req = await call(api.POST("/requests", { params: key(), body: draft }));
+    expect(req.status).toBe("pending_approval");
+    const levels = db.approvals.filter((a) => a.request.id === req.id);
+    expect(
+      levels.map((l) => ({
+        name: l.level.name,
+        approvers: l.approvers.map((u) => u.id),
+        roles: l.roles?.map((r) => r.key),
+        manager: l.manager,
+      })),
+    ).toEqual([
+      { name: "Members", approvers: ["usr_tnguyen"], roles: ["member"], manager: undefined },
+      { name: "Manager", approvers: ["usr_mkeller"], roles: undefined, manager: true },
+    ]);
   });
 });
