@@ -122,7 +122,8 @@ func TestMapTemplates(t *testing.T) {
 	app := ps["bp-app"]
 	comps := app.Doc.Versions[0].Blueprint["components"].([]map[string]any)
 	if app.Status != Partial || len(comps) != 2 || comps[1]["count"] != "inputs.webCount" ||
-		comps[0]["disks"].([]map[string]any)[0]["size_gb"] != 200 || !has(app, Unmapped, "resources.lb", "Cloud.NSX.LoadBalancer") {
+		comps[0]["disks"].([]map[string]any)[0]["size_gb"] != 200 || !has(app, Unmapped, "resources.lb", "Cloud.NSX.LoadBalancer") ||
+		!has(app, Warning, "naming", "Named after each component ({project}-{environment}-db{seq:02}, {project}-{environment}-web{seq:02}), not by") {
 		t.Fatalf("app = %s %+v %+v", app.Status, comps, app.Notes)
 	}
 	// The database's disk has its own constraint; its network none, so the

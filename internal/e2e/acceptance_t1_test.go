@@ -250,6 +250,13 @@ func TestT1Acceptance(t *testing.T) {
 			!slices.Equal(unmapped, []string{"resources.web.name"}) {
 			t.Fatalf("plan = %+v", shop)
 		}
+		// Its VMs are named after their component, as the plan says.
+		if !slices.ContainsFunc(shop.Notes, func(n api.VraNote) bool {
+			return n.Where == "naming" && strings.HasPrefix(n.Text,
+				"Named after each component ({project}-{environment}-db{seq:02}, {project}-{environment}-web{seq:02})")
+		}) {
+			t.Fatalf("naming notes = %+v", shop.Notes)
+		}
 		var res api.VraImportResult
 		h.json("POST", "/api/v1/admin/vra/import", admin, api.VraImportRequest{}, 200, &res)
 		if !slices.Contains(res.Created, "Shop") || len(res.Failed) != 0 {

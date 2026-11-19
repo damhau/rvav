@@ -394,7 +394,13 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		fields[f] = placementUI[f]
 	}
 
-	blueprint := map[string]any{"kind": "vm", "naming": naming(e, bp, order, note),
+	var compKeys []string
+	if single == nil {
+		for _, c := range comps {
+			compKeys = append(compKeys, c["key"].(string))
+		}
+	}
+	blueprint := map[string]any{"kind": "vm", "naming": naming(e, bp, order, compKeys, note),
 		"guest": map[string]any{"os_family": osFamily, "domain": ""}}
 	if len(sizes) > 0 {
 		blueprint["sizes"] = sizes
@@ -412,7 +418,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 		}
 	} else {
 		for _, c := range comps {
-			c["naming"] = "{project}-{environment}-" + c["key"].(string) + "{seq:02}"
+			c["naming"] = componentNaming(c["key"].(string))
 		}
 		blueprint["components"] = comps
 		blueprint["deployment_name"] = "{project}-{environment}-" + slug(bp.Name)
@@ -720,12 +726,14 @@ func mapFlavor(e *vra.Estate, props map[string]any, inputs map[string]map[string
 }
 
 // naming translates the project's machine naming template where it can.
-func naming(e *vra.Estate, bp vra.Blueprint, inputs []string, note func(level, where, text string)) string {
+// A multi-VM item's VMs are named after their component instead, the
+// components' keys given: its note says how to keep vRA's names.
+func naming(e *vra.Estate, bp vra.Blueprint, inputs, components []string, note func(level, where, text string)) string {
 	def := "{project}-{environment}-vm{seq:03}"
 	if slices.Contains(inputs, "role") {
 		def = "{project}-{environment}-{inputs.role}{seq:03}"
 	}
-	src, from := "", "the project's naming template"
+	src, from, counter := "", "the project's naming template", ""
 	if i := slices.IndexFunc(e.Projects, func(p vra.Project) bool { return p.ID == bp.ProjectID }); i >= 0 {
 		src = e.Projects[i].MachineNamingTemplate
 	}
@@ -734,15 +742,59 @@ func naming(e *vra.Estate, bp vra.Blueprint, inputs []string, note func(level, w
 	if cn, t := e.MachineNaming(bp.ProjectID); t != nil && t.Pattern != "" {
 		src, from = t.Pattern, "custom naming "+cn.Name
 		if t.StartCounter != 1 || t.IncrementStep != 1 {
-			note(Unmapped, "naming", fmt.Sprintf("Custom naming %s counts from %d by %d; an item's naming counts from 1 by 1. "+
-				"To keep vRA's numbers, make a naming policy for the project (Policies › Naming): the item's naming as its template, Start at %d and Increment %d.",
-				cn.Name, t.StartCounter, t.IncrementStep, t.StartCounter, t.IncrementStep))
+			counter = fmt.Sprintf("Start at %d and Increment %d", t.StartCounter, t.IncrementStep)
+			if len(components) == 0 {
+				note(Unmapped, "naming", fmt.Sprintf("Custom naming %s counts from %d by %d; an item's naming counts from 1 by 1. "+
+					"To keep vRA's numbers, make a naming policy for the project (Policies › Naming): the item's naming as its template, %s.",
+					cn.Name, t.StartCounter, t.IncrementStep, counter))
+			}
 		}
 	}
-	if src == "" {
-		note(Info, "naming", "Named "+def+", or by the naming policy rvav offers.")
-		return def
+	out, ok := def, false
+	if src != "" {
+		out, ok = translateNaming(src, inputs)
+		if !ok {
+			out = def
+		}
 	}
+	if len(components) > 0 {
+		names := make([]string, len(components))
+		for i, k := range components {
+			names[i] = componentNaming(k)
+		}
+		named := "Named after each component (" + strings.Join(names, ", ") + ")"
+		switch {
+		case src == "":
+			note(Info, "naming", named+". A naming policy for the project (Policies › Naming) names them instead.")
+		case !ok:
+			note(Warning, "naming", named+", not by "+from+" "+src+", which can't be translated whole.")
+		default:
+			advice := "To keep vRA's names, make a naming policy for the project (Policies › Naming) with " + out + " as its template"
+			if counter != "" {
+				advice += ", " + counter
+			}
+			note(Warning, "naming", named+", not by "+from+" "+src+". "+advice+".")
+		}
+		return out
+	}
+	switch {
+	case src == "":
+		note(Info, "naming", "Named "+def+", or by the naming policy rvav offers.")
+	case !ok:
+		note(Warning, "naming", strings.ToUpper(from[:1])+from[1:]+" "+src+" can't be translated whole: named "+def+" instead.")
+	default:
+		note(Info, "naming", "Named "+out+", from "+from+" "+src+".")
+	}
+	return out
+}
+
+// componentNaming is the naming of a multi-VM item's component, after its
+// key.
+func componentNaming(key string) string { return "{project}-{environment}-" + key + "{seq:02}" }
+
+// translateNaming is vRA's naming template src as an item's naming; false
+// when a part of it doesn't translate, or it has no counter.
+func translateNaming(src string, inputs []string) (string, bool) {
 	out := regexp.MustCompile(`\$\{(#+)\}`).ReplaceAllStringFunc(src, func(m string) string {
 		return fmt.Sprintf("{seq:%02d}", strings.Count(m, "#"))
 	})
@@ -757,12 +809,7 @@ func naming(e *vra.Estate, bp vra.Blueprint, inputs []string, note func(level, w
 		}
 		return "{inputs." + name + "}"
 	})
-	if missing || strings.Contains(out, "${") || !strings.Contains(out, "{seq:") {
-		note(Warning, "naming", strings.ToUpper(from[:1])+from[1:]+" "+src+" can't be translated whole: named "+def+" instead.")
-		return def
-	}
-	note(Info, "naming", "Named "+out+", from "+from+" "+src+".")
-	return out
+	return out, !missing && !strings.Contains(out, "${") && strings.Contains(out, "{seq:")
 }
 
 // mapDependsOn maps a machine's dependsOn: the machines it names are

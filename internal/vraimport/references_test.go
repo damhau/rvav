@@ -141,6 +141,38 @@ func TestMapReferences(t *testing.T) {
 	}
 }
 
+// TestMultiVMNaming: a multi-VM item's VMs are named after their
+// component, whatever vRA's naming; the note says so, and how to keep
+// vRA's names (#140).
+func TestMultiVMNaming(t *testing.T) {
+	e := vra.SampleEstate(time.Now())
+	const named = "Named after each component ({project}-{environment}-db{seq:02}, {project}-{environment}-webserver{seq:02})"
+	for _, c := range []struct{ project, level, text, naming string }{
+		{"", Info, named + ". A naming policy for the project (Policies › Naming) names them instead.", "{project}-{environment}-vm{seq:03}"},
+		{"vra-prj-web", Warning, named + ", not by the project's naming template web-${input.environment}-${input.role}${###}, " +
+			"which can't be translated whole.", "{project}-{environment}-vm{seq:03}"},
+		{"vra-prj-data", Warning, named + ", not by custom naming Database servers db-${input.environment}-${###}. To keep vRA's names, " +
+			"make a naming policy for the project (Policies › Naming) with db-{environment}-{seq:03} as its template, Start at 100 and Increment 10.",
+			"db-{environment}-{seq:03}"},
+	} {
+		p := MapTemplate(&e, vra.Blueprint{ID: "bp-refs", Name: "Shop", ProjectID: c.project, Versions: []vra.BlueprintVersion{
+			{Version: "1", Status: "RELEASED", Content: referencesTemplate}}})
+		var notes []Note
+		for _, n := range p.Notes {
+			if n.Where == "naming" {
+				notes = append(notes, n)
+			}
+		}
+		bp := p.Doc.Versions[0].Blueprint
+		comps := bp["components"].([]map[string]any)
+		if len(notes) != 1 || notes[0].Level != c.level || notes[0].Text != c.text || bp["naming"] != c.naming ||
+			comps[0]["naming"] != "{project}-{environment}-db{seq:02}" || comps[1]["naming"] != "{project}-{environment}-webserver{seq:02}" {
+			t.Errorf("project %q: naming %v %v %v, notes %+v; want %s %q", c.project, bp["naming"], comps[0]["naming"], comps[1]["naming"],
+				notes, c.level, c.text)
+		}
+	}
+}
+
 func TestTranslateExpressions(t *testing.T) {
 	s := scope{machines: map[string]machineRef{"db": {key: "db"}, "web": {key: "web", many: true}}, self: "web"}
 	for src, want := range map[string]string{
