@@ -58,7 +58,7 @@ func TestMapFormDefaults(t *testing.T) {
 	}
 	for _, c := range []struct{ id, kind, want string }{
 		{"host", "default", "inputs.app"},
-		{"fqdn", "value", `inputs.host + ".corp.example"`},
+		{"fqdn", "value", `(has(inputs.host) && inputs.host != null ? inputs.host : "") + ".corp.example"`},
 		{"double", "default", "double(inputs.cores) * 2.0"},
 		{"label", "default", `environment + "-" + string(inputs.cores)`},
 	} {
@@ -103,5 +103,72 @@ func TestMapFormDefaults(t *testing.T) {
 	}
 	if slices.ContainsFunc(notes, func(n string) bool { return strings.Contains(n, "Read-only in vRA's form: editable") }) {
 		t.Errorf("the computed read-only field is reported editable: %v", notes)
+	}
+}
+
+// TestBindTypes: a bind's rule gives a value of its field's type, counts
+// an input with no value as empty text or 0 as vRA does, and reads a field
+// named as a CEL word (F1.6).
+func TestBindTypes(t *testing.T) {
+	props := map[string]any{"cores": map[string]any{"type": "integer"}, "a": map[string]any{"type": "integer"},
+		"b": map[string]any{"type": "integer"}, "host": map[string]any{"type": "string"}, "domain": map[string]any{"type": "string"},
+		"in": map[string]any{"type": "string"}, "null": map[string]any{"type": "string"}, "true": map[string]any{"type": "string"},
+		"ratio": map[string]any{"type": "number"}, "on": map[string]any{"type": "boolean"}}
+	sum := func(op string) any { return map[string]any{"values": []any{"a", "b"}, "operator": op} }
+	fqdn := map[string]any{"values": []any{"host", "`.`", "domain"}, "operator": "concatenate"}
+	in := map[string]any{"cores": float64(4), "a": float64(3), "b": float64(2), "host": "web01", "in": "x", "null": "y", "true": "z"}
+	for _, c := range []struct {
+		name     string
+		bind     any
+		target   string
+		computed bool
+		inputs   map[string]any
+		want     any
+	}{
+		{"a number as text", "cores", "string", true, in, "4"},
+		{"a number as text, empty", "cores", "string", true, map[string]any{}, ""},
+		{"a sum as text", sum("add"), "string", true, in, "5"},
+		{"a sum as an integer", sum("multiply"), "integer", true, in, int64(6)},
+		{"a ratio", sum("divide"), "number", false, in, 1.5},
+		{"a sum as a default", sum("add"), "integer", false, in, int64(5)},
+		{"a sum, one input empty", sum("add"), "number", true, map[string]any{"b": float64(2)}, 2.0},
+		{"an optional input absent", fqdn, "string", true, in, "web01."},
+		{"an optional input null", fqdn, "string", true, map[string]any{"host": "web01", "domain": nil}, "web01."},
+		{"a field named in", "in", "string", false, in, "x"},
+		{"a computed field named in, empty", "in", "string", true, map[string]any{}, ""},
+		{"a field named null", "null", "string", false, in, "y"},
+		{"a field named true", map[string]any{"values": []any{"true", "`!`"}, "operator": "concatenate"}, "string", false, in, "z!"},
+		{"a toggle as text", "on", "string", true, map[string]any{"on": true}, "true"},
+		{"an integer as a number", "cores", "number", false, in, 4.0},
+		{"a constant number", "`8`", "integer", false, in, int64(8)},
+	} {
+		expr, why := bindCEL(c.bind, props, c.target, c.computed)
+		if why != "" {
+			t.Errorf("%s: %s", c.name, why)
+			continue
+		}
+		if err := policy.Check(expr); err != nil {
+			t.Errorf("%s: %s: %v", c.name, expr, err)
+			continue
+		}
+		if got, err := policy.Eval(expr, policy.Vars{"inputs": c.inputs, "environment": "dev"}); err != nil || got != c.want {
+			t.Errorf("%s: %s = %#v (%v), want %#v", c.name, expr, got, err, c.want)
+		}
+	}
+	for _, c := range []struct {
+		bind   any
+		target string
+	}{{fqdn, "integer"}, {"host", "number"}, {sum("add"), "boolean"}, {"cores", "boolean"}} {
+		if expr, why := bindCEL(c.bind, props, c.target, true); why == "" {
+			t.Errorf("%v to a %s field gave %s", c.bind, c.target, expr)
+		}
+	}
+	for bind, want := range map[any]string{"host": "inputs.host", "`x`": `"x"`} {
+		if expr, _ := bindCEL(bind, props, "string", false); expr != want {
+			t.Errorf("an editable field's bind %v = %s, want %s: it waits for the field", bind, expr, want)
+		}
+	}
+	if expr, _ := bindCEL(fqdn, props, "string", false); expr != `inputs.host + "." + inputs.domain` {
+		t.Errorf("an editable field's concatenation = %s: it waits for its inputs", expr)
 	}
 }

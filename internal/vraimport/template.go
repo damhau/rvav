@@ -513,6 +513,11 @@ func mapInput(name string, in map[string]any, note func(level, where, text strin
 	}
 	prop = map[string]any{}
 	typ, _ := in["type"].(string)
+	if enc, _ := in["encrypted"].(bool); enc && typ != "string" && typ != "" {
+		note(Unmapped, where, fmt.Sprintf("Encrypted in vRA, an input of type %s: only a text input can be secret in rvav. "+
+			"Left out of the form, so it isn't kept in clear.", typ))
+		return nil, nil, false, nil
+	}
 	switch typ {
 	case "string", "":
 		prop["type"] = "string"
@@ -598,6 +603,11 @@ func mapList(where string, in, prop, field map[string]any, note func(level, wher
 	copyKeys(in, prop, "minItems", "maxItems", "uniqueItems")
 	switch typ {
 	case "string", "":
+		if enc, _ := items["encrypted"].(bool); enc {
+			note(Unmapped, where, "A list of encrypted values in vRA: only a text input can be secret in rvav. "+
+				"Left out of the form, so they aren't kept in clear.")
+			return false
+		}
 		it := map[string]any{"type": "string"}
 		prop["items"] = it
 		if vals, opts := choices(items); vals != nil {
@@ -621,13 +631,15 @@ func mapList(where string, in, prop, field map[string]any, note func(level, wher
 
 // rowsOf says what mapRows reads: a table's rows or an object's
 // properties, for what it reports.
-type rowsOf struct{ empty, cell string }
+type rowsOf struct{ empty, cell, secret string }
 
 var (
 	tableRows = rowsOf{"A list of objects without properties: rvav's table needs a column per property.",
-		"Its rows' %s is of type %v: rvav's table columns hold text, numbers, booleans or choices."}
+		"Its rows' %s is of type %v: rvav's table columns hold text, numbers, booleans or choices.",
+		"Its rows' %s is encrypted in vRA: rvav's table columns can't be secret."}
 	objectProps = rowsOf{"An object without properties: rvav's group of fields needs a sub-field per property.",
-		"Its property %s is of type %v: rvav's sub-fields hold text, numbers, booleans or choices."}
+		"Its property %s is of type %v: rvav's sub-fields hold text, numbers, booleans or choices.",
+		"Its property %s is encrypted in vRA: rvav's sub-fields can't be secret."}
 )
 
 // mapRows are the columns and schema of objects, a list's items (a table's
@@ -644,6 +656,9 @@ func mapRows(items map[string]any, of rowsOf) (cols []map[string]any, rows map[s
 		label, _ := c["title"].(string)
 		if label == "" {
 			label = humanize(k)
+		}
+		if enc, _ := c["encrypted"].(bool); enc {
+			return nil, nil, fmt.Sprintf(of.secret+" Left out of the form, so it isn't kept in clear.", k)
 		}
 		col, cell := map[string]any{"key": k, "label": label}, map[string]any{"type": c["type"]}
 		switch c["type"] {

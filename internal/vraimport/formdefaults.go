@@ -3,6 +3,7 @@ package vraimport
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -18,7 +19,7 @@ func formDefault(id string, d any, readOnly bool, props, field, initial map[stri
 	m, _ := d.(map[string]any)
 	switch {
 	case m != nil && m["bind"] != nil:
-		expr, why := bindCEL(m["bind"], props)
+		expr, why := bindCEL(m["bind"], props, propType(props, id), readOnly)
 		if why != "" {
 			note(Unmapped, where, "Its default is worked out in vRA ("+why+"): write an rvav default rule (CEL) for it.")
 			return false
@@ -72,10 +73,23 @@ func conditional(d any) bool {
 
 var celIdent = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// celReserved are the words CEL keeps, which can't follow inputs.
+var celReserved = []string{"as", "break", "const", "continue", "else", "false", "for", "function", "if", "import", "in", "let",
+	"loop", "package", "namespace", "null", "return", "true", "var", "void", "while"}
+
+func propType(props map[string]any, name string) string {
+	p, _ := props[name].(map[string]any)
+	t, _ := p["type"].(string)
+	return t
+}
+
 // bindCEL is a bind's CEL: a field's name, or values (fields, and
-// constants between backquotes) and an operator. why says what it can't
-// map.
-func bindCEL(bind any, props map[string]any) (expr, why string) {
+// constants between backquotes) and an operator, giving a value of the
+// field's type, target. On a computed field, whose rule that fails refuses
+// the request, an input with no value counts as empty text, or 0 in a sum,
+// as in vRA; another field's default waits for the inputs it reads. why
+// says what it can't map.
+func bindCEL(bind any, props map[string]any, target string, computed bool) (expr, why string) {
 	var values []any
 	op := "bind"
 	switch b := bind.(type) {
@@ -96,20 +110,21 @@ func bindCEL(bind any, props map[string]any) (expr, why string) {
 	case len(values) == 0:
 		return "", "a bind without values"
 	case (op == "bind" || op == "") && len(values) == 1:
+		return bindOne(values[0], props, target, computed)
 	case op == "":
 		return "", "values without an operator"
 	case !isArith && !concat:
 		return "", "operator " + strconv.Quote(op)
 	}
+	guarded := func(ref, val, zero string) string {
+		if !computed {
+			return val
+		}
+		return guardedRef(ref, val, zero)
+	}
 	parts := make([]string, 0, len(values))
 	for _, v := range values {
-		s, isText := v.(string)
-		literal := !isText || strings.HasPrefix(s, "`") && strings.HasSuffix(s, "`") && len(s) >= 2
-		if isText && literal {
-			s = s[1 : len(s)-1]
-		} else if !isText {
-			s = fmt.Sprint(v)
-		}
+		s, literal := bindValue(v)
 		var part string
 		switch {
 		case literal && isArith:
@@ -130,18 +145,99 @@ func bindCEL(bind any, props map[string]any) (expr, why string) {
 			}
 			switch {
 			case isArith:
-				ref = "double(" + ref + ")"
-			case concat && typ != "string":
-				ref = "string(" + ref + ")"
+				part = guarded(ref, "double("+ref+")", "0.0")
+			case typ != "string":
+				part = guarded(ref, "string("+ref+")", `""`)
+			default:
+				part = guarded(ref, ref, `""`)
 			}
-			part = ref
 		}
 		parts = append(parts, part)
 	}
 	if concat {
-		return strings.Join(parts, " + "), ""
+		return typed(strings.Join(parts, " + "), "string", target)
 	}
-	return strings.Join(parts, sep), ""
+	return typed(strings.Join(parts, sep), "number", target)
+}
+
+// bindValue is a bind's value as text, and whether it is a constant
+// rather than a field's name.
+func bindValue(v any) (s string, literal bool) {
+	s, isText := v.(string)
+	if !isText {
+		return fmt.Sprint(v), true
+	}
+	if strings.HasPrefix(s, "`") && strings.HasSuffix(s, "`") && len(s) >= 2 {
+		return s[1 : len(s)-1], true
+	}
+	return s, false
+}
+
+// bindOne is the CEL of a bind to one field or constant. On a computed
+// text field, a field with no value gives empty text; else the rule waits
+// for it: no other type has an empty value.
+func bindOne(v any, props map[string]any, target string, computed bool) (expr, why string) {
+	s, literal := bindValue(v)
+	if literal {
+		switch target {
+		case "integer", "number":
+			n, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				return "", "the constant " + strconv.Quote(s) + " in a " + target + " field"
+			}
+			if target == "integer" {
+				return strconv.FormatInt(int64(n), 10), ""
+			}
+			return typed(strconv.FormatFloat(n, 'f', -1, 64), "integer", "number")
+		case "boolean":
+			if s != "true" && s != "false" {
+				return "", "the constant " + strconv.Quote(s) + " in a boolean field"
+			}
+			return s, ""
+		}
+		return typed(strconv.Quote(s), "string", target)
+	}
+	ref, typ, ok := fieldRef(s, props)
+	if !ok {
+		return "", "it reads " + s + ", which is no input of the template"
+	}
+	if computed && (typ == "string" || target == "string" && slices.Contains([]string{"integer", "number", "boolean"}, typ)) {
+		val, why := typed(ref, typ, target)
+		return guardedRef(ref, val, `""`), why
+	}
+	return typed(ref, typ, target)
+}
+
+// typed converts expr, of type from, to the target field's type. why says
+// when it can't: text for a number, a list for text.
+func typed(expr, from, target string) (string, string) {
+	switch {
+	case target == "" || from == target:
+		return expr, ""
+	case target == "string" && slices.Contains([]string{"integer", "number", "boolean"}, from):
+		return "string(" + expr + ")", ""
+	case target == "integer" && from == "number":
+		return "int(" + expr + ")", ""
+	case target == "number" && from == "integer":
+		return "double(" + expr + ")", ""
+	}
+	if from == "" {
+		from = "untyped"
+	}
+	return "", fmt.Sprintf("it gives a value of type %s to a field of type %s", from, target)
+}
+
+// guardedRef is val, or zero when the input ref reads has no value: vRA
+// leaves it empty, and a rule reading an absent or null input fails.
+func guardedRef(ref, val, zero string) string {
+	if ref == "environment" {
+		return val
+	}
+	has := "has(" + ref + ")"
+	if key, ok := strings.CutPrefix(ref, "inputs["); ok {
+		has = strings.TrimSuffix(key, "]") + " in inputs"
+	}
+	return "(" + has + " && " + ref + " != null ? " + val + " : " + zero + ")"
 }
 
 // fieldRef is how a form rule reads a vRA field: an input, or the
@@ -155,7 +251,7 @@ func fieldRef(name string, props map[string]any) (ref, typ string, ok bool) {
 		return "", "", false
 	}
 	typ, _ = prop["type"].(string)
-	if celIdent.MatchString(name) {
+	if celIdent.MatchString(name) && !slices.Contains(celReserved, name) {
 		return "inputs." + name, typ, true
 	}
 	return "inputs[" + strconv.Quote(name) + "]", typ, true

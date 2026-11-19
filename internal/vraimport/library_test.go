@@ -2,11 +2,13 @@ package vraimport
 
 import (
 	"encoding/json"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/vra"
 )
 
@@ -204,5 +206,116 @@ func TestLibraryDefault(t *testing.T) {
 			return strings.HasPrefix(n, "info form.owner:") && strings.Contains(n, "Its default, which the requester can change")
 		}) {
 		t.Fatalf("notes = %v", notes)
+	}
+}
+
+// TestLibraryKeysStable: an action keeps the key the import made its entry
+// under, whatever new action of the same name vRA gains; one whose key
+// rvav has from elsewhere is reported, its fields given no source (F1.6).
+func TestLibraryKeysStable(t *testing.T) {
+	mk := func(module, host string) vra.VROAction {
+		a := action("getVMs", "Array/string", `return JSON.parse(new RESTRequest("https://`+host+`/vms?env=" + environment).execute().contentAsString);`, "environment")
+		a.Module = module
+		return a
+	}
+	formUsing := func(id, fqn string) vra.Form {
+		return vra.Form{ID: id, Form: `{"layout":{"pages":[]},"schema":{"vm":{"valueList":{"id":"` + fqn + `","type":"scriptAction","parameters":[{"environment":"environment"}]}}}}`}
+	}
+	first := vra.Estate{Actions: []vra.VROAction{mk("com.b", "b.corp.example")}, Forms: []vra.Form{formUsing("f1", "com.b/getVMs")}}
+	made := PlanFormLibrary(&first, Rvav{})[0]
+	have := RvavEntry{Version: 1, Use: "source", Kind: "rest", Parameters: []string{"environment"}, Description: made.Entry["description"].(string)}
+	b, _ := json.Marshal(made.Entry["params"])
+	_ = json.Unmarshal(b, &have.Params)
+
+	second := vra.Estate{Actions: []vra.VROAction{mk("com.a", "a.corp.example"), mk("com.b", "b.corp.example")},
+		Forms: []vra.Form{formUsing("f1", "com.b/getVMs"), formUsing("f2", "com.a/getVMs")}}
+	r := Rvav{FormLibrary: map[string]RvavEntry{"getVMs": have}}
+	if keys := LibraryKeys(&second, r); keys["com.b/getVMs"] != "getVMs" || keys["com.a/getVMs"] != "getVMs_2" {
+		t.Fatalf("keys = %v", keys)
+	}
+	plan := map[string]LibraryImport{}
+	for _, li := range PlanFormLibrary(&second, r) {
+		plan[li.VROAction] = li
+	}
+	if b, a := plan["com.b/getVMs"], plan["com.a/getVMs"]; b.Action != ActionUnchanged || a.Action != ActionCreate ||
+		!strings.Contains(a.URL, "a.corp.example") {
+		t.Fatalf("plan = %+v", plan)
+	}
+
+	// rvav's getVMs made by hand: com.a, first, has its key and differs.
+	byHand := have
+	byHand.Description, byHand.Params = "Our VMs.", map[string]any{"url": "https://b.corp.example/other"}
+	lib := libraryByAction(PlanFormLibrary(&second, Rvav{FormLibrary: map[string]RvavEntry{"getVMs": byHand}}))
+	a := lib["com.a/getVMs"]
+	if a.Key != "getVMs" || a.Action != ActionDiffers ||
+		!slices.ContainsFunc(a.Notes, func(n Note) bool { return n.Level == Unmapped && strings.Contains(n.Text, "not made of this action") }) {
+		t.Fatalf("com.a against an entry by hand = %+v", a)
+	}
+	field := map[string]any{"widget": "text"}
+	var notes []string
+	ok, why := takeLibrary(lib, map[string]any{"id": "com.a/getVMs", "type": "scriptAction", "parameters": []any{map[string]any{"environment": "environment"}}},
+		false, map[string]any{}, field, "form.vm", func(level, where, text string) { notes = append(notes, text) })
+	if ok || field["value_source"] != nil || !strings.Contains(why, "not made of this action") {
+		t.Fatalf("a field bound to an entry by hand: %v %q %v", ok, why, field)
+	}
+}
+
+// TestLibraryDiffersUse: rvav's entry an import made, since changed, is
+// bound while it is a source of the same parameters; once a validation or
+// of other parameters, the fields get no source and the item imports
+// (F1.6).
+func TestLibraryDiffersUse(t *testing.T) {
+	e := libraryEstate()
+	made := "vRO's action com.corp.db/getVersions, version 1.0.0, imported from vRA."
+	for _, c := range []struct {
+		name  string
+		have  RvavEntry
+		bound bool
+		why   string
+	}{
+		{"a source edited", RvavEntry{Version: 3, Use: "source", Kind: "rest", Params: map[string]any{"url": "https://dbaas.corp.example/v2"},
+			Parameters: []string{"environment"}, Description: made}, true, ""},
+		{"a validation", RvavEntry{Version: 3, Use: "validation", Kind: "cel", Params: map[string]any{"check": "true"},
+			Parameters: []string{"x"}, Description: made}, false, "is now a validation"},
+		{"other parameters", RvavEntry{Version: 3, Use: "source", Kind: "rest", Params: map[string]any{"url": "https://dbaas.corp.example/v2"},
+			Parameters: []string{"environment", "tier"}, Description: made}, false, "takes parameters environment, tier, not the action's environment"},
+	} {
+		r := Rvav{Now: time.Now(), ProjectMap: map[string]string{}, FormLibrary: map[string]RvavEntry{"getVersions": c.have}}
+		st := ImportState{Links: map[string]Link{}, Items: map[string]ItemState{}, Slugs: map[string]string{}}
+		plan := PlanImport(&e, r, st)
+		it := plan.Items[slices.IndexFunc(plan.Items, func(x ItemImport) bool { return x.BlueprintID == "bp-db" })]
+		field := it.Doc.Versions[0].UISchema["fields"].(map[string]any)["dbVersion"].(map[string]any)
+		vs, _ := field["value_source"].(map[string]any)
+		if c.bound != (vs != nil) || c.bound && vs["version"] != 3 {
+			t.Errorf("%s: dbVersion's source = %v", c.name, vs)
+		}
+		if !c.bound && !slices.ContainsFunc(it.Notes, func(n Note) bool {
+			return n.Level == Unmapped && n.Where == "form.dbVersion" && strings.Contains(n.Text, c.why)
+		}) {
+			t.Errorf("%s: notes %+v", c.name, it.Notes)
+		}
+	}
+}
+
+// TestLibraryConstantParams: a constant parameter is a CEL literal; a list
+// or a map, which a binding can't be, is left unbound (F1.6).
+func TestLibraryConstantParams(t *testing.T) {
+	li := LibraryImport{Key: "k", Version: 1, Parameters: []string{"a", "b", "c", "d", "e"}, inputs: []string{"a", "b", "c", "d", "e"}}
+	raw := []any{
+		map[string]any{"name": "a", "$type": "constant", "value": nil},
+		map[string]any{"name": "b", "$type": "constant", "value": []any{"x", "y"}},
+		map[string]any{"name": "c", "$type": "constant", "value": map[string]any{"k": "v"}},
+		map[string]any{"name": "d", "$type": "constant", "value": true},
+		map[string]any{"name": "e", "$type": "constant", "value": float64(3)},
+	}
+	src, _, unbound := librarySource(li, raw, map[string]any{})
+	params := src["params"].(map[string]any)
+	if !reflect.DeepEqual(params, map[string]any{"a": "null", "d": "true", "e": "3"}) || !slices.Equal(unbound, []string{"b", "c"}) {
+		t.Fatalf("params %v, unbound %v", params, unbound)
+	}
+	for k, v := range params {
+		if err := policy.CheckSource(v.(string)); err != nil {
+			t.Errorf("%s = %s: %v", k, v, err)
+		}
 	}
 }

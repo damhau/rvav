@@ -99,3 +99,32 @@ func TestTemplateSecrets(t *testing.T) {
 		t.Fatalf("with the secret = %+v", got)
 	}
 }
+
+// TestEncryptedLeftOut: an input vRA encrypts that rvav can't make a
+// secret text field, an object's or a table's property, a number or a
+// list, is left out of the form and reported, never kept in clear (F1.6).
+func TestEncryptedLeftOut(t *testing.T) {
+	for name, in := range map[string]map[string]any{
+		"object": {"type": "object", "properties": map[string]any{"user": map[string]any{"type": "string"},
+			"password": map[string]any{"type": "string", "encrypted": true}}},
+		"objectEnc": {"type": "object", "encrypted": true, "properties": map[string]any{"user": map[string]any{"type": "string"},
+			"password": map[string]any{"type": "string"}}},
+		"table": {"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{
+			"user": map[string]any{"type": "string"}, "password": map[string]any{"type": "string", "encrypted": true}}}},
+		"pin":     {"type": "integer", "encrypted": true},
+		"secrets": {"type": "array", "encrypted": true, "items": map[string]any{"type": "string"}},
+		"tokens":  {"type": "array", "items": map[string]any{"type": "string", "encrypted": true}},
+	} {
+		var notes []Note
+		prop, field, _, _ := mapInput(name, in, func(level, where, text string) { notes = append(notes, Note{level, where, text}) })
+		if prop != nil || field != nil || !slices.ContainsFunc(notes, func(n Note) bool {
+			return n.Level == Unmapped && n.Where == "inputs."+name && strings.Contains(strings.ToLower(n.Text), "encrypted")
+		}) {
+			t.Errorf("%s: field %v, notes %+v", name, field, notes)
+		}
+	}
+	_, field, _, _ := mapInput("pw", map[string]any{"type": "string", "encrypted": true}, func(string, string, string) {})
+	if field["secret"] != true {
+		t.Errorf("an encrypted text input = %v", field)
+	}
+}

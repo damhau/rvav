@@ -49,6 +49,20 @@ type RvavEntry struct {
 	Use, Kind  string
 	Params     map[string]any
 	Parameters []string
+	// Description says, of an entry an import made, the vRO action it was
+	// made of.
+	Description string
+}
+
+// madeOf is the vRO action an import made the entry of, as its
+// description says.
+func (r RvavEntry) madeOf() (fqn string, ok bool) {
+	rest, ok := strings.CutPrefix(r.Description, "vRO's action ")
+	if !ok {
+		return "", false
+	}
+	fqn, _, ok = strings.Cut(rest, ",")
+	return fqn, ok && fqn != ""
 }
 
 var (
@@ -218,10 +232,26 @@ func formActions(e *vra.Estate) []string {
 }
 
 // LibraryKeys are the entry keys of the actions forms use, by module/name:
-// the action's name, numbered when two modules have one.
-func LibraryKeys(e *vra.Estate) map[string]string {
+// that of the entry an earlier import made of the action, else the
+// action's name, numbered when another action has it. So a new action of
+// the same name in vRA takes no key an earlier import gave.
+func LibraryKeys(e *vra.Estate, r Rvav) map[string]string {
 	out, taken := map[string]string{}, map[string]bool{}
-	for _, fqn := range formActions(e) {
+	actions := formActions(e)
+	for _, key := range slices.Sorted(maps.Keys(r.FormLibrary)) {
+		fqn, ok := r.FormLibrary[key].madeOf()
+		if !ok {
+			continue
+		}
+		taken[key] = true
+		if _, has := out[fqn]; !has && slices.Contains(actions, fqn) {
+			out[fqn] = key
+		}
+	}
+	for _, fqn := range actions {
+		if _, has := out[fqn]; has {
+			continue
+		}
 		base := GroupKey(fqn[strings.LastIndex(fqn, "/")+1:])
 		key := base
 		for n := 2; taken[key]; n++ {
@@ -236,7 +266,7 @@ func LibraryKeys(e *vra.Estate) map[string]string {
 // PlanFormLibrary is what the import makes of the vRO actions forms use: an
 // entry is made when rvav has none of its key, and never changed.
 func PlanFormLibrary(e *vra.Estate, r Rvav) []LibraryImport {
-	keys := LibraryKeys(e)
+	keys := LibraryKeys(e, r)
 	out := []LibraryImport{}
 	for _, fqn := range formActions(e) {
 		i := slices.IndexFunc(e.Actions, func(a vra.VROAction) bool { return a.FQN() == fqn })
@@ -279,9 +309,32 @@ func planEntry(li *LibraryImport, r Rvav) {
 		li.Action, li.Version = ActionUnchanged, have.Version
 	default:
 		li.Action, li.Version = ActionDiffers, have.Version
-		li.Notes = append(li.Notes, Note{Warning, "", fmt.Sprintf("rvav has a form library entry %s that isn't what the action gives: "+
-			"the import leaves it as it is, and items name its version %d.", li.Key, have.Version)})
+		left := "the import leaves it as it is, and gives no field a value source of it: check the entry, then name it " +
+			"in the value source of the fields that take their choices from the action."
+		ours, theirs := slices.Sorted(slices.Values(li.Parameters)), slices.Sorted(slices.Values(have.Parameters))
+		fqn, _ := have.madeOf()
+		switch {
+		case fqn != li.VROAction:
+			li.Notes = append(li.Notes, Note{Unmapped, "", fmt.Sprintf("rvav has a form library entry %s, not made of this action, "+
+				"that isn't what it gives: %s", li.Key, left)})
+		case have.Use != "source":
+			li.Notes = append(li.Notes, Note{Unmapped, "", fmt.Sprintf("rvav's form library entry %s, made of this action, is now a %s: %s",
+				li.Key, have.Use, left)})
+		case !slices.Equal(ours, theirs):
+			li.Notes = append(li.Notes, Note{Unmapped, "", fmt.Sprintf("rvav's form library entry %s, made of this action, takes "+
+				"parameters %s, not the action's %s: %s", li.Key, orNone(theirs), orNone(ours), left)})
+		default:
+			li.Notes = append(li.Notes, Note{Warning, "", fmt.Sprintf("rvav has a form library entry %s, made of this action, that "+
+				"isn't what the action gives now: the import leaves it as it is, and items name its version %d.", li.Key, have.Version)})
+		}
 	}
+}
+
+func orNone(names []string) string {
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, ", ")
 }
 
 // sameEntry compares an entry with rvav's as rvav stores it, JSON.
@@ -323,7 +376,11 @@ func librarySource(li LibraryImport, raw any, props map[string]any) (src map[str
 		case kind == "constant" && isText:
 			params[name] = strconv.Quote(s)
 		case kind == "constant":
-			params[name] = fmt.Sprint(value)
+			switch value.(type) {
+			case nil, bool, float64, int, json.Number:
+				b, _ := json.Marshal(value)
+				params[name] = string(b)
+			}
 		case isText:
 			ref, _, ok := fieldRef(s, props)
 			if !ok {
@@ -358,12 +415,12 @@ func takeLibrary(lib map[string]LibraryImport, src map[string]any, single bool, 
 	if !found || src["type"] != "scriptAction" {
 		return false, ""
 	}
-	if li.Action == ActionSkip {
-		for _, n := range li.Notes {
-			if n.Level == Unmapped {
-				return false, " The import makes no form library entry of it: " + strings.ToLower(n.Text[:1]) + n.Text[1:]
-			}
+	for _, n := range li.Notes {
+		if n.Level == Unmapped {
+			return false, " The import makes no form library entry of it: " + strings.ToLower(n.Text[:1]) + n.Text[1:]
 		}
+	}
+	if li.Action == ActionSkip {
 		return false, ""
 	}
 	widget, _ := field["widget"].(string)

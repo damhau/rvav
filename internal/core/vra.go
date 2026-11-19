@@ -171,7 +171,7 @@ func (s *Service) vraFormLibrary(ctx context.Context, r *vraimport.Rvav) error {
 	}
 	r.FormLibrary = map[string]vraimport.RvavEntry{}
 	for _, e := range entries {
-		re := vraimport.RvavEntry{Version: e.Version, Use: e.Use, Kind: e.Kind}
+		re := vraimport.RvavEntry{Version: e.Version, Use: e.Use, Kind: e.Kind, Description: e.Description}
 		if err := json.Unmarshal(e.Params, &re.Params); err != nil {
 			return err
 		}

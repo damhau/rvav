@@ -185,7 +185,7 @@ check it) or *unmapped* (left out).
 | vRA | rvav |
 |---|---|
 | Released versions | The catalog item's versions, imported as drafts (`1` becomes `1.0`). Unreleased versions are left out. |
-| `inputs` (string, integer, number, boolean; `enum`, `oneOf`, `default`, `pattern`, `min`/`max`, `title`, `description`, `format: date`, `format: date-time`, `encrypted`) | The form: fields, choices, defaults, checks; `encrypted` becomes a secret field, without its default, which the requester types. An input without a default is required. |
+| `inputs` (string, integer, number, boolean; `enum`, `oneOf`, `default`, `pattern`, `min`/`max`, `title`, `description`, `format: date`, `format: date-time`, `encrypted`) | The form: fields, choices, defaults, checks; `encrypted` becomes a secret field, without its default, which the requester types. An encrypted input that isn't text (a number, a list, an object), or an object or a table with an encrypted property, is reported and left out, so its value isn't kept in clear: add a secret text field by hand if the template needs it. An input without a default is required. |
 | List inputs (`type: array`) | Text items are tags; text items with `enum` or `oneOf` a multi-select of those choices; object items a table, with a column per property: text, a number, a boolean, or text with choices (a select column). `minItems`, `maxItems`, `uniqueItems` and the rows' `required` are kept. Lists of numbers or booleans, and rows with a list or an object, are reported, and left out. |
 | Object inputs (`type: object`) | A group of fields, with a sub-field per property: text, a number, a boolean, or text with choices (a select). The object's `required` is kept. An object without properties, or with a list or an object in it, is reported, and left out. |
 | An input named `environment` or `env` | rvav's own request environment, not a field. |
@@ -290,7 +290,7 @@ under the property groups, as **Form library**.
 
 | vRO action | rvav entry |
 |---|---|
-| Name | The key, as a property group's (`get-versions` is `get_versions`). When actions share a name, the second gets `_2`. The name, in words, is the entry's name, and the description names the action and its version. |
+| Name | The key, as a property group's (`get-versions` is `get_versions`). When actions share a name, the second gets `_2`. An action keeps the key of the entry an earlier import made of it, which its description names, so an action of the same name new in vRA takes the next free key. The name, in words, is the entry's name, and the description names the action and its version. |
 | A script that makes one `GET`, to a literal URL, or to a literal host URL followed by `createRequest`'s path | A value source of kind `rest`, on that URL. Each action input the URL concatenates is a required parameter, read as `${params.<input>}`. An input the URL doesn't read is left out, with an info note. |
 | Output type `Array/string` or `Array/number` | The answer is the list of choices (`items` and `value` `$`). |
 | Output type `Array/Properties` | Choices with `$.value` and `$.label`. |
@@ -318,17 +318,22 @@ naming the action and why, when an action:
 - isn't in what the import read from vRO.
 
 The import never changes an rvav entry. When rvav's entry of that key
-isn't what the action gives, the plan marks it **Differs in rvav**, and
-the items name rvav's latest version, each with a warning. Changing an
-imported entry in rvav gives the items that name it a new draft at once,
-as any change of an entry does.
+isn't what the action gives, the plan marks it **Differs in rvav**. The
+items name rvav's latest version, each with a warning, when the entry was
+made of the action and is still a source of the same parameters, as after
+you corrected its JSONPaths. Otherwise (an entry made by hand or of
+another action, a validation, other parameters) the fields that take
+their choices or default from the action get no value source, and are
+reported (unmapped): check the entry, then name it in their value source.
+Changing an imported entry in rvav gives the items that name it a new
+draft at once, as any change of an entry does.
 
 ### Custom forms
 
 | vRA form | rvav |
 |---|---|
 | Labels, placeholders, signposts (help), constant defaults | The fields'. A constant default is the field's initial value. |
-| A default bound to a field (`bind`), or to an operation on fields and constants (`concatenate`, `add`, `subtract`, `multiply`, `divide`) | The field's `default` rule, in CEL: `{"bind": "hostName"}` is `inputs.hostName`, and ``{"bind": {"values": ["hostName", "`.corp.example`"], "operator": "concatenate"}}`` (a constant between backquotes) is `inputs.hostName + ".corp.example"`. The requester can change the field; until they do, it follows the fields it reads. An operation's numbers are worked out as decimals. On a field read-only in vRA's form, it's the field's `value` rule instead, which the requester can't change. A bind to a field that isn't an input of the template, or another operator, is reported (unmapped): write the rule. |
+| A default bound to a field (`bind`), or to an operation on fields and constants (`concatenate`, `add`, `subtract`, `multiply`, `divide`) | The field's `default` rule, in CEL: `{"bind": "hostName"}` is `inputs.hostName`, and ``{"bind": {"values": ["hostName", "`.corp.example`"], "operator": "concatenate"}}`` (a constant between backquotes) is `inputs.hostName + ".corp.example"`. The requester can change the field; until they do, it follows the fields it reads, and gives no default while one of them is empty. An operation's numbers are worked out as decimals. The rule gives the field's type: `string()` for a text field, `int()` for an integer, `double()` for a decimal; a text for a number field, or a number for a toggle, is reported. A field named as a CEL word (`in`, `null`, `true`) is read as `inputs["in"]`. On a field read-only in vRA's form, it's the field's `value` rule instead, which the requester can't change: as in vRA, a field it reads that is empty counts as empty text, or 0 in an operation. A bind to a field that isn't an input of the template, or another operator, is reported (unmapped): write the rule. |
 | A default from a vRO action (`scriptAction`) | The field's value source names the form library entry made of the action ([vRO actions](#vro-actions)), which gives a text, number, date or toggle field its default. The requester can change it. When the import makes no entry of the action, or the entry gives a list, it's reported (unmapped) with why: give the field a value source. |
 | A conditional default (values, each with its condition) | Reported (unmapped): write a `default` rule (CEL). |
 | Static value lists | Choices. |
@@ -343,7 +348,7 @@ as any change of an entry does.
 | A widget rvav has none of, such as `treeView` | Reported (unmapped): the field keeps the widget of its type. |
 | Pages and sections | One page keeps its sections. Several pages become tabs, as vRA shows them: one tab per page, with the fields of its sections in their order. To show them one after the other instead, choose the wizard layout in the form designer. |
 | Required, pattern, lengths, minimum and maximum | The form's checks. |
-| Values from a vRO action | The field's value source names the form library entry made of the action ([vRO actions](#vro-actions)), each of its parameters bound to what vRA's form passes the action: a field (`inputs.x`, and the field depends on it), the environment, or a constant. A text field becomes a dropdown. When the import makes no entry of the action, or vRA's form passes the action nothing for one of its inputs, it's reported (unmapped) with why. |
+| Values from a vRO action | The field's value source names the form library entry made of the action ([vRO actions](#vro-actions)), each of its parameters bound to what vRA's form passes the action: a field (`inputs.x`, and the field depends on it), the environment, or a constant (text, a number, a boolean or null; a list or a map is a parameter vRA's form passes nothing for). A text field becomes a dropdown. When the import makes no entry of the action, or vRA's form passes the action nothing for one of its inputs, it's reported (unmapped) with why. |
 | Values from vRO actions the import doesn't map, or external sources | Reported: give the field an rvav value source (REST, CEL or the form library). A `multiSelect`, `multiValuePicker` or `dualList` without choices of its own becomes tags, which take any value typed: once it has a source, make it a multi-select or a dual list again. |
 | Conditions on visibility or read-only | Reported: write an rvav rule (CEL). A field read-only in vRA's form is editable in rvav's (a warning), unless its default is bound: then its `value` rule computes it. |
 
