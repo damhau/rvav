@@ -10,6 +10,7 @@ import {
   layoutOf,
   moveField,
   moveSection,
+  newValidationKey,
   partWord,
   removeColumn,
   removeField,
@@ -19,6 +20,7 @@ import {
   setLayout,
   setRequired,
   setRule,
+  setValidations,
   setWidget,
   sortProblems,
   updateColumn,
@@ -262,5 +264,36 @@ describe("form designer model", () => {
     ]);
     expect(p.sections[1]).toEqual([{ at: "key", message: "key" }]);
     expect(p.other.map((e) => e.message)).toEqual(["template"]);
+  });
+
+  it("keeps the form's validations in step with its inputs, and sorts their problems", () => {
+    let def = addField(empty, "text").def;
+    def = renameField(def, "text1", "owner");
+    def = addField(def, "text").def;
+    expect(newValidationKey(def)).toBe("check1");
+    def = setValidations(def, [{ key: "check1", kind: "cel", params: { check: "true" }, fields: ["owner", "text2"] }]);
+    const second = newValidationKey(def);
+    def = setValidations(def, [
+      ...def.ui_schema.validations!,
+      { key: second, kind: "library", name: "costCentreOpen", version: 1, fields: ["text2"] },
+    ]);
+    expect(def.ui_schema.validations?.map((v) => v.key)).toEqual(["check1", "check2"]);
+    expect(newValidationKey(def)).toBe("check3");
+    def = renameField(def, "owner", "requester");
+    expect(def.ui_schema.validations?.[0]?.fields).toEqual(["requester", "text2"]);
+    def = removeField(def, "text2");
+    expect(def.ui_schema.validations?.[0]?.fields).toEqual(["requester"]);
+    expect(def.ui_schema.validations?.[1]).not.toHaveProperty("fields");
+    expect(setValidations(def, []).ui_schema).not.toHaveProperty("validations");
+
+    const p = sortProblems([
+      { field: "/definition/ui_schema/validations/1/params/cost_center", code: "invalid", message: "cel" },
+      { field: "/definition/ui_schema/validations/0", code: "invalid", message: "whole" },
+    ]);
+    expect(p.validations).toEqual({
+      0: [{ at: "", message: "whole" }],
+      1: [{ at: "params/cost_center", message: "cel" }],
+    });
+    expect(p.other).toEqual([]);
   });
 });

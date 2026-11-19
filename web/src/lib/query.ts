@@ -94,6 +94,8 @@ export const keys = {
     compositeSteps: ["admin", "catalog", "composite-steps"] as const,
     git: ["admin", "catalog", "git"] as const,
     itemGit: (id: string) => ["admin", "catalog", "item-git", id] as const,
+    formLibrary: ["admin", "catalog", "form-library"] as const,
+    formLibraryEntry: (key: string, version?: number) => ["admin", "catalog", "form-library", key, version] as const,
   },
   tokens: (all: boolean) => ["tokens", all] as const,
   audit: (f: AuditFilters) => ["audit", f] as const,
@@ -360,6 +362,18 @@ export const q = {
     queryOptions({
       queryKey: keys.catalogAdmin.categories,
       queryFn: ({ signal }) => call(api.GET("/admin/catalog/categories", { signal })),
+    }),
+  formLibrary: () =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.formLibrary,
+      queryFn: ({ signal }) => call(api.GET("/admin/form-library", { signal })),
+    }),
+  formLibraryEntry: (key: string, version?: number) =>
+    queryOptions({
+      queryKey: keys.catalogAdmin.formLibraryEntry(key, version),
+      queryFn: ({ signal }) =>
+        call(api.GET("/admin/form-library/{key}", { params: { path: { key }, query: { version } }, signal })),
+      staleTime: version ? Infinity : undefined,
     }),
   compositeStepTargets: () =>
     queryOptions({

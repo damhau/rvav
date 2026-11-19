@@ -369,7 +369,9 @@ function Designer({ item, draft, copy }: { item: AdminCatalogItem; draft: Catalo
             showing={
               selection?.kind === "section"
                 ? selection.key
-                : def.ui_schema.layout.sections.find((s) => selection && s.fields.includes(selection.name))?.key
+                : def.ui_schema.layout.sections.find(
+                    (s) => selection && selection.kind === "field" && s.fields.includes(selection.name),
+                  )?.key
             }
           />
         </div>

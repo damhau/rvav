@@ -29,6 +29,11 @@ export type PageInputs = (fields?: FieldStates) => string[];
 export interface WizardOptions {
   /** Checks a page's inputs before Next leaves it. Without it, Next doesn't check. */
   check?: (inputs: PageInputs) => Promise<PageCheck>;
+  /**
+   * Checks the whole form before the review step shows (its validations,
+   * ADR-0043): true holds the wizard, which then shows what it refused.
+   */
+  checkAll?: () => Promise<boolean>;
   /** On the review step, below what was entered: what the request asks besides the form. */
   review?: ReactNode;
   /** The review step's action, beside Back: the submit button. */
@@ -82,30 +87,39 @@ export function Wizard({
     const part = step.part;
     if (!part || busy.current) return;
     let states = fieldStates;
-    if (options.check) {
-      busy.current = true;
-      setChecking(true);
-      try {
-        const result = await options.check((fields) =>
-          partInputs(formParts(form, fields)[part.index] ?? part, leadingFields),
-        );
-        const first = result.problems[0];
-        if (first) {
-          const key = part.section.key;
-          return show(key, () => (control(first) ?? headings.current.get(key))?.focus());
+    busy.current = true;
+    setChecking(true);
+    try {
+      if (options.check) {
+        try {
+          const result = await options.check((fields) =>
+            partInputs(formParts(form, fields)[part.index] ?? part, leadingFields),
+          );
+          const first = result.problems[0];
+          if (first) {
+            const key = part.section.key;
+            return show(key, () => (control(first) ?? headings.current.get(key))?.focus());
+          }
+          states = result.fields ?? states;
+        } catch {
+          // A check that can't run doesn't hold the page: the server checks on submit.
         }
-        states = result.fields ?? states;
-      } catch {
-        // A check that can't run doesn't hold the page: the server checks on submit.
-      } finally {
-        busy.current = false;
-        setChecking(false);
       }
+      const following = formParts(form, states)
+        .slice(part.index + 1)
+        .find((p) => partShows(p, false));
+      if (!following && options.checkAll) {
+        try {
+          if (await options.checkAll()) return;
+        } catch {
+          // As above: submit runs the validations again.
+        }
+      }
+      go(following?.section.key ?? REVIEW);
+    } finally {
+      busy.current = false;
+      setChecking(false);
     }
-    const following = formParts(form, states)
-      .slice(part.index + 1)
-      .find((p) => partShows(p, false));
-    go(following?.section.key ?? REVIEW);
   };
   const back = () => {
     const previous = steps[at - 1];

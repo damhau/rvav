@@ -1,4 +1,5 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { LoaderCircle, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { Panel } from "@/components/ui/panel";
@@ -9,8 +10,17 @@ import { Select } from "@/components/ui/select";
 import { singleSource } from "@/forms/defaults";
 import { uploadImage } from "@/forms/image";
 import { isApiError } from "@/lib/api/client";
-import type { FieldStates, FieldValues, UiColumn, UiWidget, ValueSource } from "@/lib/api/types";
-import { cn, localInput, withOffset, zoneLabel } from "@/lib/utils";
+import type {
+  FieldStates,
+  FieldValues,
+  FormLibraryEntry,
+  FormValidation,
+  UiColumn,
+  UiWidget,
+  ValueSource,
+} from "@/lib/api/types";
+import { q } from "@/lib/query";
+import { cn, localInput, toText, withOffset, zoneLabel } from "@/lib/utils";
 import { focusLater, type Selection } from "./FieldList";
 import {
   addColumn,
@@ -22,6 +32,7 @@ import {
   isRequired,
   moveToSection,
   namePattern,
+  newValidationKey,
   ownSources,
   partWord,
   props,
@@ -33,6 +44,7 @@ import {
   setInitial,
   setRequired,
   setRule,
+  setValidations,
   setWidget,
   shownWidgets,
   updateColumn,
@@ -197,6 +209,158 @@ function TestSource({ name, dependsOn, test }: { name: string; dependsOn: string
   );
 }
 
+type LibraryUse = "source" | "validation";
+
+/** What a form names of the form library: an entry, its version, and an expression per parameter. */
+interface LibraryBinding {
+  name?: string;
+  version?: number;
+  params?: Record<string, unknown>;
+}
+
+/** An entry's parameters bound to the form's inputs of the same name. */
+function boundByName(entry: FormLibraryEntry | undefined, inputs: string[], kept: Record<string, unknown> = {}) {
+  const out: Record<string, unknown> = {};
+  for (const p of entry?.parameters ?? []) {
+    if (typeof kept[p.name] === "string") out[p.name] = kept[p.name];
+    else if (inputs.includes(p.name)) out[p.name] = `inputs.${p.name}`;
+  }
+  return out;
+}
+
+/** The first entry of the library for the use, bound to the form's inputs. */
+function firstEntry(entries: FormLibraryEntry[] | undefined, use: LibraryUse, inputs: string[]): LibraryBinding {
+  const e = entries?.find((x) => x.use === use);
+  return e ? { name: e.key, version: e.version, params: boundByName(e, inputs) } : {};
+}
+
+/** The entry of the form library a field's source or a validation names, and its parameters' expressions. */
+function LibraryRef({
+  id,
+  use,
+  value,
+  inputs,
+  onChange,
+  problems,
+}: {
+  id: string;
+  use: LibraryUse;
+  value: LibraryBinding;
+  /** The form's inputs, which a parameter of the same name is bound to. */
+  inputs: string[];
+  onChange: (b: LibraryBinding) => void;
+  /** The problems at a place in the reference: `name`, `version`, `params/x`. */
+  problems: (at: string) => Problem[];
+}) {
+  const catalogue = useQuery(q.formLibrary());
+  const entries = (catalogue.data?.items ?? []).filter((e) => e.use === use);
+  const latest = entries.find((e) => e.key === value.name);
+  const older = Boolean(latest && value.version && value.version !== latest.version);
+  const pinned = useQuery({ ...q.formLibraryEntry(value.name ?? "", value.version), enabled: older });
+  const entry = older ? pinned.data : latest;
+  const params = value.params ?? {};
+  const known = new Set(entry?.parameters.map((p) => p.name));
+  const what = use === "source" ? "value source" : "validation";
+  const named =
+    value.name && !latest ? [{ value: value.name, label: value.name }] : ([] as { value: string; label: string }[]);
+  const setParam = (k: string, v: string) => {
+    const next = { ...params };
+    if (v) next[k] = v;
+    else delete next[k];
+    onChange({ ...value, params: next });
+  };
+  if (catalogue.isSuccess && entries.length === 0 && !value.name)
+    return (
+      <p className="text-secondary text-muted">
+        The form library has no {what} yet: add one under{" "}
+        <Link to="/admin/form-library" className="text-accent underline-offset-2 hover:underline">
+          Administration › Form library
+        </Link>
+        .
+      </p>
+    );
+  return (
+    <>
+      <Field label="Entry" htmlFor={`${id}-name`}>
+        <Select
+          id={`${id}-name`}
+          value={value.name ?? ""}
+          loading={catalogue.isPending}
+          placeholder={`Choose a ${what}…`}
+          onChange={(key) => {
+            const e = entries.find((x) => x.key === key);
+            onChange({ name: key, version: e?.version, params: boundByName(e, inputs, params) });
+          }}
+          options={[...named, ...entries.map((e) => ({ value: e.key, label: `${e.name} (${e.key})` }))]}
+          aria-invalid={problems("name").length > 0 || undefined}
+          aria-describedby={problems("name").length ? `${id}-name-problems` : undefined}
+        />
+      </Field>
+      <ProblemList id={`${id}-name-problems`} list={problems("name")} />
+      {latest && (
+        <Field
+          label="Version"
+          htmlFor={`${id}-version`}
+          hint={
+            older
+              ? `Version ${latest.version} is the latest: a new version gives the items naming the entry a draft.`
+              : undefined
+          }
+        >
+          <Select
+            id={`${id}-version`}
+            value={String(value.version ?? latest.version)}
+            onChange={(v) => onChange({ ...value, version: Number(v) })}
+            options={[...latest.versions].reverse().map((v) => ({
+              value: String(v),
+              label: v === latest.version ? `${v} (latest)` : String(v),
+            }))}
+          />
+        </Field>
+      )}
+      <ProblemList id={`${id}-version-problems`} list={problems("version")} />
+      {entry?.description && <p className="text-secondary text-muted">{entry.description}</p>}
+      {entry && entry.parameters.length > 0 && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-secondary font-medium">Parameters</legend>
+          <p className="text-caption text-faint">
+            A CEL expression each, over what form rules read: <span className="font-mono">inputs.environment</span>.
+          </p>
+          {entry.parameters.map((p) => {
+            const pid = `${id}-prm-${p.name}`;
+            const found = problems(`params/${p.name}`);
+            return (
+              <Field
+                key={p.name}
+                label={`${p.label || p.name}${p.required ? "" : " (optional)"}`}
+                htmlFor={pid}
+                hint={p.description}
+              >
+                <CommitInput
+                  id={pid}
+                  value={toText(params[p.name] ?? "")}
+                  onCommit={(v) => setParam(p.name, v)}
+                  className={mono}
+                  invalid={found.length > 0}
+                  describedBy={found.length ? `${pid}-problems` : undefined}
+                />
+                <ProblemList id={`${pid}-problems`} list={found} />
+              </Field>
+            );
+          })}
+        </fieldset>
+      )}
+      <ProblemList
+        id={`${id}-params-problems`}
+        list={Object.keys(params)
+          .filter((k) => !known.has(k))
+          .flatMap((k) => problems(`params/${k}`))
+          .concat(problems("params").filter((p) => p.at.endsWith("params")))}
+      />
+    </>
+  );
+}
+
 function SourceEditor({
   name,
   def,
@@ -242,6 +406,7 @@ function SourceEditor({
   };
   const others = Object.keys(def.ui_schema.fields).filter((f) => f !== name);
   const deps = ui.depends_on ?? [];
+  const library = useQuery(q.formLibrary());
   // A field that takes one value gets it from the source: a default, or a computed field's value.
   const one = singleSource({ ...ui, value_source: { kind: "cel" } });
   const gives = ui.widget === "computed" ? "value" : "default";
@@ -277,14 +442,16 @@ function SourceEditor({
                     ? undefined
                     : k === "builtin"
                       ? { kind: "builtin", name: builtinSources[0] }
-                      : k === "rest"
-                        ? {
-                            kind: "rest",
-                            params: one
-                              ? { url: "https://", value: "$.id" }
-                              : { url: "https://", items: "$[*]", value: "$.id", label: "$.name" },
-                          }
-                        : { kind: "cel", params: one ? { value: '""' } : { options: '["a", "b"]' } },
+                      : k === "library"
+                        ? { kind: "library", ...firstEntry(library.data?.items, "source", others) }
+                        : k === "rest"
+                          ? {
+                              kind: "rest",
+                              params: one
+                                ? { url: "https://", value: "$.id" }
+                                : { url: "https://", items: "$[*]", value: "$.id", label: "$.name" },
+                            }
+                          : { kind: "cel", params: one ? { value: '""' } : { options: '["a", "b"]' } },
                 )
               }
               options={[
@@ -292,6 +459,7 @@ function SourceEditor({
                 { value: "builtin", label: "Built in" },
                 { value: "rest", label: "REST service" },
                 { value: "cel", label: "CEL expression" },
+                { value: "library", label: "Form library" },
               ]}
             />
           </Field>
@@ -320,7 +488,17 @@ function SourceEditor({
           )}
         </>
       )}
-      {one && (src?.kind === "rest" || src?.kind === "cel") && (
+      {src?.kind === "library" && (
+        <LibraryRef
+          id="prop-src-lib"
+          use="source"
+          value={src}
+          inputs={others}
+          onChange={(b) => setSource({ ...src, ...b })}
+          problems={at}
+        />
+      )}
+      {one && (src?.kind === "rest" || src?.kind === "cel" || src?.kind === "library") && (
         <p className="text-secondary text-muted">
           {gives === "value"
             ? "The source gives the field its value, which the server works out again on submit."
@@ -419,6 +597,241 @@ function SourceEditor({
       )}
       {src && <TestSource name={name} dependsOn={deps} test={test} />}
     </fieldset>
+  );
+}
+
+const checkKinds = [
+  { value: "cel", label: "CEL expression" },
+  { value: "rest", label: "REST service" },
+  { value: "library", label: "Form library" },
+];
+
+function ValidationEditor({
+  index,
+  validation: v,
+  inputs,
+  onChange,
+  onRemove,
+  problems,
+}: {
+  index: number;
+  validation: FormValidation;
+  inputs: string[];
+  onChange: (v: FormValidation) => void;
+  onRemove: () => void;
+  problems: Problem[];
+}) {
+  const id = `val-${index}`;
+  const entries = useQuery(q.formLibrary());
+  const params = (v.params ?? {}) as Record<string, unknown>;
+  const at = (p: string) => problems.filter((x) => x.at === p || x.at.startsWith(`${p}/`));
+  const own = (k: "key" | "title" | "message", label: string, hint?: string, code = false) => {
+    const fid = `${id}-${k}`;
+    const found = at(k);
+    return (
+      <Field label={label} htmlFor={fid} hint={hint}>
+        <CommitInput
+          id={fid}
+          value={v[k] ?? ""}
+          onCommit={(text) => {
+            const next = { ...v, [k]: text };
+            if (!text && k !== "key") delete next[k];
+            onChange(next);
+          }}
+          className={code ? mono : undefined}
+          invalid={found.length > 0}
+          describedBy={found.length ? `${fid}-problems` : undefined}
+        />
+        <ProblemList id={`${fid}-problems`} list={found} />
+      </Field>
+    );
+  };
+  const setParam = (k: string, text: string) => {
+    const next = { ...params };
+    if (text) next[k] = text;
+    else delete next[k];
+    onChange({ ...v, params: next });
+  };
+  const param = (k: string, label: string, hint?: string, code = true) => {
+    const pid = `${id}-params-${k}`;
+    const found = at(`params/${k}`);
+    return (
+      <Field label={label} htmlFor={pid} hint={hint}>
+        <CommitInput
+          id={pid}
+          value={typeof params[k] === "string" ? params[k] : ""}
+          onCommit={(text) => setParam(k, text)}
+          className={code ? mono : undefined}
+          invalid={found.length > 0}
+          describedBy={found.length ? `${pid}-problems` : undefined}
+        />
+        <ProblemList id={`${pid}-problems`} list={found} />
+      </Field>
+    );
+  };
+  const setKind = (kind: string) => {
+    const { name: _n, version: _v, params: _p, ...kept } = v;
+    if (kind === "library")
+      onChange({ ...kept, kind: "library", ...firstEntry(entries.data?.items, "validation", inputs) });
+    else
+      onChange({
+        ...kept,
+        kind: kind as FormValidation["kind"],
+        params: kind === "rest" ? { url: "https://" } : { check: "true" },
+      });
+  };
+  const on = v.fields ?? [];
+  const title = v.title || v.key || `Validation ${index + 1}`;
+  return (
+    <fieldset className="flex flex-col gap-2.5 rounded-md border border-line p-3">
+      <legend className="px-1 text-secondary font-semibold">{title}</legend>
+      <ProblemList id={`${id}-problems`} list={problems.filter((p) => p.at === "")} />
+      {own("key", "Key", "Names it in messages and in the audit log.", true)}
+      {own("title", "Title", "What it checks, in a few words.")}
+      <Field label="Kind" htmlFor={`${id}-kind`}>
+        <Select id={`${id}-kind`} value={v.kind} onChange={setKind} options={checkKinds} />
+      </Field>
+      <ProblemList id={`${id}-kind-problems`} list={at("kind").concat(at("name").filter(() => v.kind !== "library"))} />
+      {v.kind === "cel" &&
+        param(
+          "check",
+          "Check",
+          'Over what form rules read. true, "" or {} passes; false refuses with the refusal message; text refuses with that text; a map {"input": "message"} refuses on those inputs.',
+        )}
+      {v.kind === "rest" && (
+        <>
+          {param("url", "URL", "A host REST value sources may call; ${inputs.x} is escaped.")}
+          <Field label="Method" htmlFor={`${id}-params-method`}>
+            <Select
+              id={`${id}-params-method`}
+              value={typeof params.method === "string" ? params.method : "GET"}
+              onChange={(m) => setParam("method", m === "GET" ? "" : m)}
+              options={[
+                { value: "GET", label: "GET" },
+                { value: "POST", label: "POST" },
+              ]}
+            />
+          </Field>
+          {params.method === "POST" && param("body", "Body (JSON)")}
+          {param("secret", "Secret", "A stored secret's name, sent as bearer, basic or header.", false)}
+          {param("valid", "Valid (JSONPath)", "A boolean in the answer: $.valid unless given.")}
+          {param("message", "Message (JSONPath)", "The answer's message: $.message unless given.")}
+          {param(
+            "errors",
+            "Errors (JSONPath)",
+            "A map of input to message, or a list of {field, message}: $.errors unless given.",
+          )}
+          <p className="text-secondary text-muted">
+            An answer other than 2xx refuses the request, saying the check couldn't run: it never passes unchecked.
+          </p>
+        </>
+      )}
+      {v.kind === "library" && (
+        <LibraryRef
+          id={`${id}-lib`}
+          use="validation"
+          value={v}
+          inputs={inputs}
+          onChange={(b) => onChange({ ...v, ...b })}
+          problems={at}
+        />
+      )}
+      {own("message", "Refusal message", "What a refusal without its own message says.")}
+      {inputs.length > 0 && (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="mb-1 text-secondary font-medium">A message for no input shows on</legend>
+          <p className="text-caption text-faint">None ticked: on the form, above the submit button.</p>
+          {inputs.map((f) => (
+            <label key={f} htmlFor={`${id}-on-${f}`} className="flex min-h-6 items-center gap-2 text-secondary">
+              <Checkbox
+                id={`${id}-on-${f}`}
+                checked={on.includes(f)}
+                onChange={(yes) => {
+                  const next = yes ? [...on, f] : on.filter((x) => x !== f);
+                  const { fields: _, ...rest } = v;
+                  onChange(next.length ? { ...rest, fields: next } : rest);
+                }}
+              />
+              <span className="font-mono">{f}</span>
+            </label>
+          ))}
+          <ProblemList id={`${id}-fields-problems`} list={at("fields")} />
+        </fieldset>
+      )}
+      <Button id={`${id}-remove`} size="sm" variant="quiet" className="self-start" onClick={onRemove}>
+        Remove {title}
+      </Button>
+    </fieldset>
+  );
+}
+
+/** The form's validations (ADR-0043): checks of the whole form, on submit and on a wizard's review step. */
+function ValidationsProperties({
+  def,
+  onChange,
+  problems,
+}: {
+  def: Def;
+  onChange: (d: Def) => void;
+  problems: Record<number, Problem[]>;
+}) {
+  const list = def.ui_schema.validations ?? [];
+  const inputs = Object.keys(props(def));
+  const entries = useQuery(q.formLibrary());
+  const put = (next: FormValidation[]) => onChange(setValidations(def, next));
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-secondary text-muted">
+        Checks of the whole form, run on a wizard&apos;s review step and on submit, after the form&apos;s own checks and
+        before approval. Day-2 actions&apos; forms don&apos;t run them.
+      </p>
+      {list.length === 0 && <p className="text-secondary text-faint">No validation yet.</p>}
+      {list.map((v, i) => (
+        <ValidationEditor
+          key={i}
+          index={i}
+          validation={v}
+          inputs={inputs}
+          problems={problems[i] ?? []}
+          onChange={(x) => put(list.map((y, j) => (j === i ? x : y)))}
+          onRemove={() => {
+            put(list.filter((_, j) => j !== i));
+            focusLater(`val-${i}-remove`, `val-${i - 1}-remove`, "designer-add-validation");
+          }}
+        />
+      ))}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          id="designer-add-validation"
+          size="sm"
+          onClick={() => {
+            put([...list, { key: newValidationKey(def), kind: "cel", params: { check: "true" } }]);
+            focusLater(`val-${list.length}-key`);
+          }}
+        >
+          Add a validation
+        </Button>
+        {entries.data?.items.some((e) => e.use === "validation") && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              put([
+                ...list,
+                {
+                  key: newValidationKey(def),
+                  kind: "library",
+                  ...firstEntry(entries.data.items, "validation", inputs),
+                },
+              ]);
+              focusLater(`val-${list.length}-lib-name`);
+            }}
+          >
+            Add one from the form library
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1236,8 +1649,10 @@ export function Properties({
   const sectionIndex =
     selection?.kind === "section" ? def.ui_schema.layout.sections.findIndex((s) => s.key === selection.key) : -1;
   const word = partWord(def);
+  const title =
+    selection?.kind === "section" ? word.One : selection?.kind === "validations" ? "Form validations" : "Properties";
   return (
-    <Panel title={selection?.kind === "section" ? word.One : "Properties"}>
+    <Panel title={title}>
       {!selection && <p className="text-secondary text-muted">Choose a field or a {word.one} to change it.</p>}
       {selection?.kind === "field" && (
         <FieldProperties
@@ -1260,6 +1675,9 @@ export function Properties({
           onSelect={onSelect}
           problems={problems.sections[sectionIndex] ?? []}
         />
+      )}
+      {selection?.kind === "validations" && (
+        <ValidationsProperties def={def} onChange={onChange} problems={problems.validations} />
       )}
     </Panel>
   );

@@ -22,7 +22,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { keys } from "@/lib/query";
+import { keys, q } from "@/lib/query";
 import { relative, toText } from "@/lib/utils";
 
 type Entry = components["schemas"]["FormLibraryEntry"];
@@ -31,7 +31,7 @@ type Purpose = components["schemas"]["FormLibraryPurpose"];
 type Result = components["schemas"]["FormLibraryTestResult"];
 type Kind = "rest" | "cel";
 
-export const libraryKey = [...keys.catalogAdmin.all, "form-library"] as const;
+const libraryKey = keys.catalogAdmin.formLibrary;
 
 const purposeLabel: Record<Purpose, string> = { source: "Value source", validation: "Validation" };
 const kindLabel: Record<Kind, string> = { rest: "REST call", cel: "CEL expression" };
@@ -565,10 +565,7 @@ const columns: Column<Entry>[] = [
 
 export function FormLibraryPage() {
   const qc = useQueryClient();
-  const entries = useQuery({
-    queryKey: libraryKey,
-    queryFn: ({ signal }) => call(api.GET("/admin/form-library", { signal })),
-  });
+  const entries = useQuery(q.formLibrary());
   const [editing, setEditing] = useState<{ entry?: Entry } | null>(null);
   const [removing, setRemoving] = useState<Entry | null>(null);
   const remove = useMutation({

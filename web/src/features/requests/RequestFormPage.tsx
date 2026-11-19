@@ -560,6 +560,22 @@ function RequestFormBody({
     const found = mapFieldErrors(checkedPreview.errors).fields;
     return { problems: inputs.filter((n) => found[n] || serverErrors?.fields[n]), fields: checkedPreview.fields };
   };
+  // Before a wizard's review: the form's validations, which refuse as submit would.
+  const checkAll = async () => {
+    const checkedPreview = await call(
+      api.POST("/requests/preview", { params: { query: { validate: true } }, body: draft }),
+    );
+    if (checkedPreview.errors.length === 0) {
+      setServerErrors(null);
+      return false;
+    }
+    const mapped = mapFieldErrors(checkedPreview.errors);
+    setSubmitted(true);
+    setServerErrors(mapped);
+    const onInputs = Object.keys(mapped.fields).length > 0;
+    if (onInputs) setRefused((n) => n + 1);
+    return onInputs;
+  };
   const submitDraft = () => {
     setSubmitted(true);
     submit.mutate(draft);
@@ -722,6 +738,7 @@ function RequestFormBody({
           leadingFields={["$environment"]}
           wizard={{
             check: checkPage,
+            checkAll: form.ui_schema.validations?.length ? checkAll : undefined,
             review: requestPanels,
             submit: (
               <SubmitButton

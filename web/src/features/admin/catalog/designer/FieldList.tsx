@@ -21,7 +21,8 @@ import {
   type Problems,
 } from "./model";
 
-export type Selection = { kind: "field"; name: string } | { kind: "section"; key: string } | null;
+export type Selection =
+  { kind: "field"; name: string } | { kind: "section"; key: string } | { kind: "validations" } | null;
 
 const widgetOptions = Object.entries(widgetLabels).map(([value, label]) => ({ value, label }));
 
@@ -64,6 +65,8 @@ export function FieldList({
   const { one, One } = partWord(def);
   const placed = new Set(sections.flatMap((s) => s.fields));
   const unplaced = Object.keys(def.ui_schema.fields).filter((n) => !placed.has(n));
+  const validations = def.ui_schema.validations ?? [];
+  const validating = selection?.kind === "validations";
   const currentSection =
     selection?.kind === "section"
       ? selection.key
@@ -202,6 +205,19 @@ export function FieldList({
             <ul>{unplaced.map((name) => fieldRow(name))}</ul>
           </div>
         )}
+        <div className={cn("border-b border-line pr-1", validating && "bg-accent-soft")}>
+          <button
+            id="designer-validations"
+            type="button"
+            aria-pressed={validating}
+            onClick={() => onSelect({ kind: "validations" })}
+            className="flex w-full min-w-0 items-center gap-1.5 px-3 py-1.5 text-left text-secondary font-semibold focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <span className="min-w-0 flex-1 truncate">Form validations</span>
+            <span className="text-caption font-normal text-muted">{validations.length || "None"}</span>
+            {Object.keys(problems.validations).length > 0 && <ProblemMark label="Form validations have problems" />}
+          </button>
+        </div>
         <div className="flex flex-col gap-2 p-3">
           <Field label="Add a field" htmlFor="designer-add-field">
             <Select

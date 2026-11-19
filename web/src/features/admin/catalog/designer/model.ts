@@ -2,7 +2,15 @@
 // functions over the form schema, UI schema and initial values, so the three
 // stay in step. The server checks the result when the draft is saved.
 import { ownSources } from "@/forms/useFieldValues";
-import type { CatalogVersionDefinition, FieldError, UiColumn, UiField, UiSchema, UiWidget } from "@/lib/api/types";
+import type {
+  CatalogVersionDefinition,
+  FieldError,
+  FormValidation,
+  UiColumn,
+  UiField,
+  UiSchema,
+  UiWidget,
+} from "@/lib/api/types";
 
 export { ownSources };
 
@@ -284,6 +292,10 @@ export function removeField(def: Def, name: string): Def {
     for (const f of Object.values(d.ui_schema.fields)) {
       if (f.depends_on) f.depends_on = f.depends_on.filter((x) => x !== name);
     }
+    for (const v of d.ui_schema.validations ?? []) {
+      if (v.fields) v.fields = v.fields.filter((x) => x !== name);
+      if (v.fields?.length === 0) delete v.fields;
+    }
   });
 }
 
@@ -318,6 +330,9 @@ export function renameField(def: Def, from: string, to: string): Def {
     }
     for (const f of Object.values(d.ui_schema.fields)) {
       if (f.depends_on) f.depends_on = f.depends_on.map((x) => (x === from ? to : x));
+    }
+    for (const v of d.ui_schema.validations ?? []) {
+      if (v.fields) v.fields = v.fields.map((x) => (x === from ? to : x));
     }
   });
 }
@@ -574,13 +589,15 @@ export interface Problem {
 export interface Problems {
   fields: Record<string, Problem[]>;
   sections: Record<number, Problem[]>;
+  /** By the validation's index: `at` is where in it (`key`, `params/url`), or "". */
+  validations: Record<number, Problem[]>;
   /** Problems elsewhere (blueprint, the schema as a whole): the YAML tab shows them on their lines. */
   other: FieldError[];
 }
 
 /** Sorts the server's problems with a draft by the field or section they are about. */
 export function sortProblems(errors: FieldError[], prefix = "/definition"): Problems {
-  const out: Problems = { fields: {}, sections: {}, other: [] };
+  const out: Problems = { fields: {}, sections: {}, validations: {}, other: [] };
   const add = (name: string, at: string, message: string) => (out.fields[name] ??= []).push({ at, message });
   for (const e of errors) {
     const path = e.field.startsWith(prefix) ? e.field.slice(prefix.length) : e.field;
@@ -591,7 +608,25 @@ export function sortProblems(errors: FieldError[], prefix = "/definition"): Prob
     else if ((m = /^\/initial_values\/([^/]+)$/.exec(path))) add(m[1]!, "initial", e.message);
     else if ((m = /^\/ui_schema\/layout\/sections\/(\d+)(?:\/(.*))?$/.exec(path)))
       (out.sections[Number(m[1])] ??= []).push({ at: m[2] ?? "", message: e.message });
+    else if ((m = /^\/ui_schema\/validations\/(\d+)(?:\/(.*))?$/.exec(path)))
+      (out.validations[Number(m[1])] ??= []).push({ at: m[2] ?? "", message: e.message });
     else out.other.push(e);
   }
   return out;
+}
+
+/** The form's validations (ADR-0043), with one changed, added or removed. */
+export function setValidations(def: Def, list: FormValidation[]): Def {
+  return edit(def, (d) => {
+    if (list.length > 0) d.ui_schema.validations = list;
+    else delete d.ui_schema.validations;
+  });
+}
+
+/** A key no validation of the form has. */
+export function newValidationKey(def: Def): string {
+  const taken = new Set((def.ui_schema.validations ?? []).map((v) => v.key));
+  let n = taken.size + 1;
+  while (taken.has(`check${n}`)) n++;
+  return `check${n}`;
 }
