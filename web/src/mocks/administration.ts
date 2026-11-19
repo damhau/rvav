@@ -1260,10 +1260,13 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         Object.values(st().members).flatMap((l) => l.filter((m) => m.role === key)).length +
         st().groups.filter((g) => g.role === key).length +
         st().roleAssignments.filter((a) => a.role.key === key).length,
-      policies: (key) =>
-        st()
-          .day2.filter((p) => (p.roles ?? []).includes(key))
-          .map((p) => p.name),
+      policies: (key) => {
+        const levels = (ls: S["ApprovalLevel"][] | undefined) => (ls ?? []).some((l) => l.roles?.includes(key));
+        return [
+          ...st().day2.filter((p) => (p.roles ?? []).includes(key) || levels(p.levels)),
+          ...st().approvals.filter((p) => levels(p.levels)),
+        ].map((p) => p.name);
+      },
       assignments: () => st().roleAssignments,
       rvavMappings: () =>
         st()
@@ -1772,7 +1775,13 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         if ((kind === "approval" || w.effect === "approval") && levels.length === 0)
           errors.push(err("/levels", "Give at least one level of approvers."));
         levels.forEach((l, i) => {
-          if (!l.group && !l.approvers?.length) errors.push(err(`/levels/${i}`, "Give an OIDC group or approvers."));
+          if (!l.group && !l.approvers?.length && !l.roles?.length)
+            errors.push(err(`/levels/${i}`, "Give an OIDC group, approvers or project roles."));
+          l.roles?.forEach((k, j) => {
+            const r = roleOf(db, k);
+            if (!r || !assignable(r, true))
+              errors.push(err(`/levels/${i}/roles/${j}`, `There is no role ${k} given in projects.`));
+          });
           if (l.timeout && !/^\d+(h|m|s)$/.test(l.timeout))
             errors.push(err(`/levels/${i}/timeout`, "A duration such as 48h."));
           if (l.on_timeout && !l.timeout)
@@ -1802,7 +1811,11 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       return [
         http.get(`${base}/admin/${path}`, async () => {
           await wait();
-          return HttpResponse.json({ items: list() });
+          const levelRoles = [...builtinRoles, ...customRoles(db)].filter((r) => assignable(r, true));
+          return HttpResponse.json({
+            items: list(),
+            level_roles: levelRoles.map((r) => ({ key: r.key, name: r.name })),
+          });
         }),
         http.post(`${base}/admin/${path}`, async ({ request }) => {
           await wait();

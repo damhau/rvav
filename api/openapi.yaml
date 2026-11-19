@@ -2784,8 +2784,8 @@ paths:
     delete:
       tags: [admin]
       operationId: deleteRole
-      summary: Delete a role nobody holds and no day-2 policy names (`access.manage`)
-      description: Built-in roles, and a role someone holds or a day-2 policy names, can't be deleted (409, saying which).
+      summary: Delete a role nobody holds and no policy names (`access.manage`)
+      description: Built-in roles, and a role someone holds or a policy names (a day-2 policy's roles, or an approval or day-2 policy's levels), can't be deleted (409, saying which).
       responses:
         "204": { description: Deleted }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -6600,8 +6600,15 @@ components:
               description: OIDC group whose members may decide.
             approvers:
               type: array
-              description: Users who may decide (named, members of the group seen so far, and delegates).
+              description: |
+                Users who may decide: named, holding one of its roles in the
+                project when it opened, members of its groups seen so far, and
+                delegates.
               items: { $ref: "#/components/schemas/UserRef" }
+            roles:
+              type: array
+              description: The project roles it asks (ADR-0041); absent when it asks none.
+              items: { $ref: "#/components/schemas/RoleRef" }
             mode:
               type: string
               enum: [any, all]
@@ -8338,8 +8345,8 @@ components:
             A role's key, built-in or custom. Without a project for a role
             that can be given for all of rvav (admin, catalog-admin, auditor,
             or a custom one); with one for a role that can be given in a
-            project (project-admin, member, viewer, or a custom one holding no
-            permission for all of rvav only).
+            project (project-admin, member, viewer, supervisor, or a custom one
+            holding no permission for all of rvav only).
     # ── Roles and permissions (A1, ADR-0034) ──────────────────────────────
     Permission:
       type: string
@@ -8396,7 +8403,7 @@ components:
       enum: [project, rvav, any]
       description: |
         Where the role may be given: in a project (the built-in project-admin,
-        member and viewer), for all of rvav (the other built-in roles, and a
+        member, viewer and supervisor), for all of rvav (the other built-in roles, and a
         role holding a permission given that way only), or either.
     Role:
       type: object
@@ -8417,7 +8424,7 @@ components:
           description: Its assignments to users and group mappings, in projects and for all of rvav.
         policies:
           type: array
-          description: The day-2 policies that name it.
+          description: The day-2 policies whose roles name it, and the approval and day-2 policies whose levels do.
           items: { type: string }
     RoleList:
       type: object
@@ -9128,6 +9135,14 @@ components:
         name: { type: string }
         group: { type: string, description: An OIDC group whose members approve. }
         approvers: { type: array, items: { type: string }, description: User IDs. }
+        roles:
+          type: array
+          items: { type: string }
+          description: |
+            Roles given in projects, built-in or custom, by key (ADR-0041):
+            whoever holds one in the request's project when the level opens
+            approves, given it themselves or through an OIDC group. A level
+            nobody may decide when it opens is rejected.
         mode: { type: string, enum: [any, all], default: any }
         timeout: { type: string, description: "A Go duration, for example 48h; empty for none.", examples: [48h] }
         on_timeout: { type: string, enum: [escalate, approve, reject] }
@@ -9162,11 +9177,15 @@ components:
             id: { type: string }
     ApprovalPolicyList:
       type: object
-      required: [items]
+      required: [items, level_roles]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/ApprovalPolicy" }
+        level_roles:
+          type: array
+          description: The roles a level may name, those given in projects.
+          items: { $ref: "#/components/schemas/RoleRef" }
     Day2PolicyWrite:
       type: object
       required: [name, effect]
@@ -9197,11 +9216,15 @@ components:
             id: { type: string }
     Day2PolicyList:
       type: object
-      required: [items]
+      required: [items, level_roles]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/Day2Policy" }
+        level_roles:
+          type: array
+          description: The roles a level may name, those given in projects.
+          items: { $ref: "#/components/schemas/RoleRef" }
     PolicyExplainQuery:
       type: object
       required: [project_id, environment]

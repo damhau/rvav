@@ -10,21 +10,28 @@ import (
 // StoredRole is a role as the roles table lists it: a built-in one's
 // permissions are code (ADR-0034).
 type StoredRole struct {
-	Key         string    `db:"key"`
-	Name        string    `db:"name"`
-	Description string    `db:"description"`
-	Permissions []string  `db:"permissions"`
-	BuiltIn     bool      `db:"built_in"`
-	Holders     int       `db:"holders"`
-	Policies    []string  `db:"policies"`
-	CreatedAt   time.Time `db:"created_at"`
-	UpdatedAt   time.Time `db:"updated_at"`
+	Key         string   `db:"key"`
+	Name        string   `db:"name"`
+	Description string   `db:"description"`
+	Permissions []string `db:"permissions"`
+	BuiltIn     bool     `db:"built_in"`
+	Holders     int      `db:"holders"`
+	// Policies are the day-2 policies whose roles name it, and the approval
+	// and day-2 policies whose levels do.
+	Policies  []string  `db:"policies"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
 
 const roleSelect = `select r.key, r.name, r.description, r.permissions, r.built_in,
 	((select count(*) from project_members m where m.role = r.key) + (select count(*) from user_roles a where a.role = r.key) +
 	 (select count(*) from group_mappings g where g.role = r.key) + (select count(*) from users u where r.key = any(u.global_roles)))::int as holders,
-	array(select p.name from day2_policies p where r.key = any(p.roles) order by p.priority, p.name) as policies,
+	array(select n.name from (
+		select p.name, p.priority from day2_policies p
+		where r.key = any(p.roles) or exists (select 1 from jsonb_array_elements(p.levels) l where l->'roles' ? r.key)
+		union all select p.name, p.priority from approval_policies p
+		where exists (select 1 from jsonb_array_elements(p.levels) l where l->'roles' ? r.key)
+	) n order by n.priority, n.name) as policies,
 	r.created_at, r.updated_at from roles r`
 
 func (s *Store) Roles(ctx context.Context) ([]StoredRole, error) {

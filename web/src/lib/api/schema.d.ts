@@ -2156,8 +2156,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete a role nobody holds and no day-2 policy names (`access.manage`)
-         * @description Built-in roles, and a role someone holds or a day-2 policy names, can't be deleted (409, saying which).
+         * Delete a role nobody holds and no policy names (`access.manage`)
+         * @description Built-in roles, and a role someone holds or a policy names (a day-2 policy's roles, or an approval or day-2 policy's levels), can't be deleted (409, saying which).
          */
         delete: operations["deleteRole"];
         options?: never;
@@ -4878,8 +4878,14 @@ export interface components {
             editable_fields: components["schemas"]["ApprovalEditableField"][];
             /** @description OIDC group whose members may decide. */
             group?: string | null;
-            /** @description Users who may decide (named, members of the group seen so far, and delegates). */
+            /**
+             * @description Users who may decide: named, holding one of its roles in the
+             *     project when it opened, members of its groups seen so far, and
+             *     delegates.
+             */
             approvers: components["schemas"]["UserRef"][];
+            /** @description The project roles it asks (ADR-0041); absent when it asks none. */
+            roles?: components["schemas"]["RoleRef"][];
             /**
              * @description `any`: one approval decides. `all`: every named approver must approve.
              * @enum {string}
@@ -6278,8 +6284,8 @@ export interface components {
              * @description A role's key, built-in or custom. Without a project for a role
              *     that can be given for all of rvav (admin, catalog-admin, auditor,
              *     or a custom one); with one for a role that can be given in a
-             *     project (project-admin, member, viewer, or a custom one holding no
-             *     permission for all of rvav only).
+             *     project (project-admin, member, viewer, supervisor, or a custom one
+             *     holding no permission for all of rvav only).
              */
             role: string;
         };
@@ -6324,7 +6330,7 @@ export interface components {
         };
         /**
          * @description Where the role may be given: in a project (the built-in project-admin,
-         *     member and viewer), for all of rvav (the other built-in roles, and a
+         *     member, viewer and supervisor), for all of rvav (the other built-in roles, and a
          *     role holding a permission given that way only), or either.
          * @enum {string}
          */
@@ -6339,7 +6345,7 @@ export interface components {
             scope: components["schemas"]["RoleScope"];
             /** @description Its assignments to users and group mappings, in projects and for all of rvav. */
             holders: number;
-            /** @description The day-2 policies that name it. */
+            /** @description The day-2 policies whose roles name it, and the approval and day-2 policies whose levels do. */
             policies: string[];
         };
         RoleList: {
@@ -6908,6 +6914,13 @@ export interface components {
             /** @description User IDs. */
             approvers?: string[];
             /**
+             * @description Roles given in projects, built-in or custom, by key (ADR-0041):
+             *     whoever holds one in the request's project when the level opens
+             *     approves, given it themselves or through an OIDC group. A level
+             *     nobody may decide when it opens is rejected.
+             */
+            roles?: string[];
+            /**
              * @default any
              * @enum {string}
              */
@@ -6945,6 +6958,8 @@ export interface components {
         };
         ApprovalPolicyList: {
             items: components["schemas"]["ApprovalPolicy"][];
+            /** @description The roles a level may name, those given in projects. */
+            level_roles: components["schemas"]["RoleRef"][];
         };
         Day2PolicyWrite: {
             name: string;
@@ -6969,6 +6984,8 @@ export interface components {
         };
         Day2PolicyList: {
             items: components["schemas"]["Day2Policy"][];
+            /** @description The roles a level may name, those given in projects. */
+            level_roles: components["schemas"]["RoleRef"][];
         };
         PolicyExplainQuery: {
             project_id: string;

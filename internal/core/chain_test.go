@@ -66,3 +66,32 @@ func TestAllApprovedCountsDelegatesAndSkipsTheRequester(t *testing.T) {
 		t.Fatal("a level with no named approvers needs only one approval")
 	}
 }
+
+func TestAddLevelKeepsRolesApart(t *testing.T) {
+	pol := store.ApprovalPolicy{ID: "p", Reason: "r"}
+	supervisors := level{Name: "Supervisors", Roles: []string{"supervisor", "project-admin"}}
+	same := level{Name: "Supervisors again", Roles: []string{"project-admin", "supervisor"}}
+	chain := addLevel(addLevel(nil, pol, supervisors), pol, same)
+	if len(chain) != 1 || len(chain[0].Roles) != 2 {
+		t.Fatalf("the same roles in another order are one level: %+v", chain)
+	}
+	if chain = addLevel(chain, pol, level{Name: "Admins", Roles: []string{"project-admin"}}); len(chain) != 2 {
+		t.Fatalf("other roles are another level: %+v", chain)
+	}
+}
+
+func TestAllApprovedNeedsEveryRoleHolder(t *testing.T) {
+	lv := store.Approval{ApproverIDs: []string{"usr_afavre"}, RoleIDs: []string{"usr_cdubois", "usr_afavre", "usr_tnguyen"},
+		RoleGroups: []string{"rvav-web"}}
+	votes := []store.ApprovalVote{{UserID: "usr_afavre", UserName: "Alain Favre", Decision: "approve"}}
+	if _, done := allApproved(lv, "usr_tnguyen", votes, nil); done {
+		t.Fatal("Claire Dubois holds the role and has not approved")
+	}
+	votes = append(votes, store.ApprovalVote{UserID: "usr_cdubois", UserName: "Claire Dubois", Decision: "approve"})
+	if names, done := allApproved(lv, "usr_tnguyen", votes, nil); !done || len(names) != 2 {
+		t.Fatalf("allApproved = %v %v", names, done)
+	}
+	if _, done := allApproved(store.Approval{RoleGroups: []string{"rvav-web"}}, "usr_tnguyen", nil, nil); !done {
+		t.Fatal("a role given only through groups needs one approval")
+	}
+}

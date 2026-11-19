@@ -572,7 +572,7 @@ or only for all of rvav. The built-in roles can't be changed:
 | Project admin | In a project | Seeing it, requesting (for others too), its requests, approvals, members, settings and audit log. |
 | Member | In a project | Seeing it and requesting. |
 | Viewer | In a project | Seeing it. |
-| Supervisor | In a project | Seeing it, its deployments included, and approving: it is one of the project's approvers (`approval.project`), asked when a lease is extended beyond its policy. It doesn't request or run day-2 actions. |
+| Supervisor | In a project | Seeing it, its deployments included, and approving: it is one of the project's approvers (`approval.project`), asked when a lease is extended beyond its policy, and wherever a level names it ([Who approves](#who-approves)). It doesn't request or run day-2 actions. |
 | User | To everyone | Nothing. |
 
 To give someone less, or a mix, make a role of your own in
@@ -603,8 +603,8 @@ says in words what you chose. `POST /api/v1/admin/roles` does the same.
 - `day2.<group>` allows a group of day-2 actions, `day2.<group>:<action>`
   one of them, for example `day2.power:power_off`. A day-2 policy that
   matches decides first; with none, the roles' day-2 permissions decide.
-- A role still given, mapped to a group or named by a day-2 policy can't
-  be deleted: in its menu, in the list or on its page, **Delete** says
+- A role still given, mapped to a group, named by a day-2 policy, or
+  named by a level of an approval or day-2 policy can't be deleted: in its menu, in the list or on its page, **Delete** says
   why, for example "Delete: given 3 times". Otherwise rvav asks before
   deleting it.
 
@@ -687,7 +687,7 @@ and an environment, which policies would apply to a request and why.
 
 | Tab | What it decides |
 |---|---|
-| **Approval** | Which requests need approval, from whom (users or groups, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota. |
+| **Approval** | Which requests need approval, from whom (users, groups or project roles, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota. |
 | **Lease** | Default and longest leases per environment or project, extensions, and the end: power off then delete, delete, or only tell the owner. |
 | **Day-2** | Who may run which action, where, and which need approval (deleting in production, by default). |
 | **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment, with where the counter starts and how much it moves (**Start at** 100 and **Increment** 10 give 100, 110, 120). A counter in use goes on from its last number, and jumps to the start when you raise it past that number. Names are never given twice, and are checked free in vCenter and DNS. |
@@ -701,6 +701,42 @@ policy decides instead.
 
 Quotas are set on each project's page, in its **Quotas** tab: a hard
 limit refuses a request, a soft one asks for approval.
+
+### Who approves
+
+Each level of an approval policy, or of a day-2 policy with the effect
+approval, asks one or more of these
+([ADR-0041](../adr/0041-approvers-by-role.md)):
+- **An OIDC group** (`group`): its members, as their token says when they
+  decide.
+- **Users** (`approvers`), by ID.
+- **Project roles** (`roles`), built-in or custom, by key: whoever holds
+  one in the request's project when the level opens, given it themselves
+  or through a group mapped to it there. A role held for all of rvav
+  doesn't count. One policy can then ask every project's supervisors.
+
+`GET /api/v1/admin/approval-policies` lists the roles a level may name in
+`level_roles`: the roles given in projects. A level that names a role
+given for all of rvav only, such as `auditor`, or no role at all, isn't
+saved.
+
+In mode `all`, every user the level names or who holds one of its roles
+must approve. Groups are never required in full: a level of groups only
+needs one approval.
+
+When a level opens and nobody but the requester can decide it, rvav
+rejects it at once, even when it would approve itself on time-out, and
+says why, for example "Rejected automatically: nobody can approve it, as
+nobody holds Supervisor in Web Platform". The requester is told, and the
+audit log has `approval.unanswerable`. Give the role in the project, and
+ask them to request again. A level with a group always waits: its members
+may sign in later.
+
+A lease extension beyond the lease policy asks the project's approvers,
+in a level named **Project approvers**: whoever holds a role with
+`approval.project` in the project, such as Project admin or Supervisor.
+When nobody but the requester holds one, rvav refuses the extension.
+A role that a level names can't be deleted: change the policy first.
 
 ## The catalog
 

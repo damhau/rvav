@@ -146,7 +146,7 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 			dec := j.decide(a, t, nil)
 			if a.Approval != nil && dec.Denied == "" {
 				if why := a.Approval(t, c, nil); why != "" {
-					dec.Chain = append(dec.Chain, ChainLevel{Name: "Project admins", Reasons: []string{why}})
+					dec.Chain = append(dec.Chain, ChainLevel{Name: "Project approvers", Reasons: []string{why}})
 				}
 			}
 			reason := deploymentBusy(d, active[t.ResourceID], a, t.ResourceID != "")
@@ -303,7 +303,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	}
 	if a.Approval != nil && p.User.ID != SystemUserID {
 		if why := a.Approval(*target, c, inputs); why != "" {
-			level, err := s.projectAdminsLevel(ctx, d, p.User.ID, why)
+			level, err := s.projectApproversLevel(ctx, d, p.User.ID, why)
 			if err != nil {
 				return store.RequestRow{}, err
 			}
@@ -397,33 +397,24 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	return s.Store.GetRequest(ctx, req.ID)
 }
 
-// projectAdminsLevel is an approval level for those given approval.project
-// in the project other than the requester, directly or through a group.
-// It is rejected after three days without a decision, so it never blocks
-// the deployment for good.
-func (s *Service) projectAdminsLevel(ctx context.Context, d store.DeploymentRow, requesterID, reason string) (ChainLevel, error) {
+// projectApproversLevel asks the project's approvers: whoever holds a role
+// with approval.project given in the project, themselves or through a
+// group, when it opens (ADR-0041). It is refused now when nobody but the
+// requester holds one, and rejected after three days without a decision,
+// so it never blocks the deployment for good.
+func (s *Service) projectApproversLevel(ctx context.Context, d store.DeploymentRow, requesterID, reason string) (ChainLevel, error) {
 	roles, err := s.rolesWith(ctx, auth.ApprovalProject)
 	if err != nil {
 		return ChainLevel{}, err
 	}
-	ids, groups, err := s.Store.ProjectAdmins(ctx, d.ProjectID, roles)
+	holders, err := s.previewHolders(ctx, d.ProjectID, roles, requesterID)
 	if err != nil {
 		return ChainLevel{}, err
 	}
-	members, err := s.Store.GroupMembers(ctx, groups)
-	if err != nil {
-		return ChainLevel{}, err
+	if len(holders) == 0 {
+		return ChainLevel{}, &ConflictError{Msg: d.ProjectName + " has no other project approver to approve this."}
 	}
-	var approvers []string
-	for _, id := range append(ids, members...) {
-		if id != requesterID && !contains(approvers, id) {
-			approvers = append(approvers, id)
-		}
-	}
-	if len(approvers) == 0 {
-		return ChainLevel{}, &ConflictError{Msg: d.ProjectName + " has no other project admin to approve this."}
-	}
-	return ChainLevel{Name: "Project admins", Approvers: approvers, Mode: "any", PolicyIDs: []string{"lease_policy"},
+	return ChainLevel{Name: "Project approvers", Roles: roles, Mode: "any", PolicyIDs: []string{"lease_policy"},
 		Reasons: []string{reason}, Rules: []string{"lease policy"}, Timeout: 72 * time.Hour, OnTimeout: "reject"}, nil
 }
 

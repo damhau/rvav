@@ -394,7 +394,7 @@ func (s *Service) DeleteRole(ctx context.Context, p *auth.Principal, key string)
 	case st.BuiltIn:
 		return &ConflictError{Msg: st.Name + " is built in: it can't be deleted."}
 	case len(st.Policies) > 0:
-		return &ConflictError{Msg: "The day-2 policies " + strings.Join(st.Policies, ", ") + " name " + st.Name + ": change them first."}
+		return &ConflictError{Msg: "The policies " + strings.Join(st.Policies, ", ") + " name " + st.Name + ": change them first."}
 	case st.Holders > 0:
 		return &ConflictError{Msg: fmt.Sprintf("%s is given %d times, to users or groups: take it away first.", st.Name, st.Holders)}
 	}

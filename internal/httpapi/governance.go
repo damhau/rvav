@@ -18,7 +18,11 @@ import (
 
 func (s *Server) ListApprovalPolicies(w http.ResponseWriter, r *http.Request) {
 	items, err := s.Core.ApprovalPolicies(r.Context(), principal(r))
-	s.reply(w, r, http.StatusOK, api.ApprovalPolicyList{Items: items}, err)
+	var roles []api.RoleRef
+	if err == nil {
+		roles, err = s.Core.LevelRoles(r.Context(), principal(r))
+	}
+	s.reply(w, r, http.StatusOK, api.ApprovalPolicyList{Items: items, LevelRoles: roles}, err)
 }
 
 func (s *Server) CreateApprovalPolicy(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +49,11 @@ func (s *Server) UpdateApprovalPolicy(w http.ResponseWriter, r *http.Request, id
 
 func (s *Server) ListDay2Policies(w http.ResponseWriter, r *http.Request) {
 	items, err := s.Core.Day2Policies(r.Context(), principal(r))
-	s.reply(w, r, http.StatusOK, api.Day2PolicyList{Items: items}, err)
+	var roles []api.RoleRef
+	if err == nil {
+		roles, err = s.Core.LevelRoles(r.Context(), principal(r))
+	}
+	s.reply(w, r, http.StatusOK, api.Day2PolicyList{Items: items, LevelRoles: roles}, err)
 }
 
 func (s *Server) CreateDay2Policy(w http.ResponseWriter, r *http.Request) {

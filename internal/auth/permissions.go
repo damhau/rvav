@@ -147,6 +147,9 @@ func (r Role) Assignable(projectID string) bool {
 	})
 }
 
+// InProjects says whether the role may be given in projects.
+func (r Role) InProjects() bool { return r.Assignable("any project") }
+
 // BuiltinRoles are the roles of ADR-0020, unchanged, and the supervisor.
 // None grants a day-2 action: for them, the day-2 policies decide alone, as
 // before.

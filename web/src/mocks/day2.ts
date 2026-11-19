@@ -857,7 +857,7 @@ export function runAction(
               levels: [
                 a.key === "delete"
                   ? { name: "Infrastructure leads", approvers: [marc], mode: "any" }
-                  : { name: "Project admins", approvers: [marc], mode: "any" },
+                  : { name: "Project approvers", approvers: [marc], mode: "any" },
               ],
             },
           ],

@@ -260,7 +260,7 @@ export function rolesHandlers(db: Db, base: string, wait: () => Promise<void>, u
       if (r.built_in) return problem(409, "Conflict", `${r.name} is built in: it can't be deleted.`);
       const policies = uses.policies(r.key);
       if (policies.length > 0)
-        return problem(409, "Conflict", `The day-2 policies ${policies.join(", ")} name ${r.name}: change them first.`);
+        return problem(409, "Conflict", `The policies ${policies.join(", ")} name ${r.name}: change them first.`);
       const holders = uses.holders(r.key);
       if (holders > 0)
         return problem(409, "Conflict", `${r.name} is given ${holders} times, to users or groups: take it away first.`);

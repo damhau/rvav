@@ -12,12 +12,17 @@ import (
 
 // Approval is one level of a request's approval chain (ADR-0011).
 type Approval struct {
-	ID             string     `db:"id"`
-	RequestID      string     `db:"request_id"`
-	Seq            int        `db:"seq"`
-	Name           string     `db:"name"`
-	GroupName      *string    `db:"group_name"`
-	ApproverIDs    []string   `db:"approver_ids"`
+	ID          string   `db:"id"`
+	RequestID   string   `db:"request_id"`
+	Seq         int      `db:"seq"`
+	Name        string   `db:"name"`
+	GroupName   *string  `db:"group_name"`
+	ApproverIDs []string `db:"approver_ids"`
+	// Roles are the project roles the level asks (ADR-0041); RoleIDs and
+	// RoleGroups who held them in the request's project when it opened.
+	Roles          []string   `db:"roles"`
+	RoleIDs        []string   `db:"role_ids"`
+	RoleGroups     []string   `db:"role_groups"`
 	Mode           string     `db:"mode"`
 	PolicyIDs      []string   `db:"policy_ids"`
 	Reasons        []string   `db:"reasons"`
@@ -52,27 +57,40 @@ func (a Approval) AllowsRequester(requesterID string) bool {
 	return a.StepKey != nil && slices.Contains(a.ApproverIDs, requesterID)
 }
 
-// Groups returns the groups whose members may decide: the level's, and the
-// escalation group once escalated.
+// Groups returns the groups whose members may decide: the level's, those
+// its roles are mapped to, and the escalation group once escalated.
 func (a Approval) Groups() []string {
 	var g []string
 	if a.GroupName != nil && *a.GroupName != "" {
 		g = append(g, *a.GroupName)
 	}
+	g = append(g, a.RoleGroups...)
 	if a.Escalated && a.EscalateGroup != nil && *a.EscalateGroup != "" {
 		g = append(g, *a.EscalateGroup)
 	}
 	return g
 }
 
-// NamedApprovers returns the users named on the level, with the escalation
-// approvers once escalated.
+// NamedApprovers returns the users named on the level or holding its
+// roles, with the escalation approvers once escalated.
 func (a Approval) NamedApprovers() []string {
-	ids := append([]string{}, a.ApproverIDs...)
+	ids := append(slices.Clone(a.ApproverIDs), a.RoleIDs...)
 	if a.Escalated {
 		ids = append(ids, a.EscalateIDs...)
 	}
 	return ids
+}
+
+// Required are who must all approve in mode all: the users named and those
+// holding its roles, never the requester. A level of groups only needs one.
+func (a Approval) Required(requesterID string) []string {
+	var out []string
+	for _, id := range append(slices.Clone(a.ApproverIDs), a.RoleIDs...) {
+		if id != requesterID && !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 type ApprovalVote struct {
@@ -96,7 +114,7 @@ type ApprovalDelegate struct {
 	CreatedAt   time.Time `db:"created_at"`
 }
 
-const approvalCols = `a.id, a.request_id, a.seq, a.name, a.group_name, a.approver_ids, a.mode, a.policy_ids,
+const approvalCols = `a.id, a.request_id, a.seq, a.name, a.group_name, a.approver_ids, a.roles, a.role_ids, a.role_groups, a.mode, a.policy_ids,
 	a.reasons, a.rules, a.status, a.timeout_seconds, a.on_timeout, a.escalate_group, a.escalate_ids,
 	a.escalated, a.created_at, a.opened_at, a.due_at, a.decided_at, a.outcome, a.workflow_id,
 	a.step_key, a.message, a.form, a.answer, a.retired`
@@ -104,11 +122,11 @@ const approvalCols = `a.id, a.request_id, a.seq, a.name, a.group_name, a.approve
 func (s *Store) InsertApprovals(ctx context.Context, db DB, list []Approval) error {
 	for _, a := range list {
 		_, err := db.Exec(ctx, `insert into approvals (id, request_id, seq, name, group_name, approver_ids, mode,
-			policy_ids, reasons, rules, status, timeout_seconds, on_timeout, escalate_group, escalate_ids)
-			values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+			policy_ids, reasons, rules, status, timeout_seconds, on_timeout, escalate_group, escalate_ids, roles)
+			values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 			a.ID, a.RequestID, a.Seq, a.Name, a.GroupName, nonNil(a.ApproverIDs), a.Mode, nonNil(a.PolicyIDs),
 			nonNil(a.Reasons), nonNil(a.Rules), a.Status, a.TimeoutSeconds, a.OnTimeout, a.EscalateGroup,
-			nonNil(a.EscalateIDs))
+			nonNil(a.EscalateIDs), nonNil(a.Roles))
 		if err != nil {
 			return err
 		}
@@ -234,6 +252,7 @@ func (s *Store) ListApprovals(ctx context.Context, f ApprovalFilter) (Page[Appro
 	where := `($1 or ((r.requester_id <> $2 or (a.step_key is not null and $2 = any(a.approver_ids))) and (
 			-- open levels you may decide (with mode all, not once you voted)
 			(a.status in ('waiting', 'pending') and not ` + voted + ` and ($2 = any(a.approver_ids) or a.group_name = any($3)
+				or $2 = any(a.role_ids) or a.role_groups && $3
 				or (a.escalated and ($2 = any(a.escalate_ids) or a.escalate_group = any($3)))
 				or exists (select 1 from approval_delegates d where d.approval_id = a.id and d.user_id = $2)))
 			-- and the ones you decided
@@ -277,12 +296,17 @@ func (s *Store) ListApprovals(ctx context.Context, f ApprovalFilter) (Page[Appro
 	}), total, nil
 }
 
-// OpenApproval makes a waiting level pending and starts its timeout. It
+// OpenApproval makes a waiting level pending and starts its timeout, with
+// who holds its roles in the request's project now, users and groups. It
 // reports whether it did: a level already opened (an activity retry) or
 // decided is returned as it is.
 func (s *Store) OpenApproval(ctx context.Context, db DB, id string) (Approval, bool, error) {
 	rows, _ := db.Query(ctx, `update approvals a set status = 'pending', opened_at = now(),
-		due_at = case when timeout_seconds is null then null else now() + make_interval(secs => timeout_seconds) end
+		due_at = case when timeout_seconds is null then null else now() + make_interval(secs => timeout_seconds) end,
+		role_ids = array(select distinct m.user_id from project_members m join requests r on r.project_id = m.project_id
+			where r.id = a.request_id and m.role = any(a.roles) order by m.user_id),
+		role_groups = array(select distinct g.oidc_group from group_mappings g join requests r on r.project_id = g.project_id
+			where r.id = a.request_id and g.role = any(a.roles) order by g.oidc_group)
 		where a.id = $1 and a.status = 'waiting' returning `+approvalCols, id)
 	a, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Approval])
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -411,7 +435,7 @@ func (s *Store) Audit(ctx context.Context, db DB, e AuditEvent) error {
 func (s *Store) IsRequestApprover(ctx context.Context, requestID, userID string, groups []string) (bool, error) {
 	var ok bool
 	err := s.Pool.QueryRow(ctx, `select exists (select 1 from approvals a where a.request_id = $1 and a.status <> 'cancelled'
-		and ($2 = any(a.approver_ids) or a.group_name = any($3)
+		and ($2 = any(a.approver_ids) or a.group_name = any($3) or $2 = any(a.role_ids) or a.role_groups && $3
 			or (a.escalated and ($2 = any(a.escalate_ids) or a.escalate_group = any($3)))
 			or exists (select 1 from approval_delegates d where d.approval_id = a.id and d.user_id = $2)))`,
 		requestID, userID, nonNil(groups)).Scan(&ok)

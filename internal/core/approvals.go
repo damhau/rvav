@@ -393,15 +393,13 @@ func approvalSignal(id string, stepKey *string) string {
 	return provision.SignalWorkflowApproval
 }
 
-// allApproved reports whether every named approver (not the requester) has
-// approved, themselves or through someone they delegated to, with the names
-// of who did. A level with no named approvers (only a group) needs one.
+// allApproved reports whether every named approver and role holder (not
+// the requester) has approved, themselves or through someone they delegated
+// to, with the names of who did. A level with neither (only groups) needs
+// one.
 func allApproved(lv store.Approval, requesterID string, votes []store.ApprovalVote, delegates []store.ApprovalDelegate) ([]string, bool) {
 	var names []string
-	for _, uid := range lv.ApproverIDs {
-		if uid == requesterID {
-			continue
-		}
+	for _, uid := range lv.Required(requesterID) {
 		i := slices.IndexFunc(votes, func(v store.ApprovalVote) bool {
 			if v.Decision != "approve" {
 				return false
@@ -656,6 +654,16 @@ func (s *Service) detail(ctx context.Context, p *auth.Principal, l loadedLevel) 
 		if u, ok := users[id]; ok {
 			a.Approvers = append(a.Approvers, present.UserRef(u.ID, u.Name, u.Email))
 		}
+	}
+	if len(l.lv.Roles) > 0 {
+		refs := make([]api.RoleRef, len(l.lv.Roles))
+		for i, k := range l.lv.Roles {
+			refs[i] = api.RoleRef{Key: k, Name: k}
+			if r, err := s.role(ctx, k); err == nil {
+				refs[i].Name = r.Name
+			}
+		}
+		a.Roles = &refs
 	}
 	if len(l.lv.EscalateIDs) > 0 {
 		esc := []api.UserRef{}

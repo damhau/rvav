@@ -235,8 +235,17 @@ func (s *Service) checkLevels(ctx context.Context, levels []api.ApprovalLevel, p
 		if l.OnTimeout != nil && !l.OnTimeout.Valid() {
 			errs = append(errs, fieldErr(lp+"/on_timeout", "enum", "escalate, approve or reject."))
 		}
-		if deref(l.Group) == "" && (l.Approvers == nil || len(*l.Approvers) == 0) {
-			errs = append(errs, fieldErr(lp, "required", "Give an OIDC group or approvers."))
+		if deref(l.Group) == "" && len(derefSlice(l.Approvers)) == 0 && len(derefSlice(l.Roles)) == 0 {
+			errs = append(errs, fieldErr(lp, "required", "Give an OIDC group, approvers or project roles."))
+		}
+		for j, k := range derefSlice(l.Roles) {
+			r, err := s.role(ctx, k)
+			if errors.Is(err, store.ErrNotFound) || err == nil && !r.InProjects() {
+				errs = append(errs, fieldErr(fmt.Sprintf("%s/roles/%d", lp, j), "unknown",
+					"There is no role "+k+" given in projects."))
+			} else if err != nil {
+				return nil, err
+			}
 		}
 		if l.Approvers != nil {
 			ids = append(ids, *l.Approvers...)
@@ -269,6 +278,29 @@ func (s *Service) checkLevels(ctx context.Context, levels []api.ApprovalLevel, p
 		}
 	}
 	return errs, nil
+}
+
+// LevelRoles are the roles an approval level may name: those given in
+// projects, built-in or custom.
+func (s *Service) LevelRoles(ctx context.Context, p *auth.Principal) ([]api.RoleRef, error) {
+	if !p.Everywhere(auth.PoliciesRead) {
+		return nil, ErrForbidden
+	}
+	list, err := s.Store.Roles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []api.RoleRef{}
+	for _, st := range list {
+		r, ok := auth.BuiltinRole(st.Key)
+		if !st.BuiltIn {
+			r, ok = customRole(st), true
+		}
+		if ok && r.InProjects() {
+			out = append(out, api.RoleRef{Key: r.Key, Name: r.Name})
+		}
+	}
+	return out, nil
 }
 
 func presentApprovalPolicy(pol store.AdminApprovalPolicy) api.ApprovalPolicy {

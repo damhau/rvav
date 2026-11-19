@@ -470,6 +470,7 @@ type level struct {
 	Name      string   `json:"name"`
 	Group     string   `json:"group"`
 	Approvers []string `json:"approvers"`
+	Roles     []string `json:"roles"`
 	Mode      string   `json:"mode"`
 	// Timeout is a Go duration such as "48h"; empty for none.
 	Timeout    string `json:"timeout"`
@@ -486,6 +487,7 @@ type ChainLevel struct {
 	Name          string
 	Group         string
 	Approvers     []string
+	Roles         []string
 	Mode          string
 	PolicyIDs     []string
 	Reasons       []string
@@ -501,7 +503,7 @@ type ChainLevel struct {
 // shorter timeout.
 func addLevel(chain []ChainLevel, pol store.ApprovalPolicy, l level) []ChainLevel {
 	timeout, _ := time.ParseDuration(l.Timeout)
-	in := ChainLevel{Name: l.Name, Group: l.Group, Approvers: l.Approvers, Mode: orDefault(l.Mode, "any"),
+	in := ChainLevel{Name: l.Name, Group: l.Group, Approvers: l.Approvers, Roles: l.Roles, Mode: orDefault(l.Mode, "any"),
 		PolicyIDs: []string{pol.ID}, Reasons: []string{pol.Reason}, Rules: []string{pol.Condition}}
 	if timeout > 0 {
 		in.Timeout, in.OnTimeout = timeout, orDefault(l.OnTimeout, "reject")
@@ -510,9 +512,10 @@ func addLevel(chain []ChainLevel, pol store.ApprovalPolicy, l level) []ChainLeve
 		}
 	}
 	key := func(c ChainLevel) string {
-		ids := slices.Clone(c.Approvers)
+		ids, roles := slices.Clone(c.Approvers), slices.Clone(c.Roles)
 		slices.Sort(ids)
-		return c.Group + "|" + strings.Join(ids, ",")
+		slices.Sort(roles)
+		return c.Group + "|" + strings.Join(ids, ",") + "|" + strings.Join(roles, ",")
 	}
 	for i := range chain {
 		c := &chain[i]
@@ -600,8 +603,12 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 		var levels []level
 		_ = json.Unmarshal(pol.Levels, &levels)
 		var ids []string
-		for _, l := range levels {
-			ids = append(ids, l.Approvers...)
+		holders := make([][]string, len(levels))
+		for i, l := range levels {
+			if holders[i], err = s.previewHolders(ctx, ev.Project.ID, l.Roles, p.User.ID); err != nil {
+				return err
+			}
+			ids = append(append(ids, l.Approvers...), holders[i]...)
 			ev.Chain = addLevel(ev.Chain, pol, l)
 		}
 		users, err := s.Store.FindUsers(ctx, ids)
@@ -618,7 +625,7 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 			PolicyId string `json:"policy_id"`
 			Reason   string `json:"reason"`
 		}{Name: pol.Name, PolicyId: pol.ID, Reason: pol.Reason}
-		for _, l := range levels {
+		for i, l := range levels {
 			lv := struct {
 				Approvers []api.UserRef                          `json:"approvers"`
 				Mode      *api.ApprovalPreviewPoliciesLevelsMode `json:"mode,omitempty"`
@@ -627,8 +634,8 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 			if l.Mode != "" {
 				lv.Mode = present.Ptr(api.ApprovalPreviewPoliciesLevelsMode(l.Mode))
 			}
-			for _, id := range l.Approvers {
-				if u, ok := users[id]; ok {
+			for _, id := range append(slices.Clone(l.Approvers), holders[i]...) {
+				if u, ok := users[id]; ok && !slices.ContainsFunc(lv.Approvers, func(r api.UserRef) bool { return r.Id == id }) {
 					lv.Approvers = append(lv.Approvers, present.UserRef(u.ID, u.Name, u.Email))
 				}
 			}
@@ -638,6 +645,24 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 	}
 	ev.Approval.Required = len(ev.Chain) > 0
 	return nil
+}
+
+// previewHolders are who would approve for these roles if the level opened
+// now: their holders in the project and the members of the groups mapped to
+// them seen so far, not the requester.
+func (s *Service) previewHolders(ctx context.Context, projectID string, roles []string, requesterID string) ([]string, error) {
+	if len(roles) == 0 {
+		return nil, nil
+	}
+	ids, groups, err := s.Store.RoleHolders(ctx, projectID, roles)
+	if err != nil {
+		return nil, err
+	}
+	members, err := s.Store.GroupMembers(ctx, groups)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(append(ids, members...), func(id string) bool { return id == requesterID }), nil
 }
 
 func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, _ bool) error {

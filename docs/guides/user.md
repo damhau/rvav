@@ -385,7 +385,9 @@ downloaded.
 ## Approving
 
 **Approvals** lists the requests waiting for you, oldest first, with why
-each needs approval, who asked, and when it is due. **Decided** lists those
+each needs approval, who asked, and when it is due. A request waits for you
+when its level names you or your group, or a role you hold in its project,
+such as Supervisor. **Decided** lists those
 you have approved or rejected. Select a row to open it in a side panel,
 which shows:
 - what is asked and why;

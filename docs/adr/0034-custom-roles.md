@@ -285,7 +285,8 @@ They are today's roles, exactly; they can't be changed or deleted.
 ### Approvals
 - **Approvers stay people:** the users a level names, its group's members
   and its delegates (ADR-0011). No permission makes someone an approver,
-  or lets them decide a level they aren't asked.
+  or lets them decide a level they aren't asked. [ADR-0041](0041-approvers-by-role.md)
+  adds the holders of the roles a level names, in the request's project.
 - `approval.read_all` lets its holder see every approval (`view=all`) and
   steps' questions, as administrators and auditors do today.
 - The level asking a project's admins (`projectAdminsLevel`) asks those

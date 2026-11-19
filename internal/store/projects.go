@@ -217,9 +217,9 @@ func (s *Store) PeekName(ctx context.Context, prefix string, start, step int) (i
 	return n, err
 }
 
-// ProjectAdmins returns the users given one of these roles in the project,
+// RoleHolders returns the users given one of these roles in the project,
 // and the OIDC groups mapped to one there.
-func (s *Store) ProjectAdmins(ctx context.Context, projectID string, roles []string) (ids, groups []string, err error) {
+func (s *Store) RoleHolders(ctx context.Context, projectID string, roles []string) (ids, groups []string, err error) {
 	rows, _ := s.Pool.Query(ctx, `select distinct user_id from project_members where project_id = $1 and role = any($2) order by user_id`,
 		projectID, roles)
 	if ids, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {

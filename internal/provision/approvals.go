@@ -19,7 +19,8 @@ import (
 // outcome on the request.
 
 // OpenApproval makes a level pending, starts its timeout and tells its
-// approvers. A level decided meanwhile is returned with its outcome.
+// approvers. A level decided meanwhile is returned with its outcome, and
+// one nobody may decide is rejected (ADR-0041).
 func (a *Activities) OpenApproval(ctx context.Context, approvalID string) (LevelState, error) {
 	lv, opened, err := a.Store.OpenApproval(ctx, a.Store.Pool, approvalID)
 	if err != nil {
@@ -33,6 +34,13 @@ func (a *Activities) OpenApproval(ctx context.Context, approvalID string) (Level
 	r, err := a.Store.GetRequest(ctx, lv.RequestID)
 	if err != nil {
 		return LevelState{}, err
+	}
+	dels, err := a.Store.Delegates(ctx, []string{lv.ID})
+	if err != nil {
+		return LevelState{}, err
+	}
+	if !answerable(lv, dels[lv.ID], r.RequesterID) {
+		return a.rejectUnanswerable(ctx, lv, r)
 	}
 	levels, err := a.Store.ApprovalsForRequest(ctx, r.ID)
 	if err != nil {
@@ -64,6 +72,66 @@ func (a *Activities) OpenApproval(ctx context.Context, approvalID string) (Level
 	a.Events.Approval(ctx, append(recipients, r.RequesterID), lv.ID, r.ID, lv.Status)
 	a.publishAll(ctx, r.ProjectID, r.ID)
 	return LevelState{Status: lv.Status, DueAt: lv.DueAt}, nil
+}
+
+// answerable says whether anyone but the requester may decide the level: a
+// user it names or who holds one of its roles, a member of one of its
+// groups (who may sign in later), or a delegate.
+func answerable(lv store.Approval, dels []store.ApprovalDelegate, requesterID string) bool {
+	return len(lv.Groups()) > 0 || len(dels) > 0 ||
+		slices.ContainsFunc(lv.NamedApprovers(), func(id string) bool { return id != requesterID })
+}
+
+// rejectUnanswerable rejects a level nobody may decide, saying why, rather
+// than leave it waiting for no one or approve it on time-out.
+func (a *Activities) rejectUnanswerable(ctx context.Context, lv store.Approval, r store.RequestRow) (LevelState, error) {
+	var why []string
+	if len(lv.Roles) > 0 {
+		names := make([]string, len(lv.Roles))
+		for i, k := range lv.Roles {
+			names[i] = k
+			if role, err := a.Store.GetRole(ctx, k); err == nil {
+				names[i] = role.Name
+			}
+		}
+		who := "nobody holds " + orList(names) + " in " + r.ProjectName
+		if slices.Contains(lv.RoleIDs, r.RequesterID) {
+			who = "only the requester holds " + orList(names) + " in " + r.ProjectName
+		}
+		why = append(why, who)
+	}
+	if slices.Contains(lv.ApproverIDs, r.RequesterID) {
+		why = append(why, "the only user it names is the requester")
+	}
+	outcome := "Rejected automatically: nobody can approve it"
+	if len(why) > 0 {
+		outcome += ", as " + strings.Join(why, " and ")
+	}
+	err := a.Store.Tx(ctx, func(tx pgx.Tx) error {
+		if ok, err := a.Store.FinishApproval(ctx, tx, lv.ID, "rejected", outcome); err != nil || !ok {
+			return err
+		}
+		return a.Store.Audit(ctx, tx, store.AuditEvent{Action: "approval.unanswerable", TargetType: "approval", TargetID: lv.ID,
+			ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "level": lv.Name, "roles": lv.Roles, "outcome": outcome}})
+	})
+	if err != nil {
+		return LevelState{}, err
+	}
+	now, err := a.Store.GetApproval(ctx, a.Store.Pool, lv.ID)
+	if err != nil {
+		return LevelState{}, err
+	}
+	a.Events.Approval(ctx, []string{r.RequesterID}, lv.ID, r.ID, now.Status)
+	a.publishAll(ctx, r.ProjectID, r.ID)
+	return LevelState{Status: now.Status, DueAt: now.DueAt}, nil
+}
+
+// orList joins names as "A", "A or B", "A, B or C".
+func orList(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
 }
 
 // ApprovalState reads a level again, in case its decision signal was lost.
@@ -281,6 +349,9 @@ func (a *Activities) FinishApprovals(ctx context.Context, requestID string) (boo
 		Level: "success", Link: "/requests/" + r.Number, RequestID: &r.ID}
 	if !approved {
 		n.Kind, n.Title, n.Body, n.Level = "request_rejected", "Rejected: "+r.Title, strings.Join(notes, " "), "error"
+		if n.Body == "" {
+			n.Body = title
+		}
 	}
 	n.DedupeKey = runKey(ctx, r.ID, n.Kind)
 	a.Events.Notify(ctx, n)
