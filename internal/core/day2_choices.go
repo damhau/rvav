@@ -78,6 +78,13 @@ func (s *Service) projectChoices(ctx context.Context, p *auth.Principal, d store
 
 // cannotMove says why the deployment's VMs can't move to the project ("" when they can).
 func (s *Service) cannotMove(ctx context.Context, proj store.Project, d store.DeploymentRow, t day2.Target) (string, error) {
+	taken, err := s.Store.TakenDeploymentNames(ctx, s.Store.Pool, proj.ID, d.ID, []string{d.Name})
+	if err != nil {
+		return "", err
+	}
+	if len(taken) > 0 {
+		return takenMsg(proj.Name, taken[0]) + " Rename this one first (Edit deployment).", nil
+	}
 	pl, err := s.placement(ctx, proj.ID, d.Environment)
 	if err != nil {
 		return "", err
@@ -208,10 +215,14 @@ func (s *Service) day2Quota(ctx context.Context, a *day2.Action, d store.Deploym
 	return q.OverSoft, nil
 }
 
-// checkAction runs the checks of an action that need vCenter's inventory
-// or DNS.
-func (s *Service) checkAction(ctx context.Context, a *day2.Action, t day2.Target, inputs map[string]any) ([]api.FieldError, error) {
-	if a.Key != "rename" {
+// checkAction runs the checks of an action that need vCenter's inventory,
+// DNS or the project's deployments.
+func (s *Service) checkAction(ctx context.Context, a *day2.Action, d store.DeploymentRow, t day2.Target, inputs map[string]any) ([]api.FieldError, error) {
+	switch a.Key {
+	case "edit":
+		return s.checkEdit(ctx, d, t, inputs)
+	case "rename":
+	default:
 		return nil, nil
 	}
 	name, _ := inputs["name"].(string)

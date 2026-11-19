@@ -128,6 +128,8 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return a.moveFolder(ctx, in)
 	case "set_project":
 		return a.setProject(ctx, in)
+	case "set_details":
+		return a.setDetails(ctx, in)
 	case "set_lease":
 		return a.setLease(ctx, in)
 	case "lease_expired":

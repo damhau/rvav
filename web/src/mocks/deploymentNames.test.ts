@@ -1,10 +1,12 @@
 // The mocks name deployments as core.evaluateDeployments does
 // (internal/core/deployment_names.go): numbered when there are several,
 // refused when taken whatever the case, when it is a VM name, or when the
-// item makes no deployment (ADR-0019).
+// item makes no deployment (ADR-0046). Edit deployment checks the name
+// as a request does.
 import { describe, expect, it } from "vitest";
 import { api, call } from "@/lib/api/client";
 import type { RequestDraft } from "@/lib/api/types";
+import { completeDay2Step, runAction } from "./day2";
 import { db } from "./seed";
 
 const web = () => db.projects.find((p) => p.code === "web")!;
@@ -76,6 +78,35 @@ describe("deployment names in the mocks", () => {
     expect(errors.map((e) => `${e.field} ${e.code}`).sort()).toEqual([
       "/deployment_description no_deployment",
       "/deployment_name no_deployment",
+    ]);
+  });
+});
+
+describe("Edit deployment in the mocks", () => {
+  const dep = (name: string) => db.deployments.find((d) => d.name === name)!;
+  const edit = (name: string, description = "") =>
+    runAction(db, dep("web-dev-api"), { action: "edit", inputs: { name, description } }, "REQ-20001");
+
+  it("refuses no change, a name the project's deployments hold, and a VM name", () => {
+    const vm = dep("web-dev-api").resources.find((r) => r.type === "vsphere.vm")!.name;
+    const code = (name: string) => edit(name).error?.errors?.map((e) => `${e.field} ${e.code}`);
+    expect(code("web-dev-api")).toEqual(["/inputs/name no_change"]);
+    expect(code("WEB-PRD-FRONT")).toEqual(["/inputs/name taken"]);
+    expect(code(`${vm.replace(/\d+$/, "")}999`)).toEqual(["/inputs/name naming"]);
+    expect(code(vm)).toBeUndefined();
+  });
+
+  it("gives the deployment its new name and description once its step is done", () => {
+    const run = edit(" API gateway ", "Routes the public API.");
+    expect(run.stored?.request.title).toBe("Edit deployment · web-dev-api");
+    const step = run.stored!.steps.find((s) => s.key === "rvav.details")!;
+    expect(step.title).toBe("Rename web-dev-api to API gateway");
+    const d = db.deployments.find((x) => x.id === run.stored!.request.deployment_id)!;
+    completeDay2Step(d, step);
+    expect([d.name, d.description, step.detail]).toEqual([
+      "API gateway",
+      "Routes the public API.",
+      "From web-dev-api to API gateway, with a new description",
     ]);
   });
 });

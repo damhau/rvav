@@ -40,6 +40,8 @@ type Target struct {
 	TagCategories []TagCategory
 	// ItemType is the type of the deployment's catalog item.
 	ItemType string
+	// Description is what the deployment is for (ADR-0046).
+	Description string
 }
 
 // Lease is the deployment's lease now.

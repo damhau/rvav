@@ -363,11 +363,6 @@ func orDefault(s, def string) string {
 
 // Day-2 changes to a deployment and its resources.
 
-func (s *Store) RenameDeployment(ctx context.Context, db DB, id, name string) error {
-	_, err := db.Exec(ctx, `update deployments set name = $2 where id = $1`, id, name)
-	return err
-}
-
 // RenameResource sets a resource's name and properties; the external ID is
 // kept unless ext is not nil.
 func (s *Store) RenameResource(ctx context.Context, db DB, id, name string, ext *string, props json.RawMessage) error {
@@ -379,6 +374,51 @@ func (s *Store) RenameResource(ctx context.Context, db DB, id, name string, ext 
 func (s *Store) SetDeploymentOwner(ctx context.Context, db DB, id, ownerID string) error {
 	_, err := db.Exec(ctx, `update deployments set owner_id = $2 where id = $1`, id, ownerID)
 	return err
+}
+
+// SetDeploymentDetails gives the deployment a name and, unless nil, a
+// description, unless another live deployment of its project holds the
+// name: then it changes nothing and returns that one's name. The name is
+// held as a request's are (ADR-0046).
+func (s *Store) SetDeploymentDetails(ctx context.Context, projectID, id, name string, description *string) (string, error) {
+	var held string
+	err := s.Tx(ctx, func(tx pgx.Tx) error {
+		var err error
+		if held, err = s.heldName(ctx, tx, projectID, id, name); err != nil || held != "" {
+			return err
+		}
+		_, err = tx.Exec(ctx, `update deployments set name = $2, description = coalesce($3, description) where id = $1`,
+			id, name, description)
+		return err
+	})
+	return held, err
+}
+
+// MoveDeploymentNamed moves the deployment to the project unless a live
+// deployment there holds its name: then it returns that one's name.
+func (s *Store) MoveDeploymentNamed(ctx context.Context, id, name, projectID string) (string, error) {
+	var held string
+	err := s.Tx(ctx, func(tx pgx.Tx) error {
+		var err error
+		if held, err = s.heldName(ctx, tx, projectID, id, name); err != nil || held != "" {
+			return err
+		}
+		return s.SetDeploymentProject(ctx, tx, id, projectID)
+	})
+	return held, err
+}
+
+// heldName is the name of the project's live deployment but id that holds
+// name, whatever the case, the name locked until tx ends; "" when none does.
+func (s *Store) heldName(ctx context.Context, tx pgx.Tx, projectID, id, name string) (string, error) {
+	if err := s.LockDeploymentNames(ctx, tx, projectID, []string{name}); err != nil {
+		return "", err
+	}
+	taken, err := s.TakenDeploymentNames(ctx, tx, projectID, id, []string{name})
+	if err != nil || len(taken) == 0 {
+		return "", err
+	}
+	return taken[0], nil
 }
 
 func (s *Store) SetDeploymentProject(ctx context.Context, db DB, id, projectID string) error {

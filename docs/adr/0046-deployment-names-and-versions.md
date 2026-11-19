@@ -64,12 +64,40 @@ the VMs to come. A requested name that the request's VM naming gives (its
 prefix and a number, such as `web-dev-app007` for `web-dev-app{seq:03}`) is
 refused (`naming`), for each VM step of a composite too.
 
+### Edited with a day-2 action
+- **Edit deployment (`edit`) is a day-2 action on the deployment,** as in
+  vRA, its form holding the name and description. rvav's comparable
+  changes (change owner, move to another project, rename a VM) are day-2
+  actions: each runs as a request, under the day-2 policies, with its
+  step in the deployment's history and its inputs in the audit log. A plain
+  `PATCH` would skip the policies and the history, so an edit goes the same
+  way. It is in the **Configuration** group.
+- **Who may:** as for any action, the day-2 policies, else the roles'
+  `day2.configuration` permissions. The demo's policies let the owner and
+  the project admins edit, with delete and hand over; other members are
+  refused.
+- **Checked as a request's name:** trimmed, one line, at most 80
+  characters (the form's schema bounds both fields), not one another live
+  deployment of the project holds, and not one its VMs' naming gives (a VM
+  name without its number, then a number) unless it is one of its VMs'
+  names. An edit that changes nothing is refused (`no_change`). Its step
+  takes the name under the same lock, and fails if another deployment took
+  it since.
+- **Its VMs keep their names.** Renaming a VM still renames the deployment
+  named after it, unless another deployment of the project holds the new
+  name.
+- **Moving to another project checks the name there:** a project where a
+  live deployment holds it is offered disabled ("… Rename this one
+  first"), and the move's last step fails if one took it since.
+
 ## Consequences
 - Requesters find deployments by names they chose; the lists' search
   already reads the name.
 - A request that names its deployments still titles itself after its VMs
   (`RHEL 9 server · web-dev-app007`), or a multi-VM item after its
   deployment.
+- The vRA importer maps a day-2 policy on `Deployment.EditDeployment` to
+  `edit`, no longer to the VM's `rename`.
 - Onboarding keeps the names its plans and adoptions give
   ([ADR-0026](0026-onboarding.md)): an administrator's, not checked
   against the project's names.

@@ -305,10 +305,10 @@ func seedPolicies(exec func(string, ...any) error) error {
 }
 
 // seedDay2Policies: members operate their VMs; only owners and project
-// admins delete or hand a deployment over, and deleting in production needs
-// the Infrastructure leads. Viewers match nothing, so they are refused.
+// admins edit, delete or hand a deployment over, and deleting in production
+// needs the Infrastructure leads. Viewers match nothing, so they are refused.
 func seedDay2Policies(exec func(string, ...any) error, leads []byte) error {
-	handover := []string{"delete", "change_owner", "change_project"}
+	handover := []string{"edit", "delete", "change_owner", "change_project"}
 	for _, p := range []struct {
 		id, name, reason string
 		priority         int
@@ -325,7 +325,7 @@ func seedDay2Policies(exec func(string, ...any) error, leads []byte) error {
 		{"d2p_soft_quota_move", "Over a soft quota", "Over the new project's soft quota", 26,
 			[]string{"change_project"}, []string{"owner", "project-admin"}, "quota.over_soft", "approval", leads},
 		{"d2p_handover", "Owners and project admins", "", 30, handover, []string{"owner", "project-admin"}, "true", "allow", nil},
-		{"d2p_handover_others", "Not the owner", "Only the owner and the project admins can delete this deployment or hand it over.", 40,
+		{"d2p_handover_others", "Not the owner", "Only the owner and the project admins can edit this deployment, delete it or hand it over.", 40,
 			handover, nil, "true", "deny", nil},
 		{"d2p_members", "Members operate their VMs", "", 50, []string{"*"}, []string{"owner", "member", "project-admin"}, "true", "allow", nil},
 	} {

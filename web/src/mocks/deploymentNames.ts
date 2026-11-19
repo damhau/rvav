@@ -1,4 +1,5 @@
 import type { components } from "@/lib/api/schema";
+import type { DeploymentDetail } from "@/lib/api/types";
 import { multiParts } from "./components";
 import type { Db, StoredItem } from "./seed";
 
@@ -74,17 +75,9 @@ export function requestedNames(
   if (wrong) return { errors: [...errors, wrong] };
   const single = item.type === "vm_blueprint" && !multiParts(item.slug, inputs);
   const names = numbered(name, single ? (draft.count ?? 1) : 1);
-  const prefixes = new Set(vmNames.map((n) => n.replace(/\d+$/, "")).filter(Boolean));
-  const vmNamed = names.find((n) =>
-    [...prefixes].some((p) => n.toLowerCase().startsWith(p) && /^\d+$/.test(n.toLowerCase().slice(p.length))),
-  );
+  const vmNamed = namedLike(vmNames, names);
   if (vmNamed) {
-    const p = [...prefixes].find((x) => vmNamed.toLowerCase().startsWith(x));
-    errors.push({
-      field: "/deployment_name",
-      code: "naming",
-      message: `${vmNamed} is a VM name: the naming policy gives ${p} and a number. Choose another.`,
-    });
+    errors.push({ field: "/deployment_name", code: "naming", message: vmNamed });
     return { names, errors };
   }
   const taken = takenName(db, project.id, names);
@@ -95,4 +88,45 @@ export function requestedNames(
       message: `${project.name} already has a deployment named ${taken}.`,
     });
   return { names, errors };
+}
+
+/** As core.namedLike: the first of names that the naming of vmNames gives (their prefix and a number), as a refusal. */
+function namedLike(vmNames: string[], names: string[]): string | undefined {
+  const prefixes = new Set<string>();
+  for (const v of vmNames) {
+    const p = v.toLowerCase().replace(/\d+$/, "");
+    if (p && p !== v.toLowerCase()) prefixes.add(p);
+  }
+  for (const p of prefixes)
+    for (const n of names)
+      if (n.toLowerCase().startsWith(p) && /^\d+$/.test(n.toLowerCase().slice(p.length)))
+        return `${n} is a VM name: the naming policy gives ${p} and a number. Choose another.`;
+  return undefined;
+}
+
+/** The name and description Edit deployment gives, trimmed, as day2.DeploymentDetails. */
+export function editedDetails(inputs: Record<string, unknown>) {
+  const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  return { name: text(inputs.name), description: text(inputs.description) };
+}
+
+/** What is wrong with the name and description Edit deployment gives, as the server's checks (ADR-0046). */
+export function editProblem(db: Db, d: DeploymentDetail, inputs: Record<string, unknown>): S["FieldError"] | null {
+  const { name, description } = editedDetails(inputs);
+  if (name === d.name && description === (d.description ?? ""))
+    return {
+      field: "/inputs/name",
+      code: "no_change",
+      message: "These are the deployment's name and description now.",
+    };
+  const wrong = deploymentNameProblem("/inputs/name", name);
+  if (wrong) return wrong;
+  if (name.toLowerCase() === d.name.toLowerCase()) return null;
+  const vms = d.resources.filter((r) => r.type === "vsphere.vm").map((r) => r.name);
+  const vmNamed = vms.some((v) => v.toLowerCase() === name.toLowerCase()) ? undefined : namedLike(vms, [name]);
+  if (vmNamed) return { field: "/inputs/name", code: "naming", message: vmNamed };
+  const held = takenName(db, d.project.id, [name], d.id);
+  return held
+    ? { field: "/inputs/name", code: "taken", message: `${d.project.name} already has a deployment named ${held}.` }
+    : null;
 }

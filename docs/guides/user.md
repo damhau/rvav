@@ -337,11 +337,17 @@ requests, with their own steps:
 - **Update:** change the deployment's inputs, move it to its item's new
   version, or add and remove VMs. See
   [Updating a deployment](#updating-a-deployment).
-- **Rename, extend the lease.**
+- **Rename, extend the lease.** A deployment named after its VM takes the
+  VM's new name, unless another deployment of the project has it.
+- **Edit deployment:** change its name and description. No other
+  deployment of the project that isn't deleted may have the name, whatever
+  its case. Its VMs keep their names.
 - **Unregister** (administrators): rvav forgets a VM or a whole
   deployment and leaves it running in vCenter, with its addresses and DNS
   records, so it can be onboarded again.
-- **Ownership:** hand over to someone else, or move to another project.
+- **Ownership:** hand over to someone else, or move to another project. A
+  project where a deployment already has its name is offered disabled:
+  rename it first.
 - **The AWX actions your organisation offers** (install an agent, and so
   on).
 - **Delete.** A step that fails in vCenter, EfficientIP or NSX stops the

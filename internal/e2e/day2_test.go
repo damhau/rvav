@@ -661,7 +661,7 @@ func TestDay2Policies(t *testing.T) {
 		if !a["power_off"].Enabled {
 			t.Fatalf("member's power_off = %+v", a["power_off"])
 		}
-		if del := a["delete"]; del.Enabled || deref(del.DisabledReason) != "Only the owner and the project admins can delete this deployment or hand it over." {
+		if del := a["delete"]; del.Enabled || deref(del.DisabledReason) != "Only the owner and the project admins can edit this deployment, delete it or hand it over." {
 			t.Fatalf("member's delete = %+v", del)
 		}
 		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "afavre", api.Day2Draft{Action: "delete", Inputs: map[string]any{}},

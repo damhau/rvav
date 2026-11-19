@@ -1404,7 +1404,8 @@ warnings it went on despite, and the audit log has them.
 - Detail page: summary, resources (VMs with live power state, IPs, DNS names),
   topology diagram, inputs, **timeline** of all requests and day-2 runs, lease,
   audit.
-- Change owner or project (with quota checks).
+- Edit the name and description, change owner or project (with quota
+  and name checks).
 - Onboarding: adopt existing vCenter VMs into a deployment.
 
 ## 7. Day-2 actions
@@ -1413,8 +1414,8 @@ warnings it went on despite, and the audit log has them.
 Power on, off, shut down guest, reset, restart guest · reconfigure CPU and RAM
 (hot-add aware) · add or extend disk · add or remove NIC · change network ·
 snapshot create, revert, delete (with a retention policy) · web console (VMRC/HTML
-console ticket) · rename (vCenter + DNS) · mount or unmount ISO · change owner or
-project · extend lease · delete (VM + IPAM/DNS release; refused while the
+console ticket) · rename (vCenter + DNS) · mount or unmount ISO · edit the
+deployment's name and description · change owner or project · extend lease · delete (VM + IPAM/DNS release; refused while the
 blueprint's `prevent_delete` keeps a VM) · allow deletion (administrators
 only).
 

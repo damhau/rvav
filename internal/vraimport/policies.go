@@ -51,7 +51,7 @@ var day2Keys = map[string]string{
 	"Deployment.ChangeOwner":                "change_owner",
 	"Deployment.ChangeLease":                "extend_lease",
 	"Deployment.ChangeProject":              "change_project",
-	"Deployment.EditDeployment":             "rename",
+	"Deployment.EditDeployment":             "edit",
 	"Deployment.PowerOn":                    "power_on",
 	"Deployment.PowerOff":                   "power_off",
 	"Deployment.Update":                     "update",

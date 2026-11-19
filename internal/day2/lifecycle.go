@@ -6,10 +6,18 @@ import (
 	"github.com/damhau/rvav/internal/api"
 )
 
-// Access and lifecycle: rename, ISO images, owner and project, delete.
+// Access and lifecycle: rename, ISO images, the deployment's name, owner
+// and project, delete.
 
 // NamePattern is what a VM name may be: a DNS label.
 const NamePattern = `^[a-z][a-z0-9-]{0,61}[a-z0-9]$`
+
+// The most characters of a deployment's name and of what it is for
+// (ADR-0046).
+const (
+	MaxDeploymentName        = 80
+	MaxDeploymentDescription = 2000
+)
 
 func init() {
 	register(&Action{
@@ -162,6 +170,35 @@ func init() {
 		},
 	})
 	register(&Action{
+		Key: "edit", Name: "Edit deployment", Group: GroupConfiguration, Types: []string{DeploymentType},
+		Form: func(t Target, _ Choices) *api.ActionForm {
+			name := text("name", "Name", MaxDeploymentName, t.ResourceName)
+			help := "Unique among the project's deployments. Its VMs keep their names."
+			name.ui.Help = &help
+			desc := textarea("description", "Description", MaxDeploymentDescription)
+			if t.Description != "" {
+				desc.value = t.Description
+			}
+			return form("Deployment", name, desc)
+		},
+		Validate: func(t Target, in map[string]any) []api.FieldError {
+			name, desc := DeploymentDetails(in)
+			if name == t.ResourceName && desc == t.Description {
+				return invalid("name", "no_change", "These are the deployment's name and description now.")
+			}
+			return nil
+		},
+		Ops: func(t Target, in map[string]any) []Op {
+			name, desc := DeploymentDetails(in)
+			title := "Rename " + t.ResourceName + " to " + name
+			if name == t.ResourceName {
+				title = "Record " + name + "'s new description"
+			}
+			return []Op{{Key: "rvav.details", Title: title, System: "rvav", Op: "set_details",
+				Args: map[string]any{"name": name, "description": desc}}}
+		},
+	})
+	register(&Action{
 		Key: "allow_delete", Name: "Allow deletion", Group: GroupLifecycle, Types: []string{DeploymentType}, Admin: true, OnFailed: true,
 		Unavailable: func(t Target, _ Choices) string {
 			if len(protected(t)) == 0 {
@@ -284,4 +321,9 @@ func protected(t Target) []string {
 		}
 	}
 	return names
+}
+
+// DeploymentDetails are the name and description an edit gives, trimmed.
+func DeploymentDetails(in map[string]any) (string, string) {
+	return strings.TrimSpace(strInput(in, "name")), strings.TrimSpace(strInput(in, "description"))
 }

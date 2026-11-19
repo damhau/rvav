@@ -26,6 +26,30 @@ describe("a deployment's page against the mock API", () => {
     expect(within(menu).getByRole("menuitem", { name: "Delete" })).not.toHaveAttribute("data-disabled");
   });
 
+  it("edits its name and description, refusing a name another of the project's deployments has", async () => {
+    const user = userEvent.setup();
+    renderApp(`/deployments/${idOf("web-dev-api")}`);
+    await user.click(await screen.findByRole("button", { name: "Actions" }, { timeout: 5000 }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Edit deployment" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit deployment · web-dev-api" });
+    const name = within(dialog).getByRole("textbox", { name: "Name" });
+    expect(name).toHaveValue("web-dev-api");
+    await user.clear(name);
+    await user.type(name, "web-prd-front");
+    await user.click(within(dialog).getByRole("button", { name: "Edit deployment" }));
+    expect(await within(dialog).findByText("Web Platform already has a deployment named web-prd-front.")).toBeVisible();
+
+    await user.clear(name);
+    await user.type(name, "API gateway");
+    await user.type(within(dialog).getByRole("textbox", { name: "Description" }), "Routes the public API.");
+    await user.click(within(dialog).getByRole("button", { name: "Edit deployment" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(db.requests[0]!.request).toMatchObject({ title: "Edit deployment · web-dev-api", action: { key: "edit" } });
+    expect(db.requests[0]!.steps.map((s) => s.title)).toContain("Rename web-dev-api to API gateway");
+    expect(await screen.findByRole("heading", { level: 1, name: "API gateway" }, { timeout: 5000 })).toBeVisible();
+    expect(screen.getByText("Routes the public API.")).toBeVisible();
+  });
+
   it("says when its actions couldn't be read, and reads them again", async () => {
     const user = userEvent.setup();
     let fail = true;

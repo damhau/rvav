@@ -15,14 +15,8 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/store"
-)
-
-// The most characters of the name a requester gives their deployment and
-// of what they say it is for (ADR-0019).
-const (
-	maxDeploymentName        = 80
-	maxDeploymentDescription = 2000
 )
 
 // MakesDeployments says a version's blueprint makes deployments, which a
@@ -66,8 +60,8 @@ func deploymentNameErr(field, name string) *api.FieldError {
 	case name == "":
 		e := fieldErr(field, "required", "Give the deployment a name.")
 		return &e
-	case utf8.RuneCountInString(name) > maxDeploymentName:
-		e := fieldErr(field, "too_long", fmt.Sprintf("%d characters at most.", maxDeploymentName))
+	case utf8.RuneCountInString(name) > day2.MaxDeploymentName:
+		e := fieldErr(field, "too_long", fmt.Sprintf("%d characters at most.", day2.MaxDeploymentName))
 		return &e
 	case strings.ContainsFunc(name, unicode.IsControl):
 		e := fieldErr(field, "invalid", "One line, without tabs.")
@@ -99,8 +93,8 @@ func (s *Service) evaluateDeployments(ctx context.Context, ev *Evaluation, d api
 		ev.DeploymentName, ev.Description = "", ""
 		return nil
 	}
-	if utf8.RuneCountInString(ev.Description) > maxDeploymentDescription {
-		add("/deployment_description", "too_long", fmt.Sprintf("%d characters at most.", maxDeploymentDescription))
+	if e := descriptionErr("/deployment_description", ev.Description); e != nil {
+		ev.Errors = append(ev.Errors, *e)
 	}
 	if ev.DeploymentName == "" {
 		return nil
@@ -122,6 +116,14 @@ func (s *Service) evaluateDeployments(ctx context.Context, ev *Evaluation, d api
 		add("/deployment_name", "taken", takenMsg(ev.Project.Name, taken[0]))
 	}
 	return nil
+}
+
+func descriptionErr(field, description string) *api.FieldError {
+	if utf8.RuneCountInString(description) <= day2.MaxDeploymentDescription {
+		return nil
+	}
+	e := fieldErr(field, "too_long", fmt.Sprintf("%d characters at most.", day2.MaxDeploymentDescription))
+	return &e
 }
 
 func takenMsg(project, name string) string {
@@ -169,7 +171,7 @@ func (ev *Evaluation) deploymentCount() int {
 
 // vmNamed says which of names the request's VM naming gives (its prefix
 // and a number): a single VM's deployment has its VM's name, and rvav
-// never gives a VM name twice (ADR-0019).
+// never gives a VM name twice (ADR-0020).
 func (ev *Evaluation) vmNamed(names []string) string {
 	parts := slices.Clone(ev.Parts)
 	for _, c := range ev.Composite {
@@ -177,17 +179,61 @@ func (ev *Evaluation) vmNamed(names []string) string {
 			parts = append(parts, c.sub.Parts...)
 		}
 	}
+	var prefixes []string
 	for _, p := range parts {
-		if p.naming == nil || p.prefix == "" {
-			continue
+		if p.naming != nil && p.prefix != "" {
+			prefixes = append(prefixes, p.prefix)
 		}
+	}
+	return namedLike(prefixes, names)
+}
+
+// namedLike is the first of names that is one of prefixes and a number,
+// said as a refusal; "" when there is none.
+func namedLike(prefixes, names []string) string {
+	for _, p := range prefixes {
 		for _, n := range names {
-			if seq, ok := strings.CutPrefix(strings.ToLower(n), p.prefix); ok && seq != "" && strings.Trim(seq, "0123456789") == "" {
-				return fmt.Sprintf("%s is a VM name: the naming policy gives %s and a number. Choose another.", n, p.prefix)
+			if seq, ok := strings.CutPrefix(strings.ToLower(n), p); ok && seq != "" && strings.Trim(seq, "0123456789") == "" {
+				return fmt.Sprintf("%s is a VM name: the naming policy gives %s and a number. Choose another.", n, p)
 			}
 		}
 	}
 	return ""
+}
+
+// checkEdit checks the name an edit gives the deployment (its form's
+// schema bounds both): as a request's, not a name its VMs' naming gives
+// unless it is one of theirs, and not one another live deployment of its
+// project holds.
+func (s *Service) checkEdit(ctx context.Context, d store.DeploymentRow, t day2.Target, inputs map[string]any) ([]api.FieldError, error) {
+	name, _ := day2.DeploymentDetails(inputs)
+	if e := deploymentNameErr("/inputs/name", name); e != nil {
+		return []api.FieldError{*e}, nil
+	}
+	if strings.EqualFold(name, d.Name) {
+		return nil, nil
+	}
+	var prefixes []string
+	for _, r := range t.Resources {
+		if r.Type != "vsphere.vm" {
+			continue
+		}
+		if strings.EqualFold(r.Name, name) {
+			prefixes = nil
+			break
+		}
+		if p := strings.TrimRight(strings.ToLower(r.Name), "0123456789"); p != "" && p != strings.ToLower(r.Name) {
+			prefixes = append(prefixes, p)
+		}
+	}
+	if e := namedLike(prefixes, []string{name}); e != "" {
+		return []api.FieldError{fieldErr("/inputs/name", "naming", e)}, nil
+	}
+	taken, err := s.Store.TakenDeploymentNames(ctx, s.Store.Pool, d.ProjectID, d.ID, []string{name})
+	if err != nil || len(taken) == 0 {
+		return nil, err
+	}
+	return []api.FieldError{fieldErr("/inputs/name", "taken", takenMsg(d.ProjectName, taken[0]))}, nil
 }
 
 // claimDeploymentNames holds the names of a request's deployments in its

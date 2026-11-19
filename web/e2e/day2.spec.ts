@@ -91,6 +91,30 @@ test("extend a lease, and see that a longer one needs approval", async ({ page }
   await expect(next.getByRole("button", { name: "Ask for approval" })).toBeVisible();
 });
 
+test("rename a deployment and say what it is for, its name unique in its project (C2.1)", async ({ page }) => {
+  await page.goto("/deployments");
+  await page.getByRole("link", { name: "web-dev-api", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "web-dev-api" })).toBeVisible();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Edit deployment" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit deployment · web-dev-api" });
+  const name = dialog.getByRole("textbox", { name: "Name", exact: true });
+  await expect(name).toHaveValue("web-dev-api");
+  await name.fill("Web-Prd-Front");
+  await dialog.getByRole("button", { name: "Edit deployment" }).click();
+  await expect(dialog.getByText("Web Platform already has a deployment named web-prd-front.")).toBeVisible();
+  await name.fill("API gateway");
+  await dialog.getByRole("textbox", { name: "Description" }).fill("Routes the public API to its services.");
+  await dialog.getByRole("button", { name: "Edit deployment" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("heading", { level: 1, name: "API gateway" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Routes the public API to its services.")).toBeVisible();
+  await page.getByRole("tab", { name: "History" }).click();
+  await expect(
+    page.getByRole("region", { name: "History" }).getByRole("link", { name: "Edit deployment" }),
+  ).toBeVisible();
+});
+
 test("run an AWX action on a VM", async ({ page }) => {
   await page.goto("/deployments");
   await page.getByRole("link", { name: "web-dev-api", exact: true }).click();

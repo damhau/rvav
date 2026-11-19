@@ -19,6 +19,7 @@ import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
 import { adminState, leasePolicyOf } from "./administration";
 import { celBool } from "./cel";
+import { editedDetails, editProblem, MAX_DEPLOYMENT_DESCRIPTION, MAX_DEPLOYMENT_NAME } from "./deploymentNames";
 import { userGroups } from "./logic";
 import type { Db, StoredRequest } from "./seed";
 import { unaccepted, warning } from "./warnings";
@@ -57,7 +58,7 @@ interface MockAction {
   typeName?: boolean;
   unavailable?: (vm: VmResource | undefined, d: DeploymentDetail) => string | null;
   form?: (vm: VmResource | undefined, d: DeploymentDetail) => ActionForm;
-  validate?: (vm: VmResource | undefined, inputs: Inputs) => FieldError | null;
+  validate?: (vm: VmResource | undefined, inputs: Inputs, d: DeploymentDetail, db: Db) => FieldError | null;
   ops: (vm: VmResource | undefined, inputs: Inputs, d: DeploymentDetail) => Op[];
 }
 
@@ -579,6 +580,48 @@ export const catalogue: MockAction[] = [
     ops: () => [],
   },
   {
+    key: "edit",
+    name: "Edit deployment",
+    group: "configuration",
+    deployment: true,
+    form: (_vm, d) => {
+      const f = form("Deployment", [
+        [
+          "name",
+          { type: "string", minLength: 1, maxLength: MAX_DEPLOYMENT_NAME },
+          { label: "Name", widget: "text", help: "Unique among the project's deployments. Its VMs keep their names." },
+          d.name,
+        ],
+        [
+          "description",
+          { type: "string", maxLength: MAX_DEPLOYMENT_DESCRIPTION },
+          { label: "Description", widget: "textarea" },
+          d.description || undefined,
+        ],
+      ]);
+      return { ...f, schema: { ...f.schema, required: ["name"] } };
+    },
+    validate: (_vm, i, d, db) => editProblem(db, d, i),
+    ops: (_vm, i, d) => {
+      const { name, description } = editedDetails(i);
+      return [
+        {
+          key: "rvav.details",
+          title: name === d.name ? `Record ${name}'s new description` : `Rename ${d.name} to ${name}`,
+          system: "rvav",
+          done:
+            name === d.name
+              ? "New description"
+              : `From ${d.name} to ${name}${description === (d.description ?? "") ? "" : ", with a new description"}`,
+          apply: (dep) => {
+            dep.name = name;
+            dep.description = description;
+          },
+        },
+      ];
+    },
+  },
+  {
     key: "extend_lease",
     name: "Extend the lease",
     group: "lifecycle",
@@ -972,7 +1015,9 @@ export function runAction(
   const missing = required
     .filter((n) => inputs[n] === undefined)
     .map((n) => invalid(n, "required", "This field is required."));
-  const problems = missing.length ? missing : [a.validate?.(vm, inputs)].filter((e): e is FieldError => Boolean(e));
+  const problems = missing.length
+    ? missing
+    : [a.validate?.(vm, inputs, d, db)].filter((e): e is FieldError => Boolean(e));
   if (problems.length) return { error: { status: 422, title: "Some inputs need attention", errors: problems } };
 
   const why = approvalReason(a, d, inputs);

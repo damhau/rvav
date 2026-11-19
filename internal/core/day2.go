@@ -53,7 +53,7 @@ func deploymentBusy(d store.DeploymentRow, active string, a *day2.Action, onVM b
 
 // targets are the deployment itself, then each of its resources.
 func targets(d store.DeploymentRow, resources []store.Resource) []day2.Target {
-	dep := day2.Target{ResourceName: d.Name, Type: day2.DeploymentType, OwnerID: d.OwnerID, ItemType: d.ItemType,
+	dep := day2.Target{ResourceName: d.Name, Type: day2.DeploymentType, OwnerID: d.OwnerID, ItemType: d.ItemType, Description: d.Description,
 		Lease: day2.Lease{ExpiresAt: d.LeaseExpiresAt, ExtensionsUsed: d.LeaseExtensionsUsed, ExpiredAt: d.LeaseExpiredAt}}
 	out := []day2.Target{}
 	for _, r := range resources {
@@ -339,7 +339,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			return store.RequestRow{}, &ValidationError{Errors: errs}
 		}
 	}
-	errs, err := s.checkAction(ctx, a, *target, inputs)
+	errs, err := s.checkAction(ctx, a, d, *target, inputs)
 	if err != nil {
 		return store.RequestRow{}, err
 	}

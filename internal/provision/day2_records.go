@@ -194,8 +194,10 @@ func (a *Activities) renameRecords(ctx context.Context, in OpInput) (string, err
 	if err != nil {
 		return "", err
 	}
+	// A deployment named after its VM follows it, unless another of the
+	// project's deployments holds the name (ADR-0046).
 	if d.Name == oldName {
-		if err := a.Store.RenameDeployment(ctx, a.Store.Pool, d.ID, name); err != nil {
+		if _, err := a.Store.SetDeploymentDetails(ctx, d.ProjectID, d.ID, name, nil); err != nil {
 			return "", err
 		}
 	}
@@ -341,12 +343,41 @@ func (a *Activities) setProject(ctx context.Context, in OpInput) (string, error)
 	if err != nil {
 		return "", err
 	}
-	if err := a.Store.SetDeploymentProject(ctx, a.Store.Pool, d.ID, project.ID); err != nil {
+	held, err := a.Store.MoveDeploymentNamed(ctx, d.ID, d.Name, project.ID)
+	if err != nil {
 		return "", err
+	}
+	if held != "" {
+		return "", permanent("%s already has a deployment named %s: rename this one first.", project.Name, held)
 	}
 	a.Events.AccessChanged(ctx)
 	a.Events.Deployment(ctx, d.ID)
 	return "From " + d.ProjectName + " to " + project.Name, nil
+}
+
+// setDetails gives the deployment the name and description its owner
+// edited (ADR-0046).
+func (a *Activities) setDetails(ctx context.Context, in OpInput) (string, error) {
+	name, desc := argStr(in.Op.Args, "name"), argStr(in.Op.Args, "description")
+	d, err := a.Store.GetDeployment(ctx, in.DeploymentID)
+	if err != nil {
+		return "", err
+	}
+	held, err := a.Store.SetDeploymentDetails(ctx, d.ProjectID, d.ID, name, &desc)
+	if err != nil {
+		return "", err
+	}
+	if held != "" {
+		return "", permanent("%s already has a deployment named %s.", d.ProjectName, held)
+	}
+	a.Events.Deployment(ctx, d.ID)
+	switch {
+	case d.Name == name:
+		return "New description", nil
+	case d.Description == desc:
+		return "From " + d.Name + " to " + name, nil
+	}
+	return "From " + d.Name + " to " + name + ", with a new description", nil
 }
 
 // deleteResources deletes one resource (destroy_vm) or every resource of a

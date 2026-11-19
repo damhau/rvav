@@ -19,7 +19,7 @@ import (
 // whatever the case, and not a VM name of the request's naming; several
 // deployments are numbered; an item that makes none refuses both. A
 // blueprint's deployment_name already taken gets the request number
-// (ADR-0019).
+// (ADR-0046).
 func TestDeploymentNames(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -171,5 +171,163 @@ func TestDeploymentNames(t *testing.T) {
 		if d := deployment((*second.DeploymentIds)[0]); d.Name != "web-dev-shop "+second.Number || second.Title != "Shop application · "+d.Name {
 			t.Fatalf("blueprint's name taken = %q, title %q", d.Name, second.Title)
 		}
+	})
+}
+
+// TestDeploymentEdit: the owner and the project admins edit a
+// deployment's name and description with the day-2 action Edit
+// deployment, a request like any other, checked as a request's name is;
+// a deployment can't move to a project where its name is taken
+// (ADR-0046).
+func TestDeploymentEdit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, owner, member, projectAdmin, web = "mkeller", "tnguyen", "afavre", "lmartin", "prj_web"
+		if _, err := h.store.Pool.Exec(ctx, `insert into project_members (project_id, user_id, role) values ('prj_web', 'usr_afavre', 'member')`); err != nil {
+			t.Fatal(err)
+		}
+
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id="+web, owner, nil, 200, &form)
+		request := func(name, description string) api.DeploymentDetail {
+			t.Helper()
+			d := api.RequestDraft{CatalogItemId: form.ItemId, VersionId: form.VersionId, ProjectId: web, Environment: "dev",
+				DeploymentName: present.Ptr(name), DeploymentDescription: present.Ptr(description),
+				Inputs: map[string]any{"role": "app", "size": "M", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
+					"network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}}
+			var req api.Request
+			h.json("POST", "/api/v1/requests", owner, d, 202, &req, "Idempotency-Key", uuid.NewString())
+			h.runWorkflow(req.Id, nil)
+			req = h.waitStatus(req.Id, owner, api.RequestStatusSucceeded)
+			var dep api.DeploymentDetail
+			h.json("GET", "/api/v1/deployments/"+(*req.DeploymentIds)[0], owner, nil, 200, &dep)
+			return dep
+		}
+		actions := func(id, user string) map[string]api.Day2Action {
+			t.Helper()
+			var out struct{ Items []api.Day2Action }
+			h.json("GET", "/api/v1/deployments/"+id+"/actions", user, nil, 200, &out)
+			m := map[string]api.Day2Action{}
+			for _, a := range out.Items {
+				if a.ResourceId == nil {
+					m[a.Key] = a
+				}
+			}
+			return m
+		}
+		draft := func(name, description string) api.Day2Draft {
+			return api.Day2Draft{Action: "edit", Inputs: map[string]any{"name": name, "description": description}}
+		}
+		edit := func(id, user, name, description string) api.Request {
+			t.Helper()
+			var r api.Request
+			h.json("POST", "/api/v1/deployments/"+id+"/actions", user, draft(name, description), 202, &r, "Idempotency-Key", uuid.NewString())
+			h.runWorkflow(r.Id, nil)
+			return h.waitStatus(r.Id, user, api.RequestStatusSucceeded)
+		}
+		refused := func(id, name, description string) string {
+			t.Helper()
+			var problem struct{ Errors []api.FieldError }
+			h.json("POST", "/api/v1/deployments/"+id+"/actions", owner, draft(name, description), 422, &problem, "Idempotency-Key", uuid.NewString())
+			if len(problem.Errors) != 1 {
+				t.Fatalf("edit to %q = %+v", name, problem.Errors)
+			}
+			return problem.Errors[0].Field + " " + deref(problem.Errors[0].Code)
+		}
+		vmOf := func(id string) string {
+			t.Helper()
+			var dep struct{ Resources []struct{ Type, Name string } }
+			h.json("GET", "/api/v1/deployments/"+id, owner, nil, 200, &dep)
+			for _, r := range dep.Resources {
+				if r.Type == "vsphere.vm" {
+					return r.Name
+				}
+			}
+			t.Fatal("no VM")
+			return ""
+		}
+
+		billing, invoices := request("Billing", "Bills."), request("Invoices", "")
+		a := actions(billing.Id, owner)["edit"]
+		if !a.Enabled || a.Form == nil || a.Form.InitialValues["name"] != "Billing" || a.Form.InitialValues["description"] != "Bills." {
+			t.Fatalf("edit for the owner = %+v", a)
+		}
+		if m := actions(billing.Id, member)["edit"]; m.Enabled ||
+			deref(m.DisabledReason) != "Only the owner and the project admins can edit this deployment, delete it or hand it over." {
+			t.Fatalf("edit for a member who doesn't own it = %+v", m)
+		}
+
+		// Refused as a request's name is, and when nothing changes.
+		vm := vmOf(billing.Id)
+		for _, c := range []struct{ name, description, want string }{
+			{"Billing", " Bills. ", "/inputs/name no_change"},
+			{"INVOICES", "", "/inputs/name taken"},
+			{strings.TrimRight(vm, "0123456789") + "999", "", "/inputs/name naming"},
+			{"Bill\tting", "", "/inputs/name invalid"},
+			{" ", "", "/inputs/name required"},
+			// The form's schema refuses what is too long.
+			{strings.Repeat("é", 81), "", "/inputs/name invalid"},
+			{"Billing", strings.Repeat("ü", 2001), "/inputs/description invalid"},
+		} {
+			if got := refused(billing.Id, c.name, c.description); got != c.want {
+				t.Fatalf("edit to %q = %s, want %s", c.name, got, c.want)
+			}
+		}
+
+		// A request with its step; the deployment shows the new name and
+		// description, its VM keeps its own.
+		r := edit(billing.Id, owner, " Billing runs ", "Bills, monthly.")
+		if r.Title != "Edit deployment · Billing" {
+			t.Fatalf("title = %q", r.Title)
+		}
+		var steps struct{ Items []api.Step }
+		h.json("GET", "/api/v1/requests/"+r.Id+"/steps", owner, nil, 200, &steps)
+		if i := slices.IndexFunc(steps.Items, func(s api.Step) bool { return s.Key == "rvav.details" }); i < 0 ||
+			steps.Items[i].Title != "Rename Billing to Billing runs" ||
+			deref(steps.Items[i].Detail) != "From Billing to Billing runs, with a new description" {
+			t.Fatalf("steps = %+v", steps.Items)
+		}
+		var dep api.DeploymentDetail
+		h.json("GET", "/api/v1/deployments/"+billing.Id, owner, nil, 200, &dep)
+		if dep.Name != "Billing runs" || dep.Description != "Bills, monthly." || vmOf(billing.Id) != vm {
+			t.Fatalf("after the edit = %q %q %q", dep.Name, dep.Description, vmOf(billing.Id))
+		}
+		// Its own VM's name, and the old one, are its to take; the project
+		// admin edits it too.
+		edit(billing.Id, projectAdmin, vm, "")
+		edit(billing.Id, owner, "Billing", "")
+
+		// A project where its name is taken is offered disabled.
+		move := func(id string) api.Option {
+			t.Helper()
+			m := actions(id, admin)["change_project"]
+			if m.Form == nil {
+				t.Fatalf("change_project = %+v", m)
+			}
+			for _, o := range *m.Form.UiSchema.Fields["project"].Options {
+				if o.Value == "prj_data" {
+					return o
+				}
+			}
+			t.Fatalf("no Data Engineering among %+v", *m.Form.UiSchema.Fields["project"].Options)
+			return api.Option{}
+		}
+		if o := move(invoices.Id); o.Disabled != nil && *o.Disabled {
+			t.Fatalf("data for invoices = %+v", o)
+		}
+		h.json("POST", "/api/v1/deployments/"+invoices.Id+"/actions", admin, api.Day2Draft{Action: "change_project",
+			Inputs: map[string]any{"project": "prj_data"}}, 202, &r, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(r.Id, nil)
+		h.waitStatus(r.Id, admin, api.RequestStatusSucceeded)
+		again := request("Invoices", "")
+		if o := move(again.Id); o.Disabled == nil || !*o.Disabled ||
+			deref(o.DisabledReason) != "Data Engineering already has a deployment named Invoices. Rename this one first (Edit deployment)." {
+			t.Fatalf("data for the second invoices = %+v", o)
+		}
+		h.json("POST", "/api/v1/deployments/"+again.Id+"/actions", admin, api.Day2Draft{Action: "change_project",
+			Inputs: map[string]any{"project": "prj_data"}}, 422, nil, "Idempotency-Key", uuid.NewString())
 	})
 }
