@@ -1,0 +1,113 @@
+# ADR-0053: A Terraform provider and a PowerShell module
+
+- Status: accepted
+- Date: 2026-11-19
+- Builds on the client and sign-in of [ADR-0051](0051-command-line.md).
+  O1.2 (#168).
+
+## Context
+vRA has a Terraform provider (`vmware/vra`) and PowerCLI's vRA cmdlets.
+Platform teams keep projects, catalog items and policies in Git and apply
+them with Terraform; Windows administrators script requests and day-2
+actions in PowerShell. rvav had its API, a generated client
+(`pkg/rvavclient`) and rvavctl ([ADR-0051](0051-command-line.md)), but no
+way to hold its configuration as code outside the catalog's own Git sync
+([ADR-0029](0029-catalog-in-git.md)), and nothing for PowerShell.
+
+## Decision
+
+### The provider lives in this repository
+`cmd/terraform-provider-rvav` and `internal/tfprovider`, in rvav's Go
+module. The provider calls the API through `pkg/rvavclient`, so a change
+of the contract regenerates the client it uses and breaks its build, not
+its users. Its end-to-end tests run in `internal/e2e` against the same
+in-process rvav as the API's, which another module couldn't import. It
+is released with rvav and has rvav's version: the provider of a release
+manages that release's API.
+
+### terraform-plugin-framework
+HashiCorp's current framework, on protocol 6 (Terraform 1.0 and later,
+and OpenTofu). SDKv2 is in maintenance. The tests use
+terraform-plugin-testing's `resource.UnitTest` with the provider served
+in the test's process, against the e2e harness: they need a Terraform CLI,
+the one on `PATH` or the latest release, which the tests download once
+with hc-install.
+
+### Installation without the public registry
+The provider's address is `registry.terraform.io/damhau/rvav`, so that a
+configuration says `source = "damhau/rvav"`, and nothing changes if it is
+published there one day. Until then:
+- **A filesystem mirror.** `VERSION=1.4.0 make terraform-dist` builds it
+  for Linux, macOS and Windows on amd64 and arm64 into `dist/terraform/`,
+  in Terraform's packed layout
+  (`registry.terraform.io/damhau/rvav/terraform-provider-rvav_1.4.0_linux_amd64.zip`)
+  with a `SHA256SUMS` file. The tree goes to a shared directory named in
+  the CLI configuration's `filesystem_mirror`, or into a user's
+  `~/.terraform.d/plugins`, which Terraform reads without configuration.
+  `terraform init` then installs it as from the registry, and the lock
+  file records its checksums.
+- **`dev_overrides`** for development: `make build` puts the provider in
+  `bin/`, and the CLI configuration points Terraform at it, without
+  `terraform init`.
+
+A network mirror served by rvav itself was considered, and left for when
+someone needs it: a filesystem mirror covers air-gapped sites and CI.
+
+### Authentication, as rvavctl's
+The provider block takes `url`, `token` and `profile`, each optional:
+- `token`, else `RVAV_TOKEN`: an API token, sent to `url`, else
+  `RVAV_URL`. This is the way for CI: a service user's token, in the
+  pipeline's secrets.
+- Else an rvavctl profile (`profile`, else `default`): its rvav and its
+  sign-in, refreshed and written back to rvavctl's file as rvavctl does.
+  This is the way for a person at their desk, after `rvavctl login`. A
+  profile's credentials go to its own rvav only.
+- Else, with an address alone, no credentials: an rvav in development
+  mode.
+
+An API token acts with the roles given to its user in rvav itself, not
+those of their groups ([ADR-0051](0051-command-line.md)): a service user
+that manages policies needs the admin role assigned in rvav.
+
+### Resources follow the API
+One resource per thing the API writes, named as the API names it
+(`rvav_project`, `rvav_catalog_item`, …), with the API's field names, and
+data sources to find what Terraform doesn't manage. A resource:
+- sends only the attributes its configuration gives, and takes rvav's
+  defaults for the rest, which the schema states, so that a plan shows
+  them;
+- reads what rvav holds on every refresh: a change made in the web app
+  shows as a diff, and one deleted there is removed from the state, to be
+  made again;
+- imports by its ID (`terraform import rvav_project.web prj_…`).
+
+JSON-valued attributes (a catalog item's definition) are JSON strings
+compared by value, so that a configuration writes them with
+`jsonencode()` or `file()`, and rvav's own formatting is no diff.
+
+Where the API doesn't delete, destroying does what the web app does:
+- **A project is archived**, as rvav keeps projects for their
+  deployments' history. Its deployments go on. Creating a project with an
+  archived one's code brings that one back, with its ID, so that
+  `terraform destroy` then `apply` gives the same project.
+- **A catalog item that was requested is withdrawn**, with a warning:
+  rvav keeps it for its requests' history, and nobody can request it
+  again. An item never requested is deleted.
+
+A catalog item's `definition` is the version Terraform writes: a change
+makes a new version, published (deprecating the one before) unless
+`publish` is false, which keeps it as the item's draft. A version
+published in the web app shows as a diff, and the next apply publishes the
+configuration's again.
+
+## Consequences
+- A change of the API's write schemas needs the provider's schema changed
+  with it, by hand: the provider's attributes aren't generated. Its tests
+  run with the API's end-to-end tests, so a removed or renamed field fails
+  them.
+- `make terraform-dist` needs `zip`, as `make cli-dist` does.
+- Terraform downloads nothing for the provider, and the provider's
+  archives aren't signed: a mirror's integrity is its directory's and the
+  lock file's checksums.
+- An API token can't approve as a member of an approver group: the
+  provider manages configuration, not approvals.

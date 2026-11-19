@@ -9,15 +9,16 @@ IMAGES      ?= rvav:scan rvav-web:scan
 AS_ME        = -u $$(id -u):$$(id -g) --group-add $$(stat -c %g /var/run/docker.sock) -e TRIVY_CACHE_DIR=/tmp/trivy
 TRIVY       := aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
 
-.PHONY: check check-quick check-nginx web-quick web-e2e build cli-dist test test-e2e test-e2e-shard test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
+.PHONY: check check-quick check-nginx web-quick web-e2e build cli-dist terraform-dist testtest-e2e test-e2e-shard test-ansible vet gen gen-check lint-spec lint-chart web-check api-docs images vuln vuln-go vuln-web vuln-images sbom up down vcsim
 
 check: gen-check lint-spec lint-chart check-nginx vet test test-e2e test-ansible test-python web-check ## Everything CI checks on every push (the browser tests run daily: web-e2e)
 check-quick: gen-check lint-spec vet test web-quick ## The fast part, before a push: no end-to-end, browser, chart, Ansible or Python tests (CI runs them)
 
-build: ## Build rvav, rvav-vcsim and rvavctl into ./bin
+build: ## Build rvav, rvav-vcsim, rvavctl and the Terraform provider into ./bin
 	$(GO) build -o $(BIN)/rvav ./cmd/rvav
 	$(GO) build -o $(BIN)/rvav-vcsim ./cmd/rvav-vcsim
 	$(GO) build -o $(BIN)/rvavctl ./cmd/rvavctl
+	$(GO) build -o $(BIN)/terraform-provider-rvav ./cmd/terraform-provider-rvav
 
 # rvavctl's archives for a release: VERSION=1.4.0 make cli-dist.
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -35,6 +36,26 @@ cli-dist: ## rvavctl for Linux, macOS and Windows (amd64, arm64) into dist/, wit
 		rm -rf $$dir; \
 	done
 	@cd dist/rvavctl && sha256sum rvavctl_* > SHA256SUMS && cat SHA256SUMS
+
+# The Terraform provider for a release, as a filesystem mirror (ADR-0053):
+# VERSION=1.4.0 make terraform-dist. Terraform wants a semantic version.
+TF_MIRROR := dist/terraform/registry.terraform.io/damhau/rvav
+
+terraform-dist: ## The Terraform provider for Linux, macOS and Windows (amd64, arm64) as a filesystem mirror in dist/terraform, with SHA256SUMS
+	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$' || \
+		{ echo "VERSION=$(VERSION) isn't a semantic version: VERSION=1.4.0 make terraform-dist" >&2; exit 1; }
+	@rm -rf dist/terraform && mkdir -p $(TF_MIRROR) dist/terraform/build
+	@set -e; for target in $(CLI_OS_ARCH); do \
+		os=$${target%/*}; arch=$${target#*/}; ext=; [ $$os = windows ] && ext=.exe; \
+		bin=terraform-provider-rvav_v$(VERSION)$$ext; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -trimpath \
+			-ldflags="-s -w -X github.com/damhau/rvav/internal/buildinfo.version=$(VERSION)" \
+			-o dist/terraform/build/$$bin ./cmd/terraform-provider-rvav; \
+		(cd dist/terraform/build && zip -q ../../../$(TF_MIRROR)/terraform-provider-rvav_$(VERSION)_$${os}_$${arch}.zip $$bin); \
+		rm -f dist/terraform/build/$$bin; \
+	done
+	@rmdir dist/terraform/build
+	@cd $(TF_MIRROR) && sha256sum terraform-provider-rvav_* > SHA256SUMS && cat SHA256SUMS
 
 test: ## Unit tests, plus vcsim and workflow tests (no database needed)
 	$(GO) test -short ./...
