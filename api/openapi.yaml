@@ -11815,14 +11815,21 @@ components:
     # ── Events and subscriptions (ADR-0021) ──
     EventTopicKey:
       type: string
-      enum: [request.submitted, provisioning.pre, provisioning.post, day2.pre, day2.post, delete.pre, delete.post, lease.expiring, lease.expired]
+      description: "Request topics (ADR-0021), and a VM's own topics (ADR-0049): `compute.*` and `network.configure`, one event per VM."
+      enum: [request.submitted, provisioning.pre, compute.allocation.pre, network.configure, compute.provision.pre, compute.provision.post,
+        provisioning.post, day2.pre, day2.post, delete.pre, compute.removal.pre, compute.removal.post, delete.post, lease.expiring, lease.expired]
+    EventTopicGroup:
+      type: string
+      description: "What a topic's events are about: a request, one of its VMs, or a deployment's lease."
+      enum: [request, machine, lease]
     EventTopic:
       type: object
-      required: [key, description, may_block, sample]
+      required: [key, group, description, may_block, sample]
       properties:
         key: { $ref: "#/components/schemas/EventTopicKey" }
+        group: { $ref: "#/components/schemas/EventTopicGroup" }
         description: { type: string }
-        may_block: { type: boolean, description: Whether blocking subscriptions are allowed (the `.pre` topics). }
+        may_block: { type: boolean, description: "Whether blocking subscriptions are allowed: provisioning.pre, day2.pre and delete.pre." }
         sample: { $ref: "#/components/schemas/IntegrationEvent" }
     EventTopicList:
       type: object
@@ -11846,7 +11853,7 @@ components:
         occurred_at: { type: string, format: date-time }
         data:
           type: object
-          description: "request, item, project, environment, requester, owner, deployment, resources, inputs, vm and lease; null where they don't apply."
+          description: "request, item, project, environment, requester, owner, deployment, deployments, resources, inputs and vm; null where they don't apply. A VM's topics add `machine`: its name, size, placement, networks, address and moref (ADR-0049)."
           additionalProperties: true
     SubscriptionTarget:
       type: object

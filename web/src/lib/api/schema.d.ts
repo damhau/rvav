@@ -9039,12 +9039,21 @@ export interface components {
         AuditEventPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["AuditEvent"][];
         };
-        /** @enum {string} */
-        EventTopicKey: "request.submitted" | "provisioning.pre" | "provisioning.post" | "day2.pre" | "day2.post" | "delete.pre" | "delete.post" | "lease.expiring" | "lease.expired";
+        /**
+         * @description Request topics (ADR-0021), and a VM's own topics (ADR-0049): `compute.*` and `network.configure`, one event per VM.
+         * @enum {string}
+         */
+        EventTopicKey: "request.submitted" | "provisioning.pre" | "compute.allocation.pre" | "network.configure" | "compute.provision.pre" | "compute.provision.post" | "provisioning.post" | "day2.pre" | "day2.post" | "delete.pre" | "compute.removal.pre" | "compute.removal.post" | "delete.post" | "lease.expiring" | "lease.expired";
+        /**
+         * @description What a topic's events are about: a request, one of its VMs, or a deployment's lease.
+         * @enum {string}
+         */
+        EventTopicGroup: "request" | "machine" | "lease";
         EventTopic: {
             key: components["schemas"]["EventTopicKey"];
+            group: components["schemas"]["EventTopicGroup"];
             description: string;
-            /** @description Whether blocking subscriptions are allowed (the `.pre` topics). */
+            /** @description Whether blocking subscriptions are allowed: provisioning.pre, day2.pre and delete.pre. */
             may_block: boolean;
             sample: components["schemas"]["IntegrationEvent"];
         };
@@ -9065,7 +9074,7 @@ export interface components {
             contract: string;
             /** Format: date-time */
             occurred_at: string;
-            /** @description request, item, project, environment, requester, owner, deployment, resources, inputs, vm and lease; null where they don't apply. */
+            /** @description request, item, project, environment, requester, owner, deployment, deployments, resources, inputs and vm; null where they don't apply. A VM's topics add `machine`: its name, size, placement, networks, address and moref (ADR-0049). */
             data: {
                 [key: string]: unknown;
             };

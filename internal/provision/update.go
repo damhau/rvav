@@ -8,6 +8,7 @@ import (
 
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/outbox"
 )
 
 // Update is an update request's plan (ADR-0042). Ops change the VMs it
@@ -121,6 +122,11 @@ func runUpdate(ctx workflow.Context, info Info) (string, error) {
 	target := OpInput{DeploymentID: u.DeploymentID}
 	if key, err := runOps(ctx, info, u.Ops, target); err != nil {
 		return key, err
+	}
+	for _, topic := range []string{outbox.ComputeAllocationPre, outbox.NetworkConfigure} {
+		if err := machineEvents(ctx, info, topic, p.VMs); err != nil {
+			return "", err
+		}
 	}
 	switch {
 	case len(p.Components) > 0:

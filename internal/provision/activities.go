@@ -739,6 +739,9 @@ func (a *Activities) CloneVM(ctx context.Context, in VMInput) (string, error) {
 		if err != nil {
 			return "", "", err
 		}
+		if err := a.machineEvent(ctx, outbox.ComputeProvisionPre, in); err != nil {
+			return "", "", err
+		}
 		var vm *vsphere.VM
 		err = heartbeatWhile(ctx, func() error {
 			var err error
@@ -1173,6 +1176,13 @@ func (a *Activities) PowerOn(ctx context.Context, in VMInput) (string, error) {
 			detail += ", from DHCP"
 		case ip != in.IP:
 			detail += " (expected " + in.IP + ")"
+		}
+		built := in
+		if in.VM.DHCP {
+			built.IP = ip
+		}
+		if err := a.machineEvent(ctx, outbox.ComputeProvisionPost, built); err != nil {
+			return "", "", err
 		}
 		return "Powered on, guest IP " + ip, detail, nil
 	})
@@ -1751,8 +1761,27 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 
 // deleteResource deletes a DRS rule, VM, DNS record or IP reservation
 // where it lives, then its row, and says what it did ("" for PTR records).
-// Deleting something already gone is not an error.
-func (a *Activities) deleteResource(ctx context.Context, r store.Resource) (string, error) {
+// Deleting something already gone is not an error. A VM's removal events
+// (ADR-0049) are the request's that deletes it.
+func (a *Activities) deleteResource(ctx context.Context, requestID string, r store.Resource) (string, error) {
+	if r.Type == "vsphere.vm" {
+		machine, err := a.removing(ctx, r)
+		if err != nil {
+			return "", err
+		}
+		if err := a.removalEvent(ctx, outbox.ComputeRemovalPre, requestID, r, machine); err != nil {
+			return "", err
+		}
+		what, err := a.deleteOne(ctx, r)
+		if err != nil {
+			return "", err
+		}
+		return what, a.removalEvent(ctx, outbox.ComputeRemovalPost, requestID, r, machine)
+	}
+	return a.deleteOne(ctx, r)
+}
+
+func (a *Activities) deleteOne(ctx context.Context, r store.Resource) (string, error) {
 	var err error
 	what := ""
 	switch r.Type {
@@ -1860,7 +1889,7 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 			if order[r.Type] != pass {
 				continue
 			}
-			what, err := a.deleteResource(ctx, r)
+			what, err := a.deleteResource(ctx, requestID, r)
 			if err != nil {
 				return fmt.Errorf("roll back %s %s: %w", r.Type, r.Name, err)
 			}

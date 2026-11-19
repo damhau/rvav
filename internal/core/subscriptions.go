@@ -27,13 +27,20 @@ import (
 var topicDescriptions = map[string]string{
 	outbox.RequestSubmitted: "A request, catalog or day-2, is accepted, before any approval.",
 	outbox.ProvisioningPre:  "A catalog request is approved and about to build.",
-	outbox.ProvisioningPost: "A catalog request ended: succeeded, failed or cancelled.",
-	outbox.Day2Pre:          "A day-2 request is about to run (not a deletion).",
-	outbox.Day2Post:         "A day-2 request ended.",
-	outbox.DeletePre:        "A deployment is about to be deleted, by someone or at the end of its lease.",
-	outbox.DeletePost:       "The deletion ended.",
-	outbox.LeaseExpiring:    "The reminder before a lease ends.",
-	outbox.LeaseExpired:     "A lease ended and rvav acts on it.",
+	outbox.ComputeAllocationPre: "A VM of the request is placed and sized, before anything of it is built: " +
+		"its vCenter, cluster, datastore and folder, as the request planned them.",
+	outbox.NetworkConfigure:     "A VM's networks are known, before its address is reserved: each adapter's network, subnet, gateway and DNS zone.",
+	outbox.ComputeProvisionPre:  "A VM is about to be cloned: its address is reserved and its DNS records are made.",
+	outbox.ComputeProvisionPost: "A VM is built, customized and powered on, with its moref and address.",
+	outbox.ProvisioningPost:     "A catalog request ended: succeeded, failed or cancelled.",
+	outbox.Day2Pre:              "A day-2 request is about to run (not a deletion).",
+	outbox.Day2Post:             "A day-2 request ended.",
+	outbox.DeletePre:            "A deployment is about to be deleted, by someone or at the end of its lease.",
+	outbox.ComputeRemovalPre:    "A VM is about to be deleted: by a deletion, an update that scales in, or a failed request's rollback.",
+	outbox.ComputeRemovalPost:   "A VM is deleted from vCenter; its address and DNS records go after it.",
+	outbox.DeletePost:           "The deletion ended.",
+	outbox.LeaseExpiring:        "The reminder before a lease ends.",
+	outbox.LeaseExpired:         "A lease ended and rvav acts on it.",
 }
 
 func asEvent(ev outbox.Event) api.IntegrationEvent {
@@ -47,8 +54,8 @@ func (s *Service) EventTopics(ctx context.Context, p *auth.Principal) ([]api.Eve
 	}
 	out := make([]api.EventTopic, len(outbox.Topics))
 	for i, t := range outbox.Topics {
-		out[i] = api.EventTopic{Key: api.EventTopicKey(t), Description: topicDescriptions[t], MayBlock: outbox.MayBlock(t),
-			Sample: asEvent(outbox.Sample(t))}
+		out[i] = api.EventTopic{Key: api.EventTopicKey(t), Group: api.EventTopicGroup(outbox.Group(t)), Description: topicDescriptions[t],
+			MayBlock: outbox.MayBlock(t), Sample: asEvent(outbox.Sample(t))}
 	}
 	return out, nil
 }
@@ -124,6 +131,9 @@ func checkEventCondition(topic, expr string) error {
 	}
 	if _, key, ok := strings.Cut(err.Error(), "no such key: "); ok {
 		key = strings.TrimSpace(key)
+		if _, ok := sample.Data["machine"]; !ok && strings.Contains(expr, "machine") {
+			return errors.New("the event has no machine: only a VM's topics, compute.* and network.configure, have it")
+		}
 		// Inputs and deployment properties differ from item to item.
 		for _, m := range []string{"inputs", "properties"} {
 			if strings.Contains(expr, m+"."+key) || strings.Contains(expr, m+`["`+key+`"]`) {

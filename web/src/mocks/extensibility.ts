@@ -21,17 +21,94 @@ const now = () => new Date().toISOString();
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 const webhookHosts = ["cmdb.corp.example", "hooks.corp.example", "servicenow.corp.example"];
 
-const topics: { key: S["EventTopicKey"]; description: string }[] = [
-  { key: "request.submitted", description: "A request was submitted, before any approval." },
-  { key: "provisioning.pre", description: "A catalog request is about to build: a blocking subscription may stop it." },
-  { key: "provisioning.post", description: "A catalog request ended: built, failed or cancelled." },
-  { key: "day2.pre", description: "A day-2 action is about to run: a blocking subscription may stop it." },
-  { key: "day2.post", description: "A day-2 action ended." },
-  { key: "delete.pre", description: "A deployment is about to be deleted: a blocking subscription may stop it." },
-  { key: "delete.post", description: "A deployment was deleted, or its deletion failed." },
-  { key: "lease.expiring", description: "A deployment's lease ends in a few days." },
-  { key: "lease.expired", description: "A deployment's lease ended." },
+const topics: { key: S["EventTopicKey"]; group: S["EventTopicGroup"]; description: string }[] = [
+  { key: "request.submitted", group: "request", description: "A request was submitted, before any approval." },
+  {
+    key: "provisioning.pre",
+    group: "request",
+    description: "A catalog request is about to build: a blocking subscription may stop it.",
+  },
+  {
+    key: "compute.allocation.pre",
+    group: "machine",
+    description: "A VM of the request is placed and sized, before anything of it is built.",
+  },
+  {
+    key: "network.configure",
+    group: "machine",
+    description: "A VM's networks are known, before its address is reserved.",
+  },
+  { key: "compute.provision.pre", group: "machine", description: "A VM is about to be cloned." },
+  { key: "compute.provision.post", group: "machine", description: "A VM is built and powered on." },
+  { key: "provisioning.post", group: "request", description: "A catalog request ended: built, failed or cancelled." },
+  {
+    key: "day2.pre",
+    group: "request",
+    description: "A day-2 action is about to run: a blocking subscription may stop it.",
+  },
+  { key: "day2.post", group: "request", description: "A day-2 action ended." },
+  {
+    key: "delete.pre",
+    group: "request",
+    description: "A deployment is about to be deleted: a blocking subscription may stop it.",
+  },
+  { key: "compute.removal.pre", group: "machine", description: "A VM is about to be deleted." },
+  { key: "compute.removal.post", group: "machine", description: "A VM is deleted from vCenter." },
+  { key: "delete.post", group: "request", description: "A deployment was deleted, or its deletion failed." },
+  { key: "lease.expiring", group: "lease", description: "A deployment's lease ends in a few days." },
+  { key: "lease.expired", group: "lease", description: "A deployment's lease ended." },
 ];
+
+/** The topics a blocking subscription may hear, as the server says. */
+const mayBlock = (topic: string) => ["provisioning.pre", "day2.pre", "delete.pre"].includes(topic);
+
+/** A VM as a machine topic's event has it: no address before the clone, no moref before it is on. */
+function sampleMachine(topic: S["EventTopicKey"]) {
+  const planned = topic === "compute.allocation.pre" || topic === "network.configure";
+  const built = topic === "compute.provision.post" || topic.startsWith("compute.removal");
+  const address = planned ? null : "10.31.10.57";
+  return {
+    name: "web-dev-app001",
+    fqdn: "web-dev-app001.corp.example",
+    component: "app",
+    index: 0,
+    deployment_id: "dep_sample",
+    resource_id: built ? "res_sample" : null,
+    moref: built ? "vm-1042" : null,
+    address,
+    template: "rhel9-template",
+    vcpu: 4,
+    memory_gb: 16,
+    disk_gb: 80,
+    placement: {
+      vcenter: "vc-gva-01",
+      cluster: "cl-gva-dev-01",
+      resource_pool: "",
+      hosts: [],
+      datastore: "ds-gva-dev-01",
+      datastore_cluster: "",
+      folder: "rvav/web",
+    },
+    networks: [
+      {
+        index: 0,
+        key: "",
+        network: "pg-web-dev",
+        segment: "",
+        ipam: "efficientip",
+        subnet: "10.31.10.0/24",
+        gateway: "10.31.10.1",
+        prefix_length: 24,
+        subnet6: "",
+        dns_zone: "corp.example",
+        fqdn: "web-dev-app001.corp.example",
+        address,
+      },
+    ],
+    tags: ["env/dev"],
+    properties: { cost_center: "CC-4410" },
+  };
+}
 
 function sample(topic: S["EventTopicKey"]): S["IntegrationEvent"] {
   return {
@@ -49,6 +126,7 @@ function sample(topic: S["EventTopicKey"]): S["IntegrationEvent"] {
       inputs: { role: "web", size: "M" },
       deployment: null,
       lease: null,
+      ...(topics.find((t) => t.key === topic)?.group === "machine" ? { machine: sampleMachine(topic) } : {}),
     },
   };
 }
@@ -234,7 +312,8 @@ function checkSubscription(db: Db, w: S["SubscriptionWrite"]): S["FieldError"][]
     const why = celCheck(w.condition);
     if (why) err("/condition", "invalid", `Not valid CEL: ${why}`);
   }
-  if (w.blocking && !topic?.key.endsWith(".pre")) err("/blocking", "invalid", "Only .pre topics may block.");
+  if (w.blocking && topic && !mayBlock(topic.key))
+    err("/blocking", "not_pre", "Only provisioning.pre, day2.pre and delete.pre subscriptions may block.");
   if (w.timeout_seconds < 1 || w.timeout_seconds > 3600)
     err("/timeout_seconds", "range", "Between 1 and 3600 seconds.");
   const t = w.target;
@@ -297,7 +376,7 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
     http.get(`${base}/admin/event-topics`, async () => {
       await wait();
       return HttpResponse.json({
-        items: topics.map((t) => ({ ...t, may_block: t.key.endsWith(".pre"), sample: sample(t.key) })),
+        items: topics.map((t) => ({ ...t, may_block: mayBlock(t.key), sample: sample(t.key) })),
       });
     }),
     http.get(`${base}/admin/subscriptions`, async () => {

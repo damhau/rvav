@@ -36,6 +36,34 @@ describe("Subscriptions", () => {
     const row = screen.getByRole("row", { name: /ServiceNow change record/ });
     await waitFor(() => expect(within(row).getByText("Off")).toBeInTheDocument());
   });
+
+  it("lists a VM's topics under their own heading, with the VM in their sample, and they don't block", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/subscriptions");
+    await user.click(await screen.findByRole("button", { name: "New subscription" }));
+    const sheet = await screen.findByRole("dialog", { name: "New subscription" });
+    await user.click(within(sheet).getByRole("combobox", { name: "Topic" }));
+    const machines = await screen.findByRole("group", { name: "A request's VMs, one event each" });
+    expect(
+      within(machines)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual([
+      "compute.allocation.pre",
+      "network.configure",
+      "compute.provision.pre",
+      "compute.provision.post",
+      "compute.removal.pre",
+      "compute.removal.post",
+    ]);
+    await user.click(within(machines).getByRole("option", { name: "compute.provision.pre" }));
+
+    expect(within(sheet).getByText("A VM is about to be cloned.")).toBeInTheDocument();
+    expect(within(sheet).getByRole("checkbox", { name: /Blocking/ })).toBeDisabled();
+    expect(within(sheet).getByText("(only on provisioning.pre, day2.pre and delete.pre)")).toBeInTheDocument();
+    await user.click(within(sheet).getByText("A sample compute.provision.pre event"));
+    expect(within(sheet).getByText(/"machine": \{/)).toHaveTextContent('"address": "10.31.10.57"');
+  });
 });
 
 describe("A subscription's page", () => {

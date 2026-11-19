@@ -20,6 +20,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/dispatch"
 	"github.com/damhau/rvav/internal/outbox"
+	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -87,16 +88,55 @@ func TestEventOutbox(t *testing.T) {
 			}
 			return out
 		}
-		if got := topics(d.built.Id); !slices.Equal(got, []string{outbox.RequestSubmitted, outbox.ProvisioningPre, outbox.ProvisioningPost}) {
+		if got := topics(d.built.Id); !slices.Equal(got, []string{outbox.RequestSubmitted, outbox.ProvisioningPre,
+			outbox.ComputeAllocationPre, outbox.NetworkConfigure, outbox.ComputeProvisionPre, outbox.ComputeProvisionPost,
+			outbox.ProvisioningPost}) {
 			t.Fatalf("a VM's events = %v", got)
 		}
-		var payload []byte
-		if err := h.store.Pool.QueryRow(ctx, `select payload from integration_events where request_id = $1 and topic = $2`,
-			d.built.Id, outbox.ProvisioningPost).Scan(&payload); err != nil {
-			t.Fatal(err)
+		event := func(requestID, topic string) (outbox.Event, []byte) {
+			t.Helper()
+			var payload []byte
+			if err := h.store.Pool.QueryRow(ctx, `select payload from integration_events where request_id = $1 and topic = $2`,
+				requestID, topic).Scan(&payload); err != nil {
+				t.Fatal(topic, err)
+			}
+			var ev outbox.Event
+			_ = json.Unmarshal(payload, &ev)
+			return ev, payload
 		}
-		var ev outbox.Event
-		_ = json.Unmarshal(payload, &ev)
+		// A VM's own events (ADR-0049): placed and on its networks before
+		// anything is built, its address once reserved, its moref once on.
+		machine := func(requestID, topic string) map[string]any {
+			t.Helper()
+			ev, payload := event(requestID, topic)
+			m, _ := ev.Data["machine"].(map[string]any)
+			dep, _ := ev.Data["deployment"].(map[string]any)
+			if m == nil || m["name"] != "web-dev-app001" || m["deployment_id"] != d.id || dep == nil || dep["id"] != d.id {
+				t.Fatalf("%s = %s", topic, payload)
+			}
+			return m
+		}
+		alloc := machine(d.built.Id, outbox.ComputeAllocationPre)
+		placement, _ := alloc["placement"].(map[string]any)
+		if alloc["address"] != nil || alloc["moref"] != nil || placement["vcenter"] == "" || placement["cluster"] == "" ||
+			placement["datastore"] == "" || alloc["vcpu"] == nil {
+			t.Fatalf("compute.allocation.pre's machine = %v", alloc)
+		}
+		nets := machine(d.built.Id, outbox.NetworkConfigure)["networks"].([]any)
+		if nic := nets[0].(map[string]any); nic["network"] == "" || nic["subnet"] == "" || nic["address"] != nil {
+			t.Fatalf("network.configure's networks = %v", nets)
+		}
+		pre := machine(d.built.Id, outbox.ComputeProvisionPre)
+		post := machine(d.built.Id, outbox.ComputeProvisionPost)
+		if pre["address"] == nil || pre["moref"] != nil || post["address"] != pre["address"] || post["moref"] == nil || post["resource_id"] == nil {
+			t.Fatalf("compute.provision.pre %v, .post %v", pre, post)
+		}
+		postEv, _ := event(d.built.Id, outbox.ComputeProvisionPost)
+		if ok, err := policy.EventBool(`machine.moref != null && machine.placement.cluster != "" && project.code != ""`,
+			policy.Vars(outbox.Vars(postEv.Data))); err != nil || !ok {
+			t.Fatalf("a condition on the machine: %v %v", ok, err)
+		}
+		ev, payload := event(d.built.Id, outbox.ProvisioningPost)
 		req := ev.Data["request"].(map[string]any)
 		resources := ev.Data["resources"].([]any)
 		vm := resources[slices.IndexFunc(resources, func(r any) bool { return r.(map[string]any)["type"] == "vsphere.vm" })].(map[string]any)
@@ -127,8 +167,13 @@ func TestEventOutbox(t *testing.T) {
 		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "tnguyen", api.Day2Draft{Action: "delete", Inputs: map[string]any{}},
 			202, &del, "Idempotency-Key", uuid.NewString())
 		h.runWorkflow(del.Id, nil)
-		if got := topics(del.Id); !slices.Equal(got, []string{outbox.RequestSubmitted, outbox.DeletePre, outbox.DeletePost}) {
+		if got := topics(del.Id); !slices.Equal(got, []string{outbox.RequestSubmitted, outbox.DeletePre,
+			outbox.ComputeRemovalPre, outbox.ComputeRemovalPost, outbox.DeletePost}) {
 			t.Fatalf("delete's events = %v", got)
+		}
+		if gone := machine(del.Id, outbox.ComputeRemovalPost); gone["moref"] != post["moref"] || gone["address"] != post["address"] ||
+			gone["resource_id"] != post["resource_id"] {
+			t.Fatalf("compute.removal.post's machine = %v, built %v", gone, post)
 		}
 
 		// Lease: a reminder a day before, then the expiry.

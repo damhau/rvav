@@ -10,6 +10,7 @@ import (
 
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/outbox"
 )
 
 // SignalApproval tells a waiting workflow that an approval level was decided.
@@ -356,11 +357,18 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 		return key, workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil)
 	}
 
+	if err := machineEvents(ctx, info, outbox.ComputeAllocationPre, p.VMs); err != nil {
+		return "", err
+	}
 	if key, err := makeSegments(ctx, info, p.Segments, p.VMs, p.SegmentKey); err != nil {
 		return key, err
 	}
 	if key, err := makeSecurity(ctx, info, p.Security, p.SecurityKey); err != nil {
 		return key, err
+	}
+	// Once its segments have their subnets.
+	if err := machineEvents(ctx, info, outbox.NetworkConfigure, p.VMs); err != nil {
+		return "", err
 	}
 
 	if len(p.Components) > 0 {

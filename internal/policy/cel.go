@@ -64,7 +64,7 @@ var build = &set{names: []string{"inputs", "self", "components"}}
 
 // events is for subscription conditions (ADR-0021): the event's data.
 var events = &set{names: []string{"request", "item", "project", "environment", "production", "requester", "owner",
-	"deployment", "deployments", "resources", "inputs", "vm"}, strings: map[string]bool{"environment": true}}
+	"deployment", "deployments", "resources", "inputs", "vm", "machine"}, strings: map[string]bool{"environment": true}}
 
 func (s *set) celEnv() (*cel.Env, error) {
 	s.once.Do(func() {

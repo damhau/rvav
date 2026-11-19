@@ -12,6 +12,7 @@ import (
 	"go.temporal.io/sdk/testsuite"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/provision"
 )
 
@@ -134,6 +135,15 @@ func TestRetryAndRollback(t *testing.T) {
 		}
 		if _, err := h.vc.GetVM(ctx, vmMoref); err == nil {
 			t.Fatal("the VM is still in vCenter")
+		}
+		// The rollback is the failed request's: its VM's removal events
+		// (ADR-0049) are that request's.
+		for _, topic := range []string{outbox.ComputeRemovalPre, outbox.ComputeRemovalPost} {
+			var moref, deploymentID string
+			if err := h.store.Pool.QueryRow(ctx, `select payload->'data'->'machine'->>'moref', deployment_id from integration_events
+				where request_id = $1 and topic = $2`, r2.Id, topic).Scan(&moref, &deploymentID); err != nil || moref != vmMoref || deploymentID != dep2 {
+				t.Fatalf("%s: %q %q %v", topic, moref, deploymentID, err)
+			}
 		}
 		if s := steps(r2.Id); s["rollback"].Status != api.StepStatusDone {
 			t.Fatalf("rollback step = %+v", s["rollback"])

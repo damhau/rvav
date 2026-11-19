@@ -412,7 +412,7 @@ func (a *Activities) deleteResources(ctx context.Context, in OpInput) (string, e
 			done = append(done, "kept "+leftName(r)+" of "+vm+", which is still there")
 			continue
 		}
-		what, err := a.deleteResource(ctx, r)
+		what, err := a.deleteResource(ctx, in.RequestID, r)
 		if err != nil {
 			err = fmt.Errorf("%s %s: %w", r.Type, r.Name, err)
 			if !in.Op.KeepGoing {

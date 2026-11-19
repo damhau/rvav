@@ -11,6 +11,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -172,8 +173,14 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 		var err error
 		// Its deployments' NSX segments and groups first (ADR-0028), again
 		// on a retry: they give the VMs their subnet.
-		if failed, err = makeSegments(ctx, info, c.Segments, c.VMs, c.SegmentKey); err == nil {
-			failed, err = makeSecurity(ctx, info, c.Security, c.SecurityKey)
+		if err = machineEvents(ctx, info, outbox.ComputeAllocationPre, c.VMs); err != nil {
+			failed = key
+		} else if failed, err = makeSegments(ctx, info, c.Segments, c.VMs, c.SegmentKey); err == nil {
+			if failed, err = makeSecurity(ctx, info, c.Security, c.SecurityKey); err == nil {
+				if err = machineEvents(ctx, info, outbox.NetworkConfigure, c.VMs); err != nil {
+					failed = key
+				}
+			}
 		}
 		switch {
 		case err != nil:

@@ -32,9 +32,32 @@ const (
 	LeaseExpired     = "lease.expired"
 )
 
+// A VM's own topics (ADR-0049): one event per VM, named as vRA's.
+const (
+	ComputeAllocationPre = "compute.allocation.pre"
+	NetworkConfigure     = "network.configure"
+	ComputeProvisionPre  = "compute.provision.pre"
+	ComputeProvisionPost = "compute.provision.post"
+	ComputeRemovalPre    = "compute.removal.pre"
+	ComputeRemovalPost   = "compute.removal.post"
+)
+
 // Topics lists them in the order of a deployment's life.
-var Topics = []string{RequestSubmitted, ProvisioningPre, ProvisioningPost, Day2Pre, Day2Post,
-	DeletePre, DeletePost, LeaseExpiring, LeaseExpired}
+var Topics = []string{RequestSubmitted, ProvisioningPre, ComputeAllocationPre, NetworkConfigure,
+	ComputeProvisionPre, ComputeProvisionPost, ProvisioningPost, Day2Pre, Day2Post,
+	DeletePre, ComputeRemovalPre, ComputeRemovalPost, DeletePost, LeaseExpiring, LeaseExpired}
+
+// Group says what a topic's events are about: a request, one of its VMs
+// (data.machine), or a deployment's lease.
+func Group(topic string) string {
+	switch topic {
+	case ComputeAllocationPre, NetworkConfigure, ComputeProvisionPre, ComputeProvisionPost, ComputeRemovalPre, ComputeRemovalPost:
+		return "machine"
+	case LeaseExpiring, LeaseExpired:
+		return "lease"
+	}
+	return "request"
+}
 
 // MayBlock says whether blocking subscriptions are allowed on a topic.
 func MayBlock(topic string) bool {
@@ -88,6 +111,26 @@ func Submitted(ctx context.Context, db store.DB, requestID string) error {
 	return insert(ctx, db, RequestSubmitted, &requestID, deploymentID, requestID+":"+RequestSubmitted, data, true)
 }
 
+// ForMachine writes the topic's event about one VM of a request
+// (ADR-0049): what an event says about the request, with the VM in
+// `machine` and its deployment in `deployment`.
+func ForMachine(ctx context.Context, db store.DB, topic, requestID, dedupe string, machine map[string]any) error {
+	data, deploymentID, err := requestData(ctx, db, requestID)
+	if err != nil {
+		return err
+	}
+	data["machine"] = machine
+	if id, _ := machine["deployment_id"].(string); id != "" {
+		deploymentID = &id
+		for _, d := range data["deployments"].([]map[string]any) {
+			if d["id"] == id {
+				data["deployment"] = d
+			}
+		}
+	}
+	return insert(ctx, db, topic, &requestID, deploymentID, dedupe, data, false)
+}
+
 // ForDeployment writes the topic's event about a deployment without a
 // request (its lease reminder or expiry).
 func ForDeployment(ctx context.Context, db store.DB, topic, deploymentID, dedupe string) error {
@@ -133,12 +176,41 @@ func Sample(topic string) Event {
 		data["request"].(map[string]any)["outcome"] = "succeeded"
 	case Day2Pre:
 		data["request"].(map[string]any)["kind"], data["request"].(map[string]any)["action"] = "day2", "resize"
-	case DeletePre:
+	case DeletePre, ComputeRemovalPre, ComputeRemovalPost:
 		data["request"].(map[string]any)["kind"], data["request"].(map[string]any)["action"] = "day2", "delete"
 	case LeaseExpiring, LeaseExpired:
 		data["request"] = nil
 	}
+	if Group(topic) == "machine" {
+		data["machine"] = sampleMachine(topic)
+		if topic == ComputeAllocationPre || topic == NetworkConfigure || topic == ComputeProvisionPre {
+			data["resources"] = []any{}
+		}
+	}
 	return Event{ID: "evt_sample", Topic: topic, Contract: Contract, OccurredAt: time.Now().UTC(), Data: data}
+}
+
+// sampleMachine is a made-up VM as the topic's event has it: no address
+// before compute.provision.pre, no moref before compute.provision.post.
+func sampleMachine(topic string) map[string]any {
+	nic := map[string]any{"index": 0, "key": "", "network": "pg-web-dev", "segment": "", "ipam": "efficientip",
+		"subnet": "10.31.10.0/24", "gateway": "10.31.10.1", "prefix_length": 24, "subnet6": "", "dns_zone": "corp.example",
+		"fqdn": "web-dev-app001.corp.example", "address": nil}
+	m := map[string]any{"name": "web-dev-app001", "fqdn": "web-dev-app001.corp.example", "component": "app", "index": 0,
+		"deployment_id": "dep_sample", "resource_id": nil, "moref": nil, "address": nil,
+		"template": "rhel9-template", "vcpu": 4, "memory_gb": 16, "disk_gb": 80,
+		"placement": map[string]any{"vcenter": "vc-gva-01", "cluster": "cl-gva-dev-01", "resource_pool": "", "hosts": []any{},
+			"datastore": "ds-gva-dev-01", "datastore_cluster": "", "folder": "rvav/web"},
+		"networks": []any{nic}, "tags": []any{"env/dev"}, "properties": map[string]any{"cost_center": "CC-0000"},
+	}
+	if topic == ComputeAllocationPre || topic == NetworkConfigure {
+		return m
+	}
+	m["address"], nic["address"] = "10.31.10.57", "10.31.10.57"
+	if topic != ComputeProvisionPre {
+		m["resource_id"], m["moref"] = "res_sample", "vm-1042"
+	}
+	return m
 }
 
 // Vars are what a subscription's condition sees: the event's data, with

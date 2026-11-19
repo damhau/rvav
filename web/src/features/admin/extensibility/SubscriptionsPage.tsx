@@ -1,6 +1,6 @@
 // Event subscriptions (S10, ADR-0021): webhooks, AWX templates and custom
-// workflows that hear about requests, provisioning, day-2 actions,
-// deletions and leases; blocking ones may stop a request.
+// workflows that hear about requests, each VM they build or delete (ADR-0049),
+// day-2 actions, deletions and leases; blocking ones may stop a request.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Webhook } from "lucide-react";
@@ -48,6 +48,12 @@ export function targetText(t: S["SubscriptionTarget"]): string {
 
 export const runsText = (s: Subscription) =>
   `${s.runs.delivered} delivered, ${s.runs.failed} failed, ${s.runs.pending} waiting`;
+
+const topicGroups: Record<S["EventTopicGroup"], string> = {
+  request: "Requests",
+  machine: "A request's VMs, one event each",
+  lease: "Leases",
+};
 
 const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
   void qc.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
@@ -137,7 +143,11 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
             id="sub-topic"
             value={f.topic}
             onChange={(v) => setF({ ...f, topic: v as S["EventTopicKey"] })}
-            options={(topics.data?.items ?? []).map((t) => ({ value: t.key, label: t.key }))}
+            options={(topics.data?.items ?? []).map((t) => ({
+              value: t.key,
+              label: t.key,
+              group: topicGroups[t.group],
+            }))}
           />
         </Field>
       </div>
@@ -273,7 +283,9 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
             onChange={(blocking) => setF({ ...f, blocking })}
           />
           Blocking: the request waits for the answer, which may stop it
-          {!mayBlock && <span className="text-secondary text-faint">(only on .pre topics)</span>}
+          {!mayBlock && (
+            <span className="text-secondary text-faint">(only on provisioning.pre, day2.pre and delete.pre)</span>
+          )}
         </label>
         {errors["/blocking"] && <p className="text-secondary text-bad">{errors["/blocking"]}</p>}
         {mayBlock && f.blocking && (
@@ -448,7 +460,7 @@ export function SubscriptionsPage() {
     <Page>
       <PageHeader
         title="Subscriptions"
-        description="Webhooks, AWX templates and custom workflows that hear about requests, provisioning, day-2 actions, deletions and leases. A blocking one may stop a request."
+        description="Webhooks, AWX templates and custom workflows that hear about requests, each VM a request builds or deletes, day-2 actions and leases. A blocking one may stop a request."
         actions={subs.data?.items.length ? create : undefined}
       />
       <Panel title="All subscriptions" flush>
