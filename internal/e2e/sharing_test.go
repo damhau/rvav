@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -179,5 +180,66 @@ func TestItemSharing(t *testing.T) {
 			t.Fatalf("every project, for rvav-data = %+v", got)
 		}
 		h.json("DELETE", "/api/v1/admin/roles/ordering", "mkeller", nil, 204, nil)
+	})
+}
+
+// TestItemSharingYAML: an item's sharing exports to YAML, projects by code
+// and users by email, and a new item imported from the file is shared the
+// same; importing into an item keeps its sharing (G1.2).
+func TestItemSharingYAML(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "lmartin"
+		h.json("PUT", "/api/v1/admin/catalog/items/rhel9-server/entitlements", admin, api.CatalogEntitlements{
+			ProjectIds: []string{"prj_web", "prj_data"}, Audiences: &[]api.CatalogProjectAudience{{ProjectId: "prj_web",
+				UserIds: []string{seed.UserID("afavre")}, Groups: []string{"rvav-web"}, Roles: []string{"project-admin"}}}}, 200, nil)
+		status, body, _ := h.do("GET", "/api/v1/admin/catalog/items/rhel9-server/export", admin, nil)
+		if status != 200 || !strings.Contains(string(body), "sharing:\n  projects:\n    - project: data\n    - project: web\n      users:\n        - alain.favre@corp.example\n      groups:\n        - rvav-web\n      roles:\n        - project-admin\n") {
+			t.Fatalf("export = %d %s", status, body)
+		}
+		copyYAML := strings.Replace(string(body), "slug: rhel9-server", "slug: rhel9-copy", 1)
+		var imported api.CatalogImportResult
+		h.json("POST", "/api/v1/admin/catalog/import", admin, rawYAML(copyYAML), 200, &imported, "Content-Type", "application/yaml")
+		var original, copied api.CatalogEntitlements
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-server/entitlements", admin, nil, 200, &original)
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-copy/entitlements", admin, nil, 200, &copied)
+		if !slices.Equal(copied.ProjectIds, original.ProjectIds) || len(*copied.Audiences) != 1 ||
+			!slices.Equal((*copied.Audiences)[0].UserIds, (*original.Audiences)[0].UserIds) {
+			t.Fatalf("the copy is shared with %+v, the original with %+v", copied, original)
+		}
+		h.json("POST", "/api/v1/admin/catalog/items/rhel9-copy/versions/"+imported.Versions[len(imported.Versions)-1].Id+"/publish",
+			admin, nil, 200, nil)
+		_, again, _ := h.do("GET", "/api/v1/admin/catalog/items/rhel9-copy/export", admin, nil)
+		if strings.Replace(string(again), "slug: rhel9-copy", "slug: rhel9-server", 1) != string(body) {
+			t.Fatalf("a round trip changed the item:\n%s\n---\n%s", body, again)
+		}
+
+		// Into an item, the file's sharing isn't taken.
+		everyone := strings.Replace(copyYAML, "sharing:\n", "sharing:\n  all_projects: true\n", 1)
+		h.json("POST", "/api/v1/admin/catalog/import?item_id=rhel9-copy", admin, rawYAML(everyone), 200, nil, "Content-Type", "application/yaml")
+		h.json("GET", "/api/v1/admin/catalog/items/rhel9-copy/entitlements", admin, nil, 200, &copied)
+		if copied.AllProjects {
+			t.Fatal("importing into an item changed its sharing")
+		}
+
+		// What the file names must exist here, each problem on its line.
+		broken := strings.Replace(copyYAML, "slug: rhel9-copy", "slug: rhel9-broken", 1)
+		broken = strings.NewReplacer("project: data", "project: nope", "alain.favre@corp.example", "nobody@corp.example",
+			"- project-admin", "- admin").Replace(broken)
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/admin/catalog/import", admin, rawYAML(broken), 422, &problem, "Content-Type", "application/yaml")
+		fields := []string{}
+		for _, e := range problem.Errors {
+			fields = append(fields, e.Field)
+			if !strings.Contains(e.Message, "(line ") {
+				t.Errorf("%s: %s", e.Field, e.Message)
+			}
+		}
+		if want := []string{"/sharing/projects/0/project", "/sharing/projects/1/users/0", "/sharing/projects/1/roles/0"}; !slices.Equal(fields, want) {
+			t.Fatalf("errors = %v, want %v", fields, want)
+		}
 	})
 }

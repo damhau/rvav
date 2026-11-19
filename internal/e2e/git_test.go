@@ -573,6 +573,23 @@ func TestCatalogGitDrafts(t *testing.T) {
 			t.Fatalf("details kept audited %d times", n)
 		}
 
+		// So does sharing, never in the repository (G1.2).
+		var before api.CatalogEntitlements
+		h.json("GET", "/api/v1/admin/catalog/items/"+slugs[0]+"/entitlements", admin, nil, 200, &before)
+		shared := editFile(t, fileOf(t, ctx, reader, slugs[0]), func(doc, _ map[string]any) {
+			doc["sharing"] = map[string]any{"projects": []any{map[string]any{"project": "web", "groups": []any{"rvav-web"}}}}
+		})
+		push(t, ctx, reader, "Share it", gitrepo.Change{Path: "catalog/" + slugs[0] + ".yaml", Content: shared})
+		if rep := h.syncGit(); rep.Drafts != 0 || rep.Committed != 1 {
+			t.Fatalf("a change of sharing = %+v", rep)
+		}
+		var after api.CatalogEntitlements
+		h.json("GET", "/api/v1/admin/catalog/items/"+slugs[0]+"/entitlements", admin, nil, 200, &after)
+		if strings.Contains(string(fileOf(t, ctx, reader, slugs[0])), "sharing:") || len(*after.Audiences) != len(*before.Audiences) ||
+			!slices.Equal(after.ProjectIds, before.ProjectIds) {
+			t.Fatalf("the repository's sharing was taken: %+v", after)
+		}
+
 		// A new file: a new item, a draft. A file the import refuses, and
 		// one whose name isn't its slug, are reported.
 		copied := editFile(t, fileOf(t, ctx, reader, "rhel9-server"), func(doc, v map[string]any) {

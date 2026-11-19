@@ -618,7 +618,10 @@ the project they request in; submitting it is refused (403) for the others.
 Administrators and catalog admins are no exception: a role held for all of
 rvav doesn't count. Narrowing applies to what comes next: a saved draft
 stays, its submit is refused; a request already submitted, waiting for
-approval or scheduled, runs. Categories aren't shared: an item is.
+approval or scheduled, runs. Categories aren't shared: an item is. The
+YAML export has the item's sharing, with projects by code and users by
+email; an import that makes a new item shares it so, while the catalog's
+repository never has it.
 
 ## 3. Custom forms
 

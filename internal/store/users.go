@@ -140,6 +140,18 @@ func (s *Store) UserForToken(ctx context.Context, hash string) (User, string, er
 }
 
 // FindUsers returns users by ID; missing IDs are skipped.
+// UserIDsByLogin finds users by ID or by email, in any case: the IDs of
+// those found, by the login given.
+func (s *Store) UserIDsByLogin(ctx context.Context, logins []string) (map[string]string, error) {
+	rows, _ := s.Pool.Query(ctx, `select distinct on (x.login) x.login, u.id from unnest($1::text[]) x(login)
+		join users u on u.id = x.login or lower(u.email) = lower(x.login)
+		where x.login <> '' order by x.login, u.id = x.login desc, u.id`, logins)
+	out := map[string]string{}
+	var login, id string
+	_, err := pgx.ForEachRow(rows, []any{&login, &id}, func() error { out[login] = id; return nil })
+	return out, err
+}
+
 func (s *Store) FindUsers(ctx context.Context, idList []string) (map[string]User, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+userCols+` from users where id = any($1)`, idList)
 	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[User])

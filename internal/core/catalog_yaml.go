@@ -120,7 +120,28 @@ type itemDoc struct {
 	APIVersion string       `yaml:"apiVersion"`
 	Kind       string       `yaml:"kind"`
 	Metadata   itemMetadata `yaml:"metadata"`
+	Sharing    *sharingDoc  `yaml:"sharing,omitempty"`
 	Versions   []versionDoc `yaml:"versions"`
+}
+
+// sharingDoc is who an item is shared with (ADR-0019, Sharing), with
+// projects by code and users by email, the same in every installation.
+// The catalog's repository never has it (ADR-0029).
+type sharingDoc struct {
+	AllProjects bool              `yaml:"all_projects,omitempty"`
+	Everywhere  *audienceDoc      `yaml:"everywhere,omitempty"`
+	Projects    []projectShareDoc `yaml:"projects,omitempty"`
+}
+
+type audienceDoc struct {
+	Users  []string `yaml:"users,omitempty"`
+	Groups []string `yaml:"groups,omitempty"`
+	Roles  []string `yaml:"roles,omitempty"`
+}
+
+type projectShareDoc struct {
+	Project  string      `yaml:"project"`
+	Audience audienceDoc `yaml:",inline"`
 }
 
 type itemMetadata struct {
@@ -154,7 +175,7 @@ func (s *Service) ExportCatalogItem(ctx context.Context, p *auth.Principal, idOr
 	if err != nil {
 		return nil, "", err
 	}
-	out, err := s.itemYAML(ctx, it, func(row store.VersionRow) bool { return versionID == "" || row.ID == versionID })
+	out, err := s.itemYAML(ctx, it, func(row store.VersionRow) bool { return versionID == "" || row.ID == versionID }, true)
 	if err != nil {
 		return nil, "", err
 	}
@@ -162,11 +183,18 @@ func (s *Service) ExportCatalogItem(ctx context.Context, p *auth.Principal, idOr
 }
 
 // itemYAML is the item as YAML, with the versions keep keeps (oldest
-// first); ErrNotFound when it keeps none.
-func (s *Service) itemYAML(ctx context.Context, it store.AdminItem, keep func(store.VersionRow) bool) ([]byte, error) {
+// first) and, withSharing, who it is shared with; ErrNotFound when it
+// keeps none.
+func (s *Service) itemYAML(ctx context.Context, it store.AdminItem, keep func(store.VersionRow) bool, withSharing bool) ([]byte, error) {
 	doc := itemDoc{APIVersion: docAPIVersion, Kind: docKind, Metadata: itemMetadata{Slug: it.Slug, Name: it.Name,
 		Summary: it.Summary, Description: it.DescriptionMD, Category: it.Category, Type: it.Type, Icon: it.Icon, Tags: it.Tags,
 		Featured: it.Featured}}
+	if withSharing {
+		var err error
+		if doc.Sharing, err = s.sharingYAML(ctx, it.ID); err != nil {
+			return nil, err
+		}
+	}
 	rows, err := s.Store.ItemVersions(ctx, it.ID)
 	if err != nil {
 		return nil, err
@@ -249,6 +277,18 @@ func (s *Service) importItem(ctx context.Context, p *auth.Principal, body []byte
 			add(ptr, "invalid", "This version's definition doesn't fit: "+err.Error())
 			continue
 		}
+	}
+
+	// A file's sharing is taken for a new item only, never from the
+	// catalog's repository (ADR-0029).
+	var sharing store.Sharing
+	if doc.Sharing != nil && itemID == "" && !lastOnly {
+		var serrs []api.FieldError
+		var err error
+		if sharing, serrs, err = s.sharingFromYAML(ctx, *doc.Sharing); err != nil {
+			return api.CatalogImportResult{}, err
+		}
+		errs = append(errs, serrs...)
 	}
 
 	var it store.AdminItem
@@ -343,7 +383,14 @@ func (s *Service) importItem(ctx context.Context, p *auth.Principal, body []byte
 		} else if err != nil {
 			return out, err
 		}
-		s.auditCatalog(ctx, p, "catalog.item.import", item.ID, map[string]any{"slug": item.Slug, "versions": len(versions)})
+		detail := map[string]any{"slug": item.Slug, "versions": len(versions)}
+		if doc.Sharing != nil && !lastOnly {
+			if err := s.Store.SetSharing(ctx, item.ID, sharing); err != nil {
+				return out, err
+			}
+			detail["sharing"] = sharingDetail(sharing)
+		}
+		s.auditCatalog(ctx, p, "catalog.item.import", item.ID, detail)
 		out.ItemId, out.Created = item.ID, true
 	}
 	rows, err := s.Store.ItemVersions(ctx, out.ItemId)

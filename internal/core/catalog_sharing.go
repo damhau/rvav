@@ -351,3 +351,114 @@ func (s *Service) CatalogRequesters(ctx context.Context, p *auth.Principal, idOr
 	}
 	return out, nil
 }
+
+// sharingYAML is who an item is shared with, for its file: projects by
+// code, users by email (by ID without one); nil when with nobody.
+func (s *Service) sharingYAML(ctx context.Context, itemID string) (*sharingDoc, error) {
+	sh, err := s.Store.ItemSharing(ctx, itemID)
+	if err != nil || !sh.AllProjects && len(sh.Projects) == 0 {
+		return nil, err
+	}
+	all, err := s.Store.ListProjects(ctx, nil, 500, nil)
+	if err != nil {
+		return nil, err
+	}
+	code := map[string]string{}
+	for _, p := range all.Items {
+		code[p.ID] = p.Code
+	}
+	ids := slices.Clone(sh.Everywhere.UserIDs)
+	for _, ps := range sh.Projects {
+		ids = append(ids, ps.UserIDs...)
+	}
+	found, err := s.Store.FindUsers(ctx, nonNilList(ids))
+	if err != nil {
+		return nil, err
+	}
+	audience := func(a store.Audience) audienceDoc {
+		out := audienceDoc{Groups: a.Groups, Roles: a.Roles}
+		for _, id := range a.UserIDs {
+			if u, ok := found[id]; ok && u.Email != "" {
+				id = u.Email
+			}
+			out.Users = append(out.Users, id)
+		}
+		slices.Sort(out.Users)
+		return out
+	}
+	doc := &sharingDoc{AllProjects: sh.AllProjects}
+	if !sh.Everywhere.Everyone() {
+		e := audience(sh.Everywhere)
+		doc.Everywhere = &e
+	}
+	for _, ps := range sh.Projects {
+		c, ok := code[ps.ProjectID]
+		if !ok {
+			c = ps.ProjectID
+		}
+		doc.Projects = append(doc.Projects, projectShareDoc{Project: c, Audience: audience(ps.Audience)})
+	}
+	slices.SortFunc(doc.Projects, func(a, b projectShareDoc) int { return strings.Compare(a.Project, b.Project) })
+	return doc, nil
+}
+
+// sharingFromYAML checks a file's sharing, with problems on its pointers.
+func (s *Service) sharingFromYAML(ctx context.Context, d sharingDoc) (store.Sharing, []api.FieldError, error) {
+	sh := store.Sharing{AllProjects: d.AllProjects}
+	var logins []string
+	if d.Everywhere != nil {
+		logins = append(logins, d.Everywhere.Users...)
+	}
+	for _, ps := range d.Projects {
+		logins = append(logins, ps.Audience.Users...)
+	}
+	known, err := s.Store.UserIDsByLogin(ctx, nonNilList(logins))
+	if err != nil {
+		return sh, nil, err
+	}
+	var errs []api.FieldError
+	audience := func(ptr string, a audienceDoc) (store.Audience, error) {
+		ids := []string{}
+		for i, l := range a.Users {
+			if id, ok := known[l]; ok {
+				ids = append(ids, id)
+			} else {
+				errs = append(errs, fieldErr(fmt.Sprintf("%s/users/%d", ptr, i), "unknown", "There is no user "+l+"."))
+			}
+		}
+		aud, aerrs, err := s.audienceOf(ctx, ptr, api.CatalogAudience{UserIds: ids, Groups: nonNilList(a.Groups), Roles: nonNilList(a.Roles)})
+		errs = append(errs, aerrs...)
+		return aud, err
+	}
+	if d.Everywhere != nil {
+		if !d.AllProjects {
+			errs = append(errs, fieldErr("/sharing/everywhere", "not_all_projects",
+				"Name who may request in every project only with all_projects."))
+		}
+		if sh.Everywhere, err = audience("/sharing/everywhere", *d.Everywhere); err != nil {
+			return sh, nil, err
+		}
+	}
+	seen := map[string]bool{}
+	for i, ps := range d.Projects {
+		ptr := fmt.Sprintf("/sharing/projects/%d", i)
+		proj, err := s.Store.GetProject(ctx, ps.Project)
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			errs = append(errs, fieldErr(ptr+"/project", "unknown", fmt.Sprintf("There is no project %q.", ps.Project)))
+			continue
+		case err != nil:
+			return sh, nil, err
+		case seen[proj.ID]:
+			errs = append(errs, fieldErr(ptr+"/project", "duplicate", fmt.Sprintf("The project %q is shared twice.", ps.Project)))
+			continue
+		}
+		seen[proj.ID] = true
+		aud, err := audience(ptr, ps.Audience)
+		if err != nil {
+			return sh, nil, err
+		}
+		sh.Projects = append(sh.Projects, store.ProjectShare{ProjectID: proj.ID, Audience: aud})
+	}
+	return sh, errs, nil
+}

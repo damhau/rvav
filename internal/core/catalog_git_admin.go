@@ -122,7 +122,7 @@ func (s *Service) CatalogItemGit(ctx context.Context, p *auth.Principal, idOrSlu
 	case f.RepoContent != nil:
 		// Deleted in the repository: nothing on its side.
 	case out.File.State == api.CatalogItemGitStateDraft && f.DraftVersionID != nil:
-		if theirs, err = s.itemYAML(ctx, it, func(r store.VersionRow) bool { return r.ID == *f.DraftVersionID }); err != nil &&
+		if theirs, err = s.itemYAML(ctx, it, func(r store.VersionRow) bool { return r.ID == *f.DraftVersionID }, false); err != nil &&
 			!errors.Is(err, ErrNotFound) {
 			return out, err
 		}

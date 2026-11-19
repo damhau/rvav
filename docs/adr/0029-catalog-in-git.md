@@ -25,7 +25,10 @@ each other.
 - **Never in the repository:** secret values (blueprints and forms name
   secrets, they never hold them), drafts (they are rvav's work in
   progress), and **entitlements**: which projects may request an item names
-  projects of one installation, and differs from one to the next. Items
+  projects of one installation, and differs from one to the next. So does
+  who may request it in each, users, groups and roles since G1.2
+  (ADR-0019, Sharing): a `sharing` block in the repository's file is put
+  back as the item's details are, and never taken. Items
   imported from AWX aren't kept there either: AWX's sync owns them
   (ADR-0016).
 - When rvav first reads a repository, it adds each item it has that the

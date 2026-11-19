@@ -95,12 +95,13 @@ func (s *Service) gitFile(ctx context.Context, it store.AdminItem) ([]byte, stor
 	if !ok {
 		return nil, v, nil
 	}
-	out, err := s.itemYAML(ctx, it, func(r store.VersionRow) bool { return r.ID == v.ID })
+	out, err := s.itemYAML(ctx, it, func(r store.VersionRow) bool { return r.ID == v.ID }, false)
 	return out, v, err
 }
 
 // sameFile compares two files of an item: the same definition (the last
-// version's), and the same metadata.
+// version's), and the same metadata, sharing included (which rvav's file
+// never has).
 func sameFile(a, b []byte) (definition, metadata bool) {
 	var x, y itemDoc
 	if yaml.Unmarshal(a, &x) != nil || yaml.Unmarshal(b, &y) != nil || len(x.Versions) == 0 || len(y.Versions) == 0 {
@@ -118,7 +119,7 @@ func sameFile(a, b []byte) (definition, metadata bool) {
 		}
 		return m
 	}
-	return def(x) == def(y), reflect.DeepEqual(norm(x.Metadata), norm(y.Metadata))
+	return def(x) == def(y), reflect.DeepEqual(norm(x.Metadata), norm(y.Metadata)) && reflect.DeepEqual(x.Sharing, y.Sharing)
 }
 
 // presentGitFile is an item's file as administrators see it.
@@ -620,7 +621,7 @@ func (g *gitSync) proposed(ctx context.Context, row *store.GitFile, file gitrepo
 	def, meta := sameFile(ours, file.Content)
 	note := ""
 	if ours != nil && !meta {
-		note = "Its details (name, summary, category...) follow rvav: the repository's aren't taken."
+		note = "Its details (name, summary, category...) and sharing follow rvav: the repository's aren't taken."
 	}
 	if ours != nil && def {
 		// The same definition: agreed. Details changed there are put

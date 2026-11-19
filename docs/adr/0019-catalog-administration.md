@@ -134,6 +134,15 @@ versions are never published by an import; an admin publishes after
 checking. Imported versions keep the YAML's order. Problems name the YAML
 line. Exporting and importing again changes nothing.
 
+Since G1.2 the export also has the item's sharing (`sharing`: `all_projects`,
+`everywhere`, and `projects`, each with its `project` by code and the
+`users` by email, `groups` and `roles` it names), so that it means the same
+in another installation. An import that makes a new item shares it so, once
+each project, user and role is found there (a problem otherwise, on its
+line); an import into an item makes a draft and leaves its sharing as it
+is. The catalog's repository never has it
+([ADR-0029](0029-catalog-in-git.md)).
+
 ### Value sources `rest` and `cel`
 - **`rest`** calls a URL template (`${inputs.x}`), with GET or POST, and
   maps the answer with JSONPath (`items`, `value`, `label`, `meta`).
