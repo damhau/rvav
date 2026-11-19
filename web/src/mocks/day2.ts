@@ -29,6 +29,7 @@ import {
 } from "./deploymentNames";
 import { type LimitAsk, limitCheck } from "./limits";
 import { userGroups } from "./logic";
+import { designedForm, designedInputs } from "./day2Forms";
 import { deploymentUsage, quotaCheck, type QuotaScope } from "./quotas";
 import type { Db, StoredRequest } from "./seed";
 import { unaccepted, warning } from "./warnings";
@@ -1185,6 +1186,7 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
       const lease = a.key === "extend_lease" ? why : "";
       const warnings = reason === null ? warningsFor(db, a, d, lease, vm) : [];
       const asks = why !== "" && !(lease && leaseSoft(db, d));
+      const form = reason === null ? (designedForm(db, a.key) ?? a.form?.(vm, d, db)) : undefined;
       out.push({
         key: a.key,
         name: a.name,
@@ -1199,11 +1201,36 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
         ...(a.confirm || a.typeName
           ? { confirm: { message: a.confirm ?? "", ...(a.typeName ? { type_to_confirm: vm?.name ?? d.name } : {}) } }
           : {}),
-        ...(a.form && reason === null ? { form: a.form(vm, d, db) } : {}),
+        ...(form ? { form } : {}),
       });
     }
   }
   return out;
+}
+
+/** An action's form on its target, for its preview and its sources, as the server's actionTarget. */
+export function actionFormOn(
+  db: Db,
+  d: DeploymentDetail,
+  key: string,
+  resourceId?: string | null,
+): { form: ActionForm; vm?: VmResource } | { error: { status: number; title: string } } {
+  const vm = d.resources.find((r): r is VmResource => r.id === resourceId && r.type === "vsphere.vm");
+  const listed = actionsFor(db, d).find((x) => x.key === key && (x.resource_id ?? undefined) === vm?.id);
+  if (!listed) return { error: { status: 422, title: `“${key}” is not a day-2 action.` } };
+  if (!listed.enabled) {
+    const reason = listed.disabled_reason ?? "Not available.";
+    return { error: { status: reason.startsWith("Your role") ? 403 : 409, title: reason } };
+  }
+  if (!listed.form) return { error: { status: 400, title: `${listed.name} asks for nothing.` } };
+  return { form: listed.form, vm };
+}
+
+/** An AWX action's survey form, for the day-2 form designer to start from. */
+export function surveyForm(db: Db, key: string): ActionForm | undefined {
+  const a = catalogue.find((x) => x.key === key);
+  const d = db.deployments[0];
+  return a?.form && d ? a.form(undefined, d, db) : undefined;
 }
 
 // Operations of running day-2 requests, by step ID.
@@ -1286,12 +1313,16 @@ export function runAction(
     const reason = listed?.disabled_reason ?? "Not available.";
     return { error: { status: reason.startsWith("Your role") ? 403 : 409, title: reason } };
   }
-  const inputs = draft.inputs ?? {};
+  let inputs = draft.inputs ?? {};
   // As the server: the form's schema first, then the action's own checks, each on the input it is about.
+  // A designed form's states apply first: the job gets the inputs they leave.
+  const designed = designedForm(db, a.key);
+  const ruled = designed && designedInputs(db, d, vm, a.key, designed, inputs, true);
+  if (ruled) inputs = ruled.inputs;
   const required = (a.form?.(vm, d, db).schema as { required?: string[] } | undefined)?.required ?? [];
-  const missing = required
-    .filter((n) => inputs[n] === undefined)
-    .map((n) => invalid(n, "required", "This field is required."));
+  const missing = ruled
+    ? ruled.errors
+    : required.filter((n) => inputs[n] === undefined).map((n) => invalid(n, "required", "This field is required."));
   const problems = missing.length
     ? missing
     : [a.validate?.(vm, inputs, d, db)].filter((e): e is FieldError => Boolean(e));

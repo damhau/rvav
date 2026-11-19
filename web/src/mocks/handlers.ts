@@ -27,7 +27,8 @@ import {
   type StoredApproval,
 } from "./approvals";
 import { can } from "@/lib/can";
-import { actionsFor, retriedActionRefusal, runAction, type RunResult } from "./day2";
+import { actionFormOn, actionsFor, retriedActionRefusal, runAction, surveyForm, type RunResult } from "./day2";
+import { day2FormHandlers, designedInputs, designedValues } from "./day2Forms";
 import { unaccepted } from "./warnings";
 import { previewUpdate, runUpdate } from "./update";
 import { bus, matches } from "./events";
@@ -501,6 +502,7 @@ export const handlers = [
       },
     ];
     return [
+      ...day2FormHandlers(db, base, wait, { awx: () => actions, survey: (key) => surveyForm(db, key) }),
       http.get(`${base}/admin/awx/actions`, async () => {
         await wait();
         return json<S["AwxActionList"]>({ items: actions });
@@ -1269,6 +1271,42 @@ export const handlers = [
     if (!dep) return notFound("Deployment");
     return submitted(key, raw, runAction(db, dep, JSON.parse(raw) as S["Day2Draft"], newRequestNumber()));
   }),
+
+  // A designed form's states and sources on the action's target (ADR-0050).
+  http.post<{ deploymentId: string }>(
+    `${base}/deployments/:deploymentId/actions/preview`,
+    async ({ params, request }) => {
+      await wait();
+      const dep = db.deployments.find((d) => d.id === params.deploymentId && seesDeployment(db, d));
+      if (!dep) return notFound("Deployment");
+      const q = (await request.json()) as S["Day2FormQuery"];
+      const t = actionFormOn(db, dep, q.action, q.resource_id);
+      if ("error" in t) return problem(t.error.status, "refused", t.error.title);
+      if (!t.form.designed) return json<S["Day2FormPreview"]>({ form: t.form, fields: {}, errors: [] });
+      const { fields, errors } = designedInputs(db, dep, t.vm, q.action, t.form, q.inputs);
+      return json<S["Day2FormPreview"]>({ form: t.form, fields, errors });
+    },
+  ),
+
+  http.post<{ deploymentId: string }>(
+    `${base}/deployments/:deploymentId/actions/values`,
+    async ({ params, request }) => {
+      await wait();
+      const dep = db.deployments.find((d) => d.id === params.deploymentId && seesDeployment(db, d));
+      if (!dep) return notFound("Deployment");
+      const q = (await request.json()) as S["Day2FieldValuesQuery"];
+      const t = actionFormOn(db, dep, q.action, q.resource_id);
+      if ("error" in t) return problem(t.error.status, "refused", t.error.title);
+      if (!t.form.ui_schema.fields[q.field]) return problem(400, "bad-request", `The form has no field "${q.field}".`);
+      let out: S["FieldValues"] | null;
+      try {
+        out = designedValues(db, dep, t.vm, q.action, t.form, q.field, q.inputs ?? {}, q.search);
+      } catch (e) {
+        return problem(400, "bad-request", `The expression failed: ${String(e)}`);
+      }
+      return out ? json<S["FieldValues"]>(out) : problem(400, "bad-request", `Field “${q.field}” has no value source`);
+    },
+  ),
 
   http.post<{ deploymentId: string }>(
     `${base}/deployments/:deploymentId/update/preview`,

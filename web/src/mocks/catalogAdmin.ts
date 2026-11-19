@@ -1775,6 +1775,20 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
   ];
 }
 
+/**
+ * A form's problems, as a draft's save finds them or, with publish, as
+ * publishing does: a day-2 action's designed form is checked the same way (ADR-0050).
+ */
+export function formProblems(db: Db, def: Definition, prefix: string, publish: boolean): S["FieldError"][] {
+  return [
+    ...check(def, prefix),
+    ...libraryRefProblems(db, def.ui_schema, prefix, publish),
+    ...(publish
+      ? [...shownProblems(def, prefix, true), ...searchProblems(def, prefix, true), ...fileProblems(def, prefix, true)]
+      : []),
+  ];
+}
+
 /** As the server: where a search field finds its choices, and a source told to search reads the text. */
 function searchProblems(def: Definition, prefix: string, publish: boolean): S["FieldError"][] {
   const errors: S["FieldError"][] = [];

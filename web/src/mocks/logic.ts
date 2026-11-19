@@ -127,6 +127,16 @@ function withDefaultOptions(field: string, inputs: Inputs, options: Option[]): F
   return { field, options, default: valid ? current : options.find((o) => !o.disabled)?.value, cache_seconds: 60 };
 }
 
+/**
+ * The form a designer previews, or a day-2 action's designed form, resolved
+ * as this user; a day-2 form's sources also read its target (ADR-0050).
+ */
+interface Designed {
+  form: RequestForm;
+  user: Record<string, unknown>;
+  target?: Record<string, unknown>;
+}
+
 export function resolveField(
   db: Db,
   item: StoredItem,
@@ -134,7 +144,7 @@ export function resolveField(
   env: EnvironmentKey,
   field: string,
   inputs: Inputs,
-  designer?: { form: RequestForm; user: Record<string, unknown> },
+  designer?: Designed,
   search = "",
 ): FieldValues | null {
   const found = resolveSource(db, item, project, env, field, inputs, designer, search);
@@ -158,7 +168,7 @@ function resolveSource(
   env: EnvironmentKey,
   field: string,
   inputs: Inputs,
-  designer: { form: RequestForm; user: Record<string, unknown> } | undefined,
+  designer: Designed | undefined,
   search: string,
 ): FieldValues | null {
   const stored = (designer?.form ?? db.forms[item.id])?.ui_schema.fields[field];
@@ -171,6 +181,7 @@ function resolveSource(
     environment: env,
     project: { id: project.id, code: project.code, name: project.name },
     user: designer?.user ?? { id: db.me.user.id, roles: [], groups: [] },
+    ...designer?.target,
   };
   if (source.kind === "library") {
     // As the server: an entry whose required parameter has no value gives nothing.

@@ -15,6 +15,16 @@ export interface FormContext {
   revision?: number;
   /** The form's secret fields: a source that depends on one is keyed on a stand-in of its value. */
   secrets?: readonly string[];
+  /** A day-2 action's designed form (ADR-0050): its sources resolve on the target. */
+  day2?: Day2FormContext;
+}
+
+export interface Day2FormContext {
+  deploymentId: string;
+  action: string;
+  resourceId?: string;
+  /** The day-2 form designer's preview, on the form saved last. */
+  designer?: boolean;
 }
 
 /** The built-in sources these widgets always take their choices from: the server checks them. */
@@ -54,9 +64,11 @@ export function useFieldValues(
       ...keys.fieldValues(ctx.versionId, ctx.projectId, ctx.environment, name, deps),
       ctx.asUserId,
       ctx.revision,
+      ...(ctx.day2 ? [ctx.day2.deploymentId, ctx.day2.resourceId ?? null, Boolean(ctx.day2.designer)] : []),
       ...(search ? [search.text] : []),
     ],
     queryFn: ({ signal }) => {
+      if (ctx.day2) return day2Values(ctx.day2, name, latest.current, search?.text, signal);
       const body: FieldValuesQuery = {
         version_id: ctx.versionId,
         project_id: ctx.projectId,
@@ -71,6 +83,36 @@ export function useFieldValues(
     enabled: Boolean(ui.value_source) && (search?.enabled ?? true),
     staleTime: (query) => (query.state.data?.cache_seconds ?? 30) * 1000,
   });
+}
+
+function day2Values(
+  c: Day2FormContext,
+  field: string,
+  inputs: Record<string, unknown>,
+  search: string | undefined,
+  signal: AbortSignal,
+) {
+  const at = {
+    field,
+    inputs,
+    ...(c.resourceId ? { resource_id: c.resourceId } : {}),
+    ...(search !== undefined ? { search } : {}),
+  };
+  if (c.designer)
+    return call(
+      api.POST("/admin/day2-forms/{action}/values", {
+        params: { path: { action: c.action } },
+        body: { ...at, deployment_id: c.deploymentId },
+        signal,
+      }),
+    );
+  return call(
+    api.POST("/deployments/{deploymentId}/actions/values", {
+      params: { path: { deploymentId: c.deploymentId } },
+      body: { ...at, action: c.action },
+      signal,
+    }),
+  );
 }
 
 /**

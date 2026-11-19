@@ -1,9 +1,9 @@
 // Day-2 actions (ADR-0013): the menu of what may run on a deployment or a
 // VM, and the dialog that confirms, asks for inputs and starts the request.
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDown, Ellipsis, ShieldCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -29,9 +29,12 @@ import {
 import { Input, Textarea } from "@/components/ui/input";
 import { focusInvalid } from "@/components/ui/opener";
 import { FormRenderer } from "@/forms/FormRenderer";
+import { sentInputs } from "@/forms/defaults";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
+import type { FormContext } from "@/forms/useFieldValues";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { Day2Action, Day2Draft, Deployment, RequestForm, ServiceRequest } from "@/lib/api/types";
+import { useDebounced } from "@/lib/hooks";
 import { keys, q } from "@/lib/query";
 import { newIdempotencyKey } from "@/lib/utils";
 
@@ -92,6 +95,35 @@ function asForm(a: Day2Action): RequestForm | null {
   return a.form ? { item_id: "", version_id: "", ...a.form } : null;
 }
 
+/**
+ * A designed form's states and problems for the inputs so far, worked out
+ * on the target by the server (ADR-0050); nothing for the other forms.
+ */
+function useActionPreview(deploymentId: string, action: Day2Action, inputs: Record<string, unknown> | null) {
+  const body = useMemo(
+    () => ({
+      action: action.key,
+      ...(action.resource_id ? { resource_id: action.resource_id } : {}),
+      inputs: inputs ?? {},
+    }),
+    [action.key, action.resource_id, inputs],
+  );
+  const debounced = useDebounced(body, 300);
+  return useQuery({
+    queryKey: keys.deployments.actionPreview(deploymentId, debounced),
+    queryFn: ({ signal }) =>
+      call(
+        api.POST("/deployments/{deploymentId}/actions/preview", {
+          params: { path: { deploymentId } },
+          body: debounced,
+          signal,
+        }),
+      ),
+    enabled: inputs !== null,
+    placeholderData: keepPreviousData,
+  });
+}
+
 /** Confirm, fill in and start one action. */
 export function ActionDialog({
   deployment,
@@ -102,8 +134,16 @@ export function ActionDialog({
   action: Day2Action;
   onClose: (started?: ServiceRequest) => void;
 }) {
-  const form = asForm(action);
+  const form = useMemo(() => asForm(action), [action]);
+  const designed = Boolean(action.form?.designed);
   const [values, setValues] = useState<Record<string, unknown>>(() => ({ ...form?.initial_values }));
+  const sent = useMemo(
+    () => (form && designed ? sentInputs(form.ui_schema.fields, values) : values),
+    [form, designed, values],
+  );
+  const preview = useActionPreview(deployment.id, action, designed ? sent : null);
+  // A field's live problems show once it was left, as a request form's do.
+  const [touched, setTouched] = useState<Set<string>>(new Set());
   const [typed, setTyped] = useState("");
   const [justification, setJustification] = useState("");
   const [errors, setErrors] = useState<MappedErrors | null>(null);
@@ -127,7 +167,7 @@ export function ActionDialog({
     const draft: Day2Draft = {
       action: action.key,
       ...(action.resource_id ? { resource_id: action.resource_id } : {}),
-      inputs: values,
+      inputs: sent,
       ...(justification.trim() ? { justification: justification.trim() } : {}),
       accepted_warnings: acceptedWarnings(warnings),
     };
@@ -160,6 +200,19 @@ export function ActionDialog({
   };
 
   const target = action.resource_id ? action.resource_name : deployment.name;
+  const live = mapFieldErrors(preview.data?.errors).fields;
+  const fieldErrors = {
+    ...Object.fromEntries(Object.entries(live).filter(([name]) => touched.has(name))),
+    ...errors?.fields,
+  };
+  const ctx: FormContext = designed
+    ? {
+        versionId: `day2:${action.key}`,
+        projectId: deployment.project.id,
+        environment: deployment.environment,
+        day2: { deploymentId: deployment.id, action: action.key, resourceId: action.resource_id ?? undefined },
+      }
+    : { versionId: "", projectId: deployment.project.id, environment: deployment.environment };
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
@@ -227,8 +280,10 @@ export function ActionDialog({
                 setErrors(null);
                 if (!Object.is(values[name], value)) setRefused([]);
               }}
-              errors={errors?.fields}
-              ctx={{ versionId: "", projectId: deployment.project.id, environment: deployment.environment }}
+              onBlur={(name) => setTouched((t) => (t.has(name) ? t : new Set(t).add(name)))}
+              errors={fieldErrors}
+              ctx={ctx}
+              fieldStates={preview.data?.fields}
             />
           )}
           {action.approval.required && (
@@ -243,6 +298,14 @@ export function ActionDialog({
                 rows={2}
               />
             </div>
+          )}
+          {preview.isError && (
+            <p className="text-secondary text-bad" role="alert">
+              The form&apos;s rules could not be worked out:{" "}
+              {isApiError(preview.error)
+                ? (preview.error.problem.detail ?? preview.error.problem.title)
+                : String(preview.error)}
+            </p>
           )}
           {errors?.form.map((m) => (
             <p key={m} className="text-secondary text-bad" role="alert">
