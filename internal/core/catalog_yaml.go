@@ -19,39 +19,7 @@ import (
 	"github.com/damhau/rvav/internal/store"
 )
 
-// Entitlements, categories, icons, and items as YAML (ADR-0019).
-
-// CatalogItemEntitlements are the projects that may request an item.
-func (s *Service) CatalogItemEntitlements(ctx context.Context, p *auth.Principal, idOrSlug string) (api.CatalogEntitlements, error) {
-	it, err := s.adminItem(ctx, p, idOrSlug)
-	if err != nil {
-		return api.CatalogEntitlements{}, err
-	}
-	return s.entitlements(ctx, it)
-}
-
-// SetCatalogItemEntitlements opens an item to every project, or to chosen
-// projects.
-func (s *Service) SetCatalogItemEntitlements(ctx context.Context, p *auth.Principal, idOrSlug string, e api.CatalogEntitlements) (api.CatalogEntitlements, error) {
-	it, err := s.adminItem(ctx, p, idOrSlug)
-	if err != nil {
-		return api.CatalogEntitlements{}, err
-	}
-	unknown, err := s.Store.UnknownProjects(ctx, e.ProjectIds)
-	if err != nil {
-		return api.CatalogEntitlements{}, err
-	}
-	if len(unknown) > 0 {
-		return api.CatalogEntitlements{}, &ValidationError{Errors: []api.FieldError{fieldErr("/project_ids", "unknown",
-			"No such project: "+strings.Join(unknown, ", ")+".")}}
-	}
-	projects := slices.Compact(slices.Sorted(slices.Values(e.ProjectIds)))
-	if err := s.Store.SetEntitlements(ctx, it.ID, e.AllProjects, projects); err != nil {
-		return api.CatalogEntitlements{}, err
-	}
-	s.auditCatalog(ctx, p, "catalog.item.entitlements", it.ID, map[string]any{"all_projects": e.AllProjects, "projects": projects})
-	return s.CatalogItemEntitlements(ctx, p, it.ID)
-}
+// Categories, icons, and items as YAML (ADR-0019).
 
 var categoryKey = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
 

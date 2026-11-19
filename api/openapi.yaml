@@ -588,7 +588,10 @@ paths:
     get:
       tags: [catalog]
       operationId: listCatalogItems
-      summary: Catalog items shared with a project, in their published version
+      summary: Catalog items shared with the caller in a project, in their published version
+      description: |
+        An item shared with the project's chosen users, groups or roles only
+        is listed to those it names (ADR-0019, Sharing).
       parameters:
         - { $ref: "#/components/parameters/ProjectIdQueryRequired" }
         - name: category
@@ -854,8 +857,10 @@ paths:
       operationId: createRequest
       summary: Submit a request
       description: |
-        Validates the draft again on the server, checks entitlement and quota,
-        then starts the workflow. The response is sent before any external
+        Validates the draft again on the server, checks sharing and quota,
+        then starts the workflow. An item the project's catalog doesn't
+        offer is 404; one shared there with others only (chosen users,
+        groups or roles) is 403. The response is sent before any external
         system is called; follow progress with `/requests/{requestId}/steps`
         and the `request.*` events.
       parameters:
@@ -2108,7 +2113,12 @@ paths:
     put:
       tags: [catalog-admin]
       operationId: setCatalogItemEntitlements
-      summary: Open an item to every project, or to chosen projects
+      summary: Share an item with every project or chosen projects, and with whom in each
+      description: |
+        A project of `project_ids` that `audiences` leaves out is shared
+        with all its members. Without `audiences`, each project keeps the
+        audience it had (all members for one added); without `everywhere`,
+        every project keeps its audience while `all_projects` stays on.
       requestBody:
         required: true
         content:
@@ -2120,6 +2130,34 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CatalogEntitlements" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/catalog/items/{itemId}/entitlements/requesters:
+    parameters:
+      - { $ref: "#/components/parameters/ItemIdPath" }
+    post:
+      tags: [catalog-admin]
+      operationId: previewCatalogRequesters
+      summary: Who could request an item in a project, shared with this audience
+      description: |
+        Changes nothing: the sharing editor shows who its audience lets
+        request, before it is saved. The project's requesters are those
+        given a role holding `request.submit` there, themselves or through
+        a group whose members rvav has seen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogProjectAudience" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogRequesters" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -5306,15 +5344,30 @@ components:
         to: { description: The new value. }
     CatalogEntitlements:
       type: object
+      description: |
+        Who may request an item (ADR-0019, Sharing): in every project,
+        those made later included, or in chosen projects; in each, all its
+        members, or the users, OIDC groups and project roles an audience
+        names. Someone requests it in a project when one of these covers
+        them there, and when they may request in that project.
       required: [all_projects, project_ids]
       properties:
         all_projects:
           type: boolean
-          description: Open to every project, those made later included.
+          description: Shared with every project, those made later included.
         project_ids:
           type: array
-          description: The projects it is open to when not all of them.
+          description: The projects it is shared with, besides every project when `all_projects`.
           items: { type: string }
+        everywhere:
+          $ref: "#/components/schemas/CatalogAudience"
+          description: With `all_projects`, who may request it in each project.
+        audiences:
+          type: array
+          description: |
+            Who may request it in projects of `project_ids`, when not all
+            their members: one per project at most.
+          items: { $ref: "#/components/schemas/CatalogProjectAudience" }
         projects:
           type: array
           readOnly: true
@@ -5326,6 +5379,92 @@ components:
               id: { type: string }
               code: { type: string }
               name: { type: string }
+        roles:
+          type: array
+          readOnly: true
+          description: The roles given in projects, built-in or custom, to choose from.
+          items: { $ref: "#/components/schemas/RoleRef" }
+        users:
+          type: array
+          readOnly: true
+          description: The users the audiences name.
+          items: { $ref: "#/components/schemas/UserRef" }
+    CatalogAudience:
+      type: object
+      description: |
+        Who may request an item in a project: all its members when it names
+        nobody. With `all_projects`, `everywhere` applies in each project.
+      required: [user_ids, groups, roles]
+      properties:
+        user_ids:
+          type: array
+          description: Users, by ID.
+          items: { type: string }
+        groups:
+          type: array
+          description: OIDC groups, by name, as the identity provider's token gives them.
+          items: { type: string }
+        roles:
+          type: array
+          description: Project roles, by key, held in the project themselves or through a group.
+          items: { type: string }
+    CatalogProjectAudience:
+      type: object
+      description: Who may request an item in one project; all its members when it names nobody.
+      required: [project_id, user_ids, groups, roles]
+      properties:
+        project_id: { type: string }
+        user_ids:
+          type: array
+          items: { type: string }
+        groups:
+          type: array
+          items: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+    CatalogRequesters:
+      type: object
+      description: Who an audience lets request in a project, as rvav knows them now.
+      required: [project, people, left_out, not_requesters, groups]
+      properties:
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        people:
+          type: array
+          description: The project's requesters it covers, by name, with why.
+          items: { $ref: "#/components/schemas/CatalogRequester" }
+        left_out:
+          type: array
+          description: The project's requesters it doesn't cover.
+          items: { $ref: "#/components/schemas/UserRef" }
+        not_requesters:
+          type: array
+          description: Users it names who may not request in the project.
+          items: { $ref: "#/components/schemas/UserRef" }
+        groups:
+          type: array
+          description: Its groups, with how many people rvav has seen in each.
+          items: { $ref: "#/components/schemas/CatalogRequesterGroup" }
+    CatalogRequester:
+      type: object
+      required: [user, named, groups, roles]
+      properties:
+        user: { $ref: "#/components/schemas/UserRef" }
+        named: { type: boolean, description: The audience names them. }
+        groups:
+          type: array
+          description: The audience's groups they were in at their last sign-in.
+          items: { type: string }
+        roles:
+          type: array
+          description: The audience's roles they hold in the project.
+          items: { $ref: "#/components/schemas/RoleRef" }
+    CatalogRequesterGroup:
+      type: object
+      required: [name, seen]
+      properties:
+        name: { type: string }
+        seen: { type: integer, description: "The people rvav has seen in it, at their last sign-in." }
     CatalogImportResult:
       type: object
       required: [item_id, created, versions]

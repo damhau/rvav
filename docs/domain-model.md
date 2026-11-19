@@ -55,8 +55,10 @@ Subscription (event → awx template | webhook)
 - **CatalogItemVersion**: immutable once published. Holds the form, blueprint or
   step definition, and changelog. States: `draft` → `published` → `deprecated`.
   Requests always point to an exact version.
-- **Entitlement**: catalog item (or category) × project, group or user. Grants
-  "can request".
+- **Entitlement**: catalog item × project (or every project), with who may
+  request it there: all the project's members, or chosen users, OIDC groups
+  and project roles. Grants "can request" to those who also hold
+  `request.submit` in the project (ADR-0019, Sharing).
 - **Form**: JSON Schema (data) plus UI schema (layout, widgets, conditions,
   dynamic value sources). See [service catalog](service-catalog.md#custom-forms).
 

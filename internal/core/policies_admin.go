@@ -286,6 +286,11 @@ func (s *Service) LevelRoles(ctx context.Context, p *auth.Principal) ([]api.Role
 	if !p.Everywhere(auth.PoliciesRead) {
 		return nil, ErrForbidden
 	}
+	return s.projectRoles(ctx)
+}
+
+// projectRoles are the roles given in projects, built in or custom.
+func (s *Service) projectRoles(ctx context.Context) ([]api.RoleRef, error) {
 	list, err := s.Store.Roles(ctx)
 	if err != nil {
 		return nil, err

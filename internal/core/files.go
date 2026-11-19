@@ -213,7 +213,7 @@ func (s *Service) fileField(ctx context.Context, p *auth.Principal, q api.Upload
 		if !p.In(auth.RequestSubmit, proj.ID) {
 			return api.UiField{}, fmt.Errorf("%w: you can view %s but not request in it", ErrForbidden, proj.Name)
 		}
-		if ok, err := s.Store.IsEntitled(ctx, ver.ItemID, proj.ID); err != nil {
+		if ok, err := s.SharedWithRequester(ctx, p, ver.ItemID, proj.ID); err != nil {
 			return api.UiField{}, err
 		} else if !ok || ver.State != "published" {
 			return api.UiField{}, ErrNotFound

@@ -397,6 +397,8 @@ func (s *Service) DeleteRole(ctx context.Context, p *auth.Principal, key string)
 		return &ConflictError{Msg: "The policies " + strings.Join(st.Policies, ", ") + " name " + st.Name + ": change them first."}
 	case st.Holders > 0:
 		return &ConflictError{Msg: fmt.Sprintf("%s is given %d times, to users or groups: take it away first.", st.Name, st.Holders)}
+	case len(st.Items) > 0:
+		return &ConflictError{Msg: "The items " + strings.Join(st.Items, ", ") + " are shared with " + st.Name + ": change their sharing first."}
 	}
 	if err := s.Store.DeleteRole(ctx, key); errors.Is(err, store.ErrInUse) {
 		return &ConflictError{Msg: st.Name + " is given to users or groups: take it away first."}

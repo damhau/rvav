@@ -218,3 +218,66 @@ func TestMigrateSupervisor(t *testing.T) {
 		t.Fatalf("up again: %v", err)
 	}
 }
+
+// TestMigrateItemSharing: an item shared with a project before G1.2 is
+// shared with all its members after, and one shared with every project
+// with everyone in each (ADR-0019, Sharing). Down and up again.
+func TestMigrateItemSharing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Pool.Exec(ctx, `drop schema public cascade; create schema public`); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := pgx.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := stdlib.OpenDB(*cfg)
+	defer db.Close()
+	goose.SetBaseFS(migrations.FS)
+	if err := goose.SetDialect("postgres"); err != nil {
+		t.Fatal(err)
+	}
+	const before = 75
+	if err := goose.UpToContext(ctx, db, ".", before); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `insert into projects (id, code, name) values ('prj_a', 'a1', 'A'), ('prj_b', 'b1', 'B');
+		insert into catalog_categories (key, name) values ('compute', 'Compute') on conflict do nothing;
+		insert into catalog_items (id, slug, name, summary, category, type) values ('itm_a', 'a', 'A', '', 'compute', 'vm_blueprint');
+		insert into catalog_items (id, slug, name, summary, category, type, all_projects)
+			values ('itm_all', 'all', 'All', '', 'compute', 'vm_blueprint', true);
+		insert into catalog_entitlements (item_id, project_id) values ('itm_a', 'prj_a')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx, databaseURL); err != nil {
+		t.Fatal(err)
+	}
+	anyone := store.Requester{UserID: "usr_x", Groups: []string{"g"}, Roles: []string{"member"}}
+	for _, c := range []struct {
+		item, project   string
+		inProject, with bool
+	}{{"itm_a", "prj_a", true, true}, {"itm_a", "prj_b", false, false}, {"itm_all", "prj_b", true, true}} {
+		in, with, err := st.SharedWith(ctx, c.item, c.project, anyone)
+		if err != nil || in != c.inProject || with != c.with {
+			t.Fatalf("%s in %s: project %v, requester %v, %v", c.item, c.project, in, with, err)
+		}
+	}
+	sh, err := st.ItemSharing(ctx, "itm_a")
+	if err != nil || sh.AllProjects || len(sh.Projects) != 1 || !sh.Projects[0].Everyone() || !sh.Everywhere.Everyone() {
+		t.Fatalf("itm_a's sharing = %+v, %v", sh, err)
+	}
+	if err := goose.DownToContext(ctx, db, ".", before); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx, databaseURL); err != nil {
+		t.Fatalf("up again: %v", err)
+	}
+}

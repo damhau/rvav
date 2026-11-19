@@ -420,6 +420,18 @@ func (s *Store) GroupMembers(ctx context.Context, groups []string) ([]string, er
 	return s.GroupMembersIn(ctx, s.Pool, groups)
 }
 
+// GroupSizes counts the users seen in each of the groups at their last
+// sign-in.
+func (s *Store) GroupSizes(ctx context.Context, groups []string) (map[string]int, error) {
+	rows, _ := s.Pool.Query(ctx, `select g, (select count(*) from user_groups u where u.group_name = g)::int
+		from unnest($1::text[]) g`, nonNil(groups))
+	out := map[string]int{}
+	var g string
+	var n int
+	_, err := pgx.ForEachRow(rows, []any{&g, &n}, func() error { out[g] = n; return nil })
+	return out, err
+}
+
 // GroupMembersIn reads a group's members in a transaction.
 func (s *Store) GroupMembersIn(ctx context.Context, db DB, groups []string) ([]string, error) {
 	rows, _ := db.Query(ctx, `select distinct user_id from user_groups where group_name = any($1) order by user_id`,

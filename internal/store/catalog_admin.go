@@ -124,10 +124,44 @@ func (s *Store) GetVersionRow(ctx context.Context, id string) (VersionRow, error
 	return v, notFound(err)
 }
 
-// ItemProjects lists the projects an item is open to.
-func (s *Store) ItemProjects(ctx context.Context, itemID string) ([]string, error) {
-	rows, _ := s.Pool.Query(ctx, `select project_id from catalog_entitlements where item_id = $1 order by project_id`, itemID)
-	return pgx.CollectRows(rows, pgx.RowTo[string])
+// Audience names who may request an item in a project: all its members
+// when it names nobody (ADR-0019, Sharing).
+type Audience struct {
+	UserIDs []string `db:"user_ids"`
+	Groups  []string `db:"groups"`
+	Roles   []string `db:"roles"`
+}
+
+// Everyone says the audience names nobody: all the project's members.
+func (a Audience) Everyone() bool { return len(a.UserIDs)+len(a.Groups)+len(a.Roles) == 0 }
+
+// ProjectShare is an item's sharing with one project.
+type ProjectShare struct {
+	ProjectID string `db:"project_id"`
+	Audience
+}
+
+// Sharing is who may request an item: in every project (AllProjects,
+// those made later included, with the Everywhere audience) and in the
+// projects of Projects.
+type Sharing struct {
+	AllProjects bool
+	Everywhere  Audience
+	Projects    []ProjectShare
+}
+
+// ItemSharing reads who an item is shared with.
+func (s *Store) ItemSharing(ctx context.Context, itemID string) (Sharing, error) {
+	var sh Sharing
+	err := s.Pool.QueryRow(ctx, `select all_projects, share_user_ids, share_groups, share_roles from catalog_items where id = $1`,
+		itemID).Scan(&sh.AllProjects, &sh.Everywhere.UserIDs, &sh.Everywhere.Groups, &sh.Everywhere.Roles)
+	if err != nil {
+		return sh, notFound(err)
+	}
+	rows, _ := s.Pool.Query(ctx, `select project_id, user_ids, groups, roles from catalog_entitlements
+		where item_id = $1 order by project_id`, itemID)
+	sh.Projects, err = pgx.CollectRows(rows, pgx.RowToStructByName[ProjectShare])
+	return sh, err
 }
 
 // VersionDef is a version's definition.
@@ -371,21 +405,41 @@ func (s *Store) DeprecateVersion(ctx context.Context, itemID, versionID string) 
 	})
 }
 
-// SetEntitlements opens an item to every project, or to these projects
-// only.
-func (s *Store) SetEntitlements(ctx context.Context, itemID string, all bool, projectIDs []string) error {
+// SetSharing shares an item with exactly these projects and audiences.
+func (s *Store) SetSharing(ctx context.Context, itemID string, sh Sharing) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `update catalog_items set all_projects = $2, updated_at = now() where id = $1`, itemID, all); err != nil {
+		if _, err := tx.Exec(ctx, `update catalog_items set all_projects = $2, share_user_ids = $3, share_groups = $4,
+			share_roles = $5, updated_at = now() where id = $1`, itemID, sh.AllProjects, nonNilStrings(sh.Everywhere.UserIDs),
+			nonNilStrings(sh.Everywhere.Groups), nonNilStrings(sh.Everywhere.Roles)); err != nil {
 			return err
+		}
+		ids := make([]string, len(sh.Projects))
+		for i, p := range sh.Projects {
+			ids[i] = p.ProjectID
 		}
 		if _, err := tx.Exec(ctx, `delete from catalog_entitlements where item_id = $1 and not (project_id = any($2))`,
-			itemID, nonNilStrings(projectIDs)); err != nil {
+			itemID, ids); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `insert into catalog_entitlements (item_id, project_id) select $1, unnest($2::text[])
-			on conflict do nothing`, itemID, nonNilStrings(projectIDs))
-		return err
+		return addShares(ctx, tx, itemID, sh.Projects, true)
 	})
+}
+
+// addShares shares an item with projects; with replace, the audience of
+// one it is shared with already becomes this one.
+func addShares(ctx context.Context, db DB, itemID string, shares []ProjectShare, replace bool) error {
+	conflict := `do nothing`
+	if replace {
+		conflict = `(item_id, project_id) do update set user_ids = excluded.user_ids, groups = excluded.groups, roles = excluded.roles`
+	}
+	for _, p := range shares {
+		if _, err := db.Exec(ctx, `insert into catalog_entitlements (item_id, project_id, user_ids, groups, roles)
+			values ($1, $2, $3, $4, $5) on conflict `+conflict, itemID, p.ProjectID, nonNilStrings(p.UserIDs),
+			nonNilStrings(p.Groups), nonNilStrings(p.Roles)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // UnknownProjects returns the IDs that are not projects.

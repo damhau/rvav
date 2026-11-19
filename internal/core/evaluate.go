@@ -159,10 +159,8 @@ func (s *Service) evaluateWith(ctx context.Context, p *auth.Principal, d api.Req
 			return nil, ErrNotFound
 		}
 	} else {
-		if ok, err := s.Store.IsEntitled(ctx, ev.Item.ID, ev.Project.ID); err != nil {
+		if err := s.offered(ctx, p, ev.Item, ev.Project); err != nil {
 			return nil, err
-		} else if !ok || ev.Item.PublishedVersionID == nil {
-			return nil, ErrNotFound
 		}
 		if d.VersionId != *ev.Item.PublishedVersionID {
 			add("/version_id", "stale_version", "This form is out of date. Reload it to get the current version.")

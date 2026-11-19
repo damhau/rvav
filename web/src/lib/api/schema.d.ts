@@ -466,7 +466,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Catalog items shared with a project, in their published version */
+        /**
+         * Catalog items shared with the caller in a project, in their published version
+         * @description An item shared with the project's chosen users, groups or roles only
+         *     is listed to those it names (ADR-0019, Sharing).
+         */
         get: operations["listCatalogItems"];
         put?: never;
         post?: never;
@@ -664,8 +668,10 @@ export interface paths {
         put?: never;
         /**
          * Submit a request
-         * @description Validates the draft again on the server, checks entitlement and quota,
-         *     then starts the workflow. The response is sent before any external
+         * @description Validates the draft again on the server, checks sharing and quota,
+         *     then starts the workflow. An item the project's catalog doesn't
+         *     offer is 404; one shared there with others only (chosen users,
+         *     groups or roles) is 403. The response is sent before any external
          *     system is called; follow progress with `/requests/{requestId}/steps`
          *     and the `request.*` events.
          */
@@ -1672,9 +1678,41 @@ export interface paths {
         };
         /** The projects that may request an item */
         get: operations["getCatalogItemEntitlements"];
-        /** Open an item to every project, or to chosen projects */
+        /**
+         * Share an item with every project or chosen projects, and with whom in each
+         * @description A project of `project_ids` that `audiences` leaves out is shared
+         *     with all its members. Without `audiences`, each project keeps the
+         *     audience it had (all members for one added); without `everywhere`,
+         *     every project keeps its audience while `all_projects` stays on.
+         */
         put: operations["setCatalogItemEntitlements"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/items/{itemId}/entitlements/requesters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Who could request an item in a project, shared with this audience
+         * @description Changes nothing: the sharing editor shows who its audience lets
+         *     request, before it is saved. The project's requesters are those
+         *     given a role holding `request.submit` there, themselves or through
+         *     a group whose members rvav has seen.
+         */
+        post: operations["previewCatalogRequesters"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3915,17 +3953,80 @@ export interface components {
             /** @description The new value. */
             to?: unknown;
         };
+        /**
+         * @description Who may request an item (ADR-0019, Sharing): in every project,
+         *     those made later included, or in chosen projects; in each, all its
+         *     members, or the users, OIDC groups and project roles an audience
+         *     names. Someone requests it in a project when one of these covers
+         *     them there, and when they may request in that project.
+         */
         CatalogEntitlements: {
-            /** @description Open to every project, those made later included. */
+            /** @description Shared with every project, those made later included. */
             all_projects: boolean;
-            /** @description The projects it is open to when not all of them. */
+            /** @description The projects it is shared with, besides every project when `all_projects`. */
             project_ids: string[];
+            /** @description With `all_projects`, who may request it in each project. */
+            everywhere?: components["schemas"]["CatalogAudience"];
+            /**
+             * @description Who may request it in projects of `project_ids`, when not all
+             *     their members: one per project at most.
+             */
+            audiences?: components["schemas"]["CatalogProjectAudience"][];
             /** @description Every project, to choose from. */
             readonly projects?: {
                 id: string;
                 code: string;
                 name: string;
             }[];
+            /** @description The roles given in projects, built-in or custom, to choose from. */
+            readonly roles?: components["schemas"]["RoleRef"][];
+            /** @description The users the audiences name. */
+            readonly users?: components["schemas"]["UserRef"][];
+        };
+        /**
+         * @description Who may request an item in a project: all its members when it names
+         *     nobody. With `all_projects`, `everywhere` applies in each project.
+         */
+        CatalogAudience: {
+            /** @description Users, by ID. */
+            user_ids: string[];
+            /** @description OIDC groups, by name, as the identity provider's token gives them. */
+            groups: string[];
+            /** @description Project roles, by key, held in the project themselves or through a group. */
+            roles: string[];
+        };
+        /** @description Who may request an item in one project; all its members when it names nobody. */
+        CatalogProjectAudience: {
+            project_id: string;
+            user_ids: string[];
+            groups: string[];
+            roles: string[];
+        };
+        /** @description Who an audience lets request in a project, as rvav knows them now. */
+        CatalogRequesters: {
+            project: components["schemas"]["ProjectRef"];
+            /** @description The project's requesters it covers, by name, with why. */
+            people: components["schemas"]["CatalogRequester"][];
+            /** @description The project's requesters it doesn't cover. */
+            left_out: components["schemas"]["UserRef"][];
+            /** @description Users it names who may not request in the project. */
+            not_requesters: components["schemas"]["UserRef"][];
+            /** @description Its groups, with how many people rvav has seen in each. */
+            groups: components["schemas"]["CatalogRequesterGroup"][];
+        };
+        CatalogRequester: {
+            user: components["schemas"]["UserRef"];
+            /** @description The audience names them. */
+            named: boolean;
+            /** @description The audience's groups they were in at their last sign-in. */
+            groups: string[];
+            /** @description The audience's roles they hold in the project. */
+            roles: components["schemas"]["RoleRef"][];
+        };
+        CatalogRequesterGroup: {
+            name: string;
+            /** @description The people rvav has seen in it, at their last sign-in. */
+            seen: number;
         };
         CatalogImportResult: {
             item_id: string;
@@ -10703,6 +10804,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogEntitlements"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    previewCatalogRequesters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Catalog item ID or slug. */
+                itemId: components["parameters"]["ItemIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogProjectAudience"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogRequesters"];
                 };
             };
             401: components["responses"]["Unauthorized"];

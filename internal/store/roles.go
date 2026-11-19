@@ -18,7 +18,9 @@ type StoredRole struct {
 	Holders     int      `db:"holders"`
 	// Policies are the day-2 policies whose roles name it, and the approval
 	// and day-2 policies whose levels do.
-	Policies  []string  `db:"policies"`
+	Policies []string `db:"policies"`
+	// Items are the catalog items whose sharing names it.
+	Items     []string  `db:"items"`
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
 }
@@ -32,6 +34,9 @@ const roleSelect = `select r.key, r.name, r.description, r.permissions, r.built_
 		union all select p.name, p.priority from approval_policies p
 		where exists (select 1 from jsonb_array_elements(p.levels) l where l->'roles' ? r.key)
 	) n order by n.priority, n.name) as policies,
+	array(select i.name from catalog_items i where r.key = any(i.share_roles)
+		or exists (select 1 from catalog_entitlements e where e.item_id = i.id and r.key = any(e.roles))
+		order by i.name) as items,
 	r.created_at, r.updated_at from roles r`
 
 func (s *Store) Roles(ctx context.Context) ([]StoredRole, error) {

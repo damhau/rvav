@@ -93,6 +93,13 @@ func (p *Principal) ProjectsGiven() []string {
 // RolesIn are the keys of the roles given in a project, sorted.
 func (p *Principal) RolesIn(projectID string) []string { return p.rolesIn[projectID] }
 
+// Requester is who the principal is to a project's catalog: an item's
+// sharing there may name them, one of their groups or a role they hold in
+// the project (ADR-0019).
+func (p *Principal) Requester(projectID string) store.Requester {
+	return store.Requester{UserID: p.User.ID, Groups: p.Groups, Roles: p.RolesIn(projectID)}
+}
+
 // Role finds a role the principal holds by its key, to name it.
 func (p *Principal) Role(key string) (Role, bool) {
 	r, ok := p.known[key]

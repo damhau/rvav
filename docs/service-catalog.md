@@ -584,8 +584,9 @@ roles of its post-configuration), then the database's owner role on it.
   badge.
 - Item detail page: Markdown description, what will be created, approval and lease
   summary, a request button, and version history.
-- **Entitlements**: items or categories shared with projects, groups or users. Users
-  only see what they can request.
+- **Sharing**: items shared with projects, and in each with all its members or
+  chosen users, OIDC groups and project roles. Users only see what they can
+  request.
 - **Versioning**: draft, published and deprecated states; preview the draft as a
   user; compare versions; roll back; existing deployments keep their version.
 - Import and export of catalog items as YAML (GitOps-friendly), and the
@@ -602,8 +603,22 @@ their version. Two versions compare change by change. Items export to YAML
 (one version or all) and import as a new item or a new draft, never
 published by the import, with problems on their YAML line. The catalog can
 be kept in a Git repository (ADR-0029): rvav commits what it publishes,
-and what changes in the repository becomes a draft. Not built yet:
-entitlements to groups or users rather than projects.
+and what changes in the repository becomes a draft.
+
+**Built (G1.2, [ADR-0019](adr/0019-catalog-administration.md#sharing)):**
+an item's sharing names, in each project it is shared with (or in every
+project), who may request it there: all the project's members, or chosen
+users, OIDC groups and project roles (built in or custom, held directly or
+through a group). Shares add up, and one that names nobody is all the
+members, so items shared before keep their meaning. Sharing doesn't replace
+`request.submit`: someone requests an item in a project when they may
+request there and a share covers them. The catalog lists an item, and finds
+it, its form and its fields' values, only for those it is shared with in
+the project they request in; submitting it is refused (403) for the others.
+Administrators and catalog admins are no exception: a role held for all of
+rvav doesn't count. Narrowing applies to what comes next: a saved draft
+stays, its submit is refused; a request already submitted, waiting for
+approval or scheduled, runs. Categories aren't shared: an item is.
 
 ## 3. Custom forms
 

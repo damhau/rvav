@@ -138,7 +138,7 @@ func (s *Service) FieldValues(ctx context.Context, p *auth.Principal, q api.Fiel
 		return out, err
 	}
 	if !designer {
-		if ok, err := s.Store.IsEntitled(ctx, ver.ItemID, proj.ID); err != nil {
+		if ok, err := s.SharedWithRequester(ctx, p, ver.ItemID, proj.ID); err != nil {
 			return out, err
 		} else if !ok {
 			return out, ErrNotFound

@@ -1,7 +1,8 @@
 # ADR-0019: Catalog administration and item versions
 
 - Status: accepted; catalog admins are those holding `catalog.manage`
-  ([ADR-0034](0034-custom-roles.md))
+  ([ADR-0034](0034-custom-roles.md)); items shared with users, groups and
+  roles within projects since G1.2
 - Date: 2026-10-27
 
 ## Context
@@ -78,10 +79,46 @@ can draft from them to extend the form, for example with a value source on
 a survey answer. The sync goes on flagging a changed survey against the
 survey the item was made from.
 
-### Entitlements
+### Sharing
 An item is open to every project (those made later too: the new column
 `catalog_items.all_projects`), or to chosen projects (`catalog_entitlements`
 as before). Items made from AWX are open to every project.
+
+Since G1.2 (vRA's content sharing, A7 and A28 of the parity list), each
+share also says who may request the item in the project: all its members,
+or the users, OIDC groups and project roles its audience names
+(`catalog_entitlements.user_ids`, `groups`, `roles`; `catalog_items.share_*`
+for every project). An audience that names nobody is all the members, so
+every share made before keeps its meaning, and shares add up: someone
+requests the item in a project when any share covers them there.
+- **Roles** are those given in projects, built in or custom, held in the
+  project directly or through a group mapping, as an approval level's
+  ([ADR-0041](0041-approvers-by-role.md)). A role held for all of rvav
+  doesn't count, so administrators and catalog admins see only what is
+  shared with them, like anyone. A role an item names can't be deleted.
+- **Groups** are the names in the identity provider's token, as the
+  caller's last sign-in gave them. An API token has no groups (they may be
+  stale), so it requests only what its user is named for, holds a role for
+  directly, or what is shared with all members.
+- **Sharing doesn't replace `request.submit`**: the catalog lists, the
+  item and its form are found, and a request is made only by someone who
+  may request in the project ([ADR-0034](0034-custom-roles.md)) and is
+  covered there. The list, the categories' counts, the item, its form, its
+  fields' values and files agree. A request for an item the project's
+  catalog doesn't have is 404 as before; one shared there with others is
+  403, saying so.
+- **Narrowing applies to what comes next.** A saved draft stays; its
+  submit is refused. A request already submitted (waiting for approval, or
+  scheduled) runs with the sharing checked when it was submitted, as it
+  keeps its version. An approver's edits and a composite's own items aren't
+  checked against it, and a request on someone's behalf is checked against
+  the caller's. Updating a deployment to a new version needs the item
+  shared with whoever updates it.
+- **Who could request** is shown before saving
+  (`POST /admin/catalog/items/{itemId}/entitlements/requesters`): the
+  project's members who may request there, by name, with the name, group
+  or role that covers them, those left out, the users it names who can't
+  request, and how many people rvav has seen in each group.
 
 ### Categories and icons
 Categories can be added, renamed, ordered, and removed once empty. Icons

@@ -29,6 +29,10 @@ left join catalog_item_versions v on v.id = i.published_version_id`
 type ItemFilter struct {
 	ProjectID string
 	UserID    string
+	// Groups and Roles are the caller's OIDC groups and roles in the
+	// project, which an item's sharing may name.
+	Groups    []string
+	Roles     []string
 	Category  string
 	Type      string
 	Favourite bool
@@ -37,7 +41,28 @@ type ItemFilter struct {
 	After     *Cursor
 }
 
-// ListItems returns published items entitled to a project, ordered by name.
+// Requester is who asks for a project's catalog: an item's sharing there
+// covers them when it names nobody, them, one of their OIDC groups or a
+// role they hold in the project.
+type Requester struct {
+	UserID string
+	Groups []string
+	Roles  []string
+}
+
+// sharedWith is the condition that item i is shared with a requester in a
+// project, from the parameters that hold them.
+func sharedWith(project, user, groups, roles string) string {
+	covers := func(users, gs, rs string) string {
+		return `(cardinality(` + users + `) + cardinality(` + gs + `) + cardinality(` + rs + `) = 0 or ` +
+			user + ` = any(` + users + `) or ` + gs + ` && ` + groups + `::text[] or ` + rs + ` && ` + roles + `::text[])`
+	}
+	return `((i.all_projects and ` + covers("i.share_user_ids", "i.share_groups", "i.share_roles") + `)
+		or exists (select 1 from catalog_entitlements e where e.item_id = i.id and e.project_id = ` + project +
+		` and ` + covers("e.user_ids", "e.groups", "e.roles") + `))`
+}
+
+// ListItems returns published items shared with the caller in a project, ordered by name.
 func (s *Store) ListItems(ctx context.Context, f ItemFilter) (Page[CatalogItem], error) {
 	after := Cursor{}
 	if f.After != nil {
@@ -45,14 +70,15 @@ func (s *Store) ListItems(ctx context.Context, f ItemFilter) (Page[CatalogItem],
 	}
 	rows, _ := s.Pool.Query(ctx, itemSelect+`
 		where i.published_version_id is not null
-		  and (i.all_projects or exists (select 1 from catalog_entitlements e where e.item_id = i.id and e.project_id = $2))
+		  and `+sharedWith("$2", "$1", "$10", "$11")+`
 		  and ($3 = '' or i.category = $3)
 		  and ($4 = '' or i.type = $4)
 		  and (not $5 or exists (select 1 from favourites f where f.item_id = i.id and f.user_id = $1))
 		  and ($6 = '' or i.name ilike $6 or i.summary ilike $6 or array_to_string(i.tags, ' ') ilike $6)
 		  and ($7 = '' or (i.name, i.id) > ($7, $8))
 		order by i.name, i.id limit $9`,
-		f.UserID, f.ProjectID, f.Category, f.Type, f.Favourite, SearchText(f.Search), after.Value, after.ID, f.Limit+1)
+		f.UserID, f.ProjectID, f.Category, f.Type, f.Favourite, SearchText(f.Search), after.Value, after.ID, f.Limit+1,
+		nonNilStrings(f.Groups), nonNilStrings(f.Roles))
 	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[CatalogItem])
 	if err != nil {
 		return Page[CatalogItem]{}, err
@@ -67,6 +93,8 @@ func (s *Store) GetItem(ctx context.Context, idOrSlug, userID string) (CatalogIt
 	return i, notFound(err)
 }
 
+// IsEntitled says whether an item is shared with a project, whoever its
+// sharing names there.
 func (s *Store) IsEntitled(ctx context.Context, itemID, projectID string) (bool, error) {
 	var ok bool
 	err := s.Pool.QueryRow(ctx, `select exists (select 1 from catalog_items where id = $1 and all_projects)
@@ -74,12 +102,26 @@ func (s *Store) IsEntitled(ctx context.Context, itemID, projectID string) (bool,
 	return ok, err
 }
 
-func (s *Store) ListCategories(ctx context.Context, projectID string) ([]Category, error) {
+// SharedWith says whether an item is shared with a project, and whether
+// with this requester there.
+func (s *Store) SharedWith(ctx context.Context, itemID, projectID string, who Requester) (project, requester bool, err error) {
+	err = s.Pool.QueryRow(ctx, `select i.all_projects
+			or exists (select 1 from catalog_entitlements e where e.item_id = i.id and e.project_id = $2),
+		`+sharedWith("$2", "$3", "$4", "$5")+`
+		from catalog_items i where i.id = $1`,
+		itemID, projectID, who.UserID, nonNilStrings(who.Groups), nonNilStrings(who.Roles)).Scan(&project, &requester)
+	return project, requester, notFound(err)
+}
+
+// ListCategories counts the published items of each category shared with
+// a requester in a project.
+func (s *Store) ListCategories(ctx context.Context, projectID string, who Requester) ([]Category, error) {
 	rows, _ := s.Pool.Query(ctx, `select c.key, c.name,
 		(select count(*) from catalog_items i
 		 where i.category = c.key and i.published_version_id is not null
-		   and (i.all_projects or exists (select 1 from catalog_entitlements e where e.item_id = i.id and e.project_id = $1)))::int as item_count
-		from catalog_categories c order by c.sort_order, c.key`, projectID)
+		   and `+sharedWith("$1", "$2", "$3", "$4")+`)::int as item_count
+		from catalog_categories c order by c.sort_order, c.key`,
+		projectID, who.UserID, nonNilStrings(who.Groups), nonNilStrings(who.Roles))
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Category])
 }
 

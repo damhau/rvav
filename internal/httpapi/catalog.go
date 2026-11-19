@@ -16,7 +16,7 @@ func (s *Server) ListCatalogCategories(w http.ResponseWriter, r *http.Request, p
 	if !ok {
 		return
 	}
-	list, err := s.Store.ListCategories(r.Context(), pr.ID)
+	list, err := s.Store.ListCategories(r.Context(), pr.ID, principal(r).Requester(pr.ID))
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -38,7 +38,8 @@ func (s *Server) ListCatalogItems(w http.ResponseWriter, r *http.Request, params
 		s.fail(w, r, err)
 		return
 	}
-	f := store.ItemFilter{ProjectID: pr.ID, UserID: principal(r).User.ID, Category: deref(params.Category),
+	who := principal(r).Requester(pr.ID)
+	f := store.ItemFilter{ProjectID: pr.ID, UserID: who.UserID, Groups: who.Groups, Roles: who.Roles, Category: deref(params.Category),
 		Search: deref(params.Q), Limit: limitOf(params.Limit), After: after}
 	if params.Type != nil {
 		f.Type = string(*params.Type)
@@ -58,7 +59,8 @@ func (s *Server) ListCatalogItems(w http.ResponseWriter, r *http.Request, params
 	writeJSON(w, http.StatusOK, out)
 }
 
-// entitledItem loads an item that is published and shared with a project the caller can see.
+// entitledItem loads an item that is published and shared with the caller
+// in a project they can see.
 func (s *Server) entitledItem(w http.ResponseWriter, r *http.Request, itemID, projectID string) (store.CatalogItem, store.Project, bool) {
 	pr, ok := s.visibleProject(w, r, projectID)
 	if !ok {
@@ -67,7 +69,7 @@ func (s *Server) entitledItem(w http.ResponseWriter, r *http.Request, itemID, pr
 	it, err := s.Store.GetItem(r.Context(), itemID, principal(r).User.ID)
 	if err == nil {
 		var entitled bool
-		entitled, err = s.Store.IsEntitled(r.Context(), it.ID, pr.ID)
+		entitled, err = s.Core.SharedWithRequester(r.Context(), principal(r), it.ID, pr.ID)
 		if err == nil && (!entitled || it.PublishedVersionID == nil) {
 			err = store.ErrNotFound
 		}

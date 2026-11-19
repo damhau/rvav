@@ -167,6 +167,15 @@ func (s *Server) SetCatalogItemEntitlements(w http.ResponseWriter, r *http.Reque
 	s.reply(w, r, http.StatusOK, out, err)
 }
 
+func (s *Server) PreviewCatalogRequesters(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath) {
+	var a api.CatalogProjectAudience
+	if !s.decode(w, r, &a) {
+		return
+	}
+	out, err := s.Core.CatalogRequesters(r.Context(), principal(r), itemID, a)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
 func (s *Server) ExportCatalogItem(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, params api.ExportCatalogItemParams) {
 	body, name, err := s.Core.ExportCatalogItem(r.Context(), principal(r), itemID, deref(params.VersionId))
 	if err != nil {

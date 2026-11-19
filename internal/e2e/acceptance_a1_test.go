@@ -428,7 +428,8 @@ var (
 		"addFavourite": true, "removeFavourite": true, "createApiToken": true, "changePassword": true, "signOut": true,
 		"createSavedView": true,
 	}
-	a1Reads = map[string]bool{"resolveFieldValues": true, "previewRequest": true, "explainPolicies": true}
+	a1Reads = map[string]bool{"resolveFieldValues": true, "previewRequest": true, "explainPolicies": true,
+		"previewCatalogRequesters": true}
 )
 
 func (w a1Walk) operations() []a1Op {
