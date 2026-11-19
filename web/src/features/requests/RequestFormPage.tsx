@@ -58,6 +58,7 @@ const requestOptions: Record<string, string> = {
   $deployment_name: "Deployment name",
   $deployment_description: "Description",
   $count: "How many",
+  $lease_days: "Lease",
   $scheduled_at: "Start at",
   $on_behalf_of: "For someone else",
 };
@@ -73,6 +74,8 @@ function controlOf(name: string): HTMLElement | null {
       return document.getElementById("deployment-description");
     case "$count":
       return document.getElementById("count");
+    case "$lease_days":
+      return document.getElementById("lease");
     case "$scheduled_at":
       return document.getElementById("start-at");
     case "$on_behalf_of":
@@ -80,6 +83,44 @@ function controlOf(name: string): HTMLElement | null {
     default:
       return fieldControl(name);
   }
+}
+
+/**
+ * The leases a requester may pick (ADR-0048): up to the maximum, or the
+ * lifetime when there is none; a soft lease offers longer ones too, which
+ * warn, and the requester may go on.
+ */
+function leaseOffers(lease?: RequestPreview["lease"]): number[] {
+  if (!lease || (lease.default_days == null && lease.max_days == null)) return [];
+  const soft = lease.enforcement === "soft";
+  const cap = lease.max_days ?? lease.max_lifetime_days ?? 365;
+  const offered = [7, 14, 30, 60, 90, 180, 365, lease.default_days, cap].filter(
+    (d): d is number => d != null && (soft || d <= cap),
+  );
+  return [...new Set(offered)].sort((a, b) => a - b);
+}
+
+const times = (n: number) => (n === 1 ? "once" : n === 2 ? "twice" : `${n} times`);
+
+/** What the lease field says of the lease a request gets: who sets it, its extensions and lifetime. */
+function leaseHint(lease: NonNullable<RequestPreview["lease"]>): string {
+  const soft = lease.enforcement === "soft";
+  const extensions = lease.max_extensions ?? 2;
+  return [
+    lease.policy ? `Set by ${lease.policy}.` : "",
+    "You get reminders 7 days and 1 day before.",
+    extensions > 0
+      ? `You can extend it ${times(extensions)}.`
+      : soft
+        ? "Extending it warns, and you may go on."
+        : "Extending it needs approval.",
+    lease.max_lifetime_days != null
+      ? `It lives ${lease.max_lifetime_days} days at most: past that, an extension ${soft ? "warns" : "needs approval"}.`
+      : "",
+    soft && lease.max_days != null ? `Longer than ${lease.max_days} days warns, and you may go on.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /** Where a form starts from: a saved draft, or a past request asked again. */
@@ -613,11 +654,15 @@ function RequestFormBody({
   for (const [name, msg] of Object.entries(serverErrors?.fields ?? {})) if (msg) fieldErrors[name] = msg;
   const formErrors = submitted ? [...new Set([...(serverErrors?.form ?? []), ...previewErrors.form])] : [];
 
+  const lease = shownPreview?.lease;
+  const leaseOptions = leaseOffers(lease);
+
   // The inputs the page has a control for, in its order: the rest are said at the top.
   const placed = [
     "$environment",
     ...shownFields(form, shownPreview?.fields),
     ...(named ? ["$deployment_name", "$deployment_description"] : []),
+    ...(leaseOptions.length ? ["$lease_days"] : []),
     ...(many ? ["$count"] : []),
     ...(later ? ["$scheduled_at"] : []),
     ...(canActForOthers ? ["$on_behalf_of"] : []),
@@ -694,14 +739,6 @@ function RequestFormBody({
   const graph = useMemo(() => (form.topology ? blueprintGraph(form.topology, "/topology") : null), [form.topology]);
   const drawn = graph && (graph.kind === "composite" || graph.nodes.length > 2) ? graph : null;
 
-  const lease = shownPreview?.lease;
-  const soft = lease?.enforcement === "soft";
-  // A soft lease offers longer ones too: they warn, and the requester may go on.
-  const leaseOptions =
-    lease && lease.max_days !== null && lease.max_days !== undefined
-      ? [7, 14, 30, 60, 90, ...(soft ? [180, 365] : [])].filter((d) => soft || d <= (lease.max_days ?? 90))
-      : [];
-
   const shownNames = shownPreview?.deployment_names;
   const requestPanels = (
     <>
@@ -751,19 +788,19 @@ function RequestFormBody({
           <Field
             label="Lease"
             htmlFor="lease"
+            error={fieldErrors.$lease_days}
             hint={
-              leaseOptions.length
-                ? `You get reminders 7 days and 1 day before. You can extend it twice.${
-                    soft ? ` Longer than ${lease?.max_days} days warns, and you may go on.` : ""
-                  }`
-                : "Production deployments and AWX jobs have no lease."
+              leaseOptions.length && lease ? leaseHint(lease) : "Production deployments and AWX jobs have no lease."
             }
           >
             {leaseOptions.length ? (
               <Select
                 id="lease"
-                value={String(leaseDays ?? lease?.default_days ?? 30)}
-                onChange={(v) => setLeaseDays(Number(v))}
+                value={String(leaseDays ?? lease?.default_days ?? leaseOptions[0])}
+                onChange={(v) => {
+                  setLeaseDays(Number(v));
+                  clearServerError("$lease_days");
+                }}
                 options={leaseOptions.map((d) => ({ value: String(d), label: `${d} days` }))}
               />
             ) : (

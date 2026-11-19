@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, Minus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/input";
+import { Field, Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { api, call } from "@/lib/api/client";
@@ -49,16 +49,28 @@ function Decision({ title, d }: { title: string; d?: S["PolicyDecision"] }) {
   );
 }
 
+/** The inputs typed as JSON: undefined when none, null when they aren't an object. */
+function parsedInputs(text: string): Record<string, unknown> | undefined | null {
+  if (!text.trim()) return undefined;
+  try {
+    const v: unknown = JSON.parse(text);
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function WhatApplies() {
   const projects = useProjects();
   const envs = useQuery(q.environments());
-  const [f, setF] = useState({ project: "", environment: "", item: "none", action: "none" });
+  const [f, setF] = useState({ project: "", environment: "", item: "none", action: "none", inputs: "" });
+  const [inputsError, setInputsError] = useState<string>();
   const project = f.project || projects.items[0]?.id || "";
   // The items the project may request.
   const items = useQuery({ ...q.catalog({ projectId: project }), enabled: Boolean(project) });
   const environment = f.environment || envs.data?.items[0]?.key || "";
   const explain = useMutation({
-    mutationFn: () =>
+    mutationFn: (inputs?: Record<string, unknown>) =>
       call(
         api.POST("/admin/policies/explain", {
           body: {
@@ -66,6 +78,7 @@ export function WhatApplies() {
             environment,
             ...(f.item !== "none" ? { item_id: f.item } : {}),
             ...(f.action !== "none" ? { action: f.action } : {}),
+            ...(inputs ? { inputs } : {}),
           },
         }),
       ),
@@ -82,7 +95,9 @@ export function WhatApplies() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            explain.mutate();
+            const inputs = parsedInputs(f.inputs);
+            setInputsError(inputs === null ? 'An object, such as {"size": "S"}.' : undefined);
+            if (inputs !== null) explain.mutate(inputs);
           }}
         >
           <Field label="Project" htmlFor="ex-project" className="w-48">
@@ -118,6 +133,21 @@ export function WhatApplies() {
               value={f.action}
               onChange={(v) => setF({ ...f, action: v })}
               options={[{ value: "none", label: "None" }, ...day2Actions.map((a) => ({ value: a, label: a }))]}
+            />
+          </Field>
+          <Field
+            label="Inputs (JSON)"
+            htmlFor="ex-inputs"
+            className="w-56"
+            error={inputsError}
+            hint="What lease rules and approval conditions read"
+          >
+            <Input
+              id="ex-inputs"
+              className="font-mono"
+              placeholder='{"size": "S"}'
+              value={f.inputs}
+              onChange={(e) => setF({ ...f, inputs: e.target.value })}
             />
           </Field>
           <Button type="submit" variant="primary" disabled={!project || !environment || explain.isPending}>

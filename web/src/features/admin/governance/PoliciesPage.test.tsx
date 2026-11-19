@@ -182,6 +182,48 @@ describe("Policies", () => {
     },
   );
 
+  it("explains which lease rule decides, read with the inputs given", { timeout: 15_000 }, async () => {
+    adminState(db).leaseRules.push({
+      id: "lsr_small",
+      name: "Small VMs",
+      condition: 'inputs.size == "S"',
+      environment: "dev",
+      project_id: null,
+      priority: 10,
+      default_days: 7,
+      max_days: 30,
+      max_extensions: 1,
+      grace_days: 7,
+      expiry_action: "power_off_then_delete",
+      enforcement: "hard",
+      max_lifetime_days: 60,
+      set_by_admin: true,
+    });
+    const user = userEvent.setup();
+    renderApp("/admin/policies?tab=explain");
+    await user.click(await screen.findByRole("combobox", { name: "Environment" }));
+    await user.click(await screen.findByRole("option", { name: "Development" }));
+    await user.click(screen.getByRole("button", { name: "Explain" }));
+    const lease = await screen.findByRole("region", { name: "Lease" });
+    expect(lease).toHaveTextContent("Decided by: Development");
+    expect(lease).toHaveTextContent(/Small VMs: Its condition needs inputs not given here/);
+
+    const inputs = screen.getByRole("textbox", { name: "Inputs (JSON)" });
+    await user.click(inputs);
+    await user.paste("[1]");
+    await user.click(screen.getByRole("button", { name: "Explain" }));
+    expect(await screen.findByText('An object, such as {"size": "S"}.')).toBeInTheDocument();
+    await user.clear(inputs);
+    await user.paste('{"size": "S"}');
+    await user.click(screen.getByRole("button", { name: "Explain" }));
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Lease" })).toHaveTextContent("Decided by: Small VMs"),
+    );
+    expect(screen.getByRole("region", { name: "Lease" })).toHaveTextContent(
+      "Deployments get 7 days, up to 30 with up to 1 extensions; at the end: power off then delete. They live 60 days at most: an extension past that needs approval.",
+    );
+  });
+
   it(
     "previews and saves a naming policy whose counter starts at 100 and moves by 10",
     { timeout: 15_000 },

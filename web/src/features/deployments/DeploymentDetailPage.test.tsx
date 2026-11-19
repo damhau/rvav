@@ -143,6 +143,49 @@ describe("a deployment's page against the mock API", () => {
     );
   });
 
+  it("says which lease rule a deployment is under, and how long it may still live", async () => {
+    const dep = db.deployments.find((d) => d.name === "web-dev-api")!;
+    dep.created_at = new Date(Date.now() - (50 * 24 - 1) * 3_600_000).toISOString();
+    adminState(db).leaseRules.push({
+      id: "lsr_rhel",
+      name: "RHEL builds",
+      condition: "true",
+      environment: "dev",
+      project_id: null,
+      priority: 10,
+      default_days: 14,
+      max_days: 30,
+      max_extensions: 2,
+      grace_days: 3,
+      expiry_action: "delete",
+      enforcement: "hard",
+      max_lifetime_days: 60,
+      set_by_admin: true,
+    });
+    adminState(db).leaseRuleOf[dep.id] = "lsr_rhel";
+    const user = userEvent.setup();
+    renderApp(`/deployments/${dep.id}`);
+    const lease = await screen.findByRole("region", { name: "Lease" }, { timeout: 5000 });
+    await waitFor(() => expect(lease).toHaveTextContent("Set by RHEL builds."));
+    expect(lease).toHaveTextContent("1 of 2 extensions used; up to 30 days without approval.");
+    expect(lease).toHaveTextContent(
+      /It lives 60 days at most, until .+: 10 days left\. Extending it past that needs approval\./,
+    );
+
+    await user.click(within(lease).getByRole("button", { name: "Extend the lease" }));
+    const dialog = await screen.findByRole("dialog", { name: "Extend the lease · web-dev-api" });
+    const days = within(dialog).getByRole("spinbutton", { name: "Days from now" });
+    expect(days).toHaveValue(10);
+    expect(days).toHaveAccessibleDescription(
+      "Up to 30 days without approval. 1 of 2 extensions used. 10 days of its 60-day lifetime left.",
+    );
+    await user.clear(days);
+    await user.type(days, "20");
+    await user.click(within(dialog).getByRole("button", { name: "Extend the lease" }));
+    await waitFor(() => expect(db.requests[0]?.request.action?.key).toBe("extend_lease"));
+    expect(db.requests[0]!.request.status).toBe("pending_approval");
+  }, 15000);
+
   it("shows the address a VM on DHCP reports, once it has one", async () => {
     const dep = db.deployments.find((d) => d.name === "web-prd-edge")!;
     const second = dep.resources.find((r) => r.name === "web-prd-edge002")!;

@@ -17,7 +17,8 @@ import type {
 } from "@/lib/api/types";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
-import { adminState, leasePolicyOf } from "./administration";
+import { adminState } from "./administration";
+import { leaseChoices } from "./leases";
 import { celBool } from "./cel";
 import { editedDetails, editProblem, MAX_DEPLOYMENT_DESCRIPTION, MAX_DEPLOYMENT_NAME } from "./deploymentNames";
 import { userGroups } from "./logic";
@@ -57,7 +58,7 @@ interface MockAction {
   confirm?: string;
   typeName?: boolean;
   unavailable?: (vm: VmResource | undefined, d: DeploymentDetail) => string | null;
-  form?: (vm: VmResource | undefined, d: DeploymentDetail) => ActionForm;
+  form?: (vm: VmResource | undefined, d: DeploymentDetail, db: Db) => ActionForm;
   validate?: (vm: VmResource | undefined, inputs: Inputs, d: DeploymentDetail, db: Db) => FieldError | null;
   ops: (vm: VmResource | undefined, inputs: Inputs, d: DeploymentDetail) => Op[];
 }
@@ -627,15 +628,28 @@ export const catalogue: MockAction[] = [
     group: "lifecycle",
     deployment: true,
     unavailable: (_vm, d) => (d.lease.expires_at ? null : "The deployment has no lease."),
-    form: () =>
-      form("New lease", [
+    // As the server's: within the lease the deployment is under now, and its lifetime left (ADR-0048).
+    form: (_vm, d, db) => {
+      const c = leaseChoices(db, d);
+      let days = c.defaultDays ?? 30;
+      let help = `${d.lease.extensions_used ?? 0} of ${c.maxExtensions} extensions used.`;
+      if (c.maxDays !== null) {
+        days = Math.min(days, c.maxDays);
+        help = `Up to ${c.maxDays} days ${c.soft ? "without a warning" : "without approval"}. ${help}`;
+      }
+      if (c.left !== undefined) {
+        days = Math.max(Math.min(days, c.left), 1);
+        help += ` ${c.left === 1 ? "1 day" : `${c.left} days`} of its ${c.lifetime}-day lifetime left.`;
+      }
+      return form("New lease", [
         [
           "days",
           { type: "integer", minimum: 1, maximum: 3650 },
-          { label: "Days from now", widget: "number", help: "Up to 90 days without approval." },
-          30,
+          { label: "Days from now", widget: "number", help },
+          days,
         ],
-      ]),
+      ]);
+    },
     ops: (_vm, i, d) => [
       {
         key: "rvav.lease",
@@ -762,13 +776,23 @@ export const busy = (db: Db, d: DeploymentDetail, vm?: VmResource) =>
   );
 
 // Why the action needs approval ("" when it doesn't); inputs are unknown when listing.
-function approvalReason(a: MockAction, d: DeploymentDetail, inputs?: Inputs): string {
+function approvalReason(db: Db, a: MockAction, d: DeploymentDetail, inputs?: Inputs): string {
   if (a.key === "delete" && d.environment === "prd") return "Deleting a production deployment needs sign-off";
   if (a.key === "extend_lease") {
-    if ((d.lease.extensions_used ?? 0) >= (d.lease.extensions_max ?? 0))
-      return `All ${d.lease.extensions_max ?? 0} extensions without approval are used`;
-    if (inputs && Number(inputs.days) > (d.lease.max_days ?? 90))
-      return "Longer than the 90 days allowed without approval";
+    const c = leaseChoices(db, d);
+    const days = Number(inputs?.days);
+    if ((d.lease.extensions_used ?? 0) >= c.maxExtensions)
+      return c.soft
+        ? `All ${c.maxExtensions} extensions the lease policy allows are used.`
+        : `All ${c.maxExtensions} extensions without approval are used`;
+    if (inputs && c.maxDays !== null && days > c.maxDays)
+      return c.soft
+        ? `Longer than the ${c.maxDays} days the lease policy allows.`
+        : `Longer than the ${c.maxDays} days allowed without approval`;
+    if (c.left !== undefined && (inputs ? days > c.left : c.left === 0))
+      return c.soft
+        ? `Past the ${c.lifetime}-day lifetime the lease policy allows.`
+        : `Past the ${c.lifetime}-day lifetime allowed without approval`;
   }
   return "";
 }
@@ -865,8 +889,7 @@ export function actionWarnings(db: Db, key: string, d: DeploymentDetail): Policy
   return a ? warningsFor(db, a, d, "") : [];
 }
 
-const leaseSoft = (db: Db, d: DeploymentDetail) =>
-  leasePolicyOf(db, d.project.id, d.environment)?.enforcement === "soft";
+const leaseSoft = (db: Db, d: DeploymentDetail) => leaseChoices(db, d).soft;
 
 /** The actions list of a deployment, as GET /deployments/{id}/actions answers. */
 export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
@@ -904,7 +927,7 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
         hardDeny(a, vm) ??
         a.unavailable?.(vm, d) ??
         null;
-      const why = approvalReason(a, d);
+      const why = approvalReason(db, a, d);
       const lease = a.key === "extend_lease" ? why : "";
       const warnings = reason === null ? warningsFor(db, a, d, lease, vm) : [];
       const asks = why !== "" && !(lease && leaseSoft(db, d));
@@ -922,7 +945,7 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
         ...(a.confirm || a.typeName
           ? { confirm: { message: a.confirm ?? "", ...(a.typeName ? { type_to_confirm: vm?.name ?? d.name } : {}) } }
           : {}),
-        ...(a.form && reason === null ? { form: a.form(vm, d) } : {}),
+        ...(a.form && reason === null ? { form: a.form(vm, d, db) } : {}),
       });
     }
   }
@@ -1011,7 +1034,7 @@ export function runAction(
   }
   const inputs = draft.inputs ?? {};
   // As the server: the form's schema first, then the action's own checks, each on the input it is about.
-  const required = (a.form?.(vm, d).schema as { required?: string[] } | undefined)?.required ?? [];
+  const required = (a.form?.(vm, d, db).schema as { required?: string[] } | undefined)?.required ?? [];
   const missing = required
     .filter((n) => inputs[n] === undefined)
     .map((n) => invalid(n, "required", "This field is required."));
@@ -1020,7 +1043,7 @@ export function runAction(
     : [a.validate?.(vm, inputs, d, db)].filter((e): e is FieldError => Boolean(e));
   if (problems.length) return { error: { status: 422, title: "Some inputs need attention", errors: problems } };
 
-  const why = approvalReason(a, d, inputs);
+  const why = approvalReason(db, a, d, inputs);
   const warnings = warningsFor(db, a, d, a.key === "extend_lease" ? why : "");
   const warned = unaccepted(warnings, draft);
   if (warned.length) return { error: { status: 422, title: "Some values need fixing", errors: warned } };

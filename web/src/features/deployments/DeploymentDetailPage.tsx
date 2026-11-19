@@ -433,6 +433,17 @@ const afterExpiry = (d: DeploymentDetail) =>
       ? "Then you are told; nothing is deleted."
       : `Then its VMs are powered off, and deleted ${d.lease.grace_days ?? 7} days later.`;
 
+/** How long the deployment may still live (ADR-0048), and what extending past that does. */
+function lifetime(l: DeploymentDetail["lease"]): string | null {
+  if (l.max_lifetime_days == null || !l.lifetime_ends_at) return null;
+  const ends = Date.parse(l.lifetime_ends_at);
+  const left = Math.max(Math.floor((ends - Date.now()) / 86_400_000), 0);
+  const past = l.enforcement === "soft" ? "warns you" : "needs approval";
+  if (left === 0)
+    return `Its ${l.max_lifetime_days}-day lifetime ${ends <= Date.now() ? "ended" : "ends"} on ${fullDate(l.lifetime_ends_at)}: extending it ${past}.`;
+  return `It lives ${l.max_lifetime_days} days at most, until ${fullDate(l.lifetime_ends_at)}: ${left === 1 ? "1 day" : `${left} days`} left. Extending it past that ${past}.`;
+}
+
 function LeasePanel({ d, extend, onPick }: { d: DeploymentDetail; extend?: Day2Action; onPick: Pick }) {
   const l = d.lease;
   if (!l.expires_at) {
@@ -456,6 +467,8 @@ function LeasePanel({ d, extend, onPick }: { d: DeploymentDetail; extend?: Day2A
           ? `${l.max_days ? `; up to ${l.max_days} days` : ""}. The lease policy is soft: going beyond warns you, and needs no approval.`
           : `${l.max_days ? `; up to ${l.max_days} days without approval` : ""}.`}
       </p>
+      {lifetime(l) && <p className="text-faint">{lifetime(l)}</p>}
+      {l.policy && <p className="text-faint">Set by {l.policy}.</p>}
       {extend && (
         <Tip
           content={

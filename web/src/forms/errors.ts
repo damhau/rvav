@@ -15,9 +15,16 @@ export function mapFieldErrors(errors: FieldError[] | undefined): MappedErrors {
     const name = m?.[1];
     if (name) out.fields[name] ??= e.message;
     else if (e.field === "/environment") out.fields.$environment ??= e.message;
-    // The request's own options (S11): how many, when, for whom, what its deployments are called.
+    // The request's own options (S11): how many, when, for whom, its lease, what its deployments are called.
     else if (
-      ["/count", "/scheduled_at", "/on_behalf_of", "/deployment_name", "/deployment_description"].includes(e.field)
+      [
+        "/count",
+        "/scheduled_at",
+        "/on_behalf_of",
+        "/lease_days",
+        "/deployment_name",
+        "/deployment_description",
+      ].includes(e.field)
     )
       out.fields[`$${e.field.slice(1)}`] ??= e.message;
     else out.form.push(e.message);

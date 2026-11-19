@@ -23,7 +23,8 @@ import { computedBy, defaulted, singleSource } from "@/forms/defaults";
 import { withOwnSource } from "@/forms/useFieldValues";
 import { can } from "@/lib/can";
 import { toText } from "@/lib/utils";
-import { adminState, leasePolicyOf, namingTemplate, placed, placementFolder, rolesGiven } from "./administration";
+import { adminState, namingTemplate, placed, placementFolder, rolesGiven } from "./administration";
+import { chooseLease, leaseTooLong } from "./leases";
 import { celBool, celEval } from "./cel";
 import { warning } from "./warnings";
 import { multiParts, partVMs, previewComponents } from "./components";
@@ -489,6 +490,33 @@ export function demand(item: StoredItem, inputs: Inputs, count: number): Record<
   };
 }
 
+/** What a request's policy conditions read, as the server's PolicyVars. */
+export function policyVars(
+  db: Db,
+  item: StoredItem,
+  env: EnvironmentKey,
+  inputs: Inputs,
+  project: Pick<Project, "id" | "code" | "name">,
+) {
+  const me = db.me.user.id;
+  const size = sizes[inputs.size as SizeKey];
+  return {
+    environment: env,
+    inputs,
+    project: { id: project.id, code: project.code, name: project.name, properties: {} },
+    item: { slug: item.slug, category: item.category, type: item.type },
+    vm: { vcpu: size?.vcpu ?? 0, memory_gb: size?.memoryGb ?? 0, disk_gb: size?.diskGb ?? 0, count: 1 },
+    user: {
+      id: me,
+      roles: db.me.roles.map((r) => r.key),
+      groups: userGroups[me] ?? [],
+      permissions: db.me.permissions,
+    },
+    request: { kind: "provision" },
+    quota: { over_soft: false, over: [] },
+  };
+}
+
 /** Whom a preview's level asks besides its named approvers, for the levels a request opens. */
 export const levelAsks = new WeakMap<
   object,
@@ -510,22 +538,7 @@ function savedApprovals(
   project: Pick<Project, "id" | "code" | "name">,
 ): ApprovalPreview["policies"] {
   const me = db.me.user.id;
-  const size = sizes[inputs.size as SizeKey];
-  const vars = {
-    environment: env,
-    inputs,
-    project: { id: project.id, code: project.code, name: project.name, properties: {} },
-    item: { slug: item.slug, category: item.category, type: item.type },
-    vm: { vcpu: size?.vcpu ?? 0, memory_gb: size?.memoryGb ?? 0, disk_gb: size?.diskGb ?? 0, count: 1 },
-    user: {
-      id: me,
-      roles: db.me.roles.map((r) => r.key),
-      groups: userGroups[me] ?? [],
-      permissions: db.me.permissions,
-    },
-    request: { kind: "provision" },
-    quota: { over_soft: false, over: [] },
-  };
+  const vars = policyVars(db, item, env, inputs, project);
   const out: ApprovalPreview["policies"] = [];
   for (const pol of adminState(db).approvals) {
     if (pol.id === "pol_prd_vm" || !pol.enabled) continue;
@@ -685,6 +698,7 @@ export function preview(
   project: Project,
   draft: RequestDraft,
   validate = false,
+  strict = false,
 ): RequestPreview {
   const { inputs, fields, errors } = ruled(db, item, project, draft);
   if (validate && errors.length === 0)
@@ -756,15 +770,26 @@ export function preview(
   errors.push(...named.errors);
   const network = typeof inputs.network === "string" ? inputs.network : "";
   const next = network ? nextFreeIp(db, network) : null;
-  const production = db.environments.find((e) => e.key === draft.environment)?.production ?? false;
-  const leaseDefault = production || vms === 0 ? null : 30;
-  const leaseMax = production || vms === 0 ? null : 90;
-  const soft = leaseMax !== null && leasePolicyOf(db, project.id, draft.environment)?.enforcement === "soft";
+  // As the server's evaluateLease (ADR-0048): the lease rules, then the lease policies.
+  const lease =
+    vms > 0
+      ? chooseLease(
+          db,
+          project.id,
+          draft.environment,
+          policyVars(db, item, draft.environment, inputs, project),
+          strict,
+          false,
+        )
+      : undefined;
+  const leaseDays = draft.lease_days ?? lease?.terms.default_days ?? null;
+  const soft = lease?.terms.enforcement === "soft";
+  const tooLong = lease ? leaseTooLong(db, lease, draft.environment, leaseDays) : "";
   const envName = db.environments.find((e) => e.key === draft.environment)?.name ?? draft.environment;
-  const warnings =
-    soft && leaseMax !== null && (draft.lease_days ?? 0) > leaseMax
-      ? [warning(`Lease in ${envName}`, `Leases in ${envName} should be at most ${leaseMax} days.`)]
-      : [];
+  const warnings = tooLong && soft ? [warning(`Lease in ${envName}`, tooLong)] : [];
+  if (tooLong && !soft) errors.push({ field: "/lease_days", code: "too_long", message: tooLong });
+  if (leaseDays !== null && leaseDays < 1)
+    errors.push({ field: "/lease_days", code: "too_short", message: "A lease is at least one day." });
   return {
     valid: errors.length === 0,
     errors,
@@ -794,13 +819,17 @@ export function preview(
     approval: approvalFor(db, item, draft.environment, inputs, project),
     ...(warnings.length ? { warnings } : {}),
     lease: {
-      default_days: leaseDefault,
-      max_days: leaseMax,
+      default_days: lease?.terms.default_days ?? null,
+      max_days: lease?.terms.max_days ?? null,
       enforcement: soft ? "soft" : "hard",
-      expires_at:
-        (draft.lease_days ?? leaseDefault)
-          ? new Date(Date.now() + (draft.lease_days ?? leaseDefault ?? 0) * 86_400_000).toISOString()
-          : null,
+      expires_at: leaseDays ? new Date(Date.now() + leaseDays * 86_400_000).toISOString() : null,
+      ...(lease
+        ? {
+            max_extensions: lease.terms.max_extensions,
+            max_lifetime_days: lease.terms.max_lifetime_days ?? null,
+            ...(lease.policy ? { policy: lease.policy } : {}),
+          }
+        : {}),
     },
   };
 }

@@ -129,6 +129,42 @@ describe("request form against the mock API", () => {
     expect(screen.getByText("Pay slips for the staff portal.")).toBeInTheDocument();
   }, 15000);
 
+  it("offers the lease a lease rule gives, and gives it to the deployment", async () => {
+    adminState(db).leaseRules.push({
+      id: "lsr_rhel",
+      name: "RHEL builds",
+      condition: 'item.slug == "rhel9-server"',
+      environment: "dev",
+      project_id: null,
+      priority: 10,
+      default_days: 14,
+      max_days: 30,
+      max_extensions: 1,
+      grace_days: 3,
+      expiry_action: "delete",
+      enforcement: "hard",
+      max_lifetime_days: 60,
+      set_by_admin: true,
+    });
+    const user = userEvent.setup();
+    await openForm();
+    const lease = screen.getByRole("combobox", { name: "Lease" });
+    await waitFor(() =>
+      expect(lease).toHaveAccessibleDescription(
+        "Set by RHEL builds. You get reminders 7 days and 1 day before. You can extend it once. It lives 60 days at most: past that, an extension needs approval.",
+      ),
+    );
+    expect(lease).toHaveTextContent("14 days");
+    await user.click(lease);
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["7 days", "14 days", "30 days"]);
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    await waitFor(() => expect(db.requests[0]?.request.number).toBe("REQ-10491"));
+    const dep = db.deployments.find((d) => db.requests[0]!.request.deployment_ids?.includes(d.id))!;
+    expect(adminState(db).leaseRuleOf[dep.id]).toBe("lsr_rhel");
+    expect(dep.lease).toMatchObject({ extensions_max: 1, max_days: 30, grace_days: 3, expiry_action: "delete" });
+  }, 15000);
+
   it("warns of a lease longer than a soft lease allows, and submits anyway", async () => {
     adminState(db).leases.find((l) => l.environment === "dev" && !l.project_id)!.enforcement = "soft";
     const user = userEvent.setup();

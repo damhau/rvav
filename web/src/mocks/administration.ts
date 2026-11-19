@@ -8,10 +8,10 @@ import type { components } from "@/lib/api/schema";
 import { adminItemOf } from "./catalogAdmin";
 import { celCheck } from "./cel";
 import { audited } from "./governance";
-import { leaseTermsErrors, looserLease, looserRule, orderedRules } from "./leases";
+import { chooseLease, leaseTermsErrors, looserLease, looserRule, orderedRules, type LeaseTerms } from "./leases";
 import { clusters, datastoreClusters, datastores, hostsOf, networks, resourcePools, tags, VCENTER } from "./inventory";
 import type { Db } from "./seed";
-import { userGroups } from "./logic";
+import { policyVars, userGroups } from "./logic";
 import {
   assignable,
   builtinRoles,
@@ -484,6 +484,21 @@ function setupOf(db: Db): S["Setup"] {
 export function leasePolicyOf(db: Db, projectId: string, env: string): S["LeasePolicy"] | undefined {
   const all = adminState(db).leases.filter((l) => l.environment === env);
   return all.find((l) => l.project_id === projectId) ?? all.find((l) => !l.project_id);
+}
+
+/** As the server's explainLease: what deployments get under the lease that decides. */
+function leaseOutcome(t: LeaseTerms): string {
+  if (t.default_days == null) return "No lease: deployments here don't expire.";
+  let msg = `Deployments get ${t.default_days} days`;
+  if (t.max_days != null) msg += `, up to ${t.max_days} with up to ${t.max_extensions} extensions`;
+  msg += `; at the end: ${t.expiry_action.replaceAll("_", " ")}.`;
+  const soft = t.enforcement === "soft";
+  if (t.max_lifetime_days != null)
+    msg += soft
+      ? ` They live ${t.max_lifetime_days} days at most.`
+      : ` They live ${t.max_lifetime_days} days at most: an extension past that needs approval.`;
+  if (soft) msg += " Going beyond it warns the requester, who may go on.";
+  return msg;
 }
 
 /** The roles a user holds in a project: given to them there, or through a group. */
@@ -1985,9 +2000,22 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const p = project(q.project_id);
       const env = db.environments.find((e) => e.key === q.environment);
       if (!p || !env) return problem(404, "Not found");
-      const lease =
-        st().leases.find((l) => l.environment === env.key && l.project_id === p.id) ??
-        st().leases.find((l) => l.environment === env.key && !l.project_id);
+      const explained = db.items.find((i) => i.id === q.item_id || i.slug === q.item_id);
+      // As the server's explainLease (ADR-0048): read with the item and inputs given, never strict.
+      const lease = chooseLease(
+        db,
+        p.id,
+        env.key,
+        explained
+          ? policyVars(db, explained, env.key, q.inputs ?? {}, p)
+          : {
+              environment: env.key,
+              inputs: q.inputs ?? {},
+              project: { id: p.id, code: p.code, name: p.name, properties: {} },
+            },
+        false,
+        db.me.permissions.includes("policies.read"),
+      );
       const naming = st().naming.find((n) =>
         n.offers.some((o) => (!o.project_id || o.project_id === p.id) && (!o.environment || o.environment === env.key)),
       );
@@ -2015,11 +2043,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           )
         : undefined;
       const out: S["PolicyExplanation"] = {
-        lease: {
-          decided_by: lease ? (lease.project_id ? `${p.name} in ${env.name}` : env.name) : null,
-          outcome: lease?.default_days ? `Deployments get ${lease.default_days} days, up to ${lease.max_days ?? "—"}.` : "No lease: deployments here don't expire.",
-          considered: [],
-        },
+        lease: { decided_by: lease.policy, outcome: leaseOutcome(lease.terms), considered: lease.considered },
         naming: {
           decided_by: naming?.name ?? null,
           outcome: naming ? `VMs are named ${naming.template}.` : "No naming policy here: each blueprint's own template names the VMs.",

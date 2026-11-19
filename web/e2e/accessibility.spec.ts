@@ -32,6 +32,7 @@ const pages = [
   "/admin/roles/auditor",
   "/admin/policies",
   "/admin/policies?tab=quotas",
+  "/admin/policies?tab=lease",
   "/admin/integrations",
   "/admin/integrations?tab=checks",
   "/admin/integrations/oidc",

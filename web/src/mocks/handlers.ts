@@ -41,7 +41,8 @@ import {
   requestTopology,
 } from "./catalogAdmin";
 import { catalogGitHandlers } from "./catalogGit";
-import { administrationHandlers, leasePolicyOf } from "./administration";
+import { adminState, administrationHandlers } from "./administration";
+import { chooseLease, presentLease } from "./leases";
 import { onboardingHandlers } from "./onboarding";
 import { vraHandlers } from "./vra";
 import { fileHandlers } from "./files";
@@ -56,7 +57,7 @@ import { sharedWith, sharingHandlers } from "./sharing";
 import { listingHandlers, seesDeployment, visibleDeployments } from "./listing";
 import { faults } from "./faults";
 import { namesDeployments } from "./deploymentNames";
-import { demand, preview, resolveField, ruled, summarize, vmCount } from "./logic";
+import { demand, policyVars, preview, resolveField, ruled, summarize, vmCount } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import {
   cancel,
@@ -178,8 +179,16 @@ function createDeployment(
   named?: StoredRequest["named"],
 ): DeploymentDetail | null {
   if (vmCount(item, count, inputs) === 0 || !host) return null;
-  const production = db.environments.find((e) => e.key === environment)?.production ?? false;
-  const days = leaseDays ?? (production ? null : 30);
+  // As the server's reserveVMs: the lease chosen on submit, and the rule that gave it (ADR-0048).
+  const lease = chooseLease(
+    db,
+    project.id,
+    environment,
+    policyVars(db, item, environment, inputs, project),
+    true,
+    false,
+  );
+  const days = leaseDays ?? lease.terms.default_days ?? null;
   const dep: DeploymentDetail = {
     id: `dep_${(db.seq.id++).toString(36)}`,
     name: named?.name ?? host.replace(/\d+$/, ""),
@@ -195,10 +204,10 @@ function createDeployment(
     lease: {
       expires_at: days ? new Date(Date.now() + days * 86_400_000).toISOString() : null,
       extensions_used: 0,
-      extensions_max: days ? 2 : null,
-      max_days: days ? 90 : null,
-      grace_days: 7,
-      expiry_action: "power_off_then_delete",
+      extensions_max: days ? lease.terms.max_extensions : null,
+      max_days: days ? lease.terms.max_days : null,
+      grace_days: lease.terms.grace_days,
+      expiry_action: lease.terms.expiry_action,
     },
     vm_count: 0,
     vms_powered_on: 0,
@@ -208,6 +217,7 @@ function createDeployment(
     resources: [],
   };
   db.deployments.unshift(dep);
+  if (lease.rule) adminState(db).leaseRuleOf[dep.id] = lease.rule.id;
   const q = db.quota[project.id];
   if (q) {
     const need = demand(item, inputs, count);
@@ -692,15 +702,21 @@ export const handlers = [
         `${item.name} is shared in ${project.name} with chosen people, and you aren't one of them.`,
       );
     }
-    const check = preview(db, item, project, draft, true);
+    const check = preview(db, item, project, draft, true, true);
     // As the server: the inputs after the rules, so a field they hide isn't checked.
     const errors = check.errors.filter(
       (e) =>
         e.field.startsWith("/inputs/") ||
         e.field.startsWith("/validations/") ||
-        ["", "/environment", "/count", "/scheduled_at", "/deployment_name", "/deployment_description"].includes(
-          e.field,
-        ),
+        [
+          "",
+          "/environment",
+          "/count",
+          "/scheduled_at",
+          "/lease_days",
+          "/deployment_name",
+          "/deployment_description",
+        ].includes(e.field),
     );
     if (errors.length) {
       return problem(
@@ -1285,9 +1301,7 @@ export const handlers = [
     await wait();
     const d = db.deployments.find((x) => x.id === params.deploymentId && seesDeployment(db, x));
     if (!d) return notFound("Deployment");
-    const policy = d.lease.expires_at ? leasePolicyOf(db, d.project.id, d.environment) : undefined;
-    const lease = policy ? { ...d.lease, enforcement: policy.enforcement ?? "hard" } : d.lease;
-    return json<S["DeploymentDetail"]>({ ...d, ...summarize(d), lease });
+    return json<S["DeploymentDetail"]>({ ...d, ...summarize(d), lease: presentLease(db, d) });
   }),
 
   http.get(`${base}/events`, ({ request }) => {

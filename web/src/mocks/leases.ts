@@ -229,3 +229,37 @@ export function lifetimeLeft(d: S["DeploymentDetail"], lifetime: number | null |
   const ends = new Date(d.created_at).getTime() + lifetime * 86_400_000;
   return Math.max(Math.floor((ends - now) / 86_400_000), 0);
 }
+
+/** A deployment's lease as the server presents it: the limits of the lease it is under now (ADR-0048). */
+export function presentLease(db: Db, d: S["DeploymentDetail"]): S["Lease"] {
+  const now = d.lease.expires_at ? deploymentLease(db, d) : undefined;
+  if (!now) return d.lease;
+  const life = now.terms.max_lifetime_days;
+  return {
+    ...d.lease,
+    max_days: now.terms.max_days,
+    extensions_max: now.terms.max_extensions,
+    grace_days: now.terms.grace_days,
+    enforcement: now.terms.enforcement ?? "hard",
+    policy: now.policy,
+    ...(life != null
+      ? {
+          max_lifetime_days: life,
+          lifetime_ends_at: new Date(new Date(d.created_at).getTime() + life * 86_400_000).toISOString(),
+        }
+      : {}),
+  };
+}
+
+/** What the server's day-2 choices read of a deployment's lease: the lease it is under now, and the lifetime left. */
+export function leaseChoices(db: Db, d: S["DeploymentDetail"], now = Date.now()) {
+  const t = deploymentLease(db, d)?.terms;
+  return {
+    defaultDays: t?.default_days ?? null,
+    maxDays: t?.max_days ?? null,
+    maxExtensions: t?.max_extensions ?? 0,
+    soft: t?.enforcement === "soft",
+    lifetime: t?.max_lifetime_days ?? null,
+    left: lifetimeLeft(d, t?.max_lifetime_days, now),
+  };
+}
