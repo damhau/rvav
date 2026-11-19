@@ -169,6 +169,50 @@ describe("a soft day-2 policy", () => {
     });
   });
 
+  it(
+    "asks again, with the focus on the warning, when it changed since the menu was listed",
+    { timeout: 20_000 },
+    async () => {
+      localStorage.setItem("rvav.mock.as", "member");
+      resetDb();
+      const sent: unknown[] = [];
+      server.use(
+        http.post("*/api/v1/deployments/:id/actions", async ({ request }) => {
+          sent.push(await request.clone().json());
+          return undefined;
+        }),
+      );
+      const user = userEvent.setup();
+      renderApp(`/deployments/${idOf("web-tst-search")}`);
+      await user.click(await screen.findByRole("button", { name: "Actions" }, { timeout: 5000 }));
+      const menu = await screen.findByRole("menu");
+      const vm = within(menu).getByRole("menuitem", { name: "web-tst-search001" });
+      await user.click(vm);
+      await waitFor(() => expect(vm).toHaveAttribute("aria-expanded", "true"));
+      const sub = screen.getAllByRole("menu").find((m) => m !== menu)!;
+      within(sub)
+        .getByRole("menuitem", { name: /^Power off/ })
+        .focus();
+      await user.keyboard("{Enter}");
+      const dialog = await screen.findByRole("dialog", { name: "Power off · web-tst-search001" });
+      adminState(db).day2.find((p) => p.name === "Powering off web VMs")!.reason = "Ask the on-call team first.";
+
+      await user.click(within(dialog).getByRole("button", { name: "Power off anyway" }));
+      const note = within(dialog).getByRole("note", { name: "Policy warnings" });
+      await waitFor(() => expect(note).toHaveFocus());
+      expect(note).toHaveAccessibleDescription(/Ask the on-call team first\. \(Powering off web VMs\)/);
+      expect(db.requests.some((r) => r.request.kind === "day2")).toBe(false);
+
+      await user.click(within(dialog).getByRole("button", { name: "Power off anyway" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(sent).toHaveLength(2);
+      expect(sent[1]).toMatchObject({ accepted_warnings: [expect.any(String), expect.any(String)] });
+      expect(db.requests[0]!.request.warnings).toEqual([
+        expect.objectContaining({ message: "Ask the on-call team first." }),
+      ]);
+    },
+  );
+
   it("shows a member of an owners-only project their own deployments only", { timeout: 20_000 }, async () => {
     localStorage.setItem("rvav.mock.as", "member");
     resetDb();

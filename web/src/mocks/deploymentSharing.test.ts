@@ -9,6 +9,7 @@ import type { LiveEvent, RequestDraft } from "@/lib/api/types";
 import { adminState } from "./administration";
 import { matches, type Envelope } from "./events";
 import { db, resetDb } from "./seed";
+import { warning as named } from "./warnings";
 
 const web = "prj_web";
 
@@ -81,10 +82,10 @@ describe("the mocks' deployment sharing", () => {
       api.GET("/deployments/{deploymentId}/actions", { params: { path: { deploymentId: d.id } } }),
     );
     const off = items.find((a) => a.key === "power_off" && a.resource_id === vm.id)!;
-    const warning = {
-      policy: "Powering off web VMs",
-      message: "Web Platform's VMs serve the checkout: tell the on-call team before you power one off.",
-    };
+    const warning = named(
+      "Powering off web VMs",
+      "Web Platform's VMs serve the checkout: tell the on-call team before you power one off.",
+    );
     expect(off).toMatchObject({ enabled: true, approval: { required: false }, warnings: [warning] });
 
     const run = (accept: boolean) =>
@@ -96,10 +97,35 @@ describe("the mocks' deployment sharing", () => {
       );
     await expect(run(false)).rejects.toMatchObject({
       status: 422,
-      fieldErrors: [{ field: "/accept_warnings", code: "warning", message: warning.message }],
+      fieldErrors: [{ field: "/accept_warnings", code: "warning", message: warning.message, warning }],
     });
     const req = await run(true);
     expect(req.warnings).toEqual([warning]);
+  });
+
+  it("refuses an action whose warnings changed since the menu was listed, until they are accepted", async () => {
+    as("member");
+    const d = db.deployments.find((x) => x.name === "web-tst-search")!;
+    const vm = d.resources.find((r) => r.name === "web-tst-search001")!;
+    const listed = (
+      await call(api.GET("/deployments/{deploymentId}/actions", { params: { path: { deploymentId: d.id } } }))
+    ).items.find((a) => a.key === "power_off" && a.resource_id === vm.id)!;
+    const seen = listed.warnings!.map((w) => w.id);
+    adminState(db).day2.find((p) => p.name === "Powering off web VMs")!.reason = "Ask the on-call team first.";
+    const run = (body: { accepted_warnings?: string[]; accept_warnings?: boolean }) =>
+      call(
+        api.POST("/deployments/{deploymentId}/actions", {
+          params: { path: { deploymentId: d.id }, ...key() },
+          body: { action: "power_off", resource_id: vm.id, inputs: {}, ...body },
+        }),
+      );
+    const now = named("Powering off web VMs", "Ask the on-call team first.");
+    await expect(run({ accepted_warnings: seen })).rejects.toMatchObject({
+      status: 422,
+      fieldErrors: [{ field: "/accept_warnings", code: "warning", warning: now }],
+    });
+    await expect(run({ accepted_warnings: [], accept_warnings: true })).rejects.toMatchObject({ status: 422 });
+    expect((await run({ accepted_warnings: [now.id] })).warnings).toEqual([now]);
   });
 
   it("refuses a soft allow, and a hard deny turns the action off", async () => {
@@ -209,15 +235,21 @@ describe("the mocks' deployment sharing", () => {
       lease_days: 180,
     };
     const preview = await call(api.POST("/requests/preview", { body: draft }));
-    const warning = { policy: "Lease in Development", message: "Leases in Development should be at most 90 days." };
+    const warning = named("Lease in Development", "Leases in Development should be at most 90 days.");
     expect(preview.lease).toMatchObject({ max_days: 90, enforcement: "soft" });
     expect(preview.warnings).toEqual([warning]);
-    await expect(call(api.POST("/requests", { params: key(), body: draft }))).rejects.toMatchObject({
+    await expect(
+      call(api.POST("/requests", { params: key(), body: { ...draft, accepted_warnings: [] } })),
+    ).rejects.toMatchObject({
       status: 422,
-      fieldErrors: [{ field: "/accept_warnings", code: "warning", message: warning.message }],
+      fieldErrors: [{ field: "/accept_warnings", code: "warning", message: warning.message, warning }],
     });
-    const req = await call(api.POST("/requests", { params: key(), body: { ...draft, accept_warnings: true } }));
+    const req = await call(
+      api.POST("/requests", { params: key(), body: { ...draft, accepted_warnings: [warning.id] } }),
+    );
     expect(req.warnings).toEqual([warning]);
+    const scripted = await call(api.POST("/requests", { params: key(), body: { ...draft, accept_warnings: true } }));
+    expect(scripted.warnings).toEqual([warning]);
   });
 });
 

@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { DeploymentDetail, RequestForm, UiField } from "@/lib/api/types";
+import { adminState } from "@/mocks/administration";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 import { startValues } from "./UpdatePage";
@@ -36,6 +37,47 @@ describe("the update page against the mock API", () => {
     await user.click(within(dialog).getByRole("button", { name: "Update" }));
     await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/requests\/REQ-/));
     expect(await screen.findByRole("heading", { level: 1, name: "Update · web-tst-search" })).toBeVisible();
+  }, 20_000);
+
+  it("asks again, with the focus on the warning, when a soft policy changed since Review", async () => {
+    const policy = {
+      id: "d2p_update_soft",
+      name: "Updates in office hours",
+      reason: "Tell the team before you update.",
+      priority: 1,
+      actions: ["update"],
+      roles: [],
+      condition: "true",
+      effect: "deny" as const,
+      enforcement: "soft" as const,
+      levels: [],
+      project_id: null,
+      enabled: true,
+    };
+    adminState(db).day2.push(policy);
+    const user = userEvent.setup();
+    const { router } = renderApp(`/deployments/${named("web-tst-search").id}/update`);
+    const summary = await screen.findByRole("region", { name: "What the update does" }, { timeout: 5000 });
+    await user.click(await screen.findByRole("radio", { name: /^X-Large/ }));
+    await within(summary).findByRole("list", { name: "Changes" }, { timeout: 5000 });
+    await user.click(within(summary).getByRole("button", { name: "Review the update" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Update web-tst-search?" });
+    expect(within(dialog).getByRole("note", { name: "Policy warning" })).toHaveAccessibleDescription(
+      "Tell the team before you update. (Updates in office hours)",
+    );
+
+    policy.reason = "Ask the change board first.";
+    await user.click(within(dialog).getByRole("button", { name: "Update anyway" }));
+    const note = await within(dialog).findByRole("note", { name: "Policy warning" });
+    await waitFor(() =>
+      expect(note).toHaveAccessibleDescription("Ask the change board first. (Updates in office hours)"),
+    );
+    await waitFor(() => expect(note).toHaveFocus());
+    await user.click(within(dialog).getByRole("button", { name: "Update anyway" }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/requests\/REQ-/));
+    expect(db.requests[0]!.request.warnings).toEqual([
+      expect.objectContaining({ message: "Ask the change board first." }),
+    ]);
   }, 20_000);
 
   it("repairs a failed deployment with its own inputs: its jobs run again", async () => {

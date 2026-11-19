@@ -598,13 +598,18 @@ it.
   is a `note` listing what soft policies warn about, in the request form's
   summary, the day-2 dialog, the update's review and a request's page
   (**Policy warnings**). The submit button ends in "anyway" and the draft
-  sends `accept_warnings`; a 422 at `/accept_warnings` (`refusedWarnings`)
-  shows its warnings until the draft changes. A project's **Deployment
-  sharing** panel heads its Members tab, and keeps the focus on its choice
-  once saved. Under owners only, **Requests** says it lists the person's
-  own requests and drops **Only mine**, unless they hold
-  `deployments.read_all` there. A deployment's **Lease** panel says when
-  its lease policy is soft (`lease.enforcement`).
+  sends `accepted_warnings`, the IDs of the warnings shown for those very
+  inputs (`acceptedWarnings`): the request form leaves out a preview of
+  earlier inputs. A 422 at `/accept_warnings` (`refusedWarnings`) shows
+  its warnings until the inputs change, in the form and the day-2 dialog
+  alike, and moves the focus to the note when nothing else needs fixing
+  (`onlyWarned`, `refusal`); the update's dialog asks again with them.
+  Submit buttons keep the focus while pending (`aria-disabled`). A
+  project's **Deployment sharing** panel heads its Members tab, and keeps
+  the focus on its choice once saved. Under owners only, **Requests**
+  says it lists the person's own requests and drops **Only mine**, unless
+  they hold `deployments.read_all` there. A deployment's **Lease** panel
+  says when its lease policy is soft (`lease.enforcement`).
 - **Templates and networks**: VM templates (a vCenter template, or an
   item of a content library) and sizes, with where each is offered
   (projects and environments), and the network mappings, from EfficientIP

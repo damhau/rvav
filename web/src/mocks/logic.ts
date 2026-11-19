@@ -25,6 +25,7 @@ import { can } from "@/lib/can";
 import { toText } from "@/lib/utils";
 import { adminState, leasePolicyOf, namingTemplate, placed, placementFolder, rolesGiven } from "./administration";
 import { celBool, celEval } from "./cel";
+import { warning } from "./warnings";
 import { multiParts, partVMs, previewComponents } from "./components";
 import { roleRefs } from "./roles";
 import { bound, entryVars, validationErrors } from "./formLibrary";
@@ -751,7 +752,7 @@ export function preview(
   const envName = db.environments.find((e) => e.key === draft.environment)?.name ?? draft.environment;
   const warnings =
     soft && leaseMax !== null && (draft.lease_days ?? 0) > leaseMax
-      ? [{ policy: `Lease in ${envName}`, message: `Leases in ${envName} should be at most ${leaseMax} days.` }]
+      ? [warning(`Lease in ${envName}`, `Leases in ${envName} should be at most ${leaseMax} days.`)]
       : [];
   return {
     valid: errors.length === 0,

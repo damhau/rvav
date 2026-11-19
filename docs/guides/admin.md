@@ -809,10 +809,13 @@ them under **Policy warnings**, and the audit log has
 `request.warnings.accept`. Actions on several deployments at once skip
 those whose action warns.
 
-Through the API, previews list the warnings (`warnings`). Send
-`"accept_warnings": true` to go on: without it, rvav refuses the request
+Through the API, previews list the warnings (`warnings`), each with an
+`id`. To go on despite the warnings you showed the requester, send their
+IDs in `accepted_warnings`. If rvav finds a warning that isn't listed, for
+example from a policy saved since the preview, it refuses the request
 with 422 and one error per warning, at `/accept_warnings` with the code
-`warning`.
+`warning` and the `warning` itself. A script that goes on regardless can
+send `"accept_warnings": true` instead, without a list.
 
 ### Who approves
 

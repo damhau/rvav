@@ -11,6 +11,7 @@ import (
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/policy"
+	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -146,7 +147,7 @@ func decides(global, project store.Day2Policy) string {
 // effect is what a policy that matches decides.
 func (j *judge) effect(pol store.Day2Policy, a *day2.Action) decision {
 	if strictness(pol) == 1 {
-		return decision{Policy: pol.ID, Warnings: []api.PolicyWarning{{Policy: pol.Name, Message: softMessage(pol, a)}}}
+		return decision{Policy: pol.ID, Warnings: []api.PolicyWarning{present.Warning(pol.Name, softMessage(pol, a))}}
 	}
 	switch pol.Effect {
 	case "deny":

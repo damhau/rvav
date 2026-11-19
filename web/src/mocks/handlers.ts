@@ -28,6 +28,7 @@ import {
 } from "./approvals";
 import { can } from "@/lib/can";
 import { actionsFor, runAction, type RunResult } from "./day2";
+import { unaccepted } from "./warnings";
 import { previewUpdate, runUpdate } from "./update";
 import { bus, matches } from "./events";
 import {
@@ -691,14 +692,9 @@ export const handlers = [
       );
     }
     const warnings = check.warnings ?? [];
-    if (warnings.length && !draft.accept_warnings)
-      return problem(
-        422,
-        "validation",
-        "Some values need fixing",
-        "A policy warns: submit again to go on.",
-        warnings.map((w) => ({ field: "/accept_warnings", code: "warning", message: w.message })),
-      );
+    const warned = unaccepted(warnings, draft);
+    if (warned.length)
+      return problem(422, "validation", "Some values need fixing", "A policy warns: submit again to go on.", warned);
 
     // Kept as the server keeps them: without the inputs of fields the rules hide, the secret ones sealed.
     const inputs = sealed(item.id, ruled(db, item, project, draft).inputs);

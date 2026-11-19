@@ -780,8 +780,8 @@ func (s *Service) evaluateLease(ctx context.Context, ev *Evaluation, requested *
 	switch {
 	case days == nil || pol.MaxDays == nil || *days <= *pol.MaxDays:
 	case pol.Enforcement == store.EnforcementSoft:
-		ev.Warnings = append(ev.Warnings, api.PolicyWarning{Policy: "Lease in " + ev.Env.Name,
-			Message: fmt.Sprintf("Leases in %s should be at most %d days.", ev.Env.Name, *pol.MaxDays)})
+		ev.Warnings = append(ev.Warnings, present.Warning("Lease in "+ev.Env.Name,
+			fmt.Sprintf("Leases in %s should be at most %d days.", ev.Env.Name, *pol.MaxDays)))
 	default:
 		ev.Errors = append(ev.Errors, fieldErr("/lease_days", "too_long",
 			fmt.Sprintf("Leases in %s can be at most %d days.", ev.Env.Name, *pol.MaxDays)))

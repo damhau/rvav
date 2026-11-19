@@ -4,6 +4,8 @@
 package present
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"slices"
 	"sort"
@@ -19,6 +21,13 @@ import (
 )
 
 func Ptr[T any](v T) *T { return &v }
+
+// Warning is what a soft policy warns about, named by a digest of its policy
+// and message: a requester accepts the warnings they saw (ADR-0045).
+func Warning(policy, message string) api.PolicyWarning {
+	sum := sha256.Sum256([]byte(policy + "\x00" + message))
+	return api.PolicyWarning{Id: "w" + hex.EncodeToString(sum[:8]), Policy: policy, Message: message}
+}
 
 func strPtr(s string) *string {
 	if s == "" {
@@ -169,6 +178,9 @@ func Request(r store.RequestRow, secret map[string]bool) api.Request {
 		Warnings []api.PolicyWarning `json:"warnings"`
 	}
 	if json.Unmarshal(r.Approval, &approval) == nil && len(approval.Warnings) > 0 {
+		for i, w := range approval.Warnings {
+			approval.Warnings[i] = Warning(w.Policy, w.Message)
+		}
 		out.Warnings = &approval.Warnings
 	}
 	out.DeploymentIds = Ptr(append([]string{}, r.DeploymentIDs...))

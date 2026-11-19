@@ -6136,6 +6136,9 @@ components:
           type: string
           description: Stable machine code, for example `required`, `maximum`, `name_taken`, `quota_exceeded`.
         message: { type: string }
+        warning:
+          $ref: "#/components/schemas/PolicyWarning"
+          description: With the code `warning`, the warning to accept (ADR-0045).
 
     PageInfo:
       type: object
@@ -7012,11 +7015,23 @@ components:
         accept_warnings:
           type: boolean
           description: |
-            Go on despite the warnings of soft policies (ADR-0045). Without
-            it, a request they warn about is refused (422) with the field
-            `/accept_warnings` and the code `warning`, one error per
-            warning. The warnings accepted are kept on the request and
-            audited (`request.warnings.accept`).
+            Go on despite every warning of soft policies, whatever they are
+            when the server checks (ADR-0045): for API clients and scripts.
+            Without it or `accepted_warnings`, a request they warn about is
+            refused (422) with the field `/accept_warnings` and the code
+            `warning`, one error per warning, each with the `warning`. The
+            warnings accepted are kept on the request and audited
+            (`request.warnings.accept`).
+        accepted_warnings:
+          type: array
+          maxItems: 100
+          items: { type: string, maxLength: 64 }
+          description: |
+            The `id` of each warning the requester saw and goes on despite.
+            When given, it decides, not `accept_warnings`: if the server
+            finds a warning not in it, such as a policy added since the
+            preview, the request is refused (422) at `/accept_warnings`,
+            with every warning found. Send it empty to be told of any.
 
     SavedDraftWrite:
       type: object
@@ -7084,7 +7099,7 @@ components:
         approval: { $ref: "#/components/schemas/ApprovalPreview" }
         warnings:
           type: array
-          description: What soft policies warn about; submitting needs `accept_warnings`.
+          description: What soft policies warn about; submitting needs their `id` in `accepted_warnings`, or `accept_warnings`.
           items: { $ref: "#/components/schemas/PolicyWarning" }
         lease:
           type: object
@@ -7645,7 +7660,8 @@ components:
           type: array
           description: |
             What soft policies warn about before its inputs are known. It
-            runs once the requester accepts them (`accept_warnings`).
+            runs once the requester accepts them (`accepted_warnings`); its
+            inputs may add some, such as a lease longer than allowed.
           items: { $ref: "#/components/schemas/PolicyWarning" }
 
     ActionForm:
@@ -7674,11 +7690,23 @@ components:
         accept_warnings:
           type: boolean
           description: |
-            Go on despite the warnings of soft policies (ADR-0045). Without
-            it, a request they warn about is refused (422) with the field
-            `/accept_warnings` and the code `warning`, one error per
-            warning. The warnings accepted are kept on the request and
-            audited (`request.warnings.accept`).
+            Go on despite every warning of soft policies, whatever they are
+            when the server checks (ADR-0045): for API clients and scripts.
+            Without it or `accepted_warnings`, a request they warn about is
+            refused (422) with the field `/accept_warnings` and the code
+            `warning`, one error per warning, each with the `warning`. The
+            warnings accepted are kept on the request and audited
+            (`request.warnings.accept`).
+        accepted_warnings:
+          type: array
+          maxItems: 100
+          items: { type: string, maxLength: 64 }
+          description: |
+            The `id` of each warning the requester saw and goes on despite.
+            When given, it decides, not `accept_warnings`: if the server
+            finds a warning not in it, such as a policy added since the
+            preview, the request is refused (422) at `/accept_warnings`,
+            with every warning found. Send it empty to be told of any.
 
     UpdateDraft:
       type: object
@@ -7699,11 +7727,23 @@ components:
         accept_warnings:
           type: boolean
           description: |
-            Go on despite the warnings of soft policies (ADR-0045). Without
-            it, a request they warn about is refused (422) with the field
-            `/accept_warnings` and the code `warning`, one error per
-            warning. The warnings accepted are kept on the request and
-            audited (`request.warnings.accept`).
+            Go on despite every warning of soft policies, whatever they are
+            when the server checks (ADR-0045): for API clients and scripts.
+            Without it or `accepted_warnings`, a request they warn about is
+            refused (422) with the field `/accept_warnings` and the code
+            `warning`, one error per warning, each with the `warning`. The
+            warnings accepted are kept on the request and audited
+            (`request.warnings.accept`).
+        accepted_warnings:
+          type: array
+          maxItems: 100
+          items: { type: string, maxLength: 64 }
+          description: |
+            The `id` of each warning the requester saw and goes on despite.
+            When given, it decides, not `accept_warnings`: if the server
+            finds a warning not in it, such as a policy added since the
+            preview, the request is refused (422) at `/accept_warnings`,
+            with every warning found. Send it empty to be told of any.
 
     UpdatePreview:
       type: object
@@ -7742,7 +7782,7 @@ components:
         approval: { $ref: "#/components/schemas/ApprovalPreview" }
         warnings:
           type: array
-          description: What soft day-2 policies warn about; submitting needs `accept_warnings`.
+          description: What soft day-2 policies warn about; submitting needs their `id` in `accepted_warnings`, or `accept_warnings`.
           items: { $ref: "#/components/schemas/PolicyWarning" }
 
     UpdateChange:
@@ -10351,8 +10391,14 @@ components:
     PolicyWarning:
       type: object
       description: What a soft policy warns about (ADR-0045).
-      required: [policy, message]
+      required: [id, policy, message]
       properties:
+        id:
+          type: string
+          maxLength: 64
+          description: |
+            Names the warning: the same while its policy and message are.
+            `accepted_warnings` lists it.
         policy: { type: string, description: "The policy's name.", examples: [Lease in Development] }
         message: { type: string, examples: ["Leases in Development should be at most 90 days."] }
     LeaseExpiryAction:

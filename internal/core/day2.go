@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/outbox"
+	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -201,18 +203,26 @@ func presentAction(a *day2.Action, t day2.Target, c day2.Choices, dec decision, 
 }
 
 func leaseWarning(c day2.Choices, why string) api.PolicyWarning {
-	return api.PolicyWarning{Policy: "Lease in " + c.Environment, Message: why}
+	return present.Warning("Lease in "+c.Environment, why)
 }
 
 // accepted refuses what soft policies warn about until the requester
-// accepts the warnings (ADR-0045).
-func accepted(warnings []api.PolicyWarning, accept *bool) error {
-	if len(warnings) == 0 || accept != nil && *accept {
+// accepts the warnings (ADR-0045): those they list, or any with acceptAll.
+func accepted(warnings []api.PolicyWarning, acceptAll *bool, listed *[]string) error {
+	switch {
+	case len(warnings) == 0:
+		return nil
+	case listed != nil:
+		if !slices.ContainsFunc(warnings, func(w api.PolicyWarning) bool { return !slices.Contains(*listed, w.Id) }) {
+			return nil
+		}
+	case acceptAll != nil && *acceptAll:
 		return nil
 	}
 	errs := make([]api.FieldError, len(warnings))
 	for i, w := range warnings {
 		errs[i] = fieldErr("/accept_warnings", "warning", w.Message)
+		errs[i].Warning = &w
 	}
 	return &ValidationError{Errors: errs}
 }
@@ -356,7 +366,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			dec.Chain = append(dec.Chain, level)
 		}
 	}
-	if err := accepted(dec.Warnings, draft.AcceptWarnings); err != nil {
+	if err := accepted(dec.Warnings, draft.AcceptWarnings, draft.AcceptedWarnings); err != nil {
 		return store.RequestRow{}, err
 	}
 	req := store.Request{

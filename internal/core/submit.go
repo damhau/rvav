@@ -30,7 +30,7 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 	if len(ev.Errors) > 0 {
 		return store.RequestRow{}, &ValidationError{Errors: ev.Errors}
 	}
-	if err := accepted(ev.Warnings, d.AcceptWarnings); err != nil {
+	if err := accepted(ev.Warnings, d.AcceptWarnings, d.AcceptedWarnings); err != nil {
 		return store.RequestRow{}, err
 	}
 	owner := p.User.ID

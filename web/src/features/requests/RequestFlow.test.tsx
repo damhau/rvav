@@ -107,8 +107,38 @@ describe("request form against the mock API", () => {
       "Leases in Development should be at most 90 days.",
     );
     expect(db.requests[0]!.request.warnings).toEqual([
-      { policy: "Lease in Development", message: "Leases in Development should be at most 90 days." },
+      expect.objectContaining({
+        policy: "Lease in Development",
+        message: "Leases in Development should be at most 90 days.",
+      }),
     ]);
+  }, 15000);
+
+  it("asks again, with the focus on the warning, when submitted before the preview warned", async () => {
+    adminState(db).leases.find((l) => l.environment === "dev" && !l.project_id)!.enforcement = "soft";
+    const sent: RequestDraft[] = [];
+    server.use(
+      http.post("*/api/v1/requests", async ({ request }) => {
+        sent.push((await request.clone().json()) as RequestDraft);
+        return undefined;
+      }),
+    );
+    const user = userEvent.setup();
+    const { router } = await openForm();
+    await user.click(screen.getByRole("combobox", { name: "Lease" }));
+    await user.click(await screen.findByRole("option", { name: "365 days" }));
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+
+    const summary = screen.getByRole("region", { name: "Summary" });
+    const note = await within(summary).findByRole("note", { name: "Policy warning" });
+    await waitFor(() => expect(note).toHaveFocus());
+    expect(note).toHaveAccessibleDescription("Leases in Development should be at most 90 days. (Lease in Development)");
+    expect(sent[0]).toMatchObject({ lease_days: 365, accepted_warnings: [] });
+    expect(sent[0]).not.toHaveProperty("accept_warnings");
+
+    await user.click(screen.getByRole("button", { name: "Submit request anyway" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/requests/REQ-10491"));
+    expect(sent[1]).toMatchObject({ accepted_warnings: [db.requests[0]!.request.warnings![0]!.id] });
   }, 15000);
 });
 

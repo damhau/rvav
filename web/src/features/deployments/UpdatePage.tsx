@@ -7,7 +7,7 @@ import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
 import { Page } from "@/components/common/page";
 import { EnvBadge } from "@/components/common/status";
-import { PolicyWarnings } from "@/components/common/warnings";
+import { acceptedWarnings, onlyWarned, PolicyWarnings, refusedWarnings } from "@/components/common/warnings";
 import { Badge } from "@/components/ui/badge";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
@@ -242,8 +242,9 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
   // Counts the attempts with problems: each moves the focus to the first one to fix.
   const [refusals, setRefusals] = useState(0);
   const [justification, setJustification] = useState("");
-  // The update as Review checked it, while the dialog asks to confirm it.
-  const [confirm, setConfirm] = useState<{ preview: UpdatePreview; body: UpdateDraft } | null>(null);
+  // The update as Review checked it, while the dialog asks to confirm it; refused counts the refusals
+  // that only warned, each with the warnings found then.
+  const [confirm, setConfirm] = useState<{ preview: UpdatePreview; body: UpdateDraft; refused?: number } | null>(null);
   // Why Review stopped short of the confirmation, and how often: each time moves the focus to it.
   const [blocked, setBlocked] = useState<{ title: string; reasons: string[]; at: number } | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
@@ -302,6 +303,20 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
       void navigate({ to: "/requests/$requestId", params: { requestId: r.number } });
     },
     onError: (e) => {
+      if (onlyWarned(e)) {
+        // A policy changed since Review: the dialog asks again, with the warnings found now.
+        const warnings = refusedWarnings(e);
+        setConfirm(
+          (c) =>
+            c && {
+              preview: { ...c.preview, warnings },
+              body: { ...c.body, accepted_warnings: acceptedWarnings(warnings) },
+              refused: (c.refused ?? 0) + 1,
+            },
+        );
+        void qc.invalidateQueries({ queryKey: ["deployments", "update-preview", d.id] });
+        return;
+      }
       setConfirm(null);
       setSubmitted(true);
       if (isApiError(e) && e.status === 422) {
@@ -388,7 +403,7 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
       body: {
         ...checking,
         ...(justification ? { justification } : {}),
-        ...(checked.warnings?.length ? { accept_warnings: true } : {}),
+        accepted_warnings: acceptedWarnings(checked.warnings ?? []),
       },
     });
   };
@@ -486,6 +501,7 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
         <ConfirmUpdate
           name={d.name}
           preview={confirm.preview}
+          refused={confirm.refused}
           pending={submit.isPending}
           onCancel={() => setConfirm(null)}
           onConfirm={() => submit.mutate(confirm.body)}
@@ -499,12 +515,15 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
 function ConfirmUpdate({
   name,
   preview: p,
+  refused,
   pending,
   onCancel,
   onConfirm,
 }: {
   name: string;
   preview: UpdatePreview;
+  /** Counts the refusals that only warned: each moves the focus to the warnings. */
+  refused?: number;
   pending: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -542,7 +561,7 @@ function ConfirmUpdate({
                 )}
               </ul>
             )}
-            <PolicyWarnings warnings={p.warnings ?? []} note="" />
+            <PolicyWarnings warnings={p.warnings ?? []} note="" refusal={refused} />
           </div>
         )
       }

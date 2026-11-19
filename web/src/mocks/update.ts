@@ -15,7 +15,8 @@ import type {
   VmResource,
 } from "@/lib/api/types";
 import { multiParts } from "./components";
-import { busy, requestSteps, type Op, type RunResult } from "./day2";
+import { actionWarnings, busy, requestSteps, type Op, type RunResult } from "./day2";
+import { unaccepted } from "./warnings";
 import { DOMAIN, sizes, type SizeKey } from "./inventory";
 import { approvalFor, reserveIp, ruled, vmNames } from "./logic";
 import type { Db, StoredItem } from "./seed";
@@ -334,6 +335,7 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   const reason = unavailable(db, d);
   // A failed deployment's update with its own inputs is a repair: its jobs run again.
   const same = !failed && draft.version_id === d.version.id && stable(before) === stable(inputs);
+  const warnings = reason ? [] : actionWarnings(db, "update", d);
   return {
     item,
     inputs,
@@ -355,6 +357,7 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
         delta.vm_count > 0 || delta.vcpu > 0 || delta.memory_gb > 0
           ? approvalFor(db, item, d.environment, inputs)
           : { required: false, policies: [], typical_wait_seconds: null },
+      ...(warnings.length ? { warnings } : {}),
     },
   };
 }
@@ -501,6 +504,8 @@ export function runUpdate(db: Db, d: DeploymentDetail, draft: UpdateDraft, numbe
         ? [{ field: "", code: "no_change", message: `${d.name} already has this version and these inputs.` }]
         : [];
   if (problems.length) return { error: { status: 422, title: "Some values need fixing", errors: problems } };
+  const warned = unaccepted(preview.warnings ?? [], draft);
+  if (warned.length) return { error: { status: 422, title: "Some values need fixing", errors: warned } };
 
   const approval = preview.approval.required ? preview.approval : undefined;
   const ops = p.ops((c, n) => nextNames(db, d, vmsOf(d, p.item, c), c, n));
@@ -528,6 +533,7 @@ export function runUpdate(db: Db, d: DeploymentDetail, draft: UpdateDraft, numbe
     deployment_ids: [d.id],
     current_step: null,
     progress: { done: 0, total: steps.length },
+    ...(preview.warnings?.length ? { warnings: preview.warnings } : {}),
     error: null,
   };
   deltas.set(request.id, p.delta);

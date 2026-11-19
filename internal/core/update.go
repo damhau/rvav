@@ -175,7 +175,7 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("", "no_change",
 			d.Name+" already has this version and these inputs.")}}
 	}
-	if err := accepted(u.dec.Warnings, draft.AcceptWarnings); err != nil {
+	if err := accepted(u.dec.Warnings, draft.AcceptWarnings, draft.AcceptedWarnings); err != nil {
 		return store.RequestRow{}, err
 	}
 	chain := append(slices.Clone(u.dec.Chain), ev.Chain...)

@@ -5,7 +5,9 @@
 - Extends the roles of [ADR-0034](0034-custom-roles.md), the approvers of
   [ADR-0041](0041-approvers-by-role.md) and the policy administration of
   [ADR-0020](0020-administration.md). G1.3 (#155).
-- Amended by G1.4 (#156): how approvals combine across scopes; a deployment's owner reads its requests.
+- Amended by G1.4 (#156): how approvals combine across scopes; a
+  deployment's owner reads its requests; a requester accepts the warnings
+  they saw, by ID.
 
 ## Context
 A vRA project has a **Deployment sharing** setting: on, every member sees
@@ -110,9 +112,21 @@ didn't list the deployments its holder owned in the project (B4).
   sentence. A soft allow is refused: it has nothing to warn about.
 - **The warnings are in every preview:** `RequestPreview.warnings`,
   `UpdatePreview.warnings` and `Day2Action.warnings`. Submitting,
-  running the action or updating without `accept_warnings: true` is
-  refused with 422, one error per warning at `/accept_warnings` with the
-  code `warning`, so an API client can't go on without knowing.
+  running the action or updating without accepting them is refused with
+  422, one error per warning at `/accept_warnings` with the code
+  `warning`, so an API client can't go on without knowing.
+- **A requester accepts the warnings they saw** (G1.4). Each warning has
+  an `id`, a digest of its policy and message. The request body lists the
+  IDs accepted in `accepted_warnings`; when the server finds a warning
+  not in the list, such as a policy added or changed since the preview,
+  or a lease warning that only the action's inputs bring, it refuses with
+  every warning it found, each error carrying the `warning`. The web app
+  always sends the list, and only with the warnings of the inputs it
+  previewed or was refused for. `accept_warnings: true` without a list
+  still accepts any warning, for scripts that go on regardless; a list,
+  when given, decides. A digest rather than the policy's ID: the lease
+  has no policy row of its own per extension, and a changed message
+  should be seen again.
 - **Going on is recorded:** the request keeps the warnings it went on
   despite (`Request.warnings`), and the audit log has
   `request.warnings.accept`. The request page lists them under **Policy

@@ -4557,6 +4557,8 @@ export interface components {
             /** @description Stable machine code, for example `required`, `maximum`, `name_taken`, `quota_exceeded`. */
             code?: string;
             message: string;
+            /** @description With the code `warning`, the warning to accept (ADR-0045). */
+            warning?: components["schemas"]["PolicyWarning"];
         };
         PageInfo: {
             /** @description Null on the last page. */
@@ -5184,13 +5186,23 @@ export interface components {
              */
             scheduled_at?: string;
             /**
-             * @description Go on despite the warnings of soft policies (ADR-0045). Without
-             *     it, a request they warn about is refused (422) with the field
-             *     `/accept_warnings` and the code `warning`, one error per
-             *     warning. The warnings accepted are kept on the request and
-             *     audited (`request.warnings.accept`).
+             * @description Go on despite every warning of soft policies, whatever they are
+             *     when the server checks (ADR-0045): for API clients and scripts.
+             *     Without it or `accepted_warnings`, a request they warn about is
+             *     refused (422) with the field `/accept_warnings` and the code
+             *     `warning`, one error per warning, each with the `warning`. The
+             *     warnings accepted are kept on the request and audited
+             *     (`request.warnings.accept`).
              */
             accept_warnings?: boolean;
+            /**
+             * @description The `id` of each warning the requester saw and goes on despite.
+             *     When given, it decides, not `accept_warnings`: if the server
+             *     finds a warning not in it, such as a policy added since the
+             *     preview, the request is refused (422) at `/accept_warnings`,
+             *     with every warning found. Send it empty to be told of any.
+             */
+            accepted_warnings?: string[];
         };
         SavedDraftWrite: {
             /** @description Shown in the list; the item's name when empty. */
@@ -5234,7 +5246,7 @@ export interface components {
             };
             quota: components["schemas"]["QuotaImpact"][];
             approval: components["schemas"]["ApprovalPreview"];
-            /** @description What soft policies warn about; submitting needs `accept_warnings`. */
+            /** @description What soft policies warn about; submitting needs their `id` in `accepted_warnings`, or `accept_warnings`. */
             warnings?: components["schemas"]["PolicyWarning"][];
             lease?: {
                 default_days?: number | null;
@@ -5672,7 +5684,8 @@ export interface components {
             form?: components["schemas"]["ActionForm"];
             /**
              * @description What soft policies warn about before its inputs are known. It
-             *     runs once the requester accepts them (`accept_warnings`).
+             *     runs once the requester accepts them (`accepted_warnings`); its
+             *     inputs may add some, such as a lease longer than allowed.
              */
             warnings?: components["schemas"]["PolicyWarning"][];
         };
@@ -5694,13 +5707,23 @@ export interface components {
             };
             justification?: string;
             /**
-             * @description Go on despite the warnings of soft policies (ADR-0045). Without
-             *     it, a request they warn about is refused (422) with the field
-             *     `/accept_warnings` and the code `warning`, one error per
-             *     warning. The warnings accepted are kept on the request and
-             *     audited (`request.warnings.accept`).
+             * @description Go on despite every warning of soft policies, whatever they are
+             *     when the server checks (ADR-0045): for API clients and scripts.
+             *     Without it or `accepted_warnings`, a request they warn about is
+             *     refused (422) with the field `/accept_warnings` and the code
+             *     `warning`, one error per warning, each with the `warning`. The
+             *     warnings accepted are kept on the request and audited
+             *     (`request.warnings.accept`).
              */
             accept_warnings?: boolean;
+            /**
+             * @description The `id` of each warning the requester saw and goes on despite.
+             *     When given, it decides, not `accept_warnings`: if the server
+             *     finds a warning not in it, such as a policy added since the
+             *     preview, the request is refused (422) at `/accept_warnings`,
+             *     with every warning found. Send it empty to be told of any.
+             */
+            accepted_warnings?: string[];
         };
         UpdateDraft: {
             /**
@@ -5717,13 +5740,23 @@ export interface components {
             };
             justification?: string;
             /**
-             * @description Go on despite the warnings of soft policies (ADR-0045). Without
-             *     it, a request they warn about is refused (422) with the field
-             *     `/accept_warnings` and the code `warning`, one error per
-             *     warning. The warnings accepted are kept on the request and
-             *     audited (`request.warnings.accept`).
+             * @description Go on despite every warning of soft policies, whatever they are
+             *     when the server checks (ADR-0045): for API clients and scripts.
+             *     Without it or `accepted_warnings`, a request they warn about is
+             *     refused (422) with the field `/accept_warnings` and the code
+             *     `warning`, one error per warning, each with the `warning`. The
+             *     warnings accepted are kept on the request and audited
+             *     (`request.warnings.accept`).
              */
             accept_warnings?: boolean;
+            /**
+             * @description The `id` of each warning the requester saw and goes on despite.
+             *     When given, it decides, not `accept_warnings`: if the server
+             *     finds a warning not in it, such as a policy added since the
+             *     preview, the request is refused (422) at `/accept_warnings`,
+             *     with every warning found. Send it empty to be told of any.
+             */
+            accepted_warnings?: string[];
         };
         UpdatePreview: {
             from_version: components["schemas"]["CatalogItemVersionRef"];
@@ -5743,7 +5776,7 @@ export interface components {
             /** @description The net change to the project's quotas; `adding` is negative where the update frees more than it adds. */
             quota: components["schemas"]["QuotaImpact"][];
             approval: components["schemas"]["ApprovalPreview"];
-            /** @description What soft day-2 policies warn about; submitting needs `accept_warnings`. */
+            /** @description What soft day-2 policies warn about; submitting needs their `id` in `accepted_warnings`, or `accept_warnings`. */
             warnings?: components["schemas"]["PolicyWarning"][];
         };
         UpdateChange: {
@@ -7856,6 +7889,11 @@ export interface components {
         PolicyEnforcement: "hard" | "soft";
         /** @description What a soft policy warns about (ADR-0045). */
         PolicyWarning: {
+            /**
+             * @description Names the warning: the same while its policy and message are.
+             *     `accepted_warnings` lists it.
+             */
+            id: string;
             /**
              * @description The policy's name.
              * @example Lease in Development

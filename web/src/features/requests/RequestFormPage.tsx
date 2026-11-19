@@ -7,7 +7,14 @@ import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
 import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
-import { allWarnings, PolicyWarnings, refusedWarnings, type PolicyWarning } from "@/components/common/warnings";
+import {
+  acceptedWarnings,
+  allWarnings,
+  onlyWarned,
+  PolicyWarnings,
+  refusedWarnings,
+  type PolicyWarning,
+} from "@/components/common/warnings";
 // The graph's model only: the canvas itself (React Flow) loads with RequestTopology.
 import { blueprintGraph } from "@/components/canvas/blueprint";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
@@ -176,10 +183,13 @@ function Summary({
   onRetryPreview,
   holding,
   warnings,
+  warnedRefusal,
 }: {
   preview: RequestPreview | undefined;
   /** What soft policies warn about: submitting goes on despite them. */
   warnings: PolicyWarning[];
+  /** Counts the refusals that only warned: each moves the focus to the warnings. */
+  warnedRefusal?: number;
   /** Why the summary couldn't be worked out, when it couldn't. */
   previewError: unknown;
   onRetryPreview: () => void;
@@ -351,7 +361,11 @@ function Summary({
             </div>
             {warnings.length > 0 && (
               <div className="border-t border-line px-4 py-3">
-                <PolicyWarnings warnings={warnings} note="You may submit anyway: the request keeps the warning." />
+                <PolicyWarnings
+                  warnings={warnings}
+                  note="You may submit anyway: the request keeps the warning."
+                  refusal={warnedRefusal}
+                />
               </div>
             )}
           </>
@@ -384,8 +398,16 @@ function SubmitButton({
   holding?: boolean;
   warned?: boolean;
 }) {
+  // Pending, it keeps the focus: a refusal then moves it to what to fix.
   return (
-    <Button variant="primary" type="button" onClick={onClick} disabled={pending || holding}>
+    <Button
+      variant="primary"
+      type="button"
+      onClick={() => !pending && onClick()}
+      disabled={holding}
+      aria-disabled={pending || undefined}
+      className="aria-disabled:opacity-50"
+    >
       {pending && <LoaderCircle className="animate-spin" aria-hidden />}
       {approval ? "Submit for approval" : "Submit request"}
       {warned && " anyway"}
@@ -501,7 +523,12 @@ function RequestFormBody({
   const shownPreview = checked && !caughtUp ? checked.preview : preview.data;
   // What the server warned about on submit, until the request changes.
   const [refusedWarn, setRefusedWarn] = useState<{ since: RequestDraft; warnings: PolicyWarning[] }>();
-  const warnings = allWarnings(shownPreview?.warnings, refusedWarn?.since === draft ? refusedWarn.warnings : undefined);
+  const [warnedRefusal, setWarnedRefusal] = useState(0);
+  const refusedNow = refusedWarn?.since === draft ? refusedWarn.warnings : undefined;
+  const warnings = allWarnings(shownPreview?.warnings, refusedNow);
+  // Accepted on submit: the warnings of this very request, previewed or refused, not those of an earlier one.
+  const previewedNow = !preview.isPlaceholderData && debounced === draft ? preview.data?.warnings : undefined;
+  const accepted = acceptedWarnings(allWarnings(previewedNow, refusedNow));
 
   const submit = useMutation({
     // Its variables hold the secret inputs: gone from the mutation cache once done.
@@ -528,12 +555,13 @@ function RequestFormBody({
       setSubmitted(true);
       const warned = refusedWarnings(e);
       if (warned.length) setRefusedWarn({ since: draft, warnings: warned });
+      if (onlyWarned(e)) {
+        setServerErrors(null);
+        setWarnedRefusal((n) => n + 1);
+        return;
+      }
       if (isApiError(e) && e.status === 422) {
         const rest = e.fieldErrors.filter((f) => f.field !== "/accept_warnings");
-        if (warned.length && rest.length === 0) {
-          setServerErrors(null);
-          return;
-        }
         const mapped = mapFieldErrors(rest);
         if (Object.keys(mapped.fields).length === 0 && mapped.form.length === 0)
           mapped.form.push(e.problem.detail ?? e.problem.title);
@@ -641,7 +669,7 @@ function RequestFormBody({
   };
   const submitDraft = () => {
     setSubmitted(true);
-    submit.mutate(warnings.length ? { ...draft, accept_warnings: true } : draft);
+    submit.mutate({ ...draft, accepted_warnings: accepted });
   };
   const stepped = form.ui_schema.layout.kind === "wizard";
   const holding = sendingText(useSendingFiles());
@@ -860,6 +888,7 @@ function RequestFormBody({
           composite={item.type === "composite"}
           holding={holding}
           warnings={warnings}
+          warnedRefusal={warnedRefusal}
         />
       </aside>
     </div>

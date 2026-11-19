@@ -21,6 +21,7 @@ import { adminState, leasePolicyOf } from "./administration";
 import { celBool } from "./cel";
 import { userGroups } from "./logic";
 import type { Db, StoredRequest } from "./seed";
+import { unaccepted, warning } from "./warnings";
 
 type PolicyWarning = components["schemas"]["PolicyWarning"];
 
@@ -799,20 +800,26 @@ function warningsFor(db: Db, a: MockAction, d: DeploymentDetail, leaseWhy: strin
   const out: PolicyWarning[] = [];
   const pol = deciding(db, a, d, vm);
   if (pol && pol.effect !== "allow" && pol.enforcement === "soft")
-    out.push({
-      policy: pol.name,
-      message:
+    out.push(
+      warning(
+        pol.name,
         pol.reason ||
-        (pol.effect === "deny"
-          ? `${a.name} goes against the policy ${pol.name}.`
-          : `${a.name} would need approval under ${pol.name}.`),
-    });
+          (pol.effect === "deny"
+            ? `${a.name} goes against the policy ${pol.name}.`
+            : `${a.name} would need approval under ${pol.name}.`),
+      ),
+    );
   if (leaseWhy && leaseSoft(db, d))
-    out.push({
-      policy: `Lease in ${db.environments.find((e) => e.key === d.environment)?.name ?? d.environment}`,
-      message: leaseWhy,
-    });
+    out.push(
+      warning(`Lease in ${db.environments.find((e) => e.key === d.environment)?.name ?? d.environment}`, leaseWhy),
+    );
   return out;
+}
+
+/** What soft day-2 policies warn about the deployment's action, such as an update. */
+export function actionWarnings(db: Db, key: string, d: DeploymentDetail): PolicyWarning[] {
+  const a = catalogue.find((x) => x.key === key && x.deployment);
+  return a ? warningsFor(db, a, d, "") : [];
 }
 
 const leaseSoft = (db: Db, d: DeploymentDetail) =>
@@ -930,7 +937,14 @@ export interface RunResult {
 export function runAction(
   db: Db,
   d: DeploymentDetail,
-  draft: { action: string; resource_id?: string; inputs?: Inputs; justification?: string; accept_warnings?: boolean },
+  draft: {
+    action: string;
+    resource_id?: string;
+    inputs?: Inputs;
+    justification?: string;
+    accept_warnings?: boolean;
+    accepted_warnings?: string[];
+  },
   number: string,
 ): RunResult {
   const vm = d.resources.find((r): r is VmResource => r.id === draft.resource_id && r.type === "vsphere.vm");
@@ -963,14 +977,8 @@ export function runAction(
 
   const why = approvalReason(a, d, inputs);
   const warnings = warningsFor(db, a, d, a.key === "extend_lease" ? why : "");
-  if (warnings.length && !draft.accept_warnings)
-    return {
-      error: {
-        status: 422,
-        title: "Some values need fixing",
-        errors: warnings.map((w) => ({ field: "/accept_warnings", code: "warning", message: w.message })),
-      },
-    };
+  const warned = unaccepted(warnings, draft);
+  if (warned.length) return { error: { status: 422, title: "Some values need fixing", errors: warned } };
   const needsApproval = why !== "" && !(a.key === "extend_lease" && leaseSoft(db, d));
   const marc: UserRef = db.users.find((u) => u.id === "usr_mkeller")!;
   const steps = requestSteps(

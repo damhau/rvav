@@ -18,7 +18,14 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { allWarnings, PolicyWarnings, refusedWarnings, type PolicyWarning } from "@/components/common/warnings";
+import {
+  acceptedWarnings,
+  allWarnings,
+  onlyWarned,
+  PolicyWarnings,
+  refusedWarnings,
+  type PolicyWarning,
+} from "@/components/common/warnings";
 import { Input, Textarea } from "@/components/ui/input";
 import { FormRenderer } from "@/forms/FormRenderer";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
@@ -99,8 +106,10 @@ export function ActionDialog({
   const [typed, setTyped] = useState("");
   const [justification, setJustification] = useState("");
   const [errors, setErrors] = useState<MappedErrors | null>(null);
-  // What the server warned about on submit, such as an extension longer than a soft lease allows.
+  // What the server warned about on submit, such as an extension longer than a soft lease allows, until
+  // the inputs change.
   const [refused, setRefused] = useState<PolicyWarning[]>([]);
+  const [warnedRefusal, setWarnedRefusal] = useState(0);
   const warnings = allWarnings(action.warnings, refused);
   const [key, setKey] = useState(newIdempotencyKey);
   const run = useRunAction(deployment.id);
@@ -113,7 +122,7 @@ export function ActionDialog({
       ...(action.resource_id ? { resource_id: action.resource_id } : {}),
       inputs: values,
       ...(justification.trim() ? { justification: justification.trim() } : {}),
-      ...(warnings.length ? { accept_warnings: true } : {}),
+      accepted_warnings: acceptedWarnings(warnings),
     };
     run.mutate(
       { draft, key },
@@ -126,6 +135,11 @@ export function ActionDialog({
           setKey(newIdempotencyKey());
           const warned = refusedWarnings(e);
           if (warned.length) setRefused(warned);
+          if (onlyWarned(e)) {
+            setErrors(null);
+            setWarnedRefusal((n) => n + 1);
+            return;
+          }
           if (isApiError(e) && e.status === 422) {
             setErrors(mapFieldErrors(e.fieldErrors.filter((f) => f.field !== "/accept_warnings")));
             return;
@@ -167,7 +181,7 @@ export function ActionDialog({
           className="flex flex-col gap-3 px-4 py-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (ready) submit();
+            if (ready && !run.isPending) submit();
           }}
         >
           {action.approval.required && (
@@ -179,7 +193,7 @@ export function ActionDialog({
               <span>Needs approval: {action.approval.reasons.join("; ")}. It starts once approved.</span>
             </p>
           )}
-          <PolicyWarnings warnings={warnings} />
+          <PolicyWarnings warnings={warnings} refusal={warnedRefusal} />
           {mustType && (
             <div className="flex flex-col gap-1.5 text-secondary">
               <label htmlFor="action-confirm">
@@ -201,6 +215,7 @@ export function ActionDialog({
               onChange={(name, value) => {
                 setValues((v) => ({ ...v, [name]: value }));
                 setErrors(null);
+                if (!Object.is(values[name], value)) setRefused([]);
               }}
               errors={errors?.fields}
               ctx={{ versionId: "", projectId: deployment.project.id, environment: deployment.environment }}
@@ -231,7 +246,9 @@ export function ActionDialog({
             <Button
               type="submit"
               variant={action.destructive ? "danger-solid" : "primary"}
-              disabled={!ready || run.isPending}
+              disabled={!ready}
+              aria-disabled={run.isPending || undefined}
+              className="aria-disabled:opacity-50"
             >
               {action.approval.required ? "Ask for approval" : action.name}
               {warnings.length > 0 && " anyway"}
