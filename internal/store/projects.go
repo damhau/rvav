@@ -180,12 +180,12 @@ func (s *Store) NetworkSubnets(ctx context.Context) (map[string]NetworkSubnet, e
 // LeasePolicy returns the project's lease policy for the environment, or
 // the environment's.
 func (s *Store) LeasePolicy(ctx context.Context, projectID, environment string) (LeasePolicy, error) {
-	rows, _ := s.Pool.Query(ctx, `select environment, project_id, default_days, max_days, max_extensions, grace_days, expiry_action
-		from lease_policies where environment = $1 and (project_id = $2 or project_id is null)
+	rows, _ := s.Pool.Query(ctx, `select environment, project_id, default_days, max_days, max_extensions, grace_days, expiry_action,
+		enforcement from lease_policies where environment = $1 and (project_id = $2 or project_id is null)
 		order by project_id nulls last limit 1`, environment, projectID)
 	p, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[LeasePolicy])
 	if err == pgx.ErrNoRows {
-		return LeasePolicy{Environment: environment, ExpiryAction: "notify_only"}, nil
+		return LeasePolicy{Environment: environment, ExpiryAction: "notify_only", Enforcement: EnforcementHard}, nil
 	}
 	return p, err
 }

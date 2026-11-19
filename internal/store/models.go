@@ -126,6 +126,7 @@ type LeasePolicy struct {
 	MaxExtensions int     `db:"max_extensions"`
 	GraceDays     int     `db:"grace_days"`
 	ExpiryAction  string  `db:"expiry_action"`
+	Enforcement   string  `db:"enforcement"`
 }
 
 type Category struct {
@@ -496,14 +497,15 @@ type Event struct {
 
 // Day2Policy decides who may run which day-2 action, and whether it needs approval.
 type Day2Policy struct {
-	ID        string          `db:"id"`
-	Name      string          `db:"name"`
-	Reason    string          `db:"reason"`
-	Priority  int             `db:"priority"`
-	Actions   []string        `db:"actions"`
-	Roles     []string        `db:"roles"`
-	Condition string          `db:"condition"`
-	Effect    string          `db:"effect"`
-	Levels    json.RawMessage `db:"levels"`
-	ProjectID *string         `db:"project_id"`
+	ID          string          `db:"id"`
+	Name        string          `db:"name"`
+	Reason      string          `db:"reason"`
+	Priority    int             `db:"priority"`
+	Actions     []string        `db:"actions"`
+	Roles       []string        `db:"roles"`
+	Condition   string          `db:"condition"`
+	Effect      string          `db:"effect"`
+	Levels      json.RawMessage `db:"levels"`
+	ProjectID   *string         `db:"project_id"`
+	Enforcement string          `db:"enforcement"`
 }

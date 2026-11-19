@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 
 	"github.com/jackc/pgx/v5"
@@ -53,7 +54,7 @@ type AdminDay2Policy struct {
 	Enabled bool `db:"enabled"`
 }
 
-const day2PolicyCols = `id, name, reason, priority, actions, roles, condition, effect, levels, project_id, enabled`
+const day2PolicyCols = `id, name, reason, priority, actions, roles, condition, effect, levels, project_id, enabled, enforcement`
 
 func (s *Store) AllDay2Policies(ctx context.Context) ([]AdminDay2Policy, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+day2PolicyCols+` from day2_policies order by priority, id`)
@@ -68,12 +69,12 @@ func (s *Store) GetDay2Policy(ctx context.Context, id string) (AdminDay2Policy, 
 
 func (s *Store) SaveDay2Policy(ctx context.Context, p AdminDay2Policy) error {
 	_, err := s.Pool.Exec(ctx, `insert into day2_policies (id, name, reason, priority, actions, roles, condition, effect, levels,
-		project_id, enabled) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		project_id, enabled, enforcement) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		on conflict (id) do update set name = excluded.name, reason = excluded.reason, priority = excluded.priority,
 		actions = excluded.actions, roles = excluded.roles, condition = excluded.condition, effect = excluded.effect,
-		levels = excluded.levels, project_id = excluded.project_id, enabled = excluded.enabled`,
+		levels = excluded.levels, project_id = excluded.project_id, enabled = excluded.enabled, enforcement = excluded.enforcement`,
 		p.ID, p.Name, p.Reason, p.Priority, nonNil(p.Actions), nonNil(p.Roles), p.Condition, p.Effect, jsonOr(p.Levels, "[]"),
-		p.ProjectID, p.Enabled)
+		p.ProjectID, p.Enabled, cmp.Or(p.Enforcement, EnforcementHard))
 	return err
 }
 
@@ -87,19 +88,20 @@ func (s *Store) DeleteDay2Policy(ctx context.Context, id string) error {
 
 // LeasePolicies lists environments' policies and projects' overrides.
 func (s *Store) LeasePolicies(ctx context.Context) ([]LeasePolicy, error) {
-	rows, _ := s.Pool.Query(ctx, `select environment, project_id, default_days, max_days, max_extensions, grace_days, expiry_action
-		from lease_policies order by environment, project_id nulls first`)
+	rows, _ := s.Pool.Query(ctx, `select environment, project_id, default_days, max_days, max_extensions, grace_days, expiry_action,
+		enforcement from lease_policies order by environment, project_id nulls first`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[LeasePolicy])
 }
 
 // SetLeasePolicy sets an environment's policy or a project's override.
 func (s *Store) SetLeasePolicy(ctx context.Context, l LeasePolicy) error {
 	_, err := s.Pool.Exec(ctx, `insert into lease_policies (environment, project_id, default_days, max_days, max_extensions,
-		grace_days, expiry_action) values ($1, $2, $3, $4, $5, $6, $7)
+		grace_days, expiry_action, enforcement) values ($1, $2, $3, $4, $5, $6, $7, $8)
 		on conflict (environment, (coalesce(project_id, ''))) do update set default_days = excluded.default_days,
 		max_days = excluded.max_days, max_extensions = excluded.max_extensions, grace_days = excluded.grace_days,
-		expiry_action = excluded.expiry_action`,
-		l.Environment, l.ProjectID, l.DefaultDays, l.MaxDays, l.MaxExtensions, l.GraceDays, l.ExpiryAction)
+		expiry_action = excluded.expiry_action, enforcement = excluded.enforcement`,
+		l.Environment, l.ProjectID, l.DefaultDays, l.MaxDays, l.MaxExtensions, l.GraceDays, l.ExpiryAction,
+		cmp.Or(l.Enforcement, EnforcementHard))
 	return err
 }
 

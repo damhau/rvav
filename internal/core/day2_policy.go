@@ -21,6 +21,9 @@ type decision struct {
 	// Chain is the approval it needs, if any.
 	Chain  []ChainLevel
 	Policy string
+	// Warnings are what soft policies warn about: it runs once the
+	// requester accepts them (ADR-0045).
+	Warnings []api.PolicyWarning
 }
 
 // judge applies the day-2 policies of one deployment for one principal.
@@ -108,20 +111,26 @@ func (j *judge) decideQuota(a *day2.Action, t day2.Target, inputs map[string]any
 }
 
 // strictness orders day-2 effects: a deny refuses more than an approval,
-// which holds back more than an allow.
+// which holds back more than a soft policy's warning, more than an allow.
 func strictness(pol store.Day2Policy) int {
+	if pol.Enforcement == store.EnforcementSoft && pol.Effect != "allow" {
+		return 1
+	}
 	return map[string]int{"allow": 0, "approval": 2, "deny": 3}[pol.Effect]
 }
 
 // overrides says whether a global policy decides in place of the project's
 // policy tried before it: a project's policy can't loosen a hard global
-// one (ADR-0045).
+// one, and may a soft one (ADR-0045).
 func overrides(global, project store.Day2Policy) bool {
-	return strictness(global) > strictness(project)
+	return global.Enforcement != store.EnforcementSoft && strictness(global) > strictness(project)
 }
 
 // effect is what a policy that matches decides.
 func (j *judge) effect(pol store.Day2Policy, a *day2.Action) decision {
+	if strictness(pol) == 1 {
+		return decision{Policy: pol.ID, Warnings: []api.PolicyWarning{{Policy: pol.Name, Message: softMessage(pol, a)}}}
+	}
 	switch pol.Effect {
 	case "deny":
 		reason := pol.Reason
@@ -140,6 +149,25 @@ func (j *judge) effect(pol store.Day2Policy, a *day2.Action) decision {
 		return decision{Chain: chain, Policy: pol.ID}
 	}
 	return decision{Policy: pol.ID}
+}
+
+// effectName is the policy's effect as explained: a soft one warns.
+func effectName(pol store.Day2Policy) string {
+	if strictness(pol) == 1 {
+		return "a warning (soft " + pol.Effect + ")"
+	}
+	return pol.Effect
+}
+
+// softMessage is what a soft day-2 policy warns about.
+func softMessage(pol store.Day2Policy, a *day2.Action) string {
+	if pol.Reason != "" {
+		return pol.Reason
+	}
+	if pol.Effect == "deny" {
+		return a.Name + " goes against the policy " + pol.Name + "."
+	}
+	return a.Name + " would need approval under " + pol.Name + "."
 }
 
 // reasons are why the decision needs approval.

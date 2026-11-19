@@ -26,15 +26,25 @@ func init() {
 			help := fmt.Sprintf("%d of %d extensions used.", t.Lease.ExtensionsUsed, c.LeaseMaxExtensions)
 			if c.LeaseMaxDays != nil {
 				days = min(days, *c.LeaseMaxDays)
-				help = fmt.Sprintf("Up to %d days without approval. %s", *c.LeaseMaxDays, help)
+				within := "without approval"
+				if c.LeaseSoft {
+					within = "without a warning"
+				}
+				help = fmt.Sprintf("Up to %d days %s. %s", *c.LeaseMaxDays, within, help)
 			}
 			return form("New lease", number("days", "Days from now", help, 1, 3650, days))
 		},
 		Approval: func(t Target, c Choices, in map[string]any) string {
 			if t.Lease.ExtensionsUsed >= c.LeaseMaxExtensions {
+				if c.LeaseSoft {
+					return fmt.Sprintf("All %d extensions the lease policy allows are used.", c.LeaseMaxExtensions)
+				}
 				return fmt.Sprintf("All %d extensions without approval are used", c.LeaseMaxExtensions)
 			}
 			if days := intInput(in, "days"); in != nil && c.LeaseMaxDays != nil && days > *c.LeaseMaxDays {
+				if c.LeaseSoft {
+					return fmt.Sprintf("Longer than the %d days the lease policy allows.", *c.LeaseMaxDays)
+				}
 				return fmt.Sprintf("Longer than the %d days allowed without approval", *c.LeaseMaxDays)
 			}
 			return ""

@@ -6991,6 +6991,14 @@ components:
           type: string
           format: date-time
           description: Start later instead of now. Approval, if needed, still happens first.
+        accept_warnings:
+          type: boolean
+          description: |
+            Go on despite the warnings of soft policies (ADR-0045). Without
+            it, a request they warn about is refused (422) with the field
+            `/accept_warnings` and the code `warning`, one error per
+            warning. The warnings accepted are kept on the request and
+            audited (`request.warnings.accept`).
 
     SavedDraftWrite:
       type: object
@@ -7056,6 +7064,10 @@ components:
           type: array
           items: { $ref: "#/components/schemas/QuotaImpact" }
         approval: { $ref: "#/components/schemas/ApprovalPreview" }
+        warnings:
+          type: array
+          description: What soft policies warn about; submitting needs `accept_warnings`.
+          items: { $ref: "#/components/schemas/PolicyWarning" }
         lease:
           type: object
           properties:
@@ -7297,6 +7309,10 @@ components:
           additionalProperties: true
         count: { type: integer }
         justification: { type: string }
+        warnings:
+          type: array
+          description: The soft policies' warnings the requester accepted to go on.
+          items: { $ref: "#/components/schemas/PolicyWarning" }
         submitted_at: { type: string, format: date-time }
         scheduled_at: { type: [string, "null"], format: date-time }
         started_at: { type: [string, "null"], format: date-time }
@@ -7604,6 +7620,12 @@ components:
               type: string
               description: Text the user must type to confirm, for example the VM name.
         form: { $ref: "#/components/schemas/ActionForm" }
+        warnings:
+          type: array
+          description: |
+            What soft policies warn about before its inputs are known. It
+            runs once the requester accepts them (`accept_warnings`).
+          items: { $ref: "#/components/schemas/PolicyWarning" }
 
     ActionForm:
       type: object
@@ -7628,6 +7650,14 @@ components:
           type: object
           additionalProperties: true
         justification: { type: string, maxLength: 2000 }
+        accept_warnings:
+          type: boolean
+          description: |
+            Go on despite the warnings of soft policies (ADR-0045). Without
+            it, a request they warn about is refused (422) with the field
+            `/accept_warnings` and the code `warning`, one error per
+            warning. The warnings accepted are kept on the request and
+            audited (`request.warnings.accept`).
 
     UpdateDraft:
       type: object
@@ -7645,6 +7675,14 @@ components:
             Every input, as on a new request; the deployment's are in
             `getDeployment`. Secret fields are given again.
         justification: { type: string, maxLength: 2000 }
+        accept_warnings:
+          type: boolean
+          description: |
+            Go on despite the warnings of soft policies (ADR-0045). Without
+            it, a request they warn about is refused (422) with the field
+            `/accept_warnings` and the code `warning`, one error per
+            warning. The warnings accepted are kept on the request and
+            audited (`request.warnings.accept`).
 
     UpdatePreview:
       type: object
@@ -7681,6 +7719,10 @@ components:
           description: The net change to the project's quotas; `adding` is negative where the update frees more than it adds.
           items: { $ref: "#/components/schemas/QuotaImpact" }
         approval: { $ref: "#/components/schemas/ApprovalPreview" }
+        warnings:
+          type: array
+          description: What soft day-2 policies warn about; submitting needs `accept_warnings`.
+          items: { $ref: "#/components/schemas/PolicyWarning" }
 
     UpdateChange:
       type: object
@@ -10242,6 +10284,23 @@ components:
         max_extensions: { type: integer, minimum: 0 }
         grace_days: { type: integer, minimum: 0 }
         expiry_action: { $ref: "#/components/schemas/LeaseExpiryAction" }
+        enforcement:
+          $ref: "#/components/schemas/PolicyEnforcement"
+          description: |
+            Hard (when absent): a request beyond `max_days` is refused, and
+            an extension beyond it or `max_extensions` asks the project's
+            approvers. Soft: both warn the requester, who may go on. A
+            project admin's override of a hard policy stays hard.
+    PolicyEnforcement:
+      type: string
+      enum: [hard, soft]
+    PolicyWarning:
+      type: object
+      description: What a soft policy warns about (ADR-0045).
+      required: [policy, message]
+      properties:
+        policy: { type: string, description: "The policy's name.", examples: [Lease in Development] }
+        message: { type: string, examples: ["Leases in Development should be at most 90 days."] }
     LeaseExpiryAction:
       type: string
       description: "At the end of a lease: power off, then delete after the grace period; delete; or only tell the owner."
@@ -10339,6 +10398,12 @@ components:
         levels: { type: array, items: { $ref: "#/components/schemas/ApprovalLevel" } }
         project_id: { type: [string, "null"] }
         enabled: { type: boolean, default: true }
+        enforcement:
+          $ref: "#/components/schemas/PolicyEnforcement"
+          description: |
+            Hard (when absent) denies or asks for approval. Soft, for a deny
+            or an approval policy only, warns the requester, who may go on.
+            A soft global policy doesn't win over a project's (ADR-0045).
     Day2Policy:
       allOf:
         - $ref: "#/components/schemas/Day2PolicyWrite"

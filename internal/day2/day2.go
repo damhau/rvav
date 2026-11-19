@@ -83,9 +83,11 @@ type Choices struct {
 	Members []api.Option
 	// Projects the deployment may move to; disabled ones say why not.
 	Projects []api.Option
-	// The lease policy that applies (ADR-0014).
+	// The lease policy that applies (ADR-0014); LeaseSoft when going
+	// beyond it warns instead of asking for approval (ADR-0045).
 	LeaseDefaultDays, LeaseMaxDays *int
 	LeaseMaxExtensions             int
+	LeaseSoft                      bool
 }
 
 // Op is one step of a day-2 request. The workflow runs Op with Args.

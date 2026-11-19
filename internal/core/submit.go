@@ -29,6 +29,9 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 	if len(ev.Errors) > 0 {
 		return store.RequestRow{}, &ValidationError{Errors: ev.Errors}
 	}
+	if err := accepted(ev.Warnings, d.AcceptWarnings); err != nil {
+		return store.RequestRow{}, err
+	}
 	owner := p.User.ID
 	if ev.OnBehalfOf != nil {
 		owner = ev.OnBehalfOf.ID
@@ -143,8 +146,12 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 		req.Plan, _ = json.Marshal(plan)
 		req.Inputs, _ = json.Marshal(ev.Inputs)
 		req.Approval, _ = json.Marshal(ev.Approval)
+		req.Approval = withWarnings(req.Approval, ev.Warnings)
 
 		if err := s.Store.InsertRequest(ctx, tx, req); err != nil {
+			return err
+		}
+		if err := s.auditWarnings(ctx, tx, p, req, ev.Warnings); err != nil {
 			return err
 		}
 		if err := s.attachFiles(ctx, tx, req.ID, p.User.ID, ev); err != nil {

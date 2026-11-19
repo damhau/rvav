@@ -165,6 +165,12 @@ func Request(r store.RequestRow, secret map[string]bool) api.Request {
 		}
 		out.OnBehalfOf = Ptr(UserRef(*r.OnBehalfOfID, *r.OnBehalfOfName, email))
 	}
+	var approval struct {
+		Warnings []api.PolicyWarning `json:"warnings"`
+	}
+	if json.Unmarshal(r.Approval, &approval) == nil && len(approval.Warnings) > 0 {
+		out.Warnings = &approval.Warnings
+	}
 	out.DeploymentIds = Ptr(append([]string{}, r.DeploymentIDs...))
 	out.Progress.Done, out.Progress.Total = r.StepsDone, r.StepsTotal
 	if r.CurrentStepID != nil && r.CurrentStepTitle != nil {

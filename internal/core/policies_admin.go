@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/policy"
+	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -95,7 +97,19 @@ func (s *Service) SetProjectQuotas(ctx context.Context, p *auth.Principal, proje
 
 func presentLeasePolicy(l store.LeasePolicy) api.LeasePolicy {
 	return api.LeasePolicy{Environment: l.Environment, ProjectId: l.ProjectID, DefaultDays: l.DefaultDays, MaxDays: l.MaxDays,
-		MaxExtensions: l.MaxExtensions, GraceDays: l.GraceDays, ExpiryAction: api.LeaseExpiryAction(l.ExpiryAction)}
+		MaxExtensions: l.MaxExtensions, GraceDays: l.GraceDays, ExpiryAction: api.LeaseExpiryAction(l.ExpiryAction),
+		Enforcement: present.Ptr(api.PolicyEnforcement(cmp.Or(l.Enforcement, store.EnforcementHard)))}
+}
+
+// enforcement checks a policy's enforcement, hard when not given.
+func enforcement(e *api.PolicyEnforcement) (string, []api.FieldError) {
+	switch {
+	case e == nil || *e == api.PolicyEnforcementHard:
+		return store.EnforcementHard, nil
+	case *e == api.PolicyEnforcementSoft:
+		return store.EnforcementSoft, nil
+	}
+	return "", []api.FieldError{fieldErr("/enforcement", "enum", "hard or soft.")}
 }
 
 // readsPolicies: administrators read every policy; project admins the
@@ -178,11 +192,12 @@ func (s *Service) SetLeasePolicy(ctx context.Context, p *auth.Principal, l api.L
 	default:
 		errs = append(errs, fieldErr("/expiry_action", "enum", "power_off_then_delete, delete or notify_only."))
 	}
-	if len(errs) > 0 {
+	enf, enfErrs := enforcement(l.Enforcement)
+	if errs = append(errs, enfErrs...); len(errs) > 0 {
 		return api.LeasePolicy{}, &ValidationError{Errors: errs}
 	}
 	row := store.LeasePolicy{Environment: l.Environment, ProjectID: project, DefaultDays: l.DefaultDays, MaxDays: l.MaxDays,
-		MaxExtensions: l.MaxExtensions, GraceDays: l.GraceDays, ExpiryAction: string(l.ExpiryAction)}
+		MaxExtensions: l.MaxExtensions, GraceDays: l.GraceDays, ExpiryAction: string(l.ExpiryAction), Enforcement: enf}
 	if err := s.Store.SetLeasePolicy(ctx, row); err != nil {
 		return api.LeasePolicy{}, err
 	}
@@ -218,6 +233,9 @@ func (s *Service) looserLease(ctx context.Context, env store.Environment, l api.
 	rank := map[string]int{"notify_only": 0, "power_off_then_delete": 1, "delete": 2}
 	if rank[string(l.ExpiryAction)] < rank[e.ExpiryAction] {
 		errs = append(errs, fieldErr("/expiry_action", "looser", env.Name+"'s leases end with "+strings.ReplaceAll(e.ExpiryAction, "_", " ")+"."))
+	}
+	if l.Enforcement != nil && *l.Enforcement == api.PolicyEnforcementSoft && e.Enforcement != store.EnforcementSoft {
+		errs = append(errs, fieldErr("/enforcement", "looser", env.Name+"'s lease is hard: its overrides are too."))
 	}
 	return errs, nil
 }
@@ -497,7 +515,7 @@ func (s *Service) DeleteApprovalPolicy(ctx context.Context, p *auth.Principal, i
 func presentDay2Policy(pol store.AdminDay2Policy) api.Day2Policy {
 	out := api.Day2Policy{Id: pol.ID, Name: pol.Name, Reason: pol.Reason, Priority: pol.Priority, Actions: nonNilStrings(pol.Actions),
 		Roles: nonNilStrings(pol.Roles), Condition: pol.Condition, Effect: api.Day2PolicyEffect(pol.Effect), ProjectId: pol.ProjectID,
-		Enabled: pol.Enabled}
+		Enabled: pol.Enabled, Enforcement: present.Ptr(api.PolicyEnforcement(cmp.Or(pol.Enforcement, store.EnforcementHard)))}
 	var levels []api.ApprovalLevel
 	if json.Unmarshal(pol.Levels, &levels) == nil && len(levels) > 0 {
 		out.Levels = &levels
@@ -579,6 +597,11 @@ func (s *Service) SaveDay2Policy(ctx context.Context, p *auth.Principal, id stri
 	default:
 		errs = append(errs, fieldErr("/effect", "enum", "allow, deny or approval."))
 	}
+	enf, enfErrs := enforcement(w.Enforcement)
+	errs = append(errs, enfErrs...)
+	if enf == store.EnforcementSoft && w.Effect == api.Day2PolicyWriteEffectAllow {
+		errs = append(errs, fieldErr("/enforcement", "invalid", "Only a deny or an approval policy can be soft: it warns instead."))
+	}
 	if errs = append(errs, projErrs...); len(errs) > 0 {
 		return api.Day2Policy{}, &ValidationError{Errors: errs}
 	}
@@ -593,6 +616,7 @@ func (s *Service) SaveDay2Policy(ctx context.Context, p *auth.Principal, id stri
 	pol := store.AdminDay2Policy{Enabled: w.Enabled == nil || *w.Enabled}
 	pol.ID, pol.Name, pol.Reason, pol.Priority = id, strings.TrimSpace(w.Name), deref(w.Reason), 100
 	pol.Actions, pol.Roles, pol.Condition, pol.Effect, pol.Levels, pol.ProjectID = actions, roles, condition, string(w.Effect), raw, project
+	pol.Enforcement = enf
 	if w.Priority != nil {
 		pol.Priority = *w.Priority
 	}
@@ -732,6 +756,9 @@ func (s *Service) explainLease(ctx context.Context, proj store.Project, env stor
 			msg += fmt.Sprintf(", up to %d with up to %d extensions", *l.MaxDays, l.MaxExtensions)
 		}
 		msg += "; at the end: " + strings.ReplaceAll(l.ExpiryAction, "_", " ") + "."
+		if l.Enforcement == store.EnforcementSoft {
+			msg += " Going beyond it warns the requester, who may go on."
+		}
 	}
 	dec.Outcome = &msg
 	return dec, nil
@@ -915,7 +942,7 @@ func (s *Service) explainDay2(ctx context.Context, as *auth.Principal, proj stor
 				c.Why = "Its condition " + pol.Condition + " is false here."
 			case first == nil:
 				c.Applies, first, firstAt, decided = true, &pol, len(dec.Considered), pol.ProjectID == nil
-				c.Why = "Decides: " + pol.Effect + "."
+				c.Why = "Decides: " + effectName(pol.Day2Policy) + "."
 			case pol.ProjectID != nil:
 				c.Why = "An earlier policy decided."
 			default:
@@ -936,6 +963,9 @@ func (s *Service) explainDay2(ctx context.Context, as *auth.Principal, proj stor
 		dec.DecidedBy = &first.Name
 		msg := map[string]string{"allow": a.Name + " is allowed.", "deny": a.Name + " is denied: " + orDefault(first.Reason, "no reason given") + ".",
 			"approval": a.Name + " needs approval."}[first.Effect]
+		if strictness(first.Day2Policy) == 1 {
+			msg = a.Name + " runs once the requester accepts a warning: " + softMessage(first.Day2Policy, a)
+		}
 		dec.Outcome = &msg
 	} else {
 		msg := "No policy matches: " + a.Name + " is denied."

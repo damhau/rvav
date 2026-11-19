@@ -7,6 +7,10 @@ import "context"
 const (
 	SharingAllMembers = "all_members"
 	SharingOwnerOnly  = "owner_only"
+	// EnforcementSoft policies warn instead of denying or asking for
+	// approval (ADR-0045).
+	EnforcementSoft = "soft"
+	EnforcementHard = "hard"
 )
 
 // OwnerOnlyProjects lists the projects whose deployments show to their

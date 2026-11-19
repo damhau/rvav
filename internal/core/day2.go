@@ -88,6 +88,7 @@ func (s *Service) choices(ctx context.Context, p *auth.Principal, d store.Deploy
 			return c, err
 		}
 		c.LeaseDefaultDays, c.LeaseMaxDays, c.LeaseMaxExtensions = lease.DefaultDays, lease.MaxDays, lease.MaxExtensions
+		c.LeaseSoft = lease.Enforcement == store.EnforcementSoft
 		if c.Members, err = s.memberChoices(ctx, d); err != nil {
 			return c, err
 		}
@@ -145,7 +146,9 @@ func (s *Service) Actions(ctx context.Context, p *auth.Principal, deploymentID s
 			}
 			dec := j.decide(a, t, nil)
 			if a.Approval != nil && dec.Denied == "" {
-				if why := a.Approval(t, c, nil); why != "" {
+				if why := a.Approval(t, c, nil); why != "" && c.LeaseSoft {
+					dec.Warnings = append(dec.Warnings, leaseWarning(c, why))
+				} else if why != "" {
 					dec.Chain = append(dec.Chain, ChainLevel{Name: "Project approvers", Reasons: []string{why}})
 				}
 			}
@@ -191,7 +194,47 @@ func presentAction(a *day2.Action, t day2.Target, c day2.Choices, dec decision, 
 	if a.Form != nil && reason == "" {
 		out.Form = a.Form(t, c)
 	}
+	if len(dec.Warnings) > 0 && reason == "" {
+		out.Warnings = &dec.Warnings
+	}
 	return out
+}
+
+func leaseWarning(c day2.Choices, why string) api.PolicyWarning {
+	return api.PolicyWarning{Policy: "Lease in " + c.Environment, Message: why}
+}
+
+// accepted refuses what soft policies warn about until the requester
+// accepts the warnings (ADR-0045).
+func accepted(warnings []api.PolicyWarning, accept *bool) error {
+	if len(warnings) == 0 || accept != nil && *accept {
+		return nil
+	}
+	errs := make([]api.FieldError, len(warnings))
+	for i, w := range warnings {
+		errs[i] = fieldErr("/accept_warnings", "warning", w.Message)
+	}
+	return &ValidationError{Errors: errs}
+}
+
+// withWarnings keeps the warnings accepted in the request's approval record.
+func withWarnings(approval json.RawMessage, warnings []api.PolicyWarning) json.RawMessage {
+	if len(warnings) == 0 {
+		return approval
+	}
+	m := map[string]any{}
+	_ = json.Unmarshal(approval, &m)
+	m["warnings"] = warnings
+	raw, _ := json.Marshal(m)
+	return raw
+}
+
+func (s *Service) auditWarnings(ctx context.Context, tx pgx.Tx, p *auth.Principal, req store.Request, warnings []api.PolicyWarning) error {
+	if len(warnings) == 0 {
+		return nil
+	}
+	return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "request.warnings.accept", TargetType: "request",
+		TargetID: req.ID, ProjectID: &req.ProjectID, Detail: map[string]any{"request": req.Number, "warnings": warnings}})
 }
 
 // RunAction creates the day-2 request and starts it.
@@ -302,13 +345,18 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		return store.RequestRow{}, fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
 	}
 	if a.Approval != nil && p.User.ID != SystemUserID {
-		if why := a.Approval(*target, c, inputs); why != "" {
+		if why := a.Approval(*target, c, inputs); why != "" && c.LeaseSoft {
+			dec.Warnings = append(dec.Warnings, leaseWarning(c, why))
+		} else if why != "" {
 			level, err := s.projectApproversLevel(ctx, d, p.User.ID, why)
 			if err != nil {
 				return store.RequestRow{}, err
 			}
 			dec.Chain = append(dec.Chain, level)
 		}
+	}
+	if err := accepted(dec.Warnings, draft.AcceptWarnings); err != nil {
+		return store.RequestRow{}, err
 	}
 	req := store.Request{
 		ID: ids.New(ids.Request), ItemID: d.ItemID, VersionID: d.VersionID, ProjectID: d.ProjectID,
@@ -323,6 +371,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 		req.Status, req.ApprovalRequired = "pending_approval", true
 	}
 	req.Approval, _ = json.Marshal(map[string]any{"required": req.ApprovalRequired, "policy": dec.Policy, "reasons": dec.reasons()})
+	req.Approval = withWarnings(req.Approval, dec.Warnings)
 	if draft.Justification != nil {
 		req.Justification = strings.TrimSpace(*draft.Justification)
 	}
@@ -372,6 +421,9 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			return err
 		}
 		if err := outbox.Submitted(ctx, tx, req.ID); err != nil {
+			return err
+		}
+		if err := s.auditWarnings(ctx, tx, p, req, dec.Warnings); err != nil {
 			return err
 		}
 		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "action.run", TargetType: "deployment",

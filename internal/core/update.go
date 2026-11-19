@@ -127,6 +127,9 @@ func (s *Service) PreviewUpdate(ctx context.Context, p *auth.Principal, deployme
 	if u.reason != "" {
 		out.Reason = &u.reason
 	}
+	if len(u.dec.Warnings) > 0 {
+		out.Warnings = &u.dec.Warnings
+	}
 	return out, nil
 }
 
@@ -155,6 +158,9 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 		return store.RequestRow{}, &ValidationError{Errors: []api.FieldError{fieldErr("", "no_change",
 			d.Name+" already has this version and these inputs.")}}
 	}
+	if err := accepted(u.dec.Warnings, draft.AcceptWarnings); err != nil {
+		return store.RequestRow{}, err
+	}
 	chain := append(slices.Clone(u.dec.Chain), ev.Chain...)
 	req := store.Request{
 		ID: ids.New(ids.Request), ItemID: d.ItemID, VersionID: ev.Version.ID, ProjectID: d.ProjectID,
@@ -171,6 +177,7 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 	wf := provision.WorkflowID(req.ID)
 	req.WorkflowID = &wf
 	req.Approval, _ = json.Marshal(ev.Approval)
+	req.Approval = withWarnings(req.Approval, u.dec.Warnings)
 	quota := map[string]int{}
 	for k, v := range u.delta {
 		quota[k] = max(v, 0)
@@ -222,6 +229,9 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 			return err
 		}
 		if err := outbox.Submitted(ctx, tx, req.ID); err != nil {
+			return err
+		}
+		if err := s.auditWarnings(ctx, tx, p, req, u.dec.Warnings); err != nil {
 			return err
 		}
 		kinds := []string{}
