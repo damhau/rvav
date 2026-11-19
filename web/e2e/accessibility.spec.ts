@@ -24,6 +24,11 @@ const pages = [
   "/tokens",
   "/access",
   "/admin/setup",
+  "/admin/branding",
+  "/admin/notification-templates",
+  "/admin/notification-templates/approval_needed",
+  "/admin/notification-templates/approval_needed?channel=teams",
+  "/admin/notification-templates/approval_needed?channel=slack",
   "/admin/catalog-items",
   "/admin/projects",
   "/admin/projects/prj_web?tab=quotas",
@@ -64,8 +69,11 @@ const details: [string, RegExp][] = [
 ];
 
 async function scan(page: Page, where: string) {
+  // axe can't run inside a frame whose sandbox forbids scripts (the email
+  // preview, ADR-0059): Playwright would wait forever for its context.
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .exclude('iframe[sandbox=""]')
     .analyze();
   const found = result.violations.map(
     (v) =>

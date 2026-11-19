@@ -43,8 +43,8 @@ keep working whatever the text says.
 The built-in templates stay in code (`internal/notify/templates`, YAML
 per kind and language). An edited template, saved in
 `notification_templates`, overrides the built-in one for its kind,
-channel and language; **Reset** deletes it. A rvav upgrade that improves
-a built-in template reaches every template nobody edited.
+channel and language; **Reset to built-in** deletes it. A rvav upgrade
+that improves a built-in template reaches every template nobody edited.
 
 ### Variables
 Each kind lists its variables, with their type and meaning, in the API
@@ -149,7 +149,8 @@ when no accent is set.
 - Administrators change what people receive without a release, per
   language, and see it before saving.
 - Edits don't follow rvav's improvements to a built-in template: the
-  editor shows the built-in one beside the edit, and **Reset** goes back.
+  list shows which templates are edited, and **Reset to built-in** goes
+  back.
 - A third language needs its built-in templates and layout first.
 - A brand colour that fails the light theme can't be used as is: the
   suggestion is the nearest that can.

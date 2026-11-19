@@ -200,6 +200,14 @@ page, and secondary text that still reads.
   themes, so you can use them for any secondary text.
 - The theme follows the system until the user picks one in the top bar
   (`src/lib/theme.ts`).
+- The portal's branding (`src/lib/branding.ts`,
+  [ADR-0059](adr/0059-notification-templates-and-branding.md)) is read
+  from `GET /branding` before the app renders, the sign-in page too. It
+  sets the browser's title, the name and logo of `BrandMark` in the menu
+  and on the sign-in page (the dark theme's logo where there is one, by
+  CSS), and, when an accent is set, the accent tokens of each theme in a
+  `<style id="rvav-branding">`. Without an accent, `styles.css` stays
+  as it is. `useBranding()` follows a save at once.
 - IBM Plex Sans for text, with tabular numbers (`tnum`) where numbers line up.
   IBM Plex Mono only for identifiers, addresses and code: a VM's name under its
   label, an IP, a key, a path, YAML. Counts, times and step numbers stay in the
@@ -577,6 +585,13 @@ it.
   action. **What** filters sign-ins and failed sign-ins; **Who** says
   **Unknown** for a sign-in rvav couldn't tie to anyone, and shows the
   address a sign-in came from.
+- **Branding** (`features/admin/BrandingPage.tsx`): the portal's name
+  and accent colour, checked as it is typed (`POST
+  /admin/branding/accent-check`, debounced): a refused colour offers
+  **Use** the closest darker one; swatches show a button, a link and the
+  current page in each theme. Then each theme's logo, uploaded as the
+  request body, with the server's refusal under it.
+- **Notification templates:** see [Notifications](#notifications).
 - **Audit forwarding** (`features/admin/AuditForwardingPage.tsx`): the
   syslog servers and webhooks the audit log goes to, each with its
   events and its delivery (up to date, sending, failing with the last
@@ -1173,6 +1188,22 @@ The notification centre ([ADR-0023](adr/0023-notifications.md)) is in
 
   Kinds keep the defaults until changed. Only the changed kinds are sent,
   so the others follow later changes to the defaults.
+
+**Notification templates** (`features/admin/notifications/`) list the
+kinds, with which templates are edited, and open a kind's editor at
+`/admin/notification-templates/<kind>?channel=&locale=`: the parts in
+monospace fields, a preview that follows the draft (debounced, the last
+one kept while the next loads), and the kind's variables and functions.
+The email preview is an `iframe` with `sandbox=""` and `srcdoc`: no
+scripts, no same origin. axe can't run inside such a frame, so the axe
+helpers exclude it. A save's problems show under their part, a
+preview's in the preview. The mocks check and write templates with a small Go template engine
+(`mocks/gotemplate.ts`), and take the kinds, variables, samples and
+built-in templates from `mocks/notificationTemplates.json`, a copy of
+`internal/notify/testdata/templates.json` that a vitest compares; after
+changing the built-in templates, run
+`go test ./internal/notify -run TestTemplatesFixture -update` and copy
+the file.
 
 ## Performance budget
 

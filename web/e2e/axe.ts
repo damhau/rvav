@@ -5,8 +5,11 @@ import { expect, type Page } from "@playwright/test";
 export async function scan(page: Page, where: string) {
   await expect(page.locator(".animate-pulse, [role=status][aria-label=Loading]")).toHaveCount(0);
   await page.waitForTimeout(300);
+  // axe can't run inside a frame whose sandbox forbids scripts (the email
+  // preview, ADR-0059): Playwright would wait forever for its context.
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .exclude('iframe[sandbox=""]')
     .analyze();
   const found = result.violations.map(
     (v) =>

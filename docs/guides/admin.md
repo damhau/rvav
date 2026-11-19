@@ -20,7 +20,8 @@ in four groups:
 - **Governance:** Projects, Roles, Policies.
 - **Infrastructure:** Integrations, Templates and networks (with the VM
   sizes and the tags of vCenter objects), Onboarding, vRA import.
-- **Operations:** Setup, Audit log, Audit forwarding, System.
+- **Operations:** Setup, Branding, Notification templates, Audit log,
+  Audit forwarding, System.
 
 This guide names a page as **Administration › Page**, such as
 **Administration › Roles**. You can also open one from the search box
@@ -1967,6 +1968,103 @@ of the type or an item version names it.
   tagged as rvav's that no deployment owns, left by failures or restores,
   or by a deletion that went on past failed steps.
   Delete them there, or adopt their VM.
+
+## Branding and notification templates
+
+**Administration › Branding** and **Administration › Notification
+templates** need the `system.manage` permission (administrators). Every
+change on them is in the **Audit log**
+([ADR-0059](../adr/0059-notification-templates-and-branding.md)).
+
+### Brand the portal
+
+The portal's name, accent colour and logos show in the menu, on the
+sign-in page, in the browser's title and in emails.
+
+1. Go to **Branding**.
+2. In **Portal name**, enter up to 40 characters. Left empty, the portal
+   is called rvav.
+3. In **Accent colour**, enter a colour as `#rrggbb`, or pick one. The
+   note under the field says how it reads:
+   - Text in the colour must reach a contrast of 4.5:1 in the light
+     theme. If it doesn't, the note gives the closest darker colour that
+     does: to take it, click **Use #…**.
+   - The dark theme takes the colour lightened as much as its text
+     needs. The swatches show a button, a link and the current page in
+     each theme.
+4. Click **Save branding**. Your pages take the name and colour at once;
+   other people's take them when they next open rvav.
+5. Under **Logos**, click **Upload** for the light theme. If that logo
+   doesn't read on a dark background, upload one for the dark theme
+   too; without one, the dark theme shows the light theme's logo.
+
+A logo is a PNG, JPEG or SVG of 256 KB and 2048 pixels a side at most.
+rvav refuses an SVG, rather than cleaning it, if it has scripts, event
+handlers, links, animations, `foreignObject`, a DOCTYPE or entities, or
+refers to anything outside itself. Export it again as plain SVG, or as a
+PNG. Emails carry the light theme's logo only when it is a PNG or a JPEG,
+since many mail clients block SVG; they show the portal's name otherwise.
+
+To go back to rvav's own colours, click **Use rvav's colours**, then
+**Save branding**. To remove a logo, click **Remove**.
+
+The sign-in page reads the branding from `GET /api/v1/branding`, which
+anyone can read without signing in: the name and logos are public.
+
+### Edit a notification template
+
+Each notification, such as **Approval needed** or **Request failed**,
+has a built-in template for each channel (email, Teams, Slack) and
+language (English, French). An edited template replaces the built-in one
+for its channel and language. rvav still writes what goes around it: an
+email's greeting, facts, button and footer, and a card's facts and
+buttons, so an approval's **Approve** and **Reject** keep working.
+
+1. Go to **Notification templates**. The list shows when rvav sends each
+   notification and which of its templates are edited.
+2. Select a notification, then its **Channel** and **Language**.
+3. Edit its parts:
+   - **Subject** (email) or **Title** (Teams and Slack): one line of
+     plain text.
+   - **Text:** the email's text part, the Teams card's text in Markdown,
+     or the Slack message in `mrkdwn`.
+   - **HTML** (email only): what the email shows between the greeting
+     and the facts.
+
+   **Preview** writes the template with sample data as you type: the
+   email as HTML, with scripts off, and as text; the Teams card or the
+   Slack message, and their JSON.
+4. Click **Save template**.
+
+Templates are [Go templates](https://pkg.go.dev/text/template).
+`{{.Request.Number}}` writes a variable, and `{{if .Approval.Name}}…{{end}}`
+writes what it holds only when the variable has a value. **Variables**
+lists what the notification can write, and **Functions** the functions
+besides Go's own, such as `{{date .Lease.ExpiresAt}}` and
+`{{join .Approval.Reasons "; "}}`. Values are escaped for the channel
+(HTML in an email, Markdown in Teams, `&`, `<` and `>` in Slack), so a
+title that a requester typed can't add links or markup.
+
+Saving refuses a template, with the part and the line, when:
+
+- it doesn't parse;
+- it names a variable the notification doesn't have, in any branch;
+- it uses `define`, `block` or `template`, or a `range` over anything
+  but a list, such as `.Approval.Reasons`;
+- its subject or text is empty, or a part is too long: 1 KB for the
+  subject, 20 KB for the text, 200 KB for the HTML;
+- it fails, or writes nothing, with the sample data.
+
+To go back to the built-in template, click **Reset to built-in**. An
+edited template doesn't take the improvements later releases make to the
+built-in one: reset it to get them. If an edited template fails when a
+notification is sent, rvav logs a warning and sends the built-in one.
+
+The audit log records `settings.branding.update`,
+`settings.branding_logo.set`, `settings.branding_logo.remove`,
+`settings.notification_template.update` and
+`settings.notification_template.reset`. Audit forwarding sends them with
+the **Settings, secrets, integrations** events.
 
 ## Watching
 
