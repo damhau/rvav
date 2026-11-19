@@ -75,9 +75,9 @@ workflows in flight fails there, not in production. The histories in
   cloud-init reads its address, with a key pair rvav made, recorded by
   `TestT1Acceptance`;
 - a deployment's life after it is built (X1.6): an update that grows a
-  disk on each VM and adds one, a disk removed, a VM unregistered, and an
-  onboarding plan's run that adopts it again, recorded by
-  `TestX1Acceptance`.
+  disk on each VM and adds one, a disk removed, a VM unregistered, an
+  onboarding plan's run that adopts it again, and a deletion that goes on
+  past a VM it can't delete, recorded by `TestX1Acceptance`.
 
 Add a history whenever a workflow gains a path:
 

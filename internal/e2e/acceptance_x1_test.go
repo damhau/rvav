@@ -6,18 +6,36 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
+	"go.temporal.io/sdk/temporal"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/provision"
 )
+
+// lockedVM refuses to destroy the VM it holds, as one a backup locks, and
+// for good, so the worker doesn't try again. It is set while the worker
+// runs, hence atomic.
+type lockedVM struct {
+	vsphere.Driver
+	moref *atomic.Pointer[string]
+}
+
+func (l lockedVM) Destroy(ctx context.Context, moref string) error {
+	if m := l.moref.Load(); m != nil && *m == moref {
+		return temporal.NewNonRetryableApplicationError("the VM is locked by a backup", "Permanent", nil)
+	}
+	return l.Driver.Destroy(ctx, moref)
+}
 
 // x1VM is what the acceptance expects of one VM of the farm.
 type x1VM struct {
@@ -33,6 +51,7 @@ type x1VM struct {
 // same deployment; a last update resizes the three and changes nothing
 // else. After each step, vCenter, EfficientIP's addresses and DNS
 // records, and the deployment's resources and inputs are as expected.
+// Last, the farm is deleted past a VM that can't be.
 func TestX1Acceptance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -44,6 +63,8 @@ func TestX1Acceptance(t *testing.T) {
 		tc := ts.Client()
 		h.svc.Workflows = &provision.Temporal{Client: tc, TaskQueue: queue}
 		h.acts.Onboarder = h.svc
+		var locked atomic.Pointer[string]
+		h.acts.VSphere = lockedVM{Driver: h.acts.VSphere, moref: &locked}
 		w := provision.NewWorker(tc, queue, h.acts)
 		if err := w.Start(); err != nil {
 			t.Fatal(err)
@@ -323,5 +344,33 @@ func TestX1Acceptance(t *testing.T) {
 			web02: {[]string{"50:0", "40:1"}, 4, daily},
 			web03: {[]string{"50:-", "40:-"}, 4, nil},
 		}, want)
+
+		// 7. The owner deletes the farm, going on past failures. A backup
+		// locks web03: it stays in vCenter, with its address and records,
+		// and the request lists them. The rest goes.
+		locked.Store(present.Ptr(morefs[web03]))
+		var del api.Request
+		h.json("POST", "/api/v1/deployments/"+depID+"/actions", owner, api.Day2Draft{Action: "delete",
+			Inputs: map[string]any{"ignore_failures": true}}, 202, &del, "Idempotency-Key", uuid.NewString())
+		del = h.waitStatus(del.Id, owner, api.RequestStatusSucceeded)
+		settle(t, ctx, tc, del.Id)
+		recordHistory(t, ctx, tc, del.Id, "day2-delete-ignore-failures")
+		steps := timelineOf(h, owner, del.Id)
+		if s := steps["vsphere.destroy@"+web03]; s.Status != api.StepStatusFailed {
+			t.Fatalf("destroying web03 = %+v", s)
+		}
+		if left := deref(steps["rvav.left"].Detail); !strings.HasPrefix(left, "Left: VM "+web03+", IP address "+ips[web03]) {
+			t.Fatalf("left = %q", left)
+		}
+		h.json("GET", "/api/v1/deployments/"+depID, owner, nil, 200, &dep)
+		if dep.Status != api.DeploymentStatusDeleted || len(dep.Resources) != 0 {
+			t.Fatalf("the farm is %s, with %d resources", dep.Status, len(dep.Resources))
+		}
+		for name, kept := range map[string]bool{web01: false, web02: false, web03: true} {
+			a, recs, err := h.acts.IPAM.Find(ctx, []string{ips[name]}, []string{name + ".corp.example"})
+			if err != nil || vmExists(ctx, c, name) != kept || kept != (len(a) == 1 && len(recs) == 2) || !kept && len(a)+len(recs) != 0 {
+				t.Fatalf("%s after the deletion: in vCenter %t, EfficientIP %v %v %v", name, vmExists(ctx, c, name), a, recs, err)
+			}
+		}
 	})
 }
