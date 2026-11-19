@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { FormRenderer, type PageInputs } from "@/forms/FormRenderer";
+import { sentInputs } from "@/forms/defaults";
 import { api, call } from "@/lib/api/client";
-import type { AdminCatalogItem, CatalogItemVersion, FieldStates } from "@/lib/api/types";
+import type { AdminCatalogItem, CatalogItemVersion, FieldStates, UiField } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
@@ -60,6 +61,7 @@ function Preview({
   setCtx,
   me,
   initialValues,
+  fields,
   onStates,
   showing,
 }: {
@@ -70,6 +72,8 @@ function Preview({
   setCtx: (f: (c: PreviewContext) => PreviewContext) => void;
   me: string;
   initialValues: Record<string, unknown>;
+  /** The draft's fields: those with a default the inputs emptied are sent as null. */
+  fields: Record<string, UiField>;
   onStates: (s: FieldStates | undefined) => void;
   /** The section of the designer's selection, whose page or tab the preview shows. */
   showing?: string;
@@ -80,7 +84,7 @@ function Preview({
   const { users, list, asUser } = usePreviewUsers(ctx.projectId, ctx.asUserId, me);
   const inputs = useDebounced(ctx.values, 300);
   // Keyed on the server's revision of the draft: the same revision is the same form.
-  const previewOf = (values: Record<string, unknown>) => ({
+  const previewOf = (given: Record<string, unknown>, values = sentInputs(fields, given)) => ({
     queryKey: [
       ...keys.catalogAdmin.all,
       "designer-preview",
@@ -96,7 +100,12 @@ function Preview({
       call(
         api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/preview", {
           params: { path: { itemId: item.id, versionId: draftId } },
-          body: { project_id: ctx.projectId, environment: ctx.environment, as_user_id: asUser, inputs: values },
+          body: {
+            project_id: ctx.projectId,
+            environment: ctx.environment,
+            as_user_id: asUser,
+            inputs: values,
+          },
           signal,
         }),
       ),
@@ -355,6 +364,7 @@ function Designer({ item, draft, copy }: { item: AdminCatalogItem; draft: Catalo
             setCtx={setCtx}
             me={me.user.id}
             initialValues={def.initial_values}
+            fields={def.ui_schema.fields}
             onStates={setStates}
             showing={
               selection?.kind === "section"

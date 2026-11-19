@@ -1,10 +1,11 @@
 // Renders a request form from its JSON Schema and UI schema: sections, widgets,
 // server-resolved values with dependencies, the server's rule results and
 // field errors, in the form's layout (one page, a wizard or tabs).
-import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import { Panel } from "@/components/ui/panel";
 import type { FieldStates, RequestForm } from "@/lib/api/types";
 import { fieldControl } from "./attention";
+import { withDefaults } from "./defaults";
 import { FieldGrid, formParts, partShows, sectionFields, type GridProps } from "./sections";
 import { FormTabs } from "./tabs";
 import { REVIEW, Wizard, type WizardOptions } from "./wizard";
@@ -23,6 +24,7 @@ export interface FormHandle {
 
 export interface FormRendererProps {
   form: RequestForm;
+  /** What the requester gave: a field without a key here shows its default. */
   values: Record<string, unknown>;
   onChange: (name: string, value: unknown) => void;
   onBlur?: (name: string) => void;
@@ -30,8 +32,8 @@ export interface FormRendererProps {
   ctx: FormContext;
   /**
    * The server's rule results (the preview's `fields`): which fields show,
-   * are required or read-only, and computed values. Until they come, the
-   * schema's defaults.
+   * are required or read-only, computed values and defaults. Until they
+   * come, the schema's.
    */
   fieldStates?: FieldStates;
   /** Rendered at the start of the first section (the environment picker). */
@@ -75,7 +77,8 @@ export function FormRenderer({
 }: FormRendererProps) {
   const kind = form.ui_schema.layout.kind || "page";
   const parts = formParts(form, fieldStates);
-  const grid: GridProps = { form, values, onChange, onBlur, errors, ctx };
+  const shown = useMemo(() => withDefaults(values, fieldStates), [values, fieldStates]);
+  const grid: GridProps = { form, values: shown, onChange, onBlur, errors, ctx };
   // The page or tab shown; `n` renders again when it is shown anew, for what runs after.
   const [view, setView] = useState<{ key?: string; n: number }>({ key: showing && sectionOf(form, showing), n: 0 });
   const after = useRef<(() => void) | undefined>(undefined);

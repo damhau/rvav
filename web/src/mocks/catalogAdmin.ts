@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { parse, stringify } from "yaml";
 import type { components } from "@/lib/api/schema";
 import { shownUrl } from "@/lib/utils";
+import { singleSource } from "@/forms/defaults";
 import { ownSources } from "@/forms/useFieldValues";
 import { parseUrl, readComposite, secretInMessages } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
@@ -291,6 +292,61 @@ function restCel(call: unknown, at: string): [string, unknown][] {
   ];
 }
 
+/** As the server: one default at most, a default rule's, an initial value or a source's, on a field filled in. */
+function defaultProblems(def: Definition, prefix: string): S["FieldError"][] {
+  const errors: S["FieldError"][] = [];
+  for (const [name, f] of Object.entries(def.ui_schema.fields)) {
+    const at = `${prefix}/ui_schema/fields/${name}`;
+    const add = (field: string, code: string, message: string) => errors.push({ field, code, message });
+    const initial = name in (def.initial_values ?? {});
+    const value = f.value_source?.params?.value;
+    if (singleSource(f) && f.value_source?.kind === "cel" && !(typeof value === "string" && value.trim())) {
+      add(
+        `${at}/value_source/params/value`,
+        "required",
+        `A ${f.widget} field takes one value from its source: give a value expression.`,
+      );
+      continue;
+    }
+    if (!f.rules?.default) {
+      if (initial && singleSource(f) && f.widget !== "computed")
+        add(
+          `${at}/value_source`,
+          "conflict",
+          "The field has an initial value, so the default its value source gives would never show: keep one of the two.",
+        );
+      continue;
+    }
+    if (f.widget === "computed")
+      add(
+        `${at}/rules/default`,
+        "widget_mismatch",
+        "A computed field's value is worked out: give it a value rule rather than a default.",
+      );
+    else if (["info", "image", "link", "file"].includes(f.widget))
+      add(`${at}/rules/default`, "widget_mismatch", `A ${f.widget} field takes no default.`);
+    else if (f.rules.value)
+      add(
+        `${at}/rules/default`,
+        "conflict",
+        "The field's value rule gives it its value: keep the value rule or the default.",
+      );
+    else if (initial)
+      add(
+        `${at}/rules/default`,
+        "conflict",
+        "The field has an initial value too: keep the initial value or the default.",
+      );
+    else if (singleSource(f))
+      add(
+        `${at}/rules/default`,
+        "conflict",
+        "The field's value source gives it its default too: keep the value source or the default rule.",
+      );
+  }
+  return errors;
+}
+
 function check(def: Definition, prefix: string): S["FieldError"][] {
   const errors: S["FieldError"][] = [];
   const props = (def.form_schema as { properties?: Record<string, unknown> }).properties ?? {};
@@ -377,6 +433,7 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
   errors.push(...shownProblems(def, prefix, false));
   errors.push(...searchProblems(def, prefix, false));
   errors.push(...fileProblems(def, prefix, false));
+  errors.push(...defaultProblems(def, prefix));
   const required = (def.form_schema as { required?: string[] }).required ?? [];
   required.forEach((name, i) => {
     if (!(name in props))

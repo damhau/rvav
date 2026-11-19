@@ -18,6 +18,7 @@ import { Select } from "@/components/ui/select";
 import { UserPicker } from "@/features/admin/governance/common";
 import { FormRenderer, shownFields, type FormHandle, type PageInputs } from "@/forms/FormRenderer";
 import { Attention, fieldControl, type Unplaced } from "@/forms/attention";
+import { sentInputs, withDefaults } from "@/forms/defaults";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
 import { api, call, isApiError } from "@/lib/api/client";
 import type {
@@ -417,7 +418,7 @@ function RequestFormBody({
       version_id: form.version_id,
       project_id: project.id,
       environment,
-      inputs: values,
+      inputs: sentInputs(form.ui_schema.fields, values),
       count: many ? Math.max(1, Number(count) || 1) : 1,
       ...(justification ? { justification } : {}),
       lease_days: leaseDays,
@@ -430,6 +431,7 @@ function RequestFormBody({
       form.version_id,
       project.id,
       environment,
+      form.ui_schema.fields,
       values,
       justification,
       leaseDays,
@@ -539,8 +541,9 @@ function RequestFormBody({
   const clearServerError = (name: string) => {
     if (serverErrors?.fields[name]) setServerErrors((s) => s && { ...s, fields: { ...s.fields, [name]: "" } });
   };
+  // A field the requester changed keeps a key, even emptied: it no longer takes its default.
   const setValue = (name: string, value: unknown) => {
-    setValues((v) => (v[name] === value ? v : { ...v, [name]: value }));
+    setValues((v) => (Object.hasOwn(v, name) && v[name] === value ? v : { ...v, [name]: value }));
     clearServerError(name);
   };
   // Next on a wizard's page: the preview of the form as it is now, its errors shown for the page's inputs.
@@ -758,7 +761,7 @@ function RequestFormBody({
           previewError={preview.error}
           onRetryPreview={() => void preview.refetch()}
           fetching={preview.isFetching}
-          values={values}
+          values={withDefaults(values, shownPreview?.fields)}
           pending={submit.isPending}
           formErrors={formErrors}
           onSubmit={stepped ? undefined : submitDraft}

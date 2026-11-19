@@ -19,6 +19,7 @@ import type {
 import type { components } from "@/lib/api/schema";
 
 type FieldState = components["schemas"]["FieldState"];
+import { computedBy, defaulted, singleSource } from "@/forms/defaults";
 import { withOwnSource } from "@/forms/useFieldValues";
 import { can } from "@/lib/can";
 import { toText } from "@/lib/utils";
@@ -171,6 +172,7 @@ function resolveSource(
       : undefined;
     return { field, ...(options ? { options } : {}), ...(value !== undefined ? { value } : {}), cache_seconds: 30 };
   }
+  if (source.kind === "rest" && singleSource(ui)) return { field, value: restValue, cache_seconds: 60 };
   if (source.kind === "rest") {
     const host = params.url ? new URL(params.url, "https://cmdb.corp.example").host : "the service";
     const services = [
@@ -511,9 +513,10 @@ export const userGroups: Record<string, string[]> = {
 
 /**
  * What the server's applyStates does with the rule results: a hidden input
- * is dropped, a read-only one is its computed or initial value, a computed
- * value that failed and an empty field a rule requires are errors. Schema
- * errors about hidden fields are dropped.
+ * is dropped, a read-only one is its computed value, its default or its
+ * initial value, one without an input takes its default and one emptied
+ * (null) none; a computed value that failed and an empty field a rule
+ * requires are errors. Schema errors about hidden fields are dropped.
  */
 export function applyStates(
   form: RequestForm | undefined,
@@ -530,12 +533,19 @@ export function applyStates(
       delete inputs[name];
       continue;
     }
+    const ui = form?.ui_schema.fields[name];
+    const fallback = st.default !== undefined && st.default !== null;
     if (st.value !== undefined && st.value !== null) inputs[name] = st.value;
-    else if (form?.ui_schema.fields[name]?.rules?.value)
-      add("rule_failed", `This value couldn't be computed: ${st.error ?? ""}.`);
+    else if (ui && computedBy(ui))
+      add(ui.rules?.value ? "rule_failed" : "source_failed", `This value couldn't be computed: ${st.error ?? ""}.`);
+    else if (st.read_only && fallback) inputs[name] = st.default;
     else if (st.read_only) {
       if (name in (form?.initial_values ?? {})) inputs[name] = form!.initial_values[name];
       else delete inputs[name];
+    } else if (ui && defaulted(ui)) {
+      if (!Object.hasOwn(inputs, name)) {
+        if (fallback) inputs[name] = st.default;
+      } else if (inputs[name] === null) delete inputs[name];
     }
     const v = inputs[name];
     if (st.required && (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)))
@@ -669,7 +679,16 @@ export function summarize(d: DeploymentDetail): Deployment {
   };
 }
 
-/** The rule results the server computes (core.fieldStates), with the mock's CEL. */
+type Props = Record<string, { readOnly?: boolean; type?: string }>;
+
+/** What a mock REST source gives a field that takes one value: the first of the services it lists. */
+const restValue = "svc-01";
+
+/**
+ * The rule results and defaults the server works out (core.formStates), with
+ * the mock's CEL: the default rules, the sources that give a field one value,
+ * the default rules again, then the other rules over every default.
+ */
 export function fieldStates(
   form: RequestForm | undefined,
   inputs: Record<string, unknown>,
@@ -677,9 +696,18 @@ export function fieldStates(
 ): Record<string, FieldState> {
   const out: Record<string, FieldState> = {};
   if (!form) return out;
-  const schema = form.schema as { required?: string[]; properties?: Record<string, { readOnly?: boolean }> };
-  const ctx = { ...vars, inputs };
-  for (const [name, ui] of Object.entries(form.ui_schema.fields)) {
+  const schema = form.schema as { required?: string[]; properties?: Props };
+  const fields = form.ui_schema.fields;
+  const has = (n: string) => Object.hasOwn(inputs, n);
+  const given = Object.fromEntries(
+    Object.entries(inputs).filter(([k, v]) => v !== null || !fields[k] || !defaulted(fields[k])),
+  );
+  const first = ruleDefaults(fields, vars, given, has).defaults;
+  const sources = sourceDefaults(fields, schema.properties ?? {}, vars, filled(given, first, has), has);
+  const base = { ...filled(given, sources.defaults, has), ...sources.values };
+  const { defaults: ruled, failed } = ruleDefaults(fields, vars, base, has);
+  const ctx = { ...vars, inputs: filled(base, ruled, has) };
+  for (const [name, ui] of Object.entries(fields)) {
     const rules = ui.rules ?? {};
     const state: FieldState = {
       visible: celBool(rules.visible, ctx, true),
@@ -693,7 +721,123 @@ export function fieldStates(
         state.error = `value: ${String(e)}`;
       }
     }
+    if (name in ruled) state.default = ruled[name];
+    else if (name in sources.defaults) state.default = sources.defaults[name];
+    if (name in sources.values) state.value = sources.values[name];
+    const why = failed[name] ?? sources.failed[name];
+    if (why && !state.error) state.error = why;
     out[name] = state;
   }
   return out;
+}
+
+/** base with the defaults of the fields that have no input. */
+function filled(base: Inputs, defaults: Inputs, has: (n: string) => boolean): Inputs {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(defaults)) if (!has(k)) out[k] = v;
+  return out;
+}
+
+/** As the server's ruleDefaults: each rule without its own field's input, until the defaults stop changing. */
+function ruleDefaults(
+  fields: RequestForm["ui_schema"]["fields"],
+  vars: Record<string, unknown>,
+  base: Inputs,
+  has: (n: string) => boolean,
+) {
+  const names = Object.keys(fields)
+    .sort()
+    .filter((n) => fields[n]!.rules?.default && !computedBy(fields[n]!));
+  const defaults: Inputs = {};
+  const failed: Record<string, string> = {};
+  const work = { ...base };
+  const set = (name: string, v: unknown) => {
+    if (has(name)) return;
+    if (v === undefined || v === null) delete work[name];
+    else work[name] = v;
+  };
+  for (let pass = 0; pass <= names.length; pass++) {
+    let changed = false;
+    for (const name of names) {
+      const { [name]: _own, ...others } = work;
+      let v: unknown;
+      try {
+        v = celEval(fields[name]!.rules!.default!, { ...vars, inputs: others }, true);
+      } catch (e) {
+        failed[name] = `default: ${String(e)}`;
+        if (name in defaults) {
+          delete defaults[name];
+          set(name, undefined);
+          changed = true;
+        }
+        continue;
+      }
+      delete failed[name];
+      if (name in defaults && JSON.stringify(defaults[name]) === JSON.stringify(v)) continue;
+      defaults[name] = v;
+      set(name, v);
+      changed = true;
+    }
+    if (!changed) break;
+  }
+  for (const [k, v] of Object.entries(defaults)) if (v === null || v === undefined) delete defaults[k];
+  return { defaults, failed };
+}
+
+/** As the server's sourceDefaults: a field's after those its depends_on names. */
+function sourceDefaults(
+  fields: RequestForm["ui_schema"]["fields"],
+  props: Props,
+  vars: Record<string, unknown>,
+  inputs: Inputs,
+  has: (n: string) => boolean,
+) {
+  const defaults: Inputs = {};
+  const values: Inputs = {};
+  const failed: Record<string, string> = {};
+  const work = { ...inputs };
+  let pending = Object.keys(fields)
+    .sort()
+    .filter((n) => singleSource(fields[n]!) && !fields[n]!.rules?.value);
+  while (pending.length > 0) {
+    const waiting = pending;
+    let ready = waiting.filter((n) => !(fields[n]!.depends_on ?? []).some((d) => d !== n && waiting.includes(d)));
+    if (ready.length === 0) ready = waiting;
+    for (const name of ready) {
+      const ui = fields[name]!;
+      const params = ui.value_source?.params ?? {};
+      let v: unknown;
+      try {
+        v =
+          ui.value_source?.kind === "rest"
+            ? restValue
+            : typeof params.value === "string"
+              ? celEval(params.value, { ...vars, inputs: work, search: "" }, true)
+              : undefined;
+      } catch (e) {
+        failed[name] = `value source: ${String(e)}`;
+        continue;
+      }
+      if (v === undefined || v === null) continue;
+      v = typed(v, props[name]?.type);
+      if (ui.widget === "computed") {
+        values[name] = v;
+        work[name] = v;
+      } else {
+        defaults[name] = v;
+        if (!has(name)) work[name] = v;
+      }
+    }
+    pending = waiting.filter((n) => !ready.includes(n));
+  }
+  return { defaults, values, failed };
+}
+
+/** A source's value as its input's type takes it. */
+function typed(v: unknown, type?: string): unknown {
+  if (type === "string" && (typeof v === "number" || typeof v === "boolean")) return String(v);
+  if ((type === "number" || type === "integer") && typeof v === "string" && v.trim() !== "" && !isNaN(Number(v)))
+    return Number(v);
+  if (type === "boolean" && (v === "true" || v === "false")) return v === "true";
+  return v;
 }
