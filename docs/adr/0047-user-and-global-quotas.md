@@ -1,4 +1,4 @@
-# ADR-0047: Quotas per user and for all of rvav
+# ADR-0047: Quotas per user and for all of rvav, and deployment limits
 
 - Status: accepted
 - Date: 2026-11-19
@@ -14,6 +14,12 @@ per environment, set by administrators. Nothing stopped one member from
 taking all of a project's quota, and nothing bounded what rvav as a whole
 would build. The vRA importer reported a user-level or organization-level
 quota as unmapped.
+
+vRA's deployment limit policies cap the vCPU and memory of each
+deployment, and its resource quotas can cap how many deployments a user
+or a project has. rvav had only indirect limits: 20 VMs per request, the
+form's maximums and size presets per VM, and a VM-count quota per
+project.
 
 ## Decision
 
@@ -65,9 +71,57 @@ each level that has a limit, and every one must hold:
 - **What applies here** lists each level's limits, the user ones counting
   what the explained user holds.
 
+### Deployment limits are a policy
+A deployment limit policy (`/admin/deployment-limit-policies`) sets any of
+four limits: `deployments_per_user`, `deployments_per_project`,
+`vcpu_per_deployment` and `memory_gb_per_deployment`. Like the other
+policies of ADR-0045, it is global or a project's, with a priority, an
+environment or none, enabled or not, hard or soft, `set_by_admin`, and
+audited (`policy.limit.create`, `.update`, `.delete`). A global policy
+applies to each project on its own: its deployment count is per project.
+
+- **Each limit is decided on its own.** The enabled policies that apply
+  (global or the project's, for every environment or the request's) are
+  tried by priority, global first on a tie, and the first that sets the
+  limit decides. When it is a project's, the first global one that sets
+  the limit after it still decides if it is hard and stricter: a lower
+  limit, or the same limit when the project's is soft. A soft global
+  policy doesn't win over a project's. So a project admin tightens a
+  limit, and loosens only a soft one, as with day-2 policies. A project
+  admin's policy is not checked against the global ones when written:
+  the combining keeps a hard global limit.
+- **What counts:** a project's deployments not deleted, in the policy's
+  environment when it has one. Failed deployments count, and so do those
+  of requests not done yet, waiting for approval included: their rows
+  exist from submit, as quotas reserve from submit. A rejected or
+  cancelled request's deployments are deleted and stop counting. A
+  user's count is the deployments they own; a request made for someone
+  counts for them.
+- **A deployment's size** is all its VMs together: a multi-VM item makes
+  one deployment, a single-VM item one per VM, and a composite one per VM
+  step's deployment. A request is checked with its largest deployment.
+- **When it is checked:** a new request, on preview and on submit; an
+  update (ADR-0042) and a resize, against the size only, and only when
+  they grow the deployment's vCPU or memory, so a deployment over a limit
+  lowered since can still be updated; moving a deployment to another
+  project, against that project's limits; handing it over, against the
+  new owner's count; an approver's edits, against the size limits as
+  they are now.
+- **Hard refuses, soft warns.** A hard limit passed is an error with the
+  code `limit_exceeded`, saying the limit, the policy and what the change
+  would make. A soft one is a warning (`PolicyWarning`) the requester
+  accepts through `accepted_warnings`, as for the soft policies of
+  ADR-0045; it doesn't ask for approval. Approver edits don't warn: the
+  requester accepted at submit.
+- **Previews list the limits that apply** (`RequestPreview.limits`,
+  `UpdatePreview.limits`), each with the policy that decides, and **What
+  applies here** lists them with the count the explained user, or the
+  project, has now (`PolicyExplanation.limits`).
+
 ### Storage
 Migration 00081 adds `user_quotas` (a project, or null for rvav) and
 `global_quotas`. The project's own limits stay in `quotas`, unchanged.
+Migration 00083 adds `deployment_limit_policies`.
 
 ## Consequences
 - A project admin can share the project's quota out between members, and
@@ -75,3 +129,7 @@ Migration 00081 adds `user_quotas` (a project, or null for rvav) and
 - A handover to someone at their limit is refused, or needs approval with
   a soft limit.
 - Each level adds a query to a preview only when it has a limit.
+- Deployment limits count deployments, not resources: a quota on VMs
+  and a limit on deployments differ for multi-VM items.
+- A soft deployment limit warns and lets the requester go on; one that
+  should hold for approval is a soft quota, or an approval policy.

@@ -82,6 +82,8 @@ type Evaluation struct {
 	Errors []api.FieldError
 	// Warnings are what soft policies warn about (ADR-0045).
 	Warnings []api.PolicyWarning
+	// Limits are the deployment limits that apply (ADR-0047).
+	Limits []api.DeploymentLimitLine
 	// Update is what an update changes, as approval policies read it
 	// (ADR-0042); nil on a new request.
 	Update map[string]any
@@ -306,6 +308,13 @@ func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.
 	// Quota first: approval policies may ask approval for a soft quota.
 	if err := s.evaluateQuota(ctx, ev, p); err != nil {
 		return nil, err
+	}
+	// A composite's steps count with it, and an approver's edits keep the
+	// request's deployments, counted already.
+	if !ofRequest {
+		if err := s.evaluateLimits(ctx, ev, p); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.evaluateApproval(ctx, p, ev, strict); err != nil {
 		return nil, err
@@ -866,6 +875,9 @@ func (ev *Evaluation) Preview() api.RequestPreview {
 	}
 	if len(ev.Warnings) > 0 {
 		out.Warnings = &ev.Warnings
+	}
+	if len(ev.Limits) > 0 {
+		out.Limits = &ev.Limits
 	}
 	if out.Quota == nil {
 		out.Quota = []api.QuotaImpact{}

@@ -357,6 +357,10 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	if err != nil {
 		return store.RequestRow{}, err
 	}
+	limited, err := s.day2Limits(ctx, p, a, d, *target, inputs)
+	if err != nil {
+		return store.RequestRow{}, err
+	}
 	// The inputs may matter to a policy's condition: decide again with them.
 	dec := j.decideQuota(a, *target, inputs, overSoft)
 	if dec.Denied != "" {
@@ -373,6 +377,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 			dec.Chain = append(dec.Chain, level)
 		}
 	}
+	dec.Warnings = append(dec.Warnings, limited...)
 	if err := accepted(dec.Warnings, draft.AcceptWarnings, draft.AcceptedWarnings); err != nil {
 		return store.RequestRow{}, err
 	}

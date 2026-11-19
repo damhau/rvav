@@ -2025,6 +2025,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           outcome: naming ? `VMs are named ${naming.template}.` : "No naming policy here: each blueprint's own template names the VMs.",
           considered: st().naming.map((n) => ({ id: n.id, name: n.name, applies: n.id === naming?.id, why: n.id === naming?.id ? "Offered here." : "Not offered here." })),
         },
+        limits: { lines: [], considered: [] },
         quota: [...(st().quotas[p.id] ?? []).map((l) => ({ resource: l.resource, level: l.environment ? ("environment" as const) : ("project" as const), scope: l.environment, limit: l.limit, enforcement: l.enforcement, used: 0, reserved: 0 })), ...explainQuotaLines(db, p.id, q.as_user_id ?? db.me.user.id)],
         ...(q.item_id
           ? { approval: { decided_by: deciding.length ? deciding.join(", ") : null, outcome: deciding.length ? `Needs approval: ${deciding.join(", ")}.` : "No approval needed.", considered: approvals } }

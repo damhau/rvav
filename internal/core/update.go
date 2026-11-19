@@ -147,6 +147,9 @@ func (s *Service) PreviewUpdate(ctx context.Context, p *auth.Principal, deployme
 	if len(u.dec.Warnings) > 0 {
 		out.Warnings = &u.dec.Warnings
 	}
+	if len(ev.Limits) > 0 {
+		out.Limits = &ev.Limits
+	}
 	return out, nil
 }
 
@@ -347,9 +350,15 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 		return nil, err
 	}
 	ev.Quota, ev.OverSoft = q.Impacts, q.OverSoft
-	ev.Errors = slices.DeleteFunc(ev.Errors, func(e api.FieldError) bool { return deref(e.Code) == "quota_exceeded" })
+	ev.Errors = slices.DeleteFunc(ev.Errors, func(e api.FieldError) bool {
+		return deref(e.Code) == "quota_exceeded" || deref(e.Code) == "limit_exceeded"
+	})
 	for _, msg := range q.Hard {
 		ev.Errors = append(ev.Errors, fieldErr("", "quota_exceeded", msg))
+	}
+	limits, err := s.updateLimits(ctx, p, ev, d, u)
+	if err != nil {
+		return nil, err
 	}
 	ev.QuotaAdd = map[string]int{}
 	for k, v := range u.delta {
@@ -363,6 +372,7 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 	if u.dec.Denied != "" && u.reason == "" {
 		u.reason = u.dec.Denied
 	}
+	u.dec.Warnings = append(u.dec.Warnings, limits...)
 	if err := s.day2Approval(ctx, ev, u.dec.Chain); err != nil {
 		return nil, err
 	}

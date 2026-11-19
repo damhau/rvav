@@ -3047,6 +3047,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/deployment-limit-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Deployment limit policies, in the order they are tried
+         * @description A deployment limit policy caps how many deployments each user, or a
+         *     project, may have, and the vCPU and memory of each deployment
+         *     (ADR-0047). With `policies.read`, every policy. With
+         *     `project.policies.manage` in projects (project admins), the global
+         *     policies and those of these projects.
+         */
+        get: operations["listDeploymentLimitPolicies"];
+        put?: never;
+        /**
+         * Add a deployment limit policy
+         * @description A global policy needs `policies.manage`. A project's, that or
+         *     `project.policies.manage` in the project (project admins).
+         *     Audited. Each limit is decided on its own: the policies are tried
+         *     by priority, the global and the project's together, and the first
+         *     that sets the limit decides. When it is a project's, the first
+         *     global policy that sets it still decides if it is hard and
+         *     stricter: a project's policy can't loosen a hard global one
+         *     (ADR-0045, ADR-0047).
+         */
+        post: operations["createDeploymentLimitPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/deployment-limit-policies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a deployment limit policy
+         * @description As adding one; a project's policy an administrator set
+         *     (`set_by_admin`) is refused (403) to its project admins. Audited.
+         */
+        put: operations["updateDeploymentLimitPolicy"];
+        post?: never;
+        /**
+         * Remove a deployment limit policy
+         * @description As changing it: `policies.manage`, or `project.policies.manage` in
+         *     its project unless an administrator set it (`set_by_admin`).
+         *     Audited.
+         */
+        delete: operations["deleteDeploymentLimitPolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/policies/explain": {
         parameters: {
             query?: never;
@@ -5400,6 +5464,11 @@ export interface components {
                 subnet?: string;
             };
             quota: components["schemas"]["QuotaImpact"][];
+            /**
+             * @description The deployment limits that apply (ADR-0047). Absent when none
+             *     does, or the request makes no deployment.
+             */
+            limits?: components["schemas"]["DeploymentLimitLine"][];
             approval: components["schemas"]["ApprovalPreview"];
             /** @description What soft policies warn about; submitting needs their `id` in `accepted_warnings`, or `accept_warnings`. */
             warnings?: components["schemas"]["PolicyWarning"][];
@@ -5932,6 +6001,12 @@ export interface components {
             errors: components["schemas"]["FieldError"][];
             /** @description The net change to the project's quotas; `adding` is negative where the update frees more than it adds. */
             quota: components["schemas"]["QuotaImpact"][];
+            /**
+             * @description The vCPU and memory limits of each deployment that apply
+             *     (ADR-0047); the update goes over one only when it grows the
+             *     deployment. Absent when none does.
+             */
+            limits?: components["schemas"]["DeploymentLimitLine"][];
             approval: components["schemas"]["ApprovalPreview"];
             /** @description What soft day-2 policies warn about; submitting needs their `id` in `accepted_warnings`, or `accept_warnings`. */
             warnings?: components["schemas"]["PolicyWarning"][];
@@ -8297,6 +8372,88 @@ export interface components {
             /** @description The roles a level may name, those given in projects. */
             level_roles: components["schemas"]["RoleRef"][];
         };
+        /**
+         * @description What a deployment limit caps: how many deployments each user, or
+         *     the project, may have; the vCPU or memory of each deployment.
+         * @enum {string}
+         */
+        DeploymentLimitKind: "deployments_per_user" | "deployments_per_project" | "vcpu_per_deployment" | "memory_gb_per_deployment";
+        DeploymentLimitPolicyWrite: {
+            name: string;
+            /** @description A project's policy; null for every project, each counted on its own. */
+            project_id?: string | null;
+            /** @description For deployments in one environment, counting those only; null for every environment. */
+            environment?: components["schemas"]["EnvironmentKey"] | null;
+            /** @description Lower first; 100 when absent. On a tie, global policies first, then by name. */
+            priority?: number;
+            /** @default true */
+            enabled: boolean;
+            /**
+             * @description Hard (when absent) refuses what goes over a limit. Soft warns
+             *     the requester, who may go on by accepting the warning.
+             */
+            enforcement?: components["schemas"]["PolicyEnforcement"];
+            /**
+             * @description How many deployments each user may own in the project: those
+             *     not deleted, failed ones and those of requests waiting for
+             *     approval included. A request made for someone counts for them.
+             */
+            deployments_per_user?: number | null;
+            /** @description How many deployments the project may have, counted as for each user. */
+            deployments_per_project?: number | null;
+            /** @description The most vCPU a deployment may have, all its VMs together. */
+            vcpu_per_deployment?: number | null;
+            /** @description The most memory a deployment may have, in GB, all its VMs together. */
+            memory_gb_per_deployment?: number | null;
+        };
+        DeploymentLimitPolicy: components["schemas"]["DeploymentLimitPolicyWrite"] & {
+            id: string;
+            /**
+             * @description An administrator (`policies.manage`) wrote it last: a
+             *     project's admins read it but don't change or remove it
+             *     (ADR-0045). False for a project admin's own.
+             */
+            set_by_admin: boolean;
+        };
+        DeploymentLimitPolicyList: {
+            items: components["schemas"]["DeploymentLimitPolicy"][];
+        };
+        /** @description A deployment limit that applies to a request or an update, and where it stands with it. */
+        DeploymentLimitLine: {
+            kind: components["schemas"]["DeploymentLimitKind"];
+            /** @description The most the policy allows. */
+            limit: number;
+            /**
+             * @description For a count, how many deployments there would be with the
+             *     request; for a size, what its largest deployment would have.
+             */
+            value: number;
+            /** @description The request goes over the limit; an update only when it grows the deployment. */
+            exceeds: boolean;
+            enforcement: components["schemas"]["PolicyEnforcement"];
+            /** @description The policy that decides this limit, by name. */
+            policy: string;
+            /** @description The policy's environment, when it is for one. */
+            environment?: components["schemas"]["EnvironmentKey"];
+        };
+        PolicyLimits: {
+            /** @description The limits that apply here, each with the policy that decides it. */
+            lines: components["schemas"]["PolicyLimitLine"][];
+            considered: components["schemas"]["PolicyConsidered"][];
+        };
+        PolicyLimitLine: {
+            kind: components["schemas"]["DeploymentLimitKind"];
+            limit: number;
+            enforcement: components["schemas"]["PolicyEnforcement"];
+            policy: string;
+            environment?: components["schemas"]["EnvironmentKey"];
+            /**
+             * @description For a count, the deployments it counts now: the explained
+             *     user's (`as_user_id`, or the caller) or the project's. Absent
+             *     for a size.
+             */
+            used?: number;
+        };
         PolicyExplainQuery: {
             project_id: string;
             environment: components["schemas"]["EnvironmentKey"];
@@ -8329,6 +8486,7 @@ export interface components {
             day2?: components["schemas"]["PolicyDecision"];
             lease: components["schemas"]["PolicyDecision"];
             naming: components["schemas"]["PolicyDecision"];
+            limits: components["schemas"]["PolicyLimits"];
             quota: components["schemas"]["PolicyQuotaLine"][];
         };
         PolicyQuotaLine: {
@@ -14128,6 +14286,108 @@ export interface operations {
         };
     };
     deleteDay2Policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listDeploymentLimitPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentLimitPolicyList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createDeploymentLimitPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeploymentLimitPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentLimitPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateDeploymentLimitPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeploymentLimitPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentLimitPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteDeploymentLimitPolicy: {
         parameters: {
             query?: never;
             header?: never;

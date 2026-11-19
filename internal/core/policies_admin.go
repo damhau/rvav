@@ -636,7 +636,8 @@ func (s *Service) DeleteDay2Policy(ctx context.Context, p *auth.Principal, id st
 // ExplainPolicies says, for a project and environment (and an item or a
 // day-2 action), which policies decide and why the others don't.
 func (s *Service) ExplainPolicies(ctx context.Context, p *auth.Principal, q api.PolicyExplainQuery) (api.PolicyExplanation, error) {
-	out := api.PolicyExplanation{Quota: []api.PolicyQuotaLine{}}
+	out := api.PolicyExplanation{Quota: []api.PolicyQuotaLine{},
+		Limits: api.PolicyLimits{Lines: []api.PolicyLimitLine{}, Considered: []api.PolicyConsidered{}}}
 	proj, err := s.visibleProject(ctx, p, q.ProjectId)
 	if err != nil {
 		return out, err
@@ -675,6 +676,9 @@ func (s *Service) ExplainPolicies(ctx context.Context, p *auth.Principal, q api.
 		return out, err
 	}
 	if out.Quota, err = s.explainQuota(ctx, as, proj, env); err != nil {
+		return out, err
+	}
+	if out.Limits, err = s.explainLimits(ctx, as, proj, env, full); err != nil {
 		return out, err
 	}
 	if q.ItemId != nil && *q.ItemId != "" {

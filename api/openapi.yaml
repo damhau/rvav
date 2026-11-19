@@ -4038,6 +4038,92 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/deployment-limit-policies:
+    get:
+      tags: [admin]
+      operationId: listDeploymentLimitPolicies
+      summary: Deployment limit policies, in the order they are tried
+      description: |
+        A deployment limit policy caps how many deployments each user, or a
+        project, may have, and the vCPU and memory of each deployment
+        (ADR-0047). With `policies.read`, every policy. With
+        `project.policies.manage` in projects (project admins), the global
+        policies and those of these projects.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeploymentLimitPolicyList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createDeploymentLimitPolicy
+      summary: Add a deployment limit policy
+      description: |
+        A global policy needs `policies.manage`. A project's, that or
+        `project.policies.manage` in the project (project admins).
+        Audited. Each limit is decided on its own: the policies are tried
+        by priority, the global and the project's together, and the first
+        that sets the limit decides. When it is a project's, the first
+        global policy that sets it still decides if it is hard and
+        stricter: a project's policy can't loosen a hard global one
+        (ADR-0045, ADR-0047).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeploymentLimitPolicyWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeploymentLimitPolicy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/deployment-limit-policies/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    put:
+      tags: [admin]
+      operationId: updateDeploymentLimitPolicy
+      summary: Change a deployment limit policy
+      description: |
+        As adding one; a project's policy an administrator set
+        (`set_by_admin`) is refused (403) to its project admins. Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeploymentLimitPolicyWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeploymentLimitPolicy" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteDeploymentLimitPolicy
+      summary: Remove a deployment limit policy
+      description: |
+        As changing it: `policies.manage`, or `project.policies.manage` in
+        its project unless an administrator set it (`set_by_admin`).
+        Audited.
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /admin/policies/explain:
     post:
       tags: [admin]
@@ -7302,6 +7388,12 @@ components:
         quota:
           type: array
           items: { $ref: "#/components/schemas/QuotaImpact" }
+        limits:
+          type: array
+          description: |
+            The deployment limits that apply (ADR-0047). Absent when none
+            does, or the request makes no deployment.
+          items: { $ref: "#/components/schemas/DeploymentLimitLine" }
         approval: { $ref: "#/components/schemas/ApprovalPreview" }
         warnings:
           type: array
@@ -7987,6 +8079,13 @@ components:
           type: array
           description: The net change to the project's quotas; `adding` is negative where the update frees more than it adds.
           items: { $ref: "#/components/schemas/QuotaImpact" }
+        limits:
+          type: array
+          description: |
+            The vCPU and memory limits of each deployment that apply
+            (ADR-0047); the update goes over one only when it grows the
+            deployment. Absent when none does.
+          items: { $ref: "#/components/schemas/DeploymentLimitLine" }
         approval: { $ref: "#/components/schemas/ApprovalPreview" }
         warnings:
           type: array
@@ -10908,6 +11007,121 @@ components:
           type: array
           description: The roles a level may name, those given in projects.
           items: { $ref: "#/components/schemas/RoleRef" }
+    DeploymentLimitKind:
+      type: string
+      description: |
+        What a deployment limit caps: how many deployments each user, or
+        the project, may have; the vCPU or memory of each deployment.
+      enum: [deployments_per_user, deployments_per_project, vcpu_per_deployment, memory_gb_per_deployment]
+      x-enum-varnames: [DeploymentsPerUser, DeploymentsPerProject, VcpuPerDeployment, MemoryGbPerDeployment]
+    DeploymentLimitPolicyWrite:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        project_id:
+          type: [string, "null"]
+          description: A project's policy; null for every project, each counted on its own.
+        environment:
+          description: For deployments in one environment, counting those only; null for every environment.
+          oneOf:
+            - $ref: "#/components/schemas/EnvironmentKey"
+            - type: "null"
+        priority:
+          type: integer
+          description: Lower first; 100 when absent. On a tie, global policies first, then by name.
+        enabled: { type: boolean, default: true }
+        enforcement:
+          $ref: "#/components/schemas/PolicyEnforcement"
+          description: |
+            Hard (when absent) refuses what goes over a limit. Soft warns
+            the requester, who may go on by accepting the warning.
+        deployments_per_user:
+          type: [integer, "null"]
+          minimum: 0
+          description: |
+            How many deployments each user may own in the project: those
+            not deleted, failed ones and those of requests waiting for
+            approval included. A request made for someone counts for them.
+        deployments_per_project:
+          type: [integer, "null"]
+          minimum: 0
+          description: How many deployments the project may have, counted as for each user.
+        vcpu_per_deployment:
+          type: [integer, "null"]
+          minimum: 1
+          description: The most vCPU a deployment may have, all its VMs together.
+        memory_gb_per_deployment:
+          type: [integer, "null"]
+          minimum: 1
+          description: The most memory a deployment may have, in GB, all its VMs together.
+    DeploymentLimitPolicy:
+      allOf:
+        - $ref: "#/components/schemas/DeploymentLimitPolicyWrite"
+        - type: object
+          required: [id, priority, enabled, enforcement, set_by_admin]
+          properties:
+            id: { type: string }
+            set_by_admin:
+              type: boolean
+              description: |
+                An administrator (`policies.manage`) wrote it last: a
+                project's admins read it but don't change or remove it
+                (ADR-0045). False for a project admin's own.
+    DeploymentLimitPolicyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/DeploymentLimitPolicy" }
+    DeploymentLimitLine:
+      type: object
+      description: A deployment limit that applies to a request or an update, and where it stands with it.
+      required: [kind, limit, value, exceeds, enforcement, policy]
+      properties:
+        kind: { $ref: "#/components/schemas/DeploymentLimitKind" }
+        limit: { type: integer, description: The most the policy allows. }
+        value:
+          type: integer
+          description: |
+            For a count, how many deployments there would be with the
+            request; for a size, what its largest deployment would have.
+        exceeds:
+          type: boolean
+          description: The request goes over the limit; an update only when it grows the deployment.
+        enforcement: { $ref: "#/components/schemas/PolicyEnforcement" }
+        policy: { type: string, description: "The policy that decides this limit, by name." }
+        environment:
+          $ref: "#/components/schemas/EnvironmentKey"
+          description: The policy's environment, when it is for one.
+    PolicyLimits:
+      type: object
+      required: [lines, considered]
+      properties:
+        lines:
+          type: array
+          description: The limits that apply here, each with the policy that decides it.
+          items: { $ref: "#/components/schemas/PolicyLimitLine" }
+        considered:
+          type: array
+          items: { $ref: "#/components/schemas/PolicyConsidered" }
+    PolicyLimitLine:
+      type: object
+      required: [kind, limit, enforcement, policy]
+      properties:
+        kind: { $ref: "#/components/schemas/DeploymentLimitKind" }
+        limit: { type: integer }
+        enforcement: { $ref: "#/components/schemas/PolicyEnforcement" }
+        policy: { type: string }
+        environment: { $ref: "#/components/schemas/EnvironmentKey" }
+        used:
+          type: integer
+          description: |
+            For a count, the deployments it counts now: the explained
+            user's (`as_user_id`, or the caller) or the project's. Absent
+            for a size.
     PolicyExplainQuery:
       type: object
       required: [project_id, environment]
@@ -10940,12 +11154,13 @@ components:
         why: { type: string }
     PolicyExplanation:
       type: object
-      required: [lease, quota, naming]
+      required: [lease, quota, naming, limits]
       properties:
         approval: { $ref: "#/components/schemas/PolicyDecision" }
         day2: { $ref: "#/components/schemas/PolicyDecision" }
         lease: { $ref: "#/components/schemas/PolicyDecision" }
         naming: { $ref: "#/components/schemas/PolicyDecision" }
+        limits: { $ref: "#/components/schemas/PolicyLimits" }
         quota:
           type: array
           items: { $ref: "#/components/schemas/PolicyQuotaLine" }

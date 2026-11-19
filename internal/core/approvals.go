@@ -506,6 +506,9 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRo
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	if err := s.editLimits(ctx, requester, ev); err != nil {
+		return nil, nil, nil, nil, err
+	}
 	if len(ev.Errors) > 0 {
 		return nil, nil, nil, nil, &ValidationError{Errors: ev.Errors}
 	}
