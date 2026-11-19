@@ -42,6 +42,7 @@ var day2Keys = map[string]string{
 	"Cloud.vSphere.Machine.Add.Nic":         "nic_add",
 	"Cloud.vSphere.Machine.Remove.Nic":      "nic_remove",
 	"Cloud.vSphere.Machine.Update.Tags":     "tags_edit",
+	"Cloud.vSphere.Machine.Unregister":      "vm_unregister",
 	"Deployment.Delete":                     "delete",
 	"Deployment.ChangeOwner":                "change_owner",
 	"Deployment.ChangeLease":                "extend_lease",

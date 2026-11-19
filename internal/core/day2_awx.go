@@ -109,6 +109,9 @@ func (j *judge) offered(a *day2.Action, t day2.Target) bool {
 	if a.Admin && !j.p.In(auth.ProjectUpdate, j.d.ProjectID) {
 		return false
 	}
+	if a.Applies != nil && !a.Applies(t) {
+		return false
+	}
 	if a.Condition == "" {
 		return true
 	}

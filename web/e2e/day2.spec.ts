@@ -193,6 +193,36 @@ test("edit a VM's vSphere tags (X1.3)", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("unregister a VM, then its deployment (X1.3)", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/deployments");
+  await page.getByRole("link", { name: "web-prd-cache", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "web-prd-cache" })).toBeVisible();
+
+  await page.getByRole("button", { name: "More actions for web-prd-cache001" }).click();
+  await page.getByRole("menuitem", { name: /^Unregister/ }).click();
+  const vm = page.getByRole("dialog", { name: "Unregister · web-prd-cache001" });
+  await expect(vm.getByText(/it stays in vCenter as it is/)).toBeVisible();
+  await vm.getByRole("button", { name: "Unregister" }).click();
+  await expect(vm).toBeHidden();
+  await expect(page.getByRole("button", { name: "More actions for web-prd-cache001" })).toHaveCount(0, {
+    timeout: 15_000,
+  });
+
+  // Its only VM now goes with the deployment.
+  await page.getByRole("button", { name: "More actions for web-prd-cache002" }).click();
+  await expect(page.getByRole("menuitem", { name: /^Unregister/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: /^Unregister/ }).click();
+  const dep = page.getByRole("dialog", { name: "Unregister · web-prd-cache" });
+  await expect(dep.getByText(/its VMs stay in vCenter as they are/)).toBeVisible();
+  await dep.getByRole("button", { name: "Unregister" }).click();
+  await expect(page.getByText("Deleted", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  expect(errors).toEqual([]);
+});
+
 test("an auditor is offered no action on a VM, not even its console", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "auditor"));
   await page.goto("/deployments");

@@ -281,6 +281,9 @@ requests, with their own steps:
   rules into them, and a VM taken out of a group in NSX; adding it again
   puts it back.
 - **Rename, extend the lease.**
+- **Unregister** (administrators): rvav forgets a VM or a whole
+  deployment and leaves it running in vCenter, with its addresses and DNS
+  records, so it can be onboarded again.
 - **Ownership:** hand over to someone else, or move to another project.
 - **The AWX actions your organisation offers** (install an agent, and so
   on).

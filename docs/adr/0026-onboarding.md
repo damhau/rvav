@@ -60,3 +60,7 @@ Administrators **adopt** existing VMs into deployments
   and lease vRA had.
 - Not done: adopting in the background with progress (200 VMs take a few
   seconds), and post-configuration on adopted VMs.
+- Unregistering (X1.3, #143) is the reverse, as a day-2 action on a VM or
+  a deployment: rvav drops the resources' rows and changes nothing in
+  vCenter, EfficientIP or NSX, so adopting the VM again finds its address
+  and records. NSX memberships aren't adopted back.

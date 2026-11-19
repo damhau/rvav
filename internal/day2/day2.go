@@ -114,6 +114,9 @@ type Action struct {
 	Confirm string
 	// TypeName asks the user to type the resource name to confirm.
 	TypeName bool
+	// Applies, when set, says whether the action is offered on the target
+	// at all: one that never could run there isn't listed.
+	Applies func(t Target) bool
 	// Unavailable says why the action can't run on the target now ("" when it can).
 	Unavailable func(t Target, c Choices) string
 	// Form is the form the action asks for; nil when it has none. Its JSON

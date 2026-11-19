@@ -35,6 +35,9 @@ interface MockAction {
   group: Day2Action["group"];
   deployment?: boolean;
   direct?: boolean;
+  // Offered only to those who change the project: administrators.
+  admin?: boolean;
+  applies?: (vm: VmResource | undefined, d: DeploymentDetail) => boolean;
   destructive?: boolean;
   confirm?: string;
   typeName?: boolean;
@@ -570,6 +573,49 @@ export const catalogue: MockAction[] = [
     ],
   },
   {
+    key: "vm_unregister",
+    name: "Unregister",
+    group: "lifecycle",
+    admin: true,
+    confirm:
+      "rvav forgets the VM: it stays in vCenter as it is, and its IP addresses, DNS records and NSX group memberships stay in EfficientIP and NSX. It no longer counts in the project's quota. An administrator can onboard it again.",
+    applies: (vm, d) => d.resources.some((r) => r.type === "vsphere.vm" && r.id !== vm?.id),
+    ops: (vm) => [
+      {
+        key: "rvav.unregister",
+        title: `Release ${vm?.name} from rvav`,
+        detail: "Stays in vCenter",
+        system: "rvav",
+        apply: (dep) => {
+          dep.resources = dep.resources.filter((r) => r.id !== vm?.id);
+        },
+      },
+    ],
+  },
+  {
+    key: "unregister",
+    name: "Unregister",
+    group: "lifecycle",
+    deployment: true,
+    admin: true,
+    confirm:
+      "rvav forgets the deployment: its VMs stay in vCenter as they are, and their IP addresses, DNS records, NSX groups, memberships, rules and segments stay in EfficientIP and NSX. Its lease ends and it no longer counts in the project's quota. An administrator can onboard its VMs again.",
+    ops: (_vm, _i, d) => [
+      {
+        key: "rvav.unregister",
+        title: `Release ${d.name} from rvav`,
+        detail: `Stay in vCenter: ${d.resources
+          .filter((r) => r.type === "vsphere.vm")
+          .map((r) => r.name)
+          .join(", ")}`,
+        system: "rvav",
+        apply: (dep) => {
+          dep.resources = [];
+        },
+      },
+    ],
+  },
+  {
     key: "delete",
     name: "Delete",
     group: "lifecycle",
@@ -626,6 +672,7 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
   // The seeded day-2 policies let administrators, members and project
   // admins run them; with none matching, the roles' day-2 permissions decide.
   const held = db.me.projects.find((p) => p.project.id === d.project.id);
+  const isAdmin = db.me.roles.some((r) => r.key === "admin");
   const runs = (a: MockAction) =>
     db.me.roles.some((r) => r.key === "admin") ||
     Boolean(held?.roles.some((r) => r.key === "member" || r.key === "project-admin")) ||
@@ -636,7 +683,7 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
   const out: Day2Action[] = [];
   for (const vm of targets) {
     for (const a of catalogue) {
-      if (Boolean(a.deployment) !== !vm) continue;
+      if (Boolean(a.deployment) !== !vm || (a.admin && !isAdmin) || a.applies?.(vm, d) === false) continue;
       const active = busy(db, d, vm);
       const reason =
         (active ? `${active.request.number} is still running on this ${vm ? "VM" : "deployment"}.` : null) ??
@@ -699,10 +746,12 @@ export function runAction(
   draft: { action: string; resource_id?: string; inputs?: Inputs; justification?: string },
   number: string,
 ): RunResult {
-  const a = catalogue.find((x) => x.key === draft.action);
+  const vm = d.resources.find((r): r is VmResource => r.id === draft.resource_id && r.type === "vsphere.vm");
+  const a =
+    catalogue.find((x) => x.key === draft.action && Boolean(x.deployment) === !vm) ??
+    catalogue.find((x) => x.key === draft.action);
   if (!a || a.direct)
     return { error: { status: 422, title: `“${draft.action}” is not a day-2 action.`, field: "/action" } };
-  const vm = d.resources.find((r): r is VmResource => r.id === draft.resource_id && r.type === "vsphere.vm");
   if (Boolean(a.deployment) === Boolean(vm))
     return {
       error: {
@@ -805,6 +854,6 @@ export function day2Finished(db: Db, d: DeploymentDetail, r: ServiceRequest) {
   const others = db.requests.some(
     (x) => x.request.id !== r.id && x.request.deployment_id === d.id && x.request.status === "running",
   );
-  if (r.action?.key === "delete") d.status = "deleted";
+  if (r.action?.key === "delete" || r.action?.key === "unregister") d.status = "deleted";
   else if (!others) d.status = "ready";
 }

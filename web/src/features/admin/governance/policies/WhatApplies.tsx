@@ -16,7 +16,8 @@ type S = components["schemas"];
 const day2Actions = [
   "power_on", "power_off", "shutdown_guest", "restart_guest", "suspend", "reset", "console", "resize", "disk_add", "disk_extend", "disk_remove",
   "tags_edit", "nic_add", "nic_move", "nic_remove", "iso_mount", "iso_unmount", "snapshot_create", "snapshot_revert", "snapshot_delete",
-  "nsx_group_add", "nsx_group_remove", "rename", "change_owner", "change_project", "extend_lease", "delete",
+  "nsx_group_add", "nsx_group_remove", "rename", "change_owner", "change_project", "extend_lease", "vm_unregister", "unregister",
+  "delete",
 ]; // prettier-ignore
 
 function Decision({ title, d }: { title: string; d?: S["PolicyDecision"] }) {

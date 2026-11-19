@@ -1092,6 +1092,24 @@ first says what stops. A subscription's row opens its page, where
   project, an environment, an owner and an item in the side panel. rvav finds their addresses and DNS
   records in EfficientIP, and nothing is changed there
   ([ADR-0026](../adr/0026-onboarding.md)).
+- **Unregister:** the day-2 action that does the opposite, on a VM or on
+  a whole deployment. rvav forgets them and changes nothing elsewhere:
+  - the VMs stay in vCenter as they are, running or not, with their
+    folder, tags and DRS rules;
+  - their IP addresses stay reserved and their DNS records stay in
+    EfficientIP;
+  - their NSX group memberships, and the deployment's NSX groups,
+    firewall rules, segments and subnets, stay in NSX and EfficientIP.
+
+  The VMs no longer count in the project's quota, their lease ends, and
+  **Onboarding** lists them again: adopting a VM finds its address and
+  records again, but not its NSX memberships. A VM goes with its own
+  addresses and records; an address another VM of the deployment has
+  stays with that VM. A deployment's only VM is unregistered with the
+  deployment, which then shows as deleted, its history saying it was
+  unregistered. To delete what stays, do it in vCenter, EfficientIP and
+  NSX. Only those who may change the project (administrators) are
+  offered it; day-2 policies can still refuse it or ask for approval.
 - **EfficientIP reconcile** (**Integrations › Checks**): addresses and records
   tagged as rvav's that no deployment owns, left by failures or restores.
   Delete them there, or adopt their VM.

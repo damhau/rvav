@@ -35,6 +35,10 @@ func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
 		if in.Op.Op == "nsx_join" || in.Op.Op == "nsx_leave" {
 			return a.changeGroups(ctx, in)
 		}
+		if in.Op.Op == day2.OpForget {
+			detail, err := a.forget(ctx, in)
+			return "", detail, err
+		}
 		detail, err := a.op(ctx, in)
 		if err != nil {
 			var refused *vsphere.Refused
