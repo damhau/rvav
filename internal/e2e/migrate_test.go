@@ -14,6 +14,7 @@ import (
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/migrations"
 )
@@ -324,6 +325,69 @@ func TestMigrateItemSharing(t *testing.T) {
 	}
 	if err := goose.DownToContext(ctx, db, ".", before); err != nil {
 		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx, databaseURL); err != nil {
+		t.Fatalf("up again: %v", err)
+	}
+}
+
+// TestMigrateC2 takes C2's migrations (00080 on) down with their data in
+// place, and up again: an item with two requestable versions keeps one, and
+// a deployment drops the lease rules it recorded.
+func TestMigrateC2(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Pool.Exec(ctx, `drop schema public cascade; create schema public`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx, databaseURL); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Run(ctx, st); err != nil {
+		t.Fatal(err)
+	}
+	for _, sql := range []string{
+		`insert into catalog_item_versions select (jsonb_populate_record(null::catalog_item_versions,
+			to_jsonb(v) || '{"id": "ver_c2", "number": "9.9"}')).* from catalog_item_versions v where id = 'ver_rhel9-server_1'`,
+		`insert into lease_rules (id, name, condition, priority, default_days, max_days, max_extensions, grace_days, set_by_admin)
+			values ('lsr_admin', 'Admin', 'true', 50, 7, 14, 1, 3, true)`,
+		`insert into lease_rules (id, name, condition, project_id, priority, default_days, max_days, max_extensions, grace_days, set_by_admin)
+			values ('lsr_web', 'Web', 'true', 'prj_web', 10, 7, 14, 1, 3, false)`,
+		`insert into deployments (id, name, status, project_id, environment, item_id, version_id, owner_id, lease_rule_id, lease_cap_rule_id)
+			values ('dep_c2', 'shop', 'ready', 'prj_web', 'dev', 'itm_rhel9-server', 'ver_c2', '` + seed.UserID("tnguyen") + `', 'lsr_web', 'lsr_admin')`,
+		`insert into user_quotas (project_id, resource, limit_value, enforcement) values ('prj_web', 'vcpu', 4, 'hard'), (null, 'vcpu', 8, 'hard')`,
+		`insert into global_quotas (resource, limit_value, enforcement) values ('vcpu', 100, 'hard')`,
+		`insert into deployment_limit_policies (id, name, priority, enabled, enforcement, deployments_per_user, set_by_admin)
+			values ('dlp_c2', 'C2', 100, true, 'hard', 3, true)`,
+	} {
+		if _, err := st.Pool.Exec(ctx, sql); err != nil {
+			t.Fatalf("%v\n%s", err, sql)
+		}
+	}
+	cfg, err := pgx.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := stdlib.OpenDB(*cfg)
+	defer db.Close()
+	goose.SetBaseFS(migrations.FS)
+	if err := goose.SetDialect("postgres"); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.DownToContext(ctx, db, ".", 79); err != nil {
+		t.Fatalf("down to 79: %v", err)
+	}
+	var published int
+	if err := st.Pool.QueryRow(ctx, `select count(*) from catalog_item_versions where item_id = 'itm_rhel9-server' and state = 'published'`).
+		Scan(&published); err != nil || published != 1 {
+		t.Fatalf("published after down: %d, %v", published, err)
 	}
 	if err := store.Migrate(ctx, databaseURL); err != nil {
 		t.Fatalf("up again: %v", err)

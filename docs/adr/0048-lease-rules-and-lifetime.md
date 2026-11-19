@@ -74,11 +74,27 @@ The rule that decides is recorded on the deployment (`lease_rule_id`) at
 submit, because its condition reads the requester, the VMs and the
 request, which only the request has. The rule's current terms apply, as
 a lease policy's do now: a change to the rule changes the limits of the
-deployments it decided. The deployment falls back to the project's
-override or the environment's lease when:
+deployments it decided.
 
-- someone deletes the rule;
-- the deployment moves to a project the rule isn't for.
+When the rule is a project admin's, the deployment also records the
+administrators' rule that held it at request (`lease_cap_rule_id`): the
+first matching rule that administrators wrote, as above. The deployment
+then gets the stricter of the two rules' current terms, field by field,
+hard when either is. So a project admin who edits their rule later can't
+give the deployments it decided more than the administrators' rule
+allows: the save checks only against the lease policies, which don't see
+the rules a request matched. When the administrators' lease was a lease
+policy, nothing more is recorded: the save already checks against it.
+
+The deployment falls back when:
+
+- someone deletes the rule: to the administrators' rule it recorded, else
+  to the project's override or the environment's lease;
+- the deployment moves to a project the rule isn't for: likewise, when the
+  administrators' rule is for every project.
+
+Deployments requested before migration 00085 recorded no administrators'
+rule: they are held to the lease policies only.
 
 Updates keep the rule. Onboarded and vRA-imported deployments get the
 override or the environment's lease.
@@ -117,6 +133,7 @@ rvav took them over.
 ### Storage
 Migration 00082 adds `lease_rules`, `lease_policies.max_lifetime_days` and
 `deployments.lease_rule_id` (set to null when the rule is deleted).
+Migration 00085 adds `deployments.lease_cap_rule_id`, likewise.
 
 ### vRA import
 A lease policy's criteria, when the importer can translate them to CEL,
@@ -130,4 +147,7 @@ lifetime.
   and CEL per rule.
 - A deployment's limits follow the rule that decided them; the rule's name
   shows where it applies.
+- Until C2.4 (#160), a project admin who loosened or deleted their rule
+  loosened the deployments it decided, up to the lease policies. The
+  administrators' rule they were held to now holds them.
 - Lifetime and extensions are two limits. An owner may run out of either.

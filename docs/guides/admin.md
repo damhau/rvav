@@ -859,6 +859,15 @@ a project the rule isn't for, it gets its project's or environment's
 lease. Deployments that rvav takes over from vCenter or vRA get the lease
 policies', not a rule's.
 
+When a project admin's rule decides a deployment's lease, the deployment
+also keeps the first matching rule an administrator wrote, if any. It
+then has the stricter of the two rules' terms, so a project admin who
+edits their rule later can't give it more than the administrators' rule
+allows. When the project admin's rule is removed, the administrators'
+rule decides, not the project's or environment's lease. A deployment
+requested before rvav kept the administrators' rule is held to the lease
+policies only.
+
 When a rule's condition can't be read, for example because it needs an
 input the item's form doesn't have:
 - the request form's preview and **What applies here** skip the rule,

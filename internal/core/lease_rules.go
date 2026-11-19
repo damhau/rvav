@@ -253,6 +253,9 @@ type leaseChoice struct {
 	Policy string
 	// Rule is the rule that decides, nil when a lease policy does.
 	Rule *store.LeaseRule
+	// Cap is the administrators' rule that holds Rule when it is a
+	// project admin's: the deployment keeps the stricter of the two.
+	Cap *store.LeaseRule
 	// Considered are the rules and policies tried, and why each applies or not.
 	Considered []api.PolicyConsidered
 }
@@ -342,10 +345,11 @@ func (s *Service) chooseLease(ctx context.Context, proj store.Project, env store
 	}
 	// What administrators set, which a project admin's rule can't loosen.
 	var authority *store.LeaseTerms
+	var authorityRule *store.LeaseRule
 	authorityName := ""
 	for _, t := range matched {
 		if t.rule.ProjectID == nil || t.rule.SetByAdmin {
-			authority, authorityName = &t.rule.LeaseTerms, "the rule "+t.rule.Name
+			authority, authorityRule, authorityName = &t.rule.LeaseTerms, t.rule, "the rule "+t.rule.Name
 			break
 		}
 	}
@@ -365,6 +369,7 @@ func (s *Service) chooseLease(ctx context.Context, proj store.Project, env store
 				c.Why = "It would decide, but a project admin's rule can't give more than " + authorityName + ": " + errs[0].Message
 				continue
 			}
+			out.Cap = authorityRule
 		}
 		c.Applies = true
 		if !t.failed {

@@ -15,7 +15,7 @@ import (
 const deploymentRowSelect = `
 select d.id, d.name, d.description, d.status, d.project_id, d.environment, d.item_id, d.version_id, d.owner_id,
        d.created_by_request_id, d.created_at, d.lease_expires_at, d.lease_extensions_used,
-       d.lease_extensions_max, d.expiry_action, d.lease_rule_id, d.sync_state, d.inputs, d.lease_reminded, d.lease_expired_at,
+       d.lease_extensions_max, d.expiry_action, d.lease_rule_id, d.lease_cap_rule_id, d.sync_state, d.inputs, d.lease_reminded, d.lease_expired_at,
        p.code as project_code, p.name as project_name, p.deployment_sharing as project_sharing, i.slug as item_slug, i.name as item_name, i.type as item_type,
        v.number as version_number, u.name as owner_name, u.email as owner_email,
        (select count(*) from resources r where r.deployment_id = d.id and r.type = 'vsphere.vm')::int as vm_count,
@@ -35,13 +35,26 @@ left join lateral (select r.properties->>'address' as ip, r.properties->>'fqdn' 
                    and strpos(r.name, ':') = 0
                    order by r.created_at limit 1) pa on true
 left join lateral (select x.* from (
-                     select 0 as rank, lr.name as policy, lr.default_days, lr.max_days, lr.max_extensions, lr.grace_days,
-                            lr.enforcement, lr.max_lifetime_days
-                     from lease_rules lr where lr.id = d.lease_rule_id
+                     select 0 as rank, lr.name as policy, least(lr.default_days, cap.default_days) as default_days,
+                            least(lr.max_days, cap.max_days) as max_days,
+                            least(lr.max_extensions, cap.max_extensions) as max_extensions,
+                            least(lr.grace_days, cap.grace_days) as grace_days,
+                            case when cap.enforcement = 'hard' then 'hard' else lr.enforcement end as enforcement,
+                            least(lr.max_lifetime_days, cap.max_lifetime_days) as max_lifetime_days
+                     from lease_rules lr left join lease_rules cap on cap.id = d.lease_cap_rule_id
+                       and (cap.project_id is null or cap.project_id = d.project_id)
+                       and (cap.environment is null or cap.environment = d.environment)
+                     where lr.id = d.lease_rule_id
                      and (lr.project_id is null or lr.project_id = d.project_id)
                      and (lr.environment is null or lr.environment = d.environment)
                      union all
-                     select case when lp.project_id is null then 2 else 1 end,
+                     select 1, cap.name, cap.default_days, cap.max_days, cap.max_extensions, cap.grace_days,
+                            cap.enforcement, cap.max_lifetime_days
+                     from lease_rules cap where cap.id = d.lease_cap_rule_id
+                     and (cap.project_id is null or cap.project_id = d.project_id)
+                     and (cap.environment is null or cap.environment = d.environment)
+                     union all
+                     select case when lp.project_id is null then 3 else 2 end,
                             case when lp.project_id is null then e.name else p.name || ' in ' || e.name end,
                             lp.default_days, lp.max_days, lp.max_extensions, lp.grace_days, lp.enforcement, lp.max_lifetime_days
                      from lease_policies lp join environments e on e.key = lp.environment
@@ -50,11 +63,12 @@ left join lateral (select x.* from (
 
 func (s *Store) InsertDeployment(ctx context.Context, db DB, d Deployment) error {
 	_, err := db.Exec(ctx, `insert into deployments (id, name, status, project_id, environment, item_id, version_id,
-		owner_id, created_by_request_id, lease_expires_at, lease_extensions_max, expiry_action, inputs, description, lease_rule_id)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		owner_id, created_by_request_id, lease_expires_at, lease_extensions_max, expiry_action, inputs, description, lease_rule_id,
+		lease_cap_rule_id)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 		d.ID, d.Name, d.Status, d.ProjectID, d.Environment, d.ItemID, d.VersionID, d.OwnerID,
 		d.CreatedByRequestID, d.LeaseExpiresAt, d.LeaseExtensionsMax, d.ExpiryAction, jsonOr(d.Inputs, "{}"), d.Description,
-		d.LeaseRuleID)
+		d.LeaseRuleID, d.LeaseCapRuleID)
 	return err
 }
 

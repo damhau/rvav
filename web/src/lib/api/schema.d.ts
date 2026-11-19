@@ -6276,7 +6276,10 @@ export interface components {
              * @description What sets the lease now, by name: the lease rule its request
              *     matched, the project's override (`Web Platform in
              *     Development`) or the environment's lease policy
-             *     (`Development`). Null without a lease policy (ADR-0048).
+             *     (`Development`). Null without a lease policy (ADR-0048). When
+             *     a project admin's rule matched, the deployment also keeps the
+             *     administrators' rule that held it: its terms are the stricter
+             *     of the two, and that rule's once the project admin's is gone.
              */
             policy?: string | null;
             /** @description How long the deployment may live in all, from its creation; null for no limit. */

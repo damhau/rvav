@@ -320,10 +320,13 @@ type Deployment struct {
 	LeaseExtensionsUsed int        `db:"lease_extensions_used"`
 	LeaseExtensionsMax  *int       `db:"lease_extensions_max"`
 	ExpiryAction        string     `db:"expiry_action"`
-	// LeaseRuleID is the lease rule its request matched (ADR-0048).
-	LeaseRuleID *string         `db:"lease_rule_id"`
-	SyncState   string          `db:"sync_state"`
-	Inputs      json.RawMessage `db:"inputs"`
+	// LeaseRuleID is the lease rule its request matched (ADR-0048), and
+	// LeaseCapRuleID the administrators' rule that held it, when it was a
+	// project admin's: the deployment keeps the stricter of the two.
+	LeaseRuleID    *string         `db:"lease_rule_id"`
+	LeaseCapRuleID *string         `db:"lease_cap_rule_id"`
+	SyncState      string          `db:"sync_state"`
+	Inputs         json.RawMessage `db:"inputs"`
 	// LeaseReminded are the reminders sent for the current lease (7d, 1d);
 	// LeaseExpiredAt is when its expiry powered the VMs off.
 	LeaseReminded  []string   `db:"lease_reminded"`

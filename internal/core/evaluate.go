@@ -104,9 +104,11 @@ type LeaseInfo struct {
 	// Soft: a lease longer than MaxDays warns (ADR-0045).
 	Soft bool
 	// Policy names what decides the lease, and RuleID the lease rule
-	// that does, if one does (ADR-0048).
+	// that does, if one does (ADR-0048); CapRuleID, the administrators'
+	// rule that holds a project admin's.
 	Policy          string
 	RuleID          *string
+	CapRuleID       *string
 	MaxLifetimeDays *int
 }
 
@@ -805,6 +807,9 @@ func (s *Service) evaluateLease(ctx context.Context, p *auth.Principal, ev *Eval
 		Soft: c.Enforcement == store.EnforcementSoft, Policy: c.Policy, MaxLifetimeDays: c.MaxLifetimeDays}
 	if c.Rule != nil {
 		ev.Lease.RuleID = &c.Rule.ID
+	}
+	if c.Cap != nil {
+		ev.Lease.CapRuleID = &c.Cap.ID
 	}
 	days := c.DefaultDays
 	if requested != nil {

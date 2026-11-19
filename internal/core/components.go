@@ -1094,7 +1094,7 @@ func (s *Service) reserveVMs(ctx context.Context, tx pgx.Tx, ev *Evaluation, req
 			ID: ids.New(ids.Deployment), Name: name, Status: "provisioning", ProjectID: ev.Project.ID,
 			Environment: ev.Env.Key, ItemID: ev.Item.ID, VersionID: ev.Version.ID, OwnerID: owner,
 			CreatedByRequestID: &requestID, LeaseExpiresAt: ev.Lease.ExpiresAt, ExpiryAction: orDefault(ev.Lease.ExpiryAction, "notify_only"),
-			LeaseRuleID: ev.Lease.RuleID,
+			LeaseRuleID: ev.Lease.RuleID, LeaseCapRuleID: ev.Lease.CapRuleID,
 		}
 		if ev.Lease.ExpiresAt != nil {
 			dep.LeaseExtensionsMax = &ev.Lease.MaxExtensions

@@ -221,3 +221,52 @@ func TestLeaseRules(t *testing.T) {
 		}
 	})
 }
+
+// TestLeaseRuleCap: a deployment whose lease a project admin's rule
+// decided keeps the administrators' rule that held it, so editing the
+// project admin's rule later never loosens its lease, and deleting it
+// falls back to the administrators' rule, not to the environment's lease
+// (ADR-0048).
+func TestLeaseRuleCap(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const path = "/api/v1/admin/lease-rules"
+		small := api.LeaseRuleWrite{Name: "Small VMs", Condition: `inputs.size == "S"`, Environment: new("dev"), Priority: new(50),
+			DefaultDays: new(7), MaxDays: new(14), MaxExtensions: 1, GraceDays: 3, ExpiryAction: api.Delete, MaxLifetimeDays: new(30)}
+		h.json("POST", path, "mkeller", small, 201, nil)
+		mine := small
+		mine.Name, mine.ProjectId, mine.Priority = "Web small VMs", new("prj_web"), new(10)
+		var ours api.LeaseRule
+		h.json("POST", path, "lmartin", mine, 201, &ours)
+
+		d := leasedVM(h, 7) // size S
+		if l := d.lease(); deref(l.Policy) != "Web small VMs" || valueOf(l.MaxDays) != 14 {
+			t.Fatalf("lease at first = %+v", l)
+		}
+
+		// Dev's lease allows this edit, but the deployment keeps Small VMs' terms.
+		loose := mine
+		loose.MaxDays, loose.MaxExtensions, loose.GraceDays, loose.MaxLifetimeDays = new(90), 2, 7, nil
+		h.json("PUT", path+"/"+ours.Id, "lmartin", loose, 200, nil)
+		l := d.lease()
+		if deref(l.Policy) != "Web small VMs" || valueOf(l.MaxDays) != 14 || valueOf(l.ExtensionsMax) != 1 || valueOf(l.GraceDays) != 3 ||
+			valueOf(l.MaxLifetimeDays) != 30 {
+			t.Fatalf("lease after the project admin loosened the rule = %+v", l)
+		}
+		var r api.Request
+		h.json("POST", "/api/v1/deployments/"+d.id+"/actions", "tnguyen", api.Day2Draft{Action: "extend_lease",
+			Inputs: map[string]any{"days": 60}}, 202, &r, "Idempotency-Key", uuid.NewString())
+		if r.Status != api.RequestStatusPendingApproval {
+			t.Fatalf("a 60-day extension = %s", r.Status)
+		}
+
+		// Her rule gone, Small VMs decides: not Development's 90 days.
+		h.json("DELETE", path+"/"+ours.Id, "lmartin", nil, 204, nil)
+		if l := d.lease(); deref(l.Policy) != "Small VMs" || valueOf(l.MaxDays) != 14 || valueOf(l.MaxLifetimeDays) != 30 {
+			t.Fatalf("lease once the project admin's rule is deleted = %+v", l)
+		}
+	})
+}
