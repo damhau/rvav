@@ -25,10 +25,10 @@ and a deployment that failed half-way was retried or deleted.
   "Update · *name*", its version the one it moves to, its inputs the new
   ones. It has a timeline, a history entry and an audit trail as a day-2
   action has.
-- **It always moves to the item's published version.** The form is that
-  version's, as for a new request: an update sent with another version is
-  refused with `stale_version`. Since C2.1 it moves to any version the
-  item still offers, the newest by default
+- **It moves to a version the item offers.** The form is that version's,
+  as for a new request. Until C2.1 it was always the published version,
+  and an update sent with another was refused with `stale_version`; since
+  then it moves to any version the item still offers, the newest by default
   ([ADR-0046](0046-deployment-names-and-versions.md#several-versions-requestable)). A deployment whose item is no longer
   offered in its project can't be updated.
 - `POST /deployments/{id}/update/preview` returns the plan;
