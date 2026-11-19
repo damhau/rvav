@@ -50,7 +50,9 @@ up to where the workflow is. Two rules:
 1. **A change to what a workflow does goes behind
    `workflow.GetVersion`.** Old histories keep the old path, new workflows
    take the new one. `internal/provision/workflow.go` already does it for
-   blocking subscriptions (`blocking-subscriptions`). The old branch can be
+   blocking subscriptions (`blocking-subscriptions`), and
+   `internal/provision/changes.go` for those on a VM's topics
+   (`machine-checks`). The old branch can be
    removed once no workflow in flight can predate the change: after the
    longest approval timeout plus the history retention.
 2. **Activities can change freely, but stay idempotent.** An activity runs

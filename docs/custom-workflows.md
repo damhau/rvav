@@ -129,7 +129,11 @@ decode it leniently. The helpers do: Python keeps unknown fields in
   ([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)). Don't
   return a secret in the result: it is shown and passed to later steps.
 - As a blocking subscription's target, the result is read as
-  `{outcome: continue|stop, reason, properties}`.
+  `{outcome: continue|stop, reason, properties, machine}`. On
+  `compute.allocation.pre` and `network.configure`, `machine` renames,
+  places or addresses the VM, which the context's `machine` describes
+  ([ADR-0054](adr/0054-subscriptions-that-change-the-request.md)). As
+  its recovery target, only `outcome` and `reason` are read.
 - An error fails the step and the request, with the error's message. Use
   non-retryable application errors for decisions ("rejected") and let
   Temporal retry the rest.

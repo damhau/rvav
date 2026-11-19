@@ -50,6 +50,9 @@ In the order of a deployment's life, then a project's:
 form lists them under their group. Blocking stays on `provisioning.pre`,
 `day2.pre` and `delete.pre`: a subscription that changes a VM's name,
 addresses or placement on its own topics is E1.2's (#162).
+[ADR-0054](0054-subscriptions-that-change-the-request.md) has since let
+`compute.allocation.pre` and `network.configure` block, and their answers
+change the VM.
 
 ### A VM's events
 Their data is the request's (ADR-0021), with `deployment` the VM's, and

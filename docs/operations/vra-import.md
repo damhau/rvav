@@ -485,9 +485,19 @@ actions vRA runs are listed, but their code isn't read.
 | Any other | None: the subscription needs another trigger. |
 
 A blocking vRA subscription holds vRA's request until it ends. rvav
-waits for subscriptions only on `provisioning.pre`, `day2.pre` and
+waits for subscriptions only on `provisioning.pre`,
+`compute.allocation.pre`, `network.configure`, `day2.pre` and
 `delete.pre`. On any other topic, the report says that the rvav
-subscription doesn't hold the request.
+subscription doesn't hold the request. On `compute.allocation.pre` and
+`network.configure`, an rvav subscription's answer may rename, place or
+address the VM, as a vRA subscription's outputs do, and rvav checks the
+change again ([ADR-0054](../adr/0054-subscriptions-that-change-the-request.md)).
+
+A blocking vRA subscription's recovery workflow or action (`recoverRunnableId`)
+is listed as used by it, "when it fails". It becomes the recovery target
+of the rvav subscription, which rvav tells when the subscription fails.
+On a topic where rvav doesn't block, the report says that it needs
+another trigger.
 
 | Suggested group | When |
 |---|---|

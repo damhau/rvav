@@ -1510,9 +1510,13 @@ only).
 [ADR-0021](adr/0021-event-subscriptions.md) and
 [ADR-0049](adr/0049-event-topics.md) give each topic's event. Targets: an
 AWX job template, a webhook (HMAC-signed) or a custom workflow.
-**Blocking** subscriptions, on `provisioning.pre`, `day2.pre` and
-`delete.pre`, can stop the flow or modify allowed properties (for example a
-CMDB check that returns a cost center). Non-blocking ones run asynchronously.
+**Blocking** subscriptions, on `provisioning.pre`, `compute.allocation.pre`,
+`network.configure`, `day2.pre` and `delete.pre`, can stop the flow or modify
+allowed properties (for example a CMDB check that returns a cost center). On
+`compute.allocation.pre` and `network.configure` they can also rename, place
+or address the VM, checked again before it is built, and a recovery target
+is told when one fails ([ADR-0054](adr/0054-subscriptions-that-change-the-request.md)).
+Non-blocking ones run asynchronously.
 
 ## 9. Notifications
 

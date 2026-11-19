@@ -2,6 +2,9 @@
 
 - Status: accepted
 - Date: 2026-10-28
+- Blocking revisited by [ADR-0054](0054-subscriptions-that-change-the-request.md):
+  on a VM's topics an answer may change its name, placement, networks and
+  addresses, and a blocking subscription may have a recovery target.
 
 ## Context
 vRA's event broker lets administrators run their own code when something
@@ -126,6 +129,8 @@ action or deletes. Each answers one of:
   They are shown on the deployment, passed to AWX jobs in `rvav.properties`
   and to later subscriptions. Nothing else can be changed: not inputs,
   sizes, placement or names, which policies and quotas already approved.
+  ([ADR-0054](0054-subscriptions-that-change-the-request.md) has since let
+  a VM's name, placement and addresses change, checked again.)
   Properties are for `provisioning.pre`; on `day2.pre` and `delete.pre` a
   subscription can only continue or stop.
 - A webhook answers with that JSON (an empty 2xx is continue). An AWX job

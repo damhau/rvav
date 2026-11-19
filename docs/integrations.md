@@ -403,16 +403,34 @@ The sample event of each topic shows its fields
 - **Retries.** A 2xx answer delivers it. Anything else is retried after
   10 s, 30 s, 1 min, 5 min, then every 15 min for a day. The event ID stays
   the same across retries, so ignore an ID you already have.
-- **Blocking subscriptions** (on `provisioning.pre`, `day2.pre` and
+- **Blocking subscriptions** (on `provisioning.pre`,
+  `compute.allocation.pre`, `network.configure`, `day2.pre` and
   `delete.pre`) wait for the answer within their timeout:
   - empty or `{"outcome": "continue"}` lets the request go on;
   - `{"outcome": "stop", "reason": "…"}` fails it with the reason, before
     anything is built or changed;
   - on `provisioning.pre`, `"properties": {"cmdb_id": "CI0042"}` sets
-    deployment properties, which AWX jobs get in `rvav.properties`.
-  - A failure or timeout stops or continues the request as the
-    subscription's `on_failure` says, after one more try within the
-    timeout.
+    deployment properties, which AWX jobs get in `rvav.properties`;
+  - on `compute.allocation.pre`, `"machine": {"name": "…", "placement":
+    {"cluster": "…", "resource_pool": "…", "datastore": "…", "folder":
+    "…"}}` renames or moves the VM;
+  - on `network.configure`, `"machine": {"networks": [{"index": 0,
+    "network": "…", "address": "10.31.10.50"}]}` changes an adapter's
+    network or gives it its address.
+  - rvav checks a change again before building
+    ([ADR-0054](adr/0054-subscriptions-that-change-the-request.md)): the
+    name keeps the naming policy's prefix and nobody has it, in rvav,
+    vCenter, DNS or EfficientIP; the placement rule allows the placement
+    and it has room for the VM; the address is free in its subnet, and is
+    reserved in EfficientIP. A change it refuses is a failure.
+  - A failure, a timeout or a refused change stops or continues the
+    request as the subscription's `on_failure` says, after one more try
+    within the timeout. A **recovery target** first gets the event with
+    `"recovery": {"reason": "…", "run_id": "…"}`; its `outcome`, if it
+    answers with one, decides instead.
+  - An AWX job answers with the `rvav_answer` artifact
+    (`set_stats: {data: {rvav_answer: {…}}}`), a custom workflow with its
+    result.
 
 ```python
 import hashlib, hmac, time

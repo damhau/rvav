@@ -1694,8 +1694,11 @@ sign it, GitLab sends it as its token.
     level (`approval.status == "rejected"`); on a project's, what changed
     (`"cost_center" in changes`).
   - A **blocking** subscription holds a request until it answers, and can
-    add properties to it. Only subscriptions on `provisioning.pre`,
-    `day2.pre` and `delete.pre` can block.
+    stop it. Only subscriptions on `provisioning.pre`,
+    `compute.allocation.pre`, `network.configure`, `day2.pre` and
+    `delete.pre` can block. On `provisioning.pre` the answer can add
+    properties to the deployment; on a VM's topics it can
+    [rename, place or address the VM](#let-a-subscription-name-place-or-address-vms).
   - Each subscription's runs, their errors and retries are on its page.
 - **Custom workflows:** your own Temporal workflows, on your own task
   queue, offered as items or composite steps
@@ -1706,6 +1709,45 @@ panel and turns it off or on (a day-2 action is offered or not). A
 subscription or custom workflow can also be removed from its menu: rvav
 first says what stops. A subscription's row opens its page, where
 **Change subscription** is the main action and a menu has the rest.
+
+### Let a subscription name, place or address VMs
+
+A CMDB, an IPAM or a capacity tool can decide a VM's name, placement or
+address before rvav builds it
+([ADR-0054](../adr/0054-subscriptions-that-change-the-request.md)). To
+let one decide:
+
+1. Go to **Administration › Subscriptions** and select **New
+   subscription**.
+2. Under **Topic**, select `compute.allocation.pre` to change the VM's
+   name and placement, or `network.configure` to change its adapters'
+   networks and addresses.
+3. Choose the target, then select **Blocking**. The form says what the
+   answer may change and how each kind of target answers: a webhook with
+   JSON, an AWX job with the `rvav_answer` artifact, a custom workflow
+   with its result.
+4. Under **When it fails, doesn't answer or asks for a change rvav
+   refuses**, select **Stop the request** to fail the request, or **Let
+   the request go on** to build the VM as planned.
+5. Optional: to tell another system when the subscription fails, select
+   **Tell a recovery target when it fails** and choose the recovery
+   target. If it answers with an outcome, that decides instead of the
+   previous setting.
+6. Select **Save subscription**.
+
+rvav checks each change again before building, and refuses:
+
+- a name without the naming policy's prefix, or one that a deployment, a
+  VM in vCenter, a DNS record or an EfficientIP address already has;
+- a cluster, resource pool, datastore, folder or network that the
+  environment's placement rule doesn't allow, or without room for the VM;
+- an address outside the adapter's subnet, or one that is already taken.
+
+The request's timeline shows each VM's checks under **Allocation checks**
+and **Network checks**, with what changed. The subscription's runs show
+it too, and its recovery target's runs have a **Recovery** badge. A
+request retried after a failure keeps what was changed, and doesn't ask
+again.
 
 ### Design a day-2 action's form
 
