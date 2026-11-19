@@ -1,6 +1,8 @@
 package core
 
 import (
+	"context"
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -8,7 +10,9 @@ import (
 	"github.com/ohler55/ojg/oj"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/policy"
+	"github.com/damhau/rvav/internal/store"
 )
 
 func TestRuleDefaults(t *testing.T) {
@@ -188,5 +192,73 @@ func TestCheckDefaults(t *testing.T) {
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%s: %v, want %v", c.what, got, c.want)
 		}
+	}
+}
+
+func textVersion(ui api.UiSchema) store.ItemVersion {
+	props := map[string]any{}
+	for n := range ui.Fields {
+		props[n] = map[string]any{"type": "string"}
+	}
+	uiRaw, _ := json.Marshal(ui)
+	schema, _ := json.Marshal(map[string]any{"type": "object", "properties": props})
+	return store.ItemVersion{ID: "ver_x", UISchema: uiRaw, FormSchema: schema}
+}
+
+// No rule reads an input the submit drops or replaces: a hidden field's, a
+// read-only one's, a computed one's, which they read as its computed value.
+func TestSettledStates(t *testing.T) {
+	ui := api.UiSchema{Fields: map[string]api.UiField{
+		"override": {Widget: api.UiWidgetText, Rules: &api.UiRules{Visible: new(`"catalog_admin" in user.roles`)}},
+		"tier": {Widget: api.UiWidgetText, Rules: &api.UiRules{ReadOnly: new(`true`),
+			Default: new(`has(inputs.override) ? inputs.override : "bronze"`)}},
+		"code":  {Widget: api.UiWidgetText, Rules: &api.UiRules{Value: new(`project.code`)}},
+		"cc":    {Widget: api.UiWidgetText, Rules: &api.UiRules{ReadOnly: new(`true`), Default: new(`inputs.code + "-cc"`)}},
+		"label": {Widget: api.UiWidgetText, Rules: &api.UiRules{Value: new(`has(inputs.override) ? "over" : inputs.code`)}},
+		"extra": {Widget: api.UiWidgetText, Rules: &api.UiRules{Visible: new(`has(inputs.override) || inputs.tier == "gold"`)}},
+		"fixed": {Widget: api.UiWidgetText, Rules: &api.UiRules{ReadOnly: new(`true`)}},
+		"echo":  {Widget: api.UiWidgetText, Rules: &api.UiRules{Default: new(`inputs.fixed`)}},
+	}}
+	v := textVersion(ui)
+	s := &Service{}
+	p := &auth.Principal{User: store.User{ID: "usr_req"}}
+	initial := map[string]any{"fixed": "base"}
+	in := map[string]any{"override": "gold", "code": "EVIL", "tier": "gold", "cc": "mine", "label": "mine",
+		"extra": "x", "fixed": "mine"}
+	states := s.settledStates(context.Background(), p, store.Project{Code: "WEB"}, "dev", v, ui, initial, in)
+	if errs := applyStates(states, ui, initial, in); len(errs) > 0 {
+		t.Fatalf("errors %v", errs)
+	}
+	want := map[string]any{"tier": "bronze", "code": "WEB", "cc": "WEB-cc", "label": "WEB", "fixed": "base", "echo": "base"}
+	if !mapsEqual(in, want) {
+		t.Errorf("inputs kept %v, want %v", in, want)
+	}
+}
+
+// An evaluation again of stored inputs keeps a default the requester
+// emptied empty: the stored inputs leave the field out.
+func TestKeepEmptied(t *testing.T) {
+	ui := api.UiSchema{Fields: map[string]api.UiField{
+		"proxy":  {Widget: api.UiWidgetText, Rules: &api.UiRules{Default: new(`"proxy.corp:3128"`)}},
+		"note":   {Widget: api.UiWidgetText},
+		"pass":   {Widget: api.UiWidgetText, Secret: new(true), Rules: &api.UiRules{Default: new(`"x"`)}},
+		"region": {Widget: api.UiWidgetText, Rules: &api.UiRules{Default: new(`"gva"`)}},
+	}}
+	v := textVersion(ui)
+	s := &Service{}
+	p := &auth.Principal{User: store.User{ID: "usr_req"}}
+	submitted := map[string]any{"proxy": nil, "note": "first"}
+	applyStates(s.settledStates(context.Background(), p, store.Project{}, "dev", v, ui, nil, submitted), ui, nil, submitted)
+	if _, ok := submitted["proxy"]; ok || submitted["region"] != "gva" {
+		t.Fatalf("stored at submit: %v", submitted)
+	}
+	edited := map[string]any{"note": "checked", "region": "zrh"}
+	keepEmptied(ui, submitted, edited)
+	if _, ok := edited["pass"]; ok || edited["proxy"] != nil || edited["region"] != "zrh" {
+		t.Fatalf("with the emptied kept: %v", edited)
+	}
+	applyStates(s.settledStates(context.Background(), p, store.Project{}, "dev", v, ui, nil, edited), ui, nil, edited)
+	if _, ok := edited["proxy"]; ok {
+		t.Errorf("the requester emptied proxy; after an edit it is %v", edited["proxy"])
 	}
 }

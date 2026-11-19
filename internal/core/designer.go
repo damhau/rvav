@@ -83,7 +83,7 @@ func (s *Service) PreviewCatalogItemVersion(ctx context.Context, p *auth.Princip
 	if q.Environment != nil {
 		env = *q.Environment
 	}
-	out.Fields = s.formStates(ctx, as, proj, env, v, inputs)
+	out.Fields = s.settledStates(ctx, as, proj, env, v, out.Form.UiSchema, out.Form.InitialValues, inputs)
 	ruleErrs := applyStates(out.Fields, out.Form.UiSchema, out.Form.InitialValues, inputs)
 	if schema, err := compileSchemaUncached(v.FormSchema); err == nil {
 		b, _ := json.Marshal(inputs)

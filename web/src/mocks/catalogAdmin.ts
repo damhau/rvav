@@ -27,7 +27,7 @@ import {
   testEntry,
   type StoredEntry,
 } from "./formLibrary";
-import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
+import { applyStates, settledStates, userGroups, validateInputs } from "./logic";
 import { assignable, builtinRoles, customRoles } from "./roles";
 import type { Db, StoredItem } from "./seed";
 
@@ -1697,7 +1697,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       if (!found) return problem(404, "Not found");
       if (!found.member) return notMember(db, found.user.id);
       const env = q.environment ?? "dev";
-      const fields = fieldStates(db, found.form, q.inputs, {
+      const fields = settledStates(db, found.form, q.inputs, {
         environment: env,
         project: { id: project.id, code: project.code, name: project.name },
         user: found.user,

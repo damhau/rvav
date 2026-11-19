@@ -108,6 +108,69 @@ func (s *Service) formStates(ctx context.Context, p *auth.Principal, proj store.
 	return states
 }
 
+// settledStates is formStates over the inputs the rules keep, so that no
+// rule reads an input that applyStates then drops or replaces: a hidden
+// field's, a read-only one's, a computed one's, which has its computed
+// value instead. It works the states out again over the inputs the last
+// ones keep, until those stop changing.
+func (s *Service) settledStates(ctx context.Context, p *auth.Principal, proj store.Project, env string, v store.ItemVersion,
+	ui api.UiSchema, initial, inputs map[string]any) api.FieldStates {
+	in := keptInputs(ui, initial, inputs, nil)
+	states := s.formStates(ctx, p, proj, env, v, in)
+	for range len(ui.Fields) + 1 {
+		next := keptInputs(ui, initial, inputs, states)
+		if reflect.DeepEqual(next, in) {
+			break
+		}
+		in = next
+		states = s.formStates(ctx, p, proj, env, v, in)
+	}
+	return states
+}
+
+// keptInputs is the inputs as states keep them: a hidden, read-only or
+// computed field's input is dropped, a value rule's field has its value,
+// and a read-only field without a default its initial value. Without
+// states yet, only the computed fields' inputs are dropped.
+func keptInputs(ui api.UiSchema, initial, inputs map[string]any, states api.FieldStates) map[string]any {
+	out := map[string]any{}
+	for k, val := range inputs {
+		f, ok := ui.Fields[k]
+		st, known := states[k]
+		if ok && (computedBy(f) || known && (!st.Visible || st.ReadOnly)) {
+			continue
+		}
+		out[k] = val
+	}
+	for k, st := range states {
+		switch f := ui.Fields[k]; {
+		case !st.Visible:
+		case computedBy(f):
+			// A computed source's value reaches the rules in formStates.
+			if st.Value != nil && valueRule(f) != "" {
+				out[k] = st.Value
+			}
+		case st.ReadOnly && st.Default == nil:
+			if val, ok := initial[k]; ok {
+				out[k] = val
+			}
+		}
+	}
+	return out
+}
+
+// keepEmptied gives a null input to each field with a default that both
+// stored and inputs lack: stored inputs leave out a field the requester
+// emptied, which an evaluation again would otherwise give its default.
+func keepEmptied(ui api.UiSchema, stored, inputs map[string]any) {
+	for name, f := range ui.Fields {
+		_, had := stored[name]
+		if _, ok := inputs[name]; !ok && !had && defaulted(f) && (f.Secret == nil || !*f.Secret) {
+			inputs[name] = nil
+		}
+	}
+}
+
 // ruleDefaults works out the default rules over base, the inputs given and
 // the defaults found so far. A rule never sees its own field's input, and
 // sees the others' defaults when their fields have no input (has), until

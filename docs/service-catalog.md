@@ -1102,6 +1102,15 @@ ui_schema:
     default; `null` for a field with a default means the requester
     emptied it, and it gets none. A read-only field takes its default
     too. The other rules see the defaults.
+  - The rules read the inputs as the request keeps them: not the input
+    of a hidden or read-only field, which the request drops or replaces,
+    nor a computed field's, of which they see the computed value. The
+    server works the rules out again over those inputs until they stop
+    changing, so a requester can't set a read-only field through a
+    hidden one.
+  - An approver's edit works the request's inputs out again: a field
+    the requester emptied stays empty, though the stored inputs leave it
+    out.
   - A default rule doesn't see its own field's input. Defaults can read
     each other: the server works them out again until they stop
     changing. A rule that fails, or reads an input that has no value

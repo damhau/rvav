@@ -476,6 +476,7 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRo
 	if len(changes) == 0 {
 		return nil, nil, nil, nil, nil
 	}
+	keepEmptied(ui, inputs, inputs)
 	requester, err := auth.ForUser(ctx, s.Store, req.RequesterID)
 	if err != nil {
 		return nil, nil, nil, nil, err

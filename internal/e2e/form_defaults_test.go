@@ -8,12 +8,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/provision"
 )
 
 // TestFormDefaults: a default rule fills a field from the others while it
@@ -215,6 +217,67 @@ func TestRESTSingleValues(t *testing.T) {
 		}
 		if _, ok := got["broken"]; ok {
 			t.Fatalf("a failed source gave a value: %v", got)
+		}
+	})
+}
+
+// TestApproverEditKeepsEmptied: an approver's edit evaluates the request's
+// inputs again, and a default the requester emptied stays empty, in what
+// is stored and in what AWX gets.
+func TestApproverEditKeepsEmptied(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	ts := startTemporal(t)
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const taskQueue = "rvav-emptied-e2e"
+		h.svc.Workflows = &provision.Temporal{Client: ts.Client(), TaskQueue: taskQueue}
+		w := provision.NewWorker(ts.Client(), taskQueue, h.acts)
+		if err := w.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer w.Stop()
+		const admin = "lmartin"
+		def := awxForm(map[string]api.UiField{
+			"role":  {Widget: api.UiWidgetText, Label: "Role", ApproverEditable: new(true)},
+			"proxy": {Widget: api.UiWidgetText, Label: "Proxy", Rules: &api.UiRules{Default: new(`"proxy.corp:3128"`)}},
+		}, nil)
+		var item api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "pg-proxy", Name: "Role", Summary: "A role.",
+			Category: "compute", Type: api.AwxJobTemplate, Definition: &def}, 201, &item)
+		h.json("POST", "/api/v1/admin/catalog/items/pg-proxy/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+		h.json("PUT", "/api/v1/admin/catalog/items/pg-proxy/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+		h.json("POST", "/api/v1/admin/approval-policies", "mkeller", api.ApprovalPolicyWrite{Name: "Roles in production",
+			Condition: `environment == "prd"`,
+			Levels:    []api.ApprovalLevel{{Name: "Infrastructure leads", Group: new("rvav-infra-leads")}}, Priority: new(5)}, 201, nil)
+
+		var req api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id,
+			ProjectId: "prj_web", Environment: "prd", Inputs: map[string]any{"role": "app", "proxy": nil},
+			Justification: new("A role.")}, 202, &req, "Idempotency-Key", uuid.NewString())
+		h.waitStatus(req.Id, "tnguyen", api.RequestStatusPendingApproval)
+		var level string
+		for deadline := time.Now().Add(30 * time.Second); level == ""; time.Sleep(50 * time.Millisecond) {
+			_ = h.store.Pool.QueryRow(ctx, `select id from approvals where request_id = $1 and status = 'pending'`, req.Id).Scan(&level)
+			if time.Now().After(deadline) {
+				t.Fatal("no approval level opened")
+			}
+		}
+		h.json("POST", "/api/v1/approvals/"+level+"/decision", "mkeller", api.ApprovalDecision{Decision: api.ApprovalDecisionDecisionApprove,
+			Inputs: &map[string]any{"role": "ops"}}, 200, nil)
+		done := h.waitStatus(req.Id, "tnguyen", api.RequestStatusSucceeded)
+		if got := *done.Inputs; got["role"] != "ops" || got["proxy"] != nil {
+			t.Fatalf("stored after the edit: %v", got)
+		}
+		step, err := h.store.GetStepByKey(ctx, req.Id, "awx.job:pg-create-role")
+		if err != nil || step.ExternalID == nil {
+			t.Fatalf("job step = %+v, %v", step, err)
+		}
+		var jobID int
+		_, _ = fmt.Sscan(*step.ExternalID, &jobID)
+		if vars := h.awx.Launched(jobID).ExtraVars; vars["role"] != "ops" || vars["proxy"] != nil {
+			t.Errorf("AWX got %v", vars)
 		}
 	})
 }

@@ -196,11 +196,11 @@ func (s *Service) evaluateWith(ctx context.Context, p *auth.Principal, d api.Req
 	}
 
 	// Rules first: computed values are inputs like any other.
-	ev.Fields = s.formStates(ctx, p, ev.Project, ev.Env.Key, ev.Version, ev.Inputs)
 	var ui api.UiSchema
 	_ = json.Unmarshal(ev.Version.UISchema, &ui)
 	var initial map[string]any
 	_ = json.Unmarshal(ev.Version.InitialValues, &initial)
+	ev.Fields = s.settledStates(ctx, p, ev.Project, ev.Env.Key, ev.Version, ui, initial, ev.Inputs)
 	ruleErrs := applyStates(ev.Fields, ui, initial, ev.Inputs)
 	if err := s.evaluateFiles(ctx, p, ev, ui, ofRequest); err != nil {
 		return nil, err

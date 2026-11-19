@@ -573,7 +573,7 @@ const varsOf = (db: Db, project: Project, draft: RequestDraft) => ({
 
 export function ruled(db: Db, item: StoredItem, project: Project, draft: RequestDraft) {
   const inputs = { ...draft.inputs };
-  const fields = fieldStates(db, db.forms[item.id], inputs, varsOf(db, project, draft));
+  const fields = settledStates(db, db.forms[item.id], inputs, varsOf(db, project, draft));
   const errors = applyStates(db.forms[item.id], fields, inputs, (x) => validateInputs(db, item, x));
   return { inputs, fields, errors };
 }
@@ -752,6 +752,48 @@ export function fieldStates(
     out[name] = state;
   }
   return out;
+}
+
+/**
+ * As the server's settledStates: the states over the inputs the rules keep,
+ * so no rule reads a hidden or read-only field's input, nor a computed
+ * one's other than its value; again until those inputs stop changing.
+ */
+export function settledStates(
+  db: Db,
+  form: RequestForm | undefined,
+  inputs: Record<string, unknown>,
+  vars: Record<string, unknown>,
+): Record<string, FieldState> {
+  let kept = keptInputs(form, inputs);
+  let states = fieldStates(db, form, kept, vars);
+  for (let i = 0; i <= Object.keys(form?.ui_schema.fields ?? {}).length; i++) {
+    const next = keptInputs(form, inputs, states);
+    if (JSON.stringify(next) === JSON.stringify(kept)) break;
+    kept = next;
+    states = fieldStates(db, form, kept, vars);
+  }
+  return states;
+}
+
+function keptInputs(form: RequestForm | undefined, inputs: Inputs, states?: Record<string, FieldState>): Inputs {
+  const fields = form?.ui_schema.fields ?? {};
+  const out: Inputs = {};
+  for (const k of Object.keys(inputs).sort()) {
+    const ui = fields[k];
+    const st = states?.[k];
+    if (ui && (computedBy(ui) || (st && (!st.visible || st.read_only)))) continue;
+    out[k] = inputs[k];
+  }
+  for (const [k, st] of Object.entries(states ?? {})) {
+    const ui = fields[k];
+    if (!st.visible || !ui) continue;
+    if (computedBy(ui)) {
+      if (st.value !== undefined && st.value !== null && ui.rules?.value) out[k] = st.value;
+    } else if (st.read_only && (st.default === undefined || st.default === null) && k in (form?.initial_values ?? {}))
+      out[k] = form!.initial_values[k];
+  }
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
 }
 
 /** base with the defaults of the fields that have no input. */
