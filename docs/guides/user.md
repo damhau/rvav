@@ -61,6 +61,20 @@ one to ask your project admin or administrator for.
    when someone must approve it). A field with a problem says what it is
    under the field.
 
+Some forms show their sections in another layout, which the item's
+administrator chooses:
+- **Wizard:** one page at a time, with the steps listed above it. **Next**
+  checks the page first: if an input needs fixing, you stay on the page
+  and the focus moves to that input. **Back** returns to the page before.
+  The last step, **Review**, lists what you entered, page by page, with
+  passwords and other secrets hidden. **Change** goes back to a page. The
+  lease, the reason, the options and **Submit request** are on that step.
+- **Tabs:** one tab per section. To move between tabs, use the arrow keys.
+  A tab holding an input that needs fixing shows a warning mark and says
+  how many need fixing.
+
+A page or tab whose fields don't apply to what you chose is left out.
+
 A form you leave can be kept as a **draft** (Resume or Discard it later).
 A draft never keeps passwords or other secret fields. A secret field
 hides what you type: to check it, select the eye button beside it (or tab

@@ -740,8 +740,22 @@ An item's tabs:
 - **Details:** name, category, icon, description.
 - **Form designer:** fields, sections, rules, value sources (lists from
   vCenter, AWX, EfficientIP or a REST call), and fields approvers may
-  change. Preview the form as any user. Each field type has its own
-  settings
+  change. Preview the form as any user. Choose how its sections show in
+  **Layout**:
+  - **One page:** every section on one page, one after the other.
+  - **Wizard:** a page per section, with **Back** and **Next**, then a
+    review of what was entered before submit. **Next** checks the page's
+    inputs first.
+  - **Tabs:** a tab per section.
+
+  The field list then names the sections pages or tabs. To order them,
+  use their up and down arrows. The preview shows the layout you chose,
+  on the page or tab of the field or section you select. A page or tab
+  whose fields a `visible` rule all hides is left out, and its inputs
+  aren't checked. The layout changes only how the form shows: rvav
+  checks a request the same way whatever it is.
+
+  Each field type has its own settings
   ([field types](../service-catalog.md#field-types)):
   - a number can **Allow decimals**, with a minimum, a maximum and a step;
   - a date, or a date and time, takes the **Earliest** and **Latest** it

@@ -1029,7 +1029,8 @@ ui_schema:
 - **Conditional rules** (CEL): visible, required, read-only, value.
 - **Validation**: JSON Schema constraints, regex, CEL cross-field rules, async
   server-side validation (for example "hostname free in DNS").
-- **Layout**: sections, columns, tabs, multi-step wizard with a review step.
+- **Layout**: sections and their columns, shown on one page, as a wizard
+  with a review step, or as tabs.
 - **Computed fields**: for example the VM name preview from the naming policy.
 - Every form is validated again on the server. The client is only for UX.
 
@@ -1062,6 +1063,34 @@ ui_schema:
 - Rules are evaluated on the server, in the preview and again on submit:
   a computed value becomes the input, and a field a rule makes required is
   checked.
+- Layouts (`ui_schema.layout.kind`, F1.3), for how the sections show, in
+  their order:
+  - `page`: every section on one page. A definition without a kind has
+    this one.
+  - `wizard`: one section per page, under a list of the steps. **Next**
+    checks the page's inputs with the server's preview and stays on the
+    page, its first problem focused, while one needs fixing. **Back** and
+    **Next** move the focus to the new page's heading. The last step,
+    **Review**, lists what was entered page by page, with option labels
+    rather than values and secret fields masked, before **Submit**.
+  - `tabs`: one section per tab, in the tablist pattern. A tab holding an
+    input with a problem shows a mark and says how many.
+
+  A page or tab whose fields a `visible` rule all hides is left out, and
+  the server doesn't check its inputs. The layout is presentation only:
+  the server checks a request the same way whatever it is. Saving a
+  definition with another kind is refused at `/ui_schema/layout/kind`.
+  The vRA importer makes a form with several pages tabs, as vRA shows
+  them ([vRA import](operations/vra-import.md)).
+
+  ```yaml
+  ui_schema:
+    layout:
+      kind: wizard
+      sections:
+        - { key: basics, title: Basics, columns: 2, fields: [role, with_db] }
+        - { key: db, title: Database, columns: 1, fields: [database] }
+  ```
 - For AWX items, the form can choose the launch's inventory and credentials
   (inputs picked from `awx.inventories` and `awx.credentials`), which the
   template must prompt for. A composite's step running such an item
@@ -1070,8 +1099,8 @@ ui_schema:
   `awx.credentials` pickers, so a requester's choice is checked as the
   item's form checks it.
 
-Not built yet: tabs and wizard steps (forms render as sections), async
-server-side validation rules, and the group and AWX host pickers.
+Not built yet: async server-side validation rules, and the group and AWX
+host pickers.
 
 ## 4. Requesting
 

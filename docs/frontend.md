@@ -343,8 +343,22 @@ the designer preview.
   (`mocks/cel.ts`) so the UI runs without a server.
 - Validation: ajv on the client for instant feedback; the server is the final
   authority, and its errors map back onto the fields.
-- Layout: sections, columns, tabs and wizard steps; a review step shows the
-  summary panel (name preview, quota, approval path).
+- Layout (`layout.kind`): `FormRenderer` shows the sections on one page,
+  as a wizard (`forms/wizard.tsx`) or as tabs (`forms/tabs.tsx`); what
+  they share (each field's state, the field grid) is in
+  `forms/sections.tsx`. Every page or tab stays mounted and hidden when
+  not shown, so values and widget state are kept and a problem's control
+  is there to focus. A page or tab whose fields the rules all hide is
+  left out. The wizard's Next calls the page's `check`: the request page
+  and the designer's preview ask a fresh preview, mark the page's inputs
+  touched and show that preview until the debounced one catches up with
+  a later draft, so the next page follows the rules as they stand and an
+  older preview doesn't hide what the check showed. The review step
+  (`forms/review.tsx`) shows option labels from the fields' own queries
+  and masks secrets; the request page puts its lease, reason, options and
+  Submit on it. A `FormHandle` ref (`focus(name)`) opens the page or tab
+  of an input before focusing it: the request page's refused submit goes
+  through it.
 - Draft auto-save (debounced) for long forms.
 
 ## Catalog administration and the form designer
@@ -429,7 +443,10 @@ Catalog admins and administrators build items under **Catalog items**
   widget, required, limits, options, initial value, value source and what
   it depends on, the four CEL rules, handling flags). Its edits are pure
   functions over the definition (`designer/model.ts`) that keep the JSON
-  Schema, UI schema and initial values in step.
+  Schema, UI schema and initial values in step. **Layout**, above the
+  list, sets `layout.kind` (`setLayout`); the list and the properties
+  then call sections pages or tabs (`partWord`). The preview shows the
+  page or tab of the selection (`FormRenderer`'s `showing`).
 - The designer edits a **working copy** of the draft
   (`designer/draftStore.ts`), kept outside React so it outlives the tab.
   Every change is saved after a 600 ms pause, one save at a time, each
