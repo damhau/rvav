@@ -4079,6 +4079,9 @@ export interface components {
             groups_claim?: string;
             /** @description The groups or roles read from the groups claim. */
             groups: string[];
+            manager_claim?: string;
+            /** @description The manager read from the manager claim, as rvav stores it; absent without one. */
+            manager?: string;
             global_roles: string[];
             project_roles: components["schemas"]["OidcTrialProjectRole"][];
         };
@@ -4880,12 +4883,14 @@ export interface components {
             group?: string | null;
             /**
              * @description Users who may decide: named, holding one of its roles in the
-             *     project when it opened, members of its groups seen so far, and
-             *     delegates.
+             *     project when it opened, the requester's manager, members of its
+             *     groups seen so far, and delegates.
              */
             approvers: components["schemas"]["UserRef"][];
             /** @description The project roles it asks (ADR-0041); absent when it asks none. */
             roles?: components["schemas"]["RoleRef"][];
+            /** @description It asks the requester's manager (ADR-0041). */
+            manager?: boolean;
             /**
              * @description `any`: one approval decides. `all`: every named approver must approve.
              * @enum {string}
@@ -6921,6 +6926,13 @@ export interface components {
              */
             roles?: string[];
             /**
+             * @description The requester's manager approves (ADR-0041): the user the
+             *     identity provider's manager claim names, by email or subject, as
+             *     stored at the requester's last sign-in. Without one, the level
+             *     asks only its other approvers.
+             */
+            manager?: boolean;
+            /**
              * @default any
              * @enum {string}
              */
@@ -7128,7 +7140,7 @@ export interface components {
             configured: boolean;
             /**
              * @description oidc (the identity provider, ADR-0030): issuer, discovery_url,
-             *     client_id, scopes, groups_claim; no secret (the web app is a
+             *     client_id, scopes, groups_claim, manager_claim; no secret (the web app is a
              *     public client, with PKCE).
              *     vcenter: url, username, insecure, name, sync_interval.
              *     console (ADR-0012): username, sdk_urls (the secret: the console

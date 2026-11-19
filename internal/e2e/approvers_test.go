@@ -19,8 +19,9 @@ import (
 // TestApproversByRole: the supervisor sees and approves, and approval levels
 // that name project roles ask their holders in the request's project when
 // they open, given the role themselves or through a group, in mode any and
-// all, for catalog requests, day-2 policies and lease extensions; a level
-// nobody may decide is rejected at once, saying why (ADR-0041).
+// all, for catalog requests, day-2 policies and lease extensions. A level
+// may ask the requester's manager instead. A level nobody may decide is
+// rejected at once, saying why (ADR-0041).
 func TestApproversByRole(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -119,8 +120,8 @@ func TestApproversByRole(t *testing.T) {
 			!slices.ContainsFunc(detail.Approvers, func(u api.UserRef) bool { return u.Id == seed.UserID("afavre") }) {
 			t.Fatalf("the level = %+v", detail)
 		}
-		h.waitNotification("cdubois", "Approval needed: ")
-		h.waitNotification("afavre", "Approval needed: ")
+		h.waitNotification("cdubois", "Approval needed: ", "/approvals/"+lvl.Id)
+		h.waitNotification("afavre", "Approval needed: ", "/approvals/"+lvl.Id)
 		if a := approve("afavre", lvl.Id); a.Status != api.ApprovalStatusApproved || *a.Outcome != "Approved by Alain Favre" {
 			t.Fatalf("approved through the group = %s %v", a.Status, a.Outcome)
 		}
@@ -150,7 +151,7 @@ func TestApproversByRole(t *testing.T) {
 		if s := policyStep("tnguyen", none.Id); s.Title != nobody {
 			t.Fatalf("no viewer: %q", s.Title)
 		}
-		if n := h.waitNotification("tnguyen", "Rejected: "); n.Body == nil || *n.Body != nobody {
+		if n := h.waitNotification("tnguyen", "Rejected: ", ""); n.Body == nil || *n.Body != nobody {
 			t.Fatalf("the requester is told %+v", n)
 		}
 
@@ -200,18 +201,65 @@ func TestApproversByRole(t *testing.T) {
 		h.waitInbox("lmartin", 1)
 		approve("cdubois", lease.Id)
 		h.waitStatus(ext.Id, "tnguyen", api.RequestStatusSucceeded)
+
+		// ── The requester's manager: Léa, by the email of Thomas's claim ─────
+		policy("mgr", api.ApprovalLevel{Name: "Manager", Manager: new(true)})
+		mgr := submit("tnguyen", draft("mgr"))
+		ml := h.waitInbox("lmartin", 1).Items[0]
+		h.json("GET", "/api/v1/approvals/"+ml.Id, "lmartin", nil, 200, &detail)
+		if detail.Manager == nil || !*detail.Manager || len(detail.Approvers) != 1 ||
+			detail.Approvers[0].Id != seed.UserID("lmartin") || !detail.CanDecide {
+			t.Fatalf("the manager's level = %+v", detail)
+		}
+		h.waitNotification("lmartin", "Approval needed: ", "/approvals/"+ml.Id)
+		if a := approve("lmartin", ml.Id); a.Status != api.ApprovalStatusApproved {
+			t.Fatalf("approved by the manager = %s", a.Status)
+		}
+		h.waitStatus(mgr.Id, "tnguyen", api.RequestStatusSucceeded)
+
+		manager := func(claim string) {
+			if _, err := h.store.Pool.Exec(ctx, `update users set manager = $1 where id = 'usr_tnguyen'`, claim); err != nil {
+				t.Fatal(err)
+			}
+		}
+		rejected := func(why string) {
+			t.Helper()
+			r := submit("tnguyen", draft("mgr"))
+			h.waitStatus(r.Id, "tnguyen", api.RequestStatusRejected)
+			if s := policyStep("tnguyen", r.Id); s.Title != "Rejected automatically: nobody can approve it, as "+why {
+				t.Fatalf("%s: %q", why, s.Title)
+			}
+		}
+		manager("")
+		rejected("the requester has no manager")
+		manager("grace.hopper@corp.example")
+		rejected("the requester's manager, grace.hopper@corp.example, has never signed in to rvav")
+		// By subject too, and never the requester themselves.
+		manager("seed:tnguyen")
+		rejected("the requester is their own manager")
+
+		// With no manager, a level that also names a group waits for it.
+		manager("")
+		policy("mgrleads", api.ApprovalLevel{Name: "Manager or leads", Manager: new(true), Group: new("rvav-infra-leads")})
+		waits := submit("tnguyen", draft("mgrleads"))
+		if got := h.waitInbox("mkeller", 1).Items[0]; got.Request.Id != waits.Id {
+			t.Fatalf("mkeller's inbox = %+v", got)
+		}
+		h.json("POST", "/api/v1/requests/"+waits.Id+"/cancel", "tnguyen", nil, 202, nil)
 	})
 }
 
 // waitNotification waits for the user's newest notification whose title
-// starts so.
-func (h *harness) waitNotification(user, title string) api.Notification {
+// starts so, about the link unless it is "".
+func (h *harness) waitNotification(user, title, link string) api.Notification {
 	h.t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		var page api.NotificationPage
 		h.json("GET", "/api/v1/me/notifications", user, nil, 200, &page)
-		if i := slices.IndexFunc(page.Items, func(n api.Notification) bool { return strings.HasPrefix(n.Title, title) }); i >= 0 {
+		if i := slices.IndexFunc(page.Items, func(n api.Notification) bool {
+			return strings.HasPrefix(n.Title, title) && (link == "" || deref(n.Link) == link)
+		}); i >= 0 {
 			return page.Items[i]
 		}
 		if time.Now().After(deadline) {

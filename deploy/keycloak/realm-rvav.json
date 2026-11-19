@@ -45,6 +45,12 @@
           "protocol": "openid-connect",
           "protocolMapper": "oidc-usermodel-attribute-mapper",
           "config": { "user.attribute": "title", "claim.name": "title", "jsonType.label": "String", "access.token.claim": "true", "id.token.claim": "true", "userinfo.token.claim": "true" }
+        },
+        {
+          "name": "manager",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": { "user.attribute": "manager", "claim.name": "manager", "jsonType.label": "String", "access.token.claim": "true", "id.token.claim": "true", "userinfo.token.claim": "true" }
         }
       ]
     }
@@ -57,7 +63,7 @@
       "lastName": "Martin",
       "enabled": true,
       "emailVerified": true,
-      "attributes": { "title": ["Platform engineer"] },
+      "attributes": { "title": ["Platform engineer"], "manager": ["marc.keller@corp.example"] },
       "credentials": [{ "type": "password", "value": "rvav", "temporary": false }],
       "groups": ["/rvav-web-admins", "/rvav-catalog-admins"]
     },
@@ -68,7 +74,7 @@
       "lastName": "Keller",
       "enabled": true,
       "emailVerified": true,
-      "attributes": { "title": ["Infrastructure lead"] },
+      "attributes": { "title": ["Infrastructure lead"], "manager": ["claire.dubois@corp.example"] },
       "credentials": [{ "type": "password", "value": "rvav", "temporary": false }],
       "groups": ["/rvav-admins", "/rvav-infra-leads"]
     },
@@ -79,7 +85,7 @@
       "lastName": "Nguyen",
       "enabled": true,
       "emailVerified": true,
-      "attributes": { "title": ["Developer"] },
+      "attributes": { "title": ["Developer"], "manager": ["lea.martin@corp.example"] },
       "credentials": [{ "type": "password", "value": "rvav", "temporary": false }],
       "groups": ["/rvav-web"]
     }

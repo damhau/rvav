@@ -25,9 +25,9 @@ func (s *Store) GetUserBySubject(ctx context.Context, subject string) (User, err
 }
 
 // UpsertOIDCUser finds the user for an OIDC subject, linking a pre-created
-// user by email on first login, or creates one. Name and email follow the
-// identity provider.
-func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, email, title string) (User, error) {
+// user by email on first login, or creates one. Name, email and manager
+// follow the identity provider: a token without a manager clears it.
+func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, email, title, manager string) (User, error) {
 	var u User
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
 		rows, _ := tx.Query(ctx, `select `+userCols+` from users where subject = $1 for update`, subject)
@@ -39,9 +39,9 @@ func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, email, title 
 		}
 		switch {
 		case err == pgx.ErrNoRows:
-			rows, _ = tx.Query(ctx, `insert into users (id, subject, name, email, title, last_seen_at)
-				values ($1, $2, $3, $4, $5, now()) returning `+userCols,
-				ids.New(ids.User), subject, name, email, title)
+			rows, _ = tx.Query(ctx, `insert into users (id, subject, name, email, title, manager, last_seen_at)
+				values ($1, $2, $3, $4, $5, $6, now()) returning `+userCols,
+				ids.New(ids.User), subject, name, email, title, manager)
 			u, err = pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[User])
 			return err
 		case err != nil:
@@ -50,12 +50,25 @@ func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, email, title 
 		if title == "" {
 			title = found.Title
 		}
-		rows, _ = tx.Query(ctx, `update users set subject = $2, name = $3, email = $4, title = $5, last_seen_at = now()
-			where id = $1 returning `+userCols, found.ID, subject, name, email, title)
+		rows, _ = tx.Query(ctx, `update users set subject = $2, name = $3, email = $4, title = $5, manager = $6,
+			last_seen_at = now() where id = $1 returning `+userCols, found.ID, subject, name, email, title, manager)
 		u, err = pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[User])
 		return err
 	})
 	return u, err
+}
+
+// managerOf joins the user m that u's manager claim names, by email,
+// subject or ID: never u, nor one of rvav's own system users.
+const managerOf = `u.manager <> '' and m.id <> u.id and m.subject not like 'system:%'
+	and (lower(m.email) = lower(u.manager) or m.subject = u.manager or m.id = u.manager)`
+
+// Manager returns the user's manager claim as stored at their last sign-in
+// and the user it names, "" when it names nobody rvav knows.
+func (s *Store) Manager(ctx context.Context, userID string) (claim, managerID string, err error) {
+	err = s.Pool.QueryRow(ctx, `select u.manager, coalesce((select m.id from users m where `+managerOf+`
+		order by m.last_seen_at desc nulls last, m.id limit 1), '') from users u where u.id = $1`, userID).Scan(&claim, &managerID)
+	return claim, managerID, notFound(err)
 }
 
 // RoleGrant is a role a user holds, themselves or through a group: in a

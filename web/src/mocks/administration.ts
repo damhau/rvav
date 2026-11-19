@@ -387,7 +387,7 @@ export function adminState(db: Db): AdminState {
       { role: "sync", host: "rvav-sync-69d4-m3b8r", revision: 1, started_at: ago(3), takes: 450, pid: 1 },
     ],
     integrations: {
-      oidc: { settings: { issuer: "https://login.corp.example/realms/rvav", discovery_url: "", client_id: "rvav", scopes: "openid profile email", groups_claim: "groups" }, secret: false },
+      oidc: { settings: { issuer: "https://login.corp.example/realms/rvav", discovery_url: "", client_id: "rvav", scopes: "openid profile email", groups_claim: "groups", manager_claim: "manager" }, secret: false },
       vcenter: { settings: { url: "https://vc01.corp.example/sdk", username: "svc-rvav@vsphere.local", insecure: false, cert_sha256: "", name: "vc01.corp.example", sync_interval: "2m" }, secret: true,
         revision: 1, updated_at: new Date(Date.now() - 3 * 86_400_000).toISOString() },
       console: { settings: { username: "svc-rvav-console@vsphere.local", sdk_urls: [] }, secret: true },
@@ -1775,8 +1775,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         if ((kind === "approval" || w.effect === "approval") && levels.length === 0)
           errors.push(err("/levels", "Give at least one level of approvers."));
         levels.forEach((l, i) => {
-          if (!l.group && !l.approvers?.length && !l.roles?.length)
-            errors.push(err(`/levels/${i}`, "Give an OIDC group, approvers or project roles."));
+          if (!l.group && !l.approvers?.length && !l.roles?.length && !l.manager)
+            errors.push(
+              err(`/levels/${i}`, "Give an OIDC group, approvers, project roles or the requester's manager."),
+            );
           l.roles?.forEach((k, j) => {
             const r = roleOf(db, k);
             if (!r || !assignable(r, true))
@@ -2304,6 +2306,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (bad.length) return invalid(bad);
       const ps = { ...st().integrations.oidc!.settings, ...w.settings };
       const claim = typeof ps.groups_claim === "string" && ps.groups_claim ? ps.groups_claim : "groups";
+      const managerClaim = typeof ps.manager_claim === "string" && ps.manager_claim ? ps.manager_claim : "manager";
       const groups = ["rvav-web", "rvav-catalog-admins"];
       const who = { sub: "a3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d", name: "Ada Lovelace", email: "ada@corp.example" };
       const claims: Record<string, unknown> = {
@@ -2311,6 +2314,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         aud: "rvav",
         ...who,
         groups,
+        manager: "grace.hopper@corp.example",
         exp: Math.floor(Date.now() / 1000) + 300,
       };
       const accepted = ps.client_id === "rvav";
@@ -2330,6 +2334,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         claims,
         groups_claim: claim,
         groups: claim in claims ? groups : [],
+        manager_claim: managerClaim,
+        ...(managerClaim in claims ? { manager: String(claims[managerClaim]) } : {}),
         global_roles: accepted ? mine.filter((g) => !g.project).map((g) => g.role) : [],
         project_roles: accepted
           ? mine.filter((g) => g.project).map((g) => ({ project: g.project!, role: g.role }))
@@ -2367,6 +2373,9 @@ function providerErrors(given: Record<string, unknown>): S["FieldError"][] {
   const claim = given.groups_claim;
   if (typeof claim === "string" && /[\s"']/.test(claim))
     out.push(err("/settings/groups_claim", "A claim name, without spaces or quotes."));
+  const manager = given.manager_claim;
+  if (typeof manager === "string" && /[\s"']/.test(manager))
+    out.push(err("/settings/manager_claim", "A claim name, without spaces or quotes."));
   return out;
 }
 

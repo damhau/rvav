@@ -64,7 +64,7 @@ func (s *Service) AuthOptions(ctx context.Context) (api.AuthOptions, []string) {
 func providerFrom(settings map[string]any) auth.ProviderSettings {
 	str := func(k string) string { v, _ := settings[k].(string); return strings.TrimSpace(v) }
 	return auth.ProviderSettings{Issuer: str("issuer"), DiscoveryURL: str("discovery_url"), ClientID: str("client_id"),
-		GroupsClaim: str("groups_claim")}
+		GroupsClaim: str("groups_claim"), ManagerClaim: str("manager_claim")}
 }
 
 // testOIDC reads the provider's discovery document and keys. When they
@@ -141,7 +141,14 @@ func (s *Service) TrialIdentityProvider(ctx context.Context, p *auth.Principal, 
 	if claim == "" {
 		claim = "groups"
 	}
-	out.Accepted, out.Claims, out.GroupsClaim = t.Refused == nil, t.Claims, &claim
+	managerClaim := ps.ManagerClaim
+	if managerClaim == "" {
+		managerClaim = "manager"
+	}
+	out.Accepted, out.Claims, out.GroupsClaim, out.ManagerClaim = t.Refused == nil, t.Claims, &claim, &managerClaim
+	if t.Manager != "" {
+		out.Manager = &t.Manager
+	}
 	if t.Subject != "" {
 		out.Subject = &t.Subject
 	}

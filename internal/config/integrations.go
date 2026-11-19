@@ -62,6 +62,7 @@ var Fields = map[string][]Field{
 		{"client_id", "RVAV_OIDC_CLIENT_ID", "string", false},
 		{"scopes", "RVAV_OIDC_SCOPES", "string", false},
 		{"groups_claim", "RVAV_OIDC_GROUPS_CLAIM", "string", false},
+		{"manager_claim", "RVAV_OIDC_MANAGER_CLAIM", "string", false},
 	},
 	"vcenter": {
 		{"url", "RVAV_VCENTER_URL", "string", false},
@@ -305,6 +306,7 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		str("client_id", &c.Auth.OIDCClientID)
 		str("scopes", &c.Auth.Scopes)
 		str("groups_claim", &c.Auth.GroupsClaim)
+		str("manager_claim", &c.Auth.ManagerClaim)
 	case "vcenter":
 		envFor := ConsoleFor(c.VCenter)
 		str("url", &c.VCenter.URL)
@@ -442,7 +444,7 @@ func (c Config) Settings(kind string) map[string]any {
 	switch kind {
 	case "oidc":
 		return map[string]any{"issuer": c.Auth.OIDCIssuer, "discovery_url": c.Auth.OIDCDiscoveryURL, "client_id": c.Auth.OIDCClientID,
-			"scopes": c.Auth.Scopes, "groups_claim": c.Auth.GroupsClaim}
+			"scopes": c.Auth.Scopes, "groups_claim": c.Auth.GroupsClaim, "manager_claim": c.Auth.ManagerClaim}
 	case "vcenter":
 		return map[string]any{"url": c.VCenter.URL, "username": c.VCenter.Username, "insecure": c.VCenter.Insecure,
 			"cert_sha256": c.VCenter.CertSHA256, "name": c.VCenter.Name,
@@ -590,6 +592,9 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 	if kind == "oidc" {
 		if c, ok := settings["groups_claim"].(string); ok && strings.ContainsAny(c, " \t\"'") {
 			errs["groups_claim"] = "A claim's name, for example groups or roles."
+		}
+		if c, ok := settings["manager_claim"].(string); ok && strings.ContainsAny(c, " \t\"'") {
+			errs["manager_claim"] = "A claim's name, for example manager."
 		}
 		if sc, ok := settings["scopes"].(string); ok && sc != "" && !slices.Contains(strings.Fields(sc), "openid") {
 			errs["scopes"] = "Include openid, for example openid profile email."

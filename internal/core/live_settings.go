@@ -89,6 +89,7 @@ func (l *LiveSettings) Snapshot(ctx context.Context) (cfg config.Config, rev int
 // Two configurations with the same connections need no restart.
 func ConnectionsOf(c config.Config) config.Config {
 	c.Auth.OIDCIssuer, c.Auth.OIDCDiscoveryURL, c.Auth.OIDCClientID, c.Auth.Scopes, c.Auth.GroupsClaim = "", "", "", "", ""
+	c.Auth.ManagerClaim = ""
 	c.SMTP, c.Teams, c.Slack = config.SMTPConfig{}, config.TeamsConfig{}, config.SlackConfig{}
 	c.RESTSourceHosts, c.WebhookHosts = nil, nil
 	c.ConsoleUsername, c.ConsolePassword, c.WMKSSDKURLs = "", "", nil
@@ -110,7 +111,8 @@ func (l *LiveSettings) Provider(ctx context.Context) auth.ProviderSettings {
 }
 
 func providerOf(a config.AuthConfig) auth.ProviderSettings {
-	return auth.ProviderSettings{Issuer: a.OIDCIssuer, DiscoveryURL: a.OIDCDiscoveryURL, ClientID: a.OIDCClientID, GroupsClaim: a.GroupsClaim}
+	return auth.ProviderSettings{Issuer: a.OIDCIssuer, DiscoveryURL: a.OIDCDiscoveryURL, ClientID: a.OIDCClientID, GroupsClaim: a.GroupsClaim,
+		ManagerClaim: a.ManagerClaim}
 }
 
 // ApplyStored merges the integrations' saved settings into cfg, where no

@@ -82,8 +82,10 @@ func startFakeIdP(t *testing.T, issuer string, tls bool) *fakeIdP {
 
 type tokenOpts struct {
 	issuer, audience string
-	expires          time.Time
-	key              *rsa.PrivateKey
+	// manager is the manager claim, a string or a list; nil for none.
+	manager any
+	expires time.Time
+	key     *rsa.PrivateKey
 }
 
 func (p *fakeIdP) token(sub, name, email string, groups []string, o tokenOpts) string {
@@ -105,11 +107,15 @@ func (p *fakeIdP) token(sub, name, email string, groups []string, o tokenOpts) s
 	if err != nil {
 		p.t.Fatal(err)
 	}
-	tok, err := jwt.Signed(sig).Claims(map[string]any{
+	claims := map[string]any{
 		"iss": o.issuer, "sub": sub, "aud": o.audience, "azp": "rvav",
 		"exp": o.expires.Unix(), "iat": time.Now().Unix(),
 		"name": name, "email": email, "title": "Engineer", "groups": groups,
-	}).Serialize()
+	}
+	if o.manager != nil {
+		claims["manager"] = o.manager
+	}
+	tok, err := jwt.Signed(sig).Claims(claims).Serialize()
 	if err != nil {
 		p.t.Fatal(err)
 	}
@@ -211,9 +217,21 @@ func TestOIDCTokens(t *testing.T) {
 		if p, err := (&auth.Dev{Store: h.store, DefaultUser: "lmartin"}).Authenticate(devReq); err != nil || p.User.Name != "Léa Martin" {
 			t.Fatalf("dev user after OIDC sign-in: %+v %v", p, err)
 		}
-		marc := idp.token("kc-marc", "Marc Keller", "marc.keller@corp.example", []string{"/rvav-admins"}, tokenOpts{})
+		marc := idp.token("kc-marc", "Marc Keller", "marc.keller@corp.example", []string{"/rvav-admins"},
+			tokenOpts{manager: []any{" claire.dubois@corp.example "}})
 		if code, m, _ := me(marc); code != 200 || !slices.Contains(roleKeys(m.Roles), "admin") {
 			t.Fatalf("marc: %d %+v", code, m.Roles)
+		}
+		// The manager claim is stored at sign-in (ADR-0041); a token without one clears it.
+		manager := func(subject string) (m string) {
+			_ = h.store.Pool.QueryRow(ctx, `select manager from users where subject = $1`, subject).Scan(&m)
+			return m
+		}
+		if m := manager("kc-marc"); m != "claire.dubois@corp.example" {
+			t.Fatalf("marc's manager = %q", m)
+		}
+		if m := manager("kc-lea"); m != "" {
+			t.Fatalf("lea's manager, from a token without one = %q", m)
 		}
 
 		other, err := rsa.GenerateKey(rand.Reader, 2048)

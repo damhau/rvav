@@ -80,6 +80,7 @@ still sign in and correct a wrong one.
 | `RVAV_OIDC_CLIENT_ID` | `rvav` | | Integrations › Identity provider | The web app's client at the provider; tokens must have it as their audience. |
 | `RVAV_OIDC_SCOPES` | `openid profile email` | | Integrations › Identity provider | The scopes the web app asks for, space-separated: with Entra ID, a scope of rvav's API (`api://<client>/access`) and `offline_access`. |
 | `RVAV_OIDC_GROUPS_CLAIM` | `groups` | | Integrations › Identity provider | The token claim with the user's groups (roles and approver groups map to them); `roles` for Entra ID's app roles. |
+| `RVAV_OIDC_MANAGER_CLAIM` | `manager` | | Integrations › Identity provider | The token claim with the user's manager, by email or subject, for approval levels that ask the requester's manager. rvav stores it at each sign-in; a token without it clears it. |
 
 ## Temporal
 

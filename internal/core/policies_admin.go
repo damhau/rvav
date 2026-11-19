@@ -235,8 +235,8 @@ func (s *Service) checkLevels(ctx context.Context, levels []api.ApprovalLevel, p
 		if l.OnTimeout != nil && !l.OnTimeout.Valid() {
 			errs = append(errs, fieldErr(lp+"/on_timeout", "enum", "escalate, approve or reject."))
 		}
-		if deref(l.Group) == "" && len(derefSlice(l.Approvers)) == 0 && len(derefSlice(l.Roles)) == 0 {
-			errs = append(errs, fieldErr(lp, "required", "Give an OIDC group, approvers or project roles."))
+		if deref(l.Group) == "" && len(derefSlice(l.Approvers)) == 0 && len(derefSlice(l.Roles)) == 0 && (l.Manager == nil || !*l.Manager) {
+			errs = append(errs, fieldErr(lp, "required", "Give an OIDC group, approvers, project roles or the requester's manager."))
 		}
 		for j, k := range derefSlice(l.Roles) {
 			r, err := s.role(ctx, k)

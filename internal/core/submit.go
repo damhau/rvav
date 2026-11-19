@@ -200,7 +200,7 @@ func chainRows(requestID string, chain []ChainLevel) []store.Approval {
 	var rows []store.Approval
 	for i, l := range chain {
 		a := store.Approval{ID: ids.New(ids.Approval), RequestID: requestID, Seq: i + 1, Name: l.Name,
-			ApproverIDs: l.Approvers, Roles: l.Roles, Mode: l.Mode, PolicyIDs: l.PolicyIDs, Reasons: l.Reasons, Rules: l.Rules,
+			ApproverIDs: l.Approvers, Roles: l.Roles, Manager: l.Manager, Mode: l.Mode, PolicyIDs: l.PolicyIDs, Reasons: l.Reasons, Rules: l.Rules,
 			Status: "waiting", EscalateIDs: l.EscalateIDs}
 		if l.Group != "" {
 			a.GroupName = &l.Group

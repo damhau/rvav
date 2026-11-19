@@ -85,7 +85,10 @@ type AuthConfig struct {
 	// Scopes are what the web app asks the provider for (RVAV_OIDC_SCOPES).
 	Scopes      string
 	GroupsClaim string
-	DevUser     string
+	// ManagerClaim names the user's manager, by email or subject
+	// (RVAV_OIDC_MANAGER_CLAIM, ADR-0041).
+	ManagerClaim string
+	DevUser      string
 	// AllowDev must be set (RVAV_ALLOW_DEV_AUTH=1) for dev mode to start, so
 	// that a stray RVAV_AUTH_MODE=dev can't open a real installation.
 	AllowDev bool
@@ -274,6 +277,7 @@ func Load() (Config, error) {
 			OIDCClientID:     env("RVAV_OIDC_CLIENT_ID", "rvav"),
 			Scopes:           env("RVAV_OIDC_SCOPES", "openid profile email"),
 			GroupsClaim:      env("RVAV_OIDC_GROUPS_CLAIM", "groups"),
+			ManagerClaim:     env("RVAV_OIDC_MANAGER_CLAIM", "manager"),
 			DevUser:          env("RVAV_DEV_USER", "lmartin"),
 			AllowDev:         boolean("RVAV_ALLOW_DEV_AUTH"),
 			AdminPassword:    env("RVAV_ADMIN_PASSWORD", ""),

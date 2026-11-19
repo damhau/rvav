@@ -89,6 +89,7 @@ type Trial struct {
 	Subject, Name, Email string
 	Claims               map[string]any
 	Groups               []string
+	Manager              string
 	// Refused says why the token check would refuse it; nil: accepted.
 	Refused error
 }
@@ -116,6 +117,7 @@ func TrialToken(ctx context.Context, ps ProviderSettings, token string) Trial {
 		t.Name = str("preferred_username")
 	}
 	t.Groups = groupsIn(t.Claims, ps.GroupsClaim)
+	t.Manager = managerIn(t.Claims, ps.ManagerClaim)
 	if t.Refused == nil && ReservedSubject(t.Subject) {
 		t.Refused = fmt.Errorf("the subject %q is one of rvav's own users', which a provider's token is never taken as", t.Subject)
 	}

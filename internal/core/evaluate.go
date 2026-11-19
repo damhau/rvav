@@ -471,6 +471,7 @@ type level struct {
 	Group     string   `json:"group"`
 	Approvers []string `json:"approvers"`
 	Roles     []string `json:"roles"`
+	Manager   bool     `json:"manager"`
 	Mode      string   `json:"mode"`
 	// Timeout is a Go duration such as "48h"; empty for none.
 	Timeout    string `json:"timeout"`
@@ -488,6 +489,7 @@ type ChainLevel struct {
 	Group         string
 	Approvers     []string
 	Roles         []string
+	Manager       bool
 	Mode          string
 	PolicyIDs     []string
 	Reasons       []string
@@ -503,7 +505,7 @@ type ChainLevel struct {
 // shorter timeout.
 func addLevel(chain []ChainLevel, pol store.ApprovalPolicy, l level) []ChainLevel {
 	timeout, _ := time.ParseDuration(l.Timeout)
-	in := ChainLevel{Name: l.Name, Group: l.Group, Approvers: l.Approvers, Roles: l.Roles, Mode: orDefault(l.Mode, "any"),
+	in := ChainLevel{Name: l.Name, Group: l.Group, Approvers: l.Approvers, Roles: l.Roles, Manager: l.Manager, Mode: orDefault(l.Mode, "any"),
 		PolicyIDs: []string{pol.ID}, Reasons: []string{pol.Reason}, Rules: []string{pol.Condition}}
 	if timeout > 0 {
 		in.Timeout, in.OnTimeout = timeout, orDefault(l.OnTimeout, "reject")
@@ -515,7 +517,7 @@ func addLevel(chain []ChainLevel, pol store.ApprovalPolicy, l level) []ChainLeve
 		ids, roles := slices.Clone(c.Approvers), slices.Clone(c.Roles)
 		slices.Sort(ids)
 		slices.Sort(roles)
-		return c.Group + "|" + strings.Join(ids, ",") + "|" + strings.Join(roles, ",")
+		return c.Group + "|" + strings.Join(ids, ",") + "|" + strings.Join(roles, ",") + "|" + strconv.FormatBool(c.Manager)
 	}
 	for i := range chain {
 		c := &chain[i]
@@ -607,6 +609,15 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 		for i, l := range levels {
 			if holders[i], err = s.previewHolders(ctx, ev.Project.ID, l.Roles, p.User.ID); err != nil {
 				return err
+			}
+			if l.Manager {
+				_, manager, err := s.Store.Manager(ctx, p.User.ID)
+				if err != nil && !errors.Is(err, store.ErrNotFound) {
+					return err
+				}
+				if manager != "" {
+					holders[i] = append(holders[i], manager)
+				}
 			}
 			ids = append(append(ids, l.Approvers...), holders[i]...)
 			ev.Chain = addLevel(ev.Chain, pol, l)

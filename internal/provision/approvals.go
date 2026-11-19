@@ -100,6 +100,19 @@ func (a *Activities) rejectUnanswerable(ctx context.Context, lv store.Approval, 
 		}
 		why = append(why, who)
 	}
+	if lv.Manager && lv.ManagerID == nil {
+		claim, _, err := a.Store.Manager(ctx, r.RequesterID)
+		switch {
+		case err != nil && !errors.Is(err, store.ErrNotFound):
+			return LevelState{}, err
+		case claim == "":
+			why = append(why, "the requester has no manager")
+		case a.isUser(ctx, r.RequesterID, claim):
+			why = append(why, "the requester is their own manager")
+		default:
+			why = append(why, "the requester's manager, "+claim+", has never signed in to rvav")
+		}
+	}
 	if slices.Contains(lv.ApproverIDs, r.RequesterID) {
 		why = append(why, "the only user it names is the requester")
 	}
@@ -112,7 +125,8 @@ func (a *Activities) rejectUnanswerable(ctx context.Context, lv store.Approval, 
 			return err
 		}
 		return a.Store.Audit(ctx, tx, store.AuditEvent{Action: "approval.unanswerable", TargetType: "approval", TargetID: lv.ID,
-			ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "level": lv.Name, "roles": lv.Roles, "outcome": outcome}})
+			ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "level": lv.Name, "roles": lv.Roles,
+				"manager": lv.Manager, "outcome": outcome}})
 	})
 	if err != nil {
 		return LevelState{}, err
@@ -124,6 +138,12 @@ func (a *Activities) rejectUnanswerable(ctx context.Context, lv store.Approval, 
 	a.Events.Approval(ctx, []string{r.RequesterID}, lv.ID, r.ID, now.Status)
 	a.publishAll(ctx, r.ProjectID, r.ID)
 	return LevelState{Status: now.Status, DueAt: now.DueAt}, nil
+}
+
+// isUser says whether a manager claim names this user.
+func (a *Activities) isUser(ctx context.Context, userID, claim string) bool {
+	u, err := a.Store.GetUser(ctx, userID)
+	return err == nil && (strings.EqualFold(u.Email, claim) || u.Subject == claim || u.ID == claim)
 }
 
 // orList joins names as "A", "A or B", "A, B or C".

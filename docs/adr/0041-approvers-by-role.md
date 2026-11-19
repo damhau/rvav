@@ -1,4 +1,4 @@
-# ADR-0041: Supervisors, and approvers by role
+# ADR-0041: Supervisors, and approvers by role or manager
 
 - Status: accepted
 - Date: 2026-11-19
@@ -60,6 +60,30 @@ members.
 - A role a level names can't be deleted: the role's `policies` lists the
   approval and day-2 policies whose levels name it.
 
+### The requester's manager
+- **The manager is a claim of the identity provider,** named by the
+  provider setting `manager_claim` (`RVAV_OIDC_MANAGER_CLAIM`, `manager`
+  by default). Its value is the manager's email or subject, as Keycloak's
+  user attribute or a directory gives it; the first one of a list counts.
+  rvav stores it on the user, `manager`, at each sign-in: a token without
+  it clears it, so a manager removed at the provider is no longer asked.
+  The identity provider's trial shows the manager it reads.
+- **A level may ask the requester's manager, `manager: true`,** besides
+  its group, users and roles. When it opens, rvav looks for the user whose
+  email (in any case), subject or ID is the claim's value, the requester
+  and rvav's own system users aside, and keeps it on the level
+  (`manager_id`). The manager then approves as a named user does: inbox,
+  notifications, and mode `all`.
+- **A requester without a manager has none on that level.** The level asks
+  its other approvers, and is rejected at once when it has none, saying
+  "as the requester has no manager", "as the requester's manager, x, has
+  never signed in to rvav", or "as the requester is their own manager". A
+  manager must have signed in once: rvav knows only users who have.
+- Seeded users have managers (Thomas: Léa; Léa, Sophie and Alain: Marc;
+  Marc: Claire), and the development Keycloak realm gives Léa, Marc and
+  Thomas the same, in a `manager` attribute and mapper. A seeded user's
+  manager follows the seed until they sign in, then the provider.
+
 ### A level nobody may decide
 - **When a level opens with nobody to decide, it is rejected at once,**
   rather than wait for no one, or approve itself on time-out: nobody holds
@@ -71,8 +95,9 @@ members.
   rejected with it, the requester is told it, and the audit log has
   `approval.unanswerable`. The fix is to give the role in the project and
   request again.
-- This applies to every policy level, not only those naming roles: a level
-  whose only user is the requester is rejected the same way.
+- This applies to every policy level, not only those naming roles or the
+  manager: a level whose only user is the requester is rejected the same
+  way.
 - The lease extension still refuses the request at once (409) when nobody
   but the requester holds such a role in the project, given it or in a
   group whose members rvav has seen, as it refused it when the project had
@@ -94,4 +119,8 @@ members.
   as a user a level names does. A group mapped to it is kept too, and its
   members decide with the groups in their token.
 - A request can be rejected for a reason the requester can't fix: the
-  outcome names the role and the project, so they know whom to ask.
+  outcome names the role and the project, or the manager, so they know
+  whom to ask.
+- A manager is found by email or subject, not by a directory's
+  distinguished name: a provider giving `CN=…` needs a mapper that gives
+  the manager's email instead.

@@ -665,6 +665,9 @@ func (s *Service) detail(ctx context.Context, p *auth.Principal, l loadedLevel) 
 		}
 		a.Roles = &refs
 	}
+	if l.lv.Manager {
+		a.Manager = present.Ptr(true)
+	}
 	if len(l.lv.EscalateIDs) > 0 {
 		esc := []api.UserRef{}
 		for _, id := range l.lv.EscalateIDs {

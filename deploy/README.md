@@ -11,7 +11,7 @@ docker compose -f deploy/docker-compose.yml up --build
 | Web app | http://localhost:3000 | nginx serving the built app and proxying `/api` to the API |
 | API | http://localhost:8080/api/v1 | Dev authentication by default |
 | Temporal UI | http://localhost:8233 | Workflow history of every request |
-| Keycloak | http://localhost:8081 | `admin` / `admin`; realm `rvav`, users `lea`, `marc`, `thomas` (password `rvav`) |
+| Keycloak | http://localhost:8081 | `admin` / `admin`; realm `rvav`, users `lea`, `marc`, `thomas` (password `rvav`); each has a `manager` attribute, in the `manager` claim (Thomas: Léa; Léa: Marc; Marc: Claire) |
 | vcsim | https://localhost:8989/sdk | `user` / `pass`; the GVA layout is created by `vcsim-bootstrap` |
 | PostgreSQL | localhost:5432 | `rvav` / `rvav` |
 

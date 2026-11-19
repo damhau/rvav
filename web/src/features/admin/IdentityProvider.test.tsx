@@ -60,6 +60,7 @@ describe("the identity provider", () => {
     expect(within(trial).getByText("rvav-web")).toBeInTheDocument();
     expect(within(trial).getByText("catalog-admin")).toBeInTheDocument();
     expect(within(trial).getByText(/member in /)).toBeInTheDocument();
+    expect(trial).toHaveTextContent("Manager (manager)grace.hopper@corp.example");
     expect(within(trial).getByText("The token's claims")).toBeInTheDocument();
   });
 
@@ -130,6 +131,21 @@ describe("the identity provider", () => {
     expect(screen.queryByText("Applying")).not.toBeInTheDocument();
     cleanup();
     expect(within(await panel()).getByLabelText("Scopes")).toHaveValue("openid profile email offline_access");
+  });
+
+  it("reads the manager from the claim it is given", async () => {
+    const user = userEvent.setup();
+    const p = await panel();
+    const claim = within(p).getByLabelText("Manager claim");
+    expect(claim).toHaveValue("manager");
+    await user.clear(claim);
+    await user.type(claim, "my manager");
+    await user.click(within(p).getByRole("button", { name: "Save settings" }));
+    expect(await within(p).findByText("A claim name, without spaces or quotes.")).toBeInTheDocument();
+    await user.clear(claim);
+    await user.type(claim, "manager_email");
+    await user.click(within(p).getByRole("button", { name: "Save settings" }));
+    expect(await screen.findByText("Identity provider saved")).toBeInTheDocument();
   });
 });
 

@@ -21,7 +21,7 @@ import { SavedBy } from "./IntegrationSettings";
 import { ServerCertificate } from "./ServerCertificate";
 
 type S = components["schemas"];
-type Name = "issuer" | "discovery_url" | "client_id" | "scopes" | "groups_claim";
+type Name = "issuer" | "discovery_url" | "client_id" | "scopes" | "groups_claim" | "manager_claim";
 
 const settings: { name: Name; label: string; env: string; hint: string; placeholder?: string }[] = [
   {
@@ -55,6 +55,13 @@ const settings: { name: Name; label: string; env: string; hint: string; placehol
     env: "RVAV_OIDC_GROUPS_CLAIM",
     hint: "The claim group mappings read: groups, or roles for Entra ID's app roles",
     placeholder: "groups",
+  },
+  {
+    name: "manager_claim",
+    label: "Manager claim",
+    env: "RVAV_OIDC_MANAGER_CLAIM",
+    hint: "The claim with the user's manager, by email or subject, for approval levels that ask the requester's manager",
+    placeholder: "manager",
   },
 ];
 
@@ -320,6 +327,10 @@ function TrialResult({ r }: { r: S["OidcTrial"] }) {
         <dd className="flex flex-wrap gap-1">
           {r.groups.length === 0 ? "None" : r.groups.map((g) => <Badge key={g}>{g}</Badge>)}
         </dd>
+        <dt className="text-muted">
+          Manager (<span className="font-mono">{r.manager_claim ?? "manager"}</span>)
+        </dt>
+        <dd className="break-all">{r.manager ?? "None"}</dd>
         {r.accepted && (
           <>
             <dt className="text-muted">Roles given</dt>

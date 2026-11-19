@@ -281,6 +281,9 @@ type ProviderSettings struct {
 	// GroupsClaim holds the user's groups (or Entra ID's app roles); empty
 	// means groups.
 	GroupsClaim string
+	// ManagerClaim holds the user's manager, by email or subject (ADR-0041);
+	// empty means manager.
+	ManagerClaim string
 	// Roots are the CAs the provider's certificate is checked with: the
 	// process's (package trust) unless given, as for a test.
 	Roots *x509.CertPool
@@ -297,6 +300,9 @@ func (ps ProviderSettings) normal() ProviderSettings {
 	}
 	if ps.GroupsClaim == "" {
 		ps.GroupsClaim = "groups"
+	}
+	if ps.ManagerClaim == "" {
+		ps.ManagerClaim = "manager"
 	}
 	return ps
 }
@@ -533,6 +539,22 @@ func groupsIn(claims map[string]any, claim string) []string {
 	return groups
 }
 
+// managerIn reads the manager claim: a string, or the first of a list, as a
+// multivalued attribute gives it.
+func managerIn(claims map[string]any, claim string) string {
+	switch v := claims[claim].(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case []any:
+		for _, m := range v {
+			if s, ok := m.(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
+}
+
 func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	token := bearer(r)
 	if token == "" {
@@ -580,7 +602,7 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	if ReservedSubject(idt.Subject) {
 		return nil, fmt.Errorf("%w: the subject %q is one of rvav's own users'", ErrUnauthenticated, idt.Subject)
 	}
-	u, err := o.Store.UpsertOIDCUser(ctx, idt.Subject, name, str("email"), str("title"))
+	u, err := o.Store.UpsertOIDCUser(ctx, idt.Subject, name, str("email"), str("title"), managerIn(claims, ps.ManagerClaim))
 	if err != nil {
 		return nil, err
 	}

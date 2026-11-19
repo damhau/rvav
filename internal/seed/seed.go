@@ -25,20 +25,22 @@ func j(v any) []byte {
 	return b
 }
 
+// user is a seeded user; manager is their manager's email, as the Keycloak
+// realm's manager attribute gives it (ADR-0041).
 type user struct {
-	name, display, email, title string
-	roles                       []string
+	name, display, email, title, manager string
+	roles                                []string
 }
 
 var users = []user{
-	{"lmartin", "Léa Martin", "lea.martin@corp.example", "Platform engineer", []string{"user"}},
-	{"mkeller", "Marc Keller", "marc.keller@corp.example", "Infrastructure lead", []string{"user", "admin"}},
-	{"tnguyen", "Thomas Nguyen", "thomas.nguyen@corp.example", "Developer", []string{"user"}},
-	{"sbrunner", "Sophie Brunner", "sophie.brunner@corp.example", "DBA", []string{"user"}},
-	{"afavre", "Alain Favre", "alain.favre@corp.example", "Network engineer", []string{"user"}},
-	{"cdubois", "Claire Dubois", "claire.dubois@corp.example", "Head of infrastructure", []string{"user"}},
+	{"lmartin", "Léa Martin", "lea.martin@corp.example", "Platform engineer", "marc.keller@corp.example", []string{"user"}},
+	{"mkeller", "Marc Keller", "marc.keller@corp.example", "Infrastructure lead", "claire.dubois@corp.example", []string{"user", "admin"}},
+	{"tnguyen", "Thomas Nguyen", "thomas.nguyen@corp.example", "Developer", "lea.martin@corp.example", []string{"user"}},
+	{"sbrunner", "Sophie Brunner", "sophie.brunner@corp.example", "DBA", "marc.keller@corp.example", []string{"user"}},
+	{"afavre", "Alain Favre", "alain.favre@corp.example", "Network engineer", "marc.keller@corp.example", []string{"user"}},
+	{"cdubois", "Claire Dubois", "claire.dubois@corp.example", "Head of infrastructure", "", []string{"user"}},
 	// The account AWX's inventory plugin signs in with (an API token).
-	{"svc-awx", "AWX inventory", "awx@corp.example", "Service account", []string{"auditor"}},
+	{"svc-awx", "AWX inventory", "awx@corp.example", "Service account", "", []string{"auditor"}},
 }
 
 // userGroups are the OIDC groups seeded users are in, as in the Keycloak
@@ -181,9 +183,11 @@ func Run(ctx context.Context, s *store.Store) error {
 			}
 		}
 		for _, u := range users {
-			if err := exec(`insert into users (id, subject, name, email, title, global_roles) values ($1,$2,$3,$4,$5,$6)
-				on conflict (id) do update set global_roles = excluded.global_roles, title = excluded.title`,
-				UserID(u.name), "seed:"+u.name, u.display, u.email, u.title, u.roles); err != nil {
+			// Once a user has signed in, their manager is the identity provider's.
+			if err := exec(`insert into users (id, subject, name, email, title, manager, global_roles) values ($1,$2,$3,$4,$5,$6,$7)
+				on conflict (id) do update set global_roles = excluded.global_roles, title = excluded.title,
+				manager = case when users.subject like 'seed:%' then excluded.manager else users.manager end`,
+				UserID(u.name), "seed:"+u.name, u.display, u.email, u.title, u.manager, u.roles); err != nil {
 				return err
 			}
 		}

@@ -5511,6 +5511,10 @@ components:
           type: array
           description: The groups or roles read from the groups claim.
           items: { type: string }
+        manager_claim: { type: string }
+        manager:
+          type: string
+          description: The manager read from the manager claim, as rvav stores it; absent without one.
         global_roles:
           type: array
           items: { type: string }
@@ -6602,13 +6606,16 @@ components:
               type: array
               description: |
                 Users who may decide: named, holding one of its roles in the
-                project when it opened, members of its groups seen so far, and
-                delegates.
+                project when it opened, the requester's manager, members of its
+                groups seen so far, and delegates.
               items: { $ref: "#/components/schemas/UserRef" }
             roles:
               type: array
               description: The project roles it asks (ADR-0041); absent when it asks none.
               items: { $ref: "#/components/schemas/RoleRef" }
+            manager:
+              type: boolean
+              description: It asks the requester's manager (ADR-0041).
             mode:
               type: string
               enum: [any, all]
@@ -9143,6 +9150,13 @@ components:
             whoever holds one in the request's project when the level opens
             approves, given it themselves or through an OIDC group. A level
             nobody may decide when it opens is rejected.
+        manager:
+          type: boolean
+          description: |
+            The requester's manager approves (ADR-0041): the user the
+            identity provider's manager claim names, by email or subject, as
+            stored at the requester's last sign-in. Without one, the level
+            asks only its other approvers.
         mode: { type: string, enum: [any, all], default: any }
         timeout: { type: string, description: "A Go duration, for example 48h; empty for none.", examples: [48h] }
         on_timeout: { type: string, enum: [escalate, approve, reject] }
@@ -9402,7 +9416,7 @@ components:
           additionalProperties: true
           description: |
             oidc (the identity provider, ADR-0030): issuer, discovery_url,
-            client_id, scopes, groups_claim; no secret (the web app is a
+            client_id, scopes, groups_claim, manager_claim; no secret (the web app is a
             public client, with PKCE).
             vcenter: url, username, insecure, name, sync_interval.
             console (ADR-0012): username, sdk_urls (the secret: the console

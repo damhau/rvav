@@ -94,4 +94,9 @@ func TestAllApprovedNeedsEveryRoleHolder(t *testing.T) {
 	if _, done := allApproved(store.Approval{RoleGroups: []string{"rvav-web"}}, "usr_tnguyen", nil, nil); !done {
 		t.Fatal("a role given only through groups needs one approval")
 	}
+	manager := "usr_lmartin"
+	lv.ManagerID = &manager
+	if _, done := allApproved(lv, "usr_tnguyen", votes, nil); done {
+		t.Fatal("the manager, Léa Martin, has not approved")
+	}
 }

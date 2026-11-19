@@ -180,13 +180,18 @@ in **Administration › Integrations › Identity provider**:
      an access token meant for rvav (below).
    - **Groups claim:** the claim with the user's groups, `groups` by
      default; `roles` for Entra ID's app roles.
+   - **Manager claim:** the claim with the user's manager, `manager` by
+     default, for approval levels that ask the requester's manager
+     ([Who approves](#who-approves)). Its value is the manager's email or
+     subject. rvav stores it at each sign-in; a token without it clears
+     it.
 3. **Test provider:** rvav reads the discovery document and the signing
    keys. The browser fetches tokens at the provider, so its token endpoint
    must be at the issuer's origin.
 4. **Try signing in:** a window signs in at the provider with the settings
    in the panel, before they are saved. The panel then shows the token's
-   claims, the groups rvav reads, and the roles the group mappings give,
-   or why rvav refuses the token. Nothing is saved, and no user is made.
+   claims, the groups and the manager rvav reads, and the roles the group
+   mappings give, or why rvav refuses the token. Nothing is saved, and no user is made.
 5. **Map a group to `admin`** (**Projects › Identity provider groups**), and
    others to the projects' roles. Use the values the trial showed.
 6. **Save settings.** The provider applies within seconds, without a
@@ -238,6 +243,11 @@ In the realm, **Clients › Create client**:
     Keycloak puts the client in `aud` only with one;
   - a **Group Membership** mapper, claim `groups`, in the access token.
     rvav drops the leading `/` of a full group path.
+  - for the requester's manager, a **User Attribute** mapper from a user
+    attribute, for example `manager`, holding the manager's email, to the
+    claim `manager`, in the access token. On Keycloak 24 and later,
+    declare the attribute in **Realm settings › User profile**, or set
+    **Unmanaged attributes** to enabled in **Realm settings › General**.
 
 In rvav, the issuer is `https://<keycloak>/realms/<realm>`, as Keycloak's
 hostname setting makes it. When rvav reaches Keycloak inside the cluster,
@@ -714,23 +724,30 @@ approval, asks one or more of these
   one in the request's project when the level opens, given it themselves
   or through a group mapped to it there. A role held for all of rvav
   doesn't count. One policy can then ask every project's supervisors.
+- **The requester's manager** (`manager: true`): the user the
+  requester's manager claim names, by email or subject, as rvav stored it
+  at their last sign-in ([the identity provider](#the-identity-provider)).
+  The manager must have signed in to rvav once.
 
 `GET /api/v1/admin/approval-policies` lists the roles a level may name in
 `level_roles`: the roles given in projects. A level that names a role
 given for all of rvav only, such as `auditor`, or no role at all, isn't
 saved.
 
-In mode `all`, every user the level names or who holds one of its roles
-must approve. Groups are never required in full: a level of groups only
+In mode `all`, every user the level names, who holds one of its roles,
+or is the requester's manager must approve. Groups are never required in full: a level of groups only
 needs one approval.
 
-When a level opens and nobody but the requester can decide it, rvav
-rejects it at once, even when it would approve itself on time-out, and
-says why, for example "Rejected automatically: nobody can approve it, as
-nobody holds Supervisor in Web Platform". The requester is told, and the
-audit log has `approval.unanswerable`. Give the role in the project, and
-ask them to request again. A level with a group always waits: its members
-may sign in later.
+A requester without a manager, or whose manager has never signed in, has
+none on that level: the level asks its other approvers. When a level
+opens and nobody but the requester can decide it, rvav rejects it at
+once, even when it would approve itself on time-out, and says why, for
+example "Rejected automatically: nobody can approve it, as nobody holds
+Supervisor in Web Platform", or "as the requester has no manager". The
+requester is told, and the audit log has `approval.unanswerable`. Give the
+role in the project, or the manager at the identity provider, and ask
+them to request again. A level with a group always waits: its members may
+sign in later.
 
 A lease extension beyond the lease policy asks the project's approvers,
 in a level named **Project approvers**: whoever holds a role with
