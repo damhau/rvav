@@ -30,12 +30,21 @@ type Filter struct {
 	// ProjectID limits requests and deployments topics to one project.
 	ProjectID string
 	UserID    string
-	// CanSeeProject reports whether the subscriber may see a project's events.
+	// CanSeeProject reports whether the subscriber may see every event of a
+	// project: false too where they see only their own deployments
+	// (ADR-0045).
 	CanSeeProject func(projectID string) bool
 	// Requests were checked readable when subscribing to request:<id>: their
 	// events pass even when the project is not visible (approvers).
 	Requests map[string]bool
+	// Deployments were checked visible when subscribing to deployment:<id>.
+	Deployments map[string]bool
 }
+
+// ViewerTopic marks an event for a person who sees it in a project where
+// they don't see every event: a deployment's owner, a request's requester
+// and owner.
+func ViewerTopic(userID string) string { return "viewer:" + userID }
 
 type Subscription struct {
 	filter Filter
@@ -83,9 +92,12 @@ func (f Filter) Matches(e store.Event) bool {
 		return false
 	}
 	if e.ProjectID != nil && f.CanSeeProject != nil && !f.CanSeeProject(*e.ProjectID) {
-		allowed := false
+		allowed := has(ViewerTopic(f.UserID))
 		for _, t := range e.Topics {
 			if id, ok := strings.CutPrefix(t, "request:"); ok && f.Requests[id] {
+				allowed = true
+			}
+			if id, ok := strings.CutPrefix(t, "deployment:"); ok && f.Deployments[id] {
 				allowed = true
 			}
 		}

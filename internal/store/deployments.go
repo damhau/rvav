@@ -16,7 +16,7 @@ const deploymentRowSelect = `
 select d.id, d.name, d.status, d.project_id, d.environment, d.item_id, d.version_id, d.owner_id,
        d.created_by_request_id, d.created_at, d.lease_expires_at, d.lease_extensions_used,
        d.lease_extensions_max, d.expiry_action, d.sync_state, d.inputs, d.lease_reminded, d.lease_expired_at,
-       p.code as project_code, p.name as project_name, i.slug as item_slug, i.name as item_name, i.type as item_type,
+       p.code as project_code, p.name as project_name, p.deployment_sharing as project_sharing, i.slug as item_slug, i.name as item_name, i.type as item_type,
        v.number as version_number, u.name as owner_name, u.email as owner_email,
        (select count(*) from resources r where r.deployment_id = d.id and r.type = 'vsphere.vm')::int as vm_count,
        (select count(*) from resources r where r.deployment_id = d.id and r.type = 'vsphere.vm'
@@ -66,7 +66,10 @@ func (s *Store) DeploymentsForRequest(ctx context.Context, requestID string) ([]
 }
 
 type DeploymentFilter struct {
-	Projects     []string // nil means all projects
+	Projects []string // nil means all projects
+	// OwnOnly and Viewer narrow Projects to what a person sees (Scope).
+	OwnOnly      []string
+	Viewer       string
 	ProjectID    string
 	Statuses     []string
 	Expired      bool // or its lease has ended, whatever its status
@@ -136,7 +139,7 @@ func (s *Store) ListDeployments(ctx context.Context, f DeploymentFilter) (Page[D
 	}
 	where, order := keyset(desc, 13)
 	q := fmt.Sprintf(`select * from (select d0.*, %s as sort_key, %s as then_key from (%s
-		where ($1 or d.project_id = any($2))
+		where ((($1 or d.project_id = any($2)) and d.project_id <> all($17::text[])) or d.owner_id = $18)
 		  and ($3 = '' or d.project_id = $3)
 		  and ((cardinality($4::text[]) = 0 and not $5) or d.status = any($4) or ($5 and d.lease_expires_at <= now()))
 		  and (cardinality($6::text[]) = 0 or d.environment = any($6))
@@ -154,7 +157,7 @@ func (s *Store) ListDeployments(ctx context.Context, f DeploymentFilter) (Page[D
 		key, then, deploymentRowSelect, where, order)
 	rows, err := s.Pool.Query(ctx, q, f.Projects == nil, f.Projects, f.ProjectID, nonNil(f.Statuses), f.Expired,
 		nonNil(f.Environments), f.OwnerID, f.LeaseExpiresBefore, SearchText(f.Search), f.IncludeDeleted,
-		nonNil(f.Items), nonNil(f.Templates), after.Value, after.Then, after.ID, f.Limit+1)
+		nonNil(f.Items), nonNil(f.Templates), after.Value, after.Then, after.ID, f.Limit+1, nonNil(f.OwnOnly), f.Viewer)
 	if err != nil {
 		return Page[DeploymentRow]{}, err
 	}
@@ -234,7 +237,7 @@ func (s *Store) ResourcesOfType(ctx context.Context, typ string) ([]Resource, er
 // ProjectVMs lists the VMs of a project's deployments that aren't deleted,
 // by name; of one deployment when deploymentID isn't "".
 func (s *Store) ProjectVMs(ctx context.Context, projectID, deploymentID string) ([]ProjectVM, error) {
-	rows, _ := s.Pool.Query(ctx, `select r.name, d.id as deployment_id, d.name as deployment_name
+	rows, _ := s.Pool.Query(ctx, `select r.name, d.id as deployment_id, d.name as deployment_name, d.owner_id
 		from resources r join deployments d on d.id = r.deployment_id
 		where d.project_id = $1 and d.status <> 'deleted' and ($2 = '' or d.id = $2) and r.type = 'vsphere.vm'
 		order by r.name, d.name, d.id`, projectID, deploymentID)

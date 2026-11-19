@@ -542,6 +542,37 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /projects/{projectId}/deployment-sharing:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectIdPath" }
+    put:
+      tags: [projects]
+      operationId: setDeploymentSharing
+      summary: Who sees the project's deployments (`project.members.manage` there)
+      description: |
+        `all_members`, every project's default: whoever sees the project sees
+        its deployments and requests. `owner_only`: each member sees the
+        deployments they own and the requests they made or own; whoever
+        holds `deployments.read_all` there (project admins, supervisors,
+        auditors and administrators) still sees all of them (ADR-0045).
+        Audited as `project.sharing.set`; open event streams end with
+        resync.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeploymentSharingWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /projects/{projectId}/quota:
     parameters:
       - { $ref: "#/components/parameters/ProjectIdPath" }
@@ -829,6 +860,10 @@ paths:
       tags: [requests]
       operationId: listRequests
       summary: Requests visible to the caller
+      description: |
+        Those of every project the caller sees, and those they made or own.
+        In a project whose deployments show to their owners only, those
+        they made or own unless they hold `deployments.read_all` there.
       parameters:
         - { $ref: "#/components/parameters/ProjectIdQuery" }
         - name: status
@@ -1172,7 +1207,10 @@ paths:
       summary: Deployments visible to the caller
       description: |
         Without `project_id`, the deployments of every project the caller
-        sees (`project.see`). Filters with several values match any of them;
+        sees (`project.see`), and those they own wherever they are. In a
+        project whose deployments show to their owners only, the caller's
+        own unless they hold `deployments.read_all` there (ADR-0045).
+        Filters with several values match any of them;
         different filters must all match. Deleted deployments are left out
         unless `status` names `deleted`.
       parameters:
@@ -6256,6 +6294,21 @@ components:
               type: array
               description: The permissions the caller holds in this project, those held for all of rvav included.
               items: { $ref: "#/components/schemas/Permission" }
+            deployment_sharing: { $ref: "#/components/schemas/DeploymentSharing" }
+
+    DeploymentSharing:
+      type: string
+      enum: [all_members, owner_only]
+      description: |
+        Who sees the project's deployments: every member who sees the
+        project, or each its own, with whoever holds `deployments.read_all`
+        there (ADR-0045).
+    DeploymentSharingWrite:
+      type: object
+      required: [deployment_sharing]
+      additionalProperties: false
+      properties:
+        deployment_sharing: { $ref: "#/components/schemas/DeploymentSharing" }
 
     ProjectPage:
       allOf:

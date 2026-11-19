@@ -34,7 +34,7 @@ const (
 )
 
 // reportFilter checks the query and scopes it to what the caller sees.
-func (s *Service) reportFilter(p *auth.Principal, q ReportQuery) (store.ReportFilter, error) {
+func (s *Service) reportFilter(ctx context.Context, p *auth.Principal, q ReportQuery) (store.ReportFilter, error) {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	to, from := today, today.AddDate(0, 0, -29)
 	if q.To != nil {
@@ -58,8 +58,20 @@ func (s *Service) reportFilter(p *auth.Principal, q ReportQuery) (store.ReportFi
 	default:
 		return f, &ValidationError{Errors: []api.FieldError{fieldErr("/interval", "enum", "day, week or month.")}}
 	}
+	sc, err := s.DeploymentScope(ctx, p)
+	if err != nil {
+		return f, err
+	}
+	// A report lists requests and leases: none of a project whose
+	// deployments show to their owners only (ADR-0045).
+	if f.All && len(sc.OwnOnly) > 0 {
+		if seen, err = s.Store.ProjectIDs(ctx); err != nil {
+			return f, err
+		}
+		f.All = false
+	}
 	if !f.All {
-		f.Projects = seen
+		f.Projects = slices.DeleteFunc(slices.Clone(seen), func(id string) bool { return slices.Contains(sc.OwnOnly, id) })
 		if q.ProjectID != "" && !slices.Contains(f.Projects, q.ProjectID) {
 			return f, ErrForbidden
 		}
@@ -70,7 +82,7 @@ func (s *Service) reportFilter(p *auth.Principal, q ReportQuery) (store.ReportFi
 // Report answers GET /reports.
 func (s *Service) Report(ctx context.Context, p *auth.Principal, q ReportQuery) (api.Report, error) {
 	var out api.Report
-	f, err := s.reportFilter(p, q)
+	f, err := s.reportFilter(ctx, p, q)
 	if err != nil {
 		return out, err
 	}
@@ -247,7 +259,7 @@ func (s *Service) quotaLines(ctx context.Context, f store.ReportFilter) ([]api.R
 // ReportCSV is one section of the report as CSV rows, a header first: one
 // row per request, approval level, quota line or lease.
 func (s *Service) ReportCSV(ctx context.Context, p *auth.Principal, q ReportQuery, section string) ([][]string, error) {
-	f, err := s.reportFilter(p, q)
+	f, err := s.reportFilter(ctx, p, q)
 	if err != nil {
 		return nil, err
 	}

@@ -39,6 +39,8 @@ type Project struct {
 	ArchivedAt *time.Time `db:"archived_at"`
 	// Properties are written to its VMs as custom attributes (ADR-0038).
 	Properties map[string]string `db:"properties"`
+	// DeploymentSharing: all_members or owner_only (ADR-0045).
+	DeploymentSharing string `db:"deployment_sharing"`
 }
 
 type QuotaLimit struct {
@@ -227,6 +229,7 @@ type RequestRow struct {
 	VersionNumber    string   `db:"version_number"`
 	ProjectCode      string   `db:"project_code"`
 	ProjectName      string   `db:"project_name"`
+	ProjectSharing   string   `db:"project_sharing"`
 	RequesterName    string   `db:"requester_name"`
 	RequesterEmail   string   `db:"requester_email"`
 	OnBehalfOfName   *string  `db:"on_behalf_of_name"`
@@ -293,18 +296,20 @@ type Deployment struct {
 // DeploymentRow is a deployment joined with the names and counts the API shows.
 type DeploymentRow struct {
 	Deployment
-	ProjectCode   string  `db:"project_code"`
-	ProjectName   string  `db:"project_name"`
-	ItemSlug      string  `db:"item_slug"`
-	ItemName      string  `db:"item_name"`
-	ItemType      string  `db:"item_type"`
-	VersionNumber string  `db:"version_number"`
-	OwnerName     string  `db:"owner_name"`
-	OwnerEmail    string  `db:"owner_email"`
-	VMCount       int     `db:"vm_count"`
-	VMsPoweredOn  int     `db:"vms_powered_on"`
-	PrimaryIP     *string `db:"primary_ip"`
-	PrimaryFQDN   *string `db:"primary_fqdn"`
+	ProjectCode string `db:"project_code"`
+	ProjectName string `db:"project_name"`
+	// ProjectSharing is the project's deployment sharing.
+	ProjectSharing string  `db:"project_sharing"`
+	ItemSlug       string  `db:"item_slug"`
+	ItemName       string  `db:"item_name"`
+	ItemType       string  `db:"item_type"`
+	VersionNumber  string  `db:"version_number"`
+	OwnerName      string  `db:"owner_name"`
+	OwnerEmail     string  `db:"owner_email"`
+	VMCount        int     `db:"vm_count"`
+	VMsPoweredOn   int     `db:"vms_powered_on"`
+	PrimaryIP      *string `db:"primary_ip"`
+	PrimaryFQDN    *string `db:"primary_fqdn"`
 	// The lease policy that applies now.
 	LeaseMaxDays       *int `db:"lease_max_days"`
 	LeaseMaxExtensions *int `db:"lease_max_extensions"`
@@ -330,6 +335,7 @@ type ProjectVM struct {
 	Name           string `db:"name"`
 	DeploymentID   string `db:"deployment_id"`
 	DeploymentName string `db:"deployment_name"`
+	OwnerID        string `db:"owner_id"`
 }
 
 type InvCluster struct {

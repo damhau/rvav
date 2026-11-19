@@ -240,9 +240,10 @@ func (s *Service) CanReadRequest(ctx context.Context, p *auth.Principal, r store
 	return s.Store.IsRequestApprover(ctx, r.ID, p.User.ID, p.Groups)
 }
 
-// CanSeeRequest is true for the requester, the owner and anyone who can see the project.
+// CanSeeRequest is true for the requester, and whoever sees the
+// deployments of the request's owner in its project.
 func CanSeeRequest(p *auth.Principal, r store.RequestRow) bool {
-	return p.In(auth.ProjectSee, r.ProjectID) || r.RequesterID == p.User.ID || r.OwnerID == p.User.ID
+	return r.RequesterID == p.User.ID || SeesDeployment(p, r.ProjectID, r.ProjectSharing, r.OwnerID)
 }
 
 // Cancel stops a request. Waiting requests end at once; running ones stop

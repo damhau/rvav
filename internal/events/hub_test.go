@@ -13,6 +13,7 @@ func TestFilterMatches(t *testing.T) {
 	finEvent := store.Event{ID: 2, ProjectID: &fin, Topics: []string{"requests", "request:req_2"}}
 	note := store.Event{ID: 3, Topics: []string{"notifications", "user:usr_lmartin"}}
 	approval := store.Event{ID: 4, Topics: []string{"approvals", "user:usr_mkeller", "user:usr_cdubois"}}
+	ownDep := store.Event{ID: 5, ProjectID: &fin, Topics: []string{"deployments", "deployment:dep_1", ViewerTopic("usr_tnguyen")}}
 	seesWeb := func(p string) bool { return p == web }
 
 	cases := []struct {
@@ -35,6 +36,13 @@ func TestFilterMatches(t *testing.T) {
 			Filter{Topics: []string{"request:req_2"}, CanSeeProject: seesWeb, Requests: map[string]bool{"req_2": true}}, finEvent, true},
 		{"but not the project's other requests",
 			Filter{Topics: []string{"requests"}, CanSeeProject: seesWeb, Requests: map[string]bool{"req_9": true}}, finEvent, false},
+		// Finance shows deployments to their owners only (ADR-0045).
+		{"one's own deployment where only owners see theirs",
+			Filter{Topics: []string{"deployments"}, UserID: "usr_tnguyen", CanSeeProject: seesWeb}, ownDep, true},
+		{"not someone else's", Filter{Topics: []string{"deployments"}, UserID: "usr_afavre", CanSeeProject: seesWeb}, ownDep, false},
+		{"a deployment checked visible",
+			Filter{Topics: []string{"deployment:dep_1"}, UserID: "usr_afavre", CanSeeProject: seesWeb, Deployments: map[string]bool{"dep_1": true}},
+			ownDep, true},
 	}
 	for _, c := range cases {
 		if got := c.filter.Matches(c.event); got != c.want {

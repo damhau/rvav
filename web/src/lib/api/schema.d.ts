@@ -423,6 +423,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectId}/deployment-sharing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Who sees the project's deployments (`project.members.manage` there)
+         * @description `all_members`, every project's default: whoever sees the project sees
+         *     its deployments and requests. `owner_only`: each member sees the
+         *     deployments they own and the requests they made or own; whoever
+         *     holds `deployments.read_all` there (project admins, supervisors,
+         *     auditors and administrators) still sees all of them (ADR-0045).
+         *     Audited as `project.sharing.set`; open event streams end with
+         *     resync.
+         */
+        put: operations["setDeploymentSharing"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{projectId}/quota": {
         parameters: {
             query?: never;
@@ -663,7 +691,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Requests visible to the caller */
+        /**
+         * Requests visible to the caller
+         * @description Those of every project the caller sees, and those they made or own.
+         *     In a project whose deployments show to their owners only, those
+         *     they made or own unless they hold `deployments.read_all` there.
+         */
         get: operations["listRequests"];
         put?: never;
         /**
@@ -964,7 +997,10 @@ export interface paths {
         /**
          * Deployments visible to the caller
          * @description Without `project_id`, the deployments of every project the caller
-         *     sees (`project.see`). Filters with several values match any of them;
+         *     sees (`project.see`), and those they own wherever they are. In a
+         *     project whose deployments show to their owners only, the caller's
+         *     own unless they hold `deployments.read_all` there (ADR-0045).
+         *     Filters with several values match any of them;
          *     different filters must all match. Deleted deployments are left out
          *     unless `status` names `deleted`.
          */
@@ -4592,6 +4628,17 @@ export interface components {
             environments: components["schemas"]["EnvironmentKey"][];
             /** @description The permissions the caller holds in this project, those held for all of rvav included. */
             my_permissions?: components["schemas"]["Permission"][];
+            deployment_sharing?: components["schemas"]["DeploymentSharing"];
+        };
+        /**
+         * @description Who sees the project's deployments: every member who sees the
+         *     project, or each its own, with whoever holds `deployments.read_all`
+         *     there (ADR-0045).
+         * @enum {string}
+         */
+        DeploymentSharing: "all_members" | "owner_only";
+        DeploymentSharingWrite: {
+            deployment_sharing: components["schemas"]["DeploymentSharing"];
         };
         ProjectPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["Project"][];
@@ -9237,6 +9284,36 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    setDeploymentSharing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeploymentSharingWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     getProjectQuota: {

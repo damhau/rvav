@@ -37,7 +37,7 @@ func (s *Service) audit(ctx context.Context, p *auth.Principal, action, targetTy
 func presentAdminProject(pr store.AdminProject, p *auth.Principal) api.AdminProject {
 	base := present.Project(pr.Project, p.PermissionsIn(pr.ID))
 	return api.AdminProject{Id: base.Id, Code: base.Code, Name: base.Name, Description: base.Description, CostCenter: base.CostCenter,
-		Environments: base.Environments, MyPermissions: base.MyPermissions, Archived: pr.ArchivedAt != nil,
+		Environments: base.Environments, MyPermissions: base.MyPermissions, DeploymentSharing: base.DeploymentSharing, Archived: pr.ArchivedAt != nil,
 		ArchivedAt: pr.ArchivedAt, CreatedAt: pr.CreatedAt, Members: pr.Members, Deployments: pr.Deployments,
 		Properties: api.CustomProperties(nonNilProps(pr.Properties))}
 }

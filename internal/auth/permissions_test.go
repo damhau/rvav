@@ -41,6 +41,9 @@ func (w was) projectRole(id string) string {
 // must grant exactly what they allowed.
 var legacy = map[Permission]func(w was, projectID string) bool{
 	ProjectSee: func(w was, id string) bool { return w.seesEverything() || w.projects[id] != "" },
+	// Every member saw every deployment then: whoever sees all of them now
+	// under owner_only (ADR-0045).
+	DeploymentsReadAll: seesOrProjectAdmin,
 	RequestSubmit: func(w was, id string) bool {
 		r := w.projectRole(id)
 		return r == "member" || r == "project-admin"
@@ -268,12 +271,12 @@ func TestCustomRoles(t *testing.T) {
 	}
 }
 
-// TestSupervisor: a supervisor sees the project and is one of its approvers,
-// and nothing else (ADR-0041).
+// TestSupervisor: a supervisor sees the project and every deployment of it,
+// and is one of its approvers, and nothing else (ADR-0041, ADR-0045).
 func TestSupervisor(t *testing.T) {
 	g := Compute([]Assignment{{Role: "supervisor", ProjectID: "prj_a"}}, BuiltinRole)
 	for _, c := range Catalogue {
-		want := c.ID == ProjectSee || c.ID == ApprovalProject
+		want := c.ID == ProjectSee || c.ID == DeploymentsReadAll || c.ID == ApprovalProject
 		if got := g.In(c.ID, "prj_a"); got != want {
 			t.Errorf("a supervisor holds %s: %v", c.ID, got)
 		}

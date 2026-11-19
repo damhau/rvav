@@ -21,7 +21,10 @@ type VMRow struct {
 }
 
 type VMFilter struct {
-	Projects     []string // nil means all projects
+	Projects []string // nil means all projects
+	// OwnOnly and Viewer narrow Projects to what a person sees (Scope).
+	OwnOnly      []string
+	Viewer       string
 	ProjectID    string
 	Environments []string
 	PowerStates  []string
@@ -55,8 +58,13 @@ var vmSorts = map[string]string{
 		12, '0')`,
 }
 
-const vmScope = `from resources r join deployments d on d.id = r.deployment_id join projects p on p.id = d.project_id
-	where r.type = 'vsphere.vm' and d.status <> 'deleted' and ($1 or d.project_id = any($2)) and ($3 = '' or d.project_id = $3)`
+// vmScope is the VMs of a Scope, with its own-only projects and viewer in
+// these parameters.
+func vmScope(own, viewer int) string {
+	return fmt.Sprintf(`from resources r join deployments d on d.id = r.deployment_id join projects p on p.id = d.project_id
+	where r.type = 'vsphere.vm' and d.status <> 'deleted' and ($3 = '' or d.project_id = $3)
+	and ((($1 or d.project_id = any($2)) and d.project_id <> all($%d::text[])) or d.owner_id = $%d)`, own, viewer)
+}
 
 // ListVMs lists the VMs of deployments that aren't deleted, filtered and
 // sorted, with keyset pagination.
@@ -90,9 +98,10 @@ func (s *Store) ListVMs(ctx context.Context, f VMFilter) (Page[VMRow], error) {
 		       or exists (select 1 from (%s) x(address) where x.address ilike $9))
 		) v
 		where %s %s limit $13`,
-		vmReserved, key, then, vmScope, vmNICs, vmNICs, vmReserved, where, order)
+		vmReserved, key, then, vmScope(14, 15), vmNICs, vmNICs, vmReserved, where, order)
 	rows, err := s.Pool.Query(ctx, q, f.Projects == nil, f.Projects, f.ProjectID, nonNil(f.Environments),
-		nonNil(f.PowerStates), f.VCenter, f.Cluster, f.Network, SearchText(f.Search), after.Value, after.Then, after.ID, f.Limit+1)
+		nonNil(f.PowerStates), f.VCenter, f.Cluster, f.Network, SearchText(f.Search), after.Value, after.Then, after.ID, f.Limit+1,
+		nonNil(f.OwnOnly), f.Viewer)
 	if err != nil {
 		return Page[VMRow]{}, err
 	}
@@ -120,11 +129,11 @@ type VMFacets struct {
 	Networks []string
 }
 
-func (s *Store) VMFacets(ctx context.Context, projects []string, projectID string) (VMFacets, error) {
+func (s *Store) VMFacets(ctx context.Context, sc Scope, projectID string) (VMFacets, error) {
 	out := VMFacets{Clusters: map[string][]string{}, Networks: []string{}}
 	rows, _ := s.Pool.Query(ctx, `select distinct r.properties->'vm'->>'vcenter' as vcenter,
-		coalesce(r.properties->'vm'->>'cluster', '') as cluster `+vmScope+`
-		and coalesce(r.properties->'vm'->>'vcenter', '') <> '' order by 1, 2`, projects == nil, projects, projectID)
+		coalesce(r.properties->'vm'->>'cluster', '') as cluster `+vmScope(4, 5)+`
+		and coalesce(r.properties->'vm'->>'vcenter', '') <> '' order by 1, 2`, sc.args(projectID)...)
 	type placed struct {
 		VCenter string `db:"vcenter"`
 		Cluster string `db:"cluster"`
@@ -145,8 +154,7 @@ func (s *Store) VMFacets(ctx context.Context, projects []string, projectID strin
 	}
 	out.Networks, err = s.strings(ctx, `select distinct n->>'network' from resources r,
 		jsonb_array_elements(`+vmNICs+`) n
-		where r.id in (select r.id `+vmScope+`) and coalesce(n->>'network', '') <> '' order by 1`,
-		projects == nil, projects, projectID)
+		where r.id in (select r.id `+vmScope(4, 5)+`) and coalesce(n->>'network', '') <> '' order by 1`, sc.args(projectID)...)
 	return out, err
 }
 
@@ -164,13 +172,26 @@ type FacetItem struct {
 	Name string `db:"name"`
 }
 
-const deploymentScope = `from deployments d where d.status <> 'deleted'
-	and ($1 or d.project_id = any($2)) and ($3 = '' or d.project_id = $3)`
+const deploymentScope = `from deployments d where d.status <> 'deleted' and ($3 = '' or d.project_id = $3)
+	and ((($1 or d.project_id = any($2)) and d.project_id <> all($4::text[])) or d.owner_id = $5)`
 
-func (s *Store) DeploymentFacets(ctx context.Context, projects []string, projectID string) (DeploymentFacets, error) {
+// Scope is the deployments a person sees (ADR-0045): those of Projects (nil
+// for every project) but OwnOnly's, where they see their own only, and
+// their own wherever they are.
+type Scope struct {
+	Projects []string
+	OwnOnly  []string
+	Viewer   string
+}
+
+func (sc Scope) args(projectID string) []any {
+	return []any{sc.Projects == nil, sc.Projects, projectID, nonNil(sc.OwnOnly), sc.Viewer}
+}
+
+func (s *Store) DeploymentFacets(ctx context.Context, sc Scope, projectID string) (DeploymentFacets, error) {
 	var out DeploymentFacets
 	rows, _ := s.Pool.Query(ctx, `select i.id, i.slug, i.name from catalog_items i
-		where i.id in (select d.item_id `+deploymentScope+`) order by i.name, i.id`, projects == nil, projects, projectID)
+		where i.id in (select d.item_id `+deploymentScope+`) order by i.name, i.id`, sc.args(projectID)...)
 	items, err := pgx.CollectRows(rows, pgx.RowToStructByName[FacetItem])
 	if err != nil {
 		return out, err
@@ -178,11 +199,10 @@ func (s *Store) DeploymentFacets(ctx context.Context, projects []string, project
 	out.Items = items
 	if out.Templates, err = s.strings(ctx, `select distinct r.properties->'vm'->>'template' from resources r
 		where r.type = 'vsphere.vm' and coalesce(r.properties->'vm'->>'template', '') <> ''
-		and r.deployment_id in (select d.id `+deploymentScope+`) order by 1`, projects == nil, projects, projectID); err != nil {
+		and r.deployment_id in (select d.id `+deploymentScope+`) order by 1`, sc.args(projectID)...); err != nil {
 		return out, err
 	}
-	out.Environments, err = s.strings(ctx, `select distinct d.environment `+deploymentScope+` order by 1`,
-		projects == nil, projects, projectID)
+	out.Environments, err = s.strings(ctx, `select distinct d.environment `+deploymentScope+` order by 1`, sc.args(projectID)...)
 	return out, err
 }
 

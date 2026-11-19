@@ -17,7 +17,7 @@ select r.id, r.number, r.item_id, r.version_id, r.project_id, r.environment, r.t
        r.finished_at, r.workflow_id, r.error_step_id, r.error_message,
        r.kind, r.action, r.deployment_id, r.resource_id, r.resource_name,
        i.slug as item_slug, i.name as item_name, i.type as item_type, v.number as version_number,
-       p.code as project_code, p.name as project_name,
+       p.code as project_code, p.name as project_name, p.deployment_sharing as project_sharing,
        u.name as requester_name, u.email as requester_email,
        ob.name as on_behalf_of_name, ob.email as on_behalf_of_email,
        case when r.deployment_id is not null then array[r.deployment_id]
@@ -72,7 +72,10 @@ func (s *Store) GetRequestIn(ctx context.Context, db DB, idOrNumber string) (Req
 
 type RequestFilter struct {
 	// Projects limits results to these projects; nil means all projects.
-	Projects    []string
+	Projects []string
+	// OwnOnly are projects of Projects whose requests show to their
+	// requester and owner only (ADR-0045).
+	OwnOnly     []string
 	ViewerID    string
 	ProjectID   string
 	Statuses    []string
@@ -96,7 +99,7 @@ func (s *Store) ListRequests(ctx context.Context, f RequestFilter) (Page[Request
 		afterTime, afterID = t, f.After.ID
 	}
 	rows, _ := s.Pool.Query(ctx, requestRowSelect+`
-		where ($1 or r.project_id = any($2) or r.requester_id = $3 or r.owner_id = $3)
+		where ((($1 or r.project_id = any($2)) and r.project_id <> all($12::text[])) or r.requester_id = $3 or r.owner_id = $3)
 		  and ($4 = '' or r.project_id = $4)
 		  and (cardinality($5::text[]) = 0 or r.status = any($5))
 		  and ($6 = '' or r.requester_id = $6)
@@ -106,7 +109,7 @@ func (s *Store) ListRequests(ctx context.Context, f RequestFilter) (Page[Request
 		       or r.id = (select created_by_request_id from deployments where id = $11))
 		order by r.submitted_at desc, r.id desc limit $10`,
 		f.Projects == nil, f.Projects, f.ViewerID, f.ProjectID, nonNil(f.Statuses), f.RequesterID,
-		SearchText(f.Search), afterID, afterTime, f.Limit+1, f.DeploymentID)
+		SearchText(f.Search), afterID, afterTime, f.Limit+1, f.DeploymentID, nonNil(f.OwnOnly))
 	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[RequestRow])
 	if err != nil {
 		return Page[RequestRow]{}, err

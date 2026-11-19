@@ -7,6 +7,12 @@
       "summary": "See the project: its catalog, deployments, requests, members, quotas and reports, as they change."
     },
     {
+      "id": "deployments.read_all",
+      "scope": "project",
+      "area": "Projects",
+      "summary": "See every deployment and request of the project, when its deployments show to their owners only."
+    },
+    {
       "id": "request.submit",
       "scope": "project",
       "area": "Requests",
@@ -190,6 +196,7 @@
       "scope": "rvav",
       "permissions": [
         "project.see",
+        "deployments.read_all",
         "request.submit",
         "request.on_behalf",
         "request.manage",
@@ -234,6 +241,7 @@
       "scope": "rvav",
       "permissions": [
         "project.see",
+        "deployments.read_all",
         "project.settings.read",
         "audit.read",
         "approval.read_all",
@@ -257,6 +265,7 @@
       "scope": "project",
       "permissions": [
         "project.see",
+        "deployments.read_all",
         "request.submit",
         "request.on_behalf",
         "request.manage",
@@ -289,6 +298,7 @@
       "scope": "project",
       "permissions": [
         "project.see",
+        "deployments.read_all",
         "approval.project"
       ]
     }

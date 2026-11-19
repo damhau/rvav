@@ -45,7 +45,12 @@ func (s *Server) ListRequests(w http.ResponseWriter, r *http.Request, params api
 		s.fail(w, r, err)
 		return
 	}
-	f := store.RequestFilter{Projects: p.Projects(auth.ProjectSee), ViewerID: p.User.ID, ProjectID: deref(params.ProjectId),
+	sc, err := s.Core.DeploymentScope(r.Context(), p)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	f := store.RequestFilter{Projects: sc.Projects, OwnOnly: sc.OwnOnly, ViewerID: p.User.ID, ProjectID: deref(params.ProjectId),
 		Search: deref(params.Q), Limit: limitOf(params.Limit), After: after}
 	if f.Projects != nil && len(f.Projects) == 0 {
 		f.Projects = []string{}

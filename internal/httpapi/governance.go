@@ -411,6 +411,15 @@ func (s *Server) ListProjectMembers(w http.ResponseWriter, r *http.Request, proj
 	s.reply(w, r, http.StatusOK, api.ProjectMemberList{Items: items}, err)
 }
 
+func (s *Server) SetDeploymentSharing(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath) {
+	var b api.DeploymentSharingWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	pr, err := s.Core.SetDeploymentSharing(r.Context(), principal(r), projectId, b)
+	s.reply(w, r, http.StatusOK, pr, err)
+}
+
 func (s *Server) RemoveProjectMember(w http.ResponseWriter, r *http.Request, projectId api.ProjectIdPath, userId api.UserIdPath) {
 	s.replyEmpty(w, r, s.Core.RemoveProjectMember(r.Context(), principal(r), projectId, userId))
 }

@@ -59,7 +59,7 @@ func (s *Service) rvavOptions(ctx context.Context, p *auth.Principal, proj store
 	case "rvav.deployments":
 		page, err := s.Store.ListDeployments(ctx, store.DeploymentFilter{ProjectID: proj.ID, Sort: "name", Limit: 500})
 		for _, d := range page.Items {
-			if item := params["item"]; item == "" || d.ItemSlug == item {
+			if item := params["item"]; (item == "" || d.ItemSlug == item) && SeesDeployment(p, d.ProjectID, d.ProjectSharing, d.OwnerID) {
 				out = append(out, option(d.ID, d.Name, d.ItemName+" · "+d.Environment))
 			}
 		}
@@ -67,7 +67,9 @@ func (s *Service) rvavOptions(ctx context.Context, p *auth.Principal, proj store
 	case "rvav.vms":
 		vms, err := s.Store.ProjectVMs(ctx, proj.ID, params["deployment"])
 		for _, vm := range vms {
-			out = append(out, option(vm.Name, vm.Name, vm.DeploymentName))
+			if SeesDeployment(p, proj.ID, proj.DeploymentSharing, vm.OwnerID) {
+				out = append(out, option(vm.Name, vm.Name, vm.DeploymentName))
+			}
 		}
 		return out, err
 	}
@@ -105,7 +107,8 @@ func (s *Service) rvavAllowed(ctx context.Context, p *auth.Principal, proj store
 			case errors.Is(err, store.ErrNotFound):
 			case err != nil:
 				return nil, err
-			case d.ProjectID == proj.ID && d.Status != "deleted" && (params["item"] == "" || d.ItemSlug == params["item"]):
+			case d.ProjectID == proj.ID && d.Status != "deleted" && (params["item"] == "" || d.ItemSlug == params["item"]) &&
+				SeesDeployment(p, d.ProjectID, d.ProjectSharing, d.OwnerID):
 				allowed = append(allowed, v)
 			}
 		}
@@ -115,7 +118,9 @@ func (s *Service) rvavAllowed(ctx context.Context, p *auth.Principal, proj store
 			return nil, err
 		}
 		for _, vm := range vms {
-			allowed = append(allowed, vm.Name)
+			if SeesDeployment(p, proj.ID, proj.DeploymentSharing, vm.OwnerID) {
+				allowed = append(allowed, vm.Name)
+			}
 		}
 	}
 	return allowed, nil

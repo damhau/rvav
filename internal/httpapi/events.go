@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/events"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -64,8 +66,13 @@ func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params api
 		}
 		projectID = pr.ID
 	}
-	filter := events.Filter{Topics: topics, ProjectID: projectID, UserID: p.User.ID, CanSeeProject: func(id string) bool { return p.In(auth.ProjectSee, id) },
-		Requests: map[string]bool{}}
+	sc, err := s.Core.DeploymentScope(r.Context(), p)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	filter := events.Filter{Topics: topics, ProjectID: projectID, UserID: p.User.ID, Requests: map[string]bool{}, Deployments: map[string]bool{},
+		CanSeeProject: func(id string) bool { return p.In(auth.ProjectSee, id) && !slices.Contains(sc.OwnOnly, id) }}
 	// A single request may be followed by anyone who can read it, approvers
 	// outside its project included.
 	for i, t := range filter.Topics {
@@ -86,6 +93,23 @@ func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params api
 		}
 		filter.Topics[i] = "request:" + row.ID
 		filter.Requests[row.ID] = true
+	}
+	// A deployment followed passes in a project whose other deployments
+	// don't; one not seen stays filtered by its project.
+	for _, t := range filter.Topics {
+		key, ok := strings.CutPrefix(t, "deployment:")
+		if !ok {
+			continue
+		}
+		d, err := s.Store.GetDeployment(r.Context(), key)
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+		case err != nil:
+			s.fail(w, r, err)
+			return
+		case core.SeesDeployment(p, d.ProjectID, d.ProjectSharing, d.OwnerID):
+			filter.Deployments[d.ID] = true
+		}
 	}
 
 	// Filtered before replaying so nothing falls between the two.

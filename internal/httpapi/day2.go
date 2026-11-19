@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/damhau/rvav/internal/api"
-	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -31,7 +31,7 @@ func (s *Server) RunDeploymentAction(w http.ResponseWriter, r *http.Request, dep
 func (s *Server) ListDeploymentHistory(w http.ResponseWriter, r *http.Request, deploymentID api.DeploymentIdPath, params api.ListDeploymentHistoryParams) {
 	p := principal(r)
 	d, err := s.Store.GetDeployment(r.Context(), deploymentID)
-	if err == nil && !p.In(auth.ProjectSee, d.ProjectID) && d.OwnerID != p.User.ID {
+	if err == nil && !core.SeesDeployment(p, d.ProjectID, d.ProjectSharing, d.OwnerID) {
 		err = store.ErrNotFound
 	}
 	if err != nil {

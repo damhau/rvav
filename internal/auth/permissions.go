@@ -14,6 +14,7 @@ type Permission string
 
 const (
 	ProjectSee           Permission = "project.see"
+	DeploymentsReadAll   Permission = "deployments.read_all"
 	RequestSubmit        Permission = "request.submit"
 	RequestOnBehalf      Permission = "request.on_behalf"
 	RequestManage        Permission = "request.manage"
@@ -59,6 +60,7 @@ type PermissionInfo struct {
 // Catalogue lists every permission but the day-2 ones (Day2, Day2Action).
 var Catalogue = []PermissionInfo{
 	{ProjectSee, true, "Projects", "See the project: its catalog, deployments, requests, members, quotas and reports, as they change."},
+	{DeploymentsReadAll, true, "Projects", "See every deployment and request of the project, when its deployments show to their owners only."},
 	{RequestSubmit, true, "Requests", "Request from the project's catalog and save drafts; own deployments there, and move one into it."},
 	{RequestOnBehalf, true, "Requests", "Request for someone else."},
 	{RequestManage, true, "Requests", "Cancel, retry and roll back anyone's request in the project."},
@@ -157,20 +159,20 @@ var BuiltinRoles = []Role{
 	{Key: "admin", Name: "Administrator", BuiltIn: true, Global: true, Permissions: allPermissions()},
 	{Key: "catalog-admin", Name: "Catalog admin", BuiltIn: true, Global: true, Permissions: []Permission{CatalogManage}},
 	{Key: "auditor", Name: "Auditor", BuiltIn: true, Global: true, Permissions: []Permission{
-		ProjectSee, ProjectSettingsRead, AuditRead, ApprovalReadAll, EnvironmentsRead, AccessRead,
+		ProjectSee, DeploymentsReadAll, ProjectSettingsRead, AuditRead, ApprovalReadAll, EnvironmentsRead, AccessRead,
 		InfrastructureRead, PoliciesRead, ExtensibilityRead, InventoryRead}},
 	// Every user signed in through the identity provider has it, as
 	// users.global_roles' default: it grants nothing, and keeps
 	// `"user" in user.roles` true in policies where it is today.
 	{Key: "user", Name: "User", BuiltIn: true, Global: true},
 	{Key: "project-admin", Name: "Project admin", BuiltIn: true, Permissions: []Permission{
-		ProjectSee, RequestSubmit, RequestOnBehalf, RequestManage, ApprovalProject, ProjectMembersManage,
+		ProjectSee, DeploymentsReadAll, RequestSubmit, RequestOnBehalf, RequestManage, ApprovalProject, ProjectMembersManage,
 		ProjectSettingsRead, AuditRead}},
 	{Key: "member", Name: "Member", BuiltIn: true, Permissions: []Permission{ProjectSee, RequestSubmit}},
 	{Key: "viewer", Name: "Viewer", BuiltIn: true, Permissions: []Permission{ProjectSee}},
 	// ADR-0041: approves and sees, but neither requests nor runs day-2
 	// actions.
-	{Key: "supervisor", Name: "Supervisor", BuiltIn: true, Permissions: []Permission{ProjectSee, ApprovalProject}},
+	{Key: "supervisor", Name: "Supervisor", BuiltIn: true, Permissions: []Permission{ProjectSee, DeploymentsReadAll, ApprovalProject}},
 }
 
 func allPermissions() []Permission {

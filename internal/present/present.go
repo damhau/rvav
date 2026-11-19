@@ -54,6 +54,10 @@ func Project(p store.Project, permissions []string) api.Project {
 		Environments:  append([]string{}, p.Environments...),
 		MyPermissions: &permissions,
 	}
+	if p.DeploymentSharing != "" {
+		sharing := api.DeploymentSharing(p.DeploymentSharing)
+		out.DeploymentSharing = &sharing
+	}
 	return out
 }
 

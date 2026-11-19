@@ -76,7 +76,8 @@ func (p *Publisher) Request(ctx context.Context, requestID string) {
 		p.Logger.Warn("publish request", "request", requestID, "err", err)
 		return
 	}
-	p.insert(ctx, "request.updated", &r.ProjectID, requestTopics(r.ID), present.Request(r, p.secretFields(ctx, r.VersionID)))
+	topics := append(requestTopics(r.ID), ViewerTopic(r.RequesterID), ViewerTopic(r.OwnerID))
+	p.insert(ctx, "request.updated", &r.ProjectID, topics, present.Request(r, p.secretFields(ctx, r.VersionID)))
 }
 
 // Step publishes request.step for one step (without its children).
@@ -102,7 +103,8 @@ func (p *Publisher) Deployment(ctx context.Context, deploymentID string) {
 		p.Logger.Warn("publish deployment", "deployment", deploymentID, "err", err)
 		return
 	}
-	p.insert(ctx, "deployment.updated", &d.ProjectID, []string{"deployments", "deployment:" + d.ID}, present.Deployment(d))
+	p.insert(ctx, "deployment.updated", &d.ProjectID, []string{"deployments", "deployment:" + d.ID, ViewerTopic(d.OwnerID)},
+		present.Deployment(d))
 }
 
 // Resource publishes resource.updated.
@@ -115,8 +117,11 @@ func (p *Publisher) Resource(ctx context.Context, projectID string, r store.Reso
 	if !ok {
 		return
 	}
-	p.insert(ctx, "resource.updated", &projectID, []string{"deployments", "deployment:" + r.DeploymentID},
-		map[string]any{"deployment_id": r.DeploymentID, "resource": res})
+	topics := []string{"deployments", "deployment:" + r.DeploymentID}
+	if owner, err := p.Store.DeploymentOwner(ctx, r.DeploymentID); err == nil {
+		topics = append(topics, ViewerTopic(owner))
+	}
+	p.insert(ctx, "resource.updated", &projectID, topics, map[string]any{"deployment_id": r.DeploymentID, "resource": res})
 }
 
 // Notify keeps a notification for one user, queues it on the channels

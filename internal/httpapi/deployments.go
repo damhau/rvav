@@ -7,7 +7,7 @@ import (
 	"slices"
 
 	"github.com/damhau/rvav/internal/api"
-	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/core"
 	"github.com/damhau/rvav/internal/present"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -19,13 +19,14 @@ func (s *Server) ListDeployments(w http.ResponseWriter, r *http.Request, params 
 		s.fail(w, r, err)
 		return
 	}
-	f := store.DeploymentFilter{Projects: p.Projects(auth.ProjectSee), ProjectID: deref(params.ProjectId), Search: deref(params.Q),
-		LeaseExpiresBefore: params.LeaseExpiresBefore, Limit: limitOf(params.Limit), After: after, Sort: "name",
-		Environments: derefAll(params.Environment), Items: derefAll(params.Item), Templates: derefAll(params.Template)}
-	if f.Projects != nil && len(f.Projects) == 0 {
-		writeJSON(w, http.StatusOK, api.DeploymentPage{Items: []api.Deployment{}})
+	sc, err := s.Core.DeploymentScope(r.Context(), p)
+	if err != nil {
+		s.fail(w, r, err)
 		return
 	}
+	f := store.DeploymentFilter{Projects: sc.Projects, OwnOnly: sc.OwnOnly, Viewer: sc.Viewer, ProjectID: deref(params.ProjectId),
+		Search: deref(params.Q), LeaseExpiresBefore: params.LeaseExpiresBefore, Limit: limitOf(params.Limit), After: after, Sort: "name",
+		Environments: derefAll(params.Environment), Items: derefAll(params.Item), Templates: derefAll(params.Template)}
 	if params.Sort != nil {
 		f.Sort = string(*params.Sort)
 	}
@@ -60,18 +61,18 @@ func (s *Server) ListDeployments(w http.ResponseWriter, r *http.Request, params 
 }
 
 func (s *Server) GetDeploymentFacets(w http.ResponseWriter, r *http.Request, params api.GetDeploymentFacetsParams) {
-	projects := principal(r).Projects(auth.ProjectSee)
 	out := api.DeploymentFacets{Templates: []string{}, Environments: []api.EnvironmentKey{}}
 	out.Items = []struct {
 		Id   string `json:"id"`
 		Name string `json:"name"`
 		Slug string `json:"slug"`
 	}{}
-	if projects != nil && len(projects) == 0 {
-		writeJSON(w, http.StatusOK, out)
+	sc, err := s.Core.DeploymentScope(r.Context(), principal(r))
+	if err != nil {
+		s.fail(w, r, err)
 		return
 	}
-	f, err := s.Store.DeploymentFacets(r.Context(), projects, deref(params.ProjectId))
+	f, err := s.Store.DeploymentFacets(r.Context(), sc, deref(params.ProjectId))
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -94,7 +95,12 @@ func (s *Server) ListVms(w http.ResponseWriter, r *http.Request, params api.List
 		s.fail(w, r, err)
 		return
 	}
-	f := store.VMFilter{Projects: p.Projects(auth.ProjectSee), ProjectID: deref(params.ProjectId),
+	sc, err := s.Core.DeploymentScope(r.Context(), p)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	f := store.VMFilter{Projects: sc.Projects, OwnOnly: sc.OwnOnly, Viewer: sc.Viewer, ProjectID: deref(params.ProjectId),
 		Environments: derefAll(params.Environment), VCenter: deref(params.Vcenter), Cluster: deref(params.Cluster),
 		Network: deref(params.Network), Search: deref(params.Q), Limit: limitOf(params.Limit), After: after}
 	if params.Sort != nil {
@@ -104,10 +110,6 @@ func (s *Server) ListVms(w http.ResponseWriter, r *http.Request, params api.List
 		f.PowerStates = append(f.PowerStates, string(st))
 	}
 	out := api.VmPage{Items: []api.VmListItem{}}
-	if f.Projects != nil && len(f.Projects) == 0 {
-		writeJSON(w, http.StatusOK, out)
-		return
-	}
 	page, err := s.Store.ListVMs(r.Context(), f)
 	if err != nil {
 		s.fail(w, r, err)
@@ -128,17 +130,17 @@ func (s *Server) ListVms(w http.ResponseWriter, r *http.Request, params api.List
 }
 
 func (s *Server) GetVmFacets(w http.ResponseWriter, r *http.Request, params api.GetVmFacetsParams) {
-	projects := principal(r).Projects(auth.ProjectSee)
 	out := api.VmFacets{Networks: []string{}}
 	out.Vcenters = []struct {
 		Clusters []string `json:"clusters"`
 		Name     string   `json:"name"`
 	}{}
-	if projects != nil && len(projects) == 0 {
-		writeJSON(w, http.StatusOK, out)
+	sc, err := s.Core.DeploymentScope(r.Context(), principal(r))
+	if err != nil {
+		s.fail(w, r, err)
 		return
 	}
-	f, err := s.Store.VMFacets(r.Context(), projects, deref(params.ProjectId))
+	f, err := s.Store.VMFacets(r.Context(), sc, deref(params.ProjectId))
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -182,7 +184,7 @@ func (s *Server) DeleteSavedView(w http.ResponseWriter, r *http.Request, id api.
 
 func (s *Server) GetDeployment(w http.ResponseWriter, r *http.Request, deploymentID string) {
 	d, err := s.Store.GetDeployment(r.Context(), deploymentID)
-	if err == nil && !principal(r).In(auth.ProjectSee, d.ProjectID) && d.OwnerID != principal(r).User.ID {
+	if err == nil && !core.SeesDeployment(principal(r), d.ProjectID, d.ProjectSharing, d.OwnerID) {
 		err = store.ErrNotFound
 	}
 	if err != nil {
