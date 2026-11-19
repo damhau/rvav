@@ -96,8 +96,17 @@ Subscription (event → awx template | webhook)
   properties keep it as rvav last left it, and how it differs now (drift,
   [ADR-0025](adr/0025-drift.md)).
 - **InventoryVM**: cached vCenter inventory maintained by `rvav-sync`, including
-  VMs not managed by the app. Administrators adopt those into deployments
-  with no request behind them ([ADR-0026](adr/0026-onboarding.md)).
+  VMs not managed by the app, with their folder and tags. Administrators
+  adopt those into deployments with no request behind them
+  ([ADR-0026](adr/0026-onboarding.md)).
+- **OnboardingPlan**: a saved filter of the inventory's VMs (name or
+  address, folder, tag, cluster, vCenter, power) and where what it
+  matches goes (each its own deployment, one named deployment, or an
+  existing one, with a component and recorded inputs), with an optional
+  interval in hours. **OnboardingRun**: one run of a plan (manual or
+  scheduled), its status, and what it did with each VM it matched:
+  adopted, skipped or failed, with a code and why
+  ([ADR-0044](adr/0044-onboarding-plans.md)).
 
 ### Day-2
 - **Day2Action**: key, name, icon, applicable resource types, condition (CEL,

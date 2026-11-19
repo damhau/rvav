@@ -954,10 +954,12 @@ The mock (`mocks/reports.ts`) makes up a year of requests from a fixed seed.
 ## Onboarding
 
 **Administration → Onboarding** (`features/admin/OnboardingPage.tsx`,
-[ADR-0026](adr/0026-onboarding.md)) lists the VMs rvav doesn't manage:
-- **Filters:** search, vCenter and power in the table's toolbar, with how
-  many match; pages of 100 with **Show more**. A filtered empty list
-  offers **Clear filters**.
+[ADR-0026](adr/0026-onboarding.md), [ADR-0044](adr/0044-onboarding-plans.md))
+has two tabs in the address (`?tab=`): **VMs to adopt** and **Plans**.
+**VMs to adopt** lists the VMs rvav doesn't manage:
+- **Filters:** search, folder, vCenter and power in the table's toolbar,
+  with how many match; pages of 100 with **Show more**. A filtered empty
+  list offers **Clear filters**.
 - **Selection:** a `DataTable` selection: a checkbox per VM, and **Select
   all shown** (`allLabel`). A selection outlives the filters: unticking
   **Select all shown** keeps the selected VMs the filters hide, the count
@@ -966,15 +968,33 @@ The mock (`mocks/reports.ts`) makes up a year of requests from a fixed seed.
 - **Adopting:** once VMs are selected, a bar above the table (**Selected
   VMs**, as Deployments' bulk actions) offers **Adopt N VMs…** and **Clear
   selection**; nothing waits disabled before that. Adopt opens a side
-  panel asking for the project, environment, owner (members who aren't
-  viewers), catalog item (the project's VM items), lease, and optionally
-  one deployment for all with its name. The server's errors show by
-  field, a VM's naming it.
+  panel asking for the project and **Where they go**
+  (`features/admin/onboarding/target.tsx`, shared with plans): each into
+  a deployment of its own, all into one new deployment (its name), or
+  into an existing deployment (the project's ready ones). New deployments
+  take an environment, owner (members who request there), catalog item
+  (the project's VM items), lease and inputs (key and value rows; numbers,
+  booleans and JSON lists are read as such). A component is free text: no
+  API lists an item's components, and the server's error names them. The
+  server's errors show by field, a VM's naming it.
 - **Result:** a panel lists the deployments made, with links, and the
   addresses and records found.
 
-The mock offers 60 VMs (`mocks/onboarding.ts`); EfficientIP knows half of
-them.
+**Plans** (`features/admin/onboarding/plans.tsx`) is a `DataTable` of the
+saved plans (filter, where they go, last run, schedule), each linking to
+its page (`/admin/onboarding/plans/$planId`, `PlanPage.tsx`), with a row
+menu (Run now, Change, Delete). **New plan** opens a side panel: name,
+**Which VMs** (with how many match now, debounced), **Where they go**,
+and **Run every (hours)**. A plan's page has **Run now** as its primary
+action, a ⋯ menu (Change plan, Delete plan), its settings, and a table
+of its runs; a run opens in a side panel listing each VM's outcome and
+why. Lists and pages poll every 1.5 seconds while a run goes on.
+**Deployments** links to the plans with **Adopt existing VMs** for those
+who hold `import.manage`.
+
+The mock offers 60 VMs (`mocks/onboarding.ts`), with folders and tags;
+EfficientIP knows half of them. Its plans run as the server's do, and a
+run settles 0.7 seconds after it starts, on the next read.
 
 ## vRA import
 

@@ -607,9 +607,9 @@ says in words what you chose. `POST /api/v1/admin/roles` does the same.
   **Identity provider groups**, **Onboarding**, **vRA import**, **What someone
   may do**, and the **Audit log**'s **Project** filter, archived projects
   included (`GET /api/v1/admin/project-names`: ID, code and name only).
-  To adopt VMs into a project in **Onboarding**, you also need
-  `project.see` there: the environments, owners and items offered are
-  the project's.
+  To adopt VMs into a project in **Onboarding**, or to save a plan that
+  does, you also need `project.see` there: the environments, owners,
+  items and deployments offered are the project's.
 - `day2.<group>` allows a group of day-2 actions, `day2.<group>:<action>`
   one of them, for example `day2.power:power_off`. A day-2 policy that
   matches decides first; with none, the roles' day-2 permissions decide.
@@ -1327,12 +1327,51 @@ first says what stops. A subscription's row opens its page, where
 
 ## Existing VMs and EfficientIP
 
-- **Onboarding:** adopt VMs rvav didn't build. Search and filter the
-  list, select the VMs (a selection outlives a change of filters), then
-  select **Adopt N VMs…** in the bar above the list and give them a
-  project, an environment, an owner and an item in the side panel. rvav finds their addresses and DNS
-  records in EfficientIP, and nothing is changed there
-  ([ADR-0026](../adr/0026-onboarding.md)).
+- **Onboarding:** adopt VMs rvav didn't build. On the **VMs to adopt**
+  tab, search and filter the list (by folder too), select the VMs (a
+  selection outlives a change of filters), then select **Adopt N VMs…**
+  in the bar above the list. In the side panel, choose a project and
+  **Where they go**:
+  - **Each into a deployment of its own** or **All into one new
+    deployment**: give an environment, an owner, a catalog item, and
+    optionally a lease and the **Inputs** the deployments record, as if
+    they had been requested with them. A later **Update** starts from
+    those inputs; the others are the form's defaults.
+  - **Into an existing deployment**: choose a ready deployment of the
+    project. Its owner, lease and inputs stay. rvav refuses a VM that
+    doesn't fit, with why: another OS family, a name the deployment has
+    already, or more VMs than the component's count allows. When the
+    count is an input, such as `web_nodes`, rvav raises it, within the
+    form's maximum.
+
+  Give the **Component** when the item's blueprint has several, such as
+  `web`. rvav finds the VMs' addresses and DNS records in EfficientIP,
+  and nothing is changed there or in vCenter
+  ([ADR-0026](../adr/0026-onboarding.md),
+  [ADR-0044](../adr/0044-onboarding-plans.md)).
+- **Onboarding plans:** adopt the VMs a filter matches, again and again,
+  as they appear. **Deployments › Adopt existing VMs** opens them, as does
+  the **Plans** tab of **Onboarding**. To make one:
+  1. Select **New plan**.
+  2. Name it, and give **Which VMs** at least one criterion: name or
+     address, folder (with the folders under it), vSphere tag as
+     `category/tag`, cluster, vCenter or power. The panel says how many
+     VMs rvav doesn't manage match now.
+  3. Choose **Where they go**, as for adopting by hand. **All into one
+     new deployment** makes the deployment on the first run that adopts
+     a VM, and the next runs add to it.
+  4. Optionally, set **Run every (hours)**, from 1 to 168. Without it, the
+     plan runs only when you select **Run now**.
+  5. Select **Save plan**. Its page opens.
+
+  Each run adopts, one VM at a time, the matching VMs no deployment has,
+  and skips those a deployment has already, so no VM is adopted twice.
+  A VM that fails doesn't stop the others. Select a run on the plan's
+  page to see each VM's outcome: **Adopted**, **Skipped** or **Failed**,
+  and why. rvav keeps a plan's last 20 runs. While a run goes on, you
+  can't start another or delete the plan. Deleting a plan keeps the
+  deployments it made. The **Audit log** records each plan change, each
+  run, and each VM adopted.
 - **Unregister:** the day-2 action that does the opposite, on a VM or on
   a whole deployment. rvav forgets them and changes nothing elsewhere:
   - the VMs stay in vCenter as they are, running or not, with their

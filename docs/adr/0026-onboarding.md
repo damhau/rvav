@@ -59,7 +59,10 @@ Administrators **adopt** existing VMs into deployments
 - The vRA importer (P2) builds on the same operation, with the item, owner
   and lease vRA had.
 - Not done: adopting in the background with progress (200 VMs take a few
-  seconds), and post-configuration on adopted VMs.
+  seconds), and post-configuration on adopted VMs. Onboarding plans
+  (X1.5, [ADR-0044](0044-onboarding-plans.md)) adopt in the background,
+  VM by VM, what a saved filter matches, and VMs can join an existing
+  deployment.
 - Unregistering (X1.3, #143) is the reverse, as a day-2 action on a VM or
   a deployment: rvav drops the resources' rows and changes nothing in
   vCenter, EfficientIP or NSX, so adopting the VM again finds its address

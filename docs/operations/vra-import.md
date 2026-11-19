@@ -370,6 +370,16 @@ Its first **Update** opens the item's form with the fields' defaults, and
 applies only what you change from them. Before you confirm it, check the
 plan against what its VMs have.
 
+### vRA's onboarding plans
+
+The importer doesn't read vRA's onboarding plans. The deployments a vRA
+plan onboarded are vRA deployments, so the import adopts them as it
+adopts any other. To keep adopting VMs as they appear, save an
+onboarding plan in rvav: a filter by name, folder, tag, cluster, vCenter
+or power, and where the VMs go
+([admin guide](../guides/admin.md#existing-vms-and-efficientip),
+[ADR-0044](../adr/0044-onboarding-plans.md)).
+
 ## vRO
 
 vRO's workflows aren't imported, and neither are its actions, except those
