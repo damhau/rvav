@@ -143,7 +143,7 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
   const save = useMutation({
     mutationFn: () => call(api.PUT("/admin/lease-policies", { body: f })),
     onSuccess: () => {
-      refresh();
+      void refresh();
       toast.success("Lease policy saved");
       onClose();
     },
@@ -210,7 +210,7 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
         }),
       ),
     onSuccess: (_, l) => {
-      refresh();
+      void refresh();
       toast.success(`The lease in ${where(l)} removed`);
     },
     onError: (e) => failed(e, "Not removed"),

@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, Minus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -101,6 +101,11 @@ export function WhatApplies() {
   const envs = useQuery(q.environments());
   const [f, setF] = useState({ project: "", environment: "", item: "none", action: "none", inputs: "" });
   const [inputsError, setInputsError] = useState<string>();
+  // Counts the explains refused for their inputs: each moves the focus to the field, once its note says why.
+  const [inputsRefused, setInputsRefused] = useState(0);
+  useEffect(() => {
+    if (inputsRefused) document.getElementById("ex-inputs")?.focus();
+  }, [inputsRefused]);
   const project = f.project || projects.items[0]?.id || "";
   // The items the project may request.
   const items = useQuery({ ...q.catalog({ projectId: project }), enabled: Boolean(project) });
@@ -133,7 +138,8 @@ export function WhatApplies() {
             e.preventDefault();
             const inputs = parsedInputs(f.inputs);
             setInputsError(inputs === null ? 'An object, such as {"size": "S"}.' : undefined);
-            if (inputs !== null) explain.mutate(inputs);
+            if (inputs === null) setInputsRefused((n) => n + 1);
+            else explain.mutate(inputs);
           }}
         >
           <Field label="Project" htmlFor="ex-project" className="w-48">

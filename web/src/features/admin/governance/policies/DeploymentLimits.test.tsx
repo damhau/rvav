@@ -45,6 +45,9 @@ describe("deployment limits", () => {
     await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
     expect(await screen.findByText("Small deployments saved")).toBeInTheDocument();
     const row = await within(region).findByRole("row", { name: /Small deployments/ });
+    await waitFor(() =>
+      expect(within(region).getByRole("button", { name: "New deployment limit policy" })).toHaveFocus(),
+    );
     expect(row).toHaveTextContent("Deployments per user: 5");
     expect(row).toHaveTextContent("vCPU per deployment: 8");
     expect(row).toHaveTextContent("Hard: refuses");

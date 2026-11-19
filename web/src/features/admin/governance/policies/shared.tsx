@@ -51,13 +51,14 @@ export function useProjects() {
 
 /**
  * Refreshes a kind of policy and what policies decide elsewhere: deployments'
- * actions and update previews, and request previews.
+ * actions and update previews, and request previews. It resolves once the
+ * policies are read again.
  */
 export function useRefreshPolicies(key: string) {
   const qc = useQueryClient();
   return () => {
-    for (const queryKey of [["admin", key], ["deployments"], ["requests", "preview"]])
-      void qc.invalidateQueries({ queryKey });
+    for (const queryKey of [["deployments"], ["requests", "preview"]]) void qc.invalidateQueries({ queryKey });
+    return qc.invalidateQueries({ queryKey: ["admin", key] });
   };
 }
 

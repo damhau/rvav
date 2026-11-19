@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
+import { server } from "@/mocks/node";
 import { quotaState } from "@/mocks/quotas";
 import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
@@ -21,6 +23,8 @@ describe("each member's quota", () => {
     const row = await within(panel).findByRole("row", { name: /^vCPU/ });
     expect(row).toHaveTextContent("Set by an administrator");
     expect(row).toHaveTextContent("8");
+    // The empty state's button is gone: the one above the list takes the focus.
+    await waitFor(() => expect(within(panel).getByRole("button", { name: "Add a limit" })).toHaveFocus());
     expect(quotaState(db).perUser.prj_web).toEqual([
       { resource: "vcpu", limit: 8, enforcement: "hard", set_by_admin: true },
     ]);
@@ -48,6 +52,7 @@ describe("each member's quota", () => {
         /Web Platform has 640 GB of memory in all: each member's limit can't be more\./,
       ),
     );
+    await waitFor(() => expect(limit).toHaveFocus());
     await user.clear(limit);
     await user.type(limit, "64");
     await user.click(within(sheet).getByRole("button", { name: "Save limit" }));
@@ -56,6 +61,44 @@ describe("each member's quota", () => {
       { resource: "memory_gb", limit: 64, enforcement: "hard", set_by_admin: false },
       { resource: "vcpu", limit: 8, enforcement: "hard", set_by_admin: true },
     ]);
+  });
+
+  it("says a problem the server has with another limit, by that limit's name", async () => {
+    quotaState(db).perUser.prj_web = [{ resource: "vcpu", limit: 8, enforcement: "hard", set_by_admin: true }];
+    server.use(
+      http.put("*/api/v1/admin/projects/:id/user-quotas", () =>
+        HttpResponse.json(
+          {
+            title: "Some inputs need attention",
+            status: 422,
+            errors: [{ field: "/items/0/limit", code: "looser", message: "It can't be more than the project's 4." }],
+          },
+          { status: 422, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=quotas");
+    const panel = await screen.findByRole("region", { name: "Each member's quota" });
+    await within(panel).findByRole("row", { name: /^vCPU/ });
+    await user.click(within(panel).getByRole("button", { name: "Add a limit" }));
+    const sheet = await screen.findByRole("dialog", { name: "New limit" });
+    await user.type(within(sheet).getByRole("spinbutton", { name: "Limit" }), "64");
+    await user.click(within(sheet).getByRole("button", { name: "Save limit" }));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(
+      "The vCPU limit: It can't be more than the project's 4.",
+    );
+    expect(within(sheet).getByRole("spinbutton", { name: "Limit" })).not.toHaveAttribute("aria-invalid");
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Save limit" })).toHaveFocus());
+  });
+
+  it("tells an auditor there is no limit, not to add one", async () => {
+    localStorage.setItem("rvav.mock.as", "auditor");
+    resetDb();
+    renderApp("/admin/projects/prj_web?tab=quotas");
+    const panel = await screen.findByRole("region", { name: "Each member's quota" });
+    expect(await within(panel).findByText("Each member may take what the project has left.")).toBeInTheDocument();
+    expect(within(panel).queryByText(/Add a limit/)).toBeNull();
   });
 });
 

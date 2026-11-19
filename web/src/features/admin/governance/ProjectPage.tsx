@@ -963,8 +963,13 @@ function useSaveQuotas(project: S["AdminProject"]) {
         }),
       ),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["admin", "quotas", project.id] });
-      void qc.invalidateQueries({ queryKey: ["projects", project.id, "quota"] });
+      for (const queryKey of [
+        ["admin", "quotas", project.id],
+        ["projects", project.id, "quota"],
+        ["requests", "preview"],
+        ["deployments"],
+      ])
+        void qc.invalidateQueries({ queryKey });
     },
     onError: (e) => failed(e, "Not saved"),
   });

@@ -32,7 +32,7 @@ export function MemberQuotas({
       title="Each member's quota"
       description="What each member may hold in the project: the deployments they own and their requests not yet done. A request made for someone counts for them."
       label="Limits for each member"
-      empty="Each member may take what the project has left. Add a limit on vCPU, memory, storage or VMs."
+      empty="Each member may take what the project has left."
       lines={lines.data?.items}
       loading={lines.isPending}
       error={lines.isError && <ErrorState error={lines.error} onRetry={() => void lines.refetch()} />}

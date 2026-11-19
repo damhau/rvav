@@ -213,6 +213,8 @@ describe("Policies", () => {
     await user.paste("[1]");
     await user.click(screen.getByRole("button", { name: "Explain" }));
     expect(await screen.findByText('An object, such as {"size": "S"}.')).toBeInTheDocument();
+    expect(inputs).toHaveFocus();
+    expect(inputs).toHaveAccessibleDescription(/An object, such as \{"size": "S"\}\./);
     await user.clear(inputs);
     await user.paste('{"size": "S"}');
     await user.click(screen.getByRole("button", { name: "Explain" }));
@@ -413,6 +415,7 @@ describe("Policies as a project admin", () => {
     await user.type(max, "120");
     await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
     expect(await within(sheet).findByText("Development allows 90 days at most.")).toBeInTheDocument();
+    await waitFor(() => expect(max).toHaveFocus());
     await user.clear(max);
     await user.type(max, "60");
     await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
@@ -427,6 +430,27 @@ describe("Policies as a project admin", () => {
 // and writes their projects' own only.
 describe("Policies as an auditor and a project admin", () => {
   afterEach(() => localStorage.removeItem("rvav.mock.as"));
+
+  it("tells them what decides when nothing is set, not to add a rule or a limit", async () => {
+    localStorage.setItem("rvav.mock.as", "auditor");
+    resetDb();
+    renderApp("/admin/policies?tab=lease");
+    const rules = await screen.findByRole("region", { name: "Lease rules" });
+    expect(
+      await within(rules).findByText("Every deployment gets its environment's lease, or its project's."),
+    ).toBeInTheDocument();
+    expect(rules).not.toHaveTextContent("You change your projects' own");
+    expect(within(rules).queryByRole("button", { name: "New lease rule" })).toBeNull();
+
+    renderApp("/admin/policies?tab=limits");
+    const limits = (await screen.findAllByRole("region", { name: "Deployment limits" })).at(-1)!;
+    expect(
+      await within(limits).findByText(
+        "Users and projects may have as many deployments, each as large, as their quotas allow.",
+      ),
+    ).toBeInTheDocument();
+    expect(limits).not.toHaveTextContent("You change your projects' own");
+  });
 
   it("offers only the projects whose policies they write", async () => {
     localStorage.setItem("rvav.mock.as", "auditor");

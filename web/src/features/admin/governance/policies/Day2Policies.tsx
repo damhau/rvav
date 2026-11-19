@@ -79,7 +79,7 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
         : call(api.POST("/admin/day2-policies", { body }));
     },
     onSuccess: () => {
-      refresh();
+      void refresh();
       toast.success(`${f.name} saved`);
       onClose();
     },
@@ -226,7 +226,7 @@ export function Day2Policies({ rights }: { rights: PolicyRights }) {
   const remove = useMutation({
     mutationFn: (p: Policy) => call(api.DELETE("/admin/day2-policies/{id}", { params: { path: { id: p.id } } })),
     onSuccess: (_, p) => {
-      refresh();
+      void refresh();
       toast.success(`${p.name} removed`);
     },
     onError: (e) => failed(e, "Not removed"),

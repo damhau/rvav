@@ -2,7 +2,7 @@
 // as a whole and for each user (ADR-0047).
 import { useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { Gauge } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -52,6 +52,7 @@ function LineSheet({
   cap,
   save,
   onClose,
+  returnFocus,
 }: {
   title: string;
   lines: QuotaLine[];
@@ -61,6 +62,7 @@ function LineSheet({
   cap?: (r: S["QuotaResource"]) => string | undefined;
   save: ReturnType<typeof useSave>;
   onClose: () => void;
+  returnFocus?: () => HTMLElement | null;
 }) {
   const existing = lines.find((l) => l.resource === editing);
   const [f, setF] = useState(() => ({
@@ -80,11 +82,20 @@ function LineSheet({
   const items = existing ? lines.map((l) => (l.resource === editing ? row : l)) : [...lines, row];
   const at = items.indexOf(row);
   const problems = fieldErrors(save.error);
+  const own = (field: string) => errorAt(problems, `/items/${at}/${field}`);
+  // What the server says about the other lines, or the list as a whole, such as a limit now above a cap.
+  const elsewhere = Object.entries(problems).flatMap(([pointer, message]) => {
+    if (["resource", "limit", "enforcement"].some((f) => pointer.startsWith(`/items/${at}/${f}`))) return [];
+    const i = /^\/items\/(\d+)/.exec(pointer)?.[1];
+    const other = i === undefined || i === String(at) ? undefined : items[Number(i)];
+    return [other ? `The ${resourceName(other.resource)} limit: ${message}` : message];
+  });
   return (
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
+      returnFocus={returnFocus}
       title={title}
       description="Requests that would pass a limit are refused, or need an approval."
       submitLabel={save.isPending ? "Saving…" : "Save limit"}
@@ -101,7 +112,7 @@ function LineSheet({
       <Field
         label="Resource"
         htmlFor="line-resource"
-        error={twin ? "This resource has a limit already: change that one." : undefined}
+        error={twin ? "This resource has a limit already: change that one." : own("resource")}
       >
         <Select
           id="line-resource"
@@ -114,7 +125,7 @@ function LineSheet({
         label="Limit"
         htmlFor="line-limit"
         hint={cap?.(f.resource) ?? "Empty for no limit."}
-        error={valid ? errorAt(problems, `/items/${at}/limit`) : "A whole number, 0 or more."}
+        error={valid ? own("limit") : "A whole number, 0 or more."}
       >
         <Input
           id="line-limit"
@@ -125,7 +136,7 @@ function LineSheet({
           onChange={(e) => setF({ ...f, limit: e.target.value })}
         />
       </Field>
-      <Field label="When passed" htmlFor="line-enforcement">
+      <Field label="When passed" htmlFor="line-enforcement" error={own("enforcement")}>
         <Select
           id="line-enforcement"
           value={f.enforcement}
@@ -133,6 +144,13 @@ function LineSheet({
           options={enforcements}
         />
       </Field>
+      {elsewhere.length > 0 && (
+        <div role="alert" className="flex flex-col gap-1 rounded-md bg-bad-soft px-3 py-2 text-secondary text-bad">
+          {elsewhere.map((m) => (
+            <p key={m}>{m}</p>
+          ))}
+        </div>
+      )}
     </Sheet>
   );
 }
@@ -141,8 +159,10 @@ function useSave(save: (items: QuotaWrite[]) => Promise<unknown>, invalidates: Q
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (items: QuotaLine[]) => save(items.map(write)),
-    onSuccess: () => {
-      for (const queryKey of invalidates) void qc.invalidateQueries({ queryKey });
+    // The list is read again before the sheet closes, so the focus can go to what replaces the empty state.
+    onSuccess: async () => {
+      for (const queryKey of [["requests", "preview"], ["deployments"]]) void qc.invalidateQueries({ queryKey });
+      await Promise.all(invalidates.map((queryKey) => qc.invalidateQueries({ queryKey })));
     },
     onError: (e) => {
       if (!Object.keys(fieldErrors(e)).length) failed(e, "Not saved");
@@ -180,7 +200,8 @@ export function QuotaLines({
   invalidates: QueryKey[];
 }) {
   const saving = useSave(save, invalidates);
-  const [editing, setEditing] = useState<{ resource?: S["QuotaResource"] } | null>(null);
+  const [editing, setEditing] = useState<{ resource?: S["QuotaResource"]; fromEmpty?: boolean } | null>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
   const [removing, setRemoving] = useState<QuotaLine | null>(null);
   const all = lines ?? [];
   const columns: Column<QuotaLine>[] = [
@@ -211,12 +232,13 @@ export function QuotaLines({
   const full = all.length >= quotaResources.length;
   const add = canEdit && !full && (
     <Button
+      ref={addRef}
       size="sm"
       variant="primary"
       disabled={!lines}
       onClick={() => {
         saving.reset();
-        setEditing({});
+        setEditing({ fromEmpty: all.length === 0 });
       }}
     >
       Add a limit
@@ -232,7 +254,14 @@ export function QuotaLines({
         minWidth={480}
         loading={loading}
         error={error}
-        empty={<EmptyState icon={Gauge} title="No limit" body={empty} action={add || undefined} />}
+        empty={
+          <EmptyState
+            icon={Gauge}
+            title="No limit"
+            body={canEdit ? `${empty} Add a limit on vCPU, memory, storage or VMs.` : empty}
+            action={add || undefined}
+          />
+        }
         rowMenuLabel={(l) => `Actions for the ${resourceName(l.resource)} limit`}
         rowMenu={
           canEdit
@@ -264,6 +293,7 @@ export function QuotaLines({
           cap={cap}
           save={saving}
           onClose={() => setEditing(null)}
+          returnFocus={editing.fromEmpty ? () => addRef.current : undefined}
         />
       )}
       {removing && (
@@ -282,6 +312,10 @@ export function QuotaLines({
                 onSuccess: () => {
                   toast.success("Limit removed");
                   setRemoving(null);
+                },
+                // The dialog has no field to show them under.
+                onError: (e) => {
+                  if (Object.keys(fieldErrors(e)).length) failed(e, "Not removed");
                 },
               },
             )

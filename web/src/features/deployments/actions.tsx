@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDown, Ellipsis, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -27,6 +27,7 @@ import {
   type PolicyWarning,
 } from "@/components/common/warnings";
 import { Input, Textarea } from "@/components/ui/input";
+import { focusInvalid } from "@/components/ui/opener";
 import { FormRenderer } from "@/forms/FormRenderer";
 import { mapFieldErrors, type MappedErrors } from "@/forms/errors";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -106,6 +107,12 @@ export function ActionDialog({
   const [typed, setTyped] = useState("");
   const [justification, setJustification] = useState("");
   const [errors, setErrors] = useState<MappedErrors | null>(null);
+  // Counts the refusals with problems on inputs: each moves the focus to the first one.
+  const [refusals, setRefusals] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (refusals) focusInvalid(formRef.current);
+  }, [refusals]);
   // What the server warned about on submit, such as an extension longer than a soft lease allows, until
   // the inputs change.
   const [refused, setRefused] = useState<PolicyWarning[]>([]);
@@ -141,7 +148,9 @@ export function ActionDialog({
             return;
           }
           if (isApiError(e) && e.status === 422) {
-            setErrors(mapFieldErrors(e.fieldErrors.filter((f) => f.field !== "/accept_warnings")));
+            const mapped = mapFieldErrors(e.fieldErrors.filter((f) => f.field !== "/accept_warnings"));
+            setErrors(mapped);
+            if (Object.keys(mapped.fields).length) setRefusals((n) => n + 1);
             return;
           }
           setErrors({ fields: {}, form: [isApiError(e) ? (e.problem.detail ?? e.problem.title) : String(e)] });
@@ -178,6 +187,7 @@ export function ActionDialog({
         }}
       >
         <form
+          ref={formRef}
           className="flex flex-col gap-3 px-4 py-3"
           onSubmit={(e) => {
             e.preventDefault();

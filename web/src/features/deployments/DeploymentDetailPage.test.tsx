@@ -38,6 +38,7 @@ describe("a deployment's page against the mock API", () => {
     await user.type(name, "web-prd-front");
     await user.click(within(dialog).getByRole("button", { name: "Edit deployment" }));
     expect(await within(dialog).findByText("Web Platform already has a deployment named web-prd-front.")).toBeVisible();
+    expect(name).toHaveFocus();
 
     await user.clear(name);
     await user.type(name, "API gateway");

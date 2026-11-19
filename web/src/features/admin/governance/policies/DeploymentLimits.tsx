@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Gauge } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +54,15 @@ const joined = (n: string[]) => (n.length < 2 ? (n[0] ?? "") : `${n.slice(0, -1)
 
 const number = (s: string) => (s.trim() === "" ? null : Number(s));
 
-function PolicySheet({ policy, onClose }: { policy?: Policy; onClose: () => void }) {
+function PolicySheet({
+  policy,
+  onClose,
+  returnFocus,
+}: {
+  policy?: Policy;
+  onClose: () => void;
+  returnFocus?: () => HTMLElement | null;
+}) {
   const envs = useQuery(q.environments());
   const projects = useProjects();
   const refresh = useRefreshPolicies("deployment-limit-policies");
@@ -86,8 +94,9 @@ function PolicySheet({ policy, onClose }: { policy?: Policy; onClose: () => void
         ? call(api.PUT("/admin/deployment-limit-policies/{id}", { params: { path: { id: policy.id } }, body }))
         : call(api.POST("/admin/deployment-limit-policies", { body }));
     },
-    onSuccess: () => {
-      refresh();
+    // The policies are read again before the sheet closes, so the focus can go to what replaces the empty state.
+    onSuccess: async () => {
+      await refresh();
       toast.success(`${f.name} saved`);
       onClose();
     },
@@ -101,6 +110,7 @@ function PolicySheet({ policy, onClose }: { policy?: Policy; onClose: () => void
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
+      returnFocus={returnFocus}
       title={policy ? `Change ${policy.name}` : "New deployment limit policy"}
       description="How many deployments each user or the project may have, and how large each may be. Leave a limit empty to leave it to other policies."
       className="w-[min(640px,100vw)]"
@@ -134,7 +144,7 @@ function PolicySheet({ policy, onClose }: { policy?: Policy; onClose: () => void
           label="Project"
           htmlFor="dl-project"
           error={errors["/project_id"]}
-          hint="A hard global limit that is stricter still wins over a project's"
+          hint="A project's policy only tightens a hard global one"
         >
           <Select
             id="dl-project"
@@ -162,7 +172,6 @@ function PolicySheet({ policy, onClose }: { policy?: Policy; onClose: () => void
                 <Input
                   id={`dl-${k}`}
                   type="number"
-                  min={k.startsWith("deployments") ? 0 : 1}
                   placeholder="No limit"
                   value={limits[k]}
                   onChange={(e) => setLimits({ ...limits, [k]: e.target.value })}
@@ -188,12 +197,14 @@ export function DeploymentLimits({ rights }: { rights: PolicyRights }) {
   const projects = useProjects();
   const envName = useEnvName();
   const [editing, setEditing] = useState<Policy | "new" | null>(null);
+  const [fromEmpty, setFromEmpty] = useState(false);
+  const addRef = useRef<HTMLButtonElement>(null);
   const [removing, setRemoving] = useState<Policy | null>(null);
   const remove = useMutation({
     mutationFn: (p: Policy) =>
       call(api.DELETE("/admin/deployment-limit-policies/{id}", { params: { path: { id: p.id } } })),
     onSuccess: (_, p) => {
-      refresh();
+      void refresh();
       toast.success(`${p.name} removed`);
     },
     onError: (e) => failed(e, "Not removed"),
@@ -206,7 +217,15 @@ export function DeploymentLimits({ rights }: { rights: PolicyRights }) {
   });
   const items = policies.data?.items;
   const add = (
-    <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
+    <Button
+      ref={addRef}
+      size="sm"
+      variant="primary"
+      onClick={() => {
+        setFromEmpty(!items?.length);
+        setEditing("new");
+      }}
+    >
       New deployment limit policy
     </Button>
   );
@@ -251,8 +270,8 @@ export function DeploymentLimits({ rights }: { rights: PolicyRights }) {
   return (
     <Panel
       title="Deployment limits"
-      description={`How many deployments each user or each project may have, and how much vCPU and memory each deployment may take. Each limit is decided on its own: the first policy by priority that sets it decides, and a hard global one that is stricter still wins over a project's.${
-        rights.global ? "" : " You change your projects' own."
+      description={`How many deployments each user or each project may have, and how much vCPU and memory each deployment may take. Each limit is decided on its own: the first policy by priority that sets it decides, and every hard global policy that sets it holds too.${
+        rights.global || !rights.any ? "" : " You change your projects' own."
       }`}
       flush
       actions={rights.any && Boolean(items?.length) && add}
@@ -269,7 +288,7 @@ export function DeploymentLimits({ rights }: { rights: PolicyRights }) {
           <EmptyState
             icon={Gauge}
             title="No deployment limit"
-            body="Users and projects may have as many deployments, each as large, as their quotas allow. Add a policy to limit them."
+            body={`Users and projects may have as many deployments, each as large, as their quotas allow.${rights.any ? " Add a policy to limit them." : ""}`}
             action={rights.any && add}
           />
         }
@@ -292,7 +311,13 @@ export function DeploymentLimits({ rights }: { rights: PolicyRights }) {
             : undefined
         }
       />
-      {editing && <PolicySheet policy={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      {editing && (
+        <PolicySheet
+          policy={editing === "new" ? undefined : editing}
+          onClose={() => setEditing(null)}
+          returnFocus={editing === "new" && fromEmpty ? () => addRef.current : undefined}
+        />
+      )}
       {removing && (
         <ConfirmDialog
           open

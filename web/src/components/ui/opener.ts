@@ -1,5 +1,25 @@
 import { useState } from "react";
 
+const focusable = [
+  "input:not([type=hidden]):not([disabled])",
+  "textarea:not([disabled])",
+  "select:not([disabled])",
+  "button:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+/**
+ * Moves the focus to the first control marked invalid in root, or into the
+ * first group marked so (a radio group): its note then reads out the problem.
+ * False when nothing is invalid.
+ */
+export function focusInvalid(root: ParentNode | null | undefined): boolean {
+  const invalid = root?.querySelector<HTMLElement>('[aria-invalid="true"]');
+  const control = invalid?.matches(focusable) ? invalid : invalid?.querySelector<HTMLElement>(focusable);
+  control?.focus();
+  return Boolean(control);
+}
+
 /**
  * What a dialog gives the focus back to: the element that had it as the
  * dialog opened, or, for an item of a dropdown menu or of its submenus (which

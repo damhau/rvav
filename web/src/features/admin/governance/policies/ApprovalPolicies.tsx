@@ -73,7 +73,7 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
         : call(api.POST("/admin/approval-policies", { body }));
     },
     onSuccess: () => {
-      refresh();
+      void refresh();
       toast.success(`${f.name} saved`);
       onClose();
     },
@@ -178,7 +178,7 @@ export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
   const remove = useMutation({
     mutationFn: (p: Policy) => call(api.DELETE("/admin/approval-policies/{id}", { params: { path: { id: p.id } } })),
     onSuccess: (_, p) => {
-      refresh();
+      void refresh();
       toast.success(`${p.name} removed`);
     },
     onError: (e) => failed(e, "Not removed"),

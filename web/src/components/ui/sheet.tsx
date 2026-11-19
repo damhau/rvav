@@ -1,8 +1,8 @@
 import { X } from "lucide-react";
 import { Dialog as D } from "radix-ui";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Button, IconButton } from "@/components/ui/button";
-import { useOpener } from "@/components/ui/opener";
+import { focusInvalid, useOpener } from "@/components/ui/opener";
 import { cn } from "@/lib/utils";
 
 const firstField = "input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])";
@@ -28,7 +28,8 @@ interface PanelProps {
 /**
  * A side panel for creating and editing: the page stays in view behind it.
  * It opens on its first field, keeps the focus inside, closes with Escape, and
- * gives the focus back to what opened it. While `pending`, it can't be closed.
+ * gives the focus back to what opened it. While `pending`, it can't be closed;
+ * a save refused once it ends moves the focus to the first invalid field.
  */
 export function Sheet({
   open,
@@ -60,6 +61,29 @@ function SheetPanel({
 }: PanelProps & { ref?: React.Ref<HTMLDivElement> }) {
   const giveFocusBack = useOpener(returnFocus);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
+  // From a submit to the render that shows how it went. A quick answer can come with no render
+  // while pending, so a field marked invalid ends the wait too; the person's next key or click
+  // ends it as well, so a field that turns invalid as they type keeps their focus.
+  const awaiting = useRef<"submitted" | "saving" | null>(null);
+  useEffect(() => {
+    if (!awaiting.current) return;
+    if (pending) {
+      awaiting.current = "saving";
+      return;
+    }
+    if (focusInvalid(bodyRef.current)) awaiting.current = null;
+    else if (awaiting.current === "saving") {
+      awaiting.current = null;
+      // The submit button, disabled while saving, lost the focus.
+      const active = document.activeElement;
+      if (!active || active === document.body || active === bodyRef.current?.closest('[role="dialog"]'))
+        submitRef.current?.focus();
+    }
+  });
+  const interacted = () => {
+    awaiting.current = null;
+  };
   const body = (
     <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
       {children}
@@ -101,9 +125,13 @@ function SheetPanel({
       {onSubmit ? (
         <form
           className="flex min-h-0 flex-1 flex-col"
+          onKeyDownCapture={interacted}
+          onPointerDownCapture={interacted}
           onSubmit={(e) => {
             e.preventDefault();
-            if (!pending) onSubmit();
+            if (pending) return;
+            awaiting.current = "submitted";
+            onSubmit();
           }}
         >
           {body}
@@ -113,7 +141,7 @@ function SheetPanel({
                 Cancel
               </Button>
             </D.Close>
-            <Button type="submit" variant="primary" disabled={submitDisabled || pending}>
+            <Button ref={submitRef} type="submit" variant="primary" disabled={submitDisabled || pending}>
               {submitLabel}
             </Button>
           </div>

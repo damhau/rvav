@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ListFilter } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,15 @@ import { SetByAdmin, useProjects, useRefreshPolicies, type PolicyRights } from "
 type S = components["schemas"];
 type Rule = S["LeaseRule"];
 
-function RuleSheet({ rule, onClose }: { rule?: Rule; onClose: () => void }) {
+function RuleSheet({
+  rule,
+  onClose,
+  returnFocus,
+}: {
+  rule?: Rule;
+  onClose: () => void;
+  returnFocus?: () => HTMLElement | null;
+}) {
   const envs = useQuery(q.environments());
   const projects = useProjects();
   const refresh = useRefreshPolicies("lease-rules");
@@ -53,8 +61,9 @@ function RuleSheet({ rule, onClose }: { rule?: Rule; onClose: () => void }) {
         ? call(api.PUT("/admin/lease-rules/{id}", { params: { path: { id: rule.id } }, body }))
         : call(api.POST("/admin/lease-rules", { body }));
     },
-    onSuccess: () => {
-      refresh();
+    // The rules are read again before the sheet closes, so the focus can go to what replaces the empty state.
+    onSuccess: async () => {
+      await refresh();
       toast.success(`${f.name} saved`);
       onClose();
     },
@@ -68,6 +77,7 @@ function RuleSheet({ rule, onClose }: { rule?: Rule; onClose: () => void }) {
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
+      returnFocus={returnFocus}
       title={rule ? `Change ${rule.name}` : "New lease rule"}
       description="A lease for the deployments its condition matches. Rules are tried by priority before the lease policies, and the first that matches decides."
       className="w-[min(640px,100vw)]"
@@ -136,19 +146,29 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
   const envs = useQuery(q.environments());
   const projects = useProjects();
   const [editing, setEditing] = useState<Rule | "new" | null>(null);
+  const [fromEmpty, setFromEmpty] = useState(false);
+  const addRef = useRef<HTMLButtonElement>(null);
   const [removing, setRemoving] = useState<Rule | null>(null);
   const envName = (key: string) => envs.data?.items.find((e) => e.key === key)?.name ?? key;
   const remove = useMutation({
     mutationFn: (r: Rule) => call(api.DELETE("/admin/lease-rules/{id}", { params: { path: { id: r.id } } })),
     onSuccess: (_, r) => {
-      refresh();
+      void refresh();
       toast.success(`${r.name} removed`);
     },
     onError: (e) => failed(e, "Not removed"),
   });
   const items = rules.data?.items;
   const add = (
-    <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
+    <Button
+      ref={addRef}
+      size="sm"
+      variant="primary"
+      onClick={() => {
+        setFromEmpty(!items?.length);
+        setEditing("new");
+      }}
+    >
       New lease rule
     </Button>
   );
@@ -185,7 +205,9 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
     <Panel
       title="Lease rules"
       description={`A lease for the deployments a condition matches, such as an item or a size. Rules are tried by priority before the lease policies, and the first that matches decides.${
-        rights.global ? "" : " You change your projects' own, which give no more than what administrators set."
+        rights.global || !rights.any
+          ? ""
+          : " You change your projects' own, which give no more than what administrators set."
       }`}
       flush
       actions={rights.any && Boolean(items?.length) && add}
@@ -202,7 +224,7 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
           <EmptyState
             icon={ListFilter}
             title="No lease rule"
-            body="Every deployment gets its environment's lease, or its project's. Add a rule to give some of them another one."
+            body={`Every deployment gets its environment's lease, or its project's.${rights.any ? " Add a rule to give some of them another one." : ""}`}
             action={rights.any && add}
           />
         }
@@ -222,7 +244,13 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
             : undefined
         }
       />
-      {editing && <RuleSheet rule={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      {editing && (
+        <RuleSheet
+          rule={editing === "new" ? undefined : editing}
+          onClose={() => setEditing(null)}
+          returnFocus={editing === "new" && fromEmpty ? () => addRef.current : undefined}
+        />
+      )}
       {removing && (
         <ConfirmDialog
           open
@@ -234,7 +262,11 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
               .
             </>
           }
-          consequences="New requests get the next rule that matches them, or the lease policies. Deployments it decided follow their project's or environment's lease from now on."
+          consequences={
+            removing.project_id && !removing.set_by_admin
+              ? "New requests get the next rule that matches them, or the lease policies. Deployments it decided follow the administrators' rule it was held to from now on, or else their project's or environment's lease."
+              : "New requests get the next rule that matches them, or the lease policies. Deployments it decided follow their project's or environment's lease from now on."
+          }
           confirmLabel="Remove lease rule"
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing, { onSuccess: () => setRemoving(null) })}

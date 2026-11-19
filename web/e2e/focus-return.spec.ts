@@ -88,3 +88,31 @@ test("revoking a token asks first, and Escape gives the focus back to Revoke", a
   await expect(ask).toBeHidden();
   await expect(revoke).toBeFocused();
 });
+
+test("a refused save in a sheet moves the focus to the field, and the first limit gives it to Add a limit", async ({
+  page,
+}) => {
+  await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "project-admin"));
+  await page.goto("/admin/projects/prj_web?tab=quotas");
+  const panel = page.getByRole("region", { name: "Each member's quota" });
+  await expect(panel.getByText("No limit")).toBeVisible();
+  await panel.getByRole("button", { name: "Add a limit" }).focus();
+  await page.keyboard.press("Enter");
+  const sheet = page.getByRole("dialog", { name: "New limit" });
+  await expect(sheet.getByRole("combobox", { name: "Resource" })).toBeFocused();
+  await expect(sheet.getByText("At most 160: Web Platform's own limit.")).toBeVisible();
+  await page.keyboard.press("Tab");
+  const limit = sheet.getByRole("spinbutton", { name: "Limit" });
+  await expect(limit).toBeFocused();
+  await page.keyboard.type("200");
+  await page.keyboard.press("Enter");
+  await expect(limit).toHaveAccessibleDescription(/each member's limit can't be more\./);
+  await expect(limit).toBeFocused();
+
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("16");
+  await page.keyboard.press("Enter");
+  await expect(sheet).toBeHidden();
+  await expect(panel.getByRole("row", { name: /^vCPU 16/ })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Add a limit" })).toBeFocused();
+});

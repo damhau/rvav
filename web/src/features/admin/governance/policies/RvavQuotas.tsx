@@ -33,7 +33,7 @@ export function RvavQuotas({ canEdit }: { canEdit: boolean }) {
         title="All of rvav"
         description="What every project's deployments and requests not yet done may take together, beside each project's quota."
         label="Limits for all of rvav"
-        empty="rvav as a whole may take any amount. Add a limit on vCPU, memory, storage or VMs."
+        empty="rvav as a whole may take any amount."
         lines={whole}
         loading={quotas.isPending}
         error={error}
@@ -45,7 +45,7 @@ export function RvavQuotas({ canEdit }: { canEdit: boolean }) {
         title="Each user across rvav"
         description="What each user may hold in all projects together: the deployments they own and their requests not yet done. A request made for someone counts for them."
         label="Limits for each user"
-        empty="Each user may take what their projects have left. Add a limit on vCPU, memory, storage or VMs."
+        empty="Each user may take what their projects have left."
         lines={each}
         loading={quotas.isPending}
         error={error}
