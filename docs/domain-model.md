@@ -47,6 +47,10 @@ Subscription (event → awx template | webhook)
   folder, datastores or datastore cluster, networks and their linked EfficientIP
   subnets. Supports tag-based selection and priority.
 - **Quota**: limits on vCPU, RAM, storage and VM count, optionally per environment.
+- **UserQuota**: the same limits for each member of the project, counting
+  what they own there ([ADR-0047](adr/0047-user-and-global-quotas.md)).
+  rvav's own **GlobalQuota** limits all projects together, or each user
+  across them.
 
 ### Catalog
 - **ContentSource**: where items come from.
@@ -134,6 +138,11 @@ Subscription (event → awx template | webhook)
   - `day2`: which roles can run which actions under which conditions.
   - `naming`: template and counter scope.
   - `quota`: see Quota above (stored as a policy for consistent evaluation).
+  - **DeploymentLimitPolicy**: global or a project's, for every environment
+    or one; any of deployments per user, deployments per project, and vCPU
+    and memory per deployment. Each limit is decided on its own by
+    priority, a hard stricter global policy winning over a project's
+    ([ADR-0047](adr/0047-user-and-global-quotas.md)).
 
 ### Extensibility
 - **Subscription**: event topic (for example `deployment.provision.post`,

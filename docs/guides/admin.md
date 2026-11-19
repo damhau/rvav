@@ -546,9 +546,10 @@ A project's page has four tabs:
   first, and what the project gets there: the clusters, datastores,
   networks and folder a request would use, or what stops it.
 - **Quotas:** the limits on vCPU, memory, storage and VMs, for the whole
-  project or one environment, with what the project takes now. A hard
-  limit refuses a request that would pass it; a soft one asks for an
-  approval.
+  project or one environment, with what the project takes now, and
+  **Each member's quota**: the most each member may hold in the project.
+  A hard limit refuses a request that would pass it; a soft one asks for
+  an approval. See [Quotas](#quotas).
 - **Details:** name, cost centre, description, environments and custom
   properties; **Archive**. Each VM built in the project gets the custom
   properties as vSphere custom attributes and in its notes. Bindings,
@@ -729,17 +730,101 @@ and an environment, which policies would apply to a request and why.
 | **Approval** | Which requests need approval, from whom (users, groups or project roles, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota, and what an update changes (see [Updates](#updates)). |
 | **Lease** | Default and longest leases per environment or project, extensions, the lifetime, the end (power off then delete, delete, or only tell the owner), and the enforcement. Lease rules give another lease to the deployments a condition matches (see [Lease rules and lifetime](#lease-rules-and-lifetime)). |
 | **Day-2** | Who may run which action, where, which need approval (deleting in production, by default), and the enforcement. |
+| **Limits** | How many deployments each user or each project may have, and how much vCPU and memory each deployment may take (see [Deployment limits](#deployment-limits)). |
 | **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment, with where the counter starts and how much it moves (**Start at** 100 and **Increment** 10 give 100, 110, 120). A counter in use goes on from its last number, and jumps to the start when you raise it past that number. Names are never given twice, and are checked free in vCenter and DNS. |
+| **Quotas** | What all of rvav may hold, and what each user may hold across rvav (see [Quotas](#quotas)). |
 
 Each tab is a list. To add a policy, select **New approval policy** (or
 the tab's own); to change one, select **Change** in its row's menu. The
 form opens in a side panel. The row menu also moves approval and day-2
-policies up or down, sets their priority, and turns them off or on.
-Before **Remove** removes a policy, rvav says what changes, such as which
-policy decides instead.
+policies up or down, sets their priority, and turns them, and deployment
+limit policies, off or on. Before **Remove** removes a policy, rvav says
+what changes, such as which policy decides instead.
 
-Quotas are set on each project's page, in its **Quotas** tab: a hard
-limit refuses a request, a soft one asks for approval.
+### Quotas
+
+A quota limits vCPU, memory, storage and VMs at five levels
+([ADR-0047](../adr/0047-user-and-global-quotas.md)). A request must fit
+every level that applies to it:
+
+| Level | Where you set it | What it counts |
+|---|---|---|
+| The project | The project's **Quotas** tab | The project's deployments, and its requests not yet done. |
+| The project in one environment | The project's **Quotas** tab | The same, in that environment. |
+| Each member of the project | **Each member's quota**, in the project's **Quotas** tab | What each member owns in the project, and their requests not yet done there. |
+| All of rvav | **All of rvav**, in **Administration › Policies › Quotas** | What every project holds together. |
+| Each user across rvav | **Each user across rvav**, in **Administration › Policies › Quotas** | What each user owns in all projects together. |
+
+A limit is the same for every member, or every user: rvav has no limit
+for one named person. A request made for someone counts for them, and its
+message says so, for example "Thomas Nguyen's quota in Web Platform has 2
+left". Handing a deployment over checks the new owner's quotas; moving it
+to another project checks that project's.
+
+The request form and the update's summary show one meter per resource:
+the level that refuses, else the one with the least left, named after its
+level ("vCPU · per member").
+
+Who sets each level:
+- `project.quotas.manage`, which administrators hold, sets a project's
+  levels. Held in every project, it also sets rvav's.
+- A project's admins (`project.policies.manage`) set **Each member's
+  quota** of their project, within the project's own quota: the side
+  panel says how much it allows. They read, but don't change, the lines
+  an administrator set.
+- The **Quotas** tab of **Administration › Policies** shows to those who
+  read every project's settings (`project.settings.read`).
+
+### Deployment limits
+
+A deployment limit policy limits how many deployments each user or each
+project may have, and how large each deployment may be
+([ADR-0047](../adr/0047-user-and-global-quotas.md)). In
+**Administration › Policies › Limits**, a policy sets any of these:
+
+| Limit | What it counts |
+|---|---|
+| **Deployments per user** | The deployments each user owns in the project, in the policy's environment or in all. |
+| **Deployments per project** | The project's deployments, in the policy's environment or in all. |
+| **vCPU per deployment** | The vCPU of all of a deployment's VMs together. |
+| **Memory per deployment (GB)** | The memory of all of a deployment's VMs together. |
+
+A policy is for every project or one, and for every environment or one,
+with a priority, an enforcement, and **Enabled**. A limit left empty
+leaves it to other policies. A policy that sets no limit is refused.
+
+Every deployment not deleted counts: a failed one, one still being built,
+and one whose request waits for approval. A multi-VM item makes one
+deployment with all its VMs; a single-VM item makes one deployment for
+each VM; a composite item is as large as its largest step.
+
+Each limit is decided on its own: the first enabled policy, by priority,
+that sets it and applies to the request's project and environment
+decides. A global policy comes first on a tie. When a project's policy
+decides, the first global policy after it that sets the same limit still
+wins if it's hard and stricter: a lower limit, or the same limit when the
+project's is soft. **What applies here** lists each limit with the policy
+that decides it, and says why the others don't.
+
+rvav checks the limits:
+- on a new request, as the form is filled and when it's submitted;
+- on an update and a resize, against the size the deployment has
+  afterwards, only when they grow its vCPU or memory;
+- when a deployment moves to another project, against that project's
+  limits;
+- when a deployment is handed over, against the new owner's count;
+- when an approver changes a request's inputs, against the size limits.
+
+A hard limit refuses, and says how to go on, for example "Deployments in
+Web Platform may have at most 8 vCPU under Web limits, and this one would
+have 16. Choose a smaller size, or ask an administrator to raise the
+limit." A soft limit warns, and the requester may go on: see
+[Soft and hard enforcement](#soft-and-hard-enforcement).
+
+Project admins write their projects' own deployment limit policies, as
+other project policies (see [Project policies](#project-policies)). The
+audit log has `policy.limit.create`, `policy.limit.update` and
+`policy.limit.delete`.
 
 ### Lease rules and lifetime
 
@@ -790,8 +875,8 @@ and **Inputs (JSON)**, such as `{"size": "S"}`, to see which rule decides.
 
 ### Project policies
 
-Project admins write the approval, day-2 and lease policies of their
-projects (`project.policies.manage`,
+Project admins write the approval, day-2, lease and deployment limit
+policies of their projects (`project.policies.manage`,
 [ADR-0045](../adr/0045-deployment-sharing-and-project-policies.md)). In
 **Administration › Policies**, they see the global policies and their
 projects' own, and **What applies here** for their projects. They change
@@ -801,8 +886,8 @@ only their projects' policies: the others have no menu. A project admin:
 - reads, but doesn't change or remove, a policy of their project that an
   administrator wrote last: its row says **Set by an administrator** and
   has no menu;
-- doesn't see the **Naming** tab: naming policies and quotas stay
-  administrators';
+- doesn't see the **Naming** and **Quotas** tabs: naming policies and
+  rvav's quotas stay administrators';
 - sets a policy's priority instead of moving it up or down, which
   renumbers every project's policies;
 - can't write a lease override or a lease rule looser than what
@@ -815,7 +900,7 @@ only their projects' policies: the others have no menu. A project admin:
   at most."
 
 Every change is in the audit log with its project, as `policy.approval.*`,
-`policy.day2.*`, `policy.lease.*` or `policy.lease_rule.*`.
+`policy.day2.*`, `policy.lease.*`, `policy.lease_rule.*` or `policy.limit.*`.
 
 When you change a project's policy with `policies.manage`, it becomes
 yours: the project's admins can no longer change or remove it. A project
@@ -843,13 +928,17 @@ Project and global policies combine as follows:
   first matching rule an administrator wrote, or, without one, than the
   lease an administrator set, is skipped: the next rule, or the lease
   policies, decide.
+- **Deployment limits:** each limit is decided on its own, by the first
+  policy by priority that sets it. A hard global policy that is stricter
+  still wins over a project's (see [Deployment limits](#deployment-limits)).
 
 **What applies here** names the policy that decides and says why, for
 example when a global policy wins over the project's.
 
 ### Soft and hard enforcement
 
-Lease and day-2 policies have an **Enforcement**, **Hard** by default:
+Lease, day-2 and deployment limit policies have an **Enforcement**,
+**Hard** by default:
 - **Hard** refuses, or asks for approval, as the policy says.
 - **Soft** warns, and the requester may go on.
 
@@ -859,8 +948,10 @@ extensions or lifetime; that extension then needs no approval, as the
 deployment's **Lease** panel says. A soft day-2 policy with the effect
 **Deny** or **Approval** leaves the action enabled, and warns with the
 policy's **Reason people see**. A day-2 policy with the effect **Allow**
-can't be soft. Approval policies always apply: to warn instead of asking
-for approval, write a soft day-2 policy with the effect **Approval**. The
+can't be soft. A soft deployment limit warns when a request, an update
+or a move goes beyond it. Approval policies always apply: to warn instead
+of asking for approval, write a soft day-2 policy with the effect
+**Approval**. The
 policy list shows a soft policy as **Soft: warns**, or a soft lease as
 **Soft: longer warns**.
 
@@ -941,6 +1032,9 @@ goes through the same checks as a new request:
 - **Quota** checks the net change in vCPU, memory, storage and VMs. A
   hard limit refuses the update, a soft one asks for approval. Removing
   VMs or making them smaller frees quota once the update has run.
+- **Deployment limits** check the deployment's vCPU and memory after the
+  update, only when the update grows them: an update that keeps or
+  shrinks a deployment already beyond a limit goes on.
 - **Approval policies** apply to updates as well as new requests. Their
   conditions read the kind of request and what the update changes:
 

@@ -49,7 +49,11 @@ one to ask your project admin or administrator for.
    the version you picked. The panel beside the form shows what you will
    get, as you fill it in:
    - the VMs' names;
-   - the size and the quota it uses;
+   - the size and the quota it uses: for each resource, the quota with
+     the least left, such as the project's or yours in the project;
+   - **Limits after this request:** how many deployments you, or the
+     project, would have, and how large the largest deployment would be,
+     against the deployment limits that apply;
    - whether someone must approve it, and who;
    - the lease, and the placement.
 
@@ -86,9 +90,9 @@ one to ask your project admin or administrator for.
    under the field.
 
 Some policies only warn: a lease longer than the environment's soft
-maximum, for example. The summary then shows the warning, and the
-lease list offers the longer leases. To go on, select **Submit request
-anyway**. The request keeps the warning: its page lists it under
+maximum, or a deployment beyond a soft deployment limit, for example. The
+summary then shows the warning, and the lease list offers the longer
+leases. To go on, select **Submit request anyway**. The request keeps the warning: its page lists it under
 **Policy warnings**, for you, its approvers and the project's admins.
 
 Some forms show their sections in another layout, which the item's
@@ -421,6 +425,9 @@ deployment:
      existing VMs, and why;
    - **Quota after this update:** what the project uses afterwards. A
      smaller size or fewer VMs frees quota;
+   - **Limits after this update:** the deployment's vCPU and memory
+     afterwards, against the deployment limits that apply. Only an update
+     that grows the deployment can go beyond one;
    - whether the update waits for approval, and from whom.
 4. Select **Review the update**. rvav asks you to confirm and names what
    the update deletes.
