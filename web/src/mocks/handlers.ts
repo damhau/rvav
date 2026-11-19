@@ -40,7 +40,7 @@ import {
   requestTopology,
 } from "./catalogAdmin";
 import { catalogGitHandlers } from "./catalogGit";
-import { administrationHandlers } from "./administration";
+import { administrationHandlers, leasePolicyOf } from "./administration";
 import { onboardingHandlers } from "./onboarding";
 import { vraHandlers } from "./vra";
 import { fileHandlers } from "./files";
@@ -1255,7 +1255,10 @@ export const handlers = [
   http.get<{ deploymentId: string }>(`${base}/deployments/:deploymentId`, async ({ params }) => {
     await wait();
     const d = db.deployments.find((x) => x.id === params.deploymentId && seesDeployment(db, x));
-    return d ? json<S["DeploymentDetail"]>({ ...d, ...summarize(d) }) : notFound("Deployment");
+    if (!d) return notFound("Deployment");
+    const policy = d.lease.expires_at ? leasePolicyOf(db, d.project.id, d.environment) : undefined;
+    const lease = policy ? { ...d.lease, enforcement: policy.enforcement ?? "hard" } : d.lease;
+    return json<S["DeploymentDetail"]>({ ...d, ...summarize(d), lease });
   }),
 
   http.get(`${base}/events`, ({ request }) => {

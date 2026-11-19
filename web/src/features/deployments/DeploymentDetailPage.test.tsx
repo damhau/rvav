@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
+import { adminState } from "@/mocks/administration";
 import { server } from "@/mocks/node";
 import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
@@ -99,6 +100,23 @@ describe("a deployment's page against the mock API", () => {
     // An update, a join or an unregister changes them since: no request is named.
     expect(inputs).toHaveTextContent("What it was requested or last updated with");
     expect(inputs).not.toHaveTextContent("REQ-10482");
+  });
+
+  it("says a lease's limits only warn under a soft lease policy", async () => {
+    const hard = renderApp(`/deployments/${idOf("web-dev-api")}`);
+    const lease = await screen.findByRole("region", { name: "Lease" }, { timeout: 5000 });
+    expect(lease).toHaveTextContent("1 of 2 extensions used; up to 90 days without approval.");
+    expect(lease).not.toHaveTextContent("soft");
+    hard.unmount();
+
+    adminState(db).leases.find((l) => l.environment === "dev" && !l.project_id)!.enforcement = "soft";
+    renderApp(`/deployments/${idOf("web-dev-api")}`);
+    const soft = await screen.findByRole("region", { name: "Lease" }, { timeout: 5000 });
+    await waitFor(() =>
+      expect(soft).toHaveTextContent(
+        "1 of 2 extensions used; up to 90 days. The lease policy is soft: going beyond warns you, and needs no approval.",
+      ),
+    );
   });
 
   it("shows the address a VM on DHCP reports, once it has one", async () => {

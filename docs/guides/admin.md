@@ -793,7 +793,8 @@ Lease and day-2 policies have an **Enforcement**, **Hard** by default:
 
 A soft lease policy warns when a request asks for a longer lease than its
 maximum, and when an extension goes beyond its days or extensions; that
-extension then needs no approval. A soft day-2 policy with the effect
+extension then needs no approval, as the deployment's **Lease** panel
+says. A soft day-2 policy with the effect
 **Deny** or **Approval** leaves the action enabled, and warns with the
 policy's **Reason people see**. A day-2 policy with the effect **Allow**
 can't be soft. Approval policies always apply: to warn instead of asking

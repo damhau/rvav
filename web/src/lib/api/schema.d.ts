@@ -5963,6 +5963,12 @@ export interface components {
              */
             deletes_at?: string | null;
             expiry_action?: components["schemas"]["LeaseExpiryAction"];
+            /**
+             * @description The enforcement of the lease policy that applies now, when the
+             *     deployment expires. Soft: an extension beyond `max_days` or
+             *     `extensions_max` warns the owner instead of asking for approval.
+             */
+            enforcement?: components["schemas"]["PolicyEnforcement"];
         };
         /**
          * @description `drifted`: changed in vCenter outside rvav (size, disks, adapters'

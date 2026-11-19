@@ -366,7 +366,9 @@ those whose action warns: run it on each one.
 - **Leases:** you are told before a lease ends. Extend it, or let it end.
   What happens at the end (power off then delete, or delete) is the
   environment's policy. An extension beyond the policy asks the project's
-  approvers, or, under a soft policy, warns you and needs no approval.
+  approvers, or, under a soft policy, warns you and needs no approval. The
+  deployment's **Lease** panel says how many extensions you used, how long
+  you may extend it, and when its policy is soft.
 
 ## Updating a deployment
 

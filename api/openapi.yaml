@@ -8053,6 +8053,12 @@ components:
           format: date-time
           description: When the deployment will be deleted, once its lease expired.
         expiry_action: { $ref: "#/components/schemas/LeaseExpiryAction" }
+        enforcement:
+          $ref: "#/components/schemas/PolicyEnforcement"
+          description: |
+            The enforcement of the lease policy that applies now, when the
+            deployment expires. Soft: an extension beyond `max_days` or
+            `extensions_max` warns the owner instead of asking for approval.
 
     SyncState:
       type: string

@@ -275,6 +275,9 @@ func Deployment(d store.DeploymentRow) api.Deployment {
 		if d.LeaseMaxExtensions != nil {
 			out.Lease.ExtensionsMax = d.LeaseMaxExtensions
 		}
+		if d.LeaseEnforcement != nil {
+			out.Lease.Enforcement = Ptr(api.PolicyEnforcement(*d.LeaseEnforcement))
+		}
 	}
 	if d.LeaseGraceDays != nil {
 		out.Lease.GraceDays = Ptr(*d.LeaseGraceDays)

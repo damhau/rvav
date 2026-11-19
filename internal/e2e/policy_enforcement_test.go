@@ -81,6 +81,11 @@ func TestPolicyEnforcement(t *testing.T) {
 		h.runWorkflow(built.Id, nil)
 		d := &vmDeployment{h: h, id: (*built.DeploymentIds)[0], built: built, viewer: member}
 		d.resource = *d.actions(member)["power_off"].ResourceId
+		var dep api.DeploymentDetail
+		h.json("GET", "/api/v1/deployments/"+d.id, member, nil, 200, &dep)
+		if valueOf(dep.Lease.Enforcement) != api.PolicyEnforcementSoft {
+			t.Fatalf("a deployment under a soft lease says %+v", dep.Lease)
+		}
 
 		// A soft lease's extension beyond it warns instead of asking the project's approvers.
 		extend := func(days int, accept bool, want int) api.Request {
@@ -143,6 +148,11 @@ func TestPolicyEnforcement(t *testing.T) {
 
 		// Hard again: the project's approvers are asked.
 		lease(admin, nil, api.PolicyEnforcementHard, 200)
+		dep = api.DeploymentDetail{}
+		h.json("GET", "/api/v1/deployments/"+d.id, member, nil, 200, &dep)
+		if valueOf(dep.Lease.Enforcement) != api.PolicyEnforcementHard {
+			t.Fatalf("a deployment under a hard lease says %+v", dep.Lease)
+		}
 		if r := extend(120, false, 202); r.Status != api.RequestStatusPendingApproval {
 			t.Fatalf("a hard lease's extension = %s", r.Status)
 		}

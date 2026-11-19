@@ -314,9 +314,10 @@ type DeploymentRow struct {
 	PrimaryIP      *string `db:"primary_ip"`
 	PrimaryFQDN    *string `db:"primary_fqdn"`
 	// The lease policy that applies now.
-	LeaseMaxDays       *int `db:"lease_max_days"`
-	LeaseMaxExtensions *int `db:"lease_max_extensions"`
-	LeaseGraceDays     *int `db:"lease_grace_days"`
+	LeaseMaxDays       *int    `db:"lease_max_days"`
+	LeaseMaxExtensions *int    `db:"lease_max_extensions"`
+	LeaseGraceDays     *int    `db:"lease_grace_days"`
+	LeaseEnforcement   *string `db:"lease_enforcement"`
 }
 
 type Resource struct {

@@ -22,7 +22,8 @@ select d.id, d.name, d.status, d.project_id, d.environment, d.item_id, d.version
        (select count(*) from resources r where r.deployment_id = d.id and r.type = 'vsphere.vm'
           and r.properties->'vm'->>'power_state' = 'on')::int as vms_powered_on,
        pa.ip as primary_ip, pa.fqdn as primary_fqdn,
-       lp.max_days as lease_max_days, lp.max_extensions as lease_max_extensions, lp.grace_days as lease_grace_days
+       lp.max_days as lease_max_days, lp.max_extensions as lease_max_extensions, lp.grace_days as lease_grace_days,
+       lp.enforcement as lease_enforcement
 from deployments d
 join projects p on p.id = d.project_id
 join catalog_items i on i.id = d.item_id
@@ -32,7 +33,7 @@ left join lateral (select r.properties->>'address' as ip, r.properties->>'fqdn' 
                    from resources r where r.deployment_id = d.id and r.type = 'ipam.address'
                    and strpos(r.name, ':') = 0
                    order by r.created_at limit 1) pa on true
-left join lateral (select max_days, max_extensions, grace_days from lease_policies lp
+left join lateral (select max_days, max_extensions, grace_days, enforcement from lease_policies lp
                    where lp.environment = d.environment and (lp.project_id = d.project_id or lp.project_id is null)
                    order by lp.project_id nulls last limit 1) lp on true`
 

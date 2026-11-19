@@ -452,7 +452,9 @@ function LeasePanel({ d, extend, onPick }: { d: DeploymentDetail; extend?: Day2A
       )}
       <p className="text-faint">
         {l.extensions_used ?? 0} of {l.extensions_max ?? 0} extensions used
-        {l.max_days ? `; up to ${l.max_days} days without approval` : ""}.
+        {l.enforcement === "soft"
+          ? `${l.max_days ? `; up to ${l.max_days} days` : ""}. The lease policy is soft: going beyond warns you, and needs no approval.`
+          : `${l.max_days ? `; up to ${l.max_days} days without approval` : ""}.`}
       </p>
       {extend && (
         <Tip

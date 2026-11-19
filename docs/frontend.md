@@ -603,7 +603,8 @@ it.
   sharing** panel heads its Members tab, and keeps the focus on its choice
   once saved. Under owners only, **Requests** says it lists the person's
   own requests and drops **Only mine**, unless they hold
-  `deployments.read_all` there.
+  `deployments.read_all` there. A deployment's **Lease** panel says when
+  its lease policy is soft (`lease.enforcement`).
 - **Templates and networks**: VM templates (a vCenter template, or an
   item of a content library) and sizes, with where each is offered
   (projects and environments), and the network mappings, from EfficientIP
