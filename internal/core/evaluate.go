@@ -74,6 +74,9 @@ type Evaluation struct {
 	// Fields are the form's rule results for these inputs.
 	Fields api.FieldStates
 	Errors []api.FieldError
+	// Update is what an update changes, as approval policies read it
+	// (ADR-0042); nil on a new request.
+	Update map[string]any
 }
 
 type LeaseInfo struct {
@@ -437,6 +440,8 @@ func PolicyVars(ev *Evaluation, p *auth.Principal) policy.Vars {
 		"vms":         ev.vmVars(),
 		"user":        user,
 		"quota":       quotaVars(ev.OverSoft),
+		"request":     ev.requestVars(),
+		"update":      ev.updateVars(),
 	}
 }
 

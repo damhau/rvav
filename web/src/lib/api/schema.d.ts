@@ -1100,6 +1100,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deployments/{deploymentId}/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update a deployment to its item's version and new inputs
+         * @description Creates a request of kind `update` (ADR-0042) and starts it, or waits
+         *     for approval as a new request would. It changes the deployment's VMs
+         *     as `previewDeploymentUpdate` plans: resizes, disks and adapters, VMs
+         *     added or removed, AWX jobs new to the version. A failed deployment
+         *     can be updated too: its VMs never built are built. An update with a
+         *     change rvav can't make in place is refused (422, `refused`), and so
+         *     is one that changes nothing (`no_change`). Follow the request like
+         *     any other; when it succeeds, the deployment has the new version and
+         *     inputs.
+         */
+        post: operations["updateDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deployments/{deploymentId}/update/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What an update would change, before asking for it
+         * @description Compares the deployment's item version and inputs with the draft's
+         *     and says what an update would do, what it refuses and why, its
+         *     quota and its approval. Nothing is reserved or changed.
+         */
+        post: operations["previewDeploymentUpdate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/deployments/{deploymentId}/private-key": {
         parameters: {
             query?: never;
@@ -4746,23 +4800,25 @@ export interface components {
         /** @enum {string} */
         RequestStatus: "pending_approval" | "scheduled" | "queued" | "running" | "succeeded" | "failed" | "rejected" | "cancelling" | "cancelled";
         /**
-         * @description `provision`: from the catalog. `day2`: an action on a deployment (ADR-0013).
+         * @description `provision`: from the catalog. `day2`: an action on a deployment
+         *     (ADR-0013). `update`: a deployment updated to its item's version and
+         *     new inputs (ADR-0042).
          * @enum {string}
          */
-        RequestKind: "provision" | "day2";
+        RequestKind: "provision" | "day2" | "update";
         Request: {
             id: string;
             /** @example REQ-10491 */
             number: string;
             kind: components["schemas"]["RequestKind"];
-            /** @description The day-2 action this request runs. */
+            /** @description The day-2 action this request runs; `update` for an update. */
             action?: {
                 /** @example snapshot_create */
                 key: string;
                 /** @example Take a snapshot */
                 name: string;
             };
-            /** @description The deployment a day-2 request acts on. */
+            /** @description The deployment a day-2 request or an update acts on. */
             deployment_id?: string;
             /** @description The resource a day-2 request acts on, when it acts on one. */
             resource?: {
@@ -5039,6 +5095,62 @@ export interface components {
             };
             justification?: string;
         };
+        UpdateDraft: {
+            /**
+             * @description The version to update to: the item's published version, whose
+             *     form `getRequestForm` gives. It may be the deployment's own.
+             */
+            version_id: string;
+            /**
+             * @description Every input, as on a new request; the deployment's are in
+             *     `getDeployment`. Secret fields are given again.
+             */
+            inputs: {
+                [key: string]: unknown;
+            };
+            justification?: string;
+        };
+        UpdatePreview: {
+            from_version: components["schemas"]["CatalogItemVersionRef"];
+            to_version: components["schemas"]["CatalogItemVersionRef"];
+            /** @description The caller may update the deployment now (its state and the day-2 policies). */
+            allowed: boolean;
+            /** @description Why they can't, when `allowed` is false. */
+            reason?: string;
+            /** @description What the update does, in the order it runs. */
+            changes: components["schemas"]["UpdateChange"][];
+            /** @description Changes rvav can't make in place, and why. An update with any is refused. */
+            refused: components["schemas"]["UpdateRefusal"][];
+            fields?: components["schemas"]["FieldStates"];
+            errors: components["schemas"]["FieldError"][];
+            /** @description The net change to the project's quotas; `adding` is negative where the update frees more than it adds. */
+            quota: components["schemas"]["QuotaImpact"][];
+            approval: components["schemas"]["ApprovalPreview"];
+        };
+        UpdateChange: {
+            /** @enum {string} */
+            kind: "resize" | "disk_add" | "disk_extend" | "disk_remove" | "nic_add" | "nic_move" | "nic_remove" | "vm_add" | "vm_remove" | "job";
+            /** @description The component's key; `vm` without components. */
+            component?: string;
+            /** @description The VM it changes. A VM added is named when the update is asked for. */
+            vm?: string;
+            /** @example Set 4 vCPU and 8 GB on web01 */
+            title: string;
+            /** @example Was 2 vCPU and 4 GB. Restarts the VM: CPU hot add is off. */
+            detail?: string;
+            /** @description It deletes something (a disk and its data, an adapter, a VM). */
+            destructive: boolean;
+        };
+        UpdateRefusal: {
+            /** @description The component's key; `vm` without components. */
+            component?: string;
+            /**
+             * @description What changes, as the blueprint names it, for example `template` or `cluster`.
+             * @example template
+             */
+            setting?: string;
+            reason: string;
+        };
         ConsoleSession: {
             /** @description Opens VMware Remote Console. Valid once, for a few minutes. */
             vmrc_url: string;
@@ -5241,7 +5353,7 @@ export interface components {
          */
         SyncState: "in_sync" | "drifted" | "missing";
         DeploymentDetail: components["schemas"]["Deployment"] & {
-            /** @description Inputs of the creating request. Secret fields are replaced by `"••••"`. */
+            /** @description Its inputs, from the request that created it or from its last update. Secret fields are replaced by `"••••"`. */
             inputs: {
                 [key: string]: unknown;
             };
@@ -9457,6 +9569,77 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    updateDeployment: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A client-generated UUID. Retrying with the same key and body returns
+                 *     the original response; the same key with a different body returns 409.
+                 *     Keys are kept for 24 hours.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDraft"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Request"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    previewDeploymentUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploymentId: components["parameters"]["DeploymentIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDraft"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdatePreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     downloadPrivateKey: {

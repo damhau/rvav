@@ -187,7 +187,7 @@ func sampleVars(inputs map[string]any) policy.Vars {
 		"item":    map[string]any{"slug": "sample", "category": "compute", "type": "vm_blueprint"},
 		"vm":      map[string]any{"vcpu": 2, "memory_gb": 4, "disk_gb": 40, "count": 1},
 		"user":    map[string]any{"id": "usr_sample", "roles": []string{"user"}, "groups": []string{}, "permissions": []string{}},
-		"quota":   quotaVars(nil)}
+		"quota":   quotaVars(nil), "request": map[string]any{"kind": "provision"}, "update": noUpdate()}
 }
 
 // checkApprovalExpr compiles an approval condition and evaluates it on

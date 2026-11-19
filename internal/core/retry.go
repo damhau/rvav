@@ -195,7 +195,7 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 			rolledBack = true
 		}
 	}
-	if r.Kind == "day2" {
+	if r.Kind == "day2" || r.Kind == "update" {
 		if err := s.checkDay2Retry(ctx, p, r); err != nil {
 			return r, err
 		}
@@ -301,8 +301,11 @@ func (s *Service) RollbackRequest(ctx context.Context, p *auth.Principal, idOrNu
 	if err != nil {
 		return r, err
 	}
-	if r.Kind == "day2" {
+	switch r.Kind {
+	case "day2":
 		return r, &ConflictError{Msg: "A day-2 action has nothing to roll back. Retry it, or run another action."}
+	case "update":
+		return r, &ConflictError{Msg: "An update has nothing to roll back. Retry it, or update the deployment again."}
 	}
 	resources, err := s.Store.ResourcesForRequest(ctx, r.ID)
 	if err != nil {

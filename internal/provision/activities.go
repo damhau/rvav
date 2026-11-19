@@ -1179,28 +1179,32 @@ func nicNetworks(vm VMUnit) []string {
 // CreateDRSRule keeps a component's VMs on separate hosts with a DRS
 // rule, recorded on the deployment so deleting it removes the rule.
 func (a *Activities) CreateDRSRule(ctx context.Context, in RuleInput) error {
-	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
-		vc, err := a.vc(ctx, in.VCenter)
-		if err != nil {
-			return "", "", err
+	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) { return a.setRule(ctx, in) })
+}
+
+// setRule makes the DRS rule keeping its VMs on separate hosts, or sets
+// its VMs again, and records it.
+func (a *Activities) setRule(ctx context.Context, in RuleInput) (string, string, error) {
+	vc, err := a.vc(ctx, in.VCenter)
+	if err != nil {
+		return "", "", err
+	}
+	if err := vc.SetAntiAffinityRule(ctx, in.Cluster, in.Name, in.Morefs); err != nil {
+		if errors.Is(err, vsphere.ErrNotFound) {
+			return "", "", permanent("%v", err)
 		}
-		if err := vc.SetAntiAffinityRule(ctx, in.Cluster, in.Name, in.Morefs); err != nil {
-			if errors.Is(err, vsphere.ErrNotFound) {
-				return "", "", permanent("%v", err)
-			}
-			return "", "", fmt.Errorf("vCenter: %w", err)
-		}
-		props, _ := json.Marshal(map[string]any{"rule": map[string]any{"kind": "vm_anti_affinity", "cluster": in.Cluster,
-			"vcenter": vc.Name(), "component": in.Component, "vms": in.VMs}})
-		ext := vc.Name() + "/" + in.Cluster + "/" + in.Name
-		res, err := a.Store.UpsertResource(ctx, a.Store.Pool, store.Resource{ID: ids.New(ids.Resource), DeploymentID: in.DeploymentID,
-			RequestID: &in.RequestID, Type: "vsphere.drs_rule", Name: in.Name, ExternalID: &ext, Properties: props})
-		if err != nil {
-			return "", "", err
-		}
-		a.Events.Resource(ctx, in.ProjectID, res)
-		return "Kept " + strings.Join(in.VMs, ", ") + " on separate hosts", "DRS rule " + in.Name + " in " + in.Cluster, nil
-	})
+		return "", "", fmt.Errorf("vCenter: %w", err)
+	}
+	props, _ := json.Marshal(map[string]any{"rule": map[string]any{"kind": "vm_anti_affinity", "cluster": in.Cluster,
+		"vcenter": vc.Name(), "component": in.Component, "vms": in.VMs}})
+	ext := vc.Name() + "/" + in.Cluster + "/" + in.Name
+	res, err := a.Store.UpsertResource(ctx, a.Store.Pool, store.Resource{ID: ids.New(ids.Resource), DeploymentID: in.DeploymentID,
+		RequestID: &in.RequestID, Type: "vsphere.drs_rule", Name: in.Name, ExternalID: &ext, Properties: props})
+	if err != nil {
+		return "", "", err
+	}
+	a.Events.Resource(ctx, in.ProjectID, res)
+	return "Kept " + strings.Join(in.VMs, ", ") + " on separate hosts", "DRS rule " + in.Name + " in " + in.Cluster, nil
 }
 
 // waitAWX polls an AWX job until it finishes.
@@ -1619,7 +1623,7 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 		}
 	}(r.Status)
 	title := "Ready"
-	if r.ItemType != "vm_blueprint" || r.Kind == "day2" {
+	if r.ItemType != "vm_blueprint" || r.Kind != "provision" {
 		title = "Done"
 	}
 	// The outcome and the post event (ADR-0021) in one transaction;
@@ -1640,6 +1644,13 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 			}
 			if err := a.Store.SetDeploymentsStatusForRequest(ctx, db, in.RequestID, "ready"); err != nil {
 				return err
+			}
+			// An updated deployment is of its new version, with its new
+			// inputs, from now on (ADR-0042).
+			if r.Kind == "update" && r.DeploymentID != nil {
+				if err := a.Store.SetDeploymentVersion(ctx, db, *r.DeploymentID, r.VersionID, r.Inputs); err != nil {
+					return err
+				}
 			}
 			if err := a.Store.SetRequestStatus(ctx, db, in.RequestID, "succeeded"); err != nil {
 				return err

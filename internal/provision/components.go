@@ -39,17 +39,19 @@ func eachVM(ctx workflow.Context, n int, fn func(ctx workflow.Context, i int) (s
 
 // runComponents builds a multi-VM blueprint's plan.
 func runComponents(ctx workflow.Context, info Info) (string, error) {
-	_, failed, err := buildComponents(ctx, info, info.Plan.VMs, info.Plan.Components, planKeys())
+	_, failed, err := buildComponents(ctx, info, info.Plan.VMs, info.Plan.Components, planKeys(), nil)
 	return failed, err
 }
 
 // buildComponents builds components' VMs in rounds: a component in the
 // round after those it depends on, the components of a round at the same
-// time (ADR-0024). Without dependencies there is one round.
-func buildComponents(ctx workflow.Context, info Info, vms []VMUnit, units []ComponentUnit, keys vmKeys) ([]builtVM, string, error) {
+// time (ADR-0024). Without dependencies there is one round. kept are the
+// deployment's VMs an update keeps (ADR-0042): the new VMs see them as
+// built before.
+func buildComponents(ctx workflow.Context, info Info, vms []VMUnit, units []ComponentUnit, keys vmKeys, kept []builtVM) ([]builtVM, string, error) {
 	rounds := buildRounds(units)
 	if len(rounds) <= 1 {
-		return buildRound(ctx, info, vms, units, keys, nil)
+		return buildRound(ctx, info, vms, units, keys, kept)
 	}
 	var all []builtVM
 	for _, round := range rounds {
@@ -59,7 +61,7 @@ func buildComponents(ctx workflow.Context, info Info, vms []VMUnit, units []Comp
 				list = append(list, vm)
 			}
 		}
-		built, failed, err := buildRound(ctx, info, list, round, keys, all)
+		built, failed, err := buildRound(ctx, info, list, round, keys, append(slices.Clone(kept), all...))
 		if err != nil {
 			return nil, failed, err
 		}
@@ -233,6 +235,12 @@ func buildRound(ctx workflow.Context, info Info, vms []VMUnit, units []Component
 			continue
 		}
 		in := RuleInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Key: keys.rule(c), Component: c.Key}
+		// An update's VMs join those of their component it keeps.
+		for _, b := range earlier {
+			if b.vm.Component == c.Key {
+				in.VMs, in.Morefs = append(in.VMs, b.vm.Name), append(in.Morefs, b.moref)
+			}
+		}
 		again := false
 		for i, b := range built {
 			if b.vm.Component == c.Key {

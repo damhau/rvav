@@ -346,7 +346,10 @@ function ActionItems({
 }) {
   const navigate = useNavigate();
   const groups = groupOrder
-    .map((g) => ({ g, items: actions.filter((a) => a.group === g && (a.key !== "console" || consoleLink)) }))
+    .map((g) => ({
+      g,
+      items: actions.filter((a) => a.group === g && (a.key !== "console" || consoleLink) && a.key !== "update"),
+    }))
     .filter((x) => x.items.length);
   if (groups.length === 0) return <MenuLabel>No actions apply</MenuLabel>;
   return (

@@ -322,54 +322,11 @@ func runPlan(ctx workflow.Context, info Info) (string, error) {
 	var a *Activities
 	p := info.Plan
 
+	if p.Update != nil {
+		return runUpdate(ctx, info)
+	}
 	if p.Day2 != nil {
-		for i, op := range p.Day2.Ops {
-			// An inventory refresh done before a job that failed is run
-			// again on a retry: the job must see the inventory as it is now.
-			refreshAgain := op.System == day2.SystemAWX && op.Op == day2.OpRefreshInventory &&
-				slices.ContainsFunc(p.Day2.Ops[i+1:], func(o day2.Op) bool { return !info.done(o.Key) })
-			if info.done(op.Key) && !refreshAgain {
-				continue
-			}
-			var err error
-			switch {
-			case op.Op == day2.OpWorkflow:
-				// A custom workflow offered as an action (ADR-0022).
-				inputs, _ := op.Args["inputs"].(map[string]any)
-				call := WorkflowCall{Key: argStr(op.Args, "key"), Title: argStr(op.Args, "title"), Type: argStr(op.Args, "type"),
-					TaskQueue: argStr(op.Args, "task_queue"), Timeout: argInt(op.Args, "timeout_seconds"), Inputs: inputs}
-				_, err = runCustom(ctx, info, op.Key, call, nil)
-			case op.System == day2.SystemAWX && op.Op == day2.OpRefreshInventory:
-				err = workflow.ExecuteActivity(ctx, a.RefreshInventory, info.RequestID, info.ProjectID).Get(ctx, nil)
-			case op.System == day2.SystemAWX && op.Op == day2.OpJob:
-				// An AWX action (ADR-0018): the job on rvav's inventory, its
-				// tasks and output followed as for post-configuration.
-				vars, _ := op.Args["extra_vars"].(map[string]any)
-				extra := map[string]any{}
-				for k, v := range vars {
-					extra[k] = v
-				}
-				extra["rvav"] = op.Args["rvav"] // the inputs never replace rvav's context
-				workflowJob, _ := op.Args["workflow"].(bool)
-				job := Job{Key: op.Key, Title: op.Title, Template: argStr(op.Args, "template"),
-					TemplateID: argInt(op.Args, "template_id"), Workflow: workflowJob}
-				in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: op.Key, Job: job,
-					Limit: argStr(op.Args, "limit"), ExtraVars: extra, Action: argStr(op.Args, "action")}
-				err = workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil)
-			default:
-				in := OpInput{RequestID: info.RequestID, ProjectID: info.ProjectID, DeploymentID: p.Day2.DeploymentID,
-					ResourceID: p.Day2.ResourceID, Moref: p.Day2.Moref, Op: op}
-				err = workflow.ExecuteActivity(ctx, a.RunOp, in).Get(ctx, nil)
-			}
-			// Its step says it failed; a cancel still stops the action.
-			if err != nil && op.KeepGoing && !temporal.IsCanceledError(err) && !errors.Is(ctx.Err(), workflow.ErrCanceled) {
-				continue
-			}
-			if err != nil {
-				return op.Key, err
-			}
-		}
-		return "", nil
+		return runOps(ctx, info, p.Day2.Ops, OpInput{DeploymentID: p.Day2.DeploymentID, ResourceID: p.Day2.ResourceID, Moref: p.Day2.Moref})
 	}
 
 	if len(p.Composite) > 0 {
@@ -564,6 +521,59 @@ func guestIP(vm VMUnit, step string, ip *string) any {
 		return ip
 	}
 	return nil
+}
+
+// runOps runs day-2 operations in order, those done before a retry
+// skipped; target is the deployment, and the VM, they act on.
+func runOps(ctx workflow.Context, info Info, ops []day2.Op, target OpInput) (string, error) {
+	var a *Activities
+	for i, op := range ops {
+		// An inventory refresh done before a job that failed is run
+		// again on a retry: the job must see the inventory as it is now.
+		refreshAgain := op.System == day2.SystemAWX && op.Op == day2.OpRefreshInventory &&
+			slices.ContainsFunc(ops[i+1:], func(o day2.Op) bool { return !info.done(o.Key) })
+		if info.done(op.Key) && !refreshAgain {
+			continue
+		}
+		var err error
+		switch {
+		case op.Op == day2.OpWorkflow:
+			// A custom workflow offered as an action (ADR-0022).
+			inputs, _ := op.Args["inputs"].(map[string]any)
+			call := WorkflowCall{Key: argStr(op.Args, "key"), Title: argStr(op.Args, "title"), Type: argStr(op.Args, "type"),
+				TaskQueue: argStr(op.Args, "task_queue"), Timeout: argInt(op.Args, "timeout_seconds"), Inputs: inputs}
+			_, err = runCustom(ctx, info, op.Key, call, nil)
+		case op.System == day2.SystemAWX && op.Op == day2.OpRefreshInventory:
+			err = workflow.ExecuteActivity(ctx, a.RefreshInventory, info.RequestID, info.ProjectID).Get(ctx, nil)
+		case op.System == day2.SystemAWX && op.Op == day2.OpJob:
+			// An AWX action (ADR-0018): the job on rvav's inventory, its
+			// tasks and output followed as for post-configuration.
+			vars, _ := op.Args["extra_vars"].(map[string]any)
+			extra := map[string]any{}
+			for k, v := range vars {
+				extra[k] = v
+			}
+			extra["rvav"] = op.Args["rvav"] // the inputs never replace rvav's context
+			workflowJob, _ := op.Args["workflow"].(bool)
+			job := Job{Key: op.Key, Title: op.Title, Template: argStr(op.Args, "template"),
+				TemplateID: argInt(op.Args, "template_id"), Workflow: workflowJob}
+			in := JobInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: op.Key, Job: job,
+				Limit: argStr(op.Args, "limit"), ExtraVars: extra, Action: argStr(op.Args, "action")}
+			err = workflow.ExecuteActivity(jobCtx(ctx), a.RunJob, in).Get(ctx, nil)
+		default:
+			in := target
+			in.RequestID, in.ProjectID, in.Op = info.RequestID, info.ProjectID, op
+			err = workflow.ExecuteActivity(ctx, a.RunOp, in).Get(ctx, nil)
+		}
+		// Its step says it failed; a cancel still stops the action.
+		if err != nil && op.KeepGoing && !temporal.IsCanceledError(err) && !errors.Is(ctx.Err(), workflow.ErrCanceled) {
+			continue
+		}
+		if err != nil {
+			return op.Key, err
+		}
+	}
+	return "", nil
 }
 
 // postConfig refreshes the AWX inventory, then runs the post-configuration

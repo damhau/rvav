@@ -297,6 +297,7 @@ type DeploymentRow struct {
 	ProjectName   string  `db:"project_name"`
 	ItemSlug      string  `db:"item_slug"`
 	ItemName      string  `db:"item_name"`
+	ItemType      string  `db:"item_type"`
 	VersionNumber string  `db:"version_number"`
 	OwnerName     string  `db:"owner_name"`
 	OwnerEmail    string  `db:"owner_email"`

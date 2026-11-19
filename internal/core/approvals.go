@@ -428,9 +428,14 @@ func (l loadedLevel) isEscalationApprover(p *auth.Principal) bool {
 // applyEdits checks approver changes against the form and evaluates the
 // request again as its requester, keeping its names and deployments.
 func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, req store.RequestRow, edits map[string]any) ([]inputChange, json.RawMessage, json.RawMessage, []store.Step, error) {
-	if req.Kind == "day2" {
+	switch req.Kind {
+	case "day2":
 		return nil, nil, nil, nil, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "not_editable",
 			"Approvers can't change the inputs of a day-2 action.")}}
+	case "update":
+		// Its plan is what the requester saw before asking (ADR-0042).
+		return nil, nil, nil, nil, &ValidationError{Errors: []api.FieldError{fieldErr("/inputs", "not_editable",
+			"Approvers can't change the inputs of an update: reject it, and the requester asks again.")}}
 	}
 	version, err := s.Store.GetVersion(ctx, req.VersionID)
 	if err != nil {
@@ -797,7 +802,7 @@ func (s *Service) facts(ctx context.Context, l loadedLevel) ([]fact, error) {
 
 // editableFields lists the inputs approvers may change, with their limits.
 func (s *Service) editableFields(ctx context.Context, l loadedLevel) ([]api.ApprovalEditableField, error) {
-	if l.req.Kind == "day2" {
+	if l.req.Kind != "provision" {
 		return []api.ApprovalEditableField{}, nil // the catalog form is not what a day-2 action asked
 	}
 	version, err := s.Store.GetVersion(ctx, l.req.VersionID)

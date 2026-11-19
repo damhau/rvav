@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -350,10 +351,17 @@ func (a *Activities) deleteResources(ctx context.Context, in OpInput) (string, e
 	if err != nil {
 		return "", err
 	}
+	// A VM removed by an update names its own records (ADR-0042): an
+	// empty list deletes none.
+	ids := argStrs(in.Op.Args, "resources")
+	_, named := in.Op.Args["resources"]
+	if id := argStr(in.Op.Args, "resource"); id != "" {
+		ids, named = append(ids, id), true
+	}
 	var done []string
 	var failed []error
 	for _, r := range list {
-		if id := argStr(in.Op.Args, "resource"); id != "" && r.ID != id {
+		if named && !slices.Contains(ids, r.ID) {
 			continue
 		}
 		what, err := a.deleteResource(ctx, r)

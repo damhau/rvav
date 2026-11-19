@@ -185,7 +185,7 @@ func (s *Server) GetRequestTopology(w http.ResponseWriter, r *http.Request, requ
 		return
 	}
 	out := api.RequestTopology{}
-	if row.Kind != "day2" {
+	if row.Kind == "provision" {
 		ver, err := s.Store.GetVersion(r.Context(), row.VersionID)
 		if err != nil {
 			s.fail(w, r, err)

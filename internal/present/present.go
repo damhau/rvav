@@ -120,7 +120,7 @@ func SecretFields(uiSchema json.RawMessage) map[string]bool {
 
 func Request(r store.RequestRow, secret map[string]bool) api.Request {
 	out := api.Request{
-		Id: r.ID, Number: r.Number, Title: r.Title, Kind: api.Provision,
+		Id: r.ID, Number: r.Number, Title: r.Title, Kind: api.RequestKindProvision,
 		Status:      api.RequestStatus(r.Status),
 		Version:     api.CatalogItemVersionRef{Id: r.VersionID, Number: r.VersionNumber},
 		Project:     ProjectRef(r.ProjectID, r.ProjectCode, r.ProjectName),
@@ -135,8 +135,8 @@ func Request(r store.RequestRow, secret map[string]bool) api.Request {
 	}
 	out.CatalogItem.Id, out.CatalogItem.Slug, out.CatalogItem.Name = r.ItemID, r.ItemSlug, r.ItemName
 	out.CatalogItem.Type = api.CatalogItemType(r.ItemType)
-	if r.Kind == "day2" {
-		out.Kind = api.Day2
+	if r.Kind == "day2" || r.Kind == "update" {
+		out.Kind = api.RequestKind(r.Kind)
 		out.DeploymentId = r.DeploymentID
 		if r.Action != nil {
 			out.Action = &struct {

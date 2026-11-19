@@ -31,8 +31,10 @@ type set struct {
 }
 
 // forms is for approval policies, form rules and blueprint bindings;
-// propgroup is the constants of the item's property groups (ADR-0038).
-var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm", "user", "sizes", "quota", "segments", "propgroup"},
+// propgroup is the constants of the item's property groups (ADR-0038);
+// request and update are what approval policies read of an update (ADR-0042).
+var forms = &set{names: []string{"inputs", "environment", "project", "item", "vm", "user", "sizes", "quota", "segments", "propgroup",
+	"request", "update"},
 	strings: map[string]bool{"environment": true}}
 
 // sources is for `cel` value sources: what forms read, and the text typed

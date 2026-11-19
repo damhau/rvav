@@ -179,7 +179,7 @@ func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, ou
 		case err != nil:
 		case len(c.Components) > 0:
 			// A multi-VM item (ADR-0024): its components' steps are this step's.
-			vms, failed, err = buildComponents(ctx, info, c.VMs, c.Components, c.keys())
+			vms, failed, err = buildComponents(ctx, info, c.VMs, c.Components, c.keys(), nil)
 		default:
 			if vms, failed, err = buildVMs(ctx, info, c.VMs, c.Guest, c.VMKey); err == nil {
 				failed, err = postConfig(ctx, info, vms, c.PostConfig, key+"/"+KeyInventory,

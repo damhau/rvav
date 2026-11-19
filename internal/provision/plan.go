@@ -33,6 +33,9 @@ type Plan struct {
 	Context      map[string]any  `json:"context,omitempty"`
 	// Day2 is set on day-2 requests instead of VMs or AWX.
 	Day2 *Day2 `json:"day2,omitempty"`
+	// Update is set on update requests (ADR-0042); VMs and Components are
+	// then the VMs it adds.
+	Update *Update `json:"update,omitempty"`
 	// Workflow is set on requests of custom workflow items (ADR-0022).
 	Workflow *WorkflowCall `json:"workflow,omitempty"`
 	// Composite is set on requests of composite items (ADR-0022), instead
@@ -323,6 +326,31 @@ func (c CompositeStep) VMKey(base string, vm VMUnit) string {
 		k += "@" + vm.Name
 	}
 	return k
+}
+
+// vmSteps are the steps building a plan's VMs without components, then
+// their post-configuration.
+func (p Plan) vmSteps() []StepDef {
+	var steps []StepDef
+	for _, vm := range p.VMs {
+		steps = append(steps, vm.addressSteps(
+			StepDef{Key: p.VMKey(KeyIPAM, vm), Title: p.vmTitle(vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending"},
+			StepDef{Key: p.VMKey(KeyDNS, vm), Title: p.vmTitle(vm.dnsTitle(), vm), Detail: vm.dnsDetail(), System: "efficientip", Status: "pending"})...)
+		steps = append(steps,
+			StepDef{Key: p.VMKey(KeyClone, vm), Title: p.vmTitle(vm.cloneTitle(), vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending"},
+			StepDef{Key: p.VMKey(KeyCustomize, vm), Title: p.vmTitle("Apply guest customization", vm), Detail: vm.customizeDetail(), System: "vcenter", Status: "pending"},
+			StepDef{Key: p.VMKey(KeyPowerOn, vm), Title: p.vmTitle("Power on and wait for guest IP", vm), System: "vcenter", Status: "pending"},
+		)
+		steps = append(steps, tagStep(p.VMKey(KeyNSXTags, vm), p.vmTitle("Join NSX security groups", vm), vm, "")...)
+	}
+	if len(p.PostConfig) > 0 {
+		steps = append(steps, StepDef{Key: KeyInventory, Title: "Refresh AWX inventory", System: "awx", Status: "pending"})
+		for _, j := range p.PostConfig {
+			steps = append(steps, StepDef{Key: KeyJob + j.Key, Title: "AWX job · " + j.Template,
+				Detail: "limit=" + p.Limit(), System: "awx", Status: "pending"})
+		}
+	}
+	return steps
 }
 
 // Limit is the AWX host limit covering its VMs.
@@ -823,6 +851,9 @@ func (p Plan) Steps(environment string) []StepDef {
 		steps = append(steps, StepDef{Key: KeyPolicy, Title: "Approval not required",
 			Detail: "No approval policy applies in " + environment, System: "policy", Status: "done"})
 	}
+	if p.Update != nil {
+		return append(append(steps, p.updateSteps()...), StepDef{Key: KeyReady, Title: "Done", System: "rvav", Status: "pending"})
+	}
 	if p.Day2 != nil {
 		for _, op := range p.Day2.Ops {
 			steps = append(steps, StepDef{Key: op.Key, Title: op.Title, Detail: op.Detail, System: op.System, Status: "pending"})
@@ -851,24 +882,7 @@ func (p Plan) Steps(environment string) []StepDef {
 			StepDef{Key: KeyWorkflow + p.Workflow.Key, Title: p.Workflow.Title, Detail: p.Workflow.Type, System: "rvav", Status: "pending"},
 			StepDef{Key: KeyReady, Title: "Done", System: "rvav", Status: "pending"})
 	}
-	for _, vm := range p.VMs {
-		steps = append(steps, vm.addressSteps(
-			StepDef{Key: p.VMKey(KeyIPAM, vm), Title: p.vmTitle(vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending"},
-			StepDef{Key: p.VMKey(KeyDNS, vm), Title: p.vmTitle(vm.dnsTitle(), vm), Detail: vm.dnsDetail(), System: "efficientip", Status: "pending"})...)
-		steps = append(steps,
-			StepDef{Key: p.VMKey(KeyClone, vm), Title: p.vmTitle(vm.cloneTitle(), vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending"},
-			StepDef{Key: p.VMKey(KeyCustomize, vm), Title: p.vmTitle("Apply guest customization", vm), Detail: vm.customizeDetail(), System: "vcenter", Status: "pending"},
-			StepDef{Key: p.VMKey(KeyPowerOn, vm), Title: p.vmTitle("Power on and wait for guest IP", vm), System: "vcenter", Status: "pending"},
-		)
-		steps = append(steps, tagStep(p.VMKey(KeyNSXTags, vm), p.vmTitle("Join NSX security groups", vm), vm, "")...)
-	}
-	if len(p.PostConfig) > 0 {
-		steps = append(steps, StepDef{Key: KeyInventory, Title: "Refresh AWX inventory", System: "awx", Status: "pending"})
-		for _, j := range p.PostConfig {
-			steps = append(steps, StepDef{Key: KeyJob + j.Key, Title: "AWX job · " + j.Template,
-				Detail: "limit=" + p.Limit(), System: "awx", Status: "pending"})
-		}
-	}
+	steps = append(steps, p.vmSteps()...)
 	return append(steps, StepDef{Key: KeyReady, Title: "Ready", System: "rvav", Status: "pending"})
 }
 

@@ -56,7 +56,7 @@ func RequestTopics(kind, action string) (pre, post string) {
 	switch {
 	case kind == "day2" && action == "delete":
 		return DeletePre, DeletePost
-	case kind == "day2":
+	case kind == "day2", kind == "update":
 		return Day2Pre, Day2Post
 	}
 	return ProvisioningPre, ProvisioningPost

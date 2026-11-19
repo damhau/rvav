@@ -38,6 +38,8 @@ type Target struct {
 	Lease     Lease
 	// TagCategories are those whose tags the VM's users may change.
 	TagCategories []TagCategory
+	// ItemType is the type of the deployment's catalog item.
+	ItemType string
 }
 
 // Lease is the deployment's lease now.

@@ -1424,6 +1424,72 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /deployments/{deploymentId}/update:
+    parameters:
+      - { $ref: "#/components/parameters/DeploymentIdPath" }
+    post:
+      tags: [deployments]
+      operationId: updateDeployment
+      summary: Update a deployment to its item's version and new inputs
+      description: |
+        Creates a request of kind `update` (ADR-0042) and starts it, or waits
+        for approval as a new request would. It changes the deployment's VMs
+        as `previewDeploymentUpdate` plans: resizes, disks and adapters, VMs
+        added or removed, AWX jobs new to the version. A failed deployment
+        can be updated too: its VMs never built are built. An update with a
+        change rvav can't make in place is refused (422, `refused`), and so
+        is one that changes nothing (`no_change`). Follow the request like
+        any other; when it succeeds, the deployment has the new version and
+        inputs.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDraft" }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
+  /deployments/{deploymentId}/update/preview:
+    parameters:
+      - { $ref: "#/components/parameters/DeploymentIdPath" }
+    post:
+      tags: [deployments]
+      operationId: previewDeploymentUpdate
+      summary: What an update would change, before asking for it
+      description: |
+        Compares the deployment's item version and inputs with the draft's
+        and says what an update would do, what it refuses and why, its
+        quota and its approval. Nothing is reserved or changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDraft" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UpdatePreview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /deployments/{deploymentId}/private-key:
     parameters:
       - { $ref: "#/components/parameters/DeploymentIdPath" }
@@ -6425,8 +6491,11 @@ components:
 
     RequestKind:
       type: string
-      description: "`provision`: from the catalog. `day2`: an action on a deployment (ADR-0013)."
-      enum: [provision, day2]
+      description: |
+        `provision`: from the catalog. `day2`: an action on a deployment
+        (ADR-0013). `update`: a deployment updated to its item's version and
+        new inputs (ADR-0042).
+      enum: [provision, day2, update]
 
     Request:
       type: object
@@ -6437,14 +6506,14 @@ components:
         kind: { $ref: "#/components/schemas/RequestKind" }
         action:
           type: object
-          description: The day-2 action this request runs.
+          description: The day-2 action this request runs; `update` for an update.
           required: [key, name]
           properties:
             key: { type: string, examples: [snapshot_create] }
             name: { type: string, examples: [Take a snapshot] }
         deployment_id:
           type: string
-          description: The deployment a day-2 request acts on.
+          description: The deployment a day-2 request or an update acts on.
         resource:
           type: object
           description: The resource a day-2 request acts on, when it acts on one.
@@ -6807,6 +6876,85 @@ components:
           additionalProperties: true
         justification: { type: string, maxLength: 2000 }
 
+    UpdateDraft:
+      type: object
+      required: [version_id, inputs]
+      properties:
+        version_id:
+          type: string
+          description: |
+            The version to update to: the item's published version, whose
+            form `getRequestForm` gives. It may be the deployment's own.
+        inputs:
+          type: object
+          additionalProperties: true
+          description: |
+            Every input, as on a new request; the deployment's are in
+            `getDeployment`. Secret fields are given again.
+        justification: { type: string, maxLength: 2000 }
+
+    UpdatePreview:
+      type: object
+      required: [from_version, to_version, allowed, changes, refused, errors, quota, approval]
+      properties:
+        from_version: { $ref: "#/components/schemas/CatalogItemVersionRef" }
+        to_version: { $ref: "#/components/schemas/CatalogItemVersionRef" }
+        allowed:
+          type: boolean
+          description: The caller may update the deployment now (its state and the day-2 policies).
+        reason:
+          type: string
+          description: Why they can't, when `allowed` is false.
+        changes:
+          type: array
+          description: What the update does, in the order it runs.
+          items: { $ref: "#/components/schemas/UpdateChange" }
+        refused:
+          type: array
+          description: Changes rvav can't make in place, and why. An update with any is refused.
+          items: { $ref: "#/components/schemas/UpdateRefusal" }
+        fields: { $ref: "#/components/schemas/FieldStates" }
+        errors:
+          type: array
+          items: { $ref: "#/components/schemas/FieldError" }
+        quota:
+          type: array
+          description: The net change to the project's quotas; `adding` is negative where the update frees more than it adds.
+          items: { $ref: "#/components/schemas/QuotaImpact" }
+        approval: { $ref: "#/components/schemas/ApprovalPreview" }
+
+    UpdateChange:
+      type: object
+      required: [kind, title, destructive]
+      properties:
+        kind:
+          type: string
+          enum: [resize, disk_add, disk_extend, disk_remove, nic_add, nic_move, nic_remove, vm_add, vm_remove, job]
+        component:
+          type: string
+          description: The component's key; `vm` without components.
+        vm:
+          type: string
+          description: The VM it changes. A VM added is named when the update is asked for.
+        title: { type: string, examples: [Set 4 vCPU and 8 GB on web01] }
+        detail: { type: string, examples: ["Was 2 vCPU and 4 GB. Restarts the VM: CPU hot add is off."] }
+        destructive:
+          type: boolean
+          description: It deletes something (a disk and its data, an adapter, a VM).
+
+    UpdateRefusal:
+      type: object
+      required: [reason]
+      properties:
+        component:
+          type: string
+          description: The component's key; `vm` without components.
+        setting:
+          type: string
+          description: What changes, as the blueprint names it, for example `template` or `cluster`.
+          examples: [template]
+        reason: { type: string }
+
     ConsoleSession:
       type: object
       required: [vmrc_url]
@@ -7099,7 +7247,7 @@ components:
           properties:
             inputs:
               type: object
-              description: Inputs of the creating request. Secret fields are replaced by `"••••"`.
+              description: Its inputs, from the request that created it or from its last update. Secret fields are replaced by `"••••"`.
               additionalProperties: true
             resources:
               type: array

@@ -244,6 +244,11 @@ func (v *a1VM) refusedBut(user string, allowed ...string) []string {
 			v.h.json("POST", "/api/v1/deployments/"+v.id+"/resources/"+v.resource+"/console", user, nil, 403, nil)
 			continue
 		}
+		if a.Key == "update" {
+			v.h.json("POST", "/api/v1/deployments/"+v.id+"/update", user, api.UpdateDraft{VersionId: "ver_none", Inputs: map[string]any{}},
+				403, nil, "Idempotency-Key", uuid.NewString())
+			continue
+		}
 		v.h.json("POST", "/api/v1/deployments/"+v.id+"/actions", user, api.Day2Draft{Action: a.Key, ResourceId: a.ResourceId,
 			Inputs: map[string]any{}}, 403, nil, "Idempotency-Key", uuid.NewString())
 	}

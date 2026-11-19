@@ -121,6 +121,12 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return a.leaseCheck(ctx, in)
 	case "destroy_vm", "delete_resources":
 		return a.deleteResources(ctx, in)
+	case "set_drs_rule":
+		// The VMs an update keeps of a component it scales in (ADR-0042).
+		_, detail, err := a.setRule(ctx, RuleInput{RequestID: in.RequestID, ProjectID: in.ProjectID, DeploymentID: in.DeploymentID,
+			Component: argStr(args, "component"), Name: argStr(args, "name"), Cluster: argStr(args, "cluster"),
+			VCenter: argStr(args, "vcenter"), VMs: argStrs(args, "vms"), Morefs: argStrs(args, "morefs")})
+		return detail, err
 	case "create_snapshot":
 		return "", heartbeatWhile(ctx, func() error {
 			return v.CreateSnapshot(ctx, in.Moref, argStr(args, "name"), argStr(args, "description"), args["memory"] == true)
@@ -295,6 +301,9 @@ func isPermanent(err error) bool {
 // the action made of it, or what it was before. A delete that stopped
 // half-way leaves it failed.
 func day2Status(plan Plan, outcome string, started bool) string {
+	if u := plan.Update; u != nil && u.Before == "failed" && outcome != "succeeded" {
+		return u.Before
+	}
 	if plan.Day2 == nil {
 		return "ready"
 	}

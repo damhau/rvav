@@ -154,7 +154,7 @@ func TestDay2Actions(t *testing.T) {
 
 		// Power off is a request of its own.
 		off := run("tnguyen", "power_off", 202)
-		if off.Kind != api.Day2 || off.Action == nil || off.Action.Name != "Power off" || deref(off.DeploymentId) != dep ||
+		if off.Kind != api.RequestKindDay2 || off.Action == nil || off.Action.Name != "Power off" || deref(off.DeploymentId) != dep ||
 			off.Resource == nil || off.Status != api.RequestStatusQueued || off.Title != "Power off · "+off.Resource.Name {
 			t.Fatalf("power off request = %+v", off)
 		}
@@ -244,7 +244,7 @@ func TestDay2Actions(t *testing.T) {
 		// The history: the creating request, then every action, newest first.
 		var hist api.RequestPage
 		h.json("GET", "/api/v1/deployments/"+dep+"/history", "sbrunner", nil, 200, &hist)
-		if len(hist.Items) != 9 || hist.Items[8].Id != built.Id || hist.Items[8].Kind != api.Provision {
+		if len(hist.Items) != 9 || hist.Items[8].Id != built.Id || hist.Items[8].Kind != api.RequestKindProvision {
 			var order []string
 			for _, r := range hist.Items {
 				order = append(order, fmt.Sprintf("%s %s %s", r.Number, r.Kind, r.SubmittedAt.Format(time.RFC3339Nano)))

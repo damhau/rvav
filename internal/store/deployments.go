@@ -16,7 +16,7 @@ const deploymentRowSelect = `
 select d.id, d.name, d.status, d.project_id, d.environment, d.item_id, d.version_id, d.owner_id,
        d.created_by_request_id, d.created_at, d.lease_expires_at, d.lease_extensions_used,
        d.lease_extensions_max, d.expiry_action, d.sync_state, d.inputs, d.lease_reminded, d.lease_expired_at,
-       p.code as project_code, p.name as project_name, i.slug as item_slug, i.name as item_name,
+       p.code as project_code, p.name as project_name, i.slug as item_slug, i.name as item_name, i.type as item_type,
        v.number as version_number, u.name as owner_name, u.email as owner_email,
        (select count(*) from resources r where r.deployment_id = d.id and r.type = 'vsphere.vm')::int as vm_count,
        (select count(*) from resources r where r.deployment_id = d.id and r.type = 'vsphere.vm'
@@ -178,6 +178,13 @@ func (s *Store) ListDeployments(ctx context.Context, f DeploymentFilter) (Page[D
 func (s *Store) SetDeploymentStatus(ctx context.Context, db DB, id, status string) error {
 	_, err := db.Exec(ctx, `update deployments set status = $2,
 		deleted_at = case when $2 = 'deleted' then now() else deleted_at end where id = $1`, id, status)
+	return err
+}
+
+// SetDeploymentVersion records the version and inputs an update left the
+// deployment with (ADR-0042).
+func (s *Store) SetDeploymentVersion(ctx context.Context, db DB, id, versionID string, inputs json.RawMessage) error {
+	_, err := db.Exec(ctx, `update deployments set version_id = $2, inputs = $3 where id = $1`, id, versionID, inputs)
 	return err
 }
 

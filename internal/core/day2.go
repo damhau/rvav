@@ -51,7 +51,7 @@ func deploymentBusy(d store.DeploymentRow, active string, a *day2.Action, onVM b
 
 // targets are the deployment itself, then each of its resources.
 func targets(d store.DeploymentRow, resources []store.Resource) []day2.Target {
-	dep := day2.Target{ResourceName: d.Name, Type: day2.DeploymentType, OwnerID: d.OwnerID,
+	dep := day2.Target{ResourceName: d.Name, Type: day2.DeploymentType, OwnerID: d.OwnerID, ItemType: d.ItemType,
 		Lease: day2.Lease{ExpiresAt: d.LeaseExpiresAt, ExtensionsUsed: d.LeaseExtensionsUsed, ExpiredAt: d.LeaseExpiredAt}}
 	out := []day2.Target{}
 	for _, r := range resources {
