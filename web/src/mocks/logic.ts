@@ -14,6 +14,7 @@ import type {
   QuotaResource,
   RequestDraft,
   RequestPreview,
+  ServiceRequest,
   VmResource,
 } from "@/lib/api/types";
 import type { components } from "@/lib/api/schema";
@@ -29,7 +30,7 @@ import { celBool, celEval } from "./cel";
 import { warning } from "./warnings";
 import { multiParts, partVMs, previewComponents } from "./components";
 import { requestedNames } from "./deploymentNames";
-import { quotaCheck } from "./quotas";
+import { quotaAfter, quotaCheck } from "./quotas";
 import { limitCheck } from "./limits";
 import { roleRefs } from "./roles";
 import { bound, entryVars, validationErrors } from "./formLibrary";
@@ -705,8 +706,7 @@ export function ruled(db: Db, item: StoredItem, project: Project, draft: Request
  * with these inputs: what it holds, the deployments it makes and the
  * largest one's size.
  */
-function requestAsks(db: Db, r: StoredRequest, inputs: Inputs) {
-  const req = r.request;
+function requestAsks(db: Db, req: ServiceRequest, inputs: Inputs) {
   const item = db.items.find((i) => i.id === req.catalog_item.id);
   const project = db.projects.find((p) => p.id === req.project.id);
   if (!item || !project) return undefined;
@@ -723,6 +723,14 @@ function requestAsks(db: Db, r: StoredRequest, inputs: Inputs) {
   };
 }
 
+/** As the server's quotaAfter for a new request's approval: "" when it asks no vCPU or memory. */
+export function requestQuotaAfter(db: Db, req: ServiceRequest): string {
+  if (req.kind !== "provision") return "";
+  const a = requestAsks(db, req, req.inputs ?? {});
+  if (!a || (a.need.vcpu <= 0 && a.need.memory_gb <= 0)) return "";
+  return quotaAfter(db, { ...a.sc, you: false });
+}
+
 /**
  * As the server's check of an approver's edit (ADR-0047): the request's
  * owner's hard quotas and deployment limits, for what the edit adds to
@@ -730,8 +738,8 @@ function requestAsks(db: Db, r: StoredRequest, inputs: Inputs) {
  * accepted them on submit.
  */
 export function approverEditRefusals(db: Db, r: StoredRequest, inputs: Inputs): FieldError[] {
-  const before = requestAsks(db, r, r.request.inputs ?? {});
-  const after = requestAsks(db, r, inputs);
+  const before = requestAsks(db, r.request, r.request.inputs ?? {});
+  const after = requestAsks(db, r.request, inputs);
   if (!before || !after) return [];
   const growth = Object.fromEntries(
     (Object.keys(after.need) as QuotaResource[]).map((k) => [k, Math.max(after.need[k] - before.need[k], 0)]),
@@ -767,7 +775,7 @@ export function approverEditRefusals(db: Db, r: StoredRequest, inputs: Inputs): 
  */
 export function rolledBackRetryRefusal(db: Db, r: StoredRequest): string {
   const req = r.request;
-  const a = requestAsks(db, r, req.inputs ?? {});
+  const a = requestAsks(db, req, req.inputs ?? {});
   if (!a) return "";
   const { need, made, vcpu, memory, sc } = a;
   const hard = [

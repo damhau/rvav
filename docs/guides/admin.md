@@ -770,7 +770,8 @@ to another project checks that project's. When an approver changes a
 request's inputs, the change is checked against the quotas of whoever
 owns the request, for what it adds to the request's size: a smaller size
 always fits. The approval's **Quota after** line shows, for vCPU and
-memory, the quota with the least room left once the request is done.
+memory, the quota with the least room left once the request is done,
+and whose quota it is.
 
 rvav checks requests sent at the same time one after the other, so they
 can't all take the last of a quota or of a deployment limit: one fits,

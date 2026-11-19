@@ -547,9 +547,12 @@ you have approved or rejected. Select a row to open it in a side panel,
 which shows:
 - what is asked and why;
 - the rules that made it need approval;
-- its cost in quota: **Quota after** shows, for vCPU and memory, the quota
-  with the least room left once it's done, such as the project's or the
-  quota of the person it's for.
+- its cost in quota: **Quota after** shows, for vCPU and memory, how much
+  of the quota with the least room left is used once it's done, and whose
+  quota that is: the project's, the project's in one environment, the
+  quota of the person it's for, or one for all of rvav. For example,
+  "6 / 8 vCPU (Thomas Nguyen's quota in Web Platform) · 12 / 64 GB (Web
+  Platform)".
 
 **Deciding:**
 - **Approve:** you may change the inputs your organisation lets approvers

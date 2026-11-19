@@ -112,8 +112,11 @@ and `userLevel` objects, each with its own `limits`:
 
 The limits `cpu`, `memory`, `storage` and `instances` become vCPU,
 memory, storage and VMs. Memory and storage are in GB, or a `value` with
-the `unit` `MB`, `GB` or `TB`. Another limit, or another level, is
-reported.
+the `unit` `MB`, `GB` or `TB`. An amount in MB is rounded up to a whole
+GB, and the plan's note says from how many MB: 1536 MB becomes 2 GB, so
+a limit under 1 GB isn't read as none. An amount the importer can't
+read, such as one in another unit, is reported as unmapped: set that
+limit by hand. Another limit, or another level, is reported.
 
 A deployment limit policy becomes a deployment limit policy
 (**Administration › Policies › Limits**) for the same project, or for
@@ -122,14 +125,14 @@ every project. The plan reads its `deploymentLimits`, or its `limits`:
 | vRA limit | rvav limit |
 |---|---|
 | `cpu` | vCPU per deployment. |
-| `memory` | Memory per deployment, in GB or as a `value` and a `unit`. |
+| `memory` | Memory per deployment, in GB or as a `value` and a `unit`. An amount in MB is rounded up to a whole GB. |
 | `deploymentCount` or `deployments` | Deployments per project, or deployments per user when the policy's `level` is `user`. |
 | `storage` | Reported: the project's storage quota bounds what its deployments hold in all. |
 | `resourceLimits` | Reported: rvav limits each deployment as a whole, and the sizes an item offers bound each VM. |
 | The policy's `criteria` | Reported: an rvav deployment limit applies to every deployment of its project, in one environment or in all. |
 
-A deployment limit policy with only limits that don't map becomes
-nothing.
+A limit the importer can't read is reported as unmapped. A deployment
+limit policy with only limits that don't map becomes nothing.
 
 A policy's `enforcementType` gives the rvav policy's enforcement where
 rvav's policy has one ([ADR-0045](../adr/0045-deployment-sharing-and-project-policies.md)):

@@ -166,6 +166,29 @@ export function quotaCheck(db: Db, sc: QuotaScope, what: string, adding: Partial
   return { lines, hard, overSoft };
 }
 
+/**
+ * As the server's quotaAfter: for vCPU and memory, how much of the level with
+ * the least room left is held, and where that level is ("6 / 8 vCPU (Thomas
+ * Nguyen's quota in Web Platform)").
+ */
+export function quotaAfter(db: Db, sc: QuotaScope): string {
+  const parts: string[] = [];
+  for (const [r, unit] of [
+    ["vcpu", "vCPU"],
+    ["memory_gb", "GB"],
+  ] as const) {
+    let tight: { left: number; text: string } | undefined;
+    for (const lv of levelsOf(db, sc)) {
+      const limit = lv.limits.find((l) => l.resource === r)?.limit;
+      if (limit == null) continue;
+      const left = limit - lv.used[r];
+      if (!tight || left < tight.left) tight = { left, text: `${lv.used[r]} / ${limit} ${unit} (${lv.where})` };
+    }
+    if (tight) parts.push(tight.text);
+  }
+  return parts.join(" · ");
+}
+
 /** What applies here's quota lines in a project and environment, counting what userId holds, as explainQuota. */
 export function explainQuotaLines(db: Db, projectId: string, env: string, userId: string): S["PolicyQuotaLine"][] {
   const project = db.projects.find((p) => p.id === projectId);

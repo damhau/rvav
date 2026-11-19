@@ -67,6 +67,7 @@ import {
   demand,
   policyVars,
   preview,
+  requestQuotaAfter,
   resolveField,
   rolledBackRetryRefusal,
   ruled,
@@ -311,6 +312,13 @@ const levelsOf = (requestId: string) =>
   db.approvals.filter((a) => a.request.id === requestId && !a.step_key).sort((a, b) => a.level.index - b.level.index);
 
 /** The answer to a composite step's wait, as core.DecideApproval takes it: it goes on the step, not a level. */
+/** An approval as its viewer reads it: the request's Quota after is read now, as the server's facts are. */
+function approvalView(a: StoredApproval, r: ServiceRequest | undefined): S["Approval"] {
+  const view = viewOf(db, a, r);
+  const after = r && !a.step_key ? requestQuotaAfter(db, r) : "";
+  return after ? { ...view, facts: [...view.facts, { label: "Quota after", value: after }] } : view;
+}
+
 function answerStep(a: StoredApproval, stored: StoredRequest, body: S["ApprovalDecision"]) {
   const form = a.question?.form ?? [];
   const refuse = (field: string, code: string, message: string) =>
@@ -345,7 +353,7 @@ function answerStep(a: StoredApproval, stored: StoredRequest, body: S["ApprovalD
       answer: Object.fromEntries(form.map((f) => [f.key, clean[f.key] ?? f.default ?? null])),
     });
   publishApproval(a);
-  return json<S["Approval"]>(viewOf(db, a, stored.request));
+  return json<S["Approval"]>(approvalView(a, stored.request));
 }
 
 const visibleApproval = (a: StoredApproval) => isApproverOf(db, a) || myProjectIds().has(a.project.id);
@@ -1029,7 +1037,7 @@ export const handlers = [
     await wait();
     const a = db.approvals.find((x) => x.id === params.approvalId);
     if (!a || !visibleApproval(a)) return notFound("Approval");
-    return json<S["Approval"]>(viewOf(db, a, requestByKey(a.request.id)?.request));
+    return json<S["Approval"]>(approvalView(a, requestByKey(a.request.id)?.request));
   }),
 
   http.post<{ approvalId: string }>(`${base}/approvals/:approvalId/decision`, async ({ params, request }) => {
@@ -1122,7 +1130,7 @@ export const handlers = [
     }
     a.request.status = stored.request.status;
     publishApproval(a);
-    return json<S["Approval"]>(viewOf(db, a, stored.request));
+    return json<S["Approval"]>(approvalView(a, stored.request));
   }),
 
   http.post<{ approvalId: string }>(`${base}/approvals/:approvalId/delegate`, async ({ params, request }) => {
@@ -1151,7 +1159,7 @@ export const handlers = [
     }
     if (!a.delegates.some((u) => u.id === to.id)) a.delegates.push(to);
     publishApproval(a);
-    return json<S["Approval"]>(viewOf(db, a, requestByKey(a.request.id)?.request));
+    return json<S["Approval"]>(approvalView(a, requestByKey(a.request.id)?.request));
   }),
 
   http.get<{ requestId: string }>(`${base}/requests/:requestId/approvals`, async ({ params }) => {
@@ -1160,7 +1168,7 @@ export const handlers = [
     if (!r || !visibleRequest(r.request)) return notFound("Request");
     // Its levels, then what its composite's steps asked (ADR-0033).
     const asked = db.approvals.filter((a) => a.request.id === r.request.id && a.step_key);
-    return json({ items: [...levelsOf(r.request.id), ...asked].map((a) => viewOf(db, a, r.request)) });
+    return json({ items: [...levelsOf(r.request.id), ...asked].map((a) => approvalView(a, r.request)) });
   }),
 
   http.get(`${base}/deployments`, async ({ request }) => {

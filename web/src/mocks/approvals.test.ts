@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { api, call } from "@/lib/api/client";
 import { checkAnswer } from "./approvals";
 import { limitState } from "./limits";
 import { deploymentUsage, quotaState } from "./quotas";
@@ -34,10 +35,10 @@ const approve = async (number: string, inputs: Record<string, unknown>) => {
 // As the server's applyEdits (ADR-0047): the request's owner's hard quotas
 // and limits, for what the edit adds to what the request holds already.
 describe("an approver's edit in the mocks", () => {
-  const thomasHolds = () =>
+  const thomasHolds = (r: "vcpu" | "memory_gb" = "memory_gb") =>
     db.deployments
       .filter((d) => d.project.id === "prj_web" && d.owner.id === "usr_tnguyen" && d.status !== "deleted")
-      .reduce((n, d) => n + deploymentUsage(d).memory_gb, 0);
+      .reduce((n, d) => n + deploymentUsage(d)[r], 0);
   const tightVcpu = () =>
     limitState(db).policies.push({
       id: "dlp_t",
@@ -74,6 +75,19 @@ describe("an approver's edit in the mocks", () => {
     ]);
     quotaState(db).perUser.prj_web![0]!.limit = thomasHolds() + 16;
     expect((await approve("REQ-10477", { size: "L" })).status).toBe(200);
+  });
+
+  // As the server's quotaAfter: the level with the least room left, named.
+  it("shows the approver the owner's quota with the least room left, and whose it is", async () => {
+    const vcpu = thomasHolds("vcpu");
+    quotaState(db).perUser.prj_web = [{ resource: "vcpu", limit: vcpu + 2, enforcement: "hard", set_by_admin: true }];
+    const level = db.approvals.find((a) => a.request.number === "REQ-10477" && a.status === "pending")!;
+    const view = await call(api.GET("/approvals/{approvalId}", { params: { path: { approvalId: level.id } } }));
+    expect(view.facts.find((f) => f.label === "Quota after")?.value).toMatch(
+      new RegExp(
+        String.raw`^${vcpu} / ${vcpu + 2} vCPU \(Thomas Nguyen's quota in Web Platform\) · \d+ / \d+ GB \(.+\)$`,
+      ),
+    );
   });
 
   it("holds a growth to the size limits, and lets a smaller size through", async () => {
