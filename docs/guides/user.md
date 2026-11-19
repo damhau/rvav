@@ -602,3 +602,8 @@ Teams, Slack. A test message checks that each channel works.
 A token acts with the roles given to you in rvav itself, not those from
 your groups, so it can't approve. The [API reference](../operations/README.md#api) describes every
 call.
+
+## The command line
+
+[rvavctl](cli.md) requests, follows requests, runs day-2 actions and
+decides approvals from a terminal, signed in as you.

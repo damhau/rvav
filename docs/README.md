@@ -1,7 +1,7 @@
 # rvav documentation
 
 - **Using rvav:** [user guide](guides/user.md) for requesters, owners and
-  approvers.
+  approvers, and [the command line](guides/cli.md), rvavctl.
 - **Administering it:** [administrator guide](guides/admin.md) for
   administrators and catalog admins.
   - [service-catalog.md](service-catalog.md): items and blueprints.

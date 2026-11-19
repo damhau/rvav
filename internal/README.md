@@ -2,7 +2,9 @@
 
 One binary, `cmd/rvav`, runs every process (`api`, `worker`, `sync`, `dev`,
 `migrate`, `seed`, `vcsim-bootstrap`, `healthcheck`). `cmd/rvav-vcsim` runs the
-vCenter simulator with the GVA layout for local work.
+vCenter simulator with the GVA layout for local work. `cmd/rvavctl` is the
+command line for users (`internal/cli`, ADR-0051), on the API client that
+`pkg/rvavclient` generates from the same contract.
 
 | Package | What it does |
 |---|---|
@@ -10,6 +12,7 @@ vCenter simulator with the GVA layout for local work.
 | `app` | Wires configuration, the database and integrations into processes |
 | `auth` | OIDC access tokens, API tokens (`rvav_pat_`), dev mode; the `Principal` |
 | `blueprint` | Catalog item blueprints and their CEL bindings |
+| `cli` | rvavctl's commands (cobra): sign-in, catalog, requests, deployments, approvals; tables or JSON |
 | `config` | `RVAV_*` environment variables |
 | `core` | Business rules: draft evaluation (schema, placement, naming, approval, quota, lease), form value sources, submit, cancel, approvals (inbox, decide, delegate) |
 | `e2e` | End-to-end tests (`make test-e2e`): slice 1 in Temporal's test environment, and requests through a real Temporal dev server; they start their own PostgreSQL and are skipped with `-short` |

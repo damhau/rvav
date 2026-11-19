@@ -30,3 +30,7 @@ guides.
 - **The source** is [api/openapi.yaml](../../api/openapi.yaml).
 - **Scripts:** sign in with an API token (`Authorization: Bearer
   rvav_pat_…`), made under API tokens in the app.
+- **The command line,** [rvavctl](../guides/cli.md), and the Go client it
+  uses, `pkg/rvavclient`, are generated from the same contract.
+  `make cli-dist` builds rvavctl's archives for a release, into
+  `dist/rvavctl/`.

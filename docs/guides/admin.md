@@ -267,6 +267,35 @@ the discovery URL is that address, `http://keycloak.<namespace>.svc:8080/realms/
 
 In rvav, the issuer is `https://<org>.okta.com/oauth2/<server ID>`.
 
+### Signing in with rvavctl
+
+[rvavctl](cli.md) signs in with rvav's client, as the web app does, so
+its tokens have the same audience and groups. On that client, allow:
+- **The loopback redirect** `http://127.0.0.1/callback`, for the sign-in
+  in the browser. rvavctl listens on a free port, which providers ignore
+  on a loopback address (RFC 8252). If yours matches ports exactly,
+  register one, for example `http://127.0.0.1:8250/callback`, and tell
+  people to sign in with `--callback-port 8250`.
+- **The device authorization grant,** for `rvavctl login --device`.
+
+By provider:
+- **Keycloak:** add `http://127.0.0.1/callback` to **Valid redirect
+  URIs**, and turn on **OAuth 2.0 Device Authorization Grant** in
+  **Capability config**.
+- **Entra ID:** in **Authentication**, add the **Mobile and desktop
+  applications** platform with `http://127.0.0.1/callback`, and set
+  **Allow public client flows** to **Yes** for the device code flow.
+- **Okta:** the single-page application can't use the device grant. Add
+  a **Native Application** for rvavctl, with the authorization code,
+  refresh token and device authorization grants, its sign-in redirect URI
+  `http://127.0.0.1:8250/callback`, and access to the same authorization
+  server, so that its tokens have rvav's audience. Tell people to sign in
+  with `--client-id <its client ID> --callback-port 8250`.
+
+`offline_access` is asked for when the provider offers it, so that a
+sign-in outlives the browser session. Without it, people sign in again
+when the provider's session ends.
+
 ### When the trial refuses the token
 
 | The trial says | Change |

@@ -177,8 +177,11 @@ The external penetration test is the organisation's (Lab acceptance).
   [integrations.md](../integrations.md); the console account may only
   open consoles.
 - **The identity provider:** short access tokens; rvav's client public
-  with PKCE, its redirect URIs limited to rvav's address; groups kept to
-  those rvav maps.
+  with PKCE, its redirect URIs limited to rvav's address and rvavctl's
+  loopback address (`http://127.0.0.1/callback`); groups kept to those
+  rvav maps.
+- **rvavctl:** a sign-in is kept in the user's configuration directory,
+  readable by them only; `rvavctl logout` forgets it.
 - **The network:**
   - only the ingress reaches the web app and the API;
   - metrics (`:9090`) stay inside;

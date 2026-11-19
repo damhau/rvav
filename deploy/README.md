@@ -38,8 +38,10 @@ When a port is already taken, change it with `RVAV_API_PORT`,
 `RVAV_WEB_PORT`, `RVAV_KEYCLOAK_PORT`, `RVAV_TEMPORAL_PORT`,
 `RVAV_TEMPORAL_UI_PORT`, `RVAV_VCSIM_PORT` or `RVAV_POSTGRES_PORT`, in the
 shell or in `deploy/.env` (not committed). For example `RVAV_API_PORT=18080`.
-Keycloak sign-in only accepts the web app on ports 3000, 5173 and 8080, the
-redirect URIs in `deploy/keycloak/realm-rvav.json`.
+Keycloak sign-in only accepts the web app on ports 3000, 5173 and 8080, and
+rvavctl on `http://127.0.0.1/callback`, the redirect URIs in
+`deploy/keycloak/realm-rvav.json`. The realm also allows `rvavctl login
+--device`.
 
 Ports are published on 127.0.0.1 only, because with dev authentication
 anyone who reaches the API is trusted. To reach the stack from other
