@@ -25,10 +25,11 @@ Subscription (event → awx template | webhook)
 ## Core entities
 
 ### Identity and access
-- **User**: subject from OIDC, display name, email, groups (synced from token claims).
+- **User**: subject from OIDC, display name, email, manager, groups (synced from token claims).
 - **Group mapping**: OIDC group → global role or project role.
 - **Global roles**: `admin`, `catalog-admin`, `auditor`, `user`.
-- **Project roles**: `project-admin`, `member`, `viewer`.
+- **Project roles**: `project-admin`, `member`, `viewer`, `supervisor` (approves and
+  sees, never requests; ADR-0041).
 - **ApiToken**: user-owned, scoped to roles, with expiry, stored hashed.
 
 ### Environment
@@ -76,7 +77,8 @@ Subscription (event → awx template | webhook)
   time, Temporal workflow ID.
 - **RequestEvent**: timeline entries (step key, parent step, status, message,
   started/finished, external reference such as an AWX job ID).
-- **Approval**: the policy that triggered it, level, approvers (users or groups),
+- **Approval**: the policy that triggered it, level, approvers (users, groups,
+  project roles resolved when the level opens, or the requester's manager),
   decision, comment, decided_by, due date.
 
 ### Deployment and resources
