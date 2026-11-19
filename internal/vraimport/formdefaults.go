@@ -14,7 +14,7 @@ import (
 // can't map: an action's default, a conditional one. It says whether the
 // field's value is now worked out.
 func formDefault(id string, d any, readOnly bool, props, field, initial map[string]any, where string,
-	note func(level, where, text string)) bool {
+	lib map[string]LibraryImport, note func(level, where, text string)) bool {
 	m, _ := d.(map[string]any)
 	switch {
 	case m != nil && m["bind"] != nil:
@@ -38,8 +38,13 @@ func formDefault(id string, d any, readOnly bool, props, field, initial map[stri
 		note(Info, where, "Its default is worked out from other fields in vRA: its default rule is "+expr+", which the requester can change.")
 		return false
 	case m != nil && m["type"] == "scriptAction":
+		mapped, why := takeLibrary(lib, m, true, props, field, where, note)
+		if mapped {
+			delete(initial, id)
+			return false
+		}
 		note(Unmapped, where, fmt.Sprintf("Its default comes from action %v in vRA: give the field an rvav REST value source, "+
-			"which gives it its default.", m["id"]))
+			"which gives it its default.", m["id"])+why)
 		return false
 	case conditional(d):
 		note(Unmapped, where, "Its default depends on other fields in vRA (a condition): write an rvav default rule (CEL) for it.")

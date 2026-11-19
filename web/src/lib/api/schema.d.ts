@@ -5976,6 +5976,8 @@ export interface components {
                 templates_create: number;
                 /** @description Property groups to make of vRA's (ADR-0038). */
                 property_groups_create: number;
+                /** @description Form library entries to make of the vRO actions custom forms use (ADR-0043). */
+                form_library_create: number;
                 items_create: number;
                 items_update: number;
                 items_unchanged: number;
@@ -5990,6 +5992,7 @@ export interface components {
             projects: components["schemas"]["VraProjectPlan"][];
             templates: components["schemas"]["VraTemplatePlan"][];
             property_groups: components["schemas"]["VraPropertyGroupPlan"][];
+            form_library: components["schemas"]["VraFormLibraryPlan"][];
             items: components["schemas"]["VraItemPlan"][];
             deployments: components["schemas"]["VraDeploymentPlan"][];
             policies: components["schemas"]["VraPolicyPlan"][];
@@ -6088,6 +6091,35 @@ export interface components {
             constants: {
                 [key: string]: unknown;
             };
+            notes: components["schemas"]["VraNote"][];
+        };
+        /**
+         * @description The form library entry a vRO action becomes (ADR-0043), when a
+         *     custom form takes its choices or a field's default from it and its
+         *     script makes one GET to a URL the import can read: a REST value
+         *     source, the action's inputs the URL reads its parameters. The
+         *     fields that use the action name the entry at `version`.
+         */
+        VraFormLibraryPlan: {
+            /** @description The action as forms name it: module/name. */
+            vro_action: string;
+            key: string;
+            name: string;
+            /**
+             * @description What the import does: make the entry; nothing, as rvav's is
+             *     what the action gives; nothing, as rvav has another entry of
+             *     that key (the import never changes one); nothing, as the action
+             *     can't be one (`notes` say why: its fields keep a note naming
+             *     it).
+             * @enum {string}
+             */
+            action: "create" | "unchanged" | "differs" | "skip";
+            /** @description The version the items name: the one the import makes, or rvav's latest; 0 when skipped. */
+            version: number;
+            /** @description The entry's URL, its parameters as ${params.x}. */
+            url?: string;
+            /** @description The action's inputs the URL reads, the entry's parameters. */
+            parameters: string[];
             notes: components["schemas"]["VraNote"][];
         };
         /**
@@ -6206,6 +6238,8 @@ export interface components {
             templates_created: string[];
             /** @description Property groups made (their keys). */
             property_groups_created: string[];
+            /** @description Form library entries made (their keys). */
+            form_library_created: string[];
             /** @description rvav projects given vRA's custom properties (their names). */
             projects_updated: string[];
             /** @description Items made (their names). */

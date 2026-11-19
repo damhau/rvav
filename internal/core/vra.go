@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -90,6 +91,9 @@ func (s *Service) vraRvav(ctx context.Context, e *vra.Estate, projectMap map[str
 	if err := s.vraImages(ctx, &r); err != nil {
 		return r, err
 	}
+	if err := s.vraFormLibrary(ctx, &r); err != nil {
+		return r, err
+	}
 	// The lease policies adoption will apply.
 	r.Leases = map[string]vraimport.Lease{}
 	for _, p := range r.Projects {
@@ -155,6 +159,50 @@ func (s *Service) vraImages(ctx context.Context, r *vraimport.Rvav) error {
 		r.PropertyGroups[g.Key] = rg
 	}
 	return nil
+}
+
+// vraFormLibrary gives the plan rvav's form library and the hosts REST
+// sources may call (ADR-0043).
+func (s *Service) vraFormLibrary(ctx context.Context, r *vraimport.Rvav) error {
+	entries, err := s.Store.LibraryEntries(ctx)
+	if err != nil {
+		return err
+	}
+	r.FormLibrary = map[string]vraimport.RvavEntry{}
+	for _, e := range entries {
+		re := vraimport.RvavEntry{Version: e.Version, Use: e.Use, Kind: e.Kind}
+		if err := json.Unmarshal(e.Params, &re.Params); err != nil {
+			return err
+		}
+		var params []api.FormLibraryParameter
+		if err := json.Unmarshal(e.Parameters, &params); err != nil {
+			return err
+		}
+		for _, p := range params {
+			re.Parameters = append(re.Parameters, p.Name)
+		}
+		r.FormLibrary[e.Key] = re
+	}
+	r.RESTAllowed = func(target string) bool {
+		u, err := url.Parse(target)
+		return err == nil && s.REST.Allowed(ctx, u)
+	}
+	return nil
+}
+
+// vraLibraryEntry makes a form library entry of a vRO action (ADR-0043).
+func (s *Service) vraLibraryEntry(ctx context.Context, p *auth.Principal, li vraimport.LibraryImport) error {
+	entry := maps.Clone(li.Entry)
+	entry["key"] = li.Key
+	w, err := convert[api.FormLibraryEntryWrite](entry)
+	if err != nil {
+		return err
+	}
+	_, err = s.PutFormLibraryEntry(ctx, p, "", w, true)
+	if errors.Is(err, ErrForbidden) {
+		return &ValidationError{Errors: []api.FieldError{fieldErr("", "forbidden", "Making form library entries needs the right to manage the catalog.")}}
+	}
+	return err
 }
 
 // vraPropertyGroup makes a property group of vRA's (ADR-0038).
@@ -524,7 +572,8 @@ func (s *Service) MapVRAProject(ctx context.Context, p *auth.Principal, vraID st
 // (drafts) with their sharing, and, when asked, its deployments adopted.
 // It can run again: what was imported is linked, so only what changed is.
 func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraImportRequest) (api.VraImportResult, error) {
-	out := api.VraImportResult{TemplatesCreated: []string{}, PropertyGroupsCreated: []string{}, ProjectsUpdated: []string{}, Created: []string{}, Updated: []string{}, Adopted: []string{}}
+	out := api.VraImportResult{TemplatesCreated: []string{}, PropertyGroupsCreated: []string{}, FormLibraryCreated: []string{},
+		ProjectsUpdated: []string{}, Created: []string{}, Updated: []string{}, Adopted: []string{}}
 	out.Failed = []struct {
 		Name   string `json:"name"`
 		Reason string `json:"reason"`
@@ -575,7 +624,8 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 		if out.ProjectsUpdated, err = s.vraProjectProperties(ctx, p, plan.Projects, chosen); err != nil {
 			return out, err
 		}
-		// Templates and property groups first: items name them.
+		// Templates, property groups and form library entries first: items
+		// name them.
 		for _, g := range plan.PropertyGroups {
 			if g.Action != vraimport.ActionCreate {
 				continue
@@ -587,6 +637,18 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 				return out, err
 			}
 			out.PropertyGroupsCreated = append(out.PropertyGroupsCreated, g.Key)
+		}
+		for _, li := range plan.FormLibrary {
+			if li.Action != vraimport.ActionCreate {
+				continue
+			}
+			if err := s.vraLibraryEntry(ctx, p, li); isRefusal(err) {
+				fail("Form library entry "+li.Key, err)
+				continue
+			} else if err != nil {
+				return out, err
+			}
+			out.FormLibraryCreated = append(out.FormLibraryCreated, li.Key)
 		}
 		for _, t := range plan.Templates {
 			if t.Action != vraimport.ActionCreate {
@@ -693,7 +755,7 @@ func (s *Service) ImportVRA(ctx context.Context, p *auth.Principal, req api.VraI
 		}
 	}
 	s.audit(ctx, p, "vra.import", "vra_snapshot", v.ID, nil, map[string]any{"templates": out.TemplatesCreated,
-		"property_groups": out.PropertyGroupsCreated, "projects": out.ProjectsUpdated,
+		"property_groups": out.PropertyGroupsCreated, "form_library": out.FormLibraryCreated, "projects": out.ProjectsUpdated,
 		"created": out.Created, "updated": out.Updated,
 		"shared": out.Shared, "adopted": out.Adopted, "failed": len(out.Failed)})
 	after, _, err := s.vraPlan(ctx, e, nil)

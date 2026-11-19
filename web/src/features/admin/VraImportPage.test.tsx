@@ -40,10 +40,12 @@ describe("vRA import", () => {
     await user.click(screen.getByRole("button", { name: "Import…" }));
     const sheet = await screen.findByRole("dialog", { name: "Import from vRA" });
     expect(sheet).toHaveTextContent(/2 property groups to make from vRA's;/);
+    expect(sheet).toHaveTextContent(/1 form library entry to make from vRO's actions;/);
     await user.click(within(sheet).getByRole("button", { name: "Import" }));
     const result = (await screen.findAllByRole("region", { name: "Imported" })).at(-1);
     expect(result).toHaveTextContent(/Projects given vRA's custom properties: Web Platform/);
     expect(result).toHaveTextContent(/Property groups made: corpInputs, dnsSettings/);
+    expect(result).toHaveTextContent(/Form library entries made: getCostCentres/);
     await waitFor(() => expect(properties("vra-prj-web")).toHaveTextContent(/^Left out: cost center$/));
   });
 
@@ -82,6 +84,20 @@ describe("vRA import", () => {
     await user.click(within(table).getByRole("button", { name: "Notes on Corporate inputs: 1 note" }));
     const sheet = await screen.findByRole("dialog", { name: "Notes on Corporate inputs" });
     expect(sheet).toHaveTextContent(/the form shows their values/);
+  });
+
+  it("lists the form library entries vRO's actions become, and why one can't be", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=items");
+    const table = await screen.findByRole("table", { name: "Form library" });
+    const row = (action: string) => within(table).getByText(action).closest("tr") as HTMLTableRowElement;
+    expect(row("com.corp.finance/getCostCentres")).toHaveTextContent(
+      "getCostCentres · https://finance.corp.example/api/cost-centres?env=${params.environment}Create",
+    );
+    expect(row("com.corp.db/getVersions")).toHaveTextContent(/getVersionsNot imported.*see why in the notes/);
+    await user.click(within(table).getByRole("button", { name: "Notes on com.corp.db/getVersions: 1 left out" }));
+    const sheet = await screen.findByRole("dialog", { name: "Notes on com.corp.db/getVersions" });
+    expect(sheet).toHaveTextContent(/vRO's REST host dbaas, whose URL the import doesn't know/);
   });
 
   it("lists the templates vRA's image mappings become, with what the import does and why", async () => {

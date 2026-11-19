@@ -7,6 +7,7 @@
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { adminState } from "./administration";
+import { entryAt, libraryOf, storedEntry } from "./formLibrary";
 import type { Db } from "./seed";
 
 type S = components["schemas"];
@@ -61,6 +62,17 @@ const groups: Omit<S["VraPropertyGroupPlan"], "action">[] = [
     notes: [{ level: "info", where: "properties.costCenter.oneOf", text: "Its choices' titles aren't kept: the form shows their values." }] },
   { vra_id: "pg-dns", name: "dnsSettings", key: "dnsSettings", label: "DNS settings", type: "constant", version: 1, inputs: [],
     constants: { domain: "corp.example", ttl: 300 }, notes: [] },
+]; // prettier-ignore
+
+/** The vRO actions vRA's custom forms use, as form library entries (ADR-0043). */
+const libraryWrites: { vro_action: string; key: string; write?: S["FormLibraryEntryWrite"]; notes: S["VraNote"][] }[] = [
+  { vro_action: "com.corp.db/getVersions", key: "getVersions",
+    notes: [{ level: "unmapped", where: "script", text: "It calls vRO's REST host dbaas, whose URL the import doesn't know: add an entry under Administration › Form library with that host's URL and the path /versions?env=${params.environment}." }] },
+  { vro_action: "com.corp.finance/getCostCentres", key: "getCostCentres",
+    write: { name: "Get cost centres", description: "vRO's action com.corp.finance/getCostCentres, version 1.0.0, imported from vRA.", use: "source", kind: "rest",
+      params: { url: "https://finance.corp.example/api/cost-centres?env=${params.environment}", items: "$", value: "$" }, search: false,
+      parameters: [{ name: "environment", label: "Environment", required: true }] },
+    notes: [{ level: "warning", where: "script", text: "Made from its script: check the entry's JSONPaths against what the service answers, with Test under Administration › Form library." }] },
 ]; // prettier-ignore
 
 const vraProjects: {
@@ -190,6 +202,14 @@ function plan(db: Db, st: State): S["VraPlan"] {
     ...g,
     action: st.imported.has(`group:${g.key}`) ? "unchanged" : "create",
   }));
+  const library: S["VraFormLibraryPlan"][] = libraryWrites.map(({ write, ...l }) => {
+    const have = entryAt(db, l.key);
+    const params = write?.params as Record<string, string> | undefined;
+    if (!write) return { ...l, name: l.vro_action, action: "skip", version: 0, parameters: [] };
+    const base = { ...l, name: write.name, url: params?.url, parameters: (write.parameters ?? []).map((p) => p.name) };
+    if (!have) return { ...base, action: "create", version: 1 };
+    return { ...base, action: st.imported.has(`lib:${l.key}`) ? "unchanged" : "differs", version: have.version };
+  });
   const cutover: S["VraCutover"] = {
     total: projects.length,
     moved: Object.keys(st.moved).length,
@@ -233,12 +253,13 @@ function plan(db: Db, st: State): S["VraPlan"] {
     summary: {
       templates_create: tpls.filter((t) => t.action === "create").length,
       property_groups_create: pgs.filter((g) => g.action === "create").length,
+      form_library_create: library.filter((e) => e.action === "create").length,
       items_create: count((i) => i.action === "create"), items_update: 0, items_unchanged: count((i) => i.action === "unchanged"),
       items_blocked: count((i) => i.action === "skip" || i.action === "conflict"), shares_add: items.reduce((n, i) => n + i.share_add.length, 0),
       deployments_adopt: deployments.filter((d) => d.status === "adopt").length, deployments_adopted: deployments.filter((d) => d.status === "adopted").length,
       deployments_skipped: deployments.filter((d) => d.status === "skipped").length,
     },
-    projects, templates: tpls, property_groups: pgs, items, deployments, cutover,
+    projects, templates: tpls, property_groups: pgs, form_library: library, items, deployments, cutover,
     policies: [
       { vra_id: "pol-approval-prd", name: "Production needs a lead", type: "approval", becomes: "An approval policy for catalog requests, in every project (Administration › Policies › Approvals)",
         notes: [{ level: "info", where: "criteria", text: 'Condition: environment == "prd"' }, { level: "info", where: "approvers", text: "Level 1: infra-leads@corp.example, any of them." }] },
@@ -340,6 +361,7 @@ export function vraHandlers(db: Db, base: string, wait: () => Promise<void>) {
       const out: S["VraImportResult"] = {
         templates_created: [],
         property_groups_created: [],
+        form_library_created: [],
         projects_updated: [],
         created: [],
         updated: [],
@@ -363,6 +385,13 @@ export function vraHandlers(db: Db, base: string, wait: () => Promise<void>) {
         for (const g of before.property_groups.filter((x) => x.action === "create")) {
           st.imported.add(`group:${g.key}`);
           out.property_groups_created.push(g.key);
+        }
+        for (const e of before.form_library.filter((x) => x.action === "create")) {
+          const write = libraryWrites.find((l) => l.key === e.key)?.write;
+          if (!write) continue;
+          libraryOf(db).push(storedEntry(e.key, 1, write));
+          st.imported.add(`lib:${e.key}`);
+          out.form_library_created.push(e.key);
         }
         for (const t of before.templates.filter((x) => x.action === "create")) {
           st.imported.add(`image:${t.key}`);

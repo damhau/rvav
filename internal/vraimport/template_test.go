@@ -418,7 +418,7 @@ func TestMapFormPages(t *testing.T) {
 		{"key": "inputs", "title": "Request", "columns": 2, "fields": []string{"role", "size", "owner", "notes"}}}}}
 	var notes []string
 	required := []string{}
-	applyForm(form, props, fields, &required, map[string]any{}, ui, func(level, where, text string) {
+	applyForm(form, props, fields, &required, map[string]any{}, ui, nil, func(level, where, text string) {
 		notes = append(notes, level+" "+where+": "+text)
 	})
 	layout := ui["layout"].(map[string]any)

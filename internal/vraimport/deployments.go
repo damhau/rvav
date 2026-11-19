@@ -78,6 +78,10 @@ type Rvav struct {
 	Secrets map[string]bool
 	// PropertyGroups are its property groups, by key.
 	PropertyGroups map[string]RvavGroup
+	// FormLibrary is its form library, by key (ADR-0043), and RESTAllowed
+	// whether REST sources may call a URL; nil when unknown.
+	FormLibrary map[string]RvavEntry
+	RESTAllowed func(target string) bool
 }
 
 // DeploymentPlan is what becomes of a vRA deployment: adopted into an rvav

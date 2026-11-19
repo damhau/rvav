@@ -180,7 +180,9 @@ function Summary({ plan }: { plan: Plan }) {
 function planLeft(plan?: Plan) {
   const unplaced = plan?.projects.filter((p) => p.how === "none").length ?? 0;
   const s = plan?.summary;
-  const items = s ? s.templates_create + s.property_groups_create + s.items_create + s.items_update : 0;
+  const items = s
+    ? s.templates_create + s.property_groups_create + s.form_library_create + s.items_create + s.items_update
+    : 0;
   const left = s ? items + s.shares_add + s.deployments_adopt : 0;
   return { unplaced, items, left };
 }
@@ -467,6 +469,7 @@ function ItemsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }
       />
       {plan.templates.length > 0 && <Templates plan={plan} onNotes={onNotes} />}
       {plan.property_groups.length > 0 && <PropertyGroups plan={plan} onNotes={onNotes} />}
+      {plan.form_library.length > 0 && <FormLibrary plan={plan} onNotes={onNotes} />}
     </>
   );
 }
@@ -596,6 +599,63 @@ function PropertyGroups({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => 
         rows={plan.property_groups}
         rowKey={(g) => g.vra_id}
         minWidth={560}
+      />
+    </section>
+  );
+}
+
+const libraryWhy: Partial<Record<S["VraFormLibraryPlan"]["action"], (e: S["VraFormLibraryPlan"]) => string>> = {
+  differs: (e) => `Left as it is: items name its version ${e.version}.`,
+  skip: () => "Its fields keep a note naming the action: see why in the notes.",
+};
+
+/** The vRO actions custom forms use, made form library entries before the items that name them (ADR-0043). */
+function FormLibrary({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }) {
+  const columns: Column<S["VraFormLibraryPlan"]>[] = [
+    {
+      id: "action",
+      header: "vRO action",
+      sortValue: (e) => e.vro_action,
+      cell: (e) => (
+        <>
+          <span className="font-medium">{e.vro_action}</span>
+          <div className="font-mono text-caption text-faint">
+            {e.key}
+            {e.url && ` · ${e.url}`}
+          </div>
+        </>
+      ),
+    },
+    {
+      id: "import",
+      header: "Import",
+      sortValue: (e) => templateActions[e.action][0],
+      cell: (e) => (
+        <>
+          <Badge tone={templateActions[e.action][1]}>{templateActions[e.action][0]}</Badge>
+          {libraryWhy[e.action] && (
+            <div className="mt-1 max-w-64 text-secondary text-muted">{libraryWhy[e.action]!(e)}</div>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "notes",
+      header: "Notes",
+      cell: (e) => <NotesButton of={e.vro_action} notes={e.notes} onOpen={onNotes} />,
+    },
+  ];
+  return (
+    <section aria-labelledby="vra-form-library" className="mt-6">
+      <h3 id="vra-form-library" className="px-4 pb-2 text-body font-medium">
+        Form library
+      </h3>
+      <DataTable
+        label="Form library"
+        columns={columns}
+        rows={plan.form_library}
+        rowKey={(e) => e.vro_action}
+        minWidth={620}
       />
     </section>
   );
@@ -1034,6 +1094,8 @@ function ImportSheet({
             {s.templates_create > 0 && `${plural(s.templates_create, "template")} to make from vRA's image mappings; `}
             {s.property_groups_create > 0 &&
               `${plural(s.property_groups_create, "property group")} to make from vRA's; `}
+            {s.form_library_create > 0 &&
+              `${plural(s.form_library_create, "form library entry", "form library entries")} to make from vRO's actions; `}
             {plural(s.items_create, "item")} to create and {plural(s.items_update, "new draft")}, nothing published;{" "}
             {plural(s.shares_add, "share")} to add (an item offered to one more project).
           </span>
@@ -1073,6 +1135,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
       <section aria-label="Imported" className="flex flex-col gap-1 text-body">
         {line("Templates made", r.templates_created)}
         {line("Property groups made", r.property_groups_created)}
+        {line("Form library entries made", r.form_library_created)}
         {line("Projects given vRA's custom properties", r.projects_updated)}
         {line("Items made, as drafts", r.created)}
         {line("New drafts", r.updated)}
@@ -1085,6 +1148,7 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
         ))}
         {r.templates_created.length +
           r.property_groups_created.length +
+          r.form_library_created.length +
           r.projects_updated.length +
           r.created.length +
           r.updated.length +

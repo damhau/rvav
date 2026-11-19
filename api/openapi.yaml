@@ -8099,15 +8099,16 @@ components:
         stays_in_vra: { type: boolean, default: false, description: "Keep it in vRA, even if rvav has a project of its name (rvav_project_id null)." }
     VraPlan:
       type: object
-      required: [snapshot, projects, templates, property_groups, items, deployments, policies, triage, summary, cutover]
+      required: [snapshot, projects, templates, property_groups, form_library, items, deployments, policies, triage, summary, cutover]
       properties:
         snapshot: { $ref: "#/components/schemas/VraSnapshot" }
         summary:
           type: object
-          required: [templates_create, property_groups_create, items_create, items_update, items_unchanged, items_blocked, shares_add, deployments_adopt, deployments_adopted, deployments_skipped]
+          required: [templates_create, property_groups_create, form_library_create, items_create, items_update, items_unchanged, items_blocked, shares_add, deployments_adopt, deployments_adopted, deployments_skipped]
           properties:
             templates_create: { type: integer, description: "Catalogue templates to make of vRA's image mappings (ADR-0037)." }
             property_groups_create: { type: integer, description: "Property groups to make of vRA's (ADR-0038)." }
+            form_library_create: { type: integer, description: "Form library entries to make of the vRO actions custom forms use (ADR-0043)." }
             items_create: { type: integer }
             items_update: { type: integer }
             items_unchanged: { type: integer }
@@ -8125,6 +8126,9 @@ components:
         property_groups:
           type: array
           items: { $ref: "#/components/schemas/VraPropertyGroupPlan" }
+        form_library:
+          type: array
+          items: { $ref: "#/components/schemas/VraFormLibraryPlan" }
         items:
           type: array
           items: { $ref: "#/components/schemas/VraItemPlan" }
@@ -8233,6 +8237,37 @@ components:
         constants:
           type: object
           additionalProperties: true
+        notes:
+          type: array
+          items: { $ref: "#/components/schemas/VraNote" }
+    VraFormLibraryPlan:
+      type: object
+      description: |
+        The form library entry a vRO action becomes (ADR-0043), when a
+        custom form takes its choices or a field's default from it and its
+        script makes one GET to a URL the import can read: a REST value
+        source, the action's inputs the URL reads its parameters. The
+        fields that use the action name the entry at `version`.
+      required: [vro_action, key, name, action, version, parameters, notes]
+      properties:
+        vro_action: { type: string, description: "The action as forms name it: module/name." }
+        key: { type: string }
+        name: { type: string }
+        action:
+          type: string
+          enum: [create, unchanged, differs, skip]
+          description: |
+            What the import does: make the entry; nothing, as rvav's is
+            what the action gives; nothing, as rvav has another entry of
+            that key (the import never changes one); nothing, as the action
+            can't be one (`notes` say why: its fields keep a note naming
+            it).
+        version: { type: integer, description: "The version the items name: the one the import makes, or rvav's latest; 0 when skipped." }
+        url: { type: string, description: "The entry's URL, its parameters as ${params.x}." }
+        parameters:
+          type: array
+          items: { type: string }
+          description: The action's inputs the URL reads, the entry's parameters.
         notes:
           type: array
           items: { $ref: "#/components/schemas/VraNote" }
@@ -8351,10 +8386,11 @@ components:
           description: "Only these vRA projects: sharing with them and their deployments (items are made for all). Every project when absent."
     VraImportResult:
       type: object
-      required: [templates_created, property_groups_created, projects_updated, created, updated, shared, adopted, failed, plan]
+      required: [templates_created, property_groups_created, form_library_created, projects_updated, created, updated, shared, adopted, failed, plan]
       properties:
         templates_created: { type: array, items: { type: string }, description: "Catalogue templates made (their keys)." }
         property_groups_created: { type: array, items: { type: string }, description: "Property groups made (their keys)." }
+        form_library_created: { type: array, items: { type: string }, description: "Form library entries made (their keys)." }
         projects_updated: { type: array, items: { type: string }, description: "rvav projects given vRA's custom properties (their names)." }
         created: { type: array, items: { type: string }, description: Items made (their names). }
         updated: { type: array, items: { type: string }, description: Items given a new draft. }

@@ -48,7 +48,7 @@ func TestMapFormDefaults(t *testing.T) {
 		{"key": "inputs", "title": "Request", "columns": 2, "fields": ids}}}}
 	var notes []string
 	required := []string{}
-	applyForm(form, props, fields, &required, initial, ui, func(level, where, text string) {
+	applyForm(form, props, fields, &required, initial, ui, nil, func(level, where, text string) {
 		notes = append(notes, level+" "+where+": "+text)
 	})
 

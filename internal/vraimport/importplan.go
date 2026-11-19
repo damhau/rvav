@@ -109,6 +109,7 @@ type ProjectPlan struct {
 type Summary struct {
 	TemplatesCreate      int `json:"templates_create"`
 	PropertyGroupsCreate int `json:"property_groups_create"`
+	FormLibraryCreate    int `json:"form_library_create"`
 	ItemsCreate          int `json:"items_create"`
 	ItemsUpdate          int `json:"items_update"`
 	ItemsUnchanged       int `json:"items_unchanged"`
@@ -124,19 +125,27 @@ type ImportPlan struct {
 	Summary   Summary          `json:"summary"`
 	Templates []TemplateImport `json:"templates"`
 	// PropertyGroups are vRA's property groups (ADR-0038).
-	PropertyGroups []GroupImport    `json:"property_groups"`
-	Projects       []ProjectPlan    `json:"projects"`
-	Items          []ItemImport     `json:"items"`
-	Deployments    []DeploymentPlan `json:"deployments"`
-	Policies       []PolicyPlan     `json:"policies"`
-	Triage         Triage           `json:"triage"`
-	Cutover        Cutover          `json:"cutover"`
+	PropertyGroups []GroupImport `json:"property_groups"`
+	// FormLibrary are the vRO actions custom forms use (ADR-0043).
+	FormLibrary []LibraryImport  `json:"form_library"`
+	Projects    []ProjectPlan    `json:"projects"`
+	Items       []ItemImport     `json:"items"`
+	Deployments []DeploymentPlan `json:"deployments"`
+	Policies    []PolicyPlan     `json:"policies"`
+	Triage      Triage           `json:"triage"`
+	Cutover     Cutover          `json:"cutover"`
 }
 
 // PlanImport is what importing the estate would do, nothing written.
 func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 	p := ImportPlan{Projects: []ProjectPlan{}, Items: []ItemImport{}, Policies: PlanPolicies(e), Triage: TriageVRO(e),
-		Templates: PlanTemplates(e, r), PropertyGroups: PlanPropertyGroups(e, r)}
+		Templates: PlanTemplates(e, r), PropertyGroups: PlanPropertyGroups(e, r), FormLibrary: PlanFormLibrary(e, r)}
+	for _, li := range p.FormLibrary {
+		if li.Action == ActionCreate {
+			p.Summary.FormLibraryCreate++
+		}
+	}
+	lib := libraryByAction(p.FormLibrary)
 	groups := map[string]GroupImport{}
 	for _, g := range p.PropertyGroups {
 		groups[g.Key] = g
@@ -177,7 +186,7 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 		after[id] = s
 	}
 	for _, bp := range e.Blueprints {
-		it := planItem(e, r, st, bp, groups)
+		it := planItem(e, r, st, bp, groups, lib)
 		for _, key := range it.templates {
 			if t, ok := planned[key]; ok && t.Action == ActionSkip {
 				why := "has no source in a vCenter rvav manages"
@@ -264,8 +273,9 @@ func projectProperties(vraProps, rvavProps map[string]string) (add map[string]st
 	return add, unmapped
 }
 
-func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint, groups map[string]GroupImport) ItemImport {
-	m := MapTemplate(e, bp)
+func planItem(e *vra.Estate, r Rvav, st ImportState, bp vra.Blueprint, groups map[string]GroupImport,
+	lib map[string]LibraryImport) ItemImport {
+	m := mapTemplate(e, bp, lib)
 	it := ItemImport{BlueprintID: bp.ID, Name: m.Name, Slug: m.Slug, Status: m.Status, Notes: m.Notes, ShareAdd: []string{},
 		ShareUnmapped: []string{}, Doc: m.Doc, templates: m.Templates}
 	if it.Notes == nil {

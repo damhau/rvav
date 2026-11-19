@@ -63,6 +63,13 @@ var placementFields = []string{"cluster", "datastore", "network"}
 // form, into a catalog item. A template with no released version, or with
 // no vSphere machine, is skipped.
 func MapTemplate(e *vra.Estate, bp vra.Blueprint) ItemPlan {
+	return mapTemplate(e, bp, nil)
+}
+
+// mapTemplate maps a template, its custom form's fields taking their
+// choices and defaults from the form library entries lib makes of vRO's
+// actions, by module/name.
+func mapTemplate(e *vra.Estate, bp vra.Blueprint, lib map[string]LibraryImport) ItemPlan {
 	p := ItemPlan{BlueprintID: bp.ID, Name: bp.Name, Slug: TemplateSlugs(e)[bp.ID]}
 	note := func(level, where, text string) { p.Notes = append(p.Notes, Note{level, where, text}) }
 	var released []vra.BlueprintVersion
@@ -89,7 +96,7 @@ func MapTemplate(e *vra.Estate, bp vra.Blueprint) ItemPlan {
 		vnote := func(level, where, text string) {
 			vnotes = append(vnotes, Note{level, where, text})
 		}
-		vd, ok := mapVersion(e, bp, v, form, latest, vnote)
+		vd, ok := mapVersion(e, bp, v, form, latest, lib, vnote)
 		// The latest version's notes are the item's; earlier ones only say
 		// whether they could be built.
 		if latest {
@@ -126,7 +133,7 @@ func MapTemplate(e *vra.Estate, bp vra.Blueprint) ItemPlan {
 
 // mapVersion maps one version; false when it has nothing rvav can build.
 func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *vra.Form, withForm bool,
-	note func(level, where, text string)) (VersionDoc, bool) {
+	lib map[string]LibraryImport, note func(level, where, text string)) (VersionDoc, bool) {
 	var t tmpl
 	if err := yaml.Unmarshal([]byte(v.Content), &t); err != nil {
 		note(Unmapped, "content", "The template's YAML can't be read: "+err.Error())
@@ -442,7 +449,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 	}
 	ui := map[string]any{"fields": fields, "layout": map[string]any{"kind": "page", "sections": sections}}
 	if withForm && form != nil {
-		applyForm(form, props, fields, &required, initial, ui, note)
+		applyForm(form, props, fields, &required, initial, ui, lib, note)
 		vd.FormSchema["required"] = required
 	}
 	vd.UISchema, vd.InitialValues, vd.Blueprint = ui, initial, blueprint
@@ -948,7 +955,7 @@ func formColumns(field, sch map[string]any) {
 // requirements and layout. Its dynamic parts (vRO actions, external
 // sources, conditions) are reported.
 func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, initial, ui map[string]any,
-	note func(level, where, text string)) {
+	lib map[string]LibraryImport, note func(level, where, text string)) {
 	var def struct {
 		Layout struct {
 			Pages []struct {
@@ -1051,7 +1058,7 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 				if d, ok := sch["default"]; ok && field["secret"] == true {
 					noDefault()
 				} else if ok {
-					worked = formDefault(fd.ID, d, readOnly, props, field, initial, where, note)
+					worked = formDefault(fd.ID, d, readOnly, props, field, initial, where, lib, note)
 				}
 				if readOnly && !worked {
 					note(Warning, where, "Read-only in vRA's form: editable in rvav's.")
@@ -1083,8 +1090,12 @@ func applyForm(f *vra.Form, props, fields map[string]any, required *[]string, in
 						prop["enum"] = vals
 					}
 				case map[string]any:
+					mapped, why := takeLibrary(lib, vl, false, props, field, where, note)
+					if mapped {
+						break
+					}
 					text := fmt.Sprintf("Its choices come from %s %v in vRA: give the field an rvav value source (REST or CEL), or an AWX inventory.",
-						vl["type"], vl["id"])
+						vl["type"], vl["id"]) + why
 					if was := map[any]string{"multiselect": "a multi-select", "dual_list": "a dual list"}[field["widget"]]; was != "" && field["options"] == nil {
 						field["widget"] = "tags"
 						text += " Until then, it is tags, which take any value typed: make it " + was + " again once it has a source."
