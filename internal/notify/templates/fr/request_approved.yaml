@@ -1,0 +1,8 @@
+subject: |-
+  Approuvée : {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  Votre demande {{.Request.Number}} a été approuvée. Elle s'exécute maintenant, ou à l'heure prévue.{{if .Body}}
+  {{.Body}}{{end}}
+html: |-
+  <p>Votre demande <strong>{{.Request.Number}}</strong> a été approuvée. Elle s'exécute maintenant, ou à l'heure prévue.</p>{{if .Body}}
+  <p style="margin:8px 0;color:#59636e">{{.Body}}</p>{{end}}

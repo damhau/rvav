@@ -159,6 +159,8 @@ type CardData struct {
 	Locale     string `json:"locale"`
 	Title      string `json:"title"`
 	Link       string `json:"link"`
+	// Portal is the portal's name, for the button that opens it.
+	Portal string `json:"portal,omitempty"`
 }
 
 func adaptive(body, actions []any) map[string]any {
@@ -180,10 +182,12 @@ func text(s string, extra map[string]any) map[string]any {
 }
 
 // Card is a notification as an Adaptive Card: an approval's has a comment
-// box, Approve and Reject.
+// box, Approve and Reject. Its text is the template's markdown, whose data
+// was escaped.
 func Card(m Message) map[string]any {
 	l := labelsFor(m.Data.Locale)
-	body := []any{text(m.Subject, map[string]any{"weight": "Bolder", "size": "Medium"}), text(m.Short, nil)}
+	short := map[string]any{"type": "TextBlock", "text": m.Short, "wrap": true}
+	body := []any{text(m.Subject, map[string]any{"weight": "Bolder", "size": "Medium"}), short}
 	var facts []any
 	for _, f := range m.Facts() {
 		facts = append(facts, map[string]any{"title": markdown.Replace(f.Label), "value": markdown.Replace(f.Value)})
@@ -192,11 +196,12 @@ func Card(m Message) map[string]any {
 		body = append(body, map[string]any{"type": "FactSet", "facts": facts})
 	}
 	actions := []any{}
-	if n := m.Delivery.Notification; n.Kind == "approval_needed" && n.ApprovalID != nil {
-		data := CardData{ApprovalID: *n.ApprovalID, Locale: m.Data.Locale, Title: m.Subject, Link: m.Data.Link}
+	if m.Data.Kind == "approval_needed" && m.Data.approvalID != "" {
+		data := CardData{ApprovalID: m.Data.approvalID, Locale: m.Data.Locale, Title: m.Subject, Link: m.Data.Link,
+			Portal: m.Data.Portal}
 		return approvalCard(l, data, body, "")
 	}
-	actions = append(actions, map[string]any{"type": "Action.OpenUrl", "title": l.Open, "url": m.Data.Link})
+	actions = append(actions, map[string]any{"type": "Action.OpenUrl", "title": l.open(m.Data.Portal), "url": m.Data.Link})
 	return adaptive(body, actions)
 }
 
@@ -208,7 +213,7 @@ func approvalCard(l labels, data CardData, body []any, problem string) map[strin
 	return adaptive(body, []any{
 		map[string]any{"type": "Action.Execute", "title": l.Approve, "verb": "approve", "data": data, "style": "positive"},
 		map[string]any{"type": "Action.Execute", "title": l.Reject, "verb": "reject", "data": data, "style": "destructive"},
-		map[string]any{"type": "Action.OpenUrl", "title": l.Open, "url": data.Link},
+		map[string]any{"type": "Action.OpenUrl", "title": l.open(data.Portal), "url": data.Link},
 	})
 }
 
@@ -225,7 +230,7 @@ func DecidedCard(data CardData, approved bool, by string) map[string]any {
 	}
 	return adaptive([]any{text(data.Title, map[string]any{"weight": "Bolder", "size": "Medium"}),
 		text(outcome, map[string]any{"color": color})},
-		[]any{map[string]any{"type": "Action.OpenUrl", "title": l.Open, "url": data.Link}})
+		[]any{map[string]any{"type": "Action.OpenUrl", "title": l.open(data.Portal), "url": data.Link}})
 }
 
 // ProblemCard is the approval card again, saying why the decision wasn't
@@ -237,7 +242,7 @@ func ProblemCard(data CardData, problem string) map[string]any {
 		problem = l.NeedComment
 	case "decided":
 		return adaptive([]any{text(data.Title, map[string]any{"weight": "Bolder", "size": "Medium"}), text(l.Decided, nil)},
-			[]any{map[string]any{"type": "Action.OpenUrl", "title": l.Open, "url": data.Link}})
+			[]any{map[string]any{"type": "Action.OpenUrl", "title": l.open(data.Portal), "url": data.Link}})
 	case "not_yours":
 		problem = l.NotYours
 	default:

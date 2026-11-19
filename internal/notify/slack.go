@@ -100,10 +100,11 @@ func plain(s string) *slack.TextBlockObject {
 	return slack.NewTextBlockObject(slack.PlainTextType, s, false, false)
 }
 
-// A step's message holds what a requester typed (ADR-0033): plain text, which
+// The text is the template's mrkdwn, whose data was escaped. A step's
+// message holds what a requester typed (ADR-0033): plain text, which
 // nothing in it can turn into a link, a mention or emphasis.
 func body(m Message) *slack.TextBlockObject {
-	short := truncate(escape(m.Short), 2900)
+	short := truncate(m.Short, 2900)
 	if m.Data.Kind == string(api.KindStepMessage) {
 		return plain(short)
 	}
@@ -119,8 +120,8 @@ func escape(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
-func openButton(l labels, link string) *slack.ButtonBlockElement {
-	b := slack.NewButtonBlockElement("rvav_open", "open", plain(l.Open))
+func openButton(l labels, portal, link string) *slack.ButtonBlockElement {
+	b := slack.NewButtonBlockElement("rvav_open", "open", plain(l.open(portal)))
 	b.URL = link
 	return b
 }
@@ -139,12 +140,12 @@ func Blocks(m Message) []slack.Block {
 	if len(fields) > 0 {
 		blocks = append(blocks, slack.NewSectionBlock(nil, fields, nil))
 	}
-	if n := m.Delivery.Notification; n.Kind == "approval_needed" && n.ApprovalID != nil {
-		data, _ := json.Marshal(CardData{ApprovalID: *n.ApprovalID, Locale: m.Data.Locale, Title: truncate(m.Subject, 150),
-			Link: m.Data.Link})
+	if m.Data.Kind == "approval_needed" && m.Data.approvalID != "" {
+		data, _ := json.Marshal(CardData{ApprovalID: m.Data.approvalID, Locale: m.Data.Locale, Title: truncate(m.Subject, 150),
+			Link: m.Data.Link, Portal: m.Data.Portal})
 		return append(blocks, slackDecideButtons(l, string(data)))
 	}
-	return append(blocks, slack.NewActionBlock("rvav", openButton(l, m.Data.Link)))
+	return append(blocks, slack.NewActionBlock("rvav", openButton(l, m.Data.Portal, m.Data.Link)))
 }
 
 func slackDecideButtons(l labels, value string) slack.Block {
@@ -152,7 +153,7 @@ func slackDecideButtons(l labels, value string) slack.Block {
 	reject := slack.NewButtonBlockElement(SlackReject, value, plain(l.Reject)).WithStyle(slack.StyleDanger)
 	var data CardData
 	_ = json.Unmarshal([]byte(value), &data)
-	return slack.NewActionBlock("rvav_decide", approve, reject, openButton(l, data.Link))
+	return slack.NewActionBlock("rvav_decide", approve, reject, openButton(l, data.Portal, data.Link))
 }
 
 // DecidedBlocks replace an approval message once decided from it.
@@ -163,7 +164,7 @@ func DecidedBlocks(data CardData, approved bool, by string) []slack.Block {
 		outcome = ":white_check_mark: " + fmt.Sprintf(l.Approved, escape(by))
 	}
 	return []slack.Block{slack.NewHeaderBlock(plain(data.Title)), slack.NewSectionBlock(md(outcome), nil, nil),
-		slack.NewActionBlock("rvav", openButton(l, data.Link))}
+		slack.NewActionBlock("rvav", openButton(l, data.Portal, data.Link))}
 }
 
 // ProblemText says why a decision from Slack wasn't taken; problem is one
@@ -186,7 +187,7 @@ func ProblemText(locale, problem string) string {
 func RejectDialog(data CardData, channel, ts string) slack.ModalViewRequest {
 	l := labelsFor(data.Locale)
 	meta, _ := json.Marshal(map[string]string{"approval_id": data.ApprovalID, "locale": data.Locale, "title": data.Title,
-		"link": data.Link, "channel": channel, "ts": ts})
+		"link": data.Link, "portal": data.Portal, "channel": channel, "ts": ts})
 	input := slack.NewPlainTextInputBlockElement(plain(l.Comment), "comment")
 	input.Multiline = true
 	return slack.ModalViewRequest{Type: slack.VTModal, Title: plain(truncate(l.Reject, 24)), Submit: plain(l.Reject),

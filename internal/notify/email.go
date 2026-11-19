@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -12,7 +13,8 @@ import (
 	"github.com/damhau/rvav/internal/trust"
 )
 
-// Email sends notifications by SMTP: plain text and HTML.
+// Email sends notifications by SMTP: plain text and HTML, with the
+// portal's logo when it has a PNG or JPEG one.
 type Email struct {
 	Config config.SMTPConfig
 }
@@ -56,6 +58,12 @@ func (e *Email) Send(ctx context.Context, m Message) (string, string, error) {
 	msg.Subject(m.Subject)
 	msg.SetBodyString(mail.TypeTextPlain, m.Text)
 	msg.AddAlternativeString(mail.TypeTextHTML, m.HTML)
+	if m.Logo != nil {
+		if err := msg.EmbedReader("logo", bytes.NewReader(m.Logo.Content), mail.WithFileContentID(LogoCID),
+			mail.WithFileContentType(mail.ContentType(m.Logo.ContentType))); err != nil {
+			return "", "", Permanent(err)
+		}
+	}
 	// One Message-ID per delivery: a retry sent twice is one message to mail clients.
 	id := m.Delivery.Notification.ID + ".email@rvav"
 	msg.SetMessageIDWithValue(id)

@@ -1,0 +1,7 @@
+subject: |-
+  Le bail de {{.Deployment.Name}} est terminé
+text: |-
+  Le bail de {{.Deployment.Name}} est terminé. {{if .Lease.GraceDays}}Ses VM sont arrêtées ; il sera supprimé dans {{.Lease.GraceDays}} jours sauf si vous prolongez le bail.{{else}}Sa politique le laisse fonctionner : supprimez-le quand vous n'en avez plus besoin.{{end}}
+html: |-
+  <p>Le bail de <strong>{{.Deployment.Name}}</strong> est terminé.</p>
+  <p style="margin:8px 0">{{if .Lease.GraceDays}}Ses VM sont arrêtées ; il sera supprimé dans {{.Lease.GraceDays}} jours sauf si vous prolongez le bail.{{else}}Sa politique le laisse fonctionner : supprimez-le quand vous n'en avez plus besoin.{{end}}</p>

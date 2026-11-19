@@ -1,0 +1,6 @@
+subject: |-
+  A message about {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  {{.Body}}
+html: |-
+  <p style="white-space:pre-line">{{.Body}}</p>

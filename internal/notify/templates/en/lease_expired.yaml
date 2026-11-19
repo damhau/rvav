@@ -1,0 +1,7 @@
+subject: |-
+  The lease of {{.Deployment.Name}} ended
+text: |-
+  The lease of {{.Deployment.Name}} ended. {{if .Lease.GraceDays}}Its VMs are powered off; it is deleted in {{.Lease.GraceDays}} days unless you extend the lease.{{else}}Its policy keeps it running: delete it when you no longer need it.{{end}}
+html: |-
+  <p>The lease of <strong>{{.Deployment.Name}}</strong> ended.</p>
+  <p style="margin:8px 0">{{if .Lease.GraceDays}}Its VMs are powered off; it is deleted in {{.Lease.GraceDays}} days unless you extend the lease.{{else}}Its policy keeps it running: delete it when you no longer need it.{{end}}</p>

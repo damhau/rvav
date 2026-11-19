@@ -1,0 +1,8 @@
+subject: |-
+  Refusée : {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  Votre demande {{.Request.Number}} a été refusée. Rien n'a été créé ni modifié.{{if .Body}}
+  Commentaires : {{.Body}}{{end}}
+html: |-
+  <p>Votre demande <strong>{{.Request.Number}}</strong> a été refusée. Rien n'a été créé ni modifié.</p>{{if .Body}}
+  <p style="margin:8px 0"><span style="color:#59636e">Commentaires :</span> {{.Body}}</p>{{end}}

@@ -1,0 +1,7 @@
+subject: |-
+  Le bail de {{.Deployment.Name}} se termine {{if eq .Lease.Days 1}}d'ici un jour{{else}}dans {{.Lease.Days}} jours{{end}}
+text: |-
+  Le bail de {{.Deployment.Name}} se termine le {{date .Lease.ExpiresAt}}. {{if eq .Lease.ExpiryAction "power_off_then_delete"}}Ses VM seront alors arrêtées, puis supprimées après le délai de grâce, sauf si vous prolongez le bail.{{else if eq .Lease.ExpiryAction "delete"}}Il sera alors supprimé, sauf si vous prolongez le bail.{{else}}Prolongez-le si vous en avez encore besoin.{{end}}
+html: |-
+  <p>Le bail de <strong>{{.Deployment.Name}}</strong> se termine le {{date .Lease.ExpiresAt}}.</p>
+  <p style="margin:8px 0">{{if eq .Lease.ExpiryAction "power_off_then_delete"}}Ses VM seront alors arrêtées, puis supprimées après le délai de grâce, sauf si vous prolongez le bail.{{else if eq .Lease.ExpiryAction "delete"}}Il sera alors supprimé, sauf si vous prolongez le bail.{{else}}Prolongez-le si vous en avez encore besoin.{{end}}</p>

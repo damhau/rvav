@@ -181,6 +181,67 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AuthOptions" }
 
+  /branding:
+    get:
+      tags: [identity]
+      operationId: getBranding
+      summary: The portal's name, accent colours and logos (ADR-0059)
+      description: |
+        For anyone, signed in or not: the sign-in page shows it. The accent
+        comes for the light and the dark theme, each with the colour of
+        text on it and its tint, all reading at 4.5:1 at least where the
+        web app puts them. Empty fields are rvav's own.
+
+        Answered with an `ETag`: sent back in `If-None-Match`, the answer
+        is 304 while the branding is the same.
+      security: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          description: The `ETag` of the branding the caller has.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The branding
+          headers:
+            ETag:
+              description: Changes when the branding does.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Branding" }
+        "304": { description: The branding is the one the ETag names. }
+
+  /branding/logos/{variant}:
+    get:
+      tags: [identity]
+      operationId: getBrandingLogo
+      summary: The logo for the light or the dark theme
+      description: |
+        For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
+        nothing that runs or fetches when it was saved. Its URL in
+        `Branding` changes with it.
+      security: []
+      parameters:
+        - { name: variant, in: path, required: true, schema: { $ref: "#/components/schemas/LogoVariant" } }
+        - name: v
+          in: query
+          description: |
+            The version `Branding` names in the logo's URL: the answer is
+            cached for good while it is the logo's.
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: The logo
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/svg+xml:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /me/notifications:
     get:
       tags: [notifications]
@@ -4446,6 +4507,201 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /admin/branding:
+    put:
+      tags: [admin]
+      operationId: setBranding
+      summary: Set the portal's name and accent colour
+      description: |
+        `system.manage`; audited (`settings.branding.update`). An empty name or
+        accent is rvav's own. The accent is the light theme's: one text
+        doesn't read on at 4.5:1 against the light theme's backgrounds is
+        refused, with the closest darker colour that reads. The dark
+        theme's accent is derived from it, lightened until it reads.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BrandingWrite" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Branding" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/branding/accent-check:
+    post:
+      tags: [admin]
+      operationId: checkBrandingAccent
+      summary: How an accent colour reads in both themes, before it is saved
+      description: "`system.manage`. Saves nothing."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AccentCheckQuery" }
+      responses:
+        "200":
+          description: The check
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccentCheck" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/branding/logos/{variant}:
+    put:
+      tags: [admin]
+      operationId: setBrandingLogo
+      summary: Upload the logo for the light or the dark theme
+      description: |
+        `system.manage`; audited (`settings.branding_logo.set`). The body is the
+        picture as it is: PNG, JPEG or SVG, 256 KB and 2048 pixels a side
+        at most. An SVG with a script, an event handler, a foreign object,
+        a link or a reference outside itself, or a DOCTYPE is refused (422):
+        the picture is kept as it was sent, never rewritten. Emails show the
+        light theme's logo when it is a PNG or JPEG one.
+      parameters:
+        - { name: variant, in: path, required: true, schema: { $ref: "#/components/schemas/LogoVariant" } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Branding" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteBrandingLogo
+      summary: Remove the logo for the light or the dark theme
+      description: "`system.manage`; audited (`settings.branding_logo.remove`)."
+      parameters:
+        - { name: variant, in: path, required: true, schema: { $ref: "#/components/schemas/LogoVariant" } }
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Branding" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/notification-templates:
+    get:
+      tags: [admin]
+      operationId: listNotificationTemplates
+      summary: Every kind whose templates administrators edit, with its variables
+      description: |
+        `system.manage`. Each kind has a template per channel and language;
+        those edited replace the built-in ones (ADR-0059).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationTemplateCatalog" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/notification-templates/{kind}:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { $ref: "#/components/schemas/NotificationKind" } }
+    get:
+      tags: [admin]
+      operationId: getNotificationTemplate
+      summary: A kind's template for a channel and language, and its built-in one
+      description: "`system.manage`."
+      parameters:
+        - { $ref: "#/components/parameters/TemplateChannelQuery" }
+        - { $ref: "#/components/parameters/TemplateLocaleQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [admin]
+      operationId: setNotificationTemplate
+      summary: Save a kind's template for a channel and language
+      description: |
+        `system.manage`; audited (`settings.notification_template.update`). A Go
+        template: refused (422, per part) when it doesn't parse, names a
+        variable its kind doesn't have, defines or calls other templates,
+        or fails on the kind's sample data. Notifications sent from then on
+        use it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationTemplateWrite" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: resetNotificationTemplate
+      summary: Go back to the built-in template
+      description: "`system.manage`; audited (`settings.notification_template.reset`) when it was edited."
+      parameters:
+        - { $ref: "#/components/parameters/TemplateChannelQuery" }
+        - { $ref: "#/components/parameters/TemplateLocaleQuery" }
+      responses:
+        "200":
+          description: The built-in template, now used
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/notification-templates/{kind}/preview:
+    post:
+      tags: [admin]
+      operationId: previewNotificationTemplate
+      summary: A template written with its kind's sample data, as it would be sent
+      description: |
+        `system.manage`. Saves nothing. An email's HTML, a Teams card's
+        JSON or Slack's blocks, with the portal's branding; a template
+        that can't be saved is 422, per part.
+      parameters:
+        - { name: kind, in: path, required: true, schema: { $ref: "#/components/schemas/NotificationKind" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationTemplateWrite" }
+      responses:
+        "200":
+          description: The preview
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationTemplatePreview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /admin/setup:
     get:
       tags: [admin]
@@ -5790,6 +6046,16 @@ components:
         or an rvav API token (prefix `rvav_pat_`) for automation.
 
   parameters:
+    TemplateChannelQuery:
+      name: channel
+      in: query
+      required: true
+      schema: { $ref: "#/components/schemas/TemplateChannel" }
+    TemplateLocaleQuery:
+      name: locale
+      in: query
+      required: true
+      schema: { $ref: "#/components/schemas/TemplateLocale" }
     ProjectIdPath:
       name: projectId
       in: path
@@ -12057,6 +12323,149 @@ components:
       description: In the app is always on; the others are chosen per kind.
       enum: [in_app, email, teams, slack]
       x-enum-varnames: [ChannelInApp, ChannelEmail, ChannelTeams, ChannelSlack]
+    TemplateChannel:
+      type: string
+      description: A channel whose messages have templates.
+      enum: [email, teams, slack]
+      x-enum-varnames: [TemplateEmail, TemplateTeams, TemplateSlack]
+    TemplateLocale:
+      type: string
+      description: A language messages are written in.
+      enum: [en, fr]
+      x-enum-varnames: [TemplateEnglish, TemplateFrench]
+    TemplateVariable:
+      type: object
+      required: [name, type, description]
+      properties:
+        name: { type: string, description: "As a template writes it.", examples: [.Request.Number] }
+        type: { type: string, description: "text, number, yes/no, date, list of text or function." }
+        description: { type: string }
+    NotificationTemplateSummary:
+      type: object
+      required: [channel, locale, edited]
+      properties:
+        channel: { $ref: "#/components/schemas/TemplateChannel" }
+        locale: { $ref: "#/components/schemas/TemplateLocale" }
+        edited: { type: boolean, description: An administrator's template replaces the built-in one. }
+        updated_at: { type: string, format: date-time }
+        updated_by: { type: string, description: Who saved it. }
+    NotificationTemplateKind:
+      type: object
+      required: [kind, name, when, variables, templates]
+      properties:
+        kind: { $ref: "#/components/schemas/NotificationKind" }
+        name: { type: string, examples: [Approval needed] }
+        when: { type: string, description: Who gets it and when. }
+        variables:
+          type: array
+          items: { $ref: "#/components/schemas/TemplateVariable" }
+        templates:
+          type: array
+          description: One per channel and language.
+          items: { $ref: "#/components/schemas/NotificationTemplateSummary" }
+    NotificationTemplateCatalog:
+      type: object
+      required: [kinds, functions]
+      properties:
+        kinds:
+          type: array
+          items: { $ref: "#/components/schemas/NotificationTemplateKind" }
+        functions:
+          type: array
+          description: What templates may call besides Go's own (`if`, `range`, `eq`, `printf`...).
+          items: { $ref: "#/components/schemas/TemplateVariable" }
+    TemplateParts:
+      type: object
+      required: [subject, text]
+      properties:
+        subject:
+          type: string
+          maxLength: 1024
+          description: An email's subject; a Teams card's or a Slack message's title.
+        text:
+          type: string
+          maxLength: 20480
+          description: An email's text part; a card's markdown or a message's mrkdwn, whose variables are escaped.
+        html:
+          type: string
+          maxLength: 204800
+          description: An email's HTML part, put in the layout with the greeting, facts, button and footer. Emails only.
+    NotificationTemplateWrite:
+      allOf:
+        - $ref: "#/components/schemas/TemplateParts"
+        - type: object
+          required: [channel, locale]
+          properties:
+            channel: { $ref: "#/components/schemas/TemplateChannel" }
+            locale: { $ref: "#/components/schemas/TemplateLocale" }
+    NotificationTemplate:
+      allOf:
+        - $ref: "#/components/schemas/TemplateParts"
+        - type: object
+          required: [kind, channel, locale, edited, default]
+          properties:
+            kind: { $ref: "#/components/schemas/NotificationKind" }
+            channel: { $ref: "#/components/schemas/TemplateChannel" }
+            locale: { $ref: "#/components/schemas/TemplateLocale" }
+            edited: { type: boolean, description: "The template is an administrator's; false: it is the built-in one." }
+            default: { $ref: "#/components/schemas/TemplateParts" }
+            updated_at: { type: string, format: date-time }
+            updated_by: { type: string }
+    NotificationTemplatePreview:
+      type: object
+      required: [subject, text]
+      properties:
+        subject: { type: string }
+        text: { type: string, description: "An email's whole text part; a card's or a message's text." }
+        html: { type: string, description: "An email's whole HTML, its logo inline." }
+        card: { type: object, additionalProperties: true, description: The Teams Adaptive Card. }
+        blocks:
+          type: array
+          description: The Slack Block Kit blocks.
+          items: { type: object, additionalProperties: true }
+    LogoVariant:
+      type: string
+      enum: [light, dark]
+      x-enum-varnames: [LogoLight, LogoDark]
+    AccentPalette:
+      type: object
+      required: [accent, accent_fg, accent_soft]
+      description: An accent and the colours that go with it in a theme.
+      properties:
+        accent: { type: string, description: "Links, buttons and focus rings.", examples: ["#0e6488"] }
+        accent_fg: { type: string, description: Text on the accent. }
+        accent_soft: { type: string, description: "A tint of the accent behind text, such as the current page in the menu." }
+    Branding:
+      type: object
+      required: [name, light, dark]
+      properties:
+        name: { type: string, description: "The portal's name; rvav until one is set.", examples: [Acme Cloud] }
+        accent: { type: string, description: The accent colour set; empty for rvav's own. }
+        light: { $ref: "#/components/schemas/AccentPalette" }
+        dark: { $ref: "#/components/schemas/AccentPalette" }
+        logo_light_url: { type: string, description: "The light theme's logo, if there is one." }
+        logo_dark_url: { type: string, description: "The dark theme's logo; the light one is shown when there is none." }
+    BrandingWrite:
+      type: object
+      required: [name, accent]
+      properties:
+        name: { type: string, maxLength: 40, description: Empty for rvav. }
+        accent: { type: string, description: "#rrggbb or #rgb; empty for rvav's own.", examples: ["#5b2a86"] }
+    AccentCheckQuery:
+      type: object
+      required: [accent]
+      properties:
+        accent: { type: string }
+    AccentCheck:
+      type: object
+      required: [ok, ratio]
+      properties:
+        ok: { type: boolean, description: The accent reads in both themes and can be saved. }
+        ratio: { type: number, description: "Its lowest contrast in the light theme, such as 5.2 for 5.2:1." }
+        message: { type: string, description: Why it can't be saved. }
+        suggestion: { type: string, description: "The closest darker colour that reads, when it doesn't." }
+        light: { $ref: "#/components/schemas/AccentPalette" }
+        dark: { $ref: "#/components/schemas/AccentPalette" }
     Notification:
       type: object
       required: [id, kind, title, level, created_at]

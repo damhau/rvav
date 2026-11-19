@@ -6,12 +6,13 @@ package notify
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/damhau/rvav/internal/brand"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -26,9 +27,11 @@ type Sender interface {
 type Message struct {
 	Delivery store.Delivery
 	Data     Data
-	// Subject, Text and HTML are the email's; a card has Title, Short (the
+	// Subject, Text and HTML are the email's; a card has Subject, Short (the
 	// kind's text alone) and Facts.
-	Subject, Title, Text, HTML, Short string
+	Subject, Text, HTML, Short string
+	// Logo is the picture an email's HTML shows as cid:LogoCID.
+	Logo *Logo
 }
 
 // Fact is a line of a card: what it is about.
@@ -37,20 +40,20 @@ type Fact struct{ Label, Value string }
 // Facts are what a message is about, labelled in its language.
 func (m Message) Facts() []Fact {
 	l := labelsFor(m.Data.Locale)
-	s := m.Data.Subject
+	d := m.Data
 	var out []Fact
 	add := func(label, value string) {
 		if value != "" {
 			out = append(out, Fact{label, value})
 		}
 	}
-	if s.RequestNumber != "" {
-		add(l.Request, s.RequestNumber+", "+s.RequestTitle)
+	if d.Request.Number != "" {
+		add(l.Request, d.Request.Number+", "+d.Request.Title)
 	}
-	add(l.Item, s.ItemName)
-	add(l.Deployment, s.DeploymentName)
-	if s.ProjectName != "" {
-		add(l.Project, s.ProjectName+" ("+s.Environment+")")
+	add(l.Item, d.Request.Item)
+	add(l.Deployment, d.Deployment.Name)
+	if d.Project.Name != "" {
+		add(l.Project, d.Project.Name+" ("+d.Project.Environment+")")
 	}
 	return out
 }
@@ -222,20 +225,62 @@ func (n *Notifier) send(ctx context.Context, d store.Delivery) (string, string, 
 	return s.Send(ctx, m)
 }
 
-// Render renders a delivery's templates in its user's language.
+// Render writes a delivery in its user's language: with the template an
+// administrator saved for its kind and channel, else the built-in one, and
+// the portal's branding.
 func (n *Notifier) Render(ctx context.Context, d store.Delivery) (Message, error) {
 	subject, err := n.Store.NotificationSubjectOf(ctx, d.Notification)
 	if err != nil {
 		return Message{}, err
 	}
-	data := Data{Kind: d.Notification.Kind, Locale: d.Locale, UserName: d.UserName, Title: d.Notification.Title,
-		Body: d.Notification.Body, Level: d.Notification.Level, Link: n.PublicURL + d.Notification.Link,
-		Preferences: n.PublicURL + "/notifications", Subject: subject, Extra: map[string]any{}}
-	_ = json.Unmarshal(d.Notification.Data, &data.Extra)
-	m, err := render(d.Notification.Kind, d.Locale, data)
+	b, err := n.Store.GetBranding(ctx, true)
+	if err != nil {
+		return Message{}, err
+	}
+	br := BrandOf(b)
+	data := dataOf(d, subject, n.PublicURL, portalOr(br.Name))
+	logo := ""
+	if br.Logo != nil {
+		logo = "cid:" + LogoCID
+	}
+	kind := d.Notification.Kind
+	if _, editable := KindOf(kind); editable {
+		t, err := n.Store.GetNotificationTemplate(ctx, kind, d.Channel, data.Locale)
+		switch {
+		case err == nil:
+			m, err := render(d.Channel, Parts{Subject: t.Subject, Text: t.Text, HTML: t.HTML}, data, br, logo)
+			if err == nil {
+				m.Delivery = d
+				return m, nil
+			}
+			// It was checked with the sample when saved; what this
+			// notification holds can still fail it.
+			n.Log.Warn("an edited template can't be written: the built-in one is sent", "kind", kind, "channel", d.Channel,
+				"locale", data.Locale, "err", err)
+		case !errors.Is(err, store.ErrNotFound):
+			return Message{}, err
+		}
+	}
+	def, ok := Default(kind, d.Channel, data.Locale)
+	if !ok {
+		return Message{}, Permanent(fmt.Errorf("%s has no template", kind))
+	}
+	m, err := render(d.Channel, def, data, br, logo)
 	if err != nil {
 		return Message{}, Permanent(err) // a template that can't render won't later
 	}
 	m.Delivery = d
 	return m, nil
+}
+
+// BrandOf is the branding messages show.
+func BrandOf(b store.Branding) Brand {
+	out := Brand{Name: b.Name}
+	if l, _, err := brand.Accents(b.Accent); err == nil {
+		out.Accent, out.AccentFg = l.Accent, l.AccentFg
+	}
+	if l := b.LogoLight; l != nil && (l.ContentType == "image/png" || l.ContentType == "image/jpeg") {
+		out.Logo = &Logo{ContentType: l.ContentType, Content: l.Content}
+	}
+	return out
 }

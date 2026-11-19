@@ -1,0 +1,7 @@
+subject: |-
+  The lease of {{.Deployment.Name}} ends {{if eq .Lease.Days 1}}within a day{{else}}in {{.Lease.Days}} days{{end}}
+text: |-
+  The lease of {{.Deployment.Name}} ends on {{date .Lease.ExpiresAt}}. {{if eq .Lease.ExpiryAction "power_off_then_delete"}}Its VMs are then powered off, and deleted after the grace period, unless you extend the lease.{{else if eq .Lease.ExpiryAction "delete"}}It is then deleted, unless you extend the lease.{{else}}Extend it if you still need it.{{end}}
+html: |-
+  <p>The lease of <strong>{{.Deployment.Name}}</strong> ends on {{date .Lease.ExpiresAt}}.</p>
+  <p style="margin:8px 0">{{if eq .Lease.ExpiryAction "power_off_then_delete"}}Its VMs are then powered off, and deleted after the grace period, unless you extend the lease.{{else if eq .Lease.ExpiryAction "delete"}}It is then deleted, unless you extend the lease.{{else}}Extend it if you still need it.{{end}}</p>

@@ -1,0 +1,6 @@
+subject: |-
+  Annulée : {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  Ce que {{.Request.Number}} avait créé a été supprimé.
+html: |-
+  <p>Ce que <strong>{{.Request.Number}}</strong> avait créé a été supprimé.</p>

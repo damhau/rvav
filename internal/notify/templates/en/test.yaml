@@ -1,0 +1,6 @@
+subject: |-
+  A test from {{.Portal}}
+text: |-
+  This is how {{.Portal}} reaches you here. Choose what comes here in your notification preferences.
+html: |-
+  <p>This is how {{.Portal}} reaches you here. Choose what comes here in your notification preferences.</p>

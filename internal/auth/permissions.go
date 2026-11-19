@@ -89,7 +89,7 @@ var Catalogue = []PermissionInfo{
 	{ExtensibilityRead, false, "Extensibility", "See event subscriptions, their runs and the custom workflows."},
 	{ExtensibilityManage, false, "Extensibility", "Change event subscriptions, custom workflows and AWX day-2 actions, retry and test runs."},
 	{ImportManage, false, "Import", "Onboard existing VMs and import from vRA."},
-	{SystemManage, false, "System", "Use the setup checklist and the System page."},
+	{SystemManage, false, "System", "Use the setup checklist and the System page; set the branding and the notification templates."},
 	{TokensManage, false, "Access", "See and revoke everyone's API tokens."},
 	{InventoryRead, false, "Integrations", "Read the Ansible inventory."},
 }

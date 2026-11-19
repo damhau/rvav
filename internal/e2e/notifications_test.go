@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -35,6 +36,55 @@ type sentMail struct {
 	To                  []string
 	Header              mail.Header
 	Subject, Text, HTML string
+	// Inline are the pictures its HTML shows, by content ID.
+	Inline map[string]inlinePart
+}
+
+type inlinePart struct {
+	ContentType string
+	Content     []byte
+}
+
+// read takes the text, HTML and inline pictures of a part, in the parts
+// nested in it too (an email with a logo is multipart/related).
+func (m *sentMail) read(contentType string, body io.Reader) error {
+	media, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(media, "multipart/") {
+		return nil
+	}
+	parts := multipart.NewReader(body, params["boundary"])
+	for {
+		p, err := parts.NextPart()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		ct := p.Header.Get("Content-Type")
+		if strings.HasPrefix(ct, "multipart/") {
+			if err := m.read(ct, p); err != nil {
+				return err
+			}
+			continue
+		}
+		b, _ := io.ReadAll(p)
+		switch {
+		case strings.HasPrefix(ct, "text/plain"):
+			m.Text = string(b)
+		case strings.HasPrefix(ct, "text/html"):
+			m.HTML = string(b)
+		case p.Header.Get("Content-Id") != "":
+			if strings.EqualFold(p.Header.Get("Content-Transfer-Encoding"), "base64") {
+				b, _ = base64.StdEncoding.DecodeString(strings.Join(strings.Fields(string(b)), ""))
+			}
+			media, _, _ := mime.ParseMediaType(ct)
+			m.Inline[strings.Trim(p.Header.Get("Content-Id"), "<>")] = inlinePart{ContentType: media, Content: b}
+		}
+	}
 }
 
 // fakeSMTP is a mail server that keeps what it receives; it refuses the
@@ -100,28 +150,10 @@ func (s *smtpSession) Data(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	m := sentMail{To: s.to, Header: msg.Header}
+	m := sentMail{To: s.to, Header: msg.Header, Inline: map[string]inlinePart{}}
 	m.Subject, _ = new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
-	_, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
-	if err != nil {
+	if err := m.read(msg.Header.Get("Content-Type"), msg.Body); err != nil {
 		return err
-	}
-	parts := multipart.NewReader(msg.Body, params["boundary"])
-	for {
-		p, err := parts.NextPart()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		b, _ := io.ReadAll(p)
-		switch {
-		case strings.HasPrefix(p.Header.Get("Content-Type"), "text/plain"):
-			m.Text = string(b)
-		case strings.HasPrefix(p.Header.Get("Content-Type"), "text/html"):
-			m.HTML = string(b)
-		}
 	}
 	s.f.mu.Lock()
 	s.f.mail = append(s.f.mail, m)

@@ -1,0 +1,6 @@
+subject: |-
+  Un test de {{.Portal}}
+text: |-
+  C'est ainsi que {{.Portal}} vous joint ici. Choisissez ce qui arrive ici dans vos préférences de notification.
+html: |-
+  <p>C'est ainsi que {{.Portal}} vous joint ici. Choisissez ce qui arrive ici dans vos préférences de notification.</p>

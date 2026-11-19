@@ -172,7 +172,7 @@
       "id": "system.manage",
       "scope": "rvav",
       "area": "System",
-      "summary": "Use the setup checklist and the System page."
+      "summary": "Use the setup checklist and the System page; set the branding and the notification templates."
     },
     {
       "id": "tokens.manage",

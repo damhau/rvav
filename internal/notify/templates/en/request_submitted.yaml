@@ -1,0 +1,6 @@
+subject: |-
+  Submitted: {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  Your request {{.Request.Number}} was submitted. You will hear when it is decided or done.
+html: |-
+  <p>Your request <strong>{{.Request.Number}}</strong> was submitted. You will hear when it is decided or done.</p>

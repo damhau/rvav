@@ -1,0 +1,6 @@
+subject: |-
+  {{if .Ready}}Prêt{{else}}Terminée{{end}} : {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  {{if .Ready}}{{.Request.Number}} est terminée : ce que vous avez demandé est prêt.{{else}}{{.Request.Number}} est terminée.{{end}}
+html: |-
+  <p>{{if .Ready}}<strong>{{.Request.Number}}</strong> est terminée : ce que vous avez demandé est prêt.{{else}}<strong>{{.Request.Number}}</strong> est terminée.{{end}}</p>

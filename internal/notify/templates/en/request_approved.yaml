@@ -1,0 +1,8 @@
+subject: |-
+  Approved: {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  Your request {{.Request.Number}} was approved. It runs now, or when it was scheduled.{{if .Body}}
+  {{.Body}}{{end}}
+html: |-
+  <p>Your request <strong>{{.Request.Number}}</strong> was approved. It runs now, or when it was scheduled.</p>{{if .Body}}
+  <p style="margin:8px 0;color:#59636e">{{.Body}}</p>{{end}}

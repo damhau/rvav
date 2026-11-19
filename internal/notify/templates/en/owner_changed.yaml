@@ -1,0 +1,6 @@
+subject: |-
+  You now own {{.Deployment.Name}}
+text: |-
+  {{.PreviousOwner}} handed {{.Deployment.Name}} over to you: you now decide its lease and its changes.
+html: |-
+  <p>{{.PreviousOwner}} handed <strong>{{.Deployment.Name}}</strong> over to you: you now decide its lease and its changes.</p>

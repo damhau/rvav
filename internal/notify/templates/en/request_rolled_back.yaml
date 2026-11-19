@@ -1,0 +1,6 @@
+subject: |-
+  Rolled back: {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  What {{.Request.Number}} had built was deleted.
+html: |-
+  <p>What <strong>{{.Request.Number}}</strong> had built was deleted.</p>

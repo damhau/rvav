@@ -1,0 +1,6 @@
+subject: |-
+  {{if .Ready}}Ready{{else}}Done{{end}}: {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  {{if .Ready}}{{.Request.Number}} is done: what you asked for is ready.{{else}}{{.Request.Number}} is done.{{end}}
+html: |-
+  <p>{{if .Ready}}<strong>{{.Request.Number}}</strong> is done: what you asked for is ready.{{else}}<strong>{{.Request.Number}}</strong> is done.{{end}}</p>

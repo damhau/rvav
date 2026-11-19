@@ -309,6 +309,11 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		t.Fatal(err)
 	}
 
+	if err := h.store.SetBrandLogo(h.ctx, h.store.Pool, false, &store.BrandLogo{ContentType: "image/png",
+		Content: []byte("\x89PNG\r\n\x1a\n")}, nil); err != nil {
+		t.Fatal(err)
+	}
+
 	var draft api.SavedDraft
 	h.json("POST", "/api/v1/me/drafts", "tnguyen", api.SavedDraftWrite{Draft: vm.draft}, 201, &draft)
 	var view api.SavedView
@@ -419,6 +424,8 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"tokens/{id}":                    token.Id,
 		"files/{fileId}":                 attached,
 		"images/{imageId}":               picture,
+		"notification-templates/{kind}":  "request_failed",
+		"logos/{variant}":                "light",
 		"plans/{planId}":                 plan.Id,
 		"runs/{runId}":                   planRun.Id,
 	}

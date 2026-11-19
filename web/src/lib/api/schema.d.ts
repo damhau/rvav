@@ -147,6 +147,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The portal's name, accent colours and logos (ADR-0059)
+         * @description For anyone, signed in or not: the sign-in page shows it. The accent
+         *     comes for the light and the dark theme, each with the colour of
+         *     text on it and its tint, all reading at 4.5:1 at least where the
+         *     web app puts them. Empty fields are rvav's own.
+         *
+         *     Answered with an `ETag`: sent back in `If-None-Match`, the answer
+         *     is 304 while the branding is the same.
+         */
+        get: operations["getBranding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branding/logos/{variant}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The logo for the light or the dark theme
+         * @description For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
+         *     nothing that runs or fetches when it was saved. Its URL in
+         *     `Branding` changes with it.
+         */
+        get: operations["getBrandingLogo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/notifications": {
         parameters: {
             query?: never;
@@ -3386,6 +3434,156 @@ export interface paths {
         get: operations["getSystem"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the portal's name and accent colour
+         * @description `system.manage`; audited (`settings.branding.update`). An empty name or
+         *     accent is rvav's own. The accent is the light theme's: one text
+         *     doesn't read on at 4.5:1 against the light theme's backgrounds is
+         *     refused, with the closest darker colour that reads. The dark
+         *     theme's accent is derived from it, lightened until it reads.
+         */
+        put: operations["setBranding"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/branding/accent-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * How an accent colour reads in both themes, before it is saved
+         * @description `system.manage`. Saves nothing.
+         */
+        post: operations["checkBrandingAccent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/branding/logos/{variant}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload the logo for the light or the dark theme
+         * @description `system.manage`; audited (`settings.branding_logo.set`). The body is the
+         *     picture as it is: PNG, JPEG or SVG, 256 KB and 2048 pixels a side
+         *     at most. An SVG with a script, an event handler, a foreign object,
+         *     a link or a reference outside itself, or a DOCTYPE is refused (422):
+         *     the picture is kept as it was sent, never rewritten. Emails show the
+         *     light theme's logo when it is a PNG or JPEG one.
+         */
+        put: operations["setBrandingLogo"];
+        post?: never;
+        /**
+         * Remove the logo for the light or the dark theme
+         * @description `system.manage`; audited (`settings.branding_logo.remove`).
+         */
+        delete: operations["deleteBrandingLogo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/notification-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every kind whose templates administrators edit, with its variables
+         * @description `system.manage`. Each kind has a template per channel and language;
+         *     those edited replace the built-in ones (ADR-0059).
+         */
+        get: operations["listNotificationTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/notification-templates/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["schemas"]["NotificationKind"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A kind's template for a channel and language, and its built-in one
+         * @description `system.manage`.
+         */
+        get: operations["getNotificationTemplate"];
+        /**
+         * Save a kind's template for a channel and language
+         * @description `system.manage`; audited (`settings.notification_template.update`). A Go
+         *     template: refused (422, per part) when it doesn't parse, names a
+         *     variable its kind doesn't have, defines or calls other templates,
+         *     or fails on the kind's sample data. Notifications sent from then on
+         *     use it.
+         */
+        put: operations["setNotificationTemplate"];
+        post?: never;
+        /**
+         * Go back to the built-in template
+         * @description `system.manage`; audited (`settings.notification_template.reset`) when it was edited.
+         */
+        delete: operations["resetNotificationTemplate"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/notification-templates/{kind}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A template written with its kind's sample data, as it would be sent
+         * @description `system.manage`. Saves nothing. An email's HTML, a Teams card's
+         *     JSON or Slack's blocks, with the portal's branding; a template
+         *     that can't be saved is 422, per part.
+         */
+        post: operations["previewNotificationTemplate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9182,6 +9380,142 @@ export interface components {
          * @enum {string}
          */
         NotificationChannel: "in_app" | "email" | "teams" | "slack";
+        /**
+         * @description A channel whose messages have templates.
+         * @enum {string}
+         */
+        TemplateChannel: "email" | "teams" | "slack";
+        /**
+         * @description A language messages are written in.
+         * @enum {string}
+         */
+        TemplateLocale: "en" | "fr";
+        TemplateVariable: {
+            /**
+             * @description As a template writes it.
+             * @example .Request.Number
+             */
+            name: string;
+            /** @description text, number, yes/no, date, list of text or function. */
+            type: string;
+            description: string;
+        };
+        NotificationTemplateSummary: {
+            channel: components["schemas"]["TemplateChannel"];
+            locale: components["schemas"]["TemplateLocale"];
+            /** @description An administrator's template replaces the built-in one. */
+            edited: boolean;
+            /** Format: date-time */
+            updated_at?: string;
+            /** @description Who saved it. */
+            updated_by?: string;
+        };
+        NotificationTemplateKind: {
+            kind: components["schemas"]["NotificationKind"];
+            /** @example Approval needed */
+            name: string;
+            /** @description Who gets it and when. */
+            when: string;
+            variables: components["schemas"]["TemplateVariable"][];
+            /** @description One per channel and language. */
+            templates: components["schemas"]["NotificationTemplateSummary"][];
+        };
+        NotificationTemplateCatalog: {
+            kinds: components["schemas"]["NotificationTemplateKind"][];
+            /** @description What templates may call besides Go's own (`if`, `range`, `eq`, `printf`...). */
+            functions: components["schemas"]["TemplateVariable"][];
+        };
+        TemplateParts: {
+            /** @description An email's subject; a Teams card's or a Slack message's title. */
+            subject: string;
+            /** @description An email's text part; a card's markdown or a message's mrkdwn, whose variables are escaped. */
+            text: string;
+            /** @description An email's HTML part, put in the layout with the greeting, facts, button and footer. Emails only. */
+            html?: string;
+        };
+        NotificationTemplateWrite: components["schemas"]["TemplateParts"] & {
+            channel: components["schemas"]["TemplateChannel"];
+            locale: components["schemas"]["TemplateLocale"];
+        };
+        NotificationTemplate: components["schemas"]["TemplateParts"] & {
+            kind: components["schemas"]["NotificationKind"];
+            channel: components["schemas"]["TemplateChannel"];
+            locale: components["schemas"]["TemplateLocale"];
+            /** @description The template is an administrator's; false: it is the built-in one. */
+            edited: boolean;
+            default: components["schemas"]["TemplateParts"];
+            /** Format: date-time */
+            updated_at?: string;
+            updated_by?: string;
+        };
+        NotificationTemplatePreview: {
+            subject: string;
+            /** @description An email's whole text part; a card's or a message's text. */
+            text: string;
+            /** @description An email's whole HTML, its logo inline. */
+            html?: string;
+            /** @description The Teams Adaptive Card. */
+            card?: {
+                [key: string]: unknown;
+            };
+            /** @description The Slack Block Kit blocks. */
+            blocks?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** @enum {string} */
+        LogoVariant: "light" | "dark";
+        /** @description An accent and the colours that go with it in a theme. */
+        AccentPalette: {
+            /**
+             * @description Links, buttons and focus rings.
+             * @example #0e6488
+             */
+            accent: string;
+            /** @description Text on the accent. */
+            accent_fg: string;
+            /** @description A tint of the accent behind text, such as the current page in the menu. */
+            accent_soft: string;
+        };
+        Branding: {
+            /**
+             * @description The portal's name; rvav until one is set.
+             * @example Acme Cloud
+             */
+            name: string;
+            /** @description The accent colour set; empty for rvav's own. */
+            accent?: string;
+            light: components["schemas"]["AccentPalette"];
+            dark: components["schemas"]["AccentPalette"];
+            /** @description The light theme's logo, if there is one. */
+            logo_light_url?: string;
+            /** @description The dark theme's logo; the light one is shown when there is none. */
+            logo_dark_url?: string;
+        };
+        BrandingWrite: {
+            /** @description Empty for rvav. */
+            name: string;
+            /**
+             * @description #rrggbb or #rgb; empty for rvav's own.
+             * @example #5b2a86
+             */
+            accent: string;
+        };
+        AccentCheckQuery: {
+            accent: string;
+        };
+        AccentCheck: {
+            /** @description The accent reads in both themes and can be saved. */
+            ok: boolean;
+            /** @description Its lowest contrast in the light theme, such as 5.2 for 5.2:1. */
+            ratio: number;
+            /** @description Why it can't be saved. */
+            message?: string;
+            /** @description The closest darker colour that reads, when it doesn't. */
+            suggestion?: string;
+            light?: components["schemas"]["AccentPalette"];
+            dark?: components["schemas"]["AccentPalette"];
+        };
         Notification: {
             id: string;
             kind: components["schemas"]["NotificationKind"];
@@ -10162,6 +10496,8 @@ export interface components {
         };
     };
     parameters: {
+        TemplateChannelQuery: components["schemas"]["TemplateChannel"];
+        TemplateLocaleQuery: components["schemas"]["TemplateLocale"];
         ProjectIdPath: string;
         ProjectIdQuery: string;
         ProjectIdQueryRequired: string;
@@ -10338,6 +10674,69 @@ export interface operations {
                     "application/json": components["schemas"]["AuthOptions"];
                 };
             };
+        };
+    };
+    getBranding: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The `ETag` of the branding the caller has. */
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The branding */
+            200: {
+                headers: {
+                    /** @description Changes when the branding does. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branding"];
+                };
+            };
+            /** @description The branding is the one the ETag names. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getBrandingLogo: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The version `Branding` names in the logo's URL: the answer is
+                 *     cached for good while it is the logo's.
+                 */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                variant: components["schemas"]["LogoVariant"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The logo */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/svg+xml": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     listNotifications: {
@@ -15696,6 +16095,248 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    setBranding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandingWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branding"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    checkBrandingAccent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccentCheckQuery"];
+            };
+        };
+        responses: {
+            /** @description The check */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccentCheck"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setBrandingLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                variant: components["schemas"]["LogoVariant"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branding"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteBrandingLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                variant: components["schemas"]["LogoVariant"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branding"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listNotificationTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationTemplateCatalog"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getNotificationTemplate: {
+        parameters: {
+            query: {
+                channel: components["parameters"]["TemplateChannelQuery"];
+                locale: components["parameters"]["TemplateLocaleQuery"];
+            };
+            header?: never;
+            path: {
+                kind: components["schemas"]["NotificationKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationTemplate"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setNotificationTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["schemas"]["NotificationKind"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationTemplateWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationTemplate"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    resetNotificationTemplate: {
+        parameters: {
+            query: {
+                channel: components["parameters"]["TemplateChannelQuery"];
+                locale: components["parameters"]["TemplateLocaleQuery"];
+            };
+            header?: never;
+            path: {
+                kind: components["schemas"]["NotificationKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The built-in template, now used */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationTemplate"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    previewNotificationTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["schemas"]["NotificationKind"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationTemplateWrite"];
+            };
+        };
+        responses: {
+            /** @description The preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationTemplatePreview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     getSetup: {

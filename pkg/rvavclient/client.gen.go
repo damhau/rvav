@@ -1308,6 +1308,24 @@ func (e LogChunkLinesKind) Valid() bool {
 	}
 }
 
+// Defines values for LogoVariant.
+const (
+	LogoDark  LogoVariant = "dark"
+	LogoLight LogoVariant = "light"
+)
+
+// Valid indicates whether the value is a known member of the LogoVariant enum.
+func (e LogoVariant) Valid() bool {
+	switch e {
+	case LogoDark:
+		return true
+	case LogoLight:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NamingPolicyCounter.
 const (
 	NamingPolicyCounterPolicy NamingPolicyCounter = "policy"
@@ -2508,6 +2526,45 @@ func (e SyslogTransport) Valid() bool {
 	}
 }
 
+// Defines values for TemplateChannel.
+const (
+	TemplateEmail TemplateChannel = "email"
+	TemplateSlack TemplateChannel = "slack"
+	TemplateTeams TemplateChannel = "teams"
+)
+
+// Valid indicates whether the value is a known member of the TemplateChannel enum.
+func (e TemplateChannel) Valid() bool {
+	switch e {
+	case TemplateEmail:
+		return true
+	case TemplateSlack:
+		return true
+	case TemplateTeams:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TemplateLocale.
+const (
+	TemplateEnglish TemplateLocale = "en"
+	TemplateFrench  TemplateLocale = "fr"
+)
+
+// Valid indicates whether the value is a known member of the TemplateLocale enum.
+func (e TemplateLocale) Valid() bool {
+	switch e {
+	case TemplateEnglish:
+		return true
+	case TemplateFrench:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UiColumnWidget.
 const (
 	UiColumnWidgetNumber UiColumnWidget = "number"
@@ -3463,6 +3520,46 @@ func (e ListVmsParamsSort) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AccentCheck defines model for AccentCheck.
+type AccentCheck struct {
+	// Dark An accent and the colours that go with it in a theme.
+	Dark *AccentPalette `json:"dark,omitempty"`
+
+	// Light An accent and the colours that go with it in a theme.
+	Light *AccentPalette `json:"light,omitempty"`
+
+	// Message Why it can't be saved.
+	Message *string `json:"message,omitempty"`
+
+	// Ok The accent reads in both themes and can be saved.
+	Ok bool `json:"ok"`
+
+	// Ratio Its lowest contrast in the light theme, such as 5.2 for 5.2:1.
+	Ratio float32 `json:"ratio"`
+
+	// Suggestion The closest darker colour that reads, when it doesn't.
+	Suggestion *string `json:"suggestion,omitempty"`
+}
+
+// AccentCheckQuery defines model for AccentCheckQuery.
+type AccentCheckQuery struct {
+	Accent string `json:"accent"`
+}
+
+// AccentPalette An accent and the colours that go with it in a theme.
+type AccentPalette struct {
+	// Accent Links, buttons and focus rings.
+	//
+	// Examples: #0e6488
+	Accent string `json:"accent"`
+
+	// AccentFg Text on the accent.
+	AccentFg string `json:"accent_fg"`
+
+	// AccentSoft A tint of the accent behind text, such as the current page in the menu.
+	AccentSoft string `json:"accent_soft"`
 }
 
 // AccessExplanation defines model for AccessExplanation.
@@ -4461,6 +4558,40 @@ type BotActivity_From struct {
 	AadObjectId          *string                `json:"aadObjectId,omitempty"`
 	Id                   *string                `json:"id,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// Branding defines model for Branding.
+type Branding struct {
+	// Accent The accent colour set; empty for rvav's own.
+	Accent *string `json:"accent,omitempty"`
+
+	// Dark An accent and the colours that go with it in a theme.
+	Dark AccentPalette `json:"dark"`
+
+	// Light An accent and the colours that go with it in a theme.
+	Light AccentPalette `json:"light"`
+
+	// LogoDarkUrl The dark theme's logo; the light one is shown when there is none.
+	LogoDarkUrl *string `json:"logo_dark_url,omitempty"`
+
+	// LogoLightUrl The light theme's logo, if there is one.
+	LogoLightUrl *string `json:"logo_light_url,omitempty"`
+
+	// Name The portal's name; rvav until one is set.
+	//
+	// Examples: Acme Cloud
+	Name string `json:"name"`
+}
+
+// BrandingWrite defines model for BrandingWrite.
+type BrandingWrite struct {
+	// Accent #rrggbb or #rgb; empty for rvav's own.
+	//
+	// Examples: #5b2a86
+	Accent string `json:"accent"`
+
+	// Name Empty for rvav.
+	Name string `json:"name"`
 }
 
 // CatalogAudience Who may request an item in a project: all its members when it names
@@ -6778,6 +6909,9 @@ type LogChunk struct {
 // LogChunkLinesKind Hint for colouring Ansible output.
 type LogChunkLinesKind string
 
+// LogoVariant defines model for LogoVariant.
+type LogoVariant string
+
 // MachineChange What a blocking subscription's answer changed on its VM (ADR-0054), as
 // the answer's `machine` gave it: on compute.allocation.pre its name
 // and placement, on network.configure its adapters' networks and
@@ -7080,6 +7214,106 @@ type NotificationRule struct {
 
 	// Kind What a notification is about (ADR-0023).
 	Kind NotificationKind `json:"kind"`
+}
+
+// NotificationTemplate defines model for NotificationTemplate.
+type NotificationTemplate struct {
+	// Channel A channel whose messages have templates.
+	Channel TemplateChannel `json:"channel"`
+	Default TemplateParts   `json:"default"`
+
+	// Edited The template is an administrator's; false: it is the built-in one.
+	Edited bool `json:"edited"`
+
+	// Html An email's HTML part, put in the layout with the greeting, facts, button and footer. Emails only.
+	Html *string `json:"html,omitempty"`
+
+	// Kind What a notification is about (ADR-0023).
+	Kind NotificationKind `json:"kind"`
+
+	// Locale A language messages are written in.
+	Locale TemplateLocale `json:"locale"`
+
+	// Subject An email's subject; a Teams card's or a Slack message's title.
+	Subject string `json:"subject"`
+
+	// Text An email's text part; a card's markdown or a message's mrkdwn, whose variables are escaped.
+	Text      string     `json:"text"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	UpdatedBy *string    `json:"updated_by,omitempty"`
+}
+
+// NotificationTemplateCatalog defines model for NotificationTemplateCatalog.
+type NotificationTemplateCatalog struct {
+	// Functions What templates may call besides Go's own (`if`, `range`, `eq`, `printf`...).
+	Functions []TemplateVariable         `json:"functions"`
+	Kinds     []NotificationTemplateKind `json:"kinds"`
+}
+
+// NotificationTemplateKind defines model for NotificationTemplateKind.
+type NotificationTemplateKind struct {
+	// Kind What a notification is about (ADR-0023).
+	Kind NotificationKind `json:"kind"`
+
+	// Name Examples: Approval needed
+	Name string `json:"name"`
+
+	// Templates One per channel and language.
+	Templates []NotificationTemplateSummary `json:"templates"`
+	Variables []TemplateVariable            `json:"variables"`
+
+	// When Who gets it and when.
+	When string `json:"when"`
+}
+
+// NotificationTemplatePreview defines model for NotificationTemplatePreview.
+type NotificationTemplatePreview struct {
+	// Blocks The Slack Block Kit blocks.
+	Blocks *[]map[string]interface{} `json:"blocks,omitempty"`
+
+	// Card The Teams Adaptive Card.
+	Card *map[string]interface{} `json:"card,omitempty"`
+
+	// Html An email's whole HTML, its logo inline.
+	Html    *string `json:"html,omitempty"`
+	Subject string  `json:"subject"`
+
+	// Text An email's whole text part; a card's or a message's text.
+	Text string `json:"text"`
+}
+
+// NotificationTemplateSummary defines model for NotificationTemplateSummary.
+type NotificationTemplateSummary struct {
+	// Channel A channel whose messages have templates.
+	Channel TemplateChannel `json:"channel"`
+
+	// Edited An administrator's template replaces the built-in one.
+	Edited bool `json:"edited"`
+
+	// Locale A language messages are written in.
+	Locale    TemplateLocale `json:"locale"`
+	UpdatedAt *time.Time     `json:"updated_at,omitempty"`
+
+	// UpdatedBy Who saved it.
+	UpdatedBy *string `json:"updated_by,omitempty"`
+}
+
+// NotificationTemplateWrite defines model for NotificationTemplateWrite.
+type NotificationTemplateWrite struct {
+	// Channel A channel whose messages have templates.
+	Channel TemplateChannel `json:"channel"`
+
+	// Html An email's HTML part, put in the layout with the greeting, facts, button and footer. Emails only.
+	Html *string `json:"html,omitempty"`
+
+	// Locale A language messages are written in.
+	Locale TemplateLocale `json:"locale"`
+
+	// Subject An email's subject; a Teams card's or a Slack message's title.
+	Subject string `json:"subject"`
+
+	// Text An email's text part; a card's markdown or a message's mrkdwn, whose variables are escaped.
+	Text string `json:"text"`
 }
 
 // NotificationsRead defines model for NotificationsRead.
@@ -9420,12 +9654,43 @@ type System struct {
 	Version string `json:"version"`
 }
 
+// TemplateChannel A channel whose messages have templates.
+type TemplateChannel string
+
 // TemplateConstraints Constraint tags its VMs get on top of the blueprint's (ADR-0035, ADR-0037): `[!]category/tag[:hard|:soft]`, without `${...}`.
 type TemplateConstraints struct {
 	// Compute Examples: ["rvav-os/rhel9"]
 	Compute []string `json:"compute"`
 	Network []string `json:"network"`
 	Storage []string `json:"storage"`
+}
+
+// TemplateLocale A language messages are written in.
+type TemplateLocale string
+
+// TemplateParts defines model for TemplateParts.
+type TemplateParts struct {
+	// Html An email's HTML part, put in the layout with the greeting, facts, button and footer. Emails only.
+	Html *string `json:"html,omitempty"`
+
+	// Subject An email's subject; a Teams card's or a Slack message's title.
+	Subject string `json:"subject"`
+
+	// Text An email's text part; a card's markdown or a message's mrkdwn, whose variables are escaped.
+	Text string `json:"text"`
+}
+
+// TemplateVariable defines model for TemplateVariable.
+type TemplateVariable struct {
+	Description string `json:"description"`
+
+	// Name As a template writes it.
+	//
+	// Examples: .Request.Number
+	Name string `json:"name"`
+
+	// Type text, number, yes/no, date, list of text or function.
+	Type string `json:"type"`
 }
 
 // UiColumn defines model for UiColumn.
@@ -10863,6 +11128,12 @@ type RequestIdPath = string
 // Search defines model for Search.
 type Search = string
 
+// TemplateChannelQuery A channel whose messages have templates.
+type TemplateChannelQuery = TemplateChannel
+
+// TemplateLocaleQuery A language messages are written in.
+type TemplateLocaleQuery = TemplateLocale
+
 // UserIdPath defines model for UserIdPath.
 type UserIdPath = string
 
@@ -10973,6 +11244,18 @@ type GetFormLibraryEntryParams struct {
 type DeleteLeasePolicyParams struct {
 	Environment EnvironmentKey         `form:"environment" json:"environment"`
 	ProjectId   ProjectIdQueryRequired `form:"project_id" json:"project_id"`
+}
+
+// ResetNotificationTemplateParams defines parameters for ResetNotificationTemplate.
+type ResetNotificationTemplateParams struct {
+	Channel TemplateChannelQuery `form:"channel" json:"channel"`
+	Locale  TemplateLocaleQuery  `form:"locale" json:"locale"`
+}
+
+// GetNotificationTemplateParams defines parameters for GetNotificationTemplate.
+type GetNotificationTemplateParams struct {
+	Channel TemplateChannelQuery `form:"channel" json:"channel"`
+	Locale  TemplateLocaleQuery  `form:"locale" json:"locale"`
 }
 
 // ListOnboardingVmsParams defines parameters for ListOnboardingVms.
@@ -11098,6 +11381,19 @@ type ListAuditEventsParams struct {
 
 // ListAuditEventsParamsFormat defines parameters for ListAuditEvents.
 type ListAuditEventsParamsFormat string
+
+// GetBrandingParams defines parameters for GetBranding.
+type GetBrandingParams struct {
+	// IfNoneMatch The `ETag` of the branding the caller has.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
+// GetBrandingLogoParams defines parameters for GetBrandingLogo.
+type GetBrandingLogoParams struct {
+	// V The version `Branding` names in the logo's URL: the answer is
+	// cached for good while it is the logo's.
+	V *string `form:"v,omitempty" json:"v,omitempty"`
+}
 
 // ListCatalogCategoriesParams defines parameters for ListCatalogCategories.
 type ListCatalogCategoriesParams struct {
@@ -11406,6 +11702,12 @@ type UpdateAuditDestinationJSONRequestBody = AuditDestinationWrite
 // UpdateAwxActionJSONRequestBody defines body for UpdateAwxAction for application/json ContentType.
 type UpdateAwxActionJSONRequestBody = AwxActionUpdate
 
+// SetBrandingJSONRequestBody defines body for SetBranding for application/json ContentType.
+type SetBrandingJSONRequestBody = BrandingWrite
+
+// CheckBrandingAccentJSONRequestBody defines body for CheckBrandingAccent for application/json ContentType.
+type CheckBrandingAccentJSONRequestBody = AccentCheckQuery
+
 // CreateCatalogCategoryJSONRequestBody defines body for CreateCatalogCategory for application/json ContentType.
 type CreateCatalogCategoryJSONRequestBody = AdminCatalogCategory
 
@@ -11513,6 +11815,12 @@ type PreviewNamingJSONRequestBody = NamingPreviewQuery
 
 // SetNetworkMappingJSONRequestBody defines body for SetNetworkMapping for application/json ContentType.
 type SetNetworkMappingJSONRequestBody = NetworkMappingWrite
+
+// SetNotificationTemplateJSONRequestBody defines body for SetNotificationTemplate for application/json ContentType.
+type SetNotificationTemplateJSONRequestBody = NotificationTemplateWrite
+
+// PreviewNotificationTemplateJSONRequestBody defines body for PreviewNotificationTemplate for application/json ContentType.
+type PreviewNotificationTemplateJSONRequestBody = NotificationTemplateWrite
 
 // AdoptVmsJSONRequestBody defines body for AdoptVms for application/json ContentType.
 type AdoptVmsJSONRequestBody = OnboardingDraft
@@ -12892,6 +13200,71 @@ type ClientInterface interface {
 	// Corresponds with POST /admin/awx/templates/sync (the `SyncAwxTemplates` operationId).
 	SyncAwxTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// SetBrandingWithBody Set the portal's name and accent colour
+	//
+	// `system.manage`; audited (`settings.branding.update`). An empty name or
+	// accent is rvav's own. The accent is the light theme's: one text
+	// doesn't read on at 4.5:1 against the light theme's backgrounds is
+	// refused, with the closest darker colour that reads. The dark
+	// theme's accent is derived from it, lightened until it reads.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/branding (the `SetBranding` operationId).
+	SetBrandingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetBranding Set the portal's name and accent colour
+	//
+	// `system.manage`; audited (`settings.branding.update`). An empty name or
+	// accent is rvav's own. The accent is the light theme's: one text
+	// doesn't read on at 4.5:1 against the light theme's backgrounds is
+	// refused, with the closest darker colour that reads. The dark
+	// theme's accent is derived from it, lightened until it reads.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/branding (the `SetBranding` operationId).
+	SetBranding(ctx context.Context, body SetBrandingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckBrandingAccentWithBody How an accent colour reads in both themes, before it is saved
+	//
+	// `system.manage`. Saves nothing.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/branding/accent-check (the `CheckBrandingAccent` operationId).
+	CheckBrandingAccentWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckBrandingAccent How an accent colour reads in both themes, before it is saved
+	//
+	// `system.manage`. Saves nothing.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/branding/accent-check (the `CheckBrandingAccent` operationId).
+	CheckBrandingAccent(ctx context.Context, body CheckBrandingAccentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteBrandingLogo Remove the logo for the light or the dark theme
+	//
+	// `system.manage`; audited (`settings.branding_logo.remove`).
+	//
+	// Corresponds with DELETE /admin/branding/logos/{variant} (the `DeleteBrandingLogo` operationId).
+	DeleteBrandingLogo(ctx context.Context, variant LogoVariant, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetBrandingLogoWithBody Upload the logo for the light or the dark theme
+	//
+	// `system.manage`; audited (`settings.branding_logo.set`). The body is the
+	// picture as it is: PNG, JPEG or SVG, 256 KB and 2048 pixels a side
+	// at most. An SVG with a script, an event handler, a foreign object,
+	// a link or a reference outside itself, or a DOCTYPE is refused (422):
+	// the picture is kept as it was sent, never rewritten. Emails show the
+	// light theme's logo when it is a PNG or JPEG one.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/branding/logos/{variant} (the `SetBrandingLogo` operationId).
+	SetBrandingLogoWithBody(ctx context.Context, variant LogoVariant, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAdminCatalogCategories Every category, with its number of items
 	//
 	// Corresponds with GET /admin/catalog/categories (the `ListAdminCatalogCategories` operationId).
@@ -13980,6 +14353,76 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /admin/network-mappings/{network} (the `SetNetworkMapping` operationId).
 	SetNetworkMapping(ctx context.Context, network string, body SetNetworkMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListNotificationTemplates Every kind whose templates administrators edit, with its variables
+	//
+	// `system.manage`. Each kind has a template per channel and language;
+	// those edited replace the built-in ones (ADR-0059).
+	//
+	// Corresponds with GET /admin/notification-templates (the `ListNotificationTemplates` operationId).
+	ListNotificationTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResetNotificationTemplate Go back to the built-in template
+	//
+	// `system.manage`; audited (`settings.notification_template.reset`) when it was edited.
+	//
+	// Corresponds with DELETE /admin/notification-templates/{kind} (the `ResetNotificationTemplate` operationId).
+	ResetNotificationTemplate(ctx context.Context, kind NotificationKind, params *ResetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetNotificationTemplate A kind's template for a channel and language, and its built-in one
+	//
+	// `system.manage`.
+	//
+	// Corresponds with GET /admin/notification-templates/{kind} (the `GetNotificationTemplate` operationId).
+	GetNotificationTemplate(ctx context.Context, kind NotificationKind, params *GetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetNotificationTemplateWithBody Save a kind's template for a channel and language
+	//
+	// `system.manage`; audited (`settings.notification_template.update`). A Go
+	// template: refused (422, per part) when it doesn't parse, names a
+	// variable its kind doesn't have, defines or calls other templates,
+	// or fails on the kind's sample data. Notifications sent from then on
+	// use it.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/notification-templates/{kind} (the `SetNotificationTemplate` operationId).
+	SetNotificationTemplateWithBody(ctx context.Context, kind NotificationKind, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetNotificationTemplate Save a kind's template for a channel and language
+	//
+	// `system.manage`; audited (`settings.notification_template.update`). A Go
+	// template: refused (422, per part) when it doesn't parse, names a
+	// variable its kind doesn't have, defines or calls other templates,
+	// or fails on the kind's sample data. Notifications sent from then on
+	// use it.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/notification-templates/{kind} (the `SetNotificationTemplate` operationId).
+	SetNotificationTemplate(ctx context.Context, kind NotificationKind, body SetNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewNotificationTemplateWithBody A template written with its kind's sample data, as it would be sent
+	//
+	// `system.manage`. Saves nothing. An email's HTML, a Teams card's
+	// JSON or Slack's blocks, with the portal's branding; a template
+	// that can't be saved is 422, per part.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
+	PreviewNotificationTemplateWithBody(ctx context.Context, kind NotificationKind, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewNotificationTemplate A template written with its kind's sample data, as it would be sent
+	//
+	// `system.manage`. Saves nothing. An email's HTML, a Teams card's
+	// JSON or Slack's blocks, with the portal's branding; a template
+	// that can't be saved is 422, per part.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
+	PreviewNotificationTemplate(ctx context.Context, kind NotificationKind, body PreviewNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AdoptVmsWithBody Adopt existing VMs into deployments, with their addresses and DNS records from EfficientIP
 	//
@@ -15172,6 +15615,28 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /auth/sign-out (the `SignOut` operationId).
 	SignOut(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetBranding The portal's name, accent colours and logos (ADR-0059)
+	//
+	// For anyone, signed in or not: the sign-in page shows it. The accent
+	// comes for the light and the dark theme, each with the colour of
+	// text on it and its tint, all reading at 4.5:1 at least where the
+	// web app puts them. Empty fields are rvav's own.
+	//
+	// Answered with an `ETag`: sent back in `If-None-Match`, the answer
+	// is 304 while the branding is the same.
+	//
+	// Corresponds with GET /branding (the `GetBranding` operationId).
+	GetBranding(ctx context.Context, params *GetBrandingParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetBrandingLogo The logo for the light or the dark theme
+	//
+	// For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
+	// nothing that runs or fetches when it was saved. Its URL in
+	// `Branding` changes with it.
+	//
+	// Corresponds with GET /branding/logos/{variant} (the `GetBrandingLogo` operationId).
+	GetBrandingLogo(ctx context.Context, variant LogoVariant, params *GetBrandingLogoParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCatalogCategories Categories with the number of items the caller can request in a project
 	//
@@ -16403,6 +16868,131 @@ func (c *Client) ListAwxTemplates(ctx context.Context, reqEditors ...RequestEdit
 // Corresponds with POST /admin/awx/templates/sync (the `SyncAwxTemplates` operationId).
 func (c *Client) SyncAwxTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSyncAwxTemplatesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetBrandingWithBody Set the portal's name and accent colour
+//
+// `system.manage`; audited (`settings.branding.update`). An empty name or
+// accent is rvav's own. The accent is the light theme's: one text
+// doesn't read on at 4.5:1 against the light theme's backgrounds is
+// refused, with the closest darker colour that reads. The dark
+// theme's accent is derived from it, lightened until it reads.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/branding (the `SetBranding` operationId).
+func (c *Client) SetBrandingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetBrandingRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetBranding Set the portal's name and accent colour
+//
+// `system.manage`; audited (`settings.branding.update`). An empty name or
+// accent is rvav's own. The accent is the light theme's: one text
+// doesn't read on at 4.5:1 against the light theme's backgrounds is
+// refused, with the closest darker colour that reads. The dark
+// theme's accent is derived from it, lightened until it reads.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/branding (the `SetBranding` operationId).
+func (c *Client) SetBranding(ctx context.Context, body SetBrandingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetBrandingRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CheckBrandingAccentWithBody How an accent colour reads in both themes, before it is saved
+//
+// `system.manage`. Saves nothing.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/branding/accent-check (the `CheckBrandingAccent` operationId).
+func (c *Client) CheckBrandingAccentWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckBrandingAccentRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CheckBrandingAccent How an accent colour reads in both themes, before it is saved
+//
+// `system.manage`. Saves nothing.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/branding/accent-check (the `CheckBrandingAccent` operationId).
+func (c *Client) CheckBrandingAccent(ctx context.Context, body CheckBrandingAccentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckBrandingAccentRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteBrandingLogo Remove the logo for the light or the dark theme
+//
+// `system.manage`; audited (`settings.branding_logo.remove`).
+//
+// Corresponds with DELETE /admin/branding/logos/{variant} (the `DeleteBrandingLogo` operationId).
+func (c *Client) DeleteBrandingLogo(ctx context.Context, variant LogoVariant, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteBrandingLogoRequest(c.Server, variant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetBrandingLogoWithBody Upload the logo for the light or the dark theme
+//
+// `system.manage`; audited (`settings.branding_logo.set`). The body is the
+// picture as it is: PNG, JPEG or SVG, 256 KB and 2048 pixels a side
+// at most. An SVG with a script, an event handler, a foreign object,
+// a link or a reference outside itself, or a DOCTYPE is refused (422):
+// the picture is kept as it was sent, never rewritten. Emails show the
+// light theme's logo when it is a PNG or JPEG one.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/branding/logos/{variant} (the `SetBrandingLogo` operationId).
+func (c *Client) SetBrandingLogoWithBody(ctx context.Context, variant LogoVariant, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetBrandingLogoRequestWithBody(c.Server, variant, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -18662,6 +19252,146 @@ func (c *Client) SetNetworkMappingWithBody(ctx context.Context, network string, 
 // Corresponds with PUT /admin/network-mappings/{network} (the `SetNetworkMapping` operationId).
 func (c *Client) SetNetworkMapping(ctx context.Context, network string, body SetNetworkMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetNetworkMappingRequest(c.Server, network, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListNotificationTemplates Every kind whose templates administrators edit, with its variables
+//
+// `system.manage`. Each kind has a template per channel and language;
+// those edited replace the built-in ones (ADR-0059).
+//
+// Corresponds with GET /admin/notification-templates (the `ListNotificationTemplates` operationId).
+func (c *Client) ListNotificationTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListNotificationTemplatesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResetNotificationTemplate Go back to the built-in template
+//
+// `system.manage`; audited (`settings.notification_template.reset`) when it was edited.
+//
+// Corresponds with DELETE /admin/notification-templates/{kind} (the `ResetNotificationTemplate` operationId).
+func (c *Client) ResetNotificationTemplate(ctx context.Context, kind NotificationKind, params *ResetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetNotificationTemplateRequest(c.Server, kind, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetNotificationTemplate A kind's template for a channel and language, and its built-in one
+//
+// `system.manage`.
+//
+// Corresponds with GET /admin/notification-templates/{kind} (the `GetNotificationTemplate` operationId).
+func (c *Client) GetNotificationTemplate(ctx context.Context, kind NotificationKind, params *GetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetNotificationTemplateRequest(c.Server, kind, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetNotificationTemplateWithBody Save a kind's template for a channel and language
+//
+// `system.manage`; audited (`settings.notification_template.update`). A Go
+// template: refused (422, per part) when it doesn't parse, names a
+// variable its kind doesn't have, defines or calls other templates,
+// or fails on the kind's sample data. Notifications sent from then on
+// use it.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/notification-templates/{kind} (the `SetNotificationTemplate` operationId).
+func (c *Client) SetNotificationTemplateWithBody(ctx context.Context, kind NotificationKind, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetNotificationTemplateRequestWithBody(c.Server, kind, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetNotificationTemplate Save a kind's template for a channel and language
+//
+// `system.manage`; audited (`settings.notification_template.update`). A Go
+// template: refused (422, per part) when it doesn't parse, names a
+// variable its kind doesn't have, defines or calls other templates,
+// or fails on the kind's sample data. Notifications sent from then on
+// use it.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/notification-templates/{kind} (the `SetNotificationTemplate` operationId).
+func (c *Client) SetNotificationTemplate(ctx context.Context, kind NotificationKind, body SetNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetNotificationTemplateRequest(c.Server, kind, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewNotificationTemplateWithBody A template written with its kind's sample data, as it would be sent
+//
+// `system.manage`. Saves nothing. An email's HTML, a Teams card's
+// JSON or Slack's blocks, with the portal's branding; a template
+// that can't be saved is 422, per part.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
+func (c *Client) PreviewNotificationTemplateWithBody(ctx context.Context, kind NotificationKind, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewNotificationTemplateRequestWithBody(c.Server, kind, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewNotificationTemplate A template written with its kind's sample data, as it would be sent
+//
+// `system.manage`. Saves nothing. An email's HTML, a Teams card's
+// JSON or Slack's blocks, with the portal's branding; a template
+// that can't be saved is 422, per part.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
+func (c *Client) PreviewNotificationTemplate(ctx context.Context, kind NotificationKind, body PreviewNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewNotificationTemplateRequest(c.Server, kind, body)
 	if err != nil {
 		return nil, err
 	}
@@ -21324,6 +22054,48 @@ func (c *Client) SignOut(ctx context.Context, reqEditors ...RequestEditorFn) (*h
 	return c.Client.Do(req)
 }
 
+// GetBranding The portal's name, accent colours and logos (ADR-0059)
+//
+// For anyone, signed in or not: the sign-in page shows it. The accent
+// comes for the light and the dark theme, each with the colour of
+// text on it and its tint, all reading at 4.5:1 at least where the
+// web app puts them. Empty fields are rvav's own.
+//
+// Answered with an `ETag`: sent back in `If-None-Match`, the answer
+// is 304 while the branding is the same.
+//
+// Corresponds with GET /branding (the `GetBranding` operationId).
+func (c *Client) GetBranding(ctx context.Context, params *GetBrandingParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetBrandingRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetBrandingLogo The logo for the light or the dark theme
+//
+// For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
+// nothing that runs or fetches when it was saved. Its URL in
+// `Branding` changes with it.
+//
+// Corresponds with GET /branding/logos/{variant} (the `GetBrandingLogo` operationId).
+func (c *Client) GetBrandingLogo(ctx context.Context, variant LogoVariant, params *GetBrandingLogoParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetBrandingLogoRequest(c.Server, variant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListCatalogCategories Categories with the number of items the caller can request in a project
 //
 // Corresponds with GET /catalog/categories (the `ListCatalogCategories` operationId).
@@ -23675,6 +24447,156 @@ func NewSyncAwxTemplatesRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewSetBrandingRequest calls the generic SetBranding builder with application/json body
+func NewSetBrandingRequest(server string, body SetBrandingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetBrandingRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSetBrandingRequestWithBody constructs an http.Request for the SetBranding method, with any body, and a specified content type
+func NewSetBrandingRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/branding")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCheckBrandingAccentRequest calls the generic CheckBrandingAccent builder with application/json body
+func NewCheckBrandingAccentRequest(server string, body CheckBrandingAccentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCheckBrandingAccentRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCheckBrandingAccentRequestWithBody constructs an http.Request for the CheckBrandingAccent method, with any body, and a specified content type
+func NewCheckBrandingAccentRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/branding/accent-check")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteBrandingLogoRequest constructs an http.Request for the DeleteBrandingLogo method
+func NewDeleteBrandingLogoRequest(server string, variant LogoVariant) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "variant", variant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/branding/logos/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetBrandingLogoRequestWithBody constructs an http.Request for the SetBrandingLogo method, with any body, and a specified content type
+func NewSetBrandingLogoRequestWithBody(server string, variant LogoVariant, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "variant", variant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/branding/logos/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -26941,6 +27863,257 @@ func NewSetNetworkMappingRequestWithBody(server string, network string, contentT
 	}
 
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListNotificationTemplatesRequest constructs an http.Request for the ListNotificationTemplates method
+func NewListNotificationTemplatesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/notification-templates")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewResetNotificationTemplateRequest constructs an http.Request for the ResetNotificationTemplate method
+func NewResetNotificationTemplateRequest(server string, kind NotificationKind, params *ResetNotificationTemplateParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "kind", kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/notification-templates/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "channel", params.Channel, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "locale", params.Locale, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetNotificationTemplateRequest constructs an http.Request for the GetNotificationTemplate method
+func NewGetNotificationTemplateRequest(server string, kind NotificationKind, params *GetNotificationTemplateParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "kind", kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/notification-templates/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "channel", params.Channel, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "locale", params.Locale, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetNotificationTemplateRequest calls the generic SetNotificationTemplate builder with application/json body
+func NewSetNotificationTemplateRequest(server string, kind NotificationKind, body SetNotificationTemplateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetNotificationTemplateRequestWithBody(server, kind, "application/json", bodyReader)
+}
+
+// NewSetNotificationTemplateRequestWithBody constructs an http.Request for the SetNotificationTemplate method, with any body, and a specified content type
+func NewSetNotificationTemplateRequestWithBody(server string, kind NotificationKind, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "kind", kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/notification-templates/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewNotificationTemplateRequest calls the generic PreviewNotificationTemplate builder with application/json body
+func NewPreviewNotificationTemplateRequest(server string, kind NotificationKind, body PreviewNotificationTemplateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPreviewNotificationTemplateRequestWithBody(server, kind, "application/json", bodyReader)
+}
+
+// NewPreviewNotificationTemplateRequestWithBody constructs an http.Request for the PreviewNotificationTemplate method, with any body, and a specified content type
+func NewPreviewNotificationTemplateRequestWithBody(server string, kind NotificationKind, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "kind", kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/notification-templates/%s/preview", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -31239,6 +32412,109 @@ func NewSignOutRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetBrandingRequest constructs an http.Request for the GetBranding method
+func NewGetBrandingRequest(server string, params *GetBrandingParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/branding")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewGetBrandingLogoRequest constructs an http.Request for the GetBrandingLogo method
+func NewGetBrandingLogoRequest(server string, variant LogoVariant, params *GetBrandingLogoParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "variant", variant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/branding/logos/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.V != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "v", *params.V, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListCatalogCategoriesRequest constructs an http.Request for the ListCatalogCategories method
 func NewListCatalogCategoriesRequest(server string, params *ListCatalogCategoriesParams) (*http.Request, error) {
 	var err error
@@ -35227,6 +36503,73 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /admin/awx/templates/sync (the `SyncAwxTemplates` operationId).
 	SyncAwxTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SyncAwxTemplatesResponse, error)
 
+	// SetBrandingWithBodyWithResponse Set the portal's name and accent colour
+	//
+	// `system.manage`; audited (`settings.branding.update`). An empty name or
+	// accent is rvav's own. The accent is the light theme's: one text
+	// doesn't read on at 4.5:1 against the light theme's backgrounds is
+	// refused, with the closest darker colour that reads. The dark
+	// theme's accent is derived from it, lightened until it reads.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/branding (the `SetBranding` operationId).
+	SetBrandingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetBrandingResponse, error)
+
+	// SetBrandingWithResponse Set the portal's name and accent colour
+	//
+	// `system.manage`; audited (`settings.branding.update`). An empty name or
+	// accent is rvav's own. The accent is the light theme's: one text
+	// doesn't read on at 4.5:1 against the light theme's backgrounds is
+	// refused, with the closest darker colour that reads. The dark
+	// theme's accent is derived from it, lightened until it reads.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/branding (the `SetBranding` operationId).
+	SetBrandingWithResponse(ctx context.Context, body SetBrandingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetBrandingResponse, error)
+
+	// CheckBrandingAccentWithBodyWithResponse How an accent colour reads in both themes, before it is saved
+	//
+	// `system.manage`. Saves nothing.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/branding/accent-check (the `CheckBrandingAccent` operationId).
+	CheckBrandingAccentWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckBrandingAccentResponse, error)
+
+	// CheckBrandingAccentWithResponse How an accent colour reads in both themes, before it is saved
+	//
+	// `system.manage`. Saves nothing.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/branding/accent-check (the `CheckBrandingAccent` operationId).
+	CheckBrandingAccentWithResponse(ctx context.Context, body CheckBrandingAccentJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckBrandingAccentResponse, error)
+
+	// DeleteBrandingLogoWithResponse Remove the logo for the light or the dark theme
+	//
+	// `system.manage`; audited (`settings.branding_logo.remove`).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /admin/branding/logos/{variant} (the `DeleteBrandingLogo` operationId).
+	DeleteBrandingLogoWithResponse(ctx context.Context, variant LogoVariant, reqEditors ...RequestEditorFn) (*DeleteBrandingLogoResponse, error)
+
+	// SetBrandingLogoWithBodyWithResponse Upload the logo for the light or the dark theme
+	//
+	// `system.manage`; audited (`settings.branding_logo.set`). The body is the
+	// picture as it is: PNG, JPEG or SVG, 256 KB and 2048 pixels a side
+	// at most. An SVG with a script, an event handler, a foreign object,
+	// a link or a reference outside itself, or a DOCTYPE is refused (422):
+	// the picture is kept as it was sent, never rewritten. Emails show the
+	// light theme's logo when it is a PNG or JPEG one.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/branding/logos/{variant} (the `SetBrandingLogo` operationId).
+	SetBrandingLogoWithBodyWithResponse(ctx context.Context, variant LogoVariant, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetBrandingLogoResponse, error)
+
 	// ListAdminCatalogCategoriesWithResponse Every category, with its number of items
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -36401,6 +37744,82 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /admin/network-mappings/{network} (the `SetNetworkMapping` operationId).
 	SetNetworkMappingWithResponse(ctx context.Context, network string, body SetNetworkMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetNetworkMappingResponse, error)
+
+	// ListNotificationTemplatesWithResponse Every kind whose templates administrators edit, with its variables
+	//
+	// `system.manage`. Each kind has a template per channel and language;
+	// those edited replace the built-in ones (ADR-0059).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/notification-templates (the `ListNotificationTemplates` operationId).
+	ListNotificationTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNotificationTemplatesResponse, error)
+
+	// ResetNotificationTemplateWithResponse Go back to the built-in template
+	//
+	// `system.manage`; audited (`settings.notification_template.reset`) when it was edited.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /admin/notification-templates/{kind} (the `ResetNotificationTemplate` operationId).
+	ResetNotificationTemplateWithResponse(ctx context.Context, kind NotificationKind, params *ResetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*ResetNotificationTemplateResponse, error)
+
+	// GetNotificationTemplateWithResponse A kind's template for a channel and language, and its built-in one
+	//
+	// `system.manage`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/notification-templates/{kind} (the `GetNotificationTemplate` operationId).
+	GetNotificationTemplateWithResponse(ctx context.Context, kind NotificationKind, params *GetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*GetNotificationTemplateResponse, error)
+
+	// SetNotificationTemplateWithBodyWithResponse Save a kind's template for a channel and language
+	//
+	// `system.manage`; audited (`settings.notification_template.update`). A Go
+	// template: refused (422, per part) when it doesn't parse, names a
+	// variable its kind doesn't have, defines or calls other templates,
+	// or fails on the kind's sample data. Notifications sent from then on
+	// use it.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/notification-templates/{kind} (the `SetNotificationTemplate` operationId).
+	SetNotificationTemplateWithBodyWithResponse(ctx context.Context, kind NotificationKind, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetNotificationTemplateResponse, error)
+
+	// SetNotificationTemplateWithResponse Save a kind's template for a channel and language
+	//
+	// `system.manage`; audited (`settings.notification_template.update`). A Go
+	// template: refused (422, per part) when it doesn't parse, names a
+	// variable its kind doesn't have, defines or calls other templates,
+	// or fails on the kind's sample data. Notifications sent from then on
+	// use it.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/notification-templates/{kind} (the `SetNotificationTemplate` operationId).
+	SetNotificationTemplateWithResponse(ctx context.Context, kind NotificationKind, body SetNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*SetNotificationTemplateResponse, error)
+
+	// PreviewNotificationTemplateWithBodyWithResponse A template written with its kind's sample data, as it would be sent
+	//
+	// `system.manage`. Saves nothing. An email's HTML, a Teams card's
+	// JSON or Slack's blocks, with the portal's branding; a template
+	// that can't be saved is 422, per part.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
+	PreviewNotificationTemplateWithBodyWithResponse(ctx context.Context, kind NotificationKind, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewNotificationTemplateResponse, error)
+
+	// PreviewNotificationTemplateWithResponse A template written with its kind's sample data, as it would be sent
+	//
+	// `system.manage`. Saves nothing. An email's HTML, a Teams card's
+	// JSON or Slack's blocks, with the portal's branding; a template
+	// that can't be saved is 422, per part.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
+	PreviewNotificationTemplateWithResponse(ctx context.Context, kind NotificationKind, body PreviewNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewNotificationTemplateResponse, error)
 
 	// AdoptVmsWithBodyWithResponse Adopt existing VMs into deployments, with their addresses and DNS records from EfficientIP
 	//
@@ -37713,6 +39132,32 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /auth/sign-out (the `SignOut` operationId).
 	SignOutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SignOutResponse, error)
+
+	// GetBrandingWithResponse The portal's name, accent colours and logos (ADR-0059)
+	//
+	// For anyone, signed in or not: the sign-in page shows it. The accent
+	// comes for the light and the dark theme, each with the colour of
+	// text on it and its tint, all reading at 4.5:1 at least where the
+	// web app puts them. Empty fields are rvav's own.
+	//
+	// Answered with an `ETag`: sent back in `If-None-Match`, the answer
+	// is 304 while the branding is the same.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /branding (the `GetBranding` operationId).
+	GetBrandingWithResponse(ctx context.Context, params *GetBrandingParams, reqEditors ...RequestEditorFn) (*GetBrandingResponse, error)
+
+	// GetBrandingLogoWithResponse The logo for the light or the dark theme
+	//
+	// For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
+	// nothing that runs or fetches when it was saved. Its URL in
+	// `Branding` changes with it.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /branding/logos/{variant} (the `GetBrandingLogo` operationId).
+	GetBrandingLogoWithResponse(ctx context.Context, variant LogoVariant, params *GetBrandingLogoParams, reqEditors ...RequestEditorFn) (*GetBrandingLogoResponse, error)
 
 	// ListCatalogCategoriesWithResponse Categories with the number of items the caller can request in a project
 	//
@@ -39595,6 +41040,254 @@ func (r SyncAwxTemplatesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SyncAwxTemplatesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetBrandingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Branding
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetBrandingResponse) GetJSON200() *Branding {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetBrandingResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetBrandingResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetBrandingResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SetBrandingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetBrandingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetBrandingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetBrandingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CheckBrandingAccentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AccentCheck
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CheckBrandingAccentResponse) GetJSON200() *AccentCheck {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CheckBrandingAccentResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CheckBrandingAccentResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r CheckBrandingAccentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckBrandingAccentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckBrandingAccentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CheckBrandingAccentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteBrandingLogoResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Branding
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteBrandingLogoResponse) GetJSON200() *Branding {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteBrandingLogoResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteBrandingLogoResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteBrandingLogoResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteBrandingLogoResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteBrandingLogoResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteBrandingLogoResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetBrandingLogoResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Branding
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *PayloadTooLarge
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetBrandingLogoResponse) GetJSON200() *Branding {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetBrandingLogoResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetBrandingLogoResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r SetBrandingLogoResponse) GetApplicationproblemJSON413() *PayloadTooLarge {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetBrandingLogoResponse) GetApplicationproblemJSON415() *UnsupportedMediaType {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetBrandingLogoResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SetBrandingLogoResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetBrandingLogoResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetBrandingLogoResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetBrandingLogoResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -44771,6 +46464,295 @@ func (r SetNetworkMappingResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetNetworkMappingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListNotificationTemplatesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NotificationTemplateCatalog
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListNotificationTemplatesResponse) GetJSON200() *NotificationTemplateCatalog {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListNotificationTemplatesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListNotificationTemplatesResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListNotificationTemplatesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListNotificationTemplatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListNotificationTemplatesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListNotificationTemplatesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ResetNotificationTemplateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NotificationTemplate
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ResetNotificationTemplateResponse) GetJSON200() *NotificationTemplate {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ResetNotificationTemplateResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ResetNotificationTemplateResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ResetNotificationTemplateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResetNotificationTemplateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResetNotificationTemplateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResetNotificationTemplateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetNotificationTemplateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NotificationTemplate
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetNotificationTemplateResponse) GetJSON200() *NotificationTemplate {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetNotificationTemplateResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetNotificationTemplateResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r GetNotificationTemplateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetNotificationTemplateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetNotificationTemplateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetNotificationTemplateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetNotificationTemplateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NotificationTemplate
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetNotificationTemplateResponse) GetJSON200() *NotificationTemplate {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetNotificationTemplateResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetNotificationTemplateResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetNotificationTemplateResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SetNotificationTemplateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetNotificationTemplateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetNotificationTemplateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetNotificationTemplateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PreviewNotificationTemplateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NotificationTemplatePreview
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewNotificationTemplateResponse) GetJSON200() *NotificationTemplatePreview {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r PreviewNotificationTemplateResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r PreviewNotificationTemplateResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r PreviewNotificationTemplateResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewNotificationTemplateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewNotificationTemplateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewNotificationTemplateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewNotificationTemplateResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -51297,6 +53279,95 @@ func (r SignOutResponse) ContentType() string {
 	return ""
 }
 
+// GetBrandingResponse200Headers the declared response headers of an HTTP 200 response for GetBranding
+type GetBrandingResponse200Headers struct {
+	ETag *string
+}
+
+type GetBrandingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Branding
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetBrandingResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetBrandingResponse) GetJSON200() *Branding {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetBrandingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetBrandingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetBrandingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetBrandingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetBrandingLogoResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetBrandingLogoResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetBrandingLogoResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetBrandingLogoResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetBrandingLogoResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetBrandingLogoResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListCatalogCategoriesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -55860,6 +57931,109 @@ func (c *ClientWithResponses) SyncAwxTemplatesWithResponse(ctx context.Context, 
 	return ParseSyncAwxTemplatesResponse(rsp)
 }
 
+// SetBrandingWithBodyWithResponse Set the portal's name and accent colour
+//
+// `system.manage`; audited (`settings.branding.update`). An empty name or
+// accent is rvav's own. The accent is the light theme's: one text
+// doesn't read on at 4.5:1 against the light theme's backgrounds is
+// refused, with the closest darker colour that reads. The dark
+// theme's accent is derived from it, lightened until it reads.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/branding (the `SetBranding` operationId).
+func (c *ClientWithResponses) SetBrandingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetBrandingResponse, error) {
+	rsp, err := c.SetBrandingWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetBrandingResponse(rsp)
+}
+
+// SetBrandingWithResponse Set the portal's name and accent colour
+//
+// `system.manage`; audited (`settings.branding.update`). An empty name or
+// accent is rvav's own. The accent is the light theme's: one text
+// doesn't read on at 4.5:1 against the light theme's backgrounds is
+// refused, with the closest darker colour that reads. The dark
+// theme's accent is derived from it, lightened until it reads.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/branding (the `SetBranding` operationId).
+func (c *ClientWithResponses) SetBrandingWithResponse(ctx context.Context, body SetBrandingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetBrandingResponse, error) {
+	rsp, err := c.SetBranding(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetBrandingResponse(rsp)
+}
+
+// CheckBrandingAccentWithBodyWithResponse How an accent colour reads in both themes, before it is saved
+//
+// `system.manage`. Saves nothing.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/branding/accent-check (the `CheckBrandingAccent` operationId).
+func (c *ClientWithResponses) CheckBrandingAccentWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckBrandingAccentResponse, error) {
+	rsp, err := c.CheckBrandingAccentWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckBrandingAccentResponse(rsp)
+}
+
+// CheckBrandingAccentWithResponse How an accent colour reads in both themes, before it is saved
+//
+// `system.manage`. Saves nothing.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/branding/accent-check (the `CheckBrandingAccent` operationId).
+func (c *ClientWithResponses) CheckBrandingAccentWithResponse(ctx context.Context, body CheckBrandingAccentJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckBrandingAccentResponse, error) {
+	rsp, err := c.CheckBrandingAccent(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckBrandingAccentResponse(rsp)
+}
+
+// DeleteBrandingLogoWithResponse Remove the logo for the light or the dark theme
+//
+// `system.manage`; audited (`settings.branding_logo.remove`).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /admin/branding/logos/{variant} (the `DeleteBrandingLogo` operationId).
+func (c *ClientWithResponses) DeleteBrandingLogoWithResponse(ctx context.Context, variant LogoVariant, reqEditors ...RequestEditorFn) (*DeleteBrandingLogoResponse, error) {
+	rsp, err := c.DeleteBrandingLogo(ctx, variant, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteBrandingLogoResponse(rsp)
+}
+
+// SetBrandingLogoWithBodyWithResponse Upload the logo for the light or the dark theme
+//
+// `system.manage`; audited (`settings.branding_logo.set`). The body is the
+// picture as it is: PNG, JPEG or SVG, 256 KB and 2048 pixels a side
+// at most. An SVG with a script, an event handler, a foreign object,
+// a link or a reference outside itself, or a DOCTYPE is refused (422):
+// the picture is kept as it was sent, never rewritten. Emails show the
+// light theme's logo when it is a PNG or JPEG one.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/branding/logos/{variant} (the `SetBrandingLogo` operationId).
+func (c *ClientWithResponses) SetBrandingLogoWithBodyWithResponse(ctx context.Context, variant LogoVariant, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetBrandingLogoResponse, error) {
+	rsp, err := c.SetBrandingLogoWithBody(ctx, variant, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetBrandingLogoResponse(rsp)
+}
+
 // ListAdminCatalogCategoriesWithResponse Every category, with its number of items
 //
 // Returns a wrapper object for the known response body format(s).
@@ -57735,6 +59909,124 @@ func (c *ClientWithResponses) SetNetworkMappingWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseSetNetworkMappingResponse(rsp)
+}
+
+// ListNotificationTemplatesWithResponse Every kind whose templates administrators edit, with its variables
+//
+// `system.manage`. Each kind has a template per channel and language;
+// those edited replace the built-in ones (ADR-0059).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/notification-templates (the `ListNotificationTemplates` operationId).
+func (c *ClientWithResponses) ListNotificationTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNotificationTemplatesResponse, error) {
+	rsp, err := c.ListNotificationTemplates(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListNotificationTemplatesResponse(rsp)
+}
+
+// ResetNotificationTemplateWithResponse Go back to the built-in template
+//
+// `system.manage`; audited (`settings.notification_template.reset`) when it was edited.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /admin/notification-templates/{kind} (the `ResetNotificationTemplate` operationId).
+func (c *ClientWithResponses) ResetNotificationTemplateWithResponse(ctx context.Context, kind NotificationKind, params *ResetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*ResetNotificationTemplateResponse, error) {
+	rsp, err := c.ResetNotificationTemplate(ctx, kind, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetNotificationTemplateResponse(rsp)
+}
+
+// GetNotificationTemplateWithResponse A kind's template for a channel and language, and its built-in one
+//
+// `system.manage`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/notification-templates/{kind} (the `GetNotificationTemplate` operationId).
+func (c *ClientWithResponses) GetNotificationTemplateWithResponse(ctx context.Context, kind NotificationKind, params *GetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*GetNotificationTemplateResponse, error) {
+	rsp, err := c.GetNotificationTemplate(ctx, kind, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetNotificationTemplateResponse(rsp)
+}
+
+// SetNotificationTemplateWithBodyWithResponse Save a kind's template for a channel and language
+//
+// `system.manage`; audited (`settings.notification_template.update`). A Go
+// template: refused (422, per part) when it doesn't parse, names a
+// variable its kind doesn't have, defines or calls other templates,
+// or fails on the kind's sample data. Notifications sent from then on
+// use it.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/notification-templates/{kind} (the `SetNotificationTemplate` operationId).
+func (c *ClientWithResponses) SetNotificationTemplateWithBodyWithResponse(ctx context.Context, kind NotificationKind, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetNotificationTemplateResponse, error) {
+	rsp, err := c.SetNotificationTemplateWithBody(ctx, kind, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetNotificationTemplateResponse(rsp)
+}
+
+// SetNotificationTemplateWithResponse Save a kind's template for a channel and language
+//
+// `system.manage`; audited (`settings.notification_template.update`). A Go
+// template: refused (422, per part) when it doesn't parse, names a
+// variable its kind doesn't have, defines or calls other templates,
+// or fails on the kind's sample data. Notifications sent from then on
+// use it.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/notification-templates/{kind} (the `SetNotificationTemplate` operationId).
+func (c *ClientWithResponses) SetNotificationTemplateWithResponse(ctx context.Context, kind NotificationKind, body SetNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*SetNotificationTemplateResponse, error) {
+	rsp, err := c.SetNotificationTemplate(ctx, kind, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetNotificationTemplateResponse(rsp)
+}
+
+// PreviewNotificationTemplateWithBodyWithResponse A template written with its kind's sample data, as it would be sent
+//
+// `system.manage`. Saves nothing. An email's HTML, a Teams card's
+// JSON or Slack's blocks, with the portal's branding; a template
+// that can't be saved is 422, per part.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
+func (c *ClientWithResponses) PreviewNotificationTemplateWithBodyWithResponse(ctx context.Context, kind NotificationKind, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewNotificationTemplateResponse, error) {
+	rsp, err := c.PreviewNotificationTemplateWithBody(ctx, kind, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewNotificationTemplateResponse(rsp)
+}
+
+// PreviewNotificationTemplateWithResponse A template written with its kind's sample data, as it would be sent
+//
+// `system.manage`. Saves nothing. An email's HTML, a Teams card's
+// JSON or Slack's blocks, with the portal's branding; a template
+// that can't be saved is 422, per part.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
+func (c *ClientWithResponses) PreviewNotificationTemplateWithResponse(ctx context.Context, kind NotificationKind, body PreviewNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewNotificationTemplateResponse, error) {
+	rsp, err := c.PreviewNotificationTemplate(ctx, kind, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewNotificationTemplateResponse(rsp)
 }
 
 // AdoptVmsWithBodyWithResponse Adopt existing VMs into deployments, with their addresses and DNS records from EfficientIP
@@ -59923,6 +62215,44 @@ func (c *ClientWithResponses) SignOutWithResponse(ctx context.Context, reqEditor
 		return nil, err
 	}
 	return ParseSignOutResponse(rsp)
+}
+
+// GetBrandingWithResponse The portal's name, accent colours and logos (ADR-0059)
+//
+// For anyone, signed in or not: the sign-in page shows it. The accent
+// comes for the light and the dark theme, each with the colour of
+// text on it and its tint, all reading at 4.5:1 at least where the
+// web app puts them. Empty fields are rvav's own.
+//
+// Answered with an `ETag`: sent back in `If-None-Match`, the answer
+// is 304 while the branding is the same.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /branding (the `GetBranding` operationId).
+func (c *ClientWithResponses) GetBrandingWithResponse(ctx context.Context, params *GetBrandingParams, reqEditors ...RequestEditorFn) (*GetBrandingResponse, error) {
+	rsp, err := c.GetBranding(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetBrandingResponse(rsp)
+}
+
+// GetBrandingLogoWithResponse The logo for the light or the dark theme
+//
+// For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
+// nothing that runs or fetches when it was saved. Its URL in
+// `Branding` changes with it.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /branding/logos/{variant} (the `GetBrandingLogo` operationId).
+func (c *ClientWithResponses) GetBrandingLogoWithResponse(ctx context.Context, variant LogoVariant, params *GetBrandingLogoParams, reqEditors ...RequestEditorFn) (*GetBrandingLogoResponse, error) {
+	rsp, err := c.GetBrandingLogo(ctx, variant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetBrandingLogoResponse(rsp)
 }
 
 // ListCatalogCategoriesWithResponse Categories with the number of items the caller can request in a project
@@ -62150,6 +64480,194 @@ func ParseSyncAwxTemplatesResponse(rsp *http.Response) (*SyncAwxTemplatesRespons
 			return nil, err
 		}
 		response.ApplicationproblemJSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetBrandingResponse parses an HTTP response from a SetBrandingWithResponse call
+func ParseSetBrandingResponse(rsp *http.Response) (*SetBrandingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetBrandingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Branding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCheckBrandingAccentResponse parses an HTTP response from a CheckBrandingAccentWithResponse call
+func ParseCheckBrandingAccentResponse(rsp *http.Response) (*CheckBrandingAccentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckBrandingAccentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AccentCheck
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteBrandingLogoResponse parses an HTTP response from a DeleteBrandingLogoWithResponse call
+func ParseDeleteBrandingLogoResponse(rsp *http.Response) (*DeleteBrandingLogoResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteBrandingLogoResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Branding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetBrandingLogoResponse parses an HTTP response from a SetBrandingLogoWithResponse call
+func ParseSetBrandingLogoResponse(rsp *http.Response) (*SetBrandingLogoResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetBrandingLogoResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Branding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	}
 
@@ -66111,6 +68629,220 @@ func ParseSetNetworkMappingResponse(rsp *http.Response) (*SetNetworkMappingRespo
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest NetworkMapping
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListNotificationTemplatesResponse parses an HTTP response from a ListNotificationTemplatesWithResponse call
+func ParseListNotificationTemplatesResponse(rsp *http.Response) (*ListNotificationTemplatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListNotificationTemplatesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationTemplateCatalog
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResetNotificationTemplateResponse parses an HTTP response from a ResetNotificationTemplateWithResponse call
+func ParseResetNotificationTemplateResponse(rsp *http.Response) (*ResetNotificationTemplateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResetNotificationTemplateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationTemplate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetNotificationTemplateResponse parses an HTTP response from a GetNotificationTemplateWithResponse call
+func ParseGetNotificationTemplateResponse(rsp *http.Response) (*GetNotificationTemplateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetNotificationTemplateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationTemplate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetNotificationTemplateResponse parses an HTTP response from a SetNotificationTemplateWithResponse call
+func ParseSetNotificationTemplateResponse(rsp *http.Response) (*SetNotificationTemplateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetNotificationTemplateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationTemplate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewNotificationTemplateResponse parses an HTTP response from a PreviewNotificationTemplateWithResponse call
+func ParsePreviewNotificationTemplateResponse(rsp *http.Response) (*PreviewNotificationTemplateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewNotificationTemplateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationTemplatePreview
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -71192,6 +73924,74 @@ func ParseSignOutResponse(rsp *http.Response) (*SignOutResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetBrandingResponse parses an HTTP response from a GetBrandingWithResponse call
+func ParseGetBrandingResponse(rsp *http.Response) (*GetBrandingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetBrandingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Branding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetBrandingResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetBrandingLogoResponse parses an HTTP response from a GetBrandingLogoWithResponse call
+func ParseGetBrandingLogoResponse(rsp *http.Response) (*GetBrandingLogoResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetBrandingLogoResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	}
 

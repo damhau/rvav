@@ -74,8 +74,10 @@ rvav, one per kind and locale (`en`, `fr`):
 
 They get the notification and what it is about (request, item, project,
 environment, deployment, lease, approval level and reasons), plus the
-link into rvav. Administrators don't edit them yet. A missing locale falls
-back to `en`.
+link into rvav. A missing locale falls back to `en`. Since O1.5,
+administrators edit them per kind, channel and language, and the
+embedded ones are the defaults an edit overrides
+([ADR-0059](0059-notification-templates-and-branding.md)).
 
 ### Channels
 Channels are integrations ([ADR-0020](0020-administration.md)): their

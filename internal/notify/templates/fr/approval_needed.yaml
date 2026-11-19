@@ -1,0 +1,10 @@
+subject: |-
+  {{if eq .Approval.Why "delegated"}}Approbation déléguée à vous{{else if eq .Approval.Why "escalated"}}Approbation remontée à vous{{else}}Approbation requise{{end}} : {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  {{.Request.Number}} attend votre décision{{if .Approval.Name}} ({{.Approval.Name}}){{end}}.{{if .Approval.Reasons}}
+  Pourquoi une approbation : {{join .Approval.Reasons " ; "}}{{end}}{{if and .Body (ne .Body (join .Approval.Reasons "; "))}}
+  {{.Body}}{{end}}
+html: |-
+  <p><strong>{{.Request.Number}}</strong> attend votre décision{{if .Approval.Name}} ({{.Approval.Name}}){{end}}.</p>{{if .Approval.Reasons}}
+  <p style="margin:8px 0">Pourquoi une approbation :</p><ul style="margin:0;padding-left:20px">{{range .Approval.Reasons}}<li>{{.}}</li>{{end}}</ul>{{end}}{{if and .Body (ne .Body (join .Approval.Reasons "; "))}}
+  <p style="margin:8px 0;color:#59636e">{{.Body}}</p>{{end}}

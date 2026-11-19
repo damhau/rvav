@@ -1,0 +1,6 @@
+subject: |-
+  Soumise : {{.Request.Title}} ({{.Request.Number}})
+text: |-
+  Votre demande {{.Request.Number}} a été soumise. Vous serez informé quand elle sera décidée ou terminée.
+html: |-
+  <p>Votre demande <strong>{{.Request.Number}}</strong> a été soumise. Vous serez informé quand elle sera décidée ou terminée.</p>
