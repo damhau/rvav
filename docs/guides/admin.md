@@ -697,7 +697,7 @@ and an environment, which policies would apply to a request and why.
 
 | Tab | What it decides |
 |---|---|
-| **Approval** | Which requests need approval, from whom (users, groups or project roles, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota. |
+| **Approval** | Which requests need approval, from whom (users, groups or project roles, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota, and what an update changes (see [Updates](#updates)). |
 | **Lease** | Default and longest leases per environment or project, extensions, and the end: power off then delete, delete, or only tell the owner. |
 | **Day-2** | Who may run which action, where, and which need approval (deleting in production, by default). |
 | **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment, with where the counter starts and how much it moves (**Start at** 100 and **Increment** 10 give 100, 110, 120). A counter in use goes on from its last number, and jumps to the start when you raise it past that number. Names are never given twice, and are checked free in vCenter and DNS. |
@@ -763,6 +763,62 @@ in a level named **Project approvers**: whoever holds a role with
 When nobody but the requester holds one, rvav refuses the extension.
 A role that a level names can't be deleted: change the policy first.
 
+### Updates
+
+An update changes a deployment's inputs, moves it to its item's
+published version, or adds and removes VMs
+([ADR-0042](../adr/0042-deployment-updates.md)). It runs as a request of
+kind `update`, with the native day-2 action **Update** (`update`), and
+goes through the same checks as a new request:
+- **Quota** checks the net change in vCPU, memory, storage and VMs. A
+  hard limit refuses the update, a soft one asks for approval. Removing
+  VMs or making them smaller frees quota once the update has run.
+- **Approval policies** apply to updates as well as new requests. Their
+  conditions read the kind of request and what the update changes:
+
+  | Variable | Value |
+  |---|---|
+  | `request.kind` | `provision` for a new request, `update` for an update. |
+  | `update.version_changed` | `true` when the update moves the deployment to another version. |
+  | `update.from_version`, `update.to_version` | The version numbers, such as `3`. |
+  | `update.vcpu`, `update.memory_gb`, `update.storage_gb`, `update.vm_count` | The net change, negative when the update frees some. |
+  | `update.added`, `update.removed` | The number of VMs added and removed. |
+  | `update.changes` | The kinds of change, such as `["resize", "vm_add"]`: `resize`, `disk_add`, `disk_extend`, `disk_remove`, `nic_add`, `nic_move`, `nic_remove`, `vm_add`, `vm_remove`, `job`. |
+  | `update.destructive` | `true` when the update deletes a disk, an adapter or a VM. |
+
+  On a new request, the `update` numbers are 0 and its list is empty, so
+  conditions you wrote before keep their meaning. For example, to ask for
+  approval of updates that add more than four vCPU in production, use
+  `request.kind == "update" && environment == "prd" && update.vcpu > 4`.
+  For a policy that applies only to new requests, add
+  `request.kind == "provision"`.
+- **Day-2 policies** decide who may run **Update**, where, and whether it
+  needs approval, as for any other action. When an approval policy and a
+  day-2 policy both ask, the update waits for both.
+- **Approvers can't change the inputs of an update:** they approve or
+  reject what the requester saw.
+
+The form's computed fields, such as REST and CEL value sources, are
+computed again from the new inputs, and its validations run on submit, as
+for a new request. Changes that need a VM built again are refused with
+their reason, including another template, cluster, datastore or network.
+Users then delete the deployment and request it again.
+
+To update a deployment through the API, send the same body to
+`POST /api/v1/deployments/{id}/update/preview` to read the plan, then to
+`POST /api/v1/deployments/{id}/update` with an `Idempotency-Key` header:
+
+```json
+{
+  "version_id": "ver_…",
+  "inputs": { "size": "M", "vm_count": 3 },
+  "justification": "More capacity for the release"
+}
+```
+
+`version_id` is the item's published version. Send every input of the
+form: an input left out takes its field's default, and `null` empties it.
+
 ## The catalog
 
 **Catalog items** has four tabs: **Items**, which you can search and
@@ -796,7 +852,9 @@ draft, or **New draft** from the published version. Publishing waits
 while the form designer saves, or while YAML you typed isn't saved, and
 says why beside the button. The **⋯** menu beside it opens the request
 form, exports every version as YAML, withdraws the published version,
-and deletes an item nobody requested.
+and deletes an item nobody requested. Publishing doesn't change the
+deployments made from earlier versions: their owners move them to the new
+version with **Update** ([Updates](#updates)).
 
 An item's tabs:
 - **Details:** name, category, icon, description.

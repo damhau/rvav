@@ -50,6 +50,7 @@ var day2Keys = map[string]string{
 	"Deployment.EditDeployment":             "rename",
 	"Deployment.PowerOn":                    "power_on",
 	"Deployment.PowerOff":                   "power_off",
+	"Deployment.Update":                     "update",
 }
 
 // vRA's roles, as rvav's.
@@ -151,14 +152,18 @@ func planApproval(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(st
 		}
 	} else {
 		pl.Becomes = "An approval policy for catalog requests, in " + scope + " (Administration › Policies › Approvals)"
-		if len(actions) > 1 {
-			var others []string
-			for _, a := range actions {
-				if a != "Deployment.Create" {
-					others = append(others, a)
-				}
+		var others []string
+		for _, a := range actions {
+			if a != "Deployment.Create" && a != "Deployment.Update" {
+				others = append(others, a)
 			}
+		}
+		if len(others) > 0 {
 			note(Warning, "actions", "It also covers "+strings.Join(others, ", ")+": those need a day-2 policy with the effect approval.")
+		}
+		// rvav's approval policies apply to updates as well (ADR-0042).
+		if !contains(actions, "Deployment.Update") {
+			note(Info, "actions", `It applies to updates in rvav too: to keep it to new requests, add request.kind == "provision" to its condition.`)
 		}
 	}
 	if cel, ok := criteriaCEL(p.Criteria); ok {

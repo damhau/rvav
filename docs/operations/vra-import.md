@@ -72,6 +72,18 @@ An approval policy's approvers read as a level's
 A day-2 policy's `ROLE:project_supervisor` authority becomes the
 `supervisor` role.
 
+vRA's **Update** of a deployment is rvav's **Update**
+([ADR-0042](../adr/0042-deployment-updates.md)):
+
+| vRA | rvav |
+|---|---|
+| The day-2 action `Deployment.Update`, in a day-2 policy or an approval policy | The action `update`, in a day-2 policy. An approval policy that covers only `Deployment.Update` becomes a day-2 policy with the effect approval on `update`. |
+| An approval policy for `Deployment.Create` | An approval policy, which also applies to updates in rvav. When it doesn't cover `Deployment.Update`, the plan says to add `request.kind == "provision"` to its condition. |
+| An update with new inputs, or to the cloud template's latest version | An update to the item's published version, with the new inputs. rvav shows the plan before you confirm, as vRA does. |
+| A change vRA makes by deleting and creating a machine again, such as another image or network | Refused, with its reason: delete the deployment and request it again. |
+| A cluster's `count` input changed | Scale out or in: new VMs are named and addressed as in a new request, and the VMs with the highest numbers are removed. |
+| An update of a failed deployment | The same: it builds the VMs that are missing and runs the AWX jobs again. |
+
 Placement rules aren't imported either: they name vCenter objects that
 vRA's projects don't. The **Projects** tab gives each project's
 **Placement strategy**, the one that places as vRA's `placementPolicy`
@@ -290,6 +302,11 @@ Running it again adopts only what isn't yet, so it can run after each fix:
 - a project mapped;
 - an owner who has signed in to rvav;
 - an item imported and published.
+
+An adopted deployment has no inputs in rvav: vRA's aren't carried over.
+Its first **Update** opens the item's form with the fields' defaults, and
+applies only what you change from them. Before you confirm it, check the
+plan against what its VMs have.
 
 ## vRO
 

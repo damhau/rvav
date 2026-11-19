@@ -237,9 +237,9 @@ and:
 - **Topology:** what it holds, drawn as a graph: its VMs, the networks and
   NSX segments their adapters are on, the security groups they are in, and
   the firewall rules into those groups;
-- **History:** the day-2 actions that ran on it (the request that created it
-  is under **Details**);
-- **Inputs:** what it was requested with.
+- **History:** the day-2 actions and updates that ran on it (the request
+  that created it is under **Details**);
+- **Inputs:** what it was requested with, or last updated with.
 
 On **Topology**, each VM is a node, with an edge for each network adapter.
 When the deployment has several components, each component's VMs sit in a
@@ -294,6 +294,9 @@ requests, with their own steps:
   remove it from one. A deployment's page shows its groups, the firewall
   rules into them, and a VM taken out of a group in NSX; adding it again
   puts it back.
+- **Update:** change the deployment's inputs, move it to its item's new
+  version, or add and remove VMs. See
+  [Updating a deployment](#updating-a-deployment).
 - **Rename, extend the lease.**
 - **Unregister** (administrators): rvav forgets a VM or a whole
   deployment and leaves it running in vCenter, with its addresses and DNS
@@ -325,6 +328,55 @@ over a soft quota.
 - **Leases:** you are told before a lease ends. Extend it, or let it end.
   What happens at the end (power off then delete, or delete) is the
   environment's policy.
+
+## Updating a deployment
+
+An update changes a deployment in place: its size, its disks, the number
+of VMs of a component, or the version of its item. To update a
+deployment:
+
+1. On the deployment's page, select **Actions**, then **Update**.
+   The item's form opens with the deployment's inputs. When the item has
+   a newer version, the page says so, and the update moves the deployment
+   to it.
+2. Change the inputs. Secret inputs aren't shown: give them again, or
+   their field's default applies.
+3. Read **What the update does**, beside the form. As you type, it lists:
+   - the changes, in the order rvav makes them. A change that deletes
+     something, such as a disk and its data or a VM, is marked
+     **Deletes**;
+   - **Can't be changed in place:** each change rvav can't make to the
+     existing VMs, and why;
+   - **Quota after this update:** what the project uses afterwards. A
+     smaller size or fewer VMs frees quota;
+   - whether the update waits for approval, and from whom.
+4. Select **Review the update**. rvav asks you to confirm and names what
+   the update deletes.
+5. Select **Update**, or **Submit for approval**. The request's page
+   opens and shows its steps.
+
+rvav makes these changes to existing VMs: CPU and memory, disks that grow
+or are added or removed, DHCP network adapters, and the AWX jobs a new
+version adds. It refuses changes that need a VM built again, such as
+another template, cluster, datastore or network, a disk that shrinks, or
+tags and custom properties. To make one of those, change it back, or
+delete the deployment and request it again.
+
+When the item's form has a VM count, change it to scale out or in:
+- **Scale out:** the new VMs are named and addressed as in a new request,
+  and their numbers follow the last one.
+- **Scale in:** rvav removes the VMs with the highest numbers, with their
+  addresses and DNS records. A VM protected from deletion can't be
+  removed.
+
+To finish a deployment that failed, update it. With the same inputs, the
+update builds the VMs that are missing and runs the AWX jobs again. If
+the update fails, the deployment keeps its version and inputs: retry the
+request from its page once the cause is fixed.
+
+When nothing changes, **Review the update** stays unavailable. Approvers
+can't change an update's inputs: if they reject it, change it and update
+again.
 
 ## Resources
 

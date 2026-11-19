@@ -823,6 +823,30 @@ lists the errors on inputs the form has no field for, with their names.
 The count drops as you change each input. The summary shows only what
 the form sends: no placement for a cluster it doesn't hold.
 
+## Updating a deployment
+
+**Update** in a deployment's **Actions** menu (`ActionItems`, which
+navigates instead of opening a dialog) opens
+`/deployments/$deploymentId/update` (`features/deployments/UpdatePage.tsx`,
+[ADR-0042](adr/0042-deployment-updates.md)):
+
+- **The form** is the item's published version's, through `FormRenderer`.
+  `startValues` starts it from the deployment's inputs: secret ones are
+  left out, and on the same version a defaulted field the deployment
+  doesn't have reads `null` (it was emptied), as F1.4's defaults have it;
+  on another version, it takes the form's `initial_values`. The body sends
+  every key (`sentInputs`).
+- **What the update does** previews the draft, debounced, with
+  `keepPreviousData`: the changes, those refused (**Can't be changed in
+  place**), the quota after the update (a negative change frees some) and
+  the approval. **Review the update** is unavailable while nothing
+  changes (`unchanged`), something is refused or not allowed.
+- **Review** fetches a fresh preview, then asks in a `ConfirmDialog` that
+  lists what the update deletes; it is `danger` when it deletes anything.
+  The submit sends an `Idempotency-Key`, and opens the request.
+- The mock API plans in `mocks/update.ts`, as the server does: changes,
+  refusals, quota on the net change, names from the counter on scale out.
+
 ## Multi-VM items
 
 A blueprint with components builds one deployment

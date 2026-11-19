@@ -83,3 +83,27 @@ func TestPlanApprovalRoles(t *testing.T) {
 		t.Fatalf("unknown role = %+v", p)
 	}
 }
+
+// TestPlanApprovalUpdates: vRA's Deployment.Update is rvav's update; an
+// approval policy for new requests only says how to keep it to them, as
+// rvav's apply to updates too.
+func TestPlanApprovalUpdates(t *testing.T) {
+	approval := func(actions string) PolicyPlan {
+		e := vra.Estate{Policies: []vra.Policy{{ID: "p", Name: "p", TypeID: vra.PolicyApproval, EnforcementType: "HARD",
+			Definition: json.RawMessage(`{"level":1,"approvers":["USER:a@corp.example"],"actions":` + actions + `}`)}}}
+		return PlanPolicies(&e)[0]
+	}
+	says := func(p PolicyPlan, f func(Note) bool) bool { return slices.ContainsFunc(p.Notes, f) }
+	keepsToNew := func(n Note) bool { return strings.Contains(n.Text, `add request.kind == "provision"`) }
+	if p := approval(`["Deployment.Create"]`); !says(p, keepsToNew) {
+		t.Fatalf("create only = %+v", p.Notes)
+	}
+	if p := approval(`["Deployment.Create","Deployment.Update"]`); says(p, keepsToNew) ||
+		says(p, func(n Note) bool { return n.Level == Warning && n.Where == "actions" }) {
+		t.Fatalf("create and update = %+v", p.Notes)
+	}
+	if p := approval(`["Deployment.Update"]`); !strings.Contains(p.Becomes, "day-2 policy") ||
+		!says(p, func(n Note) bool { return n.Text == "Actions: update." }) {
+		t.Fatalf("update only = %+v", p)
+	}
+}

@@ -74,7 +74,9 @@ Subscription (event → awx template | webhook)
 
 ### Request and execution
 - **Request**: who, on behalf of whom, project, catalog item version, inputs
-  (JSONB, secrets encrypted), status (`pending_approval` | `approved` |
+  (JSONB, secrets encrypted), kind (`provision` | `day2` | `update`, the
+  last moving a deployment to a version and inputs,
+  [ADR-0042](adr/0042-deployment-updates.md)), status (`pending_approval` | `approved` |
   `rejected` | `running` | `succeeded` | `failed` | `cancelled`), scheduled
   time, Temporal workflow ID.
 - **RequestEvent**: timeline entries (step key, parent step, status, message,
@@ -85,7 +87,9 @@ Subscription (event → awx template | webhook)
 
 ### Deployment and resources
 - **Deployment**: logical group of resources created by one request. Has owner,
-  project, catalog item version, inputs, lease expiry, and status.
+  project, catalog item version, inputs, lease expiry, and status. Its
+  version and inputs are those of the request that created it, or of its
+  last update that succeeded.
 - **Resource**: `type` (`vsphere.vm` | `ipam.address` | `dns.record` |
   `vsphere.drs_rule`), external ID (VM MoRef plus instance UUID, IP ID, ...),
   properties (JSONB), sync state (`in_sync` | `drifted` | `missing`). A VM's
