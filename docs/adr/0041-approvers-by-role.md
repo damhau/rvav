@@ -21,7 +21,9 @@ members.
 ### The supervisor
 - **A built-in project role, `supervisor` (Supervisor),** holds
   `project.see` and `approval.project`: its holders see the project, its
-  deployments included, and are among its approvers. It holds no other
+  deployments included, and are among its approvers. Since ADR-0045 it
+  also holds `deployments.read_all`, so it still sees every deployment of
+  a project whose deployments show to their owners only. It holds no other
   permission, so a supervisor doesn't request or run day-2 actions; a
   day-2 policy may name it, as it names the other built-in roles.
 - Like the other built-in roles, it is listed in `roles` for the

@@ -49,10 +49,11 @@ func TestApproversByRole(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// She sees the project and its deployments, and neither requests nor runs day-2 actions.
+		// She sees the project and its deployments, all of them when they show to
+		// their owners only (ADR-0045), and neither requests nor runs day-2 actions.
 		var project api.Project
 		h.json("GET", "/api/v1/projects/"+web, "cdubois", nil, 200, &project)
-		if mine := *project.MyPermissions; !slices.Equal(mine, []string{"approval.project", "project.see"}) {
+		if mine := *project.MyPermissions; !slices.Equal(mine, []string{"approval.project", "deployments.read_all", "project.see"}) {
 			t.Fatalf("a supervisor's permissions = %v", mine)
 		}
 		h.json("GET", "/api/v1/deployments?project_id="+web, "cdubois", nil, 200, nil)

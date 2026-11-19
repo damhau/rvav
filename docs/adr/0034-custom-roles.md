@@ -55,6 +55,7 @@ used, with the built-in roles unchanged.
 | `request.submit` | P | Request from the project's catalog, save drafts, own a deployment there (onboarding, vRA import) and move one into it. | admin, project-admin, member |
 | `request.on_behalf` | P | Request for someone else. | admin, project-admin |
 | `request.manage` | P | Cancel, retry and roll back anyone's request in the project; the requester and the owner always may their own. | admin, project-admin |
+| `deployments.read_all` | P | See every deployment and request of the project when its deployments show to their owners only (ADR-0045). | admin, auditor, project-admin, supervisor |
 | `approval.project` | P (in the project only) | Be asked with the project's admins, as when a lease is extended beyond its policy. | project-admin (admin's isn't counted) |
 | `project.members.manage` | P | Add and remove the project's members and change their roles. | admin, project-admin |
 | `project.settings.read` | P | See the project's administration: placement, quotas, the policies that apply; for all of rvav, every project's. | admin, auditor, project-admin |
