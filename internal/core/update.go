@@ -47,6 +47,8 @@ type updatePlan struct {
 	dec    decision
 	// same: the version and inputs are the deployment's, which isn't failed.
 	same bool
+	// vms are the IDs of the deployment's VMs it was planned on.
+	vms []string
 	componentPlan
 }
 
@@ -184,7 +186,7 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 	}
 	plan := provision.Plan{Kind: blueprint.KindVM, ApprovalRequired: req.ApprovalRequired, AutoApproved: ev.AutoApproved,
 		Quota: quota, Guest: ev.Blueprint.Guest, Update: &provision.Update{DeploymentID: d.ID, Before: d.Status,
-			Ops: u.ops, Remove: u.remove, Kept: u.kept, Jobs: u.jobs}}
+			Ops: u.ops, Remove: u.remove, Kept: u.kept, Jobs: u.jobs, VMs: u.vms}}
 
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
 		if err := s.Store.LockDeployment(ctx, tx, d.ID); err != nil {
@@ -435,11 +437,13 @@ func (s *Service) compare(ctx context.Context, u *updatePlan, resources []store.
 	}
 	byComp := map[string][]existingVM{}
 	var dep []day2.Resource
+	u.vms = []string{}
 	for _, t := range vmTargets {
 		dep = t.Resources
 		if t.Type != "vsphere.vm" {
 			continue
 		}
+		u.vms = append(u.vms, t.ResourceID)
 		key := cmp.Or(deref(t.VM.Component), blueprint.SingleKey)
 		byComp[key] = append(byComp[key], existingVM{t: t, preventDelete: prevent[t.ResourceID]})
 	}

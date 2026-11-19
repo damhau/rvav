@@ -431,6 +431,25 @@ func (a *Activities) MarkRunning(ctx context.Context, requestID string) (bool, e
 	default:
 		return false, nil
 	}
+	var plan Plan
+	_ = json.Unmarshal(r.Plan, &plan)
+	// An update planned on VMs that joined or left since doesn't start: it
+	// would record inputs that no longer count them.
+	if r.StartedAt == nil && plan.Update != nil && r.DeploymentID != nil {
+		list, err := a.Store.ListResources(ctx, *r.DeploymentID)
+		if err != nil {
+			return false, err
+		}
+		var vms []string
+		for _, res := range list {
+			if res.Type == "vsphere.vm" {
+				vms = append(vms, res.ID)
+			}
+		}
+		if why := plan.Update.Stale(vms); why != "" {
+			return false, a.Finish(ctx, FinishInput{RequestID: requestID, ProjectID: r.ProjectID, Outcome: "failed", Message: why, Untouched: true})
+		}
+	}
 	// Running, and the provisioning, day-2 or delete pre event (ADR-0021),
 	// in one transaction.
 	pre, _ := outbox.RequestTopics(r.Kind, deref(r.Action))
@@ -439,8 +458,6 @@ func (a *Activities) MarkRunning(ctx context.Context, requestID string) (bool, e
 			return err
 		}
 		if r.DeploymentID != nil {
-			var plan Plan
-			_ = json.Unmarshal(r.Plan, &plan)
 			during := "updating"
 			if plan.Day2 != nil && plan.Day2.During != "" {
 				during = plan.Day2.During

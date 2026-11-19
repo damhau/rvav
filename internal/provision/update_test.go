@@ -71,3 +71,20 @@ func TestUpdateStatus(t *testing.T) {
 		t.Fatalf("failed update of a ready deployment: %s", got)
 	}
 }
+
+// An update starts only on the VMs it was planned on, in any order; a plan
+// made before it recorded them starts as before.
+func TestUpdateStale(t *testing.T) {
+	u := &Update{VMs: []string{"res_1", "res_2"}}
+	if why := u.Stale([]string{"res_2", "res_1"}); why != "" {
+		t.Fatalf("the same VMs: %q", why)
+	}
+	for _, now := range [][]string{{"res_1"}, {"res_1", "res_2", "res_3"}, {"res_1", "res_3"}} {
+		if u.Stale(now) == "" {
+			t.Fatalf("planned on %v, now %v: not stale", u.VMs, now)
+		}
+	}
+	if (&Update{}).Stale([]string{"res_1"}) != "" || (&Update{VMs: []string{}}).Stale(nil) != "" {
+		t.Fatal("stale without a change")
+	}
+}

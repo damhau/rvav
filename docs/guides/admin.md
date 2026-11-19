@@ -1439,7 +1439,9 @@ first says what stops. A subscription's row opens its page, where
     doesn't fit, with why: another OS family, a name the deployment has
     already, or more VMs than the component's count allows. When the
     count is an input, such as `web_nodes`, rvav raises it, within the
-    form's maximum.
+    form's maximum. While a request on the deployment runs, or waits for
+    approval or its start time, rvav refuses the VMs: adopt them once it
+    ends.
 
   Give the **Component** when the item's blueprint has several, such as
   `web`. rvav finds the VMs' addresses and DNS records in EfficientIP,

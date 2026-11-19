@@ -2,6 +2,7 @@ package provision
 
 import (
 	"cmp"
+	"slices"
 
 	"go.temporal.io/sdk/workflow"
 
@@ -22,6 +23,21 @@ type Update struct {
 	Remove []day2.Op    `json:"remove,omitempty"`
 	Kept   []KeptVM     `json:"kept,omitempty"`
 	Jobs   []UpdateJobs `json:"jobs,omitempty"`
+	// VMs are the IDs of the deployment's VMs the update was planned on:
+	// it doesn't start once they changed. Nil in a plan made before X1.6.
+	VMs []string `json:"vms"`
+}
+
+// Stale says why an update's plan no longer fits its deployment, which
+// has these VMs now; "" when it does.
+func (u *Update) Stale(vms []string) string {
+	if u == nil || u.VMs == nil {
+		return ""
+	}
+	if slices.Equal(slices.Sorted(slices.Values(u.VMs)), slices.Sorted(slices.Values(vms))) {
+		return ""
+	}
+	return "The deployment's VMs changed since this update was submitted: a VM joined or left it. Update it again."
 }
 
 // KeptVM is a VM the update keeps, as the VMs it adds and the jobs it

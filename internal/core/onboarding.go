@@ -355,12 +355,14 @@ func (s *Service) joinDeployment(ctx context.Context, tx pgx.Tx, dest *destinati
 	if err != nil {
 		return adoptedDeployment{}, err
 	}
-	active, err := s.Store.ActiveDeploymentRequest(ctx, tx, id, "", "", false)
+	// One waiting for approval or its start time too: an update's plan is
+	// fixed on the VMs the deployment had.
+	active, err := s.Store.ActiveDeploymentRequest(ctx, tx, id, "", "", true)
 	switch {
 	case err != nil:
 		return adoptedDeployment{}, err
 	case active != "":
-		return adoptedDeployment{}, &misfit{code: "busy", msg: active + " is still running on " + dep.Name + ": adopt the VMs once it ends."}
+		return adoptedDeployment{}, &misfit{code: "busy", msg: active + " is running or waiting on " + dep.Name + ": adopt the VMs once it ends."}
 	case dep.Status != "ready":
 		return adoptedDeployment{}, &misfit{code: "busy", msg: dep.Name + " is " + dep.Status + ": VMs join a ready deployment."}
 	case dest.project.ArchivedAt != nil:

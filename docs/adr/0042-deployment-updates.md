@@ -153,7 +153,10 @@ and a deployment that failed half-way was retried or deleted.
   later, one at a time, as an explicit `recreate` change marked
   destructive.
 - An update's plan is fixed when it is submitted: an approval that takes a
-  day doesn't make it change what it does.
+  day doesn't make it change what it does. So VMs can't join a deployment
+  while a request on it waits, and an update whose deployment no longer
+  has the VMs it was planned on fails before it starts, changing nothing:
+  the owner updates it again.
 - While an update that adds VMs runs, a VM already built is counted both
   as used and as reserved until the request ends, which errs towards
   refusing another request.
