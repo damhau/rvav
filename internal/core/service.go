@@ -82,6 +82,8 @@ type Service struct {
 	// AuditLog sends audit events to syslog servers and webhooks: their
 	// tests run here (ADR-0058).
 	AuditLog *auditlog.Forwarder
+	// signInReports limits the sign-ins clients report (ADR-0058).
+	signInReports windowLimit
 	// GitBeforeCommit runs before each commit to the catalog's repository:
 	// tests move the branch with it.
 	GitBeforeCommit func(path string)

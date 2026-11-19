@@ -76,7 +76,7 @@ func (s *Service) SignIn(ctx context.Context, username, password string, now tim
 	}
 	acc, err := s.Store.LocalAccountByName(ctx, name)
 	if errors.Is(err, store.ErrNotFound) {
-		s.auditSignIn(ctx, nil, "auth.sign_in_failed", "", map[string]any{"username": clipName(name), "reason": "unknown username"})
+		s.auditSignIn(ctx, nil, "auth.sign_in_failed", "", map[string]any{"username": clipName(name), "reason": "unknown username", "method": "local"})
 		return "", false, ErrBadCredentials
 	}
 	if err != nil {
@@ -88,7 +88,7 @@ func (s *Service) SignIn(ctx context.Context, username, password string, now tim
 	}
 	if !right {
 		s.auditSignIn(ctx, &acc.UserID, "auth.sign_in_failed", acc.UserID,
-			map[string]any{"reason": "wrong password", "failures_in_a_row": acc.FailedAttempts})
+			map[string]any{"reason": "wrong password", "failures_in_a_row": acc.FailedAttempts, "method": "local"})
 		return "", false, ErrBadCredentials
 	}
 	if err := s.Store.LocalSignInSucceeded(ctx, acc.UserID); err != nil {
@@ -98,7 +98,7 @@ func (s *Service) SignIn(ctx context.Context, username, password string, now tim
 	if err := s.Store.CreateSession(ctx, auth.HashToken(id), acc.UserID, now, now.Add(auth.SessionMax), auth.SessionIdle); err != nil {
 		return "", false, err
 	}
-	s.auditSignIn(ctx, &acc.UserID, "auth.sign_in", acc.UserID, map[string]any{"password_change_required": acc.MustChange})
+	s.auditSignIn(ctx, &acc.UserID, "auth.sign_in", acc.UserID, map[string]any{"password_change_required": acc.MustChange, "method": "local"})
 	return id, acc.MustChange, nil
 }
 
@@ -147,7 +147,7 @@ func (s *Service) ChangePassword(ctx context.Context, p *auth.Principal, current
 	}
 	if !right {
 		s.auditSignIn(ctx, &acc.UserID, "auth.sign_in_failed", acc.UserID,
-			map[string]any{"reason": "wrong current password", "failures_in_a_row": acc.FailedAttempts})
+			map[string]any{"reason": "wrong current password", "failures_in_a_row": acc.FailedAttempts, "method": "local"})
 		return &ValidationError{Errors: []api.FieldError{fieldErr("/current_password", "wrong", "The current password is wrong.")}}
 	}
 	hash, err := auth.HashPassword(ctx, next)
@@ -166,7 +166,7 @@ func (s *Service) ChangePassword(ctx context.Context, p *auth.Principal, current
 		return err
 	}
 	s.auditSignIn(ctx, &acc.UserID, "auth.password_changed", acc.UserID,
-		map[string]any{"sessions_ended": ended, "tokens_revoked": revoked})
+		map[string]any{"sessions_ended": ended, "tokens_revoked": revoked, "method": "local"})
 	return nil
 }
 
@@ -190,13 +190,21 @@ func checkNewPassword(username, current, next string) []api.FieldError {
 
 // SignOut ends a local session (its ID's hash).
 func (s *Service) SignOut(ctx context.Context, p *auth.Principal) error {
-	if p == nil || p.Session == "" {
+	if p == nil {
+		return nil
+	}
+	if p.Session == "" {
+		// The provider's users sign out there; the web app and rvavctl
+		// say so first (ADR-0058).
+		if s.signInReports.allow("user:"+p.User.ID, reportsPerMinute, time.Now()) {
+			s.auditSignIn(ctx, &p.User.ID, "auth.sign_out", p.User.ID, map[string]any{"method": p.Method})
+		}
 		return nil
 	}
 	if err := s.Store.DeleteSession(ctx, p.Session); err != nil {
 		return err
 	}
-	s.auditSignIn(ctx, &p.User.ID, "auth.sign_out", p.User.ID, nil)
+	s.auditSignIn(ctx, &p.User.ID, "auth.sign_out", p.User.ID, map[string]any{"method": "local"})
 	return nil
 }
 
@@ -210,7 +218,7 @@ func clipName(name string) string {
 
 func (s *Service) auditSignIn(ctx context.Context, actor *string, action, userID string, detail map[string]any) {
 	if err := s.Store.Audit(ctx, s.Store.Pool, store.AuditEvent{ActorID: actor, Action: action, TargetType: "user",
-		TargetID: userID, Detail: detail}); err != nil {
+		TargetID: userID, Detail: auth.ClientFrom(ctx).Detail(detail)}); err != nil {
 		s.Log.Error("audit", "action", action, "err", err)
 	}
 }

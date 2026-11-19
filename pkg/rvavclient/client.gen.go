@@ -2226,6 +2226,69 @@ func (e SetupStepKey) Valid() bool {
 	}
 }
 
+// Defines values for SignInFailureStage.
+const (
+	SignInStageProvider SignInFailureStage = "provider"
+	SignInStageState    SignInFailureStage = "state"
+	SignInStageToken    SignInFailureStage = "token"
+)
+
+// Valid indicates whether the value is a known member of the SignInFailureStage enum.
+func (e SignInFailureStage) Valid() bool {
+	switch e {
+	case SignInStageProvider:
+		return true
+	case SignInStageState:
+		return true
+	case SignInStageToken:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SignInReportClient.
+const (
+	SignInClientRvavctl SignInReportClient = "rvavctl"
+	SignInClientWeb     SignInReportClient = "web"
+)
+
+// Valid indicates whether the value is a known member of the SignInReportClient enum.
+func (e SignInReportClient) Valid() bool {
+	switch e {
+	case SignInClientRvavctl:
+		return true
+	case SignInClientWeb:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SignInReportMethod.
+const (
+	SignInMethodDev    SignInReportMethod = "dev"
+	SignInMethodDevice SignInReportMethod = "device"
+	SignInMethodOidc   SignInReportMethod = "oidc"
+	SignInMethodToken  SignInReportMethod = "token"
+)
+
+// Valid indicates whether the value is a known member of the SignInReportMethod enum.
+func (e SignInReportMethod) Valid() bool {
+	switch e {
+	case SignInMethodDev:
+		return true
+	case SignInMethodDevice:
+		return true
+	case SignInMethodOidc:
+		return true
+	case SignInMethodToken:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StepExternalRefKind.
 const (
 	StepExternalRefKindAwxInventoryUpdate StepExternalRefKind = "awx_inventory_update"
@@ -9282,6 +9345,38 @@ type SetupWrite struct {
 	Hidden bool `json:"hidden"`
 }
 
+// SignInFailure The sign-in failed before there was a token to send.
+type SignInFailure struct {
+	// Description The provider's error_description, or the client's message.
+	Description *string `json:"description,omitempty"`
+
+	// Error The provider's error code, such as access_denied or invalid_grant.
+	Error *string `json:"error,omitempty"`
+
+	// Stage `state`: the browser came back from another sign-in, or with no sign-in under way; `provider`: the identity provider refused (an unknown or disabled user, consent refused); `token`: the code or device code couldn't be exchanged for a token.
+	Stage SignInFailureStage `json:"stage"`
+}
+
+// SignInFailureStage `state`: the browser came back from another sign-in, or with no sign-in under way; `provider`: the identity provider refused (an unknown or disabled user, consent refused); `token`: the code or device code couldn't be exchanged for a token.
+type SignInFailureStage string
+
+// SignInReport defines model for SignInReport.
+type SignInReport struct {
+	Client SignInReportClient `json:"client"`
+
+	// Failure The sign-in failed before there was a token to send.
+	Failure *SignInFailure `json:"failure,omitempty"`
+
+	// Method How the client signed in at the provider (`oidc` in the browser, `device` with a code on another device), in development mode (`dev`), or with an API token (`token`).
+	Method SignInReportMethod `json:"method"`
+}
+
+// SignInReportClient defines model for SignInReport.Client.
+type SignInReportClient string
+
+// SignInReportMethod How the client signed in at the provider (`oidc` in the browser, `device` with a code on another device), in development mode (`dev`), or with an API token (`token`).
+type SignInReportMethod string
+
 // SignInRequest defines model for SignInRequest.
 type SignInRequest struct {
 	Password string `json:"password"`
@@ -11950,6 +12045,9 @@ type ChangePasswordJSONRequestBody = PasswordChange
 
 // SignInJSONRequestBody defines body for SignIn for application/json ContentType.
 type SignInJSONRequestBody = SignInRequest
+
+// ReportSignInJSONRequestBody defines body for ReportSignIn for application/json ContentType.
+type ReportSignInJSONRequestBody = SignInReport
 
 // RunDeploymentActionJSONRequestBody defines body for RunDeploymentAction for application/json ContentType.
 type RunDeploymentActionJSONRequestBody = Day2Draft
@@ -15607,10 +15705,54 @@ type ClientInterface interface {
 	// Corresponds with POST /auth/sign-in (the `SignIn` operationId).
 	SignIn(ctx context.Context, body SignInJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// SignOut End the local session, if there is one
+	// ReportSignInWithBody Record a sign-in at the identity provider, or why it failed, in the audit log
+	//
+	// The web app and rvavctl sign in at the identity provider themselves
+	// (ADR-0010, ADR-0051), so they tell rvav how it went (ADR-0058):
+	// - **Signed in:** send the new access token (or API token) in the
+	//   `Authorization` header and no `failure`. rvav checks it, and
+	//   records `auth.sign_in` with who, from where and how; a token it
+	//   refuses is recorded as `auth.sign_in_failed`, with why, and
+	//   answers `401`. In development mode, no header: the dev user.
+	// - **Failed before there was a token:** send `failure`, without a
+	//   token. rvav records `auth.sign_in_failed`, as the client says it
+	//   happened; at most 10 a minute from one address are kept.
+	//
+	// Never send the authorization code, the state or a token in the
+	// body.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /auth/sign-ins (the `ReportSignIn` operationId).
+	ReportSignInWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReportSignIn Record a sign-in at the identity provider, or why it failed, in the audit log
+	//
+	// The web app and rvavctl sign in at the identity provider themselves
+	// (ADR-0010, ADR-0051), so they tell rvav how it went (ADR-0058):
+	// - **Signed in:** send the new access token (or API token) in the
+	//   `Authorization` header and no `failure`. rvav checks it, and
+	//   records `auth.sign_in` with who, from where and how; a token it
+	//   refuses is recorded as `auth.sign_in_failed`, with why, and
+	//   answers `401`. In development mode, no header: the dev user.
+	// - **Failed before there was a token:** send `failure`, without a
+	//   token. rvav records `auth.sign_in_failed`, as the client says it
+	//   happened; at most 10 a minute from one address are kept.
+	//
+	// Never send the authorization code, the state or a token in the
+	// body.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /auth/sign-ins (the `ReportSignIn` operationId).
+	ReportSignIn(ctx context.Context, body ReportSignInJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SignOut End the local session, if there is one, and record the sign-out
 	//
 	// Deletes the session and clears its cookie. The provider's users sign
-	// out at the provider. With a session, it needs `X-Requested-With`,
+	// out at the provider: the web app and `rvavctl logout` call this
+	// first with their access token, so that the sign-out is audited
+	// (`auth.sign_out`). With a session, it needs `X-Requested-With`,
 	// as every change does.
 	//
 	// Corresponds with POST /auth/sign-out (the `SignOut` operationId).
@@ -22035,10 +22177,74 @@ func (c *Client) SignIn(ctx context.Context, body SignInJSONRequestBody, reqEdit
 	return c.Client.Do(req)
 }
 
-// SignOut End the local session, if there is one
+// ReportSignInWithBody Record a sign-in at the identity provider, or why it failed, in the audit log
+//
+// The web app and rvavctl sign in at the identity provider themselves
+// (ADR-0010, ADR-0051), so they tell rvav how it went (ADR-0058):
+//   - **Signed in:** send the new access token (or API token) in the
+//     `Authorization` header and no `failure`. rvav checks it, and
+//     records `auth.sign_in` with who, from where and how; a token it
+//     refuses is recorded as `auth.sign_in_failed`, with why, and
+//     answers `401`. In development mode, no header: the dev user.
+//   - **Failed before there was a token:** send `failure`, without a
+//     token. rvav records `auth.sign_in_failed`, as the client says it
+//     happened; at most 10 a minute from one address are kept.
+//
+// Never send the authorization code, the state or a token in the
+// body.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /auth/sign-ins (the `ReportSignIn` operationId).
+func (c *Client) ReportSignInWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReportSignInRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReportSignIn Record a sign-in at the identity provider, or why it failed, in the audit log
+//
+// The web app and rvavctl sign in at the identity provider themselves
+// (ADR-0010, ADR-0051), so they tell rvav how it went (ADR-0058):
+//   - **Signed in:** send the new access token (or API token) in the
+//     `Authorization` header and no `failure`. rvav checks it, and
+//     records `auth.sign_in` with who, from where and how; a token it
+//     refuses is recorded as `auth.sign_in_failed`, with why, and
+//     answers `401`. In development mode, no header: the dev user.
+//   - **Failed before there was a token:** send `failure`, without a
+//     token. rvav records `auth.sign_in_failed`, as the client says it
+//     happened; at most 10 a minute from one address are kept.
+//
+// Never send the authorization code, the state or a token in the
+// body.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /auth/sign-ins (the `ReportSignIn` operationId).
+func (c *Client) ReportSignIn(ctx context.Context, body ReportSignInJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReportSignInRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SignOut End the local session, if there is one, and record the sign-out
 //
 // Deletes the session and clears its cookie. The provider's users sign
-// out at the provider. With a session, it needs `X-Requested-With`,
+// out at the provider: the web app and `rvavctl logout` call this
+// first with their access token, so that the sign-out is audited
+// (`auth.sign_out`). With a session, it needs `X-Requested-With`,
 // as every change does.
 //
 // Corresponds with POST /auth/sign-out (the `SignOut` operationId).
@@ -32385,6 +32591,46 @@ func NewSignInRequestWithBody(server string, contentType string, body io.Reader)
 	return req, nil
 }
 
+// NewReportSignInRequest calls the generic ReportSignIn builder with application/json body
+func NewReportSignInRequest(server string, body ReportSignInJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReportSignInRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewReportSignInRequestWithBody constructs an http.Request for the ReportSignIn method, with any body, and a specified content type
+func NewReportSignInRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/sign-ins")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewSignOutRequest constructs an http.Request for the SignOut method
 func NewSignOutRequest(server string) (*http.Request, error) {
 	var err error
@@ -39122,10 +39368,54 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /auth/sign-in (the `SignIn` operationId).
 	SignInWithResponse(ctx context.Context, body SignInJSONRequestBody, reqEditors ...RequestEditorFn) (*SignInResponse, error)
 
-	// SignOutWithResponse End the local session, if there is one
+	// ReportSignInWithBodyWithResponse Record a sign-in at the identity provider, or why it failed, in the audit log
+	//
+	// The web app and rvavctl sign in at the identity provider themselves
+	// (ADR-0010, ADR-0051), so they tell rvav how it went (ADR-0058):
+	// - **Signed in:** send the new access token (or API token) in the
+	//   `Authorization` header and no `failure`. rvav checks it, and
+	//   records `auth.sign_in` with who, from where and how; a token it
+	//   refuses is recorded as `auth.sign_in_failed`, with why, and
+	//   answers `401`. In development mode, no header: the dev user.
+	// - **Failed before there was a token:** send `failure`, without a
+	//   token. rvav records `auth.sign_in_failed`, as the client says it
+	//   happened; at most 10 a minute from one address are kept.
+	//
+	// Never send the authorization code, the state or a token in the
+	// body.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/sign-ins (the `ReportSignIn` operationId).
+	ReportSignInWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReportSignInResponse, error)
+
+	// ReportSignInWithResponse Record a sign-in at the identity provider, or why it failed, in the audit log
+	//
+	// The web app and rvavctl sign in at the identity provider themselves
+	// (ADR-0010, ADR-0051), so they tell rvav how it went (ADR-0058):
+	// - **Signed in:** send the new access token (or API token) in the
+	//   `Authorization` header and no `failure`. rvav checks it, and
+	//   records `auth.sign_in` with who, from where and how; a token it
+	//   refuses is recorded as `auth.sign_in_failed`, with why, and
+	//   answers `401`. In development mode, no header: the dev user.
+	// - **Failed before there was a token:** send `failure`, without a
+	//   token. rvav records `auth.sign_in_failed`, as the client says it
+	//   happened; at most 10 a minute from one address are kept.
+	//
+	// Never send the authorization code, the state or a token in the
+	// body.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/sign-ins (the `ReportSignIn` operationId).
+	ReportSignInWithResponse(ctx context.Context, body ReportSignInJSONRequestBody, reqEditors ...RequestEditorFn) (*ReportSignInResponse, error)
+
+	// SignOutWithResponse End the local session, if there is one, and record the sign-out
 	//
 	// Deletes the session and clears its cookie. The provider's users sign
-	// out at the provider. With a session, it needs `X-Requested-With`,
+	// out at the provider: the web app and `rvavctl logout` call this
+	// first with their access token, so that the sign-out is audited
+	// (`auth.sign_out`). With a session, it needs `X-Requested-With`,
 	// as every change does.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -53238,6 +53528,68 @@ func (r SignInResponse) ContentType() string {
 	return ""
 }
 
+type ReportSignInResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Problem
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ReportSignInResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ReportSignInResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ReportSignInResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ReportSignInResponse) GetApplicationproblemJSON503() *Problem {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ReportSignInResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReportSignInResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReportSignInResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReportSignInResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type SignOutResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -62200,10 +62552,66 @@ func (c *ClientWithResponses) SignInWithResponse(ctx context.Context, body SignI
 	return ParseSignInResponse(rsp)
 }
 
-// SignOutWithResponse End the local session, if there is one
+// ReportSignInWithBodyWithResponse Record a sign-in at the identity provider, or why it failed, in the audit log
+//
+// The web app and rvavctl sign in at the identity provider themselves
+// (ADR-0010, ADR-0051), so they tell rvav how it went (ADR-0058):
+//   - **Signed in:** send the new access token (or API token) in the
+//     `Authorization` header and no `failure`. rvav checks it, and
+//     records `auth.sign_in` with who, from where and how; a token it
+//     refuses is recorded as `auth.sign_in_failed`, with why, and
+//     answers `401`. In development mode, no header: the dev user.
+//   - **Failed before there was a token:** send `failure`, without a
+//     token. rvav records `auth.sign_in_failed`, as the client says it
+//     happened; at most 10 a minute from one address are kept.
+//
+// Never send the authorization code, the state or a token in the
+// body.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/sign-ins (the `ReportSignIn` operationId).
+func (c *ClientWithResponses) ReportSignInWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReportSignInResponse, error) {
+	rsp, err := c.ReportSignInWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReportSignInResponse(rsp)
+}
+
+// ReportSignInWithResponse Record a sign-in at the identity provider, or why it failed, in the audit log
+//
+// The web app and rvavctl sign in at the identity provider themselves
+// (ADR-0010, ADR-0051), so they tell rvav how it went (ADR-0058):
+//   - **Signed in:** send the new access token (or API token) in the
+//     `Authorization` header and no `failure`. rvav checks it, and
+//     records `auth.sign_in` with who, from where and how; a token it
+//     refuses is recorded as `auth.sign_in_failed`, with why, and
+//     answers `401`. In development mode, no header: the dev user.
+//   - **Failed before there was a token:** send `failure`, without a
+//     token. rvav records `auth.sign_in_failed`, as the client says it
+//     happened; at most 10 a minute from one address are kept.
+//
+// Never send the authorization code, the state or a token in the
+// body.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/sign-ins (the `ReportSignIn` operationId).
+func (c *ClientWithResponses) ReportSignInWithResponse(ctx context.Context, body ReportSignInJSONRequestBody, reqEditors ...RequestEditorFn) (*ReportSignInResponse, error) {
+	rsp, err := c.ReportSignIn(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReportSignInResponse(rsp)
+}
+
+// SignOutWithResponse End the local session, if there is one, and record the sign-out
 //
 // Deletes the session and clears its cookie. The provider's users sign
-// out at the provider. With a session, it needs `X-Requested-With`,
+// out at the provider: the web app and `rvavctl logout` call this
+// first with their access token, so that the sign-out is audited
+// (`auth.sign_out`). With a session, it needs `X-Requested-With`,
 // as every change does.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -73896,6 +74304,56 @@ func ParseSignInResponse(rsp *http.Response) (*SignInResponse, error) {
 			headers.RetryAfter = &value
 		}
 		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseReportSignInResponse parses an HTTP response from a ReportSignInWithResponse call
+func ParseReportSignInResponse(rsp *http.Response) (*ReportSignInResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReportSignInResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil

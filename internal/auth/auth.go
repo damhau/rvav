@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/trust"
@@ -52,6 +53,9 @@ type Principal struct {
 	// MustChangePassword: the local administrator must change the password
 	// before doing anything else.
 	MustChangePassword bool
+	// Method is how the principal signed in, as the audit log says it:
+	// oidc, token, dev or local.
+	Method string
 }
 
 // ScopeInventory: the token only reads the Ansible inventory.
@@ -249,10 +253,24 @@ func HashToken(token string) string {
 }
 
 func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, error) {
-	u, scope, err := s.UserForToken(ctx, HashToken(token))
+	var use store.TokenUse
+	err := s.Tx(ctx, func(tx pgx.Tx) error {
+		var err error
+		if use, err = s.UseToken(ctx, tx, HashToken(token)); err != nil || !use.FirstToday {
+			return err
+		}
+		return s.Audit(ctx, tx, tokenUsed(ctx, use))
+	})
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, ErrUnauthenticated
 	}
+	if err != nil {
+		return nil, err
+	}
+	if use.Expired {
+		return nil, fmt.Errorf("%w: the API token %q has expired", ErrUnauthenticated, use.Name)
+	}
+	u, err := s.GetUser(ctx, use.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -271,9 +289,20 @@ func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, er
 	// and automation should not approve anything.
 	p, err := build(ctx, s, u, nil)
 	if p != nil {
-		p.Scope = scope
+		p.Scope, p.Method = use.Scope, "token"
 	}
 	return p, err
+}
+
+// tokenUsed is a token's first use of the day, or its first refusal of the
+// day once expired: enough to see where it is used without a row per call.
+func tokenUsed(ctx context.Context, t store.TokenUse) store.AuditEvent {
+	action, detail := "auth.token_used", map[string]any{"name": t.Name, "method": "token"}
+	if t.Expired {
+		action, detail["reason"] = "auth.sign_in_failed", "token_expired"
+	}
+	return store.AuditEvent{ActorID: &t.UserID, Action: action, TargetType: "api_token", TargetID: t.ID,
+		Detail: ClientFrom(ctx).Detail(detail)}
 }
 
 // ProviderSettings are what the token check needs from the identity
@@ -594,7 +623,7 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 		if err != nil {
 			return nil, err
 		}
-		return build(ctx, o.Store, u, t.groups)
+		return signedInWith("oidc")(build(ctx, o.Store, u, t.groups))
 	}
 	var claims map[string]any
 	if err := idt.Claims(&claims); err != nil {
@@ -622,7 +651,17 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 		until = idt.Expiry
 	}
 	o.remember(key, seenToken{userID: u.ID, groups: groups, until: until})
-	return build(ctx, o.Store, u, groups)
+	return signedInWith("oidc")(build(ctx, o.Store, u, groups))
+}
+
+// signedInWith sets the method of the principal build returns.
+func signedInWith(method string) func(*Principal, error) (*Principal, error) {
+	return func(p *Principal, err error) (*Principal, error) {
+		if p != nil {
+			p.Method = method
+		}
+		return p, err
+	}
 }
 
 // ReservedSubject says whether a subject is one of rvav's own users': the
@@ -675,7 +714,7 @@ func (d *Dev) Authenticate(r *http.Request) (*Principal, error) {
 	if err != nil {
 		return nil, err
 	}
-	return build(ctx, d.Store, u, groups)
+	return signedInWith("dev")(build(ctx, d.Store, u, groups))
 }
 
 // PrincipalFor is what a user may do, with the groups stored at their last

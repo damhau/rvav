@@ -138,15 +138,53 @@ paths:
     post:
       tags: [identity]
       operationId: signOut
-      summary: End the local session, if there is one
+      summary: End the local session, if there is one, and record the sign-out
       description: |
         Deletes the session and clears its cookie. The provider's users sign
-        out at the provider. With a session, it needs `X-Requested-With`,
+        out at the provider: the web app and `rvavctl logout` call this
+        first with their access token, so that the sign-out is audited
+        (`auth.sign_out`). With a session, it needs `X-Requested-With`,
         as every change does.
       security: []
       responses:
         "204": { description: Signed out }
         "403": { $ref: "#/components/responses/Forbidden" }
+
+  /auth/sign-ins:
+    post:
+      tags: [identity]
+      operationId: reportSignIn
+      summary: Record a sign-in at the identity provider, or why it failed, in the audit log
+      description: |
+        The web app and rvavctl sign in at the identity provider themselves
+        (ADR-0010, ADR-0051), so they tell rvav how it went (ADR-0058):
+        - **Signed in:** send the new access token (or API token) in the
+          `Authorization` header and no `failure`. rvav checks it, and
+          records `auth.sign_in` with who, from where and how; a token it
+          refuses is recorded as `auth.sign_in_failed`, with why, and
+          answers `401`. In development mode, no header: the dev user.
+        - **Failed before there was a token:** send `failure`, without a
+          token. rvav records `auth.sign_in_failed`, as the client says it
+          happened; at most 10 a minute from one address are kept.
+
+        Never send the authorization code, the state or a token in the
+        body.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignInReport" }
+      responses:
+        "204": { description: Recorded }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "503":
+          description: The identity provider can't be reached to check the token; nothing was recorded
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 
   /auth/options:
     get:
@@ -13110,6 +13148,35 @@ components:
         ok: { type: boolean }
         message: { type: string, description: "What the server answered, or why it couldn't be reached." }
         duration_ms: { type: integer }
+
+    SignInReport:
+      type: object
+      additionalProperties: false
+      required: [client, method]
+      properties:
+        client:
+          type: string
+          enum: [web, rvavctl]
+          x-enum-varnames: [SignInClientWeb, SignInClientRvavctl]
+        method:
+          type: string
+          description: How the client signed in at the provider (`oidc` in the browser, `device` with a code on another device), in development mode (`dev`), or with an API token (`token`).
+          enum: [oidc, device, dev, token]
+          x-enum-varnames: [SignInMethodOidc, SignInMethodDevice, SignInMethodDev, SignInMethodToken]
+        failure: { $ref: "#/components/schemas/SignInFailure" }
+    SignInFailure:
+      type: object
+      additionalProperties: false
+      required: [stage]
+      description: The sign-in failed before there was a token to send.
+      properties:
+        stage:
+          type: string
+          description: "`state`: the browser came back from another sign-in, or with no sign-in under way; `provider`: the identity provider refused (an unknown or disabled user, consent refused); `token`: the code or device code couldn't be exchanged for a token."
+          enum: [state, provider, token]
+          x-enum-varnames: [SignInStageState, SignInStageProvider, SignInStageToken]
+        error: { type: string, maxLength: 64, description: "The provider's error code, such as access_denied or invalid_grant." }
+        description: { type: string, maxLength: 500, description: "The provider's error_description, or the client's message." }
 
     # ── Events and subscriptions (ADR-0021) ──
     EventTopicKey:

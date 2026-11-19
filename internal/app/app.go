@@ -456,6 +456,7 @@ func (a *App) APIServer(ctx context.Context, w core.Workflows) (*httpapi.Server,
 	return &httpapi.Server{
 		Store: a.Store, Core: svc,
 		Hub: hub, Auth: authn, Log: a.Log, AuthMode: a.Cfg.Auth.Mode, CORSOrigins: a.Cfg.CORSOrigins,
+		TrustedProxies:  a.Cfg.TrustedProxies,
 		ConsoleInsecure: a.Cfg.VCenter.Insecure, WMKSNow: a.wmks,
 		SecureCookies: strings.HasPrefix(a.Cfg.PublicURL, "https://"),
 		// Teams' and Slack's calls are checked with the settings saved now.

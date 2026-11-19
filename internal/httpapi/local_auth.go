@@ -101,6 +101,55 @@ func (s *Server) SignOut(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ReportSignIn records how a sign-in at the identity provider went, as the
+// web app or rvavctl says (ADR-0058). The body is checked before the token.
+func (s *Server) ReportSignIn(w http.ResponseWriter, r *http.Request) {
+	var rep api.SignInReport
+	if !s.decodeStrict(w, r, &rep) {
+		return
+	}
+	if err := core.CheckSignInReport(rep); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	ctx := r.Context()
+	if rep.Failure != nil && r.Header.Get("Authorization") == "" {
+		if err := s.Core.SignInFailed(ctx, rep); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	p, err := s.signedIn(r)
+	switch {
+	case errors.Is(err, auth.ErrUnauthenticated):
+		if r.Header.Get("Authorization") != "" {
+			if err := s.Core.TokenRefused(ctx, rep, err); err != nil {
+				s.fail(w, r, err)
+				return
+			}
+		}
+		w.Header().Set("WWW-Authenticate", `Bearer realm="rvav"`)
+		s.problem(w, r, http.StatusUnauthorized, "unauthenticated", "Sign-in refused",
+			"rvav refused the token the identity provider gave.", nil)
+		return
+	case errors.Is(err, auth.ErrProviderUnavailable):
+		w.Header().Set("Retry-After", "5")
+		s.problem(w, r, http.StatusServiceUnavailable, "unavailable", "Sign-in is unavailable",
+			"The identity provider can't be reached to check the token. Try again in a moment.", nil)
+		return
+	case err != nil:
+		s.fail(w, r, err)
+		return
+	}
+	if err := s.Core.SignedIn(ctx, p, rep); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) signInFailed(w http.ResponseWriter, r *http.Request, err error) {
 	var tm *core.TooManyAttemptsError
 	switch {

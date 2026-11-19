@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
@@ -99,6 +100,11 @@ func (a *app) login(ctx context.Context, f loginFlags) error {
 			break
 		}
 		if p.OIDC, err = a.signIn(ctx, *opts.JSON200.Provider, f); err != nil {
+			var se *signInError
+			if errors.As(err, &se) {
+				a.report(ctx, anon, rvavclient.SignInReport{Client: rvavclient.SignInClientRvavctl, Method: method(f),
+					Failure: se.failure()})
+			}
 			return err
 		}
 	}
@@ -108,6 +114,7 @@ func (a *app) login(ctx context.Context, f loginFlags) error {
 	if err != nil {
 		return err
 	}
+	a.report(ctx, c, rvavclient.SignInReport{Client: rvavclient.SignInClientRvavctl, Method: method(f)})
 	me, err := c.GetMeWithResponse(ctx)
 	if err != nil {
 		return err
@@ -121,6 +128,26 @@ func (a *app) login(ctx context.Context, f loginFlags) error {
 	}
 	_, err = fmt.Fprintf(a.Out, "Signed in to %s as %s (%s)%s.\n", server, me.JSON200.User.Name, me.JSON200.User.Id, how)
 	return err
+}
+
+// method is how rvavctl signs in, as the audit log says it: rvav takes an
+// API token's or the development sign-in's from the token itself.
+func method(f loginFlags) rvavclient.SignInReportMethod {
+	switch {
+	case f.withToken:
+		return rvavclient.SignInMethodToken
+	case f.device:
+		return rvavclient.SignInMethodDevice
+	}
+	return rvavclient.SignInMethodOidc
+}
+
+// report tells rvav how the sign-in went, for its audit log (ADR-0058). An
+// rvav too old to record it, or one that doesn't answer, doesn't stop it.
+func (a *app) report(ctx context.Context, c *rvavclient.ClientWithResponses, r rvavclient.SignInReport) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, _ = c.ReportSignInWithResponse(ctx, r)
 }
 
 // noProvider is an rvav with no identity provider: in development mode it
@@ -146,9 +173,9 @@ func (a *app) logoutCmd() *cobra.Command {
 		Use:   "logout",
 		Short: "Forget the profile's sign-in",
 		Long: `Forget the profile's sign-in on this machine. An API token stays valid until
-it expires or you revoke it in rvav.`,
+it expires or you revoke it in rvav. rvav's audit log records the sign-out.`,
 		Args: cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			ps, err := a.profiles()
 			if err != nil {
 				return err
@@ -158,6 +185,7 @@ it expires or you revoke it in rvav.`,
 				_, err := fmt.Fprintf(a.Out, "Not signed in (profile %q).\n", a.profile)
 				return err
 			}
+			a.signOut(cmd.Context(), p)
 			delete(ps.Profiles, a.profile)
 			if err := ps.Save(); err != nil {
 				return err
@@ -165,6 +193,16 @@ it expires or you revoke it in rvav.`,
 			_, err = fmt.Fprintf(a.Out, "Signed out of %s.\n", p.Server)
 			return err
 		},
+	}
+}
+
+// signOut tells rvav, for its audit log; signing out goes on without it.
+func (a *app) signOut(ctx context.Context, p *rvavclient.Profile) {
+	ctx, cancel := context.WithTimeout(context.WithValue(ctx, oauth2.HTTPClient, a.HTTP), 5*time.Second)
+	defer cancel()
+	c, err := a.client(p.Server, p.TokenSource(ctx, func(*oauth2.Token) error { return nil }))
+	if err == nil {
+		_, _ = c.SignOutWithResponse(ctx)
 	}
 }
 

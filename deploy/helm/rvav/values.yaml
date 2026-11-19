@@ -23,6 +23,9 @@ config:
   RVAV_PUBLIC_URL: https://rvav.corp.example
   RVAV_TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
   RVAV_TEMPORAL_NAMESPACE: rvav
+  # The web pods and the ingress controller (the cluster's pod network), so
+  # that the audit log records the address a sign-in came from.
+  # RVAV_TRUSTED_PROXIES: 10.0.0.0/8
   # An integration's variables may still be set here (and its password in
   # the Secret): each wins over Administration and locks its field.
   # RVAV_OIDC_ISSUER: https://sso.corp.example/realms/rvav

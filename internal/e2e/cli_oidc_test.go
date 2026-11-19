@@ -47,6 +47,10 @@ type cliIdP struct {
 	refresh                    string
 	refreshes, devicePolls     int
 	refuseRefresh              bool
+	// authError refuses the sign-in in the browser; badCode sends back a
+	// code the token endpoint refuses.
+	authError string
+	badCode   bool
 }
 
 func newCLIIdP(t *testing.T) *cliIdP {
@@ -88,7 +92,14 @@ func (p *cliIdP) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.challenge, p.redirect, p.scope = q.Get("code_challenge"), q.Get("redirect_uri"), q.Get("scope")
-		http.Redirect(w, r, p.redirect+"?code=code-1&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
+		back := "?code=code-1"
+		switch {
+		case p.authError != "":
+			back = "?error=" + p.authError + "&error_description=User+is+disabled"
+		case p.badCode:
+			back = "?code=code-2"
+		}
+		http.Redirect(w, r, p.redirect+back+"&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
 	case "/device":
 		_ = r.ParseForm()
 		p.scope = r.PostForm.Get("scope")
@@ -156,7 +167,8 @@ func (p *cliIdP) get() idpSeen {
 
 // TestCLIOIDC signs rvavctl in at rvav's identity provider, as people do
 // with OIDC: in the browser, on another device, refreshing the sign-in and
-// saving it, until it can't be refreshed any more.
+// saving it, until it can't be refreshed any more. The audit log records
+// each sign-in, failed or not, and the sign-out (ADR-0058).
 func TestCLIOIDC(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -173,6 +185,26 @@ func TestCLIOIDC(t *testing.T) {
 		srv := httptest.NewServer((&httpapi.Server{Store: h.store, Core: h.svc, Hub: h.hub, Log: discardLog(),
 			AuthMode: "oidc", Auth: o, Heartbeat: time.Second}).Handler())
 		t.Cleanup(srv.Close)
+		mark := h.lastAuditID()
+		// audited checks the auth events since the mark, and moves it.
+		audited := func(what string, want ...map[string]any) {
+			t.Helper()
+			ev := h.authEvents(mark)
+			if len(ev) != len(want) {
+				t.Fatalf("%s: audited %+v", what, ev)
+			}
+			for i, w := range want {
+				for k, v := range w {
+					if ev[i].Detail[k] != v && !(k == "action" && ev[i].Action == v) {
+						t.Errorf("%s: event %d's %s = %v, want %v (%+v)", what, i, k, ev[i].Detail[k], v, ev[i])
+					}
+				}
+				if ua, _ := ev[i].Detail["user_agent"].(string); !strings.HasPrefix(ua, "rvavctl/") || ev[i].Detail["ip"] != "127.0.0.1" {
+					t.Errorf("%s: event %d from %v, %q", what, i, ev[i].Detail["ip"], ua)
+				}
+			}
+			mark = ev[len(ev)-1].ID
+		}
 
 		// In the browser: the code comes back to a loopback port.
 		lea := newRvavctl(t, ctx)
@@ -194,6 +226,7 @@ func TestCLIOIDC(t *testing.T) {
 		mustContain(t, "browser login", out, "Signed in to "+srv.URL+" as Léa Martin")
 		mustContain(t, "browser login", stderr, idp.srv.URL+"/auth?")
 		mustContain(t, "the browser's page", page, "Signed in to rvav")
+		audited("browser login", map[string]any{"action": "auth.sign_in", "client": "rvavctl", "method": "oidc"})
 		if got := idp.get(); !slices.Contains(strings.Fields(got.scope), "offline_access") ||
 			!slices.Contains(strings.Fields(got.scope), "openid") {
 			t.Fatalf("scopes asked = %q", got.scope)
@@ -235,6 +268,20 @@ func TestCLIOIDC(t *testing.T) {
 		mustContain(t, "refused refresh", stderr, "the sign-in has expired", "Sign in again: rvavctl login")
 		idp.set(func(p *cliIdP) { p.refuseRefresh = false })
 
+		// The provider refuses (a disabled user), or the code can't be
+		// exchanged: rvav records why, never the code.
+		idp.set(func(p *cliIdP) { p.authError = "access_denied" })
+		_, stderr = lea.run(1, "", "login", "--server", srv.URL)
+		mustContain(t, "refused login", stderr, "the identity provider refused: access_denied User is disabled")
+		idp.set(func(p *cliIdP) { p.authError, p.badCode = "", true })
+		_, stderr = lea.run(1, "", "login", "--server", srv.URL)
+		mustContain(t, "refused code", stderr, "invalid_grant")
+		idp.set(func(p *cliIdP) { p.badCode = false })
+		audited("failed logins",
+			map[string]any{"action": "auth.sign_in_failed", "client": "rvavctl", "method": "oidc", "stage": "provider",
+				"error": "access_denied", "description": "User is disabled"},
+			map[string]any{"action": "auth.sign_in_failed", "stage": "token", "error": "invalid_grant", "reason": "token exchange failed"})
+
 		// On another device: a code to enter where a browser is.
 		marc := newRvavctl(t, ctx)
 		idp.set(func(p *cliIdP) {
@@ -246,6 +293,7 @@ func TestCLIOIDC(t *testing.T) {
 		if got := idp.get(); got.devicePolls != 2 || !slices.Contains(strings.Fields(got.scope), "offline_access") {
 			t.Fatalf("device polls = %d, scopes %q", got.devicePolls, got.scope)
 		}
+		audited("device login", map[string]any{"action": "auth.sign_in", "client": "rvavctl", "method": "device"})
 		marc.json(&me, "whoami", "--profile", "prod")
 		if !slices.Contains(roleKeys(me.Roles), "admin") {
 			t.Fatalf("marc's roles from his groups = %+v", me.Roles)
@@ -274,5 +322,7 @@ func TestCLIOIDC(t *testing.T) {
 		}
 		marc.run(0, "", "logout", "--profile", "prod")
 		marc.run(1, "", "whoami", "--profile", "prod")
+		audited("logout", map[string]any{"action": "auth.sign_out", "method": "oidc"})
+		h.noSecretsAudited("code-1", "code-2", "device-1", "WDJB-MJHT", "refresh-", "eyJ")
 	})
 }

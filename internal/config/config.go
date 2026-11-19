@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,6 +19,9 @@ type Config struct {
 	DatabaseURL string
 	LogLevel    string
 	CORSOrigins []string
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For is
+	// believed, for the address a sign-in came from (ADR-0058).
+	TrustedProxies []netip.Prefix
 
 	Auth AuthConfig
 
@@ -421,6 +425,10 @@ func Load() (Config, error) {
 		return c, err
 	}
 
+	if c.TrustedProxies, err = prefixes("RVAV_TRUSTED_PROXIES"); err != nil {
+		return c, err
+	}
+
 	// Without an identity provider, only the local administrator and API
 	// tokens sign in (ADR-0030).
 	switch c.Auth.Mode {
@@ -478,6 +486,23 @@ func list(key string) []string {
 		}
 	}
 	return out
+}
+
+// prefixes reads a list of networks (CIDR) or single addresses.
+func prefixes(key string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, s := range list(key) {
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			a, aerr := netip.ParseAddr(s)
+			if aerr != nil {
+				return nil, fmt.Errorf("%s: %q is neither an address nor a network such as 10.0.0.0/8", key, s)
+			}
+			p = netip.PrefixFrom(a, a.BitLen())
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
 }
 
 func metricsAddr() string {

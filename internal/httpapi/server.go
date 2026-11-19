@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -40,6 +41,9 @@ type Server struct {
 	// AuthMode is reported in the X-Rvav-Auth-Mode header ("oidc" or "dev").
 	AuthMode    string
 	CORSOrigins []string
+	// TrustedProxies are believed about where a request came from
+	// (RVAV_TRUSTED_PROXIES).
+	TrustedProxies []netip.Prefix
 	// Heartbeat is the SSE keep-alive interval (15 s when zero).
 	Heartbeat time.Duration
 	// WMKSSDKURLs are the scripts of VMware's HTML console client, in load
@@ -205,12 +209,14 @@ func (s *Server) cors(next http.Handler) http.Handler {
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.WithClient(r.Context(), auth.ClientOf(r, s.TrustedProxies)))
 		// The console's WebSocket carries its own single-use token (ADR-0012);
 		// Teams and Slack sign their calls (ADR-0023).
 		// Signing in needs no sign-in, nor reading how to (ADR-0030), nor
-		// the branding the sign-in page shows (ADR-0059).
+		// the branding the sign-in page shows (ADR-0059), nor saying how a
+		// sign-in went, which checks the token itself (ADR-0058).
 		if strings.HasPrefix(r.URL.Path, "/api/v1/console/") || strings.HasPrefix(r.URL.Path, "/api/v1/integrations/") ||
-			(r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/sign-in") ||
+			(r.Method == http.MethodPost && (r.URL.Path == "/api/v1/auth/sign-in" || r.URL.Path == "/api/v1/auth/sign-ins")) ||
 			(r.Method == http.MethodGet && (r.URL.Path == "/api/v1/auth/options" || r.URL.Path == "/api/v1/branding" ||
 				strings.HasPrefix(r.URL.Path, "/api/v1/branding/logos/"))) {
 			next.ServeHTTP(w, r)

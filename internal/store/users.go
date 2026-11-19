@@ -125,18 +125,30 @@ func (s *Store) DeleteAPITokens(ctx context.Context, userID, name string) (int, 
 	return int(tag.RowsAffected()), err
 }
 
-// UserForToken returns the owner of an unexpired API token, by its SHA-256
-// hash, and the token's scope.
-func (s *Store) UserForToken(ctx context.Context, hash string) (User, string, error) {
-	var userID, scope string
-	err := s.Pool.QueryRow(ctx, `update api_tokens set last_used_at = now()
-		where token_hash = $1 and (expires_at is null or expires_at > now())
-		returning user_id, scope`, hash).Scan(&userID, &scope)
-	if err != nil {
-		return User{}, "", notFound(err)
-	}
-	u, err := s.GetUser(ctx, userID)
-	return u, scope, err
+// TokenUse is an API token presented, as UseToken found it.
+type TokenUse struct {
+	ID, UserID, Name, Scope string
+	Expired                 bool
+	// FirstToday: not used before today (UTC), or, expired, not refused
+	// before today; the audit log records it then (ADR-0058).
+	FirstToday bool
+}
+
+// UseToken finds an API token by its SHA-256 hash and marks it used now,
+// or refused when it has expired: ErrNotFound when there is none.
+func (s *Store) UseToken(ctx context.Context, db DB, hash string) (TokenUse, error) {
+	var t TokenUse
+	// for update: of two requests at once, the second sees the first's mark.
+	err := db.QueryRow(ctx, `with t as (select id, coalesce(expires_at <= now(), false) as expired,
+			last_used_at, last_refused_at from api_tokens where token_hash = $1 for update)
+		update api_tokens a set last_used_at = case when t.expired then a.last_used_at else now() end,
+			last_refused_at = case when t.expired then now() else a.last_refused_at end
+		from t where a.id = t.id
+		returning a.id, a.user_id, a.name, a.scope, t.expired,
+			coalesce(case when t.expired then t.last_refused_at else t.last_used_at end
+				< date_trunc('day', now() at time zone 'UTC') at time zone 'UTC', true)`, hash).
+		Scan(&t.ID, &t.UserID, &t.Name, &t.Scope, &t.Expired, &t.FirstToday)
+	return t, notFound(err)
 }
 
 // FindUsers returns users by ID; missing IDs are skipped.

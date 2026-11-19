@@ -41,6 +41,7 @@ never in the ConfigMap or a file in Git. Durations are Go durations (`90s`,
 | `RVAV_LOG_LEVEL` | `info` | | install | `debug`, `info`, `warn` or `error`. Logs are JSON on standard output. |
 | `RVAV_PUBLIC_URL` | `http://localhost:5173` | | install | The web app's address, for links in notifications. |
 | `RVAV_CORS_ORIGINS` | none | | install | Origins allowed to call the API from another site (the Vite dev server). Not needed when the web app proxies the API. |
+| `RVAV_TRUSTED_PROXIES` | none | | install | The reverse proxies in front of the API, as addresses or networks (`10.0.0.0/8, 192.168.1.10`): the web container, the ingress controller, a load balancer. The audit log records the address a request came from as the one they add to `X-Forwarded-For`; from any other peer, as the peer's address. |
 | `RVAV_INSTANCE_ID` | `rvav` | | Integrations › EfficientIP | Tells this rvav's objects in EfficientIP from another's on a shared SOLIDserver. |
 | `RVAV_DRAIN_TIMEOUT` | `5m` | | install | How long a process applying newer connection settings lets its running work finish before it exits; a worker's activity still running then is retried by the next worker. Also how long a worker stopped by Kubernetes or Compose waits for its activities, within their grace period. |
 

@@ -138,7 +138,7 @@ func SessionPrincipal(ctx context.Context, s *store.Store, id string, now time.T
 	if err != nil {
 		return nil, err
 	}
-	p.Session, p.MustChangePassword = hash, acc.MustChange
+	p.Session, p.MustChangePassword, p.Method = hash, acc.MustChange, "local"
 	return p, nil
 }
 

@@ -28,6 +28,20 @@ describe("Audit log", () => {
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
   });
 
+  it("shows failed sign-ins only, from where, by nobody known", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/audit");
+    const table = await screen.findByRole("table", { name: "Audit events" });
+    expect(await within(table).findByText("auth.sign_in")).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "What" }));
+    await user.click(await screen.findByRole("option", { name: "Failed sign-ins" }));
+    await waitFor(() => expect(within(table).queryByText("auth.sign_in")).toBeNull());
+    const row = within(table).getByText("auth.sign_in_failed").closest("tr")!;
+    expect(row).toHaveTextContent("Unknown");
+    expect(row).toHaveTextContent("from 10.20.4.17");
+    expect(within(table).queryByText("catalog.version.publish")).toBeNull();
+  });
+
   it("opens an event in a side panel with its detail", async () => {
     const user = userEvent.setup();
     renderApp("/admin/audit");

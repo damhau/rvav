@@ -104,12 +104,46 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * End the local session, if there is one
+         * End the local session, if there is one, and record the sign-out
          * @description Deletes the session and clears its cookie. The provider's users sign
-         *     out at the provider. With a session, it needs `X-Requested-With`,
+         *     out at the provider: the web app and `rvavctl logout` call this
+         *     first with their access token, so that the sign-out is audited
+         *     (`auth.sign_out`). With a session, it needs `X-Requested-With`,
          *     as every change does.
          */
         post: operations["signOut"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sign-ins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a sign-in at the identity provider, or why it failed, in the audit log
+         * @description The web app and rvavctl sign in at the identity provider themselves
+         *     (ADR-0010, ADR-0051), so they tell rvav how it went (ADR-0058):
+         *     - **Signed in:** send the new access token (or API token) in the
+         *       `Authorization` header and no `failure`. rvav checks it, and
+         *       records `auth.sign_in` with who, from where and how; a token it
+         *       refuses is recorded as `auth.sign_in_failed`, with why, and
+         *       answers `401`. In development mode, no header: the dev user.
+         *     - **Failed before there was a token:** send `failure`, without a
+         *       token. rvav records `auth.sign_in_failed`, as the client says it
+         *       happened; at most 10 a minute from one address are kept.
+         *
+         *     Never send the authorization code, the state or a token in the
+         *     body.
+         */
+        post: operations["reportSignIn"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10049,6 +10083,28 @@ export interface components {
             message: string;
             duration_ms: number;
         };
+        SignInReport: {
+            /** @enum {string} */
+            client: "web" | "rvavctl";
+            /**
+             * @description How the client signed in at the provider (`oidc` in the browser, `device` with a code on another device), in development mode (`dev`), or with an API token (`token`).
+             * @enum {string}
+             */
+            method: "oidc" | "device" | "dev" | "token";
+            failure?: components["schemas"]["SignInFailure"];
+        };
+        /** @description The sign-in failed before there was a token to send. */
+        SignInFailure: {
+            /**
+             * @description `state`: the browser came back from another sign-in, or with no sign-in under way; `provider`: the identity provider refused (an unknown or disabled user, consent refused); `token`: the code or device code couldn't be exchanged for a token.
+             * @enum {string}
+             */
+            stage: "state" | "provider" | "token";
+            /** @description The provider's error code, such as access_denied or invalid_grant. */
+            error?: string;
+            /** @description The provider's error_description, or the client's message. */
+            description?: string;
+        };
         /**
          * @description Request topics (ADR-0021); a VM's own topics, `compute.*` and `network.configure`, one event per VM; a request's approval levels; and projects (ADR-0049); a custom resource's, `custom.*`, one event per resource (ADR-0056).
          * @enum {string}
@@ -10650,6 +10706,40 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    reportSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInReport"];
+            };
+        };
+        responses: {
+            /** @description Recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+            /** @description The identity provider can't be reached to check the token; nothing was recorded */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getAuthOptions: {

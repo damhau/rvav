@@ -31,6 +31,9 @@ function state(db: Db): GovernanceState {
         },
       ], // prettier-ignore
       audit: [
+        { id: "8", at: ago(2), actor: lea, action: "auth.sign_in", target_type: "user", target_id: lea.id, project: null, detail: { client: "web", method: "oidc", groups: ["rvav-web-admins"], roles: ["user"], ip: "10.20.4.17", user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0" } },
+        { id: "7", at: ago(5), actor: null, action: "auth.sign_in_failed", target_type: "user", target_id: "", project: null, detail: { client: "web", method: "oidc", stage: "provider", reason: "provider refused", error: "access_denied", description: "User is disabled", reported_by: "client", ip: "10.20.4.17" } },
+        { id: "6", at: ago(8), actor: lea, action: "auth.token_used", target_type: "api_token", target_id: "tok_ci", project: null, detail: { name: "GitLab pipeline", method: "token", ip: "10.30.1.5", user_agent: "terraform-provider-rvav/1.0" } },
         { id: "5", at: ago(12), actor: lea, action: "catalog.version.publish", target_type: "catalog_item", target_id: "itm_rhel9", project: null, detail: { version: "3.2" } },
         { id: "4", at: ago(55), actor: lea, action: "member.set", target_type: "project", target_id: web.id, project, detail: { user_id: "usr_tnguyen", role: "member" } },
         { id: "3", at: ago(180), actor: null, action: "approval.timeout", target_type: "approval", target_id: "apr_17", project, detail: {} },

@@ -87,5 +87,6 @@ export function signInHandlers(base: string, wait: () => Promise<void>) {
       return new HttpResponse(null, { status: 204 });
     }),
     http.post(`${base}/auth/sign-out`, () => new HttpResponse(null, { status: 204 })),
+    http.post(`${base}/auth/sign-ins`, () => new HttpResponse(null, { status: 204 })),
   ];
 }

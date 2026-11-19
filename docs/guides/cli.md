@@ -73,6 +73,10 @@ It renews the sign-in as needed. When your organisation ends it, commands
 fail with `the sign-in has expired`: run `rvavctl login` again. To forget
 the sign-in on this machine, run `rvavctl logout`.
 
+rvav's audit log records each sign-in, failed or not, with the address it
+came from, and each `rvavctl logout`. rvavctl sends the provider's error
+when a sign-in fails, never a code or a token.
+
 ### Several rvavs
 
 To sign in to more than one rvav, give each a profile name, and the same

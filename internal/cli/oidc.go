@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -65,7 +66,7 @@ func (a *app) deviceSignIn(ctx context.Context, cfg oauth2.Config) (*oauth2.Toke
 	}
 	da, err := cfg.DeviceAuth(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("asking the identity provider for a code: %w", err)
+		return nil, refused(rvavclient.SignInStageProvider, fmt.Errorf("asking the identity provider for a code: %w", err))
 	}
 	if da.VerificationURIComplete != "" {
 		fmt.Fprintf(a.Err, "To sign in, open %s\nand check that it shows the code %s.\n", da.VerificationURIComplete, da.UserCode)
@@ -74,7 +75,11 @@ func (a *app) deviceSignIn(ctx context.Context, cfg oauth2.Config) (*oauth2.Toke
 	}
 	t, err := cfg.DeviceAccessToken(ctx, da)
 	if err != nil {
-		return nil, fmt.Errorf("signing in: %w", err)
+		var re *oauth2.RetrieveError
+		if errors.As(err, &re) && re.ErrorCode == "access_denied" {
+			return nil, refused(rvavclient.SignInStageProvider, fmt.Errorf("signing in: %w", err))
+		}
+		return nil, refused(rvavclient.SignInStageToken, fmt.Errorf("signing in: %w", err))
 	}
 	return t, nil
 }
@@ -102,11 +107,12 @@ func (a *app) browserSignIn(ctx context.Context, cfg oauth2.Config, port int) (*
 		var res result
 		switch {
 		case q.Get("state") != state:
-			res.err = errors.New("the browser came back from another sign-in: try again")
+			res.err = refused(rvavclient.SignInStageState, errors.New("the browser came back from another sign-in: try again"))
 		case q.Get("error") != "":
-			res.err = fmt.Errorf("the identity provider refused: %s %s", q.Get("error"), q.Get("error_description"))
+			res.err = &signInError{stage: rvavclient.SignInStageProvider, code: q.Get("error"), description: q.Get("error_description"),
+				err: fmt.Errorf("the identity provider refused: %s %s", q.Get("error"), q.Get("error_description"))}
 		case q.Get("code") == "":
-			res.err = errors.New("the identity provider sent no code")
+			res.err = refused(rvavclient.SignInStageProvider, errors.New("the identity provider sent no code"))
 		default:
 			res.code = q.Get("code")
 		}
@@ -140,10 +146,66 @@ func (a *app) browserSignIn(ctx context.Context, cfg oauth2.Config, port int) (*
 		}
 		t, err := cfg.Exchange(ctx, res.code, oauth2.VerifierOption(verifier))
 		if err != nil {
-			return nil, fmt.Errorf("signing in: %w", err)
+			return nil, refused(rvavclient.SignInStageToken, fmt.Errorf("signing in: %w", err))
 		}
 		return t, nil
 	}
+}
+
+// signInError is a sign-in that failed at the identity provider or on the
+// way back from it, which rvav's audit log records (ADR-0058).
+type signInError struct {
+	stage             rvavclient.SignInFailureStage
+	code, description string
+	err               error
+}
+
+func (e *signInError) Error() string { return e.err.Error() }
+func (e *signInError) Unwrap() error { return e.err }
+
+// refused is err at stage, with the provider's error code and description
+// when it gave them.
+func refused(stage rvavclient.SignInFailureStage, err error) error {
+	e := &signInError{stage: stage, description: err.Error(), err: err}
+	var re *oauth2.RetrieveError
+	if errors.As(err, &re) && re.ErrorCode != "" {
+		e.code, e.description = re.ErrorCode, re.ErrorDescription
+	}
+	return e
+}
+
+// failure is what rvav is told of e: the provider's code and description,
+// or rvavctl's message, never a code or a token.
+func (e *signInError) failure() *rvavclient.SignInFailure {
+	f := &rvavclient.SignInFailure{Stage: e.stage}
+	if c := printable(e.code, 64); c != "" {
+		f.Error = &c
+	}
+	if d := oneLine(e.description, 500); d != "" {
+		f.Description = &d
+	}
+	return f
+}
+
+func printable(s string, n int) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r > 0x7e {
+			return -1
+		}
+		return r
+	}, s)
+	if len(s) > n {
+		s = s[:n]
+	}
+	return s
+}
+
+func oneLine(s string, n int) string {
+	s = strings.Join(strings.FieldsFunc(s, unicode.IsControl), " ")
+	if r := []rune(s); len(r) > n {
+		s = string(r[:n])
+	}
+	return s
 }
 
 func random() string {

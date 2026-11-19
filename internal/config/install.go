@@ -27,6 +27,13 @@ var Install = []InstallSetting{
 	{"RVAV_LOG_LEVEL", false, func(c Config) string { return c.LogLevel }},
 	{"RVAV_PUBLIC_URL", false, func(c Config) string { return c.PublicURL }},
 	{"RVAV_CORS_ORIGINS", false, func(c Config) string { return strings.Join(c.CORSOrigins, ", ") }},
+	{"RVAV_TRUSTED_PROXIES", false, func(c Config) string {
+		var s []string
+		for _, p := range c.TrustedProxies {
+			s = append(s, p.String())
+		}
+		return strings.Join(s, ", ")
+	}},
 	{"RVAV_DRAIN_TIMEOUT", false, func(c Config) string { return c.DrainTimeout.String() }},
 	{"RVAV_ADMIN_PASSWORD", true, nil},
 	{"RVAV_AUTH_MODE", false, func(c Config) string { return c.Auth.Mode }},

@@ -41,6 +41,7 @@ const kinds = [
   { value: "settings.", label: "Settings" },
   { value: "token.", label: "API tokens" },
   { value: "auth.", label: "Sign-ins" },
+  { value: "auth.sign_in_failed", label: "Failed sign-ins" },
 ];
 
 /** The start of a local day, or of the day after it: "To" includes the day chosen. */
@@ -59,6 +60,12 @@ const target = (e: AuditEvent) => (
 
 const detailCount = (e: AuditEvent) => Object.keys(e.detail).length;
 
+/** Who did it: rvav itself when nobody did, but for a sign-in nobody was known for. */
+const who = (e: AuditEvent) => e.actor?.name ?? (e.action.startsWith("auth.") ? "Unknown" : "rvav");
+
+/** The address a sign-in or a token's use came from (ADR-0058). */
+const from = (e: AuditEvent) => (typeof e.detail.ip === "string" ? e.detail.ip : undefined);
+
 const value = (v: unknown) =>
   typeof v === "string" ? (
     v
@@ -75,7 +82,7 @@ function EventSheet({ e, onClose }: { e: AuditEvent; onClose: () => void }) {
         items={[
           {
             label: "Who",
-            value: !e.actor ? "rvav" : e.actor.email ? `${e.actor.name} (${e.actor.email})` : e.actor.name,
+            value: !e.actor ? who(e) : e.actor.email ? `${e.actor.name} (${e.actor.email})` : e.actor.name,
           },
           { label: "What", value: <span className="font-mono">{e.action}</span> },
           { label: "On", value: target(e) },
@@ -112,7 +119,16 @@ const columns = (open: (e: AuditEvent) => void): Column<AuditEvent>[] => [
       </button>
     ),
   },
-  { id: "who", header: "Who", cell: (e) => <span className="text-secondary">{e.actor?.name ?? "rvav"}</span> },
+  {
+    id: "who",
+    header: "Who",
+    cell: (e) => (
+      <span className="text-secondary">
+        {who(e)}
+        {from(e) && <span className="block font-mono text-muted">from {from(e)}</span>}
+      </span>
+    ),
+  },
   { id: "what", header: "What", cell: (e) => <span className="font-mono text-secondary">{e.action}</span> },
   { id: "on", header: "On", cell: (e) => <span className="text-secondary">{target(e)}</span> },
   {

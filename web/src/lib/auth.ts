@@ -148,6 +148,54 @@ async function localSession(): Promise<{ passwordChangeRequired: boolean } | nul
 
 const here = () => globalThis.location.pathname + globalThis.location.search;
 
+type SignInFailure = components["schemas"]["SignInFailure"];
+
+/**
+ * Why a sign-in failed on the way back from the provider, as the audit log
+ * records it (ADR-0058): the provider's error, a state that matches no
+ * sign-in under way, or a code the token endpoint refused. Never the code
+ * or the state themselves.
+ */
+export function signInFailure(back: URLSearchParams, e: unknown): SignInFailure {
+  const message = e instanceof Error ? e.message : String(e);
+  const code = (e as { error?: unknown } | null)?.error;
+  let f: SignInFailure;
+  if (back.get("error")) {
+    f = {
+      stage: "provider",
+      error: back.get("error") ?? undefined,
+      description: back.get("error_description") ?? message,
+    };
+  } else if (/\bstate\b/i.test(message)) {
+    f = { stage: "state", description: message };
+  } else {
+    f = { stage: "token", error: typeof code === "string" ? code : undefined, description: message };
+  }
+  return {
+    stage: f.stage,
+    ...(f.error ? { error: f.error.replace(/[^\x20-\x7e]/g, "").slice(0, 64) } : {}),
+    ...(f.description ? { description: [...f.description.replace(/\p{Cc}+/gu, " ")].slice(0, 500).join("") } : {}),
+  };
+}
+
+/** Tells rvav how a sign-in at the provider went, for its audit log; signing in goes on without it. */
+async function reportSignIn(token: string | null, failure?: SignInFailure) {
+  try {
+    await fetch("/api/v1/auth/sign-ins", {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "rvav",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ client: "web", method: "oidc", ...(failure ? { failure } : {}) }),
+    });
+  } catch {
+    // Not recorded: the API is down, and the next page says so.
+  }
+}
+
 /**
  * Call once before rendering. Resolves to `ready`; to `redirecting` when the
  * browser is on its way to the identity provider; to `sign-in` when nobody
@@ -169,15 +217,18 @@ export async function initAuth(): Promise<"ready" | "redirecting" | "sign-in" | 
   await loadOptions();
 
   if (path === CALLBACK_PATH && provider) {
+    const back = new URLSearchParams(globalThis.location.search);
     try {
       manager = await createManager(provider);
       const user = await manager.signinRedirectCallback();
       remember("provider");
+      void reportSignIn(user.access_token);
       const target = typeof user.state === "string" && user.state.startsWith("/") ? user.state : "/";
       globalThis.history.replaceState({}, "", target);
       return "ready";
-    } catch {
-      // The provider's token endpoint didn't answer, or the code was refused.
+    } catch (e) {
+      // The provider refused, its token endpoint didn't answer, or the code was refused.
+      void reportSignIn(null, signInFailure(back, e));
       problem = "provider";
       globalThis.history.replaceState({}, "", SIGN_IN_PATH);
       return "sign-in";
@@ -279,7 +330,16 @@ export async function signOut() {
     globalThis.location.assign("/");
     return;
   }
-  if (manager) await manager.signoutRedirect();
+  if (!manager) return;
+  // Said to rvav first, for its audit log, while the token is still valid.
+  const token = (await manager.getUser().catch(() => null))?.access_token;
+  if (token) {
+    await fetch("/api/v1/auth/sign-out", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "X-Requested-With": "rvav" },
+    }).catch(() => undefined);
+  }
+  await manager.signoutRedirect();
 }
 
 // ── The provider's trial sign-in (ADR-0030) ──

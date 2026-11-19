@@ -28,6 +28,9 @@ x-rvav-env: &rvav-env
   RVAV_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/rvav
   RVAV_OIDC_CLIENT_ID: rvav
   RVAV_CORS_ORIGINS: ${RVAV_CORS_ORIGINS:-http://localhost:5173}
+  # The web container's nginx, on Compose's networks: the audit log records
+  # the address the browser came from, not the container's.
+  RVAV_TRUSTED_PROXIES: ${RVAV_TRUSTED_PROXIES:-172.16.0.0/12}
   RVAV_TEMPORAL_ADDRESS: temporal:7233
   RVAV_VCENTER_URL: https://vcsim:8989/sdk
   RVAV_VCENTER_USERNAME: user
