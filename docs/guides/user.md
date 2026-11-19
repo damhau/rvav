@@ -67,7 +67,10 @@ one to ask your project admin or administrator for.
    - The description shows with the deployment. Approvers read the
      reason, not the description.
 5. **Lease and reason:** how long you need it, within what the environment
-   allows. In production the reason is what approvers read.
+   allows. The lease can depend on the item or the inputs: the field says
+   which rule or policy sets it, how many times you can extend it, and how
+   long the deployment can live in all. In production the reason is what
+   approvers read.
 6. **Options:**
    - how many;
    - when to start (now, or at a set time);
@@ -383,10 +386,12 @@ those whose action warns: run it on each one.
   vCenter.
 - **Leases:** you are told before a lease ends. Extend it, or let it end.
   What happens at the end (power off then delete, or delete) is the
-  environment's policy. An extension beyond the policy asks the project's
+  environment's policy, or a rule's for the item. An extension beyond the
+  policy, or past the deployment's lifetime, asks the project's
   approvers, or, under a soft policy, warns you and needs no approval. The
-  deployment's **Lease** panel says how many extensions you used, how long
-  you may extend it, and when its policy is soft.
+  deployment's **Lease** panel says which rule or policy sets its lease,
+  how many extensions you used, how long you may extend it, how many days
+  it may still live, and when its policy is soft.
 
 ## Updating a deployment
 

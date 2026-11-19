@@ -727,7 +727,7 @@ and an environment, which policies would apply to a request and why.
 | Tab | What it decides |
 |---|---|
 | **Approval** | Which requests need approval, from whom (users, groups or project roles, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota, and what an update changes (see [Updates](#updates)). |
-| **Lease** | Default and longest leases per environment or project, extensions, the end (power off then delete, delete, or only tell the owner), and the enforcement. |
+| **Lease** | Default and longest leases per environment or project, extensions, the lifetime, the end (power off then delete, delete, or only tell the owner), and the enforcement. Lease rules give another lease to the deployments a condition matches (see [Lease rules and lifetime](#lease-rules-and-lifetime)). |
 | **Day-2** | Who may run which action, where, which need approval (deleting in production, by default), and the enforcement. |
 | **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment, with where the counter starts and how much it moves (**Start at** 100 and **Increment** 10 give 100, 110, 120). A counter in use goes on from its last number, and jumps to the start when you raise it past that number. Names are never given twice, and are checked free in vCenter and DNS. |
 
@@ -740,6 +740,53 @@ policy decides instead.
 
 Quotas are set on each project's page, in its **Quotas** tab: a hard
 limit refuses a request, a soft one asks for approval.
+
+### Lease rules and lifetime
+
+A lease rule gives its lease to the deployments its condition matches,
+for example GPU servers or small VMs
+([ADR-0048](../adr/0048-lease-rules-and-lifetime.md)). The **Lease** tab
+lists the rules under the lease policies. A rule has:
+- a **Name** and a **Priority**: lower is tried first, and at the same
+  priority a rule for every project comes before a project's;
+- an **Applies when (CEL)** condition, which reads what approval
+  conditions read, for example `item.slug == "gpu-server"` or
+  `inputs.size == "S"`;
+- an **Environment** and a **Project**, or every one;
+- the lease it gives: the default and longest days, extensions, grace
+  days, lifetime, end and enforcement.
+
+A request gets the lease of the first rule that matches it. When none
+matches, it gets its project's lease in the environment, else the
+environment's lease. A rule for every project therefore wins over a
+project's lease.
+
+A deployment keeps the rule it got when it was requested, and follows
+the rule's changes. When you remove the rule, or the deployment moves to
+a project the rule isn't for, it gets its project's or environment's
+lease. Deployments that rvav takes over from vCenter or vRA get the lease
+policies', not a rule's.
+
+When a rule's condition can't be read, for example because it needs an
+input the item's form doesn't have:
+- the request form's preview and **What applies here** skip the rule,
+  and say why;
+- on submit, the rule applies only if it gives no more than the lease
+  without rules.
+
+The **Lifetime, in days** caps how long a deployment lives in all,
+counted from its creation, or from when rvav took it over. Under a hard
+lease, rvav refuses a request for a longer lease, and an extension past
+the lifetime asks the project's approvers. Under a soft lease, both warn,
+and the requester may go on. The lifetime is apart from the extensions:
+once all extensions are used, the next one needs approval even within the
+lifetime. A lease's default and longest days can't be longer than its
+lifetime. Setting a lifetime doesn't shorten the leases already given.
+
+The request form says which rule or policy gives the lease and the
+lifetime. The deployment's **Lease** panel says which one it is under and
+how many days it may still live. In **What applies here**, give an item
+and **Inputs (JSON)**, such as `{"size": "S"}`, to see which rule decides.
 
 ### Project policies
 
@@ -758,14 +805,17 @@ only their projects' policies: the others have no menu. A project admin:
   administrators';
 - sets a policy's priority instead of moving it up or down, which
   renumbers every project's policies;
-- can't write a lease override looser than the environment's lease: a
-  longer default or maximum, no lease where the environment gives one,
-  more extensions or grace days, a gentler end, or **Soft** over a hard
-  lease. rvav says which, for example "Development allows 90 days at
-  most."
+- can't write a lease override or a lease rule looser than what
+  administrators set: a longer default or maximum, no lease where the
+  environment gives one, more extensions or grace days, a gentler end, a
+  longer lifetime or none, or **Soft** over a hard lease. An override is
+  held to the environment's lease. A rule is held, in each environment it
+  may apply in, to the project's lease an administrator set, else to the
+  environment's. rvav says which, for example "Development allows 90 days
+  at most."
 
 Every change is in the audit log with its project, as `policy.approval.*`,
-`policy.day2.*` or `policy.lease.*`.
+`policy.day2.*`, `policy.lease.*` or `policy.lease_rule.*`.
 
 When you change a project's policy with `policies.manage`, it becomes
 yours: the project's admins can no longer change or remove it. A project
@@ -787,8 +837,12 @@ Project and global policies combine as follows:
 - **Day-2 approval:** when a project's approval and a hard global approval
   both match, the action needs both: the global policy's levels first,
   then the project's.
-- **Lease:** a project's override replaces the environment's lease for
-  that project.
+- **Lease:** the first lease rule that matches decides, global or not.
+  When none matches, a project's override replaces the environment's lease
+  for that project. A project admin's rule that would give more than the
+  first matching rule an administrator wrote, or, without one, than the
+  lease an administrator set, is skipped: the next rule, or the lease
+  policies, decide.
 
 **What applies here** names the policy that decides and says why, for
 example when a global policy wins over the project's.
@@ -799,10 +853,10 @@ Lease and day-2 policies have an **Enforcement**, **Hard** by default:
 - **Hard** refuses, or asks for approval, as the policy says.
 - **Soft** warns, and the requester may go on.
 
-A soft lease policy warns when a request asks for a longer lease than its
-maximum, and when an extension goes beyond its days or extensions; that
-extension then needs no approval, as the deployment's **Lease** panel
-says. A soft day-2 policy with the effect
+A soft lease policy or rule warns when a request asks for a longer lease
+than its maximum or lifetime, and when an extension goes beyond its days,
+extensions or lifetime; that extension then needs no approval, as the
+deployment's **Lease** panel says. A soft day-2 policy with the effect
 **Deny** or **Approval** leaves the action enabled, and warns with the
 policy's **Reason people see**. A day-2 policy with the effect **Allow**
 can't be soft. Approval policies always apply: to warn instead of asking
@@ -870,7 +924,8 @@ role in the project, or the manager at the identity provider, and ask
 them to request again. A level with a group always waits: its members may
 sign in later.
 
-A lease extension beyond the lease policy asks the project's approvers,
+A lease extension beyond the lease policy, its extensions or its
+lifetime asks the project's approvers,
 in a level named **Project approvers**: whoever holds a role with
 `approval.project` in the project, such as Project admin or Supervisor.
 When nobody but the requester holds one, rvav refuses the extension.
