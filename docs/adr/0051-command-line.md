@@ -83,6 +83,8 @@ They follow the web app's pages and use its words:
 Schema (`4` is a number for an integer, `a,b` a list for an array, JSON
 for an object), or with a JSON or YAML file (`--inputs`). As in the web
 app, they go on top of the form's initial values; rvav checks the rest.
+Since [ADR-0055](0055-inputs-left-out.md) the server fills in the initial
+values, and rvavctl sends only the inputs given.
 `catalog choices` lists what a value source offers for an input, given
 the environment and the other inputs. `--dry-run` previews a request with
 its validations and fails when rvav would refuse it. A day-2 action that

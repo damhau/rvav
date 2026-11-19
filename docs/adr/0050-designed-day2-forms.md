@@ -57,7 +57,9 @@ works its rules and value sources out on the server (ADR-0019, F1).
   target. A run applies the states as a request's submit does (defaults,
   hidden fields dropped, computed values) and checks the schema, the
   values picked from built-in sources and the validations; the job or the
-  workflow gets the inputs that result.
+  workflow gets the inputs that result. A run, its preview and its values
+  first give each input left out the form's start value
+  ([ADR-0055](0055-inputs-left-out.md)).
 - `ActionForm.designed` tells the dialog to use those two endpoints. The
   other actions' forms are checked against their schema as before.
 

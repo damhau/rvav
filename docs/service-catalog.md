@@ -1124,10 +1124,12 @@ ui_schema:
     `vsphere.datastores`, `vsphere.networks`), the default rule wins:
     the source gives no suggestion while the field has one.
   - The server works the defaults out on preview and submit, with the
-    other rules. An input the request leaves out takes its field's
-    default; `null` for a field with a default means the requester
-    emptied it, and it gets none. A read-only field takes its default
-    too. The other rules see the defaults.
+    other rules. An input a new request leaves out takes the value the
+    form starts with: its initial value, else its schema property's
+    `default` ([ADR-0055](adr/0055-inputs-left-out.md)); without one, its
+    field's default. `null` for a field with a start value or a default
+    means the requester emptied it, and it gets none. A read-only field
+    takes its default too. The other rules see the defaults.
   - The rules read the inputs as the request keeps them: not the input
     of a hidden or read-only field, which the request drops or replaces,
     nor a computed field's, of which they see the computed value. The

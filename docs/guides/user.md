@@ -603,6 +603,12 @@ A token acts with the roles given to you in rvav itself, not those from
 your groups, so it can't approve. The [API reference](../operations/README.md#api) describes every
 call.
 
+When a script requests an item or runs a day-2 action, it sends only the
+inputs it chooses. rvav gives each input it leaves out the value the
+form starts with in the web app: the initial value, or the default its
+rules work out. To leave an input that has a default empty, send it as
+`null`.
+
 ## The command line
 
 [rvavctl](cli.md) requests, follows requests, runs day-2 actions and

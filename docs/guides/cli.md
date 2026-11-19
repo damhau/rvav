@@ -159,7 +159,10 @@ with `rvavctl login`.
   JSON.
 - `--inputs FILE` reads inputs from a JSON or YAML file, `-` for standard
   input. `--input` flags win over the file.
-- Inputs you don't give take the form's defaults, as in the web app.
+- Inputs you don't give take the values the form starts with in the web
+  app, its initial values and defaults: rvav fills them in.
+- To leave an input that has a default empty, set it to `null` in the
+  `--inputs` file.
 
 For example, with `server.yaml`:
 
@@ -231,7 +234,9 @@ and `1` when it fails, is rejected or cancelled.
    ```
 
 An action's form starts from the deployment's current values, as in the
-web app: inputs you don't give keep them.
+web app: inputs you don't give keep them. If an administrator designed
+the action's form, rvav also works out the defaults its rules give on
+the VM or the deployment.
 
 ## Approve
 
