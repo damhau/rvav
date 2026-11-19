@@ -1,8 +1,10 @@
 package vraimport
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -81,7 +83,7 @@ func PlanPolicies(e *vra.Estate) []PolicyPlan {
 		var def map[string]any
 		_ = json.Unmarshal(p.Definition, &def)
 		soft := strings.EqualFold(p.EnforcementType, "SOFT")
-		if pl.VRAProject != "" && slices.Contains([]string{vra.PolicyApproval, vra.PolicyLease, vra.PolicyDay2}, p.TypeID) {
+		if pl.VRAProject != "" && slices.Contains([]string{vra.PolicyApproval, vra.PolicyLease, vra.PolicyDay2, vra.PolicyLimit}, p.TypeID) {
 			note(Info, "projectId", "For one project: its project admins can write it in rvav (Administration › Policies), "+
 				"unless an administrator does, and a global hard policy still wins over it.")
 		}
@@ -105,33 +107,20 @@ func PlanPolicies(e *vra.Estate) []PolicyPlan {
 			}
 		case vra.PolicyQuota:
 			pl.Type = "quota"
-			pl.Becomes = "The quotas of " + scope + " (Administration › Projects › Quotas)"
-			limits, _ := def["limits"].(map[string]any)
-			level, _ := def["level"].(string)
-			if level != "" && level != "project" {
-				note(Warning, "level", "It limits each "+level+" in vRA; rvav's quotas are per project, and per environment.")
-			}
-			keys := []string{"instances", "cpu", "memory", "storage"}
-			names := map[string]string{"instances": "VMs", "cpu": "vCPU", "memory": "Memory (GB)", "storage": "Storage (GB)"}
-			for _, k := range keys {
-				if v, ok := num(limits[k]); ok {
-					note(Info, "limits."+k, fmt.Sprintf("%s: %d.", names[k], v))
-				}
-			}
+			planQuota(&pl, def, note, scope, soft)
 		case vra.PolicySharing:
 			pl.Type = "sharing"
 			pl.Becomes = "The sharing of the catalog items it names, in " + scope + ", made by the catalog's import"
 			note(Info, "entitledUsers", "Imported with the items: users by email, groups by name, project roles as rvav's. What doesn't map is in each item's notes.")
 		case vra.PolicyLimit:
 			pl.Type = "limit"
-			pl.Becomes = "The sizes of the items requested in " + scope
-			note(Unmapped, "limits", "rvav has no limit per deployment: the sizes an item offers bound each request, and the project's quota what it holds in all.")
+			planLimit(&pl, p, def, note, scope, soft)
 		default:
 			pl.Type = "other"
 			pl.Becomes = "Nothing"
 			note(Unmapped, "typeId", p.TypeID+" has no rvav equivalent.")
 		}
-		if soft && slices.Contains([]string{"quota", "sharing", "limit", "other"}, pl.Type) {
+		if soft && slices.Contains([]string{"sharing", "other"}, pl.Type) {
 			note(Warning, "enforcementType", "It is soft in vRA: rvav's "+pl.Type+" settings have no enforcement, they always apply.")
 		}
 		out = append(out, pl)
@@ -183,6 +172,144 @@ func planLease(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(strin
 	if v, ok := num(def["leaseGrace"]); ok {
 		note(Info, "leaseGrace", fmt.Sprintf("Grace days: %d, between the end of the lease and the deletion.", v))
 	}
+}
+
+var quotaNames = map[string]string{"instances": "VMs", "cpu": "vCPU", "memory": "Memory (GB)", "storage": "Storage (GB)"}
+
+// planQuota reads a resource quota policy's levels: one level and its
+// limits, or vRA's organization, project and user levels each with their
+// own. Each becomes the rvav quota level that counts the same (ADR-0047).
+func planQuota(pl *PolicyPlan, def map[string]any, note func(string, string, string), scope string, soft bool) {
+	type level struct {
+		where, name string
+		limits      map[string]any
+	}
+	var levels []level
+	if limits, ok := def["limits"].(map[string]any); ok {
+		name, _ := def["level"].(string)
+		levels = append(levels, level{"limits", cmp.Or(name, "project"), limits})
+	}
+	for _, k := range []string{"orgLevel", "projectLevel", "userLevel"} {
+		if m, ok := def[k].(map[string]any); ok {
+			limits, _ := m["limits"].(map[string]any)
+			levels = append(levels, level{k + ".limits", strings.TrimSuffix(k, "Level"), limits})
+		}
+	}
+	project := pl.VRAProject
+	var becomes []string
+	for _, l := range levels {
+		switch {
+		case l.name == "project" && project != "":
+			becomes = append(becomes, "The quota of "+scope+" (Administration › Projects › Quotas)")
+		case l.name == "project":
+			becomes = append(becomes, "The quota of each project (Administration › Projects › Quotas)")
+			note(Warning, l.where, "It limits every project the same in vRA: rvav sets each project's quota on its own.")
+		case l.name == "user" && project != "":
+			becomes = append(becomes, "Each member's quota in "+scope+" (Administration › Projects › Quotas)")
+		case l.name == "user":
+			becomes = append(becomes, "Each user across rvav (Administration › Policies › Quotas)")
+			note(Warning, l.where, "It limits each user in each project in vRA; rvav's limit for each user across rvav counts "+
+				"all their projects together. To keep vRA's, set each member's quota of every project instead.")
+		case l.name == "org" || l.name == "organization":
+			becomes = append(becomes, "All of rvav (Administration › Policies › Quotas)")
+			if project != "" {
+				note(Warning, l.where, "It is for one project in vRA; all of rvav's quota counts every project.")
+			}
+		default:
+			note(Unmapped, l.where, "rvav has no quota level like vRA's "+l.name+".")
+			continue
+		}
+		for _, k := range []string{"instances", "cpu", "memory", "storage"} {
+			if v, ok := amount(l.limits[k]); ok {
+				note(Info, l.where+"."+k, fmt.Sprintf("%s: %d.", quotaNames[k], v))
+			}
+		}
+		for _, k := range slices.Sorted(maps.Keys(l.limits)) {
+			if _, known := quotaNames[k]; !known {
+				note(Unmapped, l.where+"."+k, "rvav's quotas limit vCPU, memory, storage and VMs, not "+k+".")
+			}
+		}
+	}
+	pl.Becomes = cmp.Or(strings.Join(becomes, "; "), "The quota of "+scope+" (Administration › Projects › Quotas)")
+	pl.Enforcement = "hard"
+	if soft {
+		pl.Enforcement = "soft"
+		note(Info, "enforcementType", "Soft: set the quota's enforcement to soft. Going over it then asks for approval instead of refusing.")
+	}
+}
+
+// planLimit reads a deployment limit policy: its limits on each
+// deployment's vCPU and memory, and on the number of deployments, become
+// an rvav deployment limit policy (ADR-0047).
+func planLimit(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(string, string, string), scope string, soft bool) {
+	where, limits := "limits", map[string]any{}
+	if m, ok := def["deploymentLimits"].(map[string]any); ok {
+		where, limits = "deploymentLimits", m
+	} else if m, ok := def["limits"].(map[string]any); ok {
+		limits = m
+	}
+	level, _ := def["level"].(string)
+	mapped := false
+	for _, k := range slices.Sorted(maps.Keys(limits)) {
+		v, ok := amount(limits[k])
+		switch {
+		case !ok:
+			note(Unmapped, where+"."+k, "Not a number rvav reads.")
+		case k == "cpu":
+			mapped = true
+			note(Info, where+"."+k, fmt.Sprintf("vCPU per deployment: %d.", v))
+		case k == "memory":
+			mapped = true
+			note(Info, where+"."+k, fmt.Sprintf("Memory per deployment (GB): %d.", v))
+		case (k == "deployments" || k == "deploymentCount") && level == "user":
+			mapped = true
+			note(Info, where+"."+k, fmt.Sprintf("Deployments per user: %d.", v))
+		case k == "deployments" || k == "deploymentCount":
+			mapped = true
+			note(Info, where+"."+k, fmt.Sprintf("Deployments per project: %d.", v))
+		case k == "storage":
+			note(Unmapped, where+"."+k, "rvav limits no storage per deployment: the project's storage quota bounds what it holds in all.")
+		default:
+			note(Unmapped, where+"."+k, "rvav's deployment limits are on the number of deployments, and on each one's vCPU and memory.")
+		}
+	}
+	if _, ok := def["resourceLimits"]; ok {
+		note(Unmapped, "resourceLimits", "rvav limits each deployment as a whole, not each of its resources: the sizes an item offers bound each VM.")
+	}
+	if c := strings.TrimSpace(string(p.Criteria)); c != "" && c != "null" && c != "{}" {
+		note(Unmapped, "criteria", "rvav's deployment limits have no condition: they apply to every deployment of their project, in one environment or all.")
+	}
+	pl.Becomes = "A deployment limit policy for " + scope + " (Administration › Policies › Limits)"
+	if !mapped {
+		pl.Becomes = "Nothing"
+		return
+	}
+	pl.Enforcement = "hard"
+	if soft {
+		pl.Enforcement = "soft"
+		note(Info, "enforcementType", "Soft: set the policy's enforcement to soft. Going beyond it warns the requester, who may go on.")
+	}
+}
+
+// amount reads a number, or vRA's {value, unit} with the unit MB, GB or TB, in GB.
+func amount(v any) (int, bool) {
+	if n, ok := num(v); ok {
+		return n, true
+	}
+	m, _ := v.(map[string]any)
+	n, ok := num(m["value"])
+	if !ok {
+		return 0, false
+	}
+	switch unit, _ := m["unit"].(string); strings.ToUpper(unit) {
+	case "MB":
+		return n / 1024, true
+	case "TB":
+		return n * 1024, true
+	case "", "GB":
+		return n, true
+	}
+	return 0, false
 }
 
 func planApproval(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(string, string, string), scope string) {

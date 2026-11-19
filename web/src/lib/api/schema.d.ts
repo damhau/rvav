@@ -6961,8 +6961,9 @@ export interface components {
             becomes: string;
             /**
              * @description The rvav policy's enforcement, from vRA's `enforcementType`, where
-             *     rvav's has one: a lease policy, or a day-2 policy with the effect
-             *     approval. Absent for the others; the notes say why (ADR-0045).
+             *     rvav's has one: a lease policy, a day-2 policy with the effect
+             *     approval, a quota's limits or a deployment limit policy
+             *     (ADR-0047). Absent for the others; the notes say why (ADR-0045).
              */
             enforcement?: components["schemas"]["PolicyEnforcement"];
             notes: components["schemas"]["VraNote"][];

@@ -36,10 +36,12 @@ func TestPlanPolicies(t *testing.T) {
 		!note(p, Info, "Allow change_owner, delete to project-admin.") {
 		t.Fatalf("day2 = %+v", p)
 	}
-	if p := by["pol-quota-web"]; p.Type != "quota" || !note(p, Info, "VMs: 40.") || !note(p, Info, "vCPU: 64.") || !note(p, Info, "Memory (GB): 256.") {
+	if p := by["pol-quota-web"]; p.Type != "quota" || !note(p, Info, "VMs: 40.") || !note(p, Info, "vCPU: 64.") || !note(p, Info, "Memory (GB): 256.") ||
+		!strings.HasPrefix(p.Becomes, "The quota of the project Web Platform maps to") || p.Enforcement != "hard" {
 		t.Fatalf("quota = %+v", p)
 	}
-	if p := by["pol-limit"]; p.Type != "limit" || !note(p, Unmapped, "no limit per deployment") {
+	if p := by["pol-limit"]; p.Type != "limit" || !strings.HasPrefix(p.Becomes, "A deployment limit policy for every project") ||
+		!note(p, Info, "vCPU per deployment: 16.") || !note(p, Info, "Memory per deployment (GB): 64.") || p.Enforcement != "hard" {
 		t.Fatalf("limit = %+v", p)
 	}
 	for in, want := range map[string]string{
@@ -178,7 +180,94 @@ func TestPlanEnforcement(t *testing.T) {
 	if p := by["day2-approval"]; p.Enforcement != "hard" {
 		t.Fatalf("day-2 approval = %+v", p)
 	}
-	if p := by["quota"]; p.Enforcement != "" || !note(p, Warning, "no enforcement") {
+	if p := by["quota"]; p.Enforcement != "soft" || !note(p, Info, "set the quota's enforcement to soft") || note(p, Warning, "no enforcement") {
 		t.Fatalf("soft quota = %+v", p)
+	}
+}
+
+// TestPlanQuotaLevels: vRA's organization, project and user levels become
+// the rvav quota levels that count the same, with or without a project
+// (C2.3, ADR-0047); what rvav doesn't limit is said.
+func TestPlanQuotaLevels(t *testing.T) {
+	levels := `{"orgLevel":{"limits":{"cpu":500}},"projectLevel":{"limits":{"instances":40}},` +
+		`"userLevel":{"limits":{"memory":{"value":32768,"unit":"MB"},"gpu":2}}}`
+	e := vra.Estate{Projects: []vra.Project{{ID: "vp", Name: "Web Platform"}}, Policies: []vra.Policy{
+		{ID: "web", Name: "web", TypeID: vra.PolicyQuota, ProjectID: "vp", Definition: json.RawMessage(levels)},
+		{ID: "all", Name: "all", TypeID: vra.PolicyQuota, Definition: json.RawMessage(levels)},
+		{ID: "user", Name: "user", TypeID: vra.PolicyQuota, Definition: json.RawMessage(`{"level":"user","limits":{"cpu":8}}`)},
+		{ID: "odd", Name: "odd", TypeID: vra.PolicyQuota, Definition: json.RawMessage(`{"level":"tenant","limits":{"cpu":8}}`)},
+	}}
+	by := map[string]PolicyPlan{}
+	for _, p := range PlanPolicies(&e) {
+		by[p.VRAID] = p
+	}
+	has := func(p PolicyPlan, level, where, text string) bool {
+		return slices.ContainsFunc(p.Notes, func(n Note) bool {
+			return n.Level == level && n.Where == where && strings.Contains(n.Text, text)
+		})
+	}
+	web := by["web"]
+	if web.Becomes != "All of rvav (Administration › Policies › Quotas); "+
+		"The quota of the project Web Platform maps to (Administration › Projects › Quotas); "+
+		"Each member's quota in the project Web Platform maps to (Administration › Projects › Quotas)" ||
+		!has(web, Info, "orgLevel.limits.cpu", "vCPU: 500.") || !has(web, Warning, "orgLevel.limits", "all of rvav's quota counts every project") ||
+		!has(web, Info, "projectLevel.limits.instances", "VMs: 40.") || !has(web, Info, "userLevel.limits.memory", "Memory (GB): 32.") ||
+		!has(web, Unmapped, "userLevel.limits.gpu", "not gpu") {
+		t.Fatalf("a project's levels = %+v", web)
+	}
+	all := by["all"]
+	if all.Becomes != "All of rvav (Administration › Policies › Quotas); The quota of each project (Administration › Projects › Quotas); "+
+		"Each user across rvav (Administration › Policies › Quotas)" ||
+		!has(all, Warning, "projectLevel.limits", "sets each project's quota on its own") ||
+		!has(all, Warning, "userLevel.limits", "set each member's quota of every project instead") ||
+		has(all, Warning, "orgLevel.limits", "") {
+		t.Fatalf("every project's levels = %+v", all)
+	}
+	if p := by["user"]; p.Becomes != "Each user across rvav (Administration › Policies › Quotas)" || !has(p, Info, "limits.cpu", "vCPU: 8.") {
+		t.Fatalf("one level = %+v", p)
+	}
+	if p := by["odd"]; !has(p, Unmapped, "limits", "no quota level like vRA's tenant") || has(p, Info, "limits.cpu", "") {
+		t.Fatalf("an unknown level = %+v", p)
+	}
+}
+
+// TestPlanDeploymentLimits: a deployment limit policy's vCPU, memory and
+// count become an rvav deployment limit policy, soft as vRA's; storage,
+// resource limits and criteria are said not to map (C2.3, ADR-0047).
+func TestPlanDeploymentLimits(t *testing.T) {
+	e := vra.Estate{Projects: []vra.Project{{ID: "vp", Name: "Web Platform"}}, Policies: []vra.Policy{
+		{ID: "web", Name: "web", TypeID: vra.PolicyLimit, EnforcementType: "SOFT", ProjectID: "vp",
+			Criteria: json.RawMessage(`{"matchExpression":[{"key":"input.size","operator":"eq","value":"large"}]}`),
+			Definition: json.RawMessage(`{"level":"user","deploymentLimits":{"cpu":8,"memory":{"value":16,"unit":"GB"},` +
+				`"deploymentCount":3,"storage":100},"resourceLimits":{"cpu":4}}`)},
+		{ID: "count", Name: "count", TypeID: vra.PolicyLimit, Definition: json.RawMessage(`{"limits":{"deployments":50}}`)},
+		{ID: "storage", Name: "storage", TypeID: vra.PolicyLimit, Definition: json.RawMessage(`{"limits":{"storage":100}}`)},
+	}}
+	by := map[string]PolicyPlan{}
+	for _, p := range PlanPolicies(&e) {
+		by[p.VRAID] = p
+	}
+	has := func(p PolicyPlan, level, where, text string) bool {
+		return slices.ContainsFunc(p.Notes, func(n Note) bool {
+			return n.Level == level && n.Where == where && strings.Contains(n.Text, text)
+		})
+	}
+	web := by["web"]
+	if web.Becomes != "A deployment limit policy for the project Web Platform maps to (Administration › Policies › Limits)" ||
+		web.Enforcement != "soft" || !has(web, Info, "enforcementType", "Going beyond it warns the requester") ||
+		!has(web, Info, "projectId", "its project admins can write it") ||
+		!has(web, Info, "deploymentLimits.cpu", "vCPU per deployment: 8.") ||
+		!has(web, Info, "deploymentLimits.memory", "Memory per deployment (GB): 16.") ||
+		!has(web, Info, "deploymentLimits.deploymentCount", "Deployments per user: 3.") ||
+		!has(web, Unmapped, "deploymentLimits.storage", "no storage per deployment") ||
+		!has(web, Unmapped, "resourceLimits", "not each of its resources") || !has(web, Unmapped, "criteria", "no condition") ||
+		has(web, Warning, "enforcementType", "") {
+		t.Fatalf("a project's limits = %+v", web)
+	}
+	if p := by["count"]; !has(p, Info, "limits.deployments", "Deployments per project: 50.") || p.Enforcement != "hard" {
+		t.Fatalf("a count = %+v", p)
+	}
+	if p := by["storage"]; p.Becomes != "Nothing" || p.Enforcement != "" || !has(p, Unmapped, "limits.storage", "") {
+		t.Fatalf("only storage = %+v", p)
 	}
 }

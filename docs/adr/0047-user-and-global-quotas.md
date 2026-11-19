@@ -133,3 +133,9 @@ Migration 00083 adds `deployment_limit_policies`.
   and a limit on deployments differ for multi-VM items.
 - A soft deployment limit warns and lets the requester go on; one that
   should hold for approval is a soft quota, or an approval policy.
+- The vRA importer's plan maps each quota level to the rvav level that
+  counts the same, and a deployment limit policy's vCPU, memory and count
+  to an rvav one, with vRA's enforcement. A user level of a policy for
+  every project becomes each user across rvav, which counts all their
+  projects together: the plan says so. Storage per deployment, limits per
+  resource and criteria are reported.

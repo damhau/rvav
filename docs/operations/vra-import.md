@@ -99,6 +99,38 @@ A lease policy reads as one of rvav's leases
 | `leaseTotalTermMax` | The lifetime, in days from the deployment's creation: past it, an extension needs approval, or warns under a soft lease. vRA counts no extensions, so the plan says how many the lifetime holds: allow at least that many. |
 | `leaseGrace` | The grace days, between the end of the lease and the deletion. |
 
+A resource quota policy's levels become the rvav quota levels that count
+the same ([ADR-0047](../adr/0047-user-and-global-quotas.md)). The plan
+reads one `level` with its `limits`, or the `orgLevel`, `projectLevel`
+and `userLevel` objects, each with its own `limits`:
+
+| vRA level | rvav, for a project's policy | rvav, for a policy of every project |
+|---|---|---|
+| Project | The project's quota (**Administration › Projects › Quotas**). | Each project's quota, set on its own: rvav has no quota for every project at once. |
+| User | **Each member's quota** of the project. | **Each user across rvav** (**Administration › Policies › Quotas**). It counts all of a user's projects together, where vRA limits each project: to keep vRA's limit, set each member's quota of every project instead. |
+| Organization | **All of rvav** (**Administration › Policies › Quotas**). The plan warns that it counts every project. | **All of rvav**. |
+
+The limits `cpu`, `memory`, `storage` and `instances` become vCPU,
+memory, storage and VMs. Memory and storage are in GB, or a `value` with
+the `unit` `MB`, `GB` or `TB`. Another limit, or another level, is
+reported.
+
+A deployment limit policy becomes a deployment limit policy
+(**Administration › Policies › Limits**) for the same project, or for
+every project. The plan reads its `deploymentLimits`, or its `limits`:
+
+| vRA limit | rvav limit |
+|---|---|
+| `cpu` | vCPU per deployment. |
+| `memory` | Memory per deployment, in GB or as a `value` and a `unit`. |
+| `deploymentCount` or `deployments` | Deployments per project, or deployments per user when the policy's `level` is `user`. |
+| `storage` | Reported: the project's storage quota bounds what its deployments hold in all. |
+| `resourceLimits` | Reported: rvav limits each deployment as a whole, and the sizes an item offers bound each VM. |
+| The policy's `criteria` | Reported: an rvav deployment limit applies to every deployment of its project, in one environment or in all. |
+
+A deployment limit policy with only limits that don't map becomes
+nothing.
+
 A policy's `enforcementType` gives the rvav policy's enforcement where
 rvav's policy has one ([ADR-0045](../adr/0045-deployment-sharing-and-project-policies.md)):
 
@@ -107,8 +139,10 @@ rvav's policy has one ([ADR-0045](../adr/0045-deployment-sharing-and-project-pol
 | A `SOFT` lease policy | A lease policy or rule with the enforcement **Soft**: going beyond it warns the requester, who may go on. A project admin's override or rule can't be soft where the environment's lease is hard, so the plan says when only an administrator can make it soft. |
 | A `SOFT` day-2 policy | Its allowed actions become day-2 policies with the effect allow, which have no enforcement: a project's policy tried before them decides. |
 | A `SOFT` approval policy | An approval policy, which always applies. To only warn the requester, make a soft day-2 policy with the effect approval instead. |
-| A `SOFT` quota or other policy | The same as a hard one: the plan says rvav's has no enforcement. |
-| A policy for one project | Its rvav project's admins can write it under **Administration › Policies**. A global hard policy still wins over it. |
+| A `SOFT` resource quota policy | Quota limits with the enforcement **Soft**: going over them asks for approval instead of refusing. |
+| A `SOFT` deployment limit policy | A deployment limit policy with the enforcement **Soft**: going beyond it warns the requester, who may go on. |
+| Another `SOFT` policy | The same as a hard one: the plan says rvav's has no enforcement. |
+| An approval, lease, day-2 or deployment limit policy for one project | Its rvav project's admins can write it under **Administration › Policies**. A global hard policy still wins over it. |
 
 A vRA project's **Deployment sharing** (`sharedResources`, on when
 absent) isn't imported either. The **Deployment sharing** column of the

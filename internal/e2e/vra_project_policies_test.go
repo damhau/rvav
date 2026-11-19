@@ -64,8 +64,11 @@ func TestVRADeploymentSharingAndEnforcement(t *testing.T) {
 		if p := policies["pol-lease-dev"]; valueOf(p.Enforcement) != api.PolicyEnforcementHard {
 			t.Fatalf("a hard lease = %+v", p)
 		}
-		if p := policies["pol-quota-web"]; p.Enforcement != nil {
+		if p := policies["pol-quota-web"]; valueOf(p.Enforcement) != api.PolicyEnforcementHard {
 			t.Fatalf("a quota = %+v", p)
+		}
+		if p := policies["pol-limit"]; valueOf(p.Enforcement) != api.PolicyEnforcementHard || !notes(p, "vCPU per deployment: 16.") {
+			t.Fatalf("a deployment limit = %+v", p)
 		}
 
 		// Set in rvav, by its project admin: the plan agrees.

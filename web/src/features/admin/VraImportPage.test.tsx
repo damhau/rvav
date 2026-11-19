@@ -49,6 +49,10 @@ describe("vRA import", () => {
     expect(within(lease).getByText("soft")).toBeInTheDocument();
     expect(lease).toHaveTextContent("its project admins can write it");
     expect(lease).toHaveTextContent("Lifetime: 90 days from the deployment's creation; an extension past it warns.");
+    const limit = screen.getByRole("region", { name: "Deployment limit" });
+    expect(within(limit).getByText("hard")).toBeInTheDocument();
+    expect(limit).toHaveTextContent("A deployment limit policy for every project (Administration › Policies › Limits)");
+    expect(limit).toHaveTextContent("vCPU per deployment: 16.");
   });
 
   it("adds vRA's custom properties and property groups when the catalog is imported", { timeout: 15_000 }, async () => {

@@ -275,8 +275,9 @@ function plan(db: Db, st: State): S["VraPlan"] {
           { level: "info", where: "leaseTotalTermMax", text: "Lifetime: 90 days from the deployment's creation; an extension past it warns." },
           { level: "info", where: "leaseTotalTermMax", text: "Extensions: vRA counts days, not extensions. Allow as many as the lifetime holds: 2 of 30 days." },
           { level: "info", where: "leaseGrace", text: "Grace days: 7, between the end of the lease and the deletion." }] },
-      { vra_id: "pol-limit", name: "Deployment limit", type: "limit", becomes: "The sizes of the items requested in every project",
-        notes: [{ level: "unmapped", where: "limits", text: "rvav has no limit per deployment: the sizes an item offers bound each request." }] },
+      { vra_id: "pol-limit", name: "Deployment limit", type: "limit", becomes: "A deployment limit policy for every project (Administration › Policies › Limits)",
+        enforcement: "hard", notes: [{ level: "info", where: "limits.cpu", text: "vCPU per deployment: 16." },
+          { level: "info", where: "limits.memory", text: "Memory per deployment (GB): 64." }] },
     ],
     triage: {
       read_at: st.snapshot.read_at, groups: { A: 1, B: 2, C: 1, D: 1 }, library: 2,
