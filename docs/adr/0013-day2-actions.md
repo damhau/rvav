@@ -65,8 +65,9 @@ and VM they built from the request's resources), and runs the failed and
 later steps. Rolling back undoes what a failed provisioning request created
 (VMs, DNS records, addresses) in a short `RollbackWorkflow` and marks its
 deployments deleted; retrying it afterwards builds everything again, if its
-VM names are still free. Both are for the requester, the owner and project
-admins, and are audited.
+VM and deployment names are still free and it still fits the hard quotas
+and deployment limits (ADR-0047). Both are for the requester, the owner
+and project admins, and are audited.
 
 A day-2 action stops at its first failed step, except for an operation
 marked to keep going: its step stays failed and the next one runs. When

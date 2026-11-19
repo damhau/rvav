@@ -767,6 +767,14 @@ and the others are refused. A handover or a move that isn't done yet,
 waiting for approval included, counts for the new owner or in the new
 project, both for quotas and for deployment limits.
 
+A request whose rollback finished gave back its quota, its deployments'
+place in the deployment limits, and their names. Retrying it takes them
+again, so it's refused when they no longer fit or another deployment of
+the project took one of the names since. Its approval stands: a soft
+quota or limit it now goes over doesn't ask again. A retried day-2
+action is checked against hard quotas and limits as if it were asked for
+now.
+
 The request form and the update's summary show one meter per resource:
 the level that refuses, else the one with the least left, named after its
 level ("vCPU · per member").

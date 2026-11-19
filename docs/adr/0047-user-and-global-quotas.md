@@ -148,6 +148,16 @@ transaction that records it:
   plan records where (`quota_to`), and it counts only at the levels it
   changes, until the deployment is there.
 
+### A retry after a rollback
+A finished rollback marks the request's deployments deleted, which gives
+back their quota, their place in the deployment limits and their names
+(ADR-0013). A retry of it takes them again in its transaction, under the
+same locks: a hard quota or limit it no longer fits, or a name another
+deployment of the project took since, is a 409, since a retry has no
+inputs to point an error at. Its approval stands, so a soft quota or
+limit doesn't ask again. A retried day-2 action is checked against hard
+quotas and limits as when it is asked for.
+
 ### Storage
 Migration 00081 adds `user_quotas` (a project, or null for rvav) and
 `global_quotas`. The project's own limits stay in `quotas`, unchanged.
@@ -167,6 +177,9 @@ Migration 00083 adds `deployment_limit_policies`.
   checks, and a move or a handover waiting for approval counted nowhere
   until done. Changes that count in one project, or for one owner, now
   wait for each other's transaction.
+- Until C2.4 (#160), a retry after a rollback took neither its quota, its
+  place in the deployment limits, nor its names again: it could go over a
+  hard limit, or build a second deployment with a name another took.
 - Until C2.4 (#160), a hard global limit held over a project's policy
   only when its number was lower: a project admin's soft policy, or one
   for a single environment, loosened it. Each hard global limit now holds

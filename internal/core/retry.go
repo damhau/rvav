@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -51,30 +52,96 @@ func statusText(status string) string {
 }
 
 // requestDeployments are the deployments a request created or acts on.
-func (s *Service) requestDeployments(ctx context.Context, r store.RequestRow) ([]string, error) {
+func (s *Service) requestDeployments(ctx context.Context, r store.RequestRow) ([]store.DeploymentRow, error) {
 	if r.DeploymentID != nil {
-		return []string{*r.DeploymentID}, nil
+		return []store.DeploymentRow{{ID: *r.DeploymentID}}, nil
 	}
-	deps, err := s.Store.DeploymentsForRequest(ctx, r.ID)
+	return s.Store.DeploymentsForRequest(ctx, r.ID)
+}
+
+func deploymentIDs(deps []store.DeploymentRow) []string {
+	out := make([]string, len(deps))
+	for i, d := range deps {
+		out[i] = d.ID
+	}
+	return out
+}
+
+// rolledBackChange is what a request whose rollback freed everything
+// takes again when retried: its quota, and the place in the deployment
+// limits of the deleted deployments it brings back (ADR-0047).
+func (s *Service) rolledBackChange(ctx context.Context, p *auth.Principal, r store.RequestRow, plan provision.Plan,
+	deleted int) (*quotaChange, error) {
+	proj, err := s.Store.GetProject(ctx, r.ProjectID)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, len(deps))
-	for i, d := range deps {
-		ids[i] = d.ID
+	env, err := s.Store.GetEnvironment(ctx, r.Environment)
+	if err != nil {
+		return nil, err
 	}
-	return ids, nil
+	owner, err := s.Store.GetUser(ctx, r.OwnerID)
+	if err != nil {
+		return nil, err
+	}
+	sc := quotaScope{Project: proj, Env: env.Key, EnvName: env.Name, OwnerID: owner.ID, OwnerName: owner.Name, You: owner.ID == p.User.ID}
+	ch := &quotaChange{scope: sc, what: "This request", add: plan.Quota}
+	vms := plan.VMs
+	for _, c := range plan.Composite {
+		vms = append(vms, c.VMs...)
+	}
+	sizes := map[string][2]int{}
+	for _, vm := range vms {
+		sz := sizes[vm.DeploymentID]
+		sizes[vm.DeploymentID] = [2]int{sz[0] + vm.VCPU, sz[1] + vm.MemoryGB}
+	}
+	if len(sizes) > 0 {
+		ask := &limitAsk{quotaScope: sc, ToOwner: deleted, ToProject: deleted, Many: len(sizes) > 1}
+		for _, sz := range sizes {
+			ask.VCPU, ask.MemoryGB = max(ask.VCPU, sz[0]), max(ask.MemoryGB, sz[1])
+		}
+		ask.AddVCPU, ask.AddMemory = ask.VCPU, ask.MemoryGB
+		ch.limits = ask
+	}
+	return ch, nil
+}
+
+// reclaimNames holds again the names of the deployments a rollback
+// deleted: another deployment may have taken one since.
+func (s *Service) reclaimNames(ctx context.Context, tx pgx.Tx, r store.RequestRow, names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	if err := s.Store.LockDeploymentNames(ctx, tx, r.ProjectID, names); err != nil {
+		return err
+	}
+	taken, err := s.Store.TakenDeploymentNames(ctx, tx, r.ProjectID, "", names)
+	if err != nil || len(taken) == 0 {
+		return err
+	}
+	return &ConflictError{Msg: fmt.Sprintf("Another deployment of %s is named %s since the rollback. Submit a new request instead.",
+		r.ProjectName, taken[0])}
+}
+
+// asConflict makes a check's errors a conflict: a retry has no inputs to
+// point them at.
+func asConflict(err error) error {
+	var v *ValidationError
+	if !errors.As(err, &v) {
+		return err
+	}
+	msgs := make([]string, len(v.Errors))
+	for i, e := range v.Errors {
+		msgs[i] = e.Message
+	}
+	return &ConflictError{Msg: strings.Join(msgs, " ")}
 }
 
 // lockForRetry locks the request's deployments and checks that nothing
 // else changed them under it: no other request runs on them, none is being
 // deleted or rolled back, and none was deleted since, unless by a rollback
 // of this request (rolledBack).
-func (s *Service) lockForRetry(ctx context.Context, tx pgx.Tx, r store.RequestRow, rolledBack bool) error {
-	ids, err := s.requestDeployments(ctx, r)
-	if err != nil {
-		return err
-	}
+func (s *Service) lockForRetry(ctx context.Context, tx pgx.Tx, r store.RequestRow, ids []string, rolledBack bool) error {
 	for _, id := range ids {
 		if err := s.Store.LockDeployment(ctx, tx, id); err != nil {
 			return err
@@ -102,25 +169,27 @@ func (s *Service) lockForRetry(ctx context.Context, tx pgx.Tx, r store.RequestRo
 
 // checkDay2Retry applies to a day-2 retry what running the action checks
 // now: the principal still sees the deployment, the day-2 policies still
-// let them run it without approval, and its VM is still there.
-func (s *Service) checkDay2Retry(ctx context.Context, p *auth.Principal, r store.RequestRow) error {
+// let them run it without approval, its VM is still there, and it still
+// fits the quotas and the deployment limits. It returns what the action
+// counts against them, and the resources over a soft quota.
+func (s *Service) checkDay2Retry(ctx context.Context, p *auth.Principal, r store.RequestRow) (*quotaChange, []string, error) {
 	d, err := s.visibleDeployment(ctx, p, deref(r.DeploymentID))
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	a, err := s.day2Action(ctx, deref(r.Action))
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if a == nil {
-		return &ConflictError{Msg: "This action is no longer offered."}
+		return nil, nil, &ConflictError{Msg: "This action is no longer offered."}
 	}
 	if a.Hidden || r.RequesterID == SystemUserID {
-		return &ConflictError{Msg: "rvav runs this itself and tries again when it is due."}
+		return nil, nil, &ConflictError{Msg: "rvav runs this itself and tries again when it is due."}
 	}
 	resources, err := s.Store.ListResources(ctx, d.ID)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	var target *day2.Target
 	for _, t := range targets(d, resources) {
@@ -130,14 +199,14 @@ func (s *Service) checkDay2Retry(ctx context.Context, p *auth.Principal, r store
 		}
 	}
 	if target == nil {
-		return &ConflictError{Msg: deref(r.ResourceName) + " is no longer part of the deployment."}
+		return nil, nil, &ConflictError{Msg: deref(r.ResourceName) + " is no longer part of the deployment."}
 	}
 	j, err := s.judge(ctx, p, d)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if !j.offered(a, *target) {
-		return &ConflictError{Msg: a.Name + " is no longer offered for " + target.ResourceName + "."}
+		return nil, nil, &ConflictError{Msg: a.Name + " is no longer offered for " + target.ResourceName + "."}
 	}
 	// An AWX action needs its VMs as when it was asked for (powered on). A
 	// native one is not checked: it may have half done its work, and its
@@ -145,39 +214,39 @@ func (s *Service) checkDay2Retry(ctx context.Context, p *auth.Principal, r store
 	if a.Unavailable != nil && a.Group == day2.GroupAutomation {
 		c, err := s.choices(ctx, p, d, *target)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		if reason := a.Unavailable(*target, c); reason != "" {
-			return &ConflictError{Msg: reason}
+			return nil, nil, &ConflictError{Msg: reason}
 		}
 	}
 	inputs := map[string]any{}
 	_ = json.Unmarshal(r.Inputs, &inputs)
 	change, err := s.day2Change(ctx, p, a, d, *target, inputs)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	// Its requester accepted the soft limits when they asked.
 	overSoft, _, err := s.checkChange(ctx, s.Store.Pool, change)
 	if err != nil {
-		return err
+		return nil, nil, asConflict(err)
 	}
 	dec := j.decideQuota(a, *target, inputs, overSoft)
 	needs := len(dec.Chain) > 0
 	if a.Approval != nil && dec.Denied == "" {
 		c, err := s.choices(ctx, p, d, *target)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		needs = needs || a.Approval(*target, c, inputs) != ""
 	}
 	switch {
 	case dec.Denied != "":
-		return fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
+		return nil, nil, fmt.Errorf("%w: %s", ErrForbidden, dec.Denied)
 	case needs:
-		return &ConflictError{Msg: a.Name + " needs approval now: run it again to ask for it."}
+		return nil, nil, &ConflictError{Msg: a.Name + " needs approval now: run it again to ask for it."}
 	}
-	return nil
+	return change, overSoft, nil
 }
 
 // Retry runs a failed request again from its failed step: the steps that
@@ -200,14 +269,31 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 			rolledBack = true
 		}
 	}
+	var change *quotaChange
+	var overSoft []string
 	if r.Kind == "day2" || r.Kind == "update" {
-		if err := s.checkDay2Retry(ctx, p, r); err != nil {
+		if change, overSoft, err = s.checkDay2Retry(ctx, p, r); err != nil {
 			return r, err
 		}
 	}
 	var plan provision.Plan
 	_ = json.Unmarshal(r.Plan, &plan)
+	deps, err := s.requestDeployments(ctx, r)
+	if err != nil {
+		return r, err
+	}
+	var names []string
 	if rolledBack {
+		for _, d := range deps {
+			if d.CreatedByRequestID != nil && *d.CreatedByRequestID == r.ID && d.Status == "deleted" {
+				names = append(names, d.Name)
+			}
+		}
+		if change, err = s.rolledBackChange(ctx, p, r, plan, len(names)); err != nil {
+			return r, err
+		}
+		// Its approval stands: soft quotas and limits don't ask again.
+		overSoft = quotaOrder
 		// Its VM names were freed: someone else may have one now.
 		vms := plan.VMs
 		for _, c := range plan.Composite {
@@ -240,8 +326,15 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 			}
 		}
 	}
+	yes := true
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
-		if err := s.lockForRetry(ctx, tx, r, rolledBack); err != nil {
+		if err := asConflict(s.holdChange(ctx, tx, change, overSoft, &yes, nil)); err != nil {
+			return err
+		}
+		if err := s.reclaimNames(ctx, tx, r, names); err != nil {
+			return err
+		}
+		if err := s.lockForRetry(ctx, tx, r, deploymentIDs(deps), rolledBack); err != nil {
 			return err
 		}
 		if err := s.Store.FailSteps(ctx, tx, r.ID, lost); err != nil {
@@ -319,8 +412,12 @@ func (s *Service) RollbackRequest(ctx context.Context, p *auth.Principal, idOrNu
 	if len(resources) == 0 {
 		return r, &ConflictError{Msg: r.Number + " has nothing to roll back: it created nothing, or that was deleted already."}
 	}
+	deps, err := s.requestDeployments(ctx, r)
+	if err != nil {
+		return r, err
+	}
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
-		if err := s.lockForRetry(ctx, tx, r, false); err != nil {
+		if err := s.lockForRetry(ctx, tx, r, deploymentIDs(deps), false); err != nil {
 			return err
 		}
 		if err := s.Store.SetDeploymentsStatusForRequest(ctx, tx, r.ID, "deleting"); err != nil {

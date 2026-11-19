@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,5 +168,98 @@ func TestRetryAndRollback(t *testing.T) {
 		h.waitStatus(del.Id, "tnguyen", api.RequestStatusSucceeded)
 		h.json("POST", "/api/v1/requests/"+r3.Id+"/retry", "tnguyen", nil, 409, nil)
 		h.json("POST", "/api/v1/requests/"+r3.Id+"/rollback", "tnguyen", nil, 409, nil)
+	})
+}
+
+// TestRetryAfterRollbackCountsAgain retries a request whose rollback freed
+// its deployment: it takes its name, its quota and its place in the
+// deployment limits again, and is refused when another took them since.
+func TestRetryAfterRollbackCountsAgain(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const web, admin, limits = "prj_web", "mkeller", "/api/v1/admin/deployment-limit-policies"
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id="+web, "lmartin", nil, 200, &form)
+		named := func(name string) api.RequestDraft {
+			return api.RequestDraft{CatalogItemId: form.ItemId, VersionId: form.VersionId, ProjectId: web, Environment: "dev",
+				DeploymentName: &name, Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01",
+					"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline", "idm-join"}}}
+		}
+		submit := func(name string) api.Request {
+			var r api.Request
+			h.json("POST", "/api/v1/requests", "tnguyen", named(name), 202, &r, "Idempotency-Key", uuid.NewString())
+			return r
+		}
+		retry := func(id string, want int) string {
+			t.Helper()
+			code, body, _ := h.do("POST", "/api/v1/requests/"+id+"/retry", "tnguyen", nil)
+			if code != want {
+				t.Fatalf("retry = %d %s, want %d", code, body, want)
+			}
+			return string(body)
+		}
+		cancel := func(id string) {
+			h.json("POST", "/api/v1/requests/"+id+"/cancel", "tnguyen", nil, 202, nil)
+		}
+
+		// shop fails in its IdM join and is rolled back: its name and quota are free.
+		h.awx.FailTask = "idm : join realm"
+		first := submit("shop")
+		h.runWorkflow(first.Id, nil)
+		h.waitStatus(first.Id, "tnguyen", api.RequestStatusFailed)
+		h.json("POST", "/api/v1/requests/"+first.Id+"/rollback", "tnguyen", nil, 202, nil)
+		var s testsuite.WorkflowTestSuite
+		s.SetLogger(nil)
+		env := s.NewTestWorkflowEnvironment()
+		env.RegisterActivity(h.acts)
+		env.SetTestTimeout(time.Minute)
+		env.ExecuteWorkflow(provision.RollbackWorkflow, first.Id)
+		if err := env.GetWorkflowError(); err != nil {
+			t.Fatalf("rollback workflow: %v", err)
+		}
+		h.awx.FailTask = ""
+
+		// One deployment each, and Thomas has another one now.
+		var one api.DeploymentLimitPolicy
+		h.json("POST", limits, admin, api.DeploymentLimitPolicyWrite{Name: "One each", DeploymentsPerUser: new(1)}, 201, &one)
+		other := submit("other")
+		if body := retry(first.Id, 409); !strings.Contains(body,
+			"Each user may have at most 1 deployment in Web Platform under One each, and you would have 2.") {
+			t.Fatalf("retry past one deployment each = %s", body)
+		}
+		cancel(other.Id)
+		h.json("DELETE", limits+"/"+one.Id, admin, nil, 204, nil)
+
+		// A vCPU each.
+		h.json("PUT", "/api/v1/admin/projects/"+web+"/user-quotas", admin, api.UserQuotaWriteList{Items: []api.UserQuotaWrite{
+			{Resource: api.Vcpu, Limit: new(1), Enforcement: api.UserQuotaWriteEnforcementHard}}}, 200, nil)
+		if body := retry(first.Id, 409); !strings.Contains(body, "but your quota in Web Platform has 1 left") {
+			t.Fatalf("retry past a vCPU each = %s", body)
+		}
+		h.json("PUT", "/api/v1/admin/projects/"+web+"/user-quotas", admin, api.UserQuotaWriteList{}, 200, nil)
+
+		// Another deployment took the name shop.
+		again := submit("shop")
+		if body := retry(first.Id, 409); !strings.Contains(body,
+			"Another deployment of Web Platform is named shop since the rollback. Submit a new request instead.") {
+			t.Fatalf("retry with its name taken = %s", body)
+		}
+		cancel(again.Id)
+
+		// Free again: it builds shop.
+		retry(first.Id, 202)
+		h.runWorkflow(first.Id, nil)
+		h.waitStatus(first.Id, "tnguyen", api.RequestStatusSucceeded)
+		var live int
+		if err := h.store.Pool.QueryRow(ctx, `select count(*) from deployments
+			where project_id = $1 and lower(name) = 'shop' and status <> 'deleted'`, web).Scan(&live); err != nil {
+			t.Fatal(err)
+		}
+		if live != 1 {
+			t.Fatalf("%d live deployments named shop", live)
+		}
 	})
 }
