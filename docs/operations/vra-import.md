@@ -467,14 +467,27 @@ rvav vro-triage -standard -md                         # the workflows an enterpr
 For each workflow and action, the report shows:
 - its inputs;
 - what in vRA runs it: catalog items, event subscriptions (with rvav's
-  equivalent event), custom day-2 actions, form fields, other workflows
-  and actions;
+  topic for theirs, as the following table shows), custom day-2 actions,
+  form fields, other workflows and actions;
 - how often and when it last ran (workflows);
 - the systems it reaches, from its inputs' types and its scripts;
 - a suggested group and why.
 
 vRO's own library (`Library/...`, `com.vmware.*`) is left out. ABX
 actions vRA runs are listed, but their code isn't read.
+
+| vRA topic | rvav topic ([ADR-0049](../adr/0049-event-topics.md)) |
+|---|---|
+| `compute.allocation.pre`, `network.configure`, `compute.provision.pre`, `compute.provision.post`, `compute.removal.pre`, `compute.removal.post` | The same: one event for each VM. |
+| `deployment.request.pre`, `deployment.request.post` | `provisioning.pre`, `provisioning.post`: one event for each request. |
+| `deployment.action.pre`, `deployment.resource.action.pre`, `compute.reconfigure.pre` | `day2.pre` |
+| `deployment.action.post`, `deployment.resource.action.post`, `compute.reconfigure.post` | `day2.post` |
+| Any other | None: the subscription needs another trigger. |
+
+A blocking vRA subscription holds vRA's request until it ends. rvav
+waits for subscriptions only on `provisioning.pre`, `day2.pre` and
+`delete.pre`. On any other topic, the report says that the rvav
+subscription doesn't hold the request.
 
 | Suggested group | When |
 |---|---|

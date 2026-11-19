@@ -33,6 +33,9 @@ once, and a record of what was sent and answered.
 | `lease.expiring` | The reminder before a lease ends | No |
 | `lease.expired` | A lease ended and its VMs are being powered off | No |
 
+[ADR-0049](0049-event-topics.md) adds a VM's own topics (`compute.*`,
+`network.configure`), an approval level's and a project's.
+
 ### The event
 Every event has the same envelope, version `rvav.event.v1`:
 

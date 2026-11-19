@@ -1681,10 +1681,20 @@ sign it, GitLab sends it as its token.
 - **Day-2 actions:** AWX templates with the day-2 label become actions on
   VMs, their survey becoming the action's form
   ([ADR-0018](../adr/0018-awx-day2-actions.md)).
-- **Subscriptions:** events (requests submitted, finished, VMs changed)
-  sent to webhooks or AWX ([ADR-0021](../adr/0021-event-subscriptions.md)).
+- **Subscriptions:** events sent to webhooks, AWX or custom workflows
+  ([ADR-0021](../adr/0021-event-subscriptions.md)).
+  - The **Topic** list groups the topics by what their events are about
+    ([ADR-0049](../adr/0049-event-topics.md)): a request; each of its VMs,
+    from its placement to its deletion, with vRA's names
+    (`compute.provision.post`); each of its approval levels, asked and
+    decided; a deployment's lease; a project, created or changed.
+  - A condition reads the event: on a VM's topic, the VM
+    (`machine.placement.cluster == "GVA-DEV-CL01"`); on an approval's, the
+    level (`approval.status == "rejected"`); on a project's, what changed
+    (`"cost_center" in changes`).
   - A **blocking** subscription holds a request until it answers, and can
-    add properties to it.
+    add properties to it. Only subscriptions on `provisioning.pre`,
+    `day2.pre` and `delete.pre` can block.
   - Each subscription's runs, their errors and retries are on its page.
 - **Custom workflows:** your own Temporal workflows, on your own task
   queue, offered as items or composite steps

@@ -161,9 +161,10 @@ Subscription (event → awx template | webhook)
   ([ADR-0047](adr/0047-user-and-global-quotas.md)).
 
 ### Extensibility
-- **Subscription**: event topic (for example `deployment.provision.post`,
-  `resource.day2.pre`, `lease.expiring`), condition (CEL), target
-  (`awx:<template>` | `webhook:<url>`), `blocking`, `timeout`, priority.
+- **Subscription**: event topic (for example `provisioning.post`,
+  `compute.provision.post`, `approval.decided`, `project.updated`;
+  [ADR-0049](adr/0049-event-topics.md)), condition (CEL), target (AWX
+  template, webhook or custom workflow), `blocking`, `timeout`, priority.
 - **OutboxEvent**: reliable delivery for webhooks and notifications.
 
 ### Audit

@@ -371,7 +371,22 @@ Nothing is created or changed in EfficientIP.
 Subscriptions send rvav's events (`rvav.event.v1`) to webhooks, AWX
 templates or custom workflows ([ADR-0021](adr/0021-event-subscriptions.md)).
 Writing a custom workflow is covered in
-[custom-workflows.md](custom-workflows.md). For a webhook receiver:
+[custom-workflows.md](custom-workflows.md).
+
+Each topic's events are about one thing, and their `data` says which
+([ADR-0049](adr/0049-event-topics.md)):
+
+| Topics | One event for each | Besides the request's fields, `data` has |
+|---|---|---|
+| `request.submitted`, `provisioning.pre`, `provisioning.post`, `day2.pre`, `day2.post`, `delete.pre`, `delete.post` | Request | Nothing more |
+| `compute.allocation.pre`, `network.configure`, `compute.provision.pre`, `compute.provision.post`, `compute.removal.pre`, `compute.removal.post` | VM of a request | `machine`: its name, placement, networks and addresses, and its `moref` once cloned |
+| `approval.requested`, `approval.decided` | Approval level of a request | `approval`: its approvers, status and due time, and who decided it, with their comment |
+| `lease.expiring`, `lease.expired` | Deployment | Nothing more; `request` is null |
+| `project.created`, `project.updated` | Project | `project` with its admins, `actor`, and `changes`: the settings changed. `request` and `deployment` are null |
+
+The sample event of each topic shows its fields
+(Administration › Subscriptions › **New subscription**, or
+`GET /api/v1/admin/event-topics`). For a webhook receiver:
 
 - **Hosts.** rvav posts only to the hosts listed for webhooks
   (Administration › Integrations › Allowed hosts, or `RVAV_WEBHOOK_HOSTS`)
@@ -385,8 +400,8 @@ Writing a custom workflow is covered in
 - **Retries.** A 2xx answer delivers it. Anything else is retried after
   10 s, 30 s, 1 min, 5 min, then every 15 min for a day. The event ID stays
   the same across retries, so ignore an ID you already have.
-- **Blocking subscriptions** (`.pre` topics) wait for the answer within
-  their timeout:
+- **Blocking subscriptions** (on `provisioning.pre`, `day2.pre` and
+  `delete.pre`) wait for the answer within their timeout:
   - empty or `{"outcome": "continue"}` lets the request go on;
   - `{"outcome": "stop", "reason": "…"}` fails it with the reason, before
     anything is built or changed;

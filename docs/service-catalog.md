@@ -1465,14 +1465,22 @@ only).
 
 | Topic | When |
 |---|---|
-| `request.submitted`, `request.approved`, `request.rejected` | Request lifecycle |
-| `deployment.provision.pre`, `.post` | Around provisioning |
-| `resource.day2.pre`, `.post` | Around each day-2 action |
-| `deployment.delete.pre`, `.post` | Around deletion |
+| `request.submitted` | A request is accepted |
+| `approval.requested`, `approval.decided` | Each approval level of a request, asked (and escalated) and decided |
+| `provisioning.pre`, `.post` | Around provisioning |
+| `compute.allocation.pre`, `network.configure` | Each VM, placed and named, then its network configured, before anything is built |
+| `compute.provision.pre`, `.post` | Around each VM's cloning |
+| `day2.pre`, `.post` | Around each day-2 action |
+| `delete.pre`, `.post` | Around deletion |
+| `compute.removal.pre`, `.post` | Around each VM's deletion |
 | `lease.expiring`, `lease.expired` | Lease lifecycle |
+| `project.created`, `project.updated` | A project is created or its settings change |
 
-Targets: an AWX job template or a webhook (HMAC-signed). **Blocking**
-subscriptions can stop the flow or modify allowed properties (for example a
+[ADR-0021](adr/0021-event-subscriptions.md) and
+[ADR-0049](adr/0049-event-topics.md) give each topic's event. Targets: an
+AWX job template, a webhook (HMAC-signed) or a custom workflow.
+**Blocking** subscriptions, on `provisioning.pre`, `day2.pre` and
+`delete.pre`, can stop the flow or modify allowed properties (for example a
 CMDB check that returns a cost center). Non-blocking ones run asynchronously.
 
 ## 9. Notifications
