@@ -65,12 +65,7 @@ func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
 		if in.ResourceID != "" && in.Moref != "" {
-			// A disk an update adds is the blueprint's disk it names.
-			var added map[string]int
-			if _, ok := in.Op.Args["blueprint_disk"]; ok && in.Op.Op == "add_disk" && detail != "" {
-				added = map[string]int{detail: argInt(in.Op.Args, "blueprint_disk")}
-			}
-			if err := a.refreshVM(ctx, in, added); err != nil {
+			if err := a.refreshVM(ctx, in, detail); err != nil {
 				// Accepting the changes is only this: tried again as a whole.
 				if in.Op.Op == "accept_changes" {
 					return "", "", fmt.Errorf("record the VM: %w", err)
@@ -101,11 +96,11 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 	case "set_tags":
 		return "", v.SetTags(ctx, in.Moref, argStrs(args, "categories"), argStrs(args, "tags"))
 	case "add_nic":
-		return "", v.AddNIC(ctx, in.Moref, argStr(args, "network"))
+		return v.AddNIC(ctx, in.Moref, argStr(args, "network"))
 	case "set_nic_network":
-		return "", v.SetNICNetwork(ctx, in.Moref, argStr(args, "nic"), argStr(args, "network"))
+		return "", v.SetNICNetwork(ctx, in.Moref, nicRef(args), argStr(args, "network"))
 	case "remove_nic":
-		return "", v.RemoveNIC(ctx, in.Moref, argStr(args, "nic"))
+		return "", v.RemoveNIC(ctx, in.Moref, nicRef(args))
 	case "rename_vm":
 		return "", v.Rename(ctx, in.Moref, argStr(args, "name"))
 	case "check_name":
@@ -210,9 +205,8 @@ var settles = map[string][]string{
 // refreshVM stores what vCenter reports about the VM now, the aspects the
 // operation changed taken as rvav left them (S13.2). A vCenter or database
 // hiccup is tried again: left out, rvav's own change would look like drift.
-// refreshVM records the VM as vCenter has it now; added names, by label,
-// the blueprint disks an operation just added.
-func (a *Activities) refreshVM(ctx context.Context, in OpInput, added map[string]int) error {
+// added is the label of the disk or adapter the operation added.
+func (a *Activities) refreshVM(ctx context.Context, in OpInput, added string) error {
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
@@ -228,7 +222,35 @@ func (a *Activities) refreshVM(ctx context.Context, in OpInput, added map[string
 	return err
 }
 
-func (a *Activities) refreshVMOnce(ctx context.Context, in OpInput, added map[string]int) error {
+// markAdded records a disk or adapter an update added as the blueprint's
+// one its operation names (ADR-0042).
+func markAdded(ours *vmprops.Ours, vm vsphere.VM, op day2.Op, label string) {
+	if label == "" {
+		return
+	}
+	if _, ok := op.Args["blueprint_disk"]; ok && op.Op == "add_disk" {
+		for _, d := range vm.Disks {
+			if d.Label == label && d.Key != 0 {
+				if ours.BlueprintDisks == nil {
+					ours.BlueprintDisks = map[int32]int{}
+				}
+				ours.BlueprintDisks[d.Key] = argInt(op.Args, "blueprint_disk")
+			}
+		}
+	}
+	if key := argStr(op.Args, "blueprint_nic"); key != "" && op.Op == "add_nic" {
+		for _, n := range vm.NICs {
+			if n.Label == label && n.Key != 0 {
+				if ours.BlueprintNICs == nil {
+					ours.BlueprintNICs = map[int32]string{}
+				}
+				ours.BlueprintNICs[n.Key] = key
+			}
+		}
+	}
+}
+
+func (a *Activities) refreshVMOnce(ctx context.Context, in OpInput, added string) error {
 	res, err := a.Store.GetResource(ctx, in.ResourceID)
 	if err != nil {
 		return err
@@ -255,14 +277,7 @@ func (a *Activities) refreshVMOnce(ctx context.Context, in OpInput, added map[st
 	// read, else read it again.
 	for range 3 {
 		ours := vmprops.OursOf(res.Properties)
-		for _, d := range vm.Disks {
-			if j, ok := added[d.Label]; ok && d.Key != 0 {
-				if ours.BlueprintDisks == nil {
-					ours.BlueprintDisks = map[int32]int{}
-				}
-				ours.BlueprintDisks[d.Key] = j
-			}
-		}
+		markAdded(&ours, *vm, in.Op, added)
 		props, drifted := vmprops.Settle(res.Properties, vmprops.Build(vc.Name(), *vm, ours, nil, 0), settles[in.Op.Op]...)
 		state := "in_sync"
 		if drifted {
@@ -288,6 +303,10 @@ func (a *Activities) refreshVMOnce(ctx context.Context, in OpInput, added map[st
 
 func diskRef(args map[string]any) vsphere.DiskRef {
 	return vsphere.DiskRef{Key: int32(argInt(args, "key")), File: argStr(args, "file"), Label: argStr(args, "disk")}
+}
+
+func nicRef(args map[string]any) vsphere.NICRef {
+	return vsphere.NICRef{Key: int32(argInt(args, "key")), Label: argStr(args, "nic")}
 }
 
 func argInt(args map[string]any, key string) int {

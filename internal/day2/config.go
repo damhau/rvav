@@ -241,9 +241,13 @@ func init() {
 		},
 		Ops: func(t Target, in map[string]any) []Op {
 			label, network := strInput(in, "nic"), strInput(in, "network")
-			op := vcenter("vsphere.nic_move", "Move "+label+" to "+network, "set_nic_network", map[string]any{"nic": label, "network": network})
+			args := map[string]any{"nic": label, "network": network}
+			op := vcenter("vsphere.nic_move", "Move "+label+" to "+network, "set_nic_network", args)
 			if n := nic(t, label); n != nil {
 				op.Detail = "Was on " + n.Network
+				if n.Key != nil {
+					args["key"] = *n.Key
+				}
 			}
 			return []Op{op}
 		},
@@ -255,9 +259,13 @@ func init() {
 		Form: func(t Target, _ Choices) *api.ActionForm {
 			return form("Network adapter", choice("nic", "Adapter", nicOptions(t), ""))
 		},
-		Ops: func(_ Target, in map[string]any) []Op {
+		Ops: func(t Target, in map[string]any) []Op {
 			label := strInput(in, "nic")
-			return []Op{vcenter("vsphere.nic_remove", "Remove "+label, "remove_nic", map[string]any{"nic": label})}
+			args := map[string]any{"nic": label}
+			if n := nic(t, label); n != nil && n.Key != nil {
+				args["key"] = *n.Key
+			}
+			return []Op{vcenter("vsphere.nic_remove", "Remove "+label, "remove_nic", args)}
 		},
 	})
 }

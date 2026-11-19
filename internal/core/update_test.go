@@ -361,6 +361,91 @@ func TestUpdateDisksUnrecorded(t *testing.T) {
 	}
 }
 
+// withNICs gives a VM its adapters after its first, each "network" or
+// "network:blueprint adapter"; recorded marks its first adapter as rvav
+// marks those it builds.
+func withNICs(vm existingVM, recorded bool, nics ...string) existingVM {
+	first := vm.t.VM.Nics[0]
+	first.Label, first.Key = new(day2.NICLabel(1)), new(4000)
+	if recorded {
+		first.BlueprintNic = new("nic1")
+	}
+	vm.t.VM.Nics = []api.VmNic{first}
+	for i, s := range nics {
+		network, key, ok := strings.Cut(s, ":")
+		n := api.VmNic{Network: network, Label: new(day2.NICLabel(i + 2)), Key: new(4001 + i)}
+		if ok {
+			n.BlueprintNic = &key
+		}
+		vm.t.VM.Nics = append(vm.t.VM.Nics, n)
+	}
+	return vm
+}
+
+// nicOps are the adapter operations planned, as "op label key network".
+func nicOps(u *componentPlan) []string {
+	var out []string
+	for _, op := range u.ops {
+		if strings.HasSuffix(op.Op, "_nic") || op.Op == "set_nic_network" {
+			out = append(out, strings.TrimSpace(fmt.Sprintf("%s %v %v %v", op.Op, op.Args["nic"], op.Args["key"], op.Args["network"])))
+		}
+	}
+	return out
+}
+
+// After an update that added a DHCP adapter failed part-way, the next adds
+// it only to the VMs it didn't reach (#192), and records which blueprint
+// adapter each new one is. A VM rvav didn't record adapters on gets it as
+// before.
+func TestUpdateNICsAddsOnce(t *testing.T) {
+	base := blueprint.VMPlan{VCPU: 2, MemoryGB: 4, DiskGB: 50, Template: "tpl", Cluster: "GVA-DEV-CL01"}
+	next := base
+	next.NICs = []blueprint.NICPlan{{Key: "backup", Network: "dvpg-backup", IPAM: blueprint.IPAMDHCP}}
+	web01 := withNICs(updateVM("web01", "10.0.0.11", 2, 4, 50), true, "dvpg-backup:backup")
+	web02 := withNICs(updateVM("web02", "10.0.0.12", 2, 4, 50), true)
+	legacy := withNICs(updateVM("web03", "10.0.0.13", 2, 4, 50), false)
+	u := newPlan()
+	c := componentChange{key: "web", title: "Web", had: true, old: base, new: next, count: 3, vms: []existingVM{web01, web02, legacy}}
+	c.plan(u)
+	if !slices.Equal(keysOf(u.ops), []string{"vsphere.nic_add@web02", "vsphere.nic_add@web03"}) || len(u.refused) > 0 {
+		t.Fatalf("ops = %v, refused %v", keysOf(u.ops), refusals(u))
+	}
+	if u.ops[0].Args["blueprint_nic"] != "backup" || u.ops[0].Args["network"] != "dvpg-backup" {
+		t.Fatalf("the adapter added = %+v", u.ops[0].Args)
+	}
+}
+
+// An update moves and removes the DHCP adapters rvav recorded as the
+// blueprint's (#192), not one a day-2 action added before them; on a VM
+// without the record, those at their places, as before.
+func TestUpdateNICsByRecord(t *testing.T) {
+	base := blueprint.VMPlan{VCPU: 2, MemoryGB: 4, DiskGB: 50, Template: "tpl", Cluster: "GVA-DEV-CL01"}
+	old, next := base, base
+	old.NICs = []blueprint.NICPlan{{Key: "backup", Network: "net-b", IPAM: blueprint.IPAMDHCP}, {Key: "mgmt", Network: "net-m", IPAM: blueprint.IPAMDHCP}}
+	next.NICs = []blueprint.NICPlan{{Key: "backup", Network: "net-c", IPAM: blueprint.IPAMDHCP}}
+	for _, tc := range []struct {
+		name string
+		vm   existingVM
+		want []string
+	}{
+		{"the owner's adapter first", withNICs(updateVM("web01", "10.0.0.11", 2, 4, 50), true, "net-x", "net-b:backup", "net-m:mgmt"),
+			[]string{"set_nic_network Network adapter 3 4002 net-c", "remove_nic Network adapter 4 4003 <nil>"}},
+		{"backup removed by its owner", withNICs(updateVM("web02", "10.0.0.12", 2, 4, 50), true, "net-m:mgmt"),
+			[]string{"remove_nic Network adapter 2 4001 <nil>"}},
+		{"backup moved by an update that failed", withNICs(updateVM("web03", "10.0.0.13", 2, 4, 50), true, "net-c:backup", "net-m:mgmt"),
+			[]string{"remove_nic Network adapter 3 4002 <nil>"}},
+		{"not recorded", withNICs(updateVM("web04", "10.0.0.14", 2, 4, 50), false, "net-b", "net-m"),
+			[]string{"set_nic_network Network adapter 2 4001 net-c", "remove_nic Network adapter 3 4002 <nil>"}},
+	} {
+		u := newPlan()
+		c := componentChange{key: "web", title: "Web", had: true, old: old, new: next, count: 1, vms: []existingVM{tc.vm}}
+		c.plan(u)
+		if got := nicOps(u); !slices.Equal(got, tc.want) || len(u.refused) > 0 {
+			t.Errorf("%s: ops = %v, want %v (refused %v)", tc.name, got, tc.want, refusals(u))
+		}
+	}
+}
+
 func TestNaturalCompare(t *testing.T) {
 	names := []string{"web10", "web9", "web01", "db2"}
 	slices.SortFunc(names, naturalCompare)

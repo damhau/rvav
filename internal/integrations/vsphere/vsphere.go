@@ -205,6 +205,8 @@ type Disk struct {
 }
 
 type NIC struct {
+	// Key is vCenter's device key, which stays while the adapter is on the VM.
+	Key     int32
 	Label   string
 	Network string
 	MAC     string
@@ -248,9 +250,9 @@ type Driver interface {
 	AddDisk(ctx context.Context, moref string, d DiskSpec) (string, error)
 	ExtendDisk(ctx context.Context, moref string, ref DiskRef, sizeGB int) error
 	RemoveDisk(ctx context.Context, moref string, ref DiskRef) error
-	AddNIC(ctx context.Context, moref, network string) error
-	RemoveNIC(ctx context.Context, moref, label string) error
-	SetNICNetwork(ctx context.Context, moref, label, network string) error
+	AddNIC(ctx context.Context, moref, network string) (string, error)
+	RemoveNIC(ctx context.Context, moref string, ref NICRef) error
+	SetNICNetwork(ctx context.Context, moref string, ref NICRef, network string) error
 	CreateSnapshot(ctx context.Context, moref, name, description string, memory bool) error
 	RevertSnapshot(ctx context.Context, moref, name string) error
 	DeleteSnapshot(ctx context.Context, moref, name string) error
@@ -615,7 +617,7 @@ func toVM(m mo.VirtualMachine) VM {
 				if card.DeviceInfo != nil {
 					label = card.DeviceInfo.GetDescription().Label
 				}
-				vm.NICs = append(vm.NICs, NIC{Label: label, MAC: card.MacAddress, Network: backingName(card.Backing)})
+				vm.NICs = append(vm.NICs, NIC{Key: card.Key, Label: label, MAC: card.MacAddress, Network: backingName(card.Backing)})
 			case *types.VirtualCdrom:
 				if iso, ok := dev.Backing.(*types.VirtualCdromIsoBackingInfo); ok && vm.ISO == "" {
 					vm.ISO = iso.FileName

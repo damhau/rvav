@@ -7123,6 +7123,13 @@ export interface components {
             ip_addresses?: string[];
             /** @description Whether rvav left its address to DHCP (true) or gave it a fixed one (false), as the VM was built (ADR-0039). Absent when rvav doesn't know: an onboarded VM, or a template's adapter after its first. */
             dhcp?: boolean;
+            /** @description vCenter's device key for the adapter, which stays the same while the adapter is on the VM. */
+            key?: number;
+            /**
+             * @description Which of its blueprint's adapters this is: `nic1` for the first adapter, else the `key` of the blueprint's adapter (ADR-0042). rvav records it when it builds the VM or an update adds the adapter. Absent on an adapter a day-2 action added, on a template's adapters after its first, on an onboarded VM, and on a VM built before rvav recorded it.
+             * @example backup
+             */
+            blueprint_nic?: string;
         };
         /**
          * @description How a disk is provisioned (ADR-0036). Absent on a VM's disk that isn't a flat file, an RDM say.

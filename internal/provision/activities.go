@@ -702,12 +702,13 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 
 func (a *Activities) recordVM(ctx context.Context, vc vsphere.Driver, in VMInput, vm *vsphere.VM) (store.Resource, error) {
 	added := make([]bool, len(in.VM.NICs))
+	keys := make([]string, len(in.VM.NICs))
 	for i, n := range in.VM.NICs {
-		added[i] = n.IPAM == blueprint.IPAMDHCP
+		added[i], keys[i] = n.IPAM == blueprint.IPAMDHCP, n.Key
 	}
 	props := vmprops.Build(vc.Name(), *vm, vmprops.Ours{FQDN: in.VM.FQDN, Template: in.VM.Template, Component: in.VM.Component,
 		DHCP: in.VM.DHCP, Properties: in.VM.Properties, DHCPAdapters: vmprops.AdapterDHCP(*vm, in.VM.DHCP, added),
-		BlueprintDisks: vmprops.BuiltDisks(*vm, len(in.VM.Disks))}, nil, 0)
+		BlueprintDisks: vmprops.BuiltDisks(*vm, len(in.VM.Disks)), BlueprintNICs: vmprops.BuiltNICs(*vm, keys)}, nil, 0)
 	// The VM as rvav built it: what drift is measured from (S13.2).
 	props, _ = vmprops.Settle(nil, props, vmprops.All...)
 	ext := vm.InstanceUUID

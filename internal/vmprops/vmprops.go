@@ -40,6 +40,28 @@ type Ours struct {
 	// BlueprintDisks say, by device key, which of its blueprint's disks a
 	// disk is (ADR-0042); a disk rvav didn't make from it is missing.
 	BlueprintDisks map[int32]int `json:"-"`
+	// BlueprintNICs say, by device key, which of its blueprint's adapters
+	// an adapter is: FirstNIC, or the key of one added (ADR-0042).
+	BlueprintNICs map[int32]string `json:"-"`
+}
+
+// FirstNIC marks a VM's first adapter, its template's, as the blueprint's.
+const FirstNIC = "nic1"
+
+// BuiltNICs are the blueprint adapters of a VM rvav just built: its first
+// adapter, and the adapters it added, the last ones, by their keys.
+func BuiltNICs(vm vsphere.VM, keys []string) map[int32]string {
+	out := map[int32]string{}
+	for i, n := range vm.NICs {
+		switch j := i - (len(vm.NICs) - len(keys)); {
+		case n.Key == 0:
+		case i == 0:
+			out[n.Key] = FirstNIC
+		case j >= 0:
+			out[n.Key] = keys[j]
+		}
+	}
+	return out
 }
 
 // BuiltDisks are the blueprint disks of a VM rvav just built: its first
@@ -84,8 +106,10 @@ func OursOf(props json.RawMessage) Ours {
 		VM struct {
 			Ours
 			Nics []struct {
-				Label string `json:"label"`
-				DHCP  *bool  `json:"dhcp"`
+				Label        string  `json:"label"`
+				DHCP         *bool   `json:"dhcp"`
+				Key          *int32  `json:"key"`
+				BlueprintNIC *string `json:"blueprint_nic"`
 			} `json:"nics"`
 			Disks []struct {
 				Key           *int32 `json:"key"`
@@ -109,6 +133,12 @@ func OursOf(props json.RawMessage) Ours {
 				out.DHCPAdapters = map[string]bool{}
 			}
 			out.DHCPAdapters[n.Label] = *n.DHCP
+		}
+		if n.Key != nil && n.BlueprintNIC != nil {
+			if out.BlueprintNICs == nil {
+				out.BlueprintNICs = map[int32]string{}
+			}
+			out.BlueprintNICs[*n.Key] = *n.BlueprintNIC
 		}
 	}
 	return out
@@ -226,6 +256,12 @@ func Build(vcenter string, vm vsphere.VM, ours Ours, usage *Usage, snapshots int
 			p.Nics[i].Dhcp = &d
 		} else if i == 0 && ours.Template != "" {
 			p.Nics[i].Dhcp = present.Ptr(ours.DHCP)
+		}
+		if n.Key != 0 {
+			p.Nics[i].Key = present.Ptr(int(n.Key))
+			if k, ok := ours.BlueprintNICs[n.Key]; ok {
+				p.Nics[i].BlueprintNic = &k
+			}
 		}
 	}
 	if usage != nil && (usage.CPUPct != nil || usage.MemoryPct != nil) {

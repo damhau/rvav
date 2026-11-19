@@ -73,6 +73,17 @@ and a deployment that failed half-way was retried or deleted.
   or built before X1.6) refuses growing or removing its disks, rather than
   guessing from their places; a disk the new version adds is added to it.
   A disk no longer on the VM when its step runs fails the step.
+- **rvav records which of its blueprint's adapters each adapter of a VM
+  is** (`blueprint_nic`: `nic1` for the first, else the adapter's `key`,
+  kept by vCenter's device key) when it builds the VM and when an update
+  adds an adapter (#192). An update adds a version's DHCP adapter only to
+  the VMs that have none recorded as it, and moves or removes the one
+  recorded, not one a day-2 action added, which it never touches; the
+  steps name that adapter by its device key, as vCenter numbers the
+  labels again once one is gone. An adapter already where the new version
+  puts it isn't moved. A VM without the record (its first adapter isn't
+  marked: onboarded, or built before #192) keeps the adapters' places, as
+  before: the n-th the old version adds is `Network adapter n+1`.
 - **Changes that delete something are marked `destructive`:** a disk and
   its data, an adapter, a VM.
 - **A change rvav can't make in place is refused, with its reason,** and

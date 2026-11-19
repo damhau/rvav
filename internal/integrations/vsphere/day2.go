@@ -1,6 +1,7 @@
 package vsphere
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -293,31 +294,67 @@ func (cl *Client) networkBacking(ctx context.Context, network string) (types.Bas
 	return net.EthernetCardBackingInfo(ctx)
 }
 
-// AddNIC connects a new vmxnet3 adapter to the network.
-func (cl *Client) AddNIC(ctx context.Context, moref, network string) error {
+// AddNIC connects a new vmxnet3 adapter to the network and returns its
+// label, as GetVM shows it.
+func (cl *Client) AddNIC(ctx context.Context, moref, network string) (string, error) {
 	vm, err := cl.vmObject(ctx, moref)
 	if err != nil {
-		return err
+		return "", err
 	}
 	backing, err := cl.networkBacking(ctx, network)
 	if err != nil {
-		return err
+		return "", err
 	}
 	nic, err := object.EthernetCardTypes().CreateEthernetCard("vmxnet3", backing)
 	if err != nil {
-		return err
+		return "", err
 	}
-	return vm.AddDevice(ctx, nic)
+	devices, err := vm.Device(ctx)
+	if err != nil {
+		return "", err
+	}
+	before := map[int32]bool{}
+	for _, c := range devices.SelectByType((*types.VirtualEthernetCard)(nil)) {
+		before[c.GetVirtualDevice().Key] = true
+	}
+	if err := vm.AddDevice(ctx, nic); err != nil {
+		return "", err
+	}
+	if after, err := cl.GetVM(ctx, moref); err == nil {
+		for _, n := range after.NICs {
+			if !before[n.Key] {
+				return n.Label, nil
+			}
+		}
+	}
+	return "", nil
 }
 
-// findNIC finds a network adapter by its label, or by its position when
-// labels repeat ("Network adapter 2" is the second; see toVM).
-func (cl *Client) findNIC(ctx context.Context, vm *object.VirtualMachine, label string) (types.BaseVirtualDevice, error) {
+// NICRef names a network adapter of a VM: by its device key when it has
+// one, as vCenter numbers the labels again once an adapter is gone; else by
+// its label.
+type NICRef struct {
+	Key   int32
+	Label string
+}
+
+// findNIC finds a network adapter by its key, else by its label, or by its
+// position when labels repeat ("Network adapter 2" is the second; see toVM).
+func (cl *Client) findNIC(ctx context.Context, vm *object.VirtualMachine, ref NICRef) (types.BaseVirtualDevice, error) {
 	devices, err := vm.Device(ctx)
 	if err != nil {
 		return nil, err
 	}
 	cards := devices.SelectByType((*types.VirtualEthernetCard)(nil))
+	label := cmp.Or(ref.Label, "The network adapter")
+	if ref.Key != 0 {
+		for _, c := range cards {
+			if c.GetVirtualDevice().Key == ref.Key {
+				return c, nil
+			}
+		}
+		return nil, &Refused{Msg: label + " is not on the VM."}
+	}
 	var match []types.BaseVirtualDevice
 	seen, repeated := map[string]bool{}, false
 	for _, c := range cards {
@@ -341,12 +378,12 @@ func (cl *Client) findNIC(ctx context.Context, vm *object.VirtualMachine, label 
 }
 
 // RemoveNIC removes a network adapter. One already gone is not an error.
-func (cl *Client) RemoveNIC(ctx context.Context, moref, label string) error {
+func (cl *Client) RemoveNIC(ctx context.Context, moref string, ref NICRef) error {
 	vm, err := cl.vmObject(ctx, moref)
 	if err != nil {
 		return err
 	}
-	dev, err := cl.findNIC(ctx, vm, label)
+	dev, err := cl.findNIC(ctx, vm, ref)
 	var refused *Refused
 	if errors.As(err, &refused) {
 		return nil
@@ -358,12 +395,12 @@ func (cl *Client) RemoveNIC(ctx context.Context, moref, label string) error {
 }
 
 // SetNICNetwork moves a network adapter to another network.
-func (cl *Client) SetNICNetwork(ctx context.Context, moref, label, network string) error {
+func (cl *Client) SetNICNetwork(ctx context.Context, moref string, ref NICRef, network string) error {
 	vm, err := cl.vmObject(ctx, moref)
 	if err != nil {
 		return err
 	}
-	dev, err := cl.findNIC(ctx, vm, label)
+	dev, err := cl.findNIC(ctx, vm, ref)
 	if err != nil {
 		return err
 	}

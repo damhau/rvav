@@ -129,7 +129,7 @@ func TestDrift(t *testing.T) {
 			t.Fatal(err)
 		}
 		nic := deref(d.vm().Nics[0].Label)
-		if err := h.vc.SetNICNetwork(ctx, d.vm().Moref, nic, "dvpg-app-tst-vl410"); err != nil {
+		if err := h.vc.SetNICNetwork(ctx, d.vm().Moref, vsphere.NICRef{Label: nic}, "dvpg-app-tst-vl410"); err != nil {
 			t.Fatal(err)
 		}
 		resync()

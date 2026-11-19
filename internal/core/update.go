@@ -27,6 +27,7 @@ import (
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/secretinput"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/vmprops"
 )
 
 // Updates of a deployment to its item's version and new inputs
@@ -728,6 +729,44 @@ func blueprintDisks(t day2.Target) map[int]api.VmDisk {
 	return out
 }
 
+// vmNICs are a VM's adapters by the blueprint adapter rvav recorded each
+// is (ADR-0042); recorded: an adapter is marked as the first, as on every
+// VM rvav built since it records them.
+type vmNICs struct {
+	byKey    map[string]api.VmNic
+	recorded bool
+}
+
+func blueprintNICs(t day2.Target) vmNICs {
+	out := vmNICs{byKey: map[string]api.VmNic{}}
+	for _, n := range t.VM.Nics {
+		switch {
+		case n.BlueprintNic == nil:
+		case *n.BlueprintNic == vmprops.FirstNIC:
+			out.recorded = true
+		default:
+			out.byKey[*n.BlueprintNic] = n
+		}
+	}
+	return out
+}
+
+// of is the VM's adapter that is the blueprint's adapter key, the i-th the
+// blueprint adds: the one recorded as it, or, on a VM without the record,
+// the one at its place unless recorded as another.
+func (v vmNICs) of(t day2.Target, key string, i int) *api.VmNic {
+	if n, ok := v.byKey[key]; ok {
+		return &n
+	}
+	if v.recorded {
+		return nil
+	}
+	if n := day2.NIC(t, day2.NICLabel(i+2)); n != nil && n.BlueprintNic == nil {
+		return n
+	}
+	return nil
+}
+
 func ruleComponent(r day2.Resource) string {
 	var p struct {
 		Rule struct {
@@ -913,27 +952,39 @@ func (c componentChange) inPlace(u *componentPlan, vms []existingVM, refuse func
 				}
 			}
 		}
+		ownNICs := blueprintNICs(t)
 		for _, x := range n.NICs {
 			i, ok := oldNICs[x.Key]
 			switch {
 			case x.IPAM != blueprint.IPAMDHCP:
 			case !ok:
-				ops = append(ops, day2.Get("nic_add").Ops(t, map[string]any{"network": x.Network})...)
-				change(api.NicAdd, fmt.Sprintf("Add a network adapter on %s to %s", x.Network, name), "", false)
-			case o.NICs[i].Network != x.Network:
-				label := day2.NICLabel(i + 2)
-				if day2.NIC(t, label) == nil {
+				// Already added by an update that failed after it.
+				if _, done := ownNICs.byKey[x.Key]; done {
 					continue
 				}
+				add := day2.Get("nic_add").Ops(t, map[string]any{"network": x.Network})
+				for _, op := range add {
+					op.Args["blueprint_nic"] = x.Key
+				}
+				ops = append(ops, add...)
+				change(api.NicAdd, fmt.Sprintf("Add a network adapter on %s to %s", x.Network, name), "", false)
+			case o.NICs[i].Network != x.Network:
+				// Gone, or already moved by an update that failed after it.
+				nic := ownNICs.of(t, x.Key, i)
+				if nic == nil || nic.Network == x.Network {
+					continue
+				}
+				label := deref(nic.Label)
 				ops = append(ops, day2.Get("nic_move").Ops(t, map[string]any{"nic": label, "network": x.Network})...)
-				change(api.NicMove, fmt.Sprintf("Move %s of %s to %s", label, name, x.Network), "Was on "+o.NICs[i].Network+".", false)
+				change(api.NicMove, fmt.Sprintf("Move %s of %s to %s", label, name, x.Network), "Was on "+nic.Network+".", false)
 			}
 		}
 		for i, x := range o.NICs {
-			label := day2.NICLabel(i + 2)
-			if _, ok := newNICs[x.Key]; ok || x.IPAM != blueprint.IPAMDHCP || day2.NIC(t, label) == nil {
+			nic := ownNICs.of(t, x.Key, i)
+			if _, ok := newNICs[x.Key]; ok || x.IPAM != blueprint.IPAMDHCP || nic == nil {
 				continue
 			}
+			label := deref(nic.Label)
 			ops = append(ops, day2.Get("nic_remove").Ops(t, map[string]any{"nic": label})...)
 			change(api.NicRemove, fmt.Sprintf("Remove %s from %s", label, name), "The guest loses the connection on it.", true)
 		}

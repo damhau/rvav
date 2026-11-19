@@ -462,6 +462,13 @@ rvav recorded its disks, rvav can't tell which disks are the item's: the
 update refuses to grow or remove them. To change those disks, use the
 VM's disk actions instead.
 
+The same goes for DHCP network adapters: an update moves or removes only
+those rvav built from the item, never one you added with **Add a network
+adapter**. On a VM built before rvav recorded its adapters, rvav goes by
+their places: check the adapters the preview names. When an update failed
+part-way, update the deployment again: rvav adds a disk or an adapter only
+to the VMs that don't have it yet.
+
 When the item's form has a VM count, change it to scale out or in:
 - **Scale out:** the new VMs are named and addressed as in a new request,
   and their numbers follow the last one.

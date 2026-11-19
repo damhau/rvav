@@ -316,7 +316,7 @@ func (a *Activities) moveFolder(ctx context.Context, in OpInput) (string, error)
 		if err := heartbeatWhile(ctx, func() error { return vc.MoveToFolder(ctx, p.VM.Moref, folder) }); err != nil {
 			return "", err
 		}
-		_ = a.refreshVM(ctx, OpInput{ProjectID: in.ProjectID, DeploymentID: d.ID, ResourceID: r.ID, Moref: p.VM.Moref}, nil)
+		_ = a.refreshVM(ctx, OpInput{ProjectID: in.ProjectID, DeploymentID: d.ID, ResourceID: r.ID, Moref: p.VM.Moref}, "")
 		moved = append(moved, r.Name+" → "+folder)
 	}
 	if len(moved) == 0 {

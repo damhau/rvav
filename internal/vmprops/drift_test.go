@@ -133,13 +133,15 @@ func TestTagDrift(t *testing.T) {
 
 // What rvav built a VM with comes back from its stored properties, so the
 // inventory sync keeps it: custom properties, which adapters are on DHCP
-// (X1.1), and which disks are its blueprint's (X1.6); a template's adapter
-// after its first, and its disk after its first, stay unknown.
+// (X1.1), and which disks (X1.6) and adapters (#192) are its blueprint's;
+// a template's adapter after its first, and its disk after its first, stay
+// unknown.
 func TestOursRoundTrip(t *testing.T) {
-	v := vsphere.VM{Moref: "vm-1", NICs: []vsphere.NIC{{Network: "a"}, {Network: "b"}, {Network: "c"}}, BaseDisks: 2,
-		Disks: []vsphere.Disk{{Key: 2000}, {Key: 2001}, {Key: 2002}, {Key: 2003}}}
+	v := vsphere.VM{Moref: "vm-1", NICs: []vsphere.NIC{{Key: 4000, Network: "a"}, {Key: 4001, Network: "b"}, {Key: 4002, Network: "c"}},
+		BaseDisks: 2, Disks: []vsphere.Disk{{Key: 2000}, {Key: 2001}, {Key: 2002}, {Key: 2003}}}
 	dhcp := AdapterDHCP(v, false, []bool{true})
-	ours := Ours{Template: "tpl", Properties: map[string]string{"app": "shop"}, DHCPAdapters: dhcp, BlueprintDisks: BuiltDisks(v, 2)}
+	ours := Ours{Template: "tpl", Properties: map[string]string{"app": "shop"}, DHCPAdapters: dhcp, BlueprintDisks: BuiltDisks(v, 2),
+		BlueprintNICs: BuiltNICs(v, []string{"backup"})}
 	back := OursOf(Build("vc01", v, ours, nil, 0))
 	if back.Properties["app"] != "shop" || len(back.DHCPAdapters) != 2 || back.DHCPAdapters["Network adapter 1"] ||
 		!back.DHCPAdapters["Network adapter 3"] {
@@ -147,6 +149,9 @@ func TestOursRoundTrip(t *testing.T) {
 	}
 	if want := map[int32]int{2000: 0, 2002: 1, 2003: 2}; !maps.Equal(back.BlueprintDisks, want) {
 		t.Fatalf("blueprint disks = %v, want %v", back.BlueprintDisks, want)
+	}
+	if want := map[int32]string{4000: FirstNIC, 4002: "backup"}; !maps.Equal(back.BlueprintNICs, want) {
+		t.Fatalf("blueprint adapters = %v, want %v", back.BlueprintNICs, want)
 	}
 	// Before rvav kept its template's disks on it: the last ones it added.
 	v.BaseDisks = 0
