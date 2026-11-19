@@ -58,7 +58,8 @@ Subscription (event → awx template | webhook)
   `composite`), owner, `featured`.
 - **CatalogItemVersion**: immutable once published. Holds the form, blueprint or
   step definition, and changelog. States: `draft` → `published` → `deprecated`.
-  Requests always point to an exact version.
+  Several versions of an item may be published, each requestable; the
+  newest is the default (ADR-0046). Requests always point to an exact version.
 - **Entitlement**: catalog item × project (or every project), with who may
   request it there: all the project's members, or chosen users, OIDC groups
   and project roles. Grants "can request" to those who also hold

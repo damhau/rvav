@@ -39,7 +39,7 @@ to the item it became:
 - **Unchanged:** what the template maps to hasn't changed. Nothing
   happens.
 - **New draft:** vRA released a version, or the mapping changed. The
-  item gets a new draft; its published version stays as it is.
+  item gets a new draft; its published versions stay as they are.
 - **Conflict:** the item already has a draft. Publish or discard it,
   then import again. An rvav item not made from this template has the
   slug: rename one of them.
@@ -123,7 +123,7 @@ vRA's **Update** of a deployment is rvav's **Update**
 |---|---|
 | The day-2 action `Deployment.Update`, in a day-2 policy or an approval policy | The action `update`, in a day-2 policy. An approval policy that covers only `Deployment.Update` becomes a day-2 policy with the effect approval on `update`. |
 | An approval policy for `Deployment.Create` | An approval policy, which also applies to updates in rvav. When it doesn't cover `Deployment.Update`, the plan says to add `request.kind == "provision"` to its condition. |
-| An update with new inputs, or to the cloud template's latest version | An update to the item's published version, with the new inputs. rvav shows the plan before you confirm, as vRA does. |
+| An update with new inputs, or to another version of the cloud template | An update to a version the item offers, the newest unless you pick another, with the new inputs. rvav shows the plan before you confirm, as vRA does. |
 | A change vRA makes by deleting and creating a machine again, such as another image or network | Refused, with its reason: delete the deployment and request it again. |
 | A cluster's `count` input changed | Scale out or in: new VMs are named and addressed as in a new request, and the VMs with the highest numbers are removed. |
 | An update of a failed deployment | The same: it builds the VMs that are missing and runs the AWX jobs again. |
@@ -195,7 +195,7 @@ check it) or *unmapped* (left out).
 
 | vRA | rvav |
 |---|---|
-| Released versions | The catalog item's versions, imported as drafts (`1` becomes `1.0`). Unreleased versions are left out. |
+| Released versions | The catalog item's versions (`1` becomes `1.0`): the latest as a draft, the earlier ones deprecated. vRA lets requesters pick any released version; to offer the earlier ones too, publish the draft, then open each earlier version's menu on the **Versions** tab and choose **Offer *n* again**. Unreleased versions are left out. |
 | `inputs` (string, integer, number, boolean; `enum`, `oneOf`, `default`, `pattern`, `min`/`max`, `title`, `description`, `format: date`, `format: date-time`, `encrypted`) | The form: fields, choices, defaults, checks; `encrypted` becomes a secret field, without its default, which the requester types. An encrypted input that isn't text (a number, a list, an object), or an object or a table with an encrypted property, is reported and left out, so its value isn't kept in clear: add a secret text field by hand if the template needs it. An input without a default is required. |
 | List inputs (`type: array`) | Text items are tags; text items with `enum` or `oneOf` a multi-select of those choices; object items a table, with a column per property: text, a number, a boolean, or text with choices (a select column). `minItems`, `maxItems`, `uniqueItems` and the rows' `required` are kept. Lists of numbers or booleans, and rows with a list or an object, are reported, and left out. |
 | Object inputs (`type: object`) | A group of fields, with a sub-field per property: text, a number, a boolean, or text with choices (a select). The object's `required` is kept. An object without properties, or with a list or an object in it, is reported, and left out. |
@@ -383,7 +383,7 @@ onboarding ([ADR-0026](../adr/0026-onboarding.md)):
 | Its project | The rvav project it is mapped to (`-project`), or the one of the same name. |
 | Its `environment` (or `env`) input | Its environment, which must be one of the project's. |
 | Its owner (or who created it) | The rvav user of that email, who must hold a role in the project that requests there (`request.submit`), such as Member or Project admin. |
-| The catalog item it was requested from | The item imported from that cloud template. Its published version is the deployment's. |
+| The catalog item it was requested from | The item imported from that cloud template. The item's newest published version is the deployment's. |
 | Its name | The same, made valid for rvav: lower case, other characters as dashes ("Web Server for Thomas" is web-server-for-thomas). |
 | The item | Must be published in rvav and offered to the project: the plan says when it isn't. |
 | `leaseExpireAt` | What remains of the lease, at least a day, at most what rvav's lease policy allows. A lease already ended gives a day to decide. No lease in vRA: the policy's default, with a warning, since it ends in a deletion. |

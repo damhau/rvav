@@ -2,7 +2,8 @@
 
 - Status: accepted; catalog admins are those holding `catalog.manage`
   ([ADR-0034](0034-custom-roles.md)); items shared with users, groups and
-  roles within projects since G1.2
+  roles within projects since G1.2; several versions published at once
+  since C2.1 ([ADR-0046](0046-deployment-names-and-versions.md))
 - Date: 2026-10-27
 
 ## Context
@@ -27,8 +28,10 @@ An item has versions in three states:
 - **draft:** the one version that can change. An item has at most one
   draft. It starts as a copy of a version (the published one by default)
   or from a definition, and is saved as a whole.
-- **published:** what users request. At most one per item, and it never
-  changes; to change it, a draft is made from it.
+- **published:** what users request. It never changes; to change it, a
+  draft is made from it. There was at most one per item until C2.1: an
+  admin may now keep several published, the newest the default, and
+  requesters pick one ([ADR-0046](0046-deployment-names-and-versions.md#several-versions-requestable)).
 - **deprecated:** an earlier published version. It never changes either.
 
 Publishing a draft makes it the published version and deprecates the one
@@ -55,7 +58,7 @@ draft numbered the same way.
 
 Only catalog admins see drafts and deprecated versions:
 `GET /catalog/items/{id}/form?version_id=` serves anyone else the
-published version only.
+published versions only.
 
 ### What a definition is
 A version's definition is its JSON Schema (`form_schema`), UI schema,

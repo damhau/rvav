@@ -177,6 +177,33 @@ describe("the item's header and versions", () => {
     expect(await screen.findByText("Not published")).toBeInTheDocument();
   });
 
+  it("publishes a draft beside the version offered now, retires that one, and withdraws both", async () => {
+    const u = userEvent.setup();
+    renderApp("/admin/catalog-items/rhel9-server");
+    await u.click(await screen.findByRole("button", { name: "New draft" }));
+    await u.click(await screen.findByRole("button", { name: "Actions for version 3.3" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Publish 3.3, keeping 3.2 requestable" }));
+    expect(await screen.findByText("3.3 published beside the others")).toBeInTheDocument();
+    expect(await screen.findByText("Published 3.3, 3.2")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Versions" })).getByText("Default")).toBeInTheDocument();
+
+    await u.click(screen.getByRole("button", { name: "Actions for version 3.2" }));
+    expect(screen.queryByRole("menuitem", { name: "Withdraw" })).toBeNull();
+    await u.click(await screen.findByRole("menuitem", { name: "Retire 3.2" }));
+    expect(await screen.findByText("3.2 retired")).toBeInTheDocument();
+    expect(await screen.findByText("Published 3.3")).toBeInTheDocument();
+
+    await u.click(screen.getByRole("button", { name: "Actions for version 3.2" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Offer 3.2 again, beside 3.3" }));
+    expect(await screen.findByText("3.2 offered again")).toBeInTheDocument();
+    await u.click(await screen.findByRole("button", { name: "More actions for RHEL 9 server" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Withdraw" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Withdraw RHEL 9 server?" });
+    expect(confirm).toHaveTextContent("Versions 3.3 and 3.2 stay, to roll back to.");
+    await u.click(within(confirm).getByRole("button", { name: "Withdraw" }));
+    expect(await screen.findByText("Not published")).toBeInTheDocument();
+  });
+
   it("deletes an item nobody requested from its menu, then goes back to the list", async () => {
     const u = userEvent.setup();
     const { router } = renderApp("/admin/catalog-items/windows-server");

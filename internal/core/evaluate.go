@@ -201,10 +201,7 @@ func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.
 		if err := s.offered(ctx, p, ev.Item, ev.Project); err != nil {
 			return nil, err
 		}
-		if d.VersionId != *ev.Item.PublishedVersionID {
-			add("/version_id", "stale_version", "This form is out of date. Reload it to get the current version.")
-		}
-		if ev.Version, err = s.Store.GetVersion(ctx, *ev.Item.PublishedVersionID); err != nil {
+		if ev.Version, err = s.requestable(ctx, ev.Item, d.VersionId, add); err != nil {
 			return nil, err
 		}
 	}

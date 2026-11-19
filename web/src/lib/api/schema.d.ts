@@ -1529,9 +1529,11 @@ export interface paths {
         put?: never;
         /**
          * Publish a draft, or publish an older version again (roll back)
-         * @description The version becomes the one users request; the version published
-         *     until now is deprecated. Deployments and requests already made keep
-         *     their version.
+         * @description The version becomes requestable. The versions requestable until now
+         *     are deprecated, unless `keep_published` keeps them requestable too
+         *     (ADR-0046). The item's newest requestable version is its default,
+         *     `published_version`, which requesters get unless they pick another.
+         *     Deployments and requests already made keep their version.
          */
         post: operations["publishCatalogItemVersion"];
         delete?: never;
@@ -1636,7 +1638,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Withdraw the published version; the item can no longer be requested */
+        /**
+         * Retire a requestable version, or withdraw the item
+         * @description Nobody can request the version any more; its deployments keep it,
+         *     and can be updated to a version still requestable. When it was the
+         *     default, the newest requestable version left becomes the default.
+         *     With `withdraw`, every requestable version is retired: the item can
+         *     no longer be requested, as when its last one is.
+         */
         post: operations["deprecateCatalogItemVersion"];
         delete?: never;
         options?: never;
@@ -4090,6 +4099,10 @@ export interface components {
                 awx_template_id?: number;
                 awx_template_name?: string;
             };
+            /**
+             * @description The default version: the newest of the requestable ones, which
+             *     `versions` marks `published`.
+             */
             published_version?: components["schemas"]["CatalogItemVersion"];
             draft_version?: components["schemas"]["CatalogItemVersion"];
             /** @description Every version, newest first. */
@@ -4337,6 +4350,15 @@ export interface components {
         CatalogItemVersionPublish: {
             /** @description Replaces a draft's changelog. */
             changelog?: string;
+            /**
+             * @description Keep the versions requestable now requestable too, rather than
+             *     deprecate them: requesters pick one, the newest by default.
+             */
+            keep_published?: boolean;
+        };
+        CatalogItemVersionDeprecate: {
+            /** @description Retire every requestable version of the item, not only this one. */
+            withdraw?: boolean;
         };
         CatalogVersionDiff: {
             from: components["schemas"]["CatalogItemVersion"];
@@ -4956,7 +4978,14 @@ export interface components {
             /** @description Icon name from the UI icon set, or `upload:<id>` for a custom SVG. */
             icon: string;
             tags?: string[];
+            /** @description The version a request gets unless it names another, the newest requestable one. */
             version: components["schemas"]["CatalogItemVersionRef"];
+            /**
+             * @description The versions a request may name, newest first, `version` among
+             *     them. Given when an administrator keeps more than one
+             *     requestable (ADR-0046).
+             */
+            versions?: components["schemas"]["CatalogItemVersionRef"][];
             /** @description Median duration of the last 30 successful requests. */
             typical_duration_seconds?: number | null;
             approval: components["schemas"]["ApprovalHint"];
@@ -5362,6 +5391,10 @@ export interface components {
         };
         RequestDraft: {
             catalog_item_id: string;
+            /**
+             * @description One of the item's requestable versions, whose form the request
+             *     fills. Another is refused (422, `stale_version`).
+             */
             version_id: string;
             project_id: string;
             environment: components["schemas"]["EnvironmentKey"];
@@ -5953,8 +5986,10 @@ export interface components {
         };
         UpdateDraft: {
             /**
-             * @description The version to update to: the item's published version, whose
-             *     form `getRequestForm` gives. It may be the deployment's own.
+             * @description The version to update to: one of the item's requestable versions
+             *     (the newest by default), whose form `getRequestForm` gives. It
+             *     may be the deployment's own, while it is requestable. Another is
+             *     refused (422, `stale_version`).
              */
             version_id: string;
             /**
@@ -10124,7 +10159,11 @@ export interface operations {
         parameters: {
             query: {
                 project_id: components["parameters"]["ProjectIdQueryRequired"];
-                /** @description A specific version. Defaults to the published version. */
+                /**
+                 * @description A version to request: one of the item's requestable versions
+                 *     (`CatalogItem.versions`). Defaults to the newest, `CatalogItem.version`.
+                 *     Catalog administrators may name any version, drafts included.
+                 */
                 version_id?: string;
             };
             header?: never;
@@ -11664,7 +11703,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CatalogItemVersionDeprecate"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {

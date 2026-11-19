@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { api, call } from "@/lib/api/client";
 import type { DeploymentDetail, RequestForm, UiField } from "@/lib/api/types";
 import { adminState } from "@/mocks/administration";
 import { db } from "@/mocks/seed";
@@ -104,6 +105,36 @@ describe("the update page against the mock API", () => {
     );
     expect(within(summary).getByRole("button", { name: "Review the update" })).toBeDisabled();
   }, 15_000);
+
+  it("moves to the newest version the item offers, or keeps the deployment's while it is still offered", async () => {
+    const d = named("web-tst-search");
+    const item = db.items.find((i) => i.id === d.catalog_item.id)!;
+    const newer = await call(
+      api.POST("/admin/catalog/items/{itemId}/versions", { params: { path: { itemId: item.id } }, body: {} }),
+    );
+    await call(
+      api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/publish", {
+        params: { path: { itemId: item.id, versionId: newer.id } },
+        body: { keep_published: true },
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp(`/deployments/${d.id}/update`);
+    const summary = await screen.findByRole("region", { name: "What the update does" }, { timeout: 5000 });
+    const version = await screen.findByRole("combobox", { name: "Version" }, { timeout: 5000 });
+    expect(version).toHaveTextContent(`${newer.number} (newest)`);
+    expect(version).toHaveAccessibleDescription("Its inputs move to this version.");
+    await within(summary).findByText(`${d.version.number} → ${newer.number}`, {}, { timeout: 5000 });
+
+    await user.click(version);
+    await user.click(await screen.findByRole("option", { name: `${d.version.number} (this deployment's)` }));
+    const own = await screen.findByRole("combobox", { name: "Version" });
+    await waitFor(() => expect(own).toHaveAccessibleDescription("Its own version: the update changes its inputs."));
+    // The form starts again on the version picked: a new summary.
+    const again = await screen.findByRole("region", { name: "What the update does" });
+    await within(again).findByText(`${d.version.number}, unchanged`, {}, { timeout: 5000 });
+    expect(again).toHaveTextContent("Change an input to see what the update does.");
+  }, 20_000);
 
   it("refuses nothing on a deployment adopted without inputs, before any edit", async () => {
     const item = db.items.find((i) => i.slug === "rhel9-server")!;

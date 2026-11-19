@@ -173,11 +173,21 @@ type CatalogItem struct {
 	PublishedVersionID *string    `db:"published_version_id"`
 	VersionNumber      *string    `db:"version_number"`
 	VersionPublishedAt *time.Time `db:"version_published_at"`
-	Favourite          bool       `db:"favourite"`
-	Requests30d        int        `db:"requests_30d"`
-	TypicalSeconds     *int       `db:"typical_seconds"`
-	HasApprovalPolicy  bool       `db:"has_approval_policy"`
-	AlwaysApproval     bool       `db:"always_approval"`
+	// Requestable are its published versions, newest first: the default
+	// (PublishedVersionID) and those kept requestable with it (ADR-0046).
+	Requestable       []VersionRef `db:"requestable_versions"`
+	Favourite         bool         `db:"favourite"`
+	Requests30d       int          `db:"requests_30d"`
+	TypicalSeconds    *int         `db:"typical_seconds"`
+	HasApprovalPolicy bool         `db:"has_approval_policy"`
+	AlwaysApproval    bool         `db:"always_approval"`
+}
+
+// VersionRef names a version of an item, as the catalog lists it.
+type VersionRef struct {
+	ID          string     `json:"id"`
+	Number      string     `json:"number"`
+	PublishedAt *time.Time `json:"published_at"`
 }
 
 type ItemVersion struct {

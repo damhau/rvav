@@ -596,10 +596,12 @@ roles of its post-configuration), then the database's owner role on it.
 admins and administrators create items, open them to every project (those
 made later too) or to chosen projects, and manage categories and the icon
 (from rvav's own set, no upload). Versions are draft, published or
-deprecated: one draft and one published version per item at most;
-publishing a deprecated version again rolls back; withdrawing the published
-version takes the item out of the catalog; deployments and requests keep
-their version. Two versions compare change by change. Items export to YAML
+deprecated: one draft per item at most; publishing a deprecated version
+again rolls back; withdrawing the published version takes the item out of
+the catalog; deployments and requests keep their version. Since C2.1
+([ADR-0046](adr/0046-deployment-names-and-versions.md)) an admin may keep
+several versions published: requesters pick one, the newest by default,
+updates move to any of them, and a retired one is refused as stale. Two versions compare change by change. Items export to YAML
 (one version or all) and import as a new item or a new draft, never
 published by the import, with problems on their YAML line. The catalog can
 be kept in a Git repository (ADR-0029): rvav commits what it publishes,

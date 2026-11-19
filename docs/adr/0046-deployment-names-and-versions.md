@@ -2,10 +2,11 @@
 
 - Status: accepted
 - Date: 2026-11-19
-- Extends the item versions of [ADR-0019](0019-catalog-administration.md)
-  and the naming of [ADR-0020](0020-administration.md),
-  [ADR-0024](0024-multi-vm-blueprints.md) and
-  [ADR-0038](0038-names-groups-secrets-properties.md). C2.1 (#157).
+- Extends the item versions of [ADR-0019](0019-catalog-administration.md),
+  which it revisits, the updates of [ADR-0042](0042-deployment-updates.md),
+  the importer of [ADR-0027](0027-vra-importer.md) and the naming of
+  [ADR-0020](0020-administration.md), [ADR-0024](0024-multi-vm-blueprints.md)
+  and [ADR-0038](0038-names-groups-secrets-properties.md). C2.1 (#157).
 
 ## Context
 A vRA request takes a deployment name and a description. vRA refuses a
@@ -18,6 +19,12 @@ item's by the blueprint's `deployment_name`, else the item's name and the
 request number. Nothing kept two names apart: two requests with one
 `deployment_name` template made two deployments of one name. The only text
 a request carried was its reason, which approvers read.
+
+A vRA catalog item offers every version of its template that was
+released: the request form has a version list, the latest first, and
+unreleasing a version takes it out. rvav's items had one published version
+(ADR-0019): publishing a draft deprecated the one before, so a team still
+on the earlier build lost it the moment the next one went out.
 
 ## Decision
 
@@ -90,6 +97,54 @@ refused (`naming`), for each VM step of a composite too.
   live deployment holds it is offered disabled ("… Rename this one
   first"), and the move's last step fails if one took it since.
 
+### Several versions requestable
+This revisits ADR-0019's single published version.
+- **An item may have several published versions; each is requestable.**
+  The newest published (by when it was made) is the **default**:
+  `catalog_items.published_version_id` holds it, recomputed after every
+  publish and retirement, so what read the published version before (the
+  catalog card, composites, onboarding, the item's file in Git)
+  reads the default unchanged. The unique index of one published version
+  per item is dropped; its down migration deprecates all but the default.
+- **Publishing keeps the old rule unless asked:**
+  `POST …/versions/{id}/publish` deprecates the other published versions,
+  and publishing a deprecated version is still a rollback.
+  `keep_published: true` publishes it beside them: a draft goes out as the
+  new default with the earlier ones still offered, and a deprecated
+  version is offered again. Its audit entry says `keep_published`.
+- **Retiring takes one out:** `POST …/versions/{id}/deprecate` deprecates
+  that published version only, and the next newest becomes the default.
+  Retiring the last one withdraws the item, as before; `withdraw: true`
+  retires them all at once, which the admin UI's **Withdraw** sends. A
+  draft or deprecated version can't be retired (409).
+- **The catalog shows the default** as `CatalogItem.version`, and
+  `CatalogItem.versions` (newest first) only when more than one is
+  requestable, so a catalog of single-version items reads as before.
+- **The form endpoint serves any requestable version** to whoever may
+  request the item, and any version to catalog admins.
+- **A request names its version and keeps it**, as do its deployments
+  (ADR-0019): day-2 actions, retries and approvals use it. The form shows
+  a **Version** list when the item offers several, the newest preselected;
+  switching versions keeps what was typed where the other version has the
+  field. A saved draft or a request asked again starts on its version
+  while it is still requestable, else on the default.
+- **A version no longer requestable is refused as stale:** a preview or
+  submit on it answers `stale_version` at `/version_id` ("Version 3.2 of
+  RHEL 9 server is no longer offered: request 3.3."), and the rest is
+  checked on the default, so the requester sees what the reload gives.
+  An approver's edits stay checked on the request's version.
+- **An update moves to any requestable version,** the newest by
+  default: its page shows the same list, with the deployment's own version
+  marked while it is still offered (an update on it changes only the
+  inputs). A version retired since the form opened is refused with
+  `stale_version`.
+- **The vRA importer imports a template's latest version as the draft and
+  the earlier ones deprecated** ([ADR-0027](0027-vra-importer.md)): an
+  import publishes nothing.
+  When vRA released several, the report says so, and the administrator
+  publishes those still offered with `keep_published` once the draft is
+  published.
+
 ## Consequences
 - Requesters find deployments by names they chose; the lists' search
   already reads the name.
@@ -101,3 +156,14 @@ refused (`naming`), for each VM step of a composite too.
 - Onboarding keeps the names its plans and adoptions give
   ([ADR-0026](0026-onboarding.md)): an administrator's, not checked
   against the project's names.
+- A new build no longer has to take the old one away: teams move to it
+  when they request again or update, and the administrator retires the
+  old one when nobody needs it. Deployments of a retired version keep it
+  and their day-2 actions; only new requests and updates leave it.
+- "Published" now means requestable, and "the published version" in
+  ADR-0019 and ADR-0042 reads as the default. Rollback stays one click:
+  publishing a deprecated version without `keep_published` makes it the
+  only one offered.
+- Rules and value sources of a request on an earlier version run on that
+  version's form; nothing compares versions for the requester beyond the
+  list, and the admin's Compare view is where differences are read.

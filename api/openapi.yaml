@@ -701,7 +701,10 @@ paths:
         - { $ref: "#/components/parameters/ProjectIdQueryRequired" }
         - name: version_id
           in: query
-          description: A specific version. Defaults to the published version.
+          description: |
+            A version to request: one of the item's requestable versions
+            (`CatalogItem.versions`). Defaults to the newest, `CatalogItem.version`.
+            Catalog administrators may name any version, drafts included.
           schema: { type: string }
       responses:
         "200":
@@ -1934,9 +1937,11 @@ paths:
       operationId: publishCatalogItemVersion
       summary: Publish a draft, or publish an older version again (roll back)
       description: |
-        The version becomes the one users request; the version published
-        until now is deprecated. Deployments and requests already made keep
-        their version.
+        The version becomes requestable. The versions requestable until now
+        are deprecated, unless `keep_published` keeps them requestable too
+        (ADR-0046). The item's newest requestable version is its default,
+        `published_version`, which requesters get unless they pick another.
+        Deployments and requests already made keep their version.
       requestBody:
         content:
           application/json:
@@ -2040,7 +2045,17 @@ paths:
     post:
       tags: [catalog-admin]
       operationId: deprecateCatalogItemVersion
-      summary: Withdraw the published version; the item can no longer be requested
+      summary: Retire a requestable version, or withdraw the item
+      description: |
+        Nobody can request the version any more; its deployments keep it,
+        and can be updated to a version still requestable. When it was the
+        default, the newest requestable version left becomes the default.
+        With `withdraw`, every requestable version is retired: the item can
+        no longer be requested, as when its last one is.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogItemVersionDeprecate" }
       responses:
         "200":
           description: OK
@@ -5538,7 +5553,11 @@ components:
             kind: { type: string, enum: [native, awx] }
             awx_template_id: { type: integer }
             awx_template_name: { type: string }
-        published_version: { $ref: "#/components/schemas/CatalogItemVersion" }
+        published_version:
+          description: |
+            The default version: the newest of the requestable ones, which
+            `versions` marks `published`.
+          allOf: [{ $ref: "#/components/schemas/CatalogItemVersion" }]
         draft_version: { $ref: "#/components/schemas/CatalogItemVersion" }
         versions:
           type: array
@@ -5845,6 +5864,18 @@ components:
       additionalProperties: false
       properties:
         changelog: { type: string, maxLength: 2000, description: Replaces a draft's changelog. }
+        keep_published:
+          type: boolean
+          description: |
+            Keep the versions requestable now requestable too, rather than
+            deprecate them: requesters pick one, the newest by default.
+    CatalogItemVersionDeprecate:
+      type: object
+      additionalProperties: false
+      properties:
+        withdraw:
+          type: boolean
+          description: Retire every requestable version of the item, not only this one.
     CatalogVersionDiff:
       type: object
       required: [from, to, changes]
@@ -6711,7 +6742,16 @@ components:
         tags:
           type: array
           items: { type: string }
-        version: { $ref: "#/components/schemas/CatalogItemVersionRef" }
+        version:
+          description: The version a request gets unless it names another, the newest requestable one.
+          allOf: [{ $ref: "#/components/schemas/CatalogItemVersionRef" }]
+        versions:
+          type: array
+          description: |
+            The versions a request may name, newest first, `version` among
+            them. Given when an administrator keeps more than one
+            requestable (ADR-0046).
+          items: { $ref: "#/components/schemas/CatalogItemVersionRef" }
         typical_duration_seconds:
           type: [integer, "null"]
           description: Median duration of the last 30 successful requests.
@@ -7253,7 +7293,11 @@ components:
       required: [catalog_item_id, version_id, project_id, environment, inputs]
       properties:
         catalog_item_id: { type: string }
-        version_id: { type: string }
+        version_id:
+          type: string
+          description: |
+            One of the item's requestable versions, whose form the request
+            fills. Another is refused (422, `stale_version`).
         project_id: { type: string }
         environment: { $ref: "#/components/schemas/EnvironmentKey" }
         inputs:
@@ -8015,8 +8059,10 @@ components:
         version_id:
           type: string
           description: |
-            The version to update to: the item's published version, whose
-            form `getRequestForm` gives. It may be the deployment's own.
+            The version to update to: one of the item's requestable versions
+            (the newest by default), whose form `getRequestForm` gives. It
+            may be the deployment's own, while it is requestable. Another is
+            refused (422, `stale_version`).
         inputs:
           type: object
           additionalProperties: true

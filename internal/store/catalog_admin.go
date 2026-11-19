@@ -306,11 +306,12 @@ func (s *Store) DeleteDraft(ctx context.Context, versionID string) error {
 	return err
 }
 
-// PublishVersion makes a draft or a deprecated version the published one;
-// the version published until now is deprecated. A changelog, when given,
+// PublishVersion makes a draft or a deprecated version requestable; unless
+// keep, the versions requestable until now are deprecated. The item's
+// default becomes its newest requestable version. A changelog, when given,
 // replaces a draft's. The version must still be at the revision the caller
 // checked (ErrVersionChanged otherwise).
-func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, changelog *string, revision int) error {
+func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, changelog *string, revision int, keep bool) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `select 1 from catalog_items where id = $1 for update`, itemID); err != nil {
 			return err
@@ -338,18 +339,28 @@ func (s *Store) PublishVersion(ctx context.Context, itemID, versionID string, ch
 		if err := librariesStay(ctx, tx, ui); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `update catalog_item_versions set state = 'deprecated', deprecated_at = now()
-			where item_id = $1 and state = 'published'`, itemID); err != nil {
-			return err
+		if !keep {
+			if _, err := tx.Exec(ctx, `update catalog_item_versions set state = 'deprecated', deprecated_at = now()
+				where item_id = $1 and state = 'published'`, itemID); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.Exec(ctx, `update catalog_item_versions set state = 'published', published_at = now(), deprecated_at = null,
 			changelog = case when state = 'draft' then coalesce($2, changelog) else changelog end where id = $1`,
 			versionID, changelog); err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `update catalog_items set published_version_id = $2, updated_at = now() where id = $1`, itemID, versionID)
-		return err
+		return newestRequestable(ctx, tx, itemID)
 	})
+}
+
+// newestRequestable makes the item's newest published version its default,
+// none when it has no published version left.
+func newestRequestable(ctx context.Context, tx pgx.Tx, itemID string) error {
+	_, err := tx.Exec(ctx, `update catalog_items set updated_at = now(), published_version_id = (
+		select id from catalog_item_versions where item_id = $1 and state = 'published'
+		order by created_at desc, id desc limit 1) where id = $1`, itemID)
+	return err
 }
 
 // GroupGoneError is a property group a version names that was deleted
@@ -385,8 +396,9 @@ func groupsStay(ctx context.Context, tx pgx.Tx, bp json.RawMessage) error {
 	return nil
 }
 
-// DeprecateVersion withdraws the published version: the item has none left.
-func (s *Store) DeprecateVersion(ctx context.Context, itemID, versionID string) error {
+// DeprecateVersion retires a requestable version, and with all every one
+// of the item's; the newest left, if any, becomes the default.
+func (s *Store) DeprecateVersion(ctx context.Context, itemID, versionID string, all bool) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
 		// The item first, as PublishVersion locks it: the other order deadlocks.
 		if _, err := tx.Exec(ctx, `select 1 from catalog_items where id = $1 for update`, itemID); err != nil {
@@ -400,8 +412,13 @@ func (s *Store) DeprecateVersion(ctx context.Context, itemID, versionID string) 
 		if tag.RowsAffected() == 0 {
 			return ErrVersionState
 		}
-		_, err = tx.Exec(ctx, `update catalog_items set published_version_id = null, updated_at = now() where id = $1`, itemID)
-		return err
+		if all {
+			if _, err := tx.Exec(ctx, `update catalog_item_versions set state = 'deprecated', deprecated_at = now()
+				where item_id = $1 and state = 'published'`, itemID); err != nil {
+				return err
+			}
+		}
+		return newestRequestable(ctx, tx, itemID)
 	})
 }
 

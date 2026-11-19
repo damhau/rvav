@@ -359,7 +359,7 @@ const served = (v: Version): Version => {
 function adminItem(db: Db, item: StoredItem): S["AdminCatalogItem"] {
   const st = state(db);
   const versions = st.versions[item.id] ?? [];
-  const published = versions.find((v) => v.state === "published");
+  const published = versions.find((v) => v.state === "published" && v.id === item.version.id);
   const draft = versions.find((v) => v.state === "draft");
   return {
     id: item.id,
@@ -741,6 +741,42 @@ function serve(db: Db, item: StoredItem, v: Version | undefined) {
   }
   item.version = { id: v.id, number: v.number, published_at: v.published_at };
   db.forms[item.id] = versionForm(db, item, v);
+}
+
+/** The item's default becomes its newest requestable version, as store.newestRequestable. */
+function serveNewest(db: Db, item: StoredItem) {
+  const newest = (state(db).versions[item.id] ?? []).find((x) => x.state === "published");
+  if (!newest || newest.id !== item.version.id) serve(db, item, newest);
+}
+
+/** The item's requestable versions, newest first: every published one (ADR-0046). */
+export function requestableVersions(db: Db, item: StoredItem): S["CatalogItemVersionRef"][] {
+  const admin = (db as Db & { catalogAdmin?: AdminState }).catalogAdmin;
+  if (!admin) return item.version.id ? [item.version] : [];
+  return (admin.versions[item.id] ?? [])
+    .filter((v) => v.state === "published")
+    .map((v) => ({ id: v.id, number: v.number, published_at: v.published_at }));
+}
+
+/** A request naming a version it may no longer request is refused, as core.requestable. */
+export function staleVersion(db: Db, item: StoredItem, versionId: string): S["FieldError"] | undefined {
+  if (requestableVersions(db, item).some((v) => v.id === versionId)) return undefined;
+  const v = (state(db).versions[item.id] ?? []).find((x) => x.id === versionId && x.state !== "draft");
+  return {
+    field: "/version_id",
+    code: "stale_version",
+    message: v
+      ? `Version ${v.number} of ${item.name} is no longer offered: request ${item.version.number}.`
+      : "This form is out of date. Reload it to get the current version.",
+  };
+}
+
+/** The form of a version the caller may request, the default's when none is named; catalog admins get any. */
+export function requestableForm(db: Db, item: StoredItem, versionId: string | null): S["RequestForm"] | undefined {
+  if (!versionId || versionId === item.version.id) return db.forms[item.id];
+  const admin = db.me.permissions.includes("catalog.manage");
+  const v = (state(db).versions[item.id] ?? []).find((x) => x.id === versionId && (admin || x.state === "published"));
+  return v && versionForm(db, item, v);
 }
 
 /** A property group's input in a form: its schema and its field, as the server's store.GroupInput gives them. */
@@ -1237,24 +1273,36 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         ...libraryRefProblems(db, v.definition.ui_schema, "/definition", true),
       ];
       if (incomplete.length) return problem(422, "Some inputs need attention", incomplete);
-      for (const x of versionsOf(item))
-        if (x.state === "published") Object.assign(x, { state: "deprecated", deprecated_at: now() });
+      if (!body.keep_published)
+        for (const x of versionsOf(item))
+          if (x.state === "published") Object.assign(x, { state: "deprecated", deprecated_at: now() });
       if (v.state === "draft" && body.changelog !== undefined) v.changelog = body.changelog;
       Object.assign(v, { state: "published", published_at: now() });
       delete v.deprecated_at;
-      serve(db, item, v);
+      serveNewest(db, item);
       markGit(db, item);
       return HttpResponse.json(adminItem(db, item));
     }),
-    http.post(`${base}/admin/catalog/items/:id/versions/:vid/deprecate`, async ({ params }) => {
+    http.post(`${base}/admin/catalog/items/:id/versions/:vid/deprecate`, async ({ params, request }) => {
       await wait();
       const item = find(String(params.id));
       const v = item && versionsOf(item).find((x) => x.id === params.vid);
       if (!item || !v) return problem(404, "Not found");
       if (v.state !== "published")
-        return problem(409, "Conflict", undefined, "Only the published version can be deprecated.");
-      Object.assign(v, { state: "deprecated", deprecated_at: now() });
-      serve(db, item, undefined);
+        return problem(
+          409,
+          "Conflict",
+          undefined,
+          `Version ${v.number} isn't requestable: only a published version can be retired.`,
+        );
+      const body =
+        request.headers.get("content-length") === "0"
+          ? {}
+          : ((await request.json().catch(() => ({}))) as S["CatalogItemVersionDeprecate"]);
+      for (const x of versionsOf(item))
+        if (x === v || (body.withdraw && x.state === "published"))
+          Object.assign(x, { state: "deprecated", deprecated_at: now() });
+      serveNewest(db, item);
       markGit(db, item);
       return HttpResponse.json(adminItem(db, item));
     }),

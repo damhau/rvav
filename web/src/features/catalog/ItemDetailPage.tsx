@@ -94,6 +94,7 @@ function WhatItBuilds({ item, form }: { item: CatalogItem; form: RequestForm | u
 
 function Details({ item, category }: { item: CatalogItem; category?: string }) {
   const duration = roughDuration(item.typical_duration_seconds);
+  const earlier = (item.versions ?? []).filter((v) => v.id !== item.version.id).map((v) => v.number);
   const rows: { label: string; value: React.ReactNode }[] = [
     { label: "Kind", value: itemTypeLabel[item.type] },
     ...(category ? [{ label: "Category", value: category }] : []),
@@ -110,7 +111,11 @@ function Details({ item, category }: { item: CatalogItem; category?: string }) {
               </>
             )}
           </span>
-          <span className="text-secondary text-muted">Requests use the published version.</span>
+          <span className="text-secondary text-muted">
+            {earlier.length
+              ? `The newest. Requests use it unless you pick ${earlier.join(" or ")}, still offered.`
+              : "Requests use the published version."}
+          </span>
         </span>
       ),
     },

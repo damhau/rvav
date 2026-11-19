@@ -419,3 +419,38 @@ test("a project's own secret, opened instead of the global one", async ({ page }
   await theme(page, "Light");
   expect(errors).toEqual([]);
 });
+
+// C2.1 (ADR-0046): a version kept requestable beside the newest, picked by a requester.
+test("an earlier version kept requestable is picked on the request form", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/admin/catalog-items");
+  await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server" }).click();
+  await page.getByRole("button", { name: "New draft" }).click();
+  await expect(page.getByText("Draft 3.3 made from the published version")).toBeVisible();
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByRole("button", { name: "Actions for version 3.3" }).click();
+  await page.getByRole("menuitem", { name: "Publish 3.3, keeping 3.2 requestable" }).click();
+  await expect(page.getByText("3.3 published beside the others")).toBeVisible();
+  await expect(page.getByText("Published 3.3, 3.2")).toBeVisible();
+  await bothThemes(page, "an item with two requestable versions");
+
+  // In-app navigation: a reload would start the mock backend afresh.
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
+  await page.getByRole("link", { name: "RHEL 9 server", exact: true }).first().click();
+  await expect(page.getByText("The newest. Requests use it unless you pick 3.2, still offered.")).toBeVisible();
+  await page.getByRole("main").getByRole("link", { name: "Request", exact: true }).click();
+  const version = page.getByRole("combobox", { name: "Version" });
+  await expect(version).toHaveText("3.3 (newest)");
+  await page.getByRole("textbox", { name: "Name (optional)" }).fill("Legacy batch");
+  await version.click();
+  await page.getByRole("option", { name: "3.2", exact: true }).click();
+  await expect(version).toHaveText("3.2");
+  await expect(page.getByText("An earlier version: the newest is 3.3.")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Name (optional)" })).toHaveValue("Legacy batch");
+  await bothThemes(page, "a request form on an earlier version");
+  await page.getByRole("button", { name: "Submit request" }).click();
+  await expect(page).toHaveURL(/\/requests\/REQ-\d+$/);
+  await expect(page.getByText("RHEL 9 server 3.2")).toBeVisible();
+  expect(errors).toEqual([]);
+});

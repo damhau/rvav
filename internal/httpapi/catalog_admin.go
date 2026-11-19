@@ -112,12 +112,16 @@ func (s *Server) PublishCatalogItemVersion(w http.ResponseWriter, r *http.Reques
 	if r.ContentLength > 0 && !s.decode(w, r, &body) {
 		return
 	}
-	it, err := s.Core.PublishCatalogItemVersion(r.Context(), principal(r), itemID, versionID, body.Changelog)
+	it, err := s.Core.PublishCatalogItemVersion(r.Context(), principal(r), itemID, versionID, body.Changelog, body.KeepPublished != nil && *body.KeepPublished)
 	s.reply(w, r, http.StatusOK, it, err)
 }
 
 func (s *Server) DeprecateCatalogItemVersion(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, versionID api.VersionIdPath) {
-	it, err := s.Core.DeprecateCatalogItemVersion(r.Context(), principal(r), itemID, versionID)
+	var body api.CatalogItemVersionDeprecate
+	if r.ContentLength > 0 && !s.decode(w, r, &body) {
+		return
+	}
+	it, err := s.Core.DeprecateCatalogItemVersion(r.Context(), principal(r), itemID, versionID, body.Withdraw != nil && *body.Withdraw)
 	s.reply(w, r, http.StatusOK, it, err)
 }
 

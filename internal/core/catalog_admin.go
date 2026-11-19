@@ -67,10 +67,10 @@ func (s *Service) presentAdminItem(ctx context.Context, it store.AdminItem) (api
 	for _, v := range versions {
 		pv := presentVersion(v)
 		out.Versions = append(out.Versions, pv)
-		switch v.State {
-		case "published":
+		switch {
+		case it.PublishedVersionID != nil && v.ID == *it.PublishedVersionID:
 			out.PublishedVersion = present.Ptr(pv)
-		case "draft":
+		case v.State == "draft":
 			out.DraftVersion = present.Ptr(pv)
 		}
 	}
@@ -383,8 +383,9 @@ func (s *Service) DeleteCatalogItemVersion(ctx context.Context, p *auth.Principa
 	return nil
 }
 
-// PublishCatalogItemVersion publishes a draft, or an older version again.
-func (s *Service) PublishCatalogItemVersion(ctx context.Context, p *auth.Principal, idOrSlug, versionID string, changelog *string) (api.AdminCatalogItem, error) {
+// PublishCatalogItemVersion publishes a draft, or an older version again;
+// keep leaves the versions requestable now requestable too.
+func (s *Service) PublishCatalogItemVersion(ctx context.Context, p *auth.Principal, idOrSlug, versionID string, changelog *string, keep bool) (api.AdminCatalogItem, error) {
 	it, err := s.adminItem(ctx, p, idOrSlug)
 	if err != nil {
 		return api.AdminCatalogItem{}, err
@@ -407,7 +408,7 @@ func (s *Service) PublishCatalogItemVersion(ctx context.Context, p *auth.Princip
 	// The revision checked above must be the one published.
 	var gone *store.GroupGoneError
 	var entryGone *store.LibraryGoneError
-	if err := s.Store.PublishVersion(ctx, it.ID, versionID, changelog, row.Revision); errors.Is(err, store.ErrVersionState) {
+	if err := s.Store.PublishVersion(ctx, it.ID, versionID, changelog, row.Revision, keep); errors.Is(err, store.ErrVersionState) {
 		return api.AdminCatalogItem{}, &ConflictError{Msg: "Version " + row.Number + " is already published."}
 	} else if errors.As(err, &gone) {
 		return api.AdminCatalogItem{}, &ConflictError{Msg: fmt.Sprintf(
@@ -423,16 +424,24 @@ func (s *Service) PublishCatalogItemVersion(ctx context.Context, p *auth.Princip
 		return api.AdminCatalogItem{}, err
 	}
 	action, message := "catalog.version.publish", gitMessage("Publish "+it.Slug+" "+row.Number, cmp.Or(deref(changelog), row.Changelog))
-	if row.State == "deprecated" {
+	switch {
+	case row.State == "deprecated" && keep:
+		message = "Offer " + it.Slug + " " + row.Number + " again"
+	case row.State == "deprecated":
 		action, message = "catalog.version.rollback", "Roll "+it.Slug+" back to "+row.Number
 	}
-	s.auditCatalog(ctx, p, action, it.ID, map[string]any{"version": row.Number, "version_id": versionID})
+	detail := map[string]any{"version": row.Number, "version_id": versionID}
+	if keep {
+		detail["keep_published"] = true
+	}
+	s.auditCatalog(ctx, p, action, it.ID, detail)
 	s.markGit(ctx, p, it.ID, message)
 	return s.AdminCatalogItem(ctx, p, it.ID)
 }
 
-// DeprecateCatalogItemVersion withdraws the published version.
-func (s *Service) DeprecateCatalogItemVersion(ctx context.Context, p *auth.Principal, idOrSlug, versionID string) (api.AdminCatalogItem, error) {
+// DeprecateCatalogItemVersion retires a requestable version; withdraw
+// retires every one, so the item can't be requested.
+func (s *Service) DeprecateCatalogItemVersion(ctx context.Context, p *auth.Principal, idOrSlug, versionID string, withdraw bool) (api.AdminCatalogItem, error) {
 	it, err := s.adminItem(ctx, p, idOrSlug)
 	if err != nil {
 		return api.AdminCatalogItem{}, err
@@ -441,12 +450,16 @@ func (s *Service) DeprecateCatalogItemVersion(ctx context.Context, p *auth.Princ
 	if err != nil {
 		return api.AdminCatalogItem{}, err
 	}
-	if err := s.Store.DeprecateVersion(ctx, it.ID, versionID); errors.Is(err, store.ErrVersionState) {
-		return api.AdminCatalogItem{}, &ConflictError{Msg: "Only the published version can be deprecated."}
+	if err := s.Store.DeprecateVersion(ctx, it.ID, versionID, withdraw); errors.Is(err, store.ErrVersionState) {
+		return api.AdminCatalogItem{}, &ConflictError{Msg: "Version " + row.Number + " isn't requestable: only a published version can be retired."}
 	} else if err != nil {
 		return api.AdminCatalogItem{}, err
 	}
-	s.auditCatalog(ctx, p, "catalog.version.deprecate", it.ID, map[string]any{"version": row.Number, "version_id": versionID})
+	detail := map[string]any{"version": row.Number, "version_id": versionID}
+	if withdraw {
+		detail["withdraw"] = true
+	}
+	s.auditCatalog(ctx, p, "catalog.version.deprecate", it.ID, detail)
 	s.markGit(ctx, p, it.ID, "Deprecate "+it.Slug+" "+row.Number)
 	return s.AdminCatalogItem(ctx, p, it.ID)
 }

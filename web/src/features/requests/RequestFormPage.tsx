@@ -123,6 +123,17 @@ function leaseHint(lease: NonNullable<RequestPreview["lease"]>): string {
     .join(" ");
 }
 
+/** The version a form is for: the one asked for while the item offers it, else its default (undefined). */
+export function pickedVersion(item: CatalogItem | undefined, wanted: string | undefined): string | undefined {
+  if (!item || !wanted || wanted === item.version.id) return undefined;
+  return item.versions?.some((v) => v.id === wanted) ? wanted : undefined;
+}
+
+/** The requestable version of the item with this ID, its default when it offers no such version. */
+export function versionOf(item: CatalogItem, id: string | undefined) {
+  return item.versions?.find((v) => v.id === id) ?? item.version;
+}
+
 /** Where a form starts from: a saved draft, or a past request asked again. */
 export interface FormStart {
   environment?: string;
@@ -469,6 +480,7 @@ function RequestFormBody({
   start,
   draftId,
   canActForOthers,
+  onVersion,
 }: {
   item: CatalogItem;
   form: RequestForm;
@@ -477,6 +489,8 @@ function RequestFormBody({
   start?: FormStart;
   draftId?: string;
   canActForOthers: boolean;
+  /** Another version picked: its form starts from what this one holds. */
+  onVersion?: (versionId: string, keep: FormStart) => void;
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -732,6 +746,19 @@ function RequestFormBody({
   };
   const stepped = form.ui_schema.layout.kind === "wizard";
   const holding = sendingText(useSendingFiles());
+  const versions = item.versions ?? [];
+  const pickVersion = (id: string) =>
+    onVersion?.(id, {
+      environment,
+      inputs: values,
+      justification,
+      deploymentName,
+      deploymentDescription: description,
+      leaseDays,
+      count: Number(count) || 1,
+      scheduledAt: later && startAt ? new Date(startAt).toISOString() : null,
+      ...(onBehalfOf ? { onBehalfOf } : {}),
+    });
 
   // What the item builds, drawn when there is more to it than one VM on a
   // network (the summary says that much): a composite's steps, an item's
@@ -940,21 +967,45 @@ function RequestFormBody({
             ),
             holding,
             leadingRows: [
+              ...(versions.length > 1 ? [{ label: "Version", value: versionOf(item, form.version_id).number }] : []),
               { label: "Environment", value: environments.find((e) => e.key === environment)?.name ?? environment },
             ],
           }}
           leading={
-            <EnvironmentPicker
-              environments={environments}
-              allowed={project.environments}
-              value={environment}
-              onChange={(e) => {
-                setEnvironment(e);
-                setLeaseDays(null);
-                clearServerError("$environment");
-              }}
-              error={fieldErrors.$environment}
-            />
+            <>
+              {versions.length > 1 && (
+                <Field
+                  label="Version"
+                  htmlFor="version"
+                  hint={
+                    form.version_id === item.version.id
+                      ? "The newest. Earlier versions are still offered."
+                      : `An earlier version: the newest is ${item.version.number}.`
+                  }
+                >
+                  <Select
+                    id="version"
+                    value={form.version_id}
+                    onChange={pickVersion}
+                    options={versions.map((v) => ({
+                      value: v.id,
+                      label: v.id === item.version.id ? `${v.number} (newest)` : v.number,
+                    }))}
+                  />
+                </Field>
+              )}
+              <EnvironmentPicker
+                environments={environments}
+                allowed={project.environments}
+                value={environment}
+                onChange={(e) => {
+                  setEnvironment(e);
+                  setLeaseDays(null);
+                  clearServerError("$environment");
+                }}
+                error={fieldErrors.$environment}
+              />
+            </>
           }
         />
         {drawn && (
@@ -991,11 +1042,15 @@ function RequestFormBody({
 export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; draftId?: string; from?: string }) {
   const { me, projectId, setProjectId } = useCurrentProject();
   const item = useQuery(q.catalogItem(itemKey, projectId));
-  const form = useQuery(q.form(itemKey, projectId));
   const project = useQuery(q.project(projectId));
   const environments = useQuery(q.environments());
   const saved = useQuery({ ...q.draft(draftId ?? ""), enabled: Boolean(draftId) });
   const past = useQuery({ ...q.request(from ?? ""), enabled: Boolean(from) });
+  // The version picked, and the form as it was then; a draft or a past request starts on its own
+  // version while it is requestable (ADR-0046).
+  const [picked, setPicked] = useState<{ id: string; start: FormStart }>();
+  const versionId = pickedVersion(item.data, picked?.id ?? saved.data?.draft.version_id ?? past.data?.version.id);
+  const form = useQuery(q.form(itemKey, projectId, versionId));
   // A draft or a past request is resumed in its own project: switched to
   // once, when the caller works there.
   const startProject = saved.data?.project.id ?? past.data?.project.id;
@@ -1063,7 +1118,7 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
         description={
           item.data && (
             <>
-              {itemTypeLabel[item.data.type]} {item.data.version.number}
+              {itemTypeLabel[item.data.type]} {versionOf(item.data, form.data?.version_id).number}
               {item.data.source.awx_template_name ? ` · launches ${item.data.source.awx_template_name}` : ""}
               {item.data.typical_duration_seconds
                 ? ` · usually done in ${roughDuration(item.data.typical_duration_seconds)}`
@@ -1089,9 +1144,10 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
           form={form.data}
           project={project.data}
           environments={environments.data.items}
-          start={start}
+          start={picked?.start ?? start}
           draftId={draftId}
           canActForOthers={can(me, "request.on_behalf", projectId)}
+          onVersion={(id, keep) => setPicked({ id, start: keep })}
         />
       )}
     </Page>

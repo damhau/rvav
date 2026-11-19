@@ -99,6 +99,13 @@ func CatalogItem(i store.CatalogItem) api.CatalogItem {
 			out.Version.Number = *i.VersionNumber
 		}
 	}
+	if len(i.Requestable) > 1 {
+		vs := make([]api.CatalogItemVersionRef, len(i.Requestable))
+		for k, v := range i.Requestable {
+			vs[k] = api.CatalogItemVersionRef{Id: v.ID, Number: v.Number, PublishedAt: v.PublishedAt}
+		}
+		out.Versions = &vs
+	}
 	out.Source.Kind = api.CatalogItemSourceKind(i.SourceKind)
 	out.Source.AwxTemplateId = i.AWXTemplateID
 	out.Source.AwxTemplateName = i.AWXTemplateName

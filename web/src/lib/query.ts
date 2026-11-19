@@ -108,7 +108,8 @@ export const keys = {
     lists: () => ["catalog", "list"] as const,
     list: (f: CatalogFilters) => ["catalog", "list", f] as const,
     item: (key: string, projectId: string) => ["catalog", "item", key, projectId] as const,
-    form: (key: string, projectId: string) => ["catalog", "form", key, projectId] as const,
+    form: (key: string, projectId: string, versionId?: string) =>
+      ["catalog", "form", key, projectId, versionId ?? "default"] as const,
   },
   fieldValues: (versionId: string, projectId: string, environment: string, field: string, deps: unknown[]) =>
     ["forms", "values", versionId, projectId, environment, field, deps] as const,
@@ -489,13 +490,17 @@ export const q = {
           }),
         ),
     }),
-  form: (key: string, projectId: string) =>
+  /** The request form of the item's default version, or of the requestable version named. */
+  form: (key: string, projectId: string, versionId?: string) =>
     queryOptions({
-      queryKey: keys.catalog.form(key, projectId),
+      queryKey: keys.catalog.form(key, projectId, versionId),
       queryFn: ({ signal }) =>
         call(
           api.GET("/catalog/items/{itemId}/form", {
-            params: { path: { itemId: key }, query: { project_id: projectId } },
+            params: {
+              path: { itemId: key },
+              query: { project_id: projectId, ...(versionId ? { version_id: versionId } : {}) },
+            },
             signal,
           }),
         ),

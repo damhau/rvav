@@ -933,8 +933,8 @@ A role that a level names can't be deleted: change the policy first.
 
 ### Updates
 
-An update changes a deployment's inputs, moves it to its item's
-published version, or adds and removes VMs
+An update changes a deployment's inputs, moves it to a version its item
+offers (the newest by default), or adds and removes VMs
 ([ADR-0042](../adr/0042-deployment-updates.md)). It runs as a request of
 kind `update`, with the native day-2 action **Update** (`update`), and
 goes through the same checks as a new request:
@@ -984,8 +984,10 @@ To update a deployment through the API, send the same body to
 }
 ```
 
-`version_id` is the item's published version. Send every input of the
-form: an input left out takes its field's default, and `null` empties it.
+`version_id` is the version to move to: the item's published version,
+or another one it offers (`versions` on `GET /api/v1/catalog/items/{id}`).
+Send every input of the form: an input left out takes its field's
+default, and `null` empties it.
 
 ## The catalog
 
@@ -1019,8 +1021,8 @@ An item's page has its main action in its header: **Publish** the
 draft, or **New draft** from the published version. Publishing waits
 while the form designer saves, or while YAML you typed isn't saved, and
 says why beside the button. The **⋯** menu beside it opens the request
-form, exports every version as YAML, withdraws the published version,
-and deletes an item nobody requested. Publishing doesn't change the
+form, exports every version as YAML, withdraws the item (every published
+version at once), and deletes an item nobody requested. Publishing doesn't change the
 deployments made from earlier versions: their owners move them to the new
 version with **Update** ([Updates](#updates)).
 
@@ -1266,11 +1268,21 @@ An item's tabs:
   host isn't allowed or whose secret is gone. Save the draft, publish it, and
   request it to try it: the request's page draws its run on the graph of
   the version requested, each step with its live status.
-- **Versions:** each version's menu:
-  - **Publish** a draft, or **Roll back** to a deprecated version.
-    Requests keep the version they were made with;
-  - **Withdraw** the published version: nobody can request the item until
-    a version is published again;
+- **Versions:** each version's menu
+  ([ADR-0046](../adr/0046-deployment-names-and-versions.md#several-versions-requestable)):
+  - **Publish** a draft, or **Roll back** to a deprecated version: it
+    becomes the only version people can request. Requests and deployments
+    keep the version they were made with;
+  - **Publish *n*, keeping *m* requestable** publishes a draft beside the
+    versions offered now, and **Offer *n* again** offers a deprecated
+    version beside them. Requesters then pick a version on the form, the
+    newest preselected, and updates move to any of them;
+  - **Retire** a published version when several are: requests and updates
+    can't use it any more, and the newest of the others is the default.
+    A form still open on it is refused as out of date;
+  - **Withdraw** the only published version: nobody can request the item
+    until a version is published again. The **⋯** menu's **Withdraw**
+    retires every published version at once;
   - **Export** it as YAML;
   - **Discard** a draft.
 

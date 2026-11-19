@@ -15,7 +15,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Textarea } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { approvalBody, approvalTitle } from "@/features/requests/RequestFormPage";
+import { Select } from "@/components/ui/select";
+import { approvalBody, approvalTitle, pickedVersion } from "@/features/requests/RequestFormPage";
 import { quotaLabel, quotaWhere, tightest } from "@/features/requests/quota";
 import { FormRenderer, shownFields, type FormHandle } from "@/forms/FormRenderer";
 import { Attention, fieldControl, type Unplaced } from "@/forms/attention";
@@ -233,7 +234,18 @@ function Summary({
   );
 }
 
-function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
+function UpdateBody({
+  d,
+  form,
+  item,
+  onVersion,
+}: {
+  d: DeploymentDetail;
+  form: RequestForm;
+  item?: CatalogItem;
+  /** Another version picked to update to: its form starts again from the deployment's inputs. */
+  onVersion: (versionId: string) => void;
+}) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [values, setValues] = useState(() => startValues(form, d));
@@ -459,6 +471,7 @@ function UpdateBody({ d, form }: { d: DeploymentDetail; form: RequestForm }) {
           ctx={{ versionId: form.version_id, projectId: d.project.id, environment: d.environment }}
           fieldStates={p?.fields}
           ref={formRef}
+          leading={item?.versions && <VersionPicker item={item} d={d} value={form.version_id} onChange={onVersion} />}
           wizard={{
             review: (
               <>
@@ -581,7 +594,8 @@ export function UpdatePage({ deploymentId }: { deploymentId: string }) {
   const slug = d?.catalog_item.slug ?? "";
   const projectId = d?.project.id ?? "";
   const item = useQuery({ ...q.catalogItem(slug, projectId), enabled: Boolean(d) });
-  const form = useQuery({ ...q.form(slug, projectId), enabled: Boolean(d) });
+  const [picked, setPicked] = useState<string>();
+  const form = useQuery({ ...q.form(slug, projectId, pickedVersion(item.data, picked)), enabled: Boolean(d) });
   const error = dep.error ?? item.error ?? form.error;
   return (
     <Page>
@@ -595,7 +609,7 @@ export function UpdatePage({ deploymentId }: { deploymentId: string }) {
           </Breadcrumbs>
         }
         title={d ? `Update ${d.name}` : <Skeleton className="h-5 w-56" />}
-        description="Change its inputs, or move it to the item's new version. Review what changes before it runs."
+        description="Change its inputs, or move it to another version of the item. Review what changes before it runs."
         meta={d && <UpdateMeta d={d} item={item.data} />}
       />
       {error ? (
@@ -606,9 +620,45 @@ export function UpdatePage({ deploymentId }: { deploymentId: string }) {
           <Skeleton className="h-64 flex-[1_1_320px] rounded-lg" />
         </div>
       ) : (
-        <UpdateBody key={form.data.version_id} d={d} form={form.data} />
+        <UpdateBody key={form.data.version_id} d={d} form={form.data} item={item.data} onVersion={setPicked} />
       )}
     </Page>
+  );
+}
+
+/** The version to update to, when the item offers several (ADR-0046): the newest unless another is picked. */
+function VersionPicker({
+  item,
+  d,
+  value,
+  onChange,
+}: {
+  item: CatalogItem;
+  d: DeploymentDetail;
+  value: string;
+  onChange: (versionId: string) => void;
+}) {
+  const label = (v: { id: string; number: string }) =>
+    v.id === item.version.id
+      ? `${v.number} (newest)`
+      : v.id === d.version.id
+        ? `${v.number} (this deployment's)`
+        : v.number;
+  return (
+    <Field
+      label="Version"
+      htmlFor="version"
+      hint={
+        value === d.version.id ? "Its own version: the update changes its inputs." : "Its inputs move to this version."
+      }
+    >
+      <Select
+        id="version"
+        value={value}
+        onChange={onChange}
+        options={(item.versions ?? []).map((v) => ({ value: v.id, label: label(v) }))}
+      />
+    </Field>
   );
 }
 

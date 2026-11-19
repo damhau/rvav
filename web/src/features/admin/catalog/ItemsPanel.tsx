@@ -226,7 +226,12 @@ function useItemChange() {
       const path = { itemId, versionId: v.id };
       return action === "publish"
         ? call(api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/publish", { params: { path }, body: {} }))
-        : call(api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", { params: { path } }));
+        : call(
+            api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", {
+              params: { path },
+              body: { withdraw: true },
+            }),
+          );
     },
     onSuccess: (_, { it, action }) => {
       // A deleted item's page isn't read again: it would show the item not found before it leaves.
@@ -494,7 +499,7 @@ export function ItemChangeDialog({
       open
       onOpenChange={(o) => !o && onClose()}
       title={`Withdraw ${it.name}?`}
-      description={`Nobody can request it until a version is published again. Version ${it.published_version?.number} stays, to roll back to.`}
+      description={`Nobody can request it until a version is published again. ${staysText(it)}`}
       consequences={withdrawConsequences(it)}
       confirmLabel="Withdraw"
       pending={run.isPending}
@@ -514,12 +519,22 @@ export function ItemChangeDialog({
   );
 }
 
+/** The versions a withdrawal retires, kept to roll back to. */
+function staysText(it: AdminCatalogItem): string {
+  const offered = it.versions.filter((v) => v.state === "published").map((v) => v.number);
+  return offered.length > 1
+    ? `Versions ${offered.slice(0, -1).join(", ")} and ${offered.at(-1)} stay, to roll back to.`
+    : `Version ${it.published_version?.number} stays, to roll back to.`;
+}
+
 /** What a withdrawal leaves: the deployments built from the version, and who loses it. */
 function withdrawConsequences(it: AdminCatalogItem): string {
-  const n = it.published_version?.deployments ?? 0;
+  const offered = it.versions.filter((v) => v.state === "published");
+  const n = offered.reduce((sum, v) => sum + v.deployments, 0);
+  const them = offered.length > 1 ? "them" : "it";
   const deployments =
     n === 0
-      ? "No deployment was built from it."
-      : `The ${n} deployment${n === 1 ? "" : "s"} built from it keep${n === 1 ? "s" : ""} running, with their day-2 actions.`;
+      ? `No deployment was built from ${them}.`
+      : `The ${n} deployment${n === 1 ? "" : "s"} built from ${them} keep${n === 1 ? "s" : ""} running, with their day-2 actions.`;
   return `${deployments} It leaves the catalog of ${openToText(it).toLowerCase()}.`;
 }

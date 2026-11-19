@@ -126,8 +126,8 @@ func (s *Server) GetRequestForm(w http.ResponseWriter, r *http.Request, itemID a
 		versionID = *params.VersionId
 	}
 	ver, err := s.Store.GetVersion(r.Context(), versionID)
-	// Drafts and earlier versions are for catalog admins (ADR-0019).
-	if err == nil && (ver.ItemID != it.ID || versionID != *it.PublishedVersionID && !principal(r).Everywhere(auth.CatalogManage)) {
+	// Drafts and retired versions are for catalog admins (ADR-0019, ADR-0046).
+	if err == nil && (ver.ItemID != it.ID || !core.Requestable(it, versionID) && !principal(r).Everywhere(auth.CatalogManage)) {
 		err = store.ErrNotFound
 	}
 	if err != nil {

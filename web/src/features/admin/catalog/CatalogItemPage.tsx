@@ -127,7 +127,13 @@ function usePublishWait(item: AdminCatalogItem | undefined, yamlDirty: boolean):
   return undefined;
 }
 
-type VersionAction = "publish" | "deprecate" | "discard" | "export";
+// keep publishes beside the versions requestable now; retire takes one of several out (ADR-0046).
+type VersionAction = "publish" | "keep" | "retire" | "discard" | "export";
+
+/** The item's requestable versions, newest first: the default and those kept published with it. */
+function requestable(item: AdminCatalogItem): CatalogItemVersion[] {
+  return item.versions.filter((v) => v.state === "published");
+}
 
 const versionActionKey = (itemId: string) => ["catalog-version-action", itemId];
 
@@ -144,11 +150,17 @@ function useVersionAction(item: AdminCatalogItem) {
       const path = { itemId: item.id, versionId: v.id };
       switch (action) {
         case "publish":
+        case "keep":
           return call(
-            api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/publish", { params: { path }, body: {} }),
+            api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/publish", {
+              params: { path },
+              body: action === "keep" ? { keep_published: true } : {},
+            }),
           );
-        case "deprecate":
-          return call(api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", { params: { path } }));
+        case "retire":
+          return call(
+            api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", { params: { path }, body: {} }),
+          );
         case "discard":
           return call(api.DELETE("/admin/catalog/items/{itemId}/versions/{versionId}", { params: { path } }));
         case "export": {
@@ -169,7 +181,8 @@ function useVersionAction(item: AdminCatalogItem) {
       refresh();
       const done = {
         publish: v.state === "deprecated" ? `Rolled back to ${v.number}` : `${v.number} published`,
-        deprecate: `${item.name} withdrawn`,
+        keep: v.state === "deprecated" ? `${v.number} offered again` : `${v.number} published beside the others`,
+        retire: `${v.number} retired`,
         discard: `Draft ${v.number} discarded`,
       }[action];
       toast.success(done);
@@ -205,6 +218,13 @@ function VersionsTab({
   const busy = useVersionBusy(item);
   const [comparing, setComparing] = useState(false);
   const [discarding, setDiscarding] = useState<CatalogItemVersion | null>(null);
+  const offered = requestable(item);
+  // What publishing beside them keeps: "3.2", or "3.2 and 3.1".
+  const kept = (v: CatalogItemVersion) => {
+    const others = offered.filter((x) => x.id !== v.id).map((x) => x.number);
+    return others.length > 1 ? `${others.slice(0, -1).join(", ")} and ${others.at(-1)}` : (others[0] ?? "");
+  };
+  const waiting = (label: string) => (busy ? `${label}: waits for the change running` : label);
   const columns: Column<CatalogItemVersion>[] = [
     {
       id: "version",
@@ -213,6 +233,7 @@ function VersionsTab({
         <div className="flex items-center gap-2">
           <span className="font-mono font-medium">{v.number}</span>
           <Badge tone={stateTone[v.state]}>{stateLabel[v.state]}</Badge>
+          {offered.length > 1 && v.id === item.published_version?.id && <Badge tone="neutral">Default</Badge>}
         </div>
       ),
     },
@@ -241,7 +262,7 @@ function VersionsTab({
   return (
     <Panel
       title="Versions"
-      description="Requests keep the version they were made with; the published one is what people get now."
+      description="People request a published version: the newest, unless they pick another kept published. Requests and deployments keep the version they were made with."
       flush
       actions={
         <Button size="sm" disabled={item.versions.length < 2} onClick={() => setComparing(true)}>
@@ -260,19 +281,32 @@ function VersionsTab({
           <>
             {v.state === "draft" && (
               <MenuItem disabled={Boolean(wait) || busy} onSelect={() => act.mutate({ v, action: "publish" })}>
+                {wait ? `Publish ${v.number}: save the draft's changes first` : waiting(`Publish ${v.number}`)}
+              </MenuItem>
+            )}
+            {v.state === "draft" && offered.length > 0 && (
+              <MenuItem disabled={Boolean(wait) || busy} onSelect={() => act.mutate({ v, action: "keep" })}>
                 {wait
-                  ? `Publish ${v.number}: save the draft's changes first`
-                  : busy
-                    ? `Publish ${v.number}: waits for the change running`
-                    : `Publish ${v.number}`}
+                  ? `Publish ${v.number} beside ${kept(v)}: save the draft's changes first`
+                  : waiting(`Publish ${v.number}, keeping ${kept(v)} requestable`)}
               </MenuItem>
             )}
             {v.state === "deprecated" && (
               <MenuItem disabled={busy} onSelect={() => act.mutate({ v, action: "publish" })}>
-                {busy ? `Roll back to ${v.number}: waits for the change running` : `Roll back to ${v.number}`}
+                {waiting(`Roll back to ${v.number}`)}
               </MenuItem>
             )}
-            {v.state === "published" && <MenuItem onSelect={onWithdraw}>Withdraw</MenuItem>}
+            {v.state === "deprecated" && offered.length > 0 && (
+              <MenuItem disabled={busy} onSelect={() => act.mutate({ v, action: "keep" })}>
+                {waiting(`Offer ${v.number} again, beside ${kept(v)}`)}
+              </MenuItem>
+            )}
+            {v.state === "published" && offered.length > 1 && (
+              <MenuItem disabled={busy} onSelect={() => act.mutate({ v, action: "retire" })}>
+                {waiting(`Retire ${v.number}`)}
+              </MenuItem>
+            )}
+            {v.state === "published" && offered.length === 1 && <MenuItem onSelect={onWithdraw}>Withdraw</MenuItem>}
             <MenuItem onSelect={() => act.mutate({ v, action: "export" })}>Export {v.number} as YAML</MenuItem>
             {v.state === "draft" && (
               <>
@@ -733,7 +767,12 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
             <span className="font-mono">{it.slug}</span>
             <span>{itemTypeLabel[it.type]}</span>
             {it.published_version ? (
-              <Badge tone="ok">Published {it.published_version.number}</Badge>
+              <Badge tone="ok">
+                Published{" "}
+                {requestable(it)
+                  .map((v) => v.number)
+                  .join(", ")}
+              </Badge>
             ) : (
               <Badge tone="neutral">Not published</Badge>
             )}

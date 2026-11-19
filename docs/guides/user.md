@@ -36,12 +36,18 @@ one to ask your project admin or administrator for.
    people, groups or roles. If an item you used before is missing, ask a
    catalog admin; a draft you saved for it can't be submitted.
 2. **The item's page:** open an item to read its description, the version
-   that requests use, whether it needs approval, how long it usually takes,
+   that requests use (and the earlier ones still offered, when a catalog
+   admin keeps several), whether it needs approval, how long it usually takes,
    and what it builds: its VMs, networks and groups, or a composite's steps
    in the order they run. **Request** opens the form. If your roles in the
    project don't let you request, the page says so.
 3. **The form:** environment first (dev, tst, prd), then what the item
-   asks. The panel beside it shows what you will get, as you fill it in:
+   asks. When the item offers more than one version, **Version** comes
+   before the environment, set to the newest. To request an earlier one,
+   pick it there: the form changes to that version's and keeps what you
+   typed in the fields it has too. The request and its deployments keep
+   the version you picked. The panel beside the form shows what you will
+   get, as you fill it in:
    - the VMs' names;
    - the size and the quota it uses;
    - whether someone must approve it, and who;
@@ -402,7 +408,9 @@ deployment:
 1. On the deployment's page, select **Actions**, then **Update**.
    The item's form opens with the deployment's inputs. When the item has
    a newer version, the page says so, and the update moves the deployment
-   to it.
+   to it. When the item offers several versions, pick the one to move to
+   under **Version**: the newest is preselected, and the deployment's own
+   version, while it is still offered, updates only its inputs.
 2. Change the inputs. Secret inputs aren't shown: give them again, or
    their field's default applies.
 3. Read **What the update does**, beside the form. As you type, it lists:

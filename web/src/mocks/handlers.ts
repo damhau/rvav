@@ -38,7 +38,10 @@ import {
   draftFromRepository,
   itemFile,
   notMember,
+  requestableForm,
+  requestableVersions,
   requestTopology,
+  staleVersion,
 } from "./catalogAdmin";
 import { catalogGitHandlers } from "./catalogGit";
 import { adminState, administrationHandlers } from "./administration";
@@ -141,7 +144,15 @@ const requestByKey = (key: string) => db.requests.find((r) => r.request.id === k
 
 function publicItem(i: StoredItem): CatalogItem {
   const { projectIds: _p, ...rest } = i;
-  return { ...rest, favourite: db.favourites.has(i.id) };
+  const versions = requestableVersions(db, i);
+  return { ...rest, favourite: db.favourites.has(i.id), ...(versions.length > 1 ? { versions } : {}) };
+}
+
+/** The preview of a request, refused as the server does when its version is no longer requestable. */
+function previewOf(item: StoredItem, project: S["Project"], draft: RequestDraft, validate: boolean, strict = false) {
+  const out = preview(db, item, project, draft, validate, strict);
+  const stale = staleVersion(db, item, draft.version_id);
+  return stale ? { ...out, valid: false, errors: [stale, ...out.errors] } : out;
 }
 
 function visibleRequest(r: ServiceRequest) {
@@ -177,6 +188,7 @@ function createDeployment(
   number: string,
   leaseDays?: number | null,
   named?: StoredRequest["named"],
+  version: S["CatalogItemVersionRef"] = item.version,
 ): DeploymentDetail | null {
   if (vmCount(item, count, inputs) === 0 || !host) return null;
   // As the server's reserveVMs: the lease chosen on submit, and the rule that gave it (ADR-0048).
@@ -197,7 +209,7 @@ function createDeployment(
     project: { id: project.id, code: project.code, name: project.name },
     environment,
     catalog_item: { id: item.id, slug: item.slug, name: item.name },
-    version: item.version,
+    version,
     owner: db.me.user,
     created_at: new Date().toISOString(),
     created_by_request_id: number,
@@ -258,6 +270,7 @@ function provisionApproved(stored: StoredRequest, outcome: string, detail: strin
     r.number,
     undefined,
     stored.named,
+    r.version,
   );
   if (dep) r.deployment_ids = [dep.id];
   if (host) {
@@ -601,7 +614,8 @@ export const handlers = [
   http.get<{ itemId: string }>(`${base}/catalog/items/:itemId/form`, async ({ params, request }) => {
     await wait();
     const item = itemByKey(params.itemId);
-    const projectId = new URL(request.url).searchParams.get("project_id");
+    const url = new URL(request.url);
+    const projectId = url.searchParams.get("project_id");
     if (!item) return notFound("Catalog item");
     if (!can(db.me, "request.submit", projectId ?? ""))
       return problem(
@@ -612,8 +626,10 @@ export const handlers = [
       );
     if (projectId && item.projectIds.includes(projectId) && !sharedWith(db, item, projectId))
       return notFound("Catalog item");
+    const form = requestableForm(db, item, url.searchParams.get("version_id"));
+    if (!form) return notFound("Version");
     return json<S["RequestForm"]>({
-      ...db.forms[item.id]!,
+      ...form,
       ...(namesDeployments(item) ? { names_deployments: true } : {}),
     });
   }),
@@ -655,7 +671,7 @@ export const handlers = [
     const project = projectById(draft.project_id);
     if (!item || !project) return notFound("Catalog item or project");
     const validate = new URL(request.url).searchParams.get("validate") === "true";
-    return json<S["RequestPreview"]>(preview(db, item, project, draft, validate));
+    return json<S["RequestPreview"]>(previewOf(item, project, draft, validate));
   }),
 
   http.get(`${base}/requests`, async ({ request }) => {
@@ -702,7 +718,7 @@ export const handlers = [
         `${item.name} is shared in ${project.name} with chosen people, and you aren't one of them.`,
       );
     }
-    const check = preview(db, item, project, draft, true, true);
+    const check = previewOf(item, project, draft, true, true);
     // As the server: the inputs after the rules, so a field they hide isn't checked.
     const errors = check.errors.filter(
       (e) =>
@@ -710,6 +726,7 @@ export const handlers = [
         e.field.startsWith("/validations/") ||
         [
           "",
+          "/version_id",
           "/environment",
           "/count",
           "/scheduled_at",
@@ -743,6 +760,7 @@ export const handlers = [
     const now = new Date().toISOString();
     const deploymentIds: string[] = [];
     const description = (draft.deployment_description ?? "").trim();
+    const version = requestableVersions(db, item).find((v) => v.id === draft.version_id) ?? item.version;
     const named =
       check.deployment_names || description ? { name: check.deployment_names?.[0], description } : undefined;
     const dep =
@@ -758,6 +776,7 @@ export const handlers = [
             number,
             draft.lease_days,
             named,
+            version,
           );
     if (dep) deploymentIds.push(dep.id);
     const req: ServiceRequest = {
@@ -767,7 +786,7 @@ export const handlers = [
       title: title(item, host, inputs),
       status: approval ? "pending_approval" : later ? "scheduled" : "running",
       catalog_item: { id: item.id, slug: item.slug, name: item.name, type: item.type },
-      version: item.version,
+      version,
       project: { id: project.id, code: project.code, name: project.name },
       environment: draft.environment,
       requester: db.me.user,

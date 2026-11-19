@@ -27,7 +27,9 @@ and a deployment that failed half-way was retried or deleted.
   action has.
 - **It always moves to the item's published version.** The form is that
   version's, as for a new request: an update sent with another version is
-  refused with `stale_version`. A deployment whose item is no longer
+  refused with `stale_version`. Since C2.1 it moves to any version the
+  item still offers, the newest by default
+  ([ADR-0046](0046-deployment-names-and-versions.md#several-versions-requestable)). A deployment whose item is no longer
   offered in its project can't be updated.
 - `POST /deployments/{id}/update/preview` returns the plan;
   `POST /deployments/{id}/update` submits it, with an idempotency key. The

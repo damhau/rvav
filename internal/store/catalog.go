@@ -12,6 +12,9 @@ const itemSelect = `
 select i.id, i.slug, i.name, i.summary, i.description_md, i.category, i.type, i.icon, i.tags,
        i.featured, i.source_kind, i.awx_template_id, i.awx_template_name, i.published_version_id,
        v.number as version_number, v.published_at as version_published_at,
+       (select coalesce(jsonb_agg(jsonb_build_object('id', o.id, 'number', o.number, 'published_at', o.published_at)
+          order by o.created_at desc, o.id desc), '[]') from catalog_item_versions o
+          where o.item_id = i.id and o.state = 'published') as requestable_versions,
        exists (select 1 from favourites f where f.item_id = i.id and f.user_id = $1) as favourite,
        (select count(*) from requests r where r.item_id = i.id
           and r.submitted_at > now() - interval '30 days')::int as requests_30d,

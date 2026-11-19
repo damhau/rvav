@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { api, call } from "@/lib/api/client";
 import type { FieldError, FieldValuesQuery, RequestDraft } from "@/lib/api/types";
 import { adminState } from "@/mocks/administration";
 import { server } from "@/mocks/node";
@@ -163,6 +164,36 @@ describe("request form against the mock API", () => {
     const dep = db.deployments.find((d) => db.requests[0]!.request.deployment_ids?.includes(d.id))!;
     expect(adminState(db).leaseRuleOf[dep.id]).toBe("lsr_rhel");
     expect(dep.lease).toMatchObject({ extensions_max: 1, max_days: 30, grace_days: 3, expiry_action: "delete" });
+  }, 15000);
+
+  it("requests an earlier version still offered, the newest by default, keeping what was typed", async () => {
+    const item = db.items.find((i) => i.slug === "rhel9-server")!;
+    const earlier = item.version;
+    const newer = await call(
+      api.POST("/admin/catalog/items/{itemId}/versions", { params: { path: { itemId: item.id } }, body: {} }),
+    );
+    await call(
+      api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/publish", {
+        params: { path: { itemId: item.id, versionId: newer.id } },
+        body: { keep_published: true },
+      }),
+    );
+    const user = userEvent.setup();
+    const { router } = await openForm();
+    const version = () => screen.getByRole("combobox", { name: "Version" });
+    expect(version()).toHaveTextContent(`${newer.number} (newest)`);
+    expect(version()).toHaveAccessibleDescription("The newest. Earlier versions are still offered.");
+    await user.type(screen.getByLabelText("Name (optional)"), "Payroll API");
+
+    await user.click(version());
+    await user.click(await screen.findByRole("option", { name: earlier.number }));
+    await waitFor(() => expect(version()).toHaveTextContent(earlier.number));
+    expect(version()).toHaveAccessibleDescription(`An earlier version: the newest is ${newer.number}.`);
+    expect(screen.getByLabelText("Name (optional)")).toHaveValue("Payroll API");
+    await placed();
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/requests/REQ-10491"));
+    expect(db.requests[0]!.request.version.id).toBe(earlier.id);
   }, 15000);
 
   it("warns of a lease longer than a soft lease allows, and submits anyway", async () => {

@@ -50,7 +50,8 @@ func TestTemplateSlugsAndVersions(t *testing.T) {
 	bp.Versions = []vra.BlueprintVersion{v, v}
 	bp.Versions[0].Version, bp.Versions[1].Version = "1.0.1", "1.0.2"
 	m := MapTemplate(&e, bp)
-	if len(m.Doc.Versions) != 2 || m.Doc.Versions[0].Number != "1.0" || m.Doc.Versions[1].Number != "1.1" || !has(m, Info, "versions", "1.0.2 is 1.1") {
+	if len(m.Doc.Versions) != 2 || m.Doc.Versions[0].Number != "1.0" || m.Doc.Versions[1].Number != "1.1" || !has(m, Info, "versions", "1.0.2 is 1.1") ||
+		!has(m, Info, "versions", "pick any of these 2 versions") {
 		t.Fatalf("versions = %+v %+v", m.Doc.Versions, m.Notes)
 	}
 }

@@ -14,6 +14,7 @@ import type {
   UpdateRefusal,
   VmResource,
 } from "@/lib/api/types";
+import { requestableVersions, staleVersion } from "./catalogAdmin";
 import { multiParts } from "./components";
 import { actionWarnings, busy, requestSteps, type Op, type RunResult } from "./day2";
 import { unaccepted } from "./warnings";
@@ -36,6 +37,8 @@ interface Component {
 interface Plan {
   preview: UpdatePreview;
   item: StoredItem;
+  /** The version updated to: the one asked for when it is requestable, else the default. */
+  version: UpdatePreview["to_version"];
   inputs: Inputs;
   same: boolean;
   ops: (names: (c: Component, n: number) => string[]) => Op[];
@@ -120,7 +123,8 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   const project = db.projects.find((p) => p.id === d.project.id);
   if (!item || !project) return { status: 404, title: "Catalog item not found" };
   if (item.type !== "vm_blueprint") return { status: 409, title: "Only deployments of VM items can be updated." };
-  const version = db.forms[item.id]?.version_id ?? item.version.id;
+  const target = requestableVersions(db, item).find((v) => v.id === draft.version_id) ?? item.version;
+  const version = target.id;
   const base = { environment: d.environment, catalog_item_id: item.id, project_id: project.id, count: 1 };
   // The seed's deployments have inputs their form doesn't: only the form's count.
   const props = (db.forms[item.id]?.schema as { properties?: Inputs } | undefined)?.properties ?? {};
@@ -132,12 +136,8 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
       : Object.fromEntries(Object.entries(d.inputs).filter(([k]) => k in props));
   const before = ruled(db, item, project, { ...base, version_id: d.version.id, inputs: kept }).inputs;
   const { inputs, fields, errors } = ruled(db, item, project, { ...base, version_id: version, inputs: draft.inputs });
-  if (draft.version_id !== version)
-    errors.push({
-      field: "/version_id",
-      code: "stale_version",
-      message: `${item.name} has a newer version: update to ${item.version.number}.`,
-    });
+  const stale = staleVersion(db, item, draft.version_id);
+  if (stale) errors.push(stale);
 
   const refused: UpdateRefusal[] = [];
   const changes: UpdateChange[] = [];
@@ -348,13 +348,14 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   const warnings = reason ? [] : actionWarnings(db, "update", d);
   return {
     item,
+    version: target,
     inputs,
     same,
     delta,
     ops,
     preview: {
       from_version: d.version,
-      to_version: item.version,
+      to_version: target,
       allowed: reason === "",
       unchanged: same,
       ...(reason ? { reason } : {}),
@@ -529,7 +530,7 @@ export function runUpdate(db: Db, d: DeploymentDetail, draft: UpdateDraft, numbe
     title: `Update · ${d.name}`,
     status: approval ? "pending_approval" : "running",
     catalog_item: { ...d.catalog_item, type: p.item.type },
-    version: p.item.version,
+    version: p.version,
     project: d.project,
     environment: d.environment,
     requester: db.me.user,

@@ -122,6 +122,10 @@ func mapTemplate(e *vra.Estate, bp vra.Blueprint, lib map[string]LibraryImport) 
 		taken[vd.Number] = true
 		doc.Versions = append(doc.Versions, vd)
 	}
+	if n := len(doc.Versions); n > 1 {
+		note(Info, "versions", fmt.Sprintf("vRA lets requesters pick any of these %d versions. The latest is imported as the draft, the earlier ones deprecated: "+
+			"once the draft is published, publish those you still offer again, keeping the others requestable.", n))
+	}
 	p.Status, p.Doc = worst, doc
 	p.Templates = boundTemplates(doc.Versions[len(doc.Versions)-1].Blueprint)
 	p.Secrets = templateSecrets(released[len(released)-1].Content)
