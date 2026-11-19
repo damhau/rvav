@@ -5,6 +5,7 @@
 - Extends the roles of [ADR-0034](0034-custom-roles.md), the approvers of
   [ADR-0041](0041-approvers-by-role.md) and the policy administration of
   [ADR-0020](0020-administration.md). G1.3 (#155).
+- Amended by G1.4 (#156): how approvals combine across scopes.
 
 ## Context
 A vRA project has a **Deployment sharing** setting: on, every member sees
@@ -66,8 +67,15 @@ didn't list the deployments its holder owned in the project (B4).
 
 ### How project and global policies combine
 - **Approval:** every policy that matches adds its levels, global and
-  project's alike. A project's policy can add approval, never remove a
-  global one's.
+  project's alike, in priority order. A project's policy can add
+  approval, never remove a global one's.
+- **Levels merge only within a scope.** Levels with the same approvers
+  become one level, keeping the shorter timeout and the stricter action
+  (ADR-0011), only when their policies are all global or all the same
+  project's. A project's level with a global level's approvers stays a
+  level of its own: otherwise its timeout, `on_timeout` and escalation
+  would take over the global level, and a project admin could escalate a
+  production approval to herself.
 - **Day-2:** policies are tried by priority, global and project's
   together, and the first one that matches decides, as before. When it is
   a project's, the first global one that matches after it still decides
@@ -75,6 +83,10 @@ didn't list the deployments its holder owned in the project (B4).
   policy's warning, a warning over allow. A soft global policy doesn't
   override a project's. So a project admin can tighten a global rule
   (deny where it allows) and loosen only a soft one.
+- **A project's day-2 approval adds to a hard global approval.** When
+  both match, the action needs both: the global policy's levels first,
+  then the project's. Choosing who approves a hard global approval would
+  loosen it, so a project's approval never replaces it.
 - **Lease:** a project's override replaces the environment's lease for
   the project, as before. A project admin's can't be looser: a longer
   default or maximum, no lease where the environment gives one, more

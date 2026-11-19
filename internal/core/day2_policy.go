@@ -66,7 +66,7 @@ func (j *judge) decideQuota(a *day2.Action, t day2.Target, inputs map[string]any
 	}
 	vars := day2Vars(p, d, j.env, a, t, inputs, roles)
 	vars["quota"] = quotaVars(overSoft)
-	var first *store.Day2Policy
+	var first, joined *store.Day2Policy
 	for i := range j.policies {
 		pol := &j.policies[i]
 		if !matchesAction(pol.Actions, a.Key) || (len(pol.Roles) > 0 && !slices.ContainsFunc(pol.Roles, func(r string) bool { return slices.Contains(roles, r) })) {
@@ -95,11 +95,19 @@ func (j *judge) decideQuota(a *day2.Action, t day2.Target, inputs map[string]any
 			continue
 		}
 		if pol.ProjectID == nil {
-			if overrides(*pol, *first) {
+			switch decides(*pol, *first) {
+			case "global":
 				first = pol
+			case "both":
+				joined = pol
 			}
 			break
 		}
+	}
+	if joined != nil {
+		dec := j.effect(*joined, a)
+		dec.Chain = append(dec.Chain, j.effect(*first, a).Chain...)
+		return dec
 	}
 	if first != nil {
 		return j.effect(*first, a)
@@ -119,11 +127,20 @@ func strictness(pol store.Day2Policy) int {
 	return map[string]int{"allow": 0, "approval": 2, "deny": 3}[pol.Effect]
 }
 
-// overrides says whether a global policy decides in place of the project's
-// policy tried before it: a project's policy can't loosen a hard global
-// one, and may a soft one (ADR-0045).
-func overrides(global, project store.Day2Policy) bool {
-	return global.Enforcement != store.EnforcementSoft && strictness(global) > strictness(project)
+// decides says which decides of a project's policy and the first global
+// policy that matches after it: "global", "project", or "both" when a hard
+// global approval asks its levels first, then the project's. A project's
+// policy can't loosen a hard global one, and may a soft one (ADR-0045).
+func decides(global, project store.Day2Policy) string {
+	switch {
+	case global.Enforcement == store.EnforcementSoft:
+		return "project"
+	case strictness(global) > strictness(project):
+		return "global"
+	case global.Effect == "approval" && strictness(project) == 2:
+		return "both"
+	}
+	return "project"
 }
 
 // effect is what a policy that matches decides.
@@ -142,7 +159,7 @@ func (j *judge) effect(pol store.Day2Policy, a *day2.Action) decision {
 		var levels []level
 		_ = json.Unmarshal(pol.Levels, &levels)
 		var chain []ChainLevel
-		ap := store.ApprovalPolicy{ID: pol.ID, Name: pol.Name, Reason: orDefault(pol.Reason, pol.Name), Condition: pol.Condition}
+		ap := store.ApprovalPolicy{ID: pol.ID, Name: pol.Name, Reason: orDefault(pol.Reason, pol.Name), Condition: pol.Condition, ProjectID: pol.ProjectID}
 		for _, l := range levels {
 			chain = addLevel(chain, ap, l)
 		}

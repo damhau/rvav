@@ -915,7 +915,7 @@ func (s *Service) explainDay2(ctx context.Context, as *auth.Principal, proj stor
 	vars := day2Vars(as, d, env, a, t, inputs, roles)
 	vars["quota"] = quotaVars(nil)
 	decided := false
-	var first *store.AdminDay2Policy
+	var first, joined *store.AdminDay2Policy
 	firstAt := -1
 	for _, pol := range all {
 		if !full && pol.ProjectID != nil && *pol.ProjectID != proj.ID {
@@ -949,17 +949,26 @@ func (s *Service) explainDay2(ctx context.Context, as *auth.Principal, proj stor
 				// The first global policy that matches after a project's.
 				decided = true
 				c.Why = "The project's policy " + first.Name + " decided first."
-				if overrides(pol.Day2Policy, first.Day2Policy) {
+				switch decides(pol.Day2Policy, first.Day2Policy) {
+				case "global":
 					dec.Considered[firstAt].Applies = false
 					dec.Considered[firstAt].Why = "It would decide " + first.Effect + ", but a project's policy can't loosen the global " + pol.Name + "."
 					c.Applies, first = true, &pol
 					c.Why = "Decides: " + pol.Effect + ", over the project's policy."
+				case "both":
+					dec.Considered[firstAt].Why = "Decides: approval, its levels after the global " + pol.Name + "'s."
+					c.Applies, joined = true, &pol
+					c.Why = "Decides: approval, its levels first: a project's policy adds levels, never replaces them."
 				}
 			}
 		}
 		dec.Considered = append(dec.Considered, c)
 	}
-	if first != nil {
+	if joined != nil {
+		names := joined.Name + ", " + first.Name
+		msg := a.Name + " needs approval: " + names + "."
+		dec.DecidedBy, dec.Outcome = &names, &msg
+	} else if first != nil {
 		dec.DecidedBy = &first.Name
 		msg := map[string]string{"allow": a.Name + " is allowed.", "deny": a.Name + " is denied: " + orDefault(first.Reason, "no reason given") + ".",
 			"approval": a.Name + " needs approval."}[first.Effect]

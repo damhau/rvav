@@ -1,6 +1,7 @@
 package core
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -98,5 +99,42 @@ func TestAllApprovedNeedsEveryRoleHolder(t *testing.T) {
 	lv.ManagerID = &manager
 	if _, done := allApproved(lv, "usr_tnguyen", votes, nil); done {
 		t.Fatal("the manager, Léa Martin, has not approved")
+	}
+}
+
+func TestAddLevelKeepsScopesApart(t *testing.T) {
+	web := "prj_web"
+	global := store.ApprovalPolicy{ID: "pol_prd_vm", Reason: "Production VMs need sign-off"}
+	project := store.ApprovalPolicy{ID: "pol_web", Reason: "Web too", ProjectID: &web}
+	escalation := func(group string, ids ...string) *struct {
+		Group     string   `json:"group"`
+		Approvers []string `json:"approvers"`
+	} {
+		return &struct {
+			Group     string   `json:"group"`
+			Approvers []string `json:"approvers"`
+		}{Group: group, Approvers: ids}
+	}
+	seeded := level{Name: "Infrastructure leads", Group: "rvav-infra-leads", Approvers: []string{"usr_mkeller"}, Mode: "any",
+		Timeout: "48h", OnTimeout: "escalate", EscalateTo: escalation("rvav-infra-heads", "usr_cdubois")}
+	mine := seeded
+	mine.Timeout, mine.EscalateTo = "1s", escalation("", "usr_lmartin")
+	for _, chain := range [][]ChainLevel{
+		addLevel(addLevel(nil, project, mine), global, seeded),
+		addLevel(addLevel(nil, global, seeded), project, mine),
+	} {
+		if len(chain) != 2 {
+			t.Fatalf("a project's level merged into the global one: %+v", chain)
+		}
+		g := chain[slices.IndexFunc(chain, func(c ChainLevel) bool { return c.Scope == "" })]
+		if g.Timeout != 48*time.Hour || g.EscalateGroup != "rvav-infra-heads" || !slices.Equal(g.EscalateIDs, []string{"usr_cdubois"}) ||
+			!slices.Equal(g.PolicyIDs, []string{"pol_prd_vm"}) {
+			t.Errorf("the global level took the project's settings: %+v", g)
+		}
+	}
+	other := project
+	other.ID = "pol_web_2"
+	if chain := addLevel(addLevel(nil, project, mine), other, mine); len(chain) != 1 || len(chain[0].PolicyIDs) != 2 {
+		t.Errorf("one project's levels with the same approvers are one level: %+v", chain)
 	}
 }

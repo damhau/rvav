@@ -765,13 +765,19 @@ Every change is in the audit log with its project, as `policy.approval.*`,
 
 Project and global policies combine as follows:
 - **Approval:** every policy that matches adds its levels. A project's
-  policy adds approvals, and never removes a global one's.
+  policy adds approvals, and never removes a global one's. Levels that ask
+  the same approvers become one level only when their policies are all
+  global, or all the same project's: a project's level never changes a
+  global level's timeout or escalation.
 - **Day-2:** the first policy that matches, by priority, decides, global
   or not. When a project's policy decides, the first global policy that
   matches after it still wins if it is hard and stricter: a deny over an
   approval, an approval over a warning, a warning over an allow. A
   project's policy can deny what a global one allows, but can't allow what
   a hard global one denies.
+- **Day-2 approval:** when a project's approval and a hard global approval
+  both match, the action needs both: the global policy's levels first,
+  then the project's.
 - **Lease:** a project's override replaces the environment's lease for
   that project.
 

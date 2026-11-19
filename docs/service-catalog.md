@@ -1333,9 +1333,11 @@ Project admins write their project's approval, lease and day-2 policies;
 administrators write the global ones, which a project's can't loosen
 ([ADR-0045](adr/0045-deployment-sharing-and-project-policies.md)):
 - an approval policy adds its levels to those of every other policy that
-  matches;
+  matches; levels with the same approvers merge only within one scope, so
+  a project's level never changes a global level's timeout or escalation;
 - the first day-2 policy that matches decides, unless a hard global one
-  that matches after it is stricter;
+  that matches after it is stricter; a project's approval and a hard
+  global approval both apply, the global levels first;
 - a project's lease override replaces the environment's lease, and a
   project admin's can't give more than it.
 

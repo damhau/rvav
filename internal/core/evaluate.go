@@ -545,15 +545,19 @@ type ChainLevel struct {
 	OnTimeout     string
 	EscalateGroup string
 	EscalateIDs   []string
+	// Scope is the project of the policies merged into the level, "" for
+	// global ones.
+	Scope string
 }
 
 // addLevel merges a policy level into the chain: levels with the same
-// approvers become one, keeping every reason, the stricter mode and the
-// shorter timeout.
+// approvers and scope become one, keeping every reason, the stricter mode
+// and the shorter timeout. A project's level never merges into a global
+// one, so it can't put its own timeout or escalation on it (ADR-0045).
 func addLevel(chain []ChainLevel, pol store.ApprovalPolicy, l level) []ChainLevel {
 	timeout, _ := time.ParseDuration(l.Timeout)
 	in := ChainLevel{Name: l.Name, Group: l.Group, Approvers: l.Approvers, Roles: l.Roles, Manager: l.Manager, Mode: orDefault(l.Mode, "any"),
-		PolicyIDs: []string{pol.ID}, Reasons: []string{pol.Reason}, Rules: []string{pol.Condition}}
+		PolicyIDs: []string{pol.ID}, Reasons: []string{pol.Reason}, Rules: []string{pol.Condition}, Scope: deref(pol.ProjectID)}
 	if timeout > 0 {
 		in.Timeout, in.OnTimeout = timeout, orDefault(l.OnTimeout, "reject")
 		if l.EscalateTo != nil {
@@ -564,7 +568,7 @@ func addLevel(chain []ChainLevel, pol store.ApprovalPolicy, l level) []ChainLeve
 		ids, roles := slices.Clone(c.Approvers), slices.Clone(c.Roles)
 		slices.Sort(ids)
 		slices.Sort(roles)
-		return c.Group + "|" + strings.Join(ids, ",") + "|" + strings.Join(roles, ",") + "|" + strconv.FormatBool(c.Manager)
+		return c.Scope + "|" + c.Group + "|" + strings.Join(ids, ",") + "|" + strings.Join(roles, ",") + "|" + strconv.FormatBool(c.Manager)
 	}
 	for i := range chain {
 		c := &chain[i]

@@ -17,24 +17,26 @@ func TestGlobalOverridesProjectPolicy(t *testing.T) {
 		return p
 	}
 	for _, c := range []struct {
-		global, project string
-		want            bool
+		global, project, want string
 	}{
-		{"deny", "allow", true},
-		{"deny", "approval", true},
-		{"approval", "allow", true},
-		{"deny", "soft deny", true},
-		{"approval", "soft approval", true},
-		{"allow", "deny", false},
-		{"allow", "approval", false},
-		{"approval", "deny", false},
-		{"deny", "deny", false},
-		{"allow", "allow", false},
-		{"soft deny", "allow", false},
-		{"soft approval", "allow", false},
+		{"deny", "allow", "global"},
+		{"deny", "approval", "global"},
+		{"approval", "allow", "global"},
+		{"deny", "soft deny", "global"},
+		{"approval", "soft approval", "global"},
+		{"approval", "soft deny", "global"},
+		{"approval", "approval", "both"},
+		{"soft approval", "approval", "project"},
+		{"allow", "deny", "project"},
+		{"allow", "approval", "project"},
+		{"approval", "deny", "project"},
+		{"deny", "deny", "project"},
+		{"allow", "allow", "project"},
+		{"soft deny", "allow", "project"},
+		{"soft approval", "allow", "project"},
 	} {
-		if got := overrides(policy(c.global), policy(c.project)); got != c.want {
-			t.Errorf("a global %s over a project's %s = %v, want %v", c.global, c.project, got, c.want)
+		if got := decides(policy(c.global), policy(c.project)); got != c.want {
+			t.Errorf("a global %s with a project's %s: %s decides, want %s", c.global, c.project, got, c.want)
 		}
 	}
 }
