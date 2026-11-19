@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -178,6 +179,39 @@ func TestRetryAndRollback(t *testing.T) {
 		h.waitStatus(del.Id, "tnguyen", api.RequestStatusSucceeded)
 		h.json("POST", "/api/v1/requests/"+r3.Id+"/retry", "tnguyen", nil, 409, nil)
 		h.json("POST", "/api/v1/requests/"+r3.Id+"/rollback", "tnguyen", nil, 409, nil)
+
+		// Retries at once: one runs the request again, the others find it
+		// queued (a Retry replaces the run before, #180).
+		h.awx.FailTask = "idm : join realm"
+		r4 := submit()
+		h.runWorkflow(r4.Id, nil)
+		h.waitStatus(r4.Id, "tnguyen", api.RequestStatusFailed)
+		h.awx.FailTask = ""
+		codes := make(chan int, 4)
+		var wg sync.WaitGroup
+		for range cap(codes) {
+			wg.Go(func() {
+				code, _, _ := h.do("POST", "/api/v1/requests/"+r4.Id+"/retry", "tnguyen", nil)
+				codes <- code
+			})
+		}
+		wg.Wait()
+		close(codes)
+		got := map[int]int{}
+		for code := range codes {
+			got[code]++
+		}
+		h.wf.mu.Lock()
+		started := 0
+		for _, id := range h.wf.started {
+			if id == r4.Id {
+				started++
+			}
+		}
+		h.wf.mu.Unlock()
+		if got[202] != 1 || got[409] != 3 || started != 2 {
+			t.Fatalf("four Retries at once = %v, its workflow started %d times", got, started)
+		}
 	})
 }
 

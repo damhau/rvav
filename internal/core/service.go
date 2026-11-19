@@ -23,6 +23,9 @@ import (
 // Workflows starts and controls request workflows (Temporal in production).
 type Workflows interface {
 	Start(ctx context.Context, requestID string) error
+	// Restart runs a failed request's workflow again, in place of its run
+	// before, which may not have closed yet.
+	Restart(ctx context.Context, requestID string) error
 	Cancel(ctx context.Context, requestID string) error
 	// Approval signals that an approval level was decided (approved or rejected).
 	Approval(ctx context.Context, requestID, approvalID, outcome string) error

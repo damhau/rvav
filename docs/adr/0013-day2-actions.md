@@ -67,7 +67,12 @@ later steps. Rolling back undoes what a failed provisioning request created
 deployments deleted; retrying it afterwards builds everything again, if its
 VM and deployment names are still free and it still fits the hard quotas
 and deployment limits (ADR-0047). Both are for the requester, the owner
-and project admins, and are audited.
+and project admins, and are audited. A request reads failed once its run's
+last activity commits, a moment before the run closes: a Retry or a
+rollback in that moment ends that run and starts its own, where Temporal's
+default would hand back the old run and run nothing (#180). They take the
+failed request under its lock, so of two at once the second gets a
+conflict.
 
 A day-2 action stops at its first failed step, except for an operation
 marked to keep going: its step stays failed and the next one runs. When

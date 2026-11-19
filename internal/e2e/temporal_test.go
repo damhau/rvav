@@ -16,6 +16,7 @@ import (
 	historypb "go.temporal.io/api/history/v1"
 	"go.temporal.io/api/temporalproto"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/interceptor"
 	sdklog "go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
@@ -132,6 +133,136 @@ func TestThroughTemporal(t *testing.T) {
 			t.Fatalf("cancelled request's workflow is still running")
 		}
 	})
+}
+
+// TestRetryAsTheRunCloses: a request reads failed a moment before its run
+// closes, longer on a worker under load. A Retry or a rollback in that
+// moment replaces the run; it used to return the old one, which ran
+// nothing, and left the request queued (#180).
+func TestRetryAsTheRunCloses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	ts := startTemporal(t)
+	hold := &holdFailed{held: make(chan chan struct{})}
+	tc, err := client.Dial(client.Options{HostPort: ts.FrontendHostPort(), Interceptors: []interceptor.ClientInterceptor{hold},
+		Logger: sdklog.NewStructuredLogger(slog.New(slog.DiscardHandler))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tc.Close()
+
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const queue, user = "rvav-closing-e2e", "tnguyen"
+		h.svc.Workflows = &provision.Temporal{Client: tc, TaskQueue: queue}
+		w := provision.NewWorker(tc, queue, h.acts)
+		if err := w.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer w.Stop()
+
+		const web = "prj_web"
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id="+web, "lmartin", nil, 200, &form)
+		// It fails in its last job, the IdM join, with its VM built, and its
+		// run stays open until let go.
+		failing := func() (api.Request, string, chan struct{}) {
+			t.Helper()
+			h.awx.FailTask = "idm : join realm"
+			var r api.Request
+			h.json("POST", "/api/v1/requests", user, api.RequestDraft{CatalogItemId: form.ItemId, VersionId: form.VersionId,
+				ProjectId: web, Environment: "dev", Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01",
+					"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline", "idm-join"}}},
+				202, &r, "Idempotency-Key", uuid.NewString())
+			var letGo chan struct{}
+			select {
+			case letGo = <-hold.held:
+			case <-time.After(time.Minute):
+				t.Fatalf("request %s didn't fail", r.Number)
+			}
+			h.awx.FailTask = ""
+			failed := h.waitStatus(r.Id, user, api.RequestStatusFailed)
+			desc, err := tc.DescribeWorkflowExecution(ctx, provision.WorkflowID(r.Id), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st := desc.WorkflowExecutionInfo.Status; st != enums.WORKFLOW_EXECUTION_STATUS_RUNNING {
+				t.Fatalf("%s's failed run is %s, want still running", r.Number, st)
+			}
+			return failed, desc.WorkflowExecutionInfo.Execution.RunId, letGo
+		}
+		ended := func(r api.Request, run string, letGo chan struct{}) {
+			t.Helper()
+			close(letGo)
+			desc, err := tc.DescribeWorkflowExecution(ctx, provision.WorkflowID(r.Id), run)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st := desc.WorkflowExecutionInfo.Status; st != enums.WORKFLOW_EXECUTION_STATUS_TERMINATED {
+				t.Fatalf("%s's failed run is %s, want terminated", r.Number, st)
+			}
+		}
+
+		r, run, letGo := failing()
+		h.json("POST", "/api/v1/requests/"+r.Id+"/retry", user, nil, 202, nil)
+		h.waitStatus(r.Id, user, api.RequestStatusSucceeded)
+		ended(r, run, letGo)
+
+		r, run, letGo = failing()
+		dep := (*r.DeploymentIds)[0]
+		h.json("POST", "/api/v1/requests/"+r.Id+"/rollback", user, nil, 202, nil)
+		deadline := time.Now().Add(time.Minute)
+		for {
+			var d api.Deployment
+			h.json("GET", "/api/v1/deployments/"+dep, user, nil, 200, &d)
+			if d.Status == api.DeploymentStatusDeleted {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s's deployment is %s, want deleted", r.Number, d.Status)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		ended(r, run, letGo)
+	})
+}
+
+// holdFailed holds a failed request's Finish once it has recorded the
+// outcome, until the test lets it go: the request reads failed while its
+// run is still open.
+type holdFailed struct {
+	interceptor.InterceptorBase
+	held chan chan struct{}
+}
+
+func (h *holdFailed) InterceptActivity(_ context.Context, next interceptor.ActivityInboundInterceptor) interceptor.ActivityInboundInterceptor {
+	return &heldFinish{ActivityInboundInterceptorBase: interceptor.ActivityInboundInterceptorBase{Next: next}, held: h.held}
+}
+
+type heldFinish struct {
+	interceptor.ActivityInboundInterceptorBase
+	held chan chan struct{}
+}
+
+func (a *heldFinish) ExecuteActivity(ctx context.Context, in *interceptor.ExecuteActivityInput) (any, error) {
+	out, err := a.Next.ExecuteActivity(ctx, in)
+	var f provision.FinishInput
+	if len(in.Args) == 1 {
+		f, _ = in.Args[0].(provision.FinishInput)
+	}
+	if f.Outcome == "failed" && err == nil {
+		letGo := make(chan struct{})
+		select {
+		case a.held <- letGo:
+			select {
+			case <-letGo:
+			case <-ctx.Done():
+			}
+		case <-ctx.Done():
+		}
+	}
+	return out, err
 }
 
 // startTemporal starts a Temporal dev server for the test.

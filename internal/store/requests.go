@@ -193,6 +193,14 @@ func (s *Store) LockDeployment(ctx context.Context, tx pgx.Tx, id string) error 
 	return err
 }
 
+// LockRequest locks a request row until the transaction ends and gives its
+// status. Lock its deployments first, as Finish does.
+func (s *Store) LockRequest(ctx context.Context, tx pgx.Tx, id string) (string, error) {
+	var status string
+	err := tx.QueryRow(ctx, `select status from requests where id = $1 for update`, id).Scan(&status)
+	return status, notFound(err)
+}
+
 // SetRequestStatus updates the status and the matching timestamps.
 func (s *Store) SetRequestStatus(ctx context.Context, db DB, id, status string) error {
 	_, err := db.Exec(ctx, `update requests set status = $2,

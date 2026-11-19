@@ -149,10 +149,11 @@ func asConflict(err error) error {
 	return &ConflictError{Msg: strings.Join(msgs, " ")}
 }
 
-// lockForRetry locks the request's deployments and checks that nothing
-// else changed them under it: no other request runs on them, none is being
-// deleted or rolled back, and none was deleted since, unless by a rollback
-// of this request (rolledBack).
+// lockForRetry locks the request's deployments, then the request, and
+// checks that nothing else changed them under it: the request is still
+// failed (a Retry or rollback at the same time went first otherwise), no
+// other request runs on them, none is being deleted or rolled back, and none
+// was deleted since, unless by a rollback of this request (rolledBack).
 func (s *Service) lockForRetry(ctx context.Context, tx pgx.Tx, r store.RequestRow, ids []string, rolledBack bool) error {
 	for _, id := range ids {
 		if err := s.Store.LockDeployment(ctx, tx, id); err != nil {
@@ -175,6 +176,13 @@ func (s *Service) lockForRetry(ctx context.Context, tx pgx.Tx, r store.RequestRo
 		case status == "deleted" && !rolledBack:
 			return &ConflictError{Msg: "The deployment was deleted since. Submit a new request instead."}
 		}
+	}
+	status, err := s.Store.LockRequest(ctx, tx, r.ID)
+	if err != nil {
+		return err
+	}
+	if status != "failed" {
+		return &ConflictError{Msg: fmt.Sprintf("%s is %s now; only failed requests can be retried or rolled back.", r.Number, statusText(status))}
 	}
 	return nil
 }
@@ -395,7 +403,7 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 	if err != nil {
 		return r, err
 	}
-	if err := s.Workflows.Start(ctx, r.ID); err != nil {
+	if err := s.Workflows.Restart(ctx, r.ID); err != nil {
 		s.Log.Error("restart workflow", "request", r.Number, "err", err)
 		_ = s.Store.SetRequestStatus(ctx, s.Store.Pool, r.ID, "failed")
 		return r, &UpstreamError{System: "Temporal", Err: err}

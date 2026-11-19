@@ -122,6 +122,10 @@ func (r *recorder) Start(_ context.Context, id string) error {
 	return nil
 }
 
+func (r *recorder) Restart(ctx context.Context, id string) error {
+	return r.Start(ctx, id)
+}
+
 func (r *recorder) Cancel(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

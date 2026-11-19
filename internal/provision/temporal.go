@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -42,9 +43,6 @@ func (t *Temporal) Approval(ctx context.Context, requestID, approvalID, outcome 
 	return t.Client.SignalWorkflow(ctx, WorkflowID(requestID), "", SignalApproval, ApprovalSignal{ApprovalID: approvalID, Outcome: outcome})
 }
 
-// Rollback starts the rollback of a failed request, under the request's
-// workflow ID (its earlier run has ended).
-// Signal sends a signal to any workflow by its ID.
 // Signal sends a signal; a workflow that has ended needs it no more.
 func (t *Temporal) Signal(ctx context.Context, workflowID, name string, arg any) error {
 	err := t.Client.SignalWorkflow(ctx, workflowID, "", name, arg)
@@ -68,11 +66,30 @@ func (t *Temporal) StartOnboarding(ctx context.Context, runID string) error {
 	return err
 }
 
+// Restart runs a failed request's workflow again, under the request's
+// workflow ID.
+func (t *Temporal) Restart(ctx context.Context, requestID string) error {
+	return t.replace(ctx, requestID, Provision)
+}
+
+// Rollback starts the rollback of a failed request, under the request's
+// workflow ID.
 func (t *Temporal) Rollback(ctx context.Context, requestID string) error {
+	return t.replace(ctx, requestID, RollbackWorkflow)
+}
+
+// replace starts a new run for a failed request, ending its last run if
+// that is still open. The request reads failed once that run's last
+// activity commits, a moment before the run closes; by default, a start in
+// between returns the old run and runs nothing (#180). Retry and roll back
+// take the failed request under its lock first, so one start per failure
+// gets here.
+func (t *Temporal) replace(ctx context.Context, requestID string, run any) error {
 	_, err := t.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
-		ID:        WorkflowID(requestID),
-		TaskQueue: t.TaskQueue,
-	}, RollbackWorkflow, requestID)
+		ID:                       WorkflowID(requestID),
+		TaskQueue:                t.TaskQueue,
+		WorkflowIDConflictPolicy: enumspb.WORKFLOW_ID_CONFLICT_POLICY_TERMINATE_EXISTING,
+	}, run, requestID)
 	return err
 }
 
