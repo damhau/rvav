@@ -88,6 +88,9 @@ read it after the request.
 - The field is a button that opens the browser's file chooser, which also
   takes a file dropped on it. It checks the size before sending, shows
   the file's name and size once kept, and says why rvav refused a file.
+- While a file is being sent, the form waits: Submit, Save as draft and
+  a wizard's Next stay off and say which file is still sending (F1.6), so
+  no request leaves without it.
 - The request's page lists a file as a button that downloads it.
 - nginx takes 25 MB on `/api/v1/forms/files`, and 10 MB elsewhere.
 

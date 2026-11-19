@@ -24,6 +24,19 @@ func TestCostLimit(t *testing.T) {
 }
 
 // A map and a null come back as JSON's: a REST call's body is sent as JSON.
+// A result JSON can't carry, such as a division by zero gives, is an
+// error rather than a value no input may hold (F1.6).
+func TestNonFiniteFails(t *testing.T) {
+	for _, expr := range []string{`1.0 / 0.0`, `-1.0 / 0.0`, `0.0 / 0.0`, `[1.0, 1.0 / 0.0]`, `{'r': double(inputs.a) / double(inputs.b)}`} {
+		if v, err := Eval(expr, Vars{"inputs": map[string]any{"a": 1.0, "b": 0.0}}); err == nil {
+			t.Errorf("%s = %v, want an error", expr, v)
+		}
+	}
+	if v, err := Eval(`double(inputs.a) / 4.0`, Vars{"inputs": map[string]any{"a": 1.0}}); err != nil || v != 0.25 {
+		t.Errorf("a finite division = %v, %v", v, err)
+	}
+}
+
 func TestCompositeEvalGivesJSONValues(t *testing.T) {
 	v, err := CompositeEval(`{'name': inputs.name, 'tags': ['a', inputs.name], 'none': null, 'nested': {'n': 1, 2: true}}`,
 		Vars{"inputs": map[string]any{"name": "web"}, "steps": map[string]any{}, "environment": "dev", "project": map[string]any{}})

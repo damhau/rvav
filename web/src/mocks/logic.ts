@@ -192,11 +192,12 @@ function resolveSource(
     ];
     // The service searches as rvav would: by what the options contain.
     const text = search.trim().toLowerCase();
-    return withDefaultOptions(
+    // As the server, a REST source gives options and suggests none of them.
+    return {
       field,
-      inputs,
-      source.search ? services.filter((s) => `${s.value} ${s.label}`.toLowerCase().includes(text)) : services,
-    );
+      options: source.search ? services.filter((s) => `${s.value} ${s.label}`.toLowerCase().includes(text)) : services,
+      cache_seconds: 60,
+    };
   }
   const withDefault = (options: Option[]) => withDefaultOptions(field, inputs, options);
   switch (source.name) {

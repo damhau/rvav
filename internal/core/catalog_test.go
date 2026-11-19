@@ -48,9 +48,33 @@ func TestFillSearch(t *testing.T) {
 		"https://h/apps?q=pay+roll&app=%24%7Bsearch%7D&env=dev"; got != want {
 		t.Errorf("fill URL = %s, want %s", got, want)
 	}
-	if got, want := fill(`{"q": "${search}", "app": "${inputs.app}"}`, inputs, `a"b`, jsonEscape),
+	if got, want := fillBody(`{"q": "${search}", "app": "${inputs.app}"}`, inputs, `a"b`),
 		`{"q": "a\"b", "app": "${search}"}`; got != want {
 		t.Errorf("fill body = %s, want %s", got, want)
+	}
+}
+
+// TestFillShapes: a list goes into a URL as its items joined with commas
+// and a map as JSON; in a body, a reference outside a string is a JSON
+// value, null when absent, and one inside is escaped text (F1.6).
+func TestFillShapes(t *testing.T) {
+	refs := inputRefs(map[string]any{"regions": []any{"gva", "zrh"}, "tags": map[string]any{"env": "dev"}, "n": 3.0,
+		"big": 1e21, "s": `1, "admin": true`, "on": true})
+	if got, want := fill("https://x/api?r=${inputs.regions}&t=${inputs.tags}&n=${inputs.big}", refs, "", url.QueryEscape),
+		"https://x/api?r=gva%2Czrh&t=%7B%22env%22%3A%22dev%22%7D&n=1000000000000000000000"; got != want {
+		t.Errorf("fill URL = %s, want %s", got, want)
+	}
+	body := fillBody(`{"regions": ${inputs.regions}, "in": "at ${inputs.regions} \"${inputs.s}\"", "n": ${inputs.n}, `+
+		`"s": ${inputs.s}, "on": ${inputs.on}, "tags": ${inputs.tags}, "absent": ${inputs.nope}, "gone": "${inputs.nope}", "q": ${search}}`,
+		refs, `a"b`)
+	want := `{"regions": ["gva","zrh"], "in": "at gva,zrh \"1, \"admin\": true\"", "n": 3, "s": "1, \"admin\": true", "on": true, ` +
+		`"tags": {"env":"dev"}, "absent": null, "gone": "", "q": "a\"b"}`
+	if body != want {
+		t.Errorf("fill body =\n%s, want\n%s", body, want)
+	}
+	var v map[string]any
+	if err := json.Unmarshal([]byte(body), &v); err != nil {
+		t.Errorf("the body isn't JSON: %v", err)
 	}
 }
 

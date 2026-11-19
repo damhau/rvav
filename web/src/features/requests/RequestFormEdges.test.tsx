@@ -102,6 +102,9 @@ describe("Request form edges", () => {
           .getAll()
           .filter((m) => JSON.stringify(m.state.variables ?? null).includes("correct-horse"));
       await waitFor(() => expect(holding()).toEqual([]));
+      expect(storedInputs(router.state.location.pathname).password).toBe("••••");
+      await screen.findByRole("region", { name: "What was asked for" }, { timeout: 5000 });
+      expect(document.body).not.toHaveTextContent("correct-horse");
     } finally {
       server.events.removeListener("request:start", listen);
     }
@@ -170,6 +173,28 @@ describe("Request form edges", () => {
     await user.click(screen.getByRole("checkbox", { name: "Extra" }));
     await user.click(screen.getByRole("button", { name: "Next" }));
     await screen.findByRole("button", { name: "Submit request" }, { timeout: 3000 });
+  }, 20_000);
+
+  it("leaves a REST dropdown empty until the requester picks, as the server does", async () => {
+    form("page");
+    const f = db.forms.itm_dbuser!;
+    (f.schema as { properties: Record<string, unknown> }).properties.service = { type: "string" };
+    f.ui_schema.fields.service = {
+      widget: "select",
+      label: "Service",
+      value_source: { kind: "rest", params: { url: "https://cmdb.corp.example/api/services", value: "$.id" } },
+    };
+    f.ui_schema.layout.sections[0]!.fields.push("service");
+    const user = userEvent.setup();
+    const { router } = await openForm();
+    await user.type(screen.getByLabelText("Role name"), "app_ro");
+    await user.click(screen.getByRole("combobox", { name: "Service" }));
+    expect(await screen.findByRole("option", { name: /Service 01/ })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("combobox", { name: "Service" })).toHaveTextContent("Select…");
+    await user.click(screen.getByRole("button", { name: "Submit request" }));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/requests\/REQ-/));
+    expect(storedInputs(router.state.location.pathname)).not.toHaveProperty("service");
   }, 20_000);
 
   it("gives a dropdown its default rule's option, not the one its source suggests", async () => {

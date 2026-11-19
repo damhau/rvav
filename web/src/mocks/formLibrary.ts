@@ -372,11 +372,13 @@ export function testEntry(t: S["FormLibraryTest"], vars: Vars): S["FormLibraryTe
   }
   if (e.kind === "rest") {
     const host = /^https?:\/\/([^/]+)/.exec(str(e.params, "url"))?.[1] ?? "the service";
+    // As the server, the value too: what `value` finds in the first item.
     return {
       options: [
         { value: "svc-01", label: "Service 01", meta: `from ${host}` },
         { value: "svc-02", label: "Service 02", meta: `from ${host}` },
       ],
+      value: "svc-01",
     };
   }
   try {

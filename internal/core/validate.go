@@ -87,7 +87,10 @@ func validateInputs(versionID string, schema json.RawMessage, inputs map[string]
 	if err != nil {
 		return nil, err
 	}
-	b, _ := json.Marshal(inputs)
+	b, err := json.Marshal(inputs)
+	if err != nil {
+		return nil, fmt.Errorf("inputs: %w", err)
+	}
 	return validateWith(s, b)
 }
 

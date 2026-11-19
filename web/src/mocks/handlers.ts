@@ -154,6 +154,14 @@ function title(item: StoredItem, host: string | null, inputs: Record<string, unk
   return typeof first === "string" ? `${item.name} · ${first}` : item.name;
 }
 
+/** Inputs as the server shows them once kept: a secret input's value is ••••. */
+function sealed(itemId: string, inputs: Record<string, unknown>): Record<string, unknown> {
+  const secret = Object.entries(db.forms[itemId]?.ui_schema.fields ?? {}).filter(
+    ([k, f]) => (f.widget === "secret" || f.secret) && inputs[k] !== undefined && inputs[k] !== null,
+  );
+  return secret.length ? { ...inputs, ...Object.fromEntries(secret.map(([k]) => [k, "••••"])) } : inputs;
+}
+
 /** A deployment for a request that starts provisioning now. */
 function createDeployment(
   item: StoredItem,
@@ -692,8 +700,8 @@ export const handlers = [
         warnings.map((w) => ({ field: "/accept_warnings", code: "warning", message: w.message })),
       );
 
-    // Kept as the server keeps them: without the inputs of fields the rules hide.
-    const { inputs } = ruled(db, item, project, draft);
+    // Kept as the server keeps them: without the inputs of fields the rules hide, the secret ones sealed.
+    const inputs = sealed(item.id, ruled(db, item, project, draft).inputs);
     const approval = check.approval.policies[0]?.reason ?? null;
     const later = !approval && draft.scheduled_at && new Date(draft.scheduled_at) > new Date();
     const behalf = draft.on_behalf_of ? db.users.find((u) => u.id === draft.on_behalf_of) : undefined;

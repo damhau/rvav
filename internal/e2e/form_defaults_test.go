@@ -18,6 +18,56 @@ import (
 	"github.com/damhau/rvav/internal/provision"
 )
 
+// TestInfiniteRule: a rule that divides by zero fails on its field: a
+// default gives none, and a computed value refuses the submit, rather
+// than answer 500 (F1.6).
+func TestInfiniteRule(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		num := func(label string) api.UiField { return api.UiField{Widget: api.UiWidgetNumber, Label: label} }
+		ratio, share := num("Ratio"), num("Share")
+		ratio.Rules = &api.UiRules{Default: new(`double(inputs.a) / double(inputs.b)`)}
+		share.Rules = &api.UiRules{Value: new(`100.0 * double(inputs.a) / double(inputs.b)`)}
+		types := map[string]string{"a": "number", "b": "number", "ratio": "number", "share": "number"}
+		for _, c := range []struct {
+			slug   string
+			fields map[string]api.UiField
+			submit int
+		}{
+			{"ratio", map[string]api.UiField{"a": num("A"), "b": num("B"), "ratio": ratio}, 202},
+			{"share", map[string]api.UiField{"a": num("A"), "b": num("B"), "share": share}, 422},
+		} {
+			def := awxForm(c.fields, map[string]string{"a": "number", "b": "number", c.slug: types[c.slug]})
+			var it api.AdminCatalogItem
+			h.json("POST", "/api/v1/admin/catalog/items", "lmartin", api.CatalogItemCreate{Slug: c.slug, Name: c.slug, Summary: "s",
+				Category: "compute", Type: api.AwxJobTemplate, Definition: &def}, 201, &it)
+			h.json("POST", "/api/v1/admin/catalog/items/"+c.slug+"/versions/"+it.DraftVersion.Id+"/publish", "lmartin", nil, 200, nil)
+			h.json("PUT", "/api/v1/admin/catalog/items/"+c.slug+"/entitlements", "lmartin",
+				api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+			d := api.RequestDraft{CatalogItemId: it.Id, VersionId: it.DraftVersion.Id, ProjectId: "prj_web", Environment: "dev",
+				Inputs: map[string]any{"a": 1, "b": 0}}
+			var p api.RequestPreview
+			h.json("POST", "/api/v1/requests/preview", "tnguyen", d, 200, &p)
+			if st := (*p.Fields)[c.slug]; st.Error == nil || !strings.Contains(*st.Error, "isn't a number") || st.Default != nil || st.Value != nil {
+				t.Errorf("%s: preview state = %+v", c.slug, st)
+			}
+			code, body, _ := h.do("POST", "/api/v1/requests", "tnguyen", d, "Idempotency-Key", uuid.NewString())
+			if code != c.submit {
+				t.Errorf("%s: submit = %d, want %d: %s", c.slug, code, c.submit, body)
+			}
+			if c.submit == 422 && !strings.Contains(string(body), `"/inputs/share"`) {
+				t.Errorf("share: the refusal names no field: %s", body)
+			}
+			if c.submit == 202 && !strings.Contains(string(body), `"inputs":{"a":1,"b":0}`) {
+				t.Errorf("ratio: the request's inputs aren't a and b alone: %s", body)
+			}
+		}
+	})
+}
+
 // TestDefaultRuleBeatsSuggestion: a dropdown whose source suggests an
 // option (the datastore with the most room) takes its default rule's
 // instead; one without a rule keeps the suggestion (F1.6).

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -249,17 +250,88 @@ func fill(tpl string, refs Refs, search string, esc func(string) string) string 
 	})
 }
 
-// refValue is what a reference of a template stands for: an input or a
-// parameter, or with no namespace, the searched text.
+// fillBody fills a JSON body's template. A reference inside a string is
+// text, escaped; one outside is a JSON value, null when absent, so that
+// the body stays JSON whatever the input holds.
+func fillBody(tpl string, refs Refs, search string) string {
+	var b strings.Builder
+	inString, escaped, last := false, false, 0
+	for _, loc := range sourceRef.FindAllStringSubmatchIndex(tpl, -1) {
+		for _, c := range tpl[last:loc[0]] {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\' && inString:
+				escaped = true
+			case c == '"':
+				inString = !inString
+			}
+		}
+		b.WriteString(tpl[last:loc[0]])
+		var ns, name string
+		if loc[2] >= 0 {
+			ns, name = tpl[loc[2]:loc[3]], tpl[loc[4]:loc[5]]
+		}
+		v, ok := refRaw(ns, name, refs, search)
+		switch {
+		case inString && ok:
+			b.WriteString(jsonEscape(refText(v)))
+		case inString:
+		case !ok:
+			b.WriteString("null")
+		default:
+			j, err := json.Marshal(v)
+			if err != nil {
+				j = []byte("null")
+			}
+			b.Write(j)
+		}
+		last = loc[1]
+	}
+	b.WriteString(tpl[last:])
+	return b.String()
+}
+
+// refValue is the text a reference of a template stands for: an input or
+// a parameter, or with no namespace, the searched text.
 func refValue(ns, name string, refs Refs, search string) (string, bool) {
+	v, ok := refRaw(ns, name, refs, search)
+	if !ok {
+		return "", false
+	}
+	return refText(v), true
+}
+
+func refRaw(ns, name string, refs Refs, search string) (any, bool) {
 	if ns == "" {
 		return search, true
 	}
 	v, ok := refs[ns][name]
 	if !ok || v == nil {
-		return "", false
+		return nil, false
 	}
-	return fmt.Sprint(v), true
+	return v, true
+}
+
+// refText writes a value as a template's text: a list's items joined with
+// commas, as a multi-select's in a query, and a map as JSON.
+func refText(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case []any:
+		parts := make([]string, len(x))
+		for i, item := range x {
+			parts[i] = refText(item)
+		}
+		return strings.Join(parts, ",")
+	case map[string]any:
+		b, _ := json.Marshal(x)
+		return string(b)
+	}
+	return fmt.Sprint(v)
 }
 
 func jsonEscape(s string) string {
@@ -325,7 +397,7 @@ func (r *RESTSources) answer(ctx context.Context, params map[string]any, refs Re
 		return restEntry{}, 0, &BadRequestError{Msg: fmt.Sprintf("The source's host %q is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", hostOf(target))}
 	}
 	method := strings.ToUpper(cmp.Or(p("method"), http.MethodGet))
-	body := fill(p("body"), refs, search, jsonEscape)
+	body := fillBody(p("body"), refs, search)
 	cacheSeconds := 60
 	if n, ok := params["cache_seconds"].(float64); ok {
 		cacheSeconds = min(max(int(n), 0), 3600)

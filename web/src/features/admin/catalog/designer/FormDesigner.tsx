@@ -12,6 +12,7 @@ import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { FormRenderer, type PageInputs } from "@/forms/FormRenderer";
 import { sentInputs } from "@/forms/defaults";
+import { mapFieldErrors } from "@/forms/errors";
 import { useSecretStandIns } from "@/forms/secretKeys";
 import { api, call } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemVersion, FieldStates, UiField } from "@/lib/api/types";
@@ -129,9 +130,7 @@ function Preview({
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [checkAll, setCheckAll] = useState(false);
   const errors = Object.fromEntries(
-    (shown?.errors ?? [])
-      .map((e) => [e.field.replace(/^\/inputs\//, ""), e.message] as const)
-      .filter(([name]) => checkAll || checked.has(name)),
+    Object.entries(mapFieldErrors(shown?.errors).fields).filter(([name]) => checkAll || checked.has(name)),
   );
   const problemCount = shown?.errors.length ?? 0;
   const checkPage = async (inputsOf: PageInputs) => {

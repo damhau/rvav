@@ -1079,6 +1079,18 @@ ui_schema:
   inputs it depends on change. A search field passes its text to the
   source (`${search}`, `search`) or keeps the options that contain it. A
   tree field's options name their `parent`.
+- A `rest` template's references (`${inputs.x}`, `${params.x}`,
+  `${search}`) are filled so that the call stays what the admin wrote. In
+  the URL, each is escaped text: a list's items joined with commas, as a
+  multi-select's, and a map as JSON. In a JSON body, a reference inside a
+  string is escaped text the same way (empty when the input is absent),
+  and one outside a string is a JSON value: `{"cores": ${inputs.cores}}`
+  sends the number, a list or a map as JSON, a text quoted, and `null`
+  when the input is absent.
+- A rule or a `cel` source whose result holds an infinite number or NaN,
+  as a division by zero gives, fails on its field: no input can hold one.
+  A default rule then gives no default, and a computed value refuses the
+  submit, saying why.
 - File fields: the file is checked (types, size, content sniffed) and kept
   with its request; its requester, approvers and project administrators
   download it from the request's page.

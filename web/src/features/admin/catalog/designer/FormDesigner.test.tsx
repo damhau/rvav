@@ -1,6 +1,8 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { server } from "@/mocks/node";
 import { renderApp } from "@/test/render";
 
 /** A new draft of the RHEL 9 server, open in the form designer. */
@@ -24,6 +26,37 @@ const steps = (preview: HTMLElement) =>
   within(within(preview).getByRole("list", { name: "Steps" }))
     .getAllByRole("listitem")
     .map((li) => li.textContent);
+
+describe("the form designer's preview", () => {
+  it("shows a problem in a table's cell or a list's item on its field", async () => {
+    const message = "Choose one of the listed values for AWX job templates.";
+    let real: { errors: unknown[] } | undefined;
+    const keep = async ({ request, response }: { request: Request; response: Response }) => {
+      if (/\/versions\/[^/]+\/preview$/.test(new URL(request.url).pathname))
+        real = (await response.clone().json()) as typeof real;
+    };
+    server.events.on("response:mocked", keep);
+    const user = userEvent.setup();
+    const { client } = renderApp("/admin/catalog-items/itm_rhel9");
+    await user.click(await screen.findByRole("button", { name: "New draft" }));
+    await user.click(await screen.findByRole("tab", { name: "Form designer" }));
+    const preview = await screen.findByRole("region", { name: "Preview" }, { timeout: 5000 });
+    await within(preview).findByRole("group", { name: "Basics" }, { timeout: 5000 });
+    await waitFor(() => expect(real).toBeDefined());
+    server.events.removeListener("response:mocked", keep);
+    server.use(
+      http.post("*/api/v1/admin/catalog/items/:id/versions/:vid/preview", () =>
+        HttpResponse.json({
+          ...real,
+          errors: [...real!.errors, { field: "/inputs/post_config/1", code: "enum", message }],
+        }),
+      ),
+    );
+    await act(() => client.invalidateQueries());
+    await user.click(await within(preview).findByRole("button", { name: "Show them" }, { timeout: 5000 }));
+    expect(await within(preview).findByText(message)).toBeInTheDocument();
+  }, 20_000);
+});
 
 describe("the form designer's layout", () => {
   it("lays the preview out as a wizard, in the pages' order, on the selection's page", async () => {

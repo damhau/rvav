@@ -4,6 +4,7 @@ package policy
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"sync"
 
@@ -140,7 +141,33 @@ func (s *set) eval(expr string, vars Vars) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return native(out), nil
+	v := native(out)
+	if x, ok := nonFinite(v); ok {
+		return nil, fmt.Errorf("it gives %v, which isn't a number an input can hold", x)
+	}
+	return v, nil
+}
+
+// nonFinite finds an infinite or NaN number in a result, such as a
+// division by zero gives: JSON can't carry one, so no input may hold it.
+func nonFinite(v any) (float64, bool) {
+	switch x := v.(type) {
+	case float64:
+		return x, math.IsInf(x, 0) || math.IsNaN(x)
+	case []any:
+		for _, item := range x {
+			if f, ok := nonFinite(item); ok {
+				return f, true
+			}
+		}
+	case map[string]any:
+		for _, item := range x {
+			if f, ok := nonFinite(item); ok {
+				return f, true
+			}
+		}
+	}
+	return 0, false
 }
 
 func (s *set) boolean(expr string, vars Vars) (bool, error) {

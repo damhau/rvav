@@ -89,6 +89,18 @@ describe("Form library", () => {
     expect(bodies[0]!.params).toEqual({ ...tree.params, label: "$.title" });
   });
 
+  it("tests a REST source for its options and its value, as the server does", { timeout: 20_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/form-library");
+    await openRow(user, "CMDB services", "Change or test");
+    const sheet = await screen.findByRole("dialog", { name: "Change CMDB services" });
+    const testing = within(sheet).getByRole("group", { name: "Test" });
+    for (const box of within(testing).queryAllByRole("textbox")) await user.type(box, "dev");
+    await user.click(within(sheet).getByRole("button", { name: "Run test" }));
+    expect(await within(testing).findByText("2 options")).toBeInTheDocument();
+    expect(within(testing).getByText(/^Value:/)).toHaveTextContent('Value: "svc-01"');
+  });
+
   it("puts a problem with a parameter on its row, past a row left out", { timeout: 20_000 }, async () => {
     const user = userEvent.setup();
     renderApp("/admin/form-library");
