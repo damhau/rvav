@@ -95,29 +95,7 @@ func PlanPolicies(e *vra.Estate) []PolicyPlan {
 			}
 		case vra.PolicyLease:
 			pl.Type = "lease"
-			pl.Becomes = "The lease policy of " + scope + " (Administration › Policies › Leases), for each of its environments"
-			pl.Enforcement = "hard"
-			if soft {
-				pl.Enforcement = "soft"
-				note(Info, "enforcementType", "Soft: set the lease policy's enforcement to soft. Going beyond it warns the requester, who may go on.")
-			}
-			if soft && pl.VRAProject != "" {
-				note(Warning, "enforcementType", "A project's override of a hard environment lease can't be soft: "+
-					"only an administrator can make the environment's lease soft.")
-			}
-			if v, ok := num(def["leaseTermMax"]); ok {
-				note(Info, "leaseTermMax", fmt.Sprintf("Maximum days: %d.", v))
-			}
-			if total, ok := num(def["leaseTotalTermMax"]); ok {
-				if term, ok := num(def["leaseTermMax"]); ok && term > 0 {
-					note(Info, "leaseTotalTermMax", fmt.Sprintf("%d days in all: at most %d extensions of %d days.", total, max(total/term-1, 0), term))
-				} else {
-					note(Warning, "leaseTotalTermMax", fmt.Sprintf("%d days in all: rvav counts extensions, not days in all.", total))
-				}
-			}
-			if v, ok := num(def["leaseGrace"]); ok {
-				note(Info, "leaseGrace", fmt.Sprintf("Grace days: %d, between the end of the lease and the deletion.", v))
-			}
+			planLease(&pl, p, def, note, scope, soft)
 		case vra.PolicyDay2:
 			pl.Type = "day2"
 			planDay2(&pl, def, note, scope)
@@ -159,6 +137,52 @@ func PlanPolicies(e *vra.Estate) []PolicyPlan {
 		out = append(out, pl)
 	}
 	return out
+}
+
+// planLease: a lease policy with criteria becomes a lease rule whose
+// condition is their CEL, and vRA's total lease term the lifetime (ADR-0048).
+func planLease(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(string, string, string), scope string, soft bool) {
+	pl.Becomes = "The lease policy of " + scope + " (Administration › Policies › Leases), for each of its environments"
+	rule, kind := len(p.Criteria) > 0 && string(p.Criteria) != "null", "policy"
+	if rule {
+		kind = "rule"
+		pl.Becomes = "A lease rule of " + scope + " (Administration › Policies › Leases), tried before the lease policies"
+		if cel, ok := criteriaCEL(p.Criteria); ok {
+			note(Info, "criteria", "Condition: "+cel)
+		} else {
+			note(Unmapped, "criteria", "Its criteria don't translate: write the rule's condition in CEL. They were "+string(p.Criteria)+".")
+		}
+	}
+	pl.Enforcement = "hard"
+	if soft {
+		pl.Enforcement = "soft"
+		note(Info, "enforcementType", "Soft: set the lease "+kind+"'s enforcement to soft. Going beyond it warns the requester, who may go on.")
+	}
+	switch {
+	case soft && pl.VRAProject != "" && rule:
+		note(Warning, "enforcementType", "A project admin's lease rule can't be soft where the environment's lease is hard: "+
+			"an administrator writes it.")
+	case soft && pl.VRAProject != "":
+		note(Warning, "enforcementType", "A project's override of a hard environment lease can't be soft: "+
+			"only an administrator can make the environment's lease soft.")
+	}
+	if v, ok := num(def["leaseTermMax"]); ok {
+		note(Info, "leaseTermMax", fmt.Sprintf("Maximum days: %d.", v))
+	}
+	if total, ok := num(def["leaseTotalTermMax"]); ok {
+		past := "needs approval"
+		if soft {
+			past = "warns"
+		}
+		note(Info, "leaseTotalTermMax", fmt.Sprintf("Lifetime: %d days from the deployment's creation; an extension past it %s.", total, past))
+		if term, ok := num(def["leaseTermMax"]); ok && term > 0 {
+			note(Info, "leaseTotalTermMax", fmt.Sprintf("Extensions: vRA counts days, not extensions. Allow as many as the lifetime holds: %d of %d days.",
+				max(total/term-1, 0), term))
+		}
+	}
+	if v, ok := num(def["leaseGrace"]); ok {
+		note(Info, "leaseGrace", fmt.Sprintf("Grace days: %d, between the end of the lease and the deletion.", v))
+	}
 }
 
 func planApproval(pl *PolicyPlan, p vra.Policy, def map[string]any, note func(string, string, string), scope string) {

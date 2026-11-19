@@ -48,6 +48,7 @@ describe("vRA import", () => {
     const lease = await screen.findByRole("region", { name: "Development leases" });
     expect(within(lease).getByText("soft")).toBeInTheDocument();
     expect(lease).toHaveTextContent("its project admins can write it");
+    expect(lease).toHaveTextContent("Lifetime: 90 days from the deployment's creation; an extension past it warns.");
   });
 
   it("adds vRA's custom properties and property groups when the catalog is imported", { timeout: 15_000 }, async () => {

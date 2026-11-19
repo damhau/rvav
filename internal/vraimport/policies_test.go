@@ -27,7 +27,9 @@ func TestPlanPolicies(t *testing.T) {
 		t.Fatalf("approval = %+v", p)
 	}
 	if p := by["pol-lease-dev"]; p.Type != "lease" || p.VRAProject != "Web Platform" || !note(p, Info, "Maximum days: 30.") ||
-		!note(p, Info, "at most 2 extensions of 30 days") || !note(p, Info, "Grace days: 7") {
+		!note(p, Info, "Lifetime: 90 days from the deployment's creation; an extension past it needs approval.") ||
+		!note(p, Info, "Allow as many as the lifetime holds: 2 of 30 days.") || !note(p, Info, "Grace days: 7") ||
+		!strings.Contains(p.Becomes, "The lease policy of") {
 		t.Fatalf("lease = %+v", p)
 	}
 	if p := by["pol-day2"]; p.Type != "day2" || !note(p, Info, "Allow power_off, power_on, snapshot_create to member.") ||
@@ -48,6 +50,37 @@ func TestPlanPolicies(t *testing.T) {
 		if got != want || ok != (want != "") {
 			t.Fatalf("%s = %q %v, want %q", in, got, ok, want)
 		}
+	}
+}
+
+// TestPlanLeaseRules: a lease policy with criteria becomes a lease rule,
+// its condition their CEL, or reported when they don't translate (ADR-0048).
+func TestPlanLeaseRules(t *testing.T) {
+	lease := func(criteria, enforcement string) PolicyPlan {
+		e := vra.Estate{
+			Projects: []vra.Project{{ID: "vp", Name: "Web Platform"}},
+			Policies: []vra.Policy{{ID: "p", Name: "p", TypeID: vra.PolicyLease, EnforcementType: enforcement, ProjectID: "vp",
+				Criteria: json.RawMessage(criteria), Definition: json.RawMessage(`{"leaseTermMax":7,"leaseTotalTermMax":30}`)}},
+		}
+		return PlanPolicies(&e)[0]
+	}
+	has := func(p PolicyPlan, level, text string) bool {
+		return slices.ContainsFunc(p.Notes, func(n Note) bool { return n.Level == level && n.Text == text })
+	}
+	p := lease(`{"matchExpression":[{"key":"input.size","operator":"eq","value":"small"}]}`, "SOFT")
+	if !strings.HasPrefix(p.Becomes, "A lease rule of the project Web Platform maps to") || p.Enforcement != "soft" ||
+		!has(p, Info, `Condition: inputs.size == "small"`) ||
+		!has(p, Info, "Lifetime: 30 days from the deployment's creation; an extension past it warns.") ||
+		!has(p, Info, "Extensions: vRA counts days, not extensions. Allow as many as the lifetime holds: 3 of 7 days.") ||
+		!slices.ContainsFunc(p.Notes, func(n Note) bool { return n.Level == Warning && strings.Contains(n.Text, "lease rule can't be soft") }) {
+		t.Fatalf("rule = %+v", p)
+	}
+	p = lease(`{"matchExpression":[{"key":"requestedBy","operator":"eq","value":"a@b"}]}`, "HARD")
+	if !strings.HasPrefix(p.Becomes, "A lease rule of") ||
+		!slices.ContainsFunc(p.Notes, func(n Note) bool {
+			return n.Level == Unmapped && strings.Contains(n.Text, "write the rule's condition in CEL")
+		}) {
+		t.Fatalf("untranslated = %+v", p)
 	}
 }
 

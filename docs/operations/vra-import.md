@@ -88,12 +88,23 @@ An approval policy's approvers read as a level's
 A day-2 policy's `ROLE:project_supervisor` authority becomes the
 `supervisor` role.
 
+A lease policy reads as one of rvav's leases
+([ADR-0048](../adr/0048-lease-rules-and-lifetime.md)):
+
+| vRA lease policy | rvav |
+|---|---|
+| Without criteria | The lease policy of each of the project's environments, or of every environment. |
+| With criteria | A lease rule, tried before the lease policies. Criteria on inputs and the project's name become its condition, in CEL. Other criteria, such as the catalog item or `requestedBy`, are reported: write the condition yourself, for example `item.slug == "gpu-server"`. |
+| `leaseTermMax` | The maximum, in days. |
+| `leaseTotalTermMax` | The lifetime, in days from the deployment's creation: past it, an extension needs approval, or warns under a soft lease. vRA counts no extensions, so the plan says how many the lifetime holds: allow at least that many. |
+| `leaseGrace` | The grace days, between the end of the lease and the deletion. |
+
 A policy's `enforcementType` gives the rvav policy's enforcement where
 rvav's policy has one ([ADR-0045](../adr/0045-deployment-sharing-and-project-policies.md)):
 
 | vRA policy | rvav |
 |---|---|
-| A `SOFT` lease policy | A lease policy with the enforcement **Soft**: going beyond it warns the requester, who may go on. A project's override of a hard environment lease can't be soft, so the plan says when only an administrator can make it soft. |
+| A `SOFT` lease policy | A lease policy or rule with the enforcement **Soft**: going beyond it warns the requester, who may go on. A project admin's override or rule can't be soft where the environment's lease is hard, so the plan says when only an administrator can make it soft. |
 | A `SOFT` day-2 policy | Its allowed actions become day-2 policies with the effect allow, which have no enforcement: a project's policy tried before them decides. |
 | A `SOFT` approval policy | An approval policy, which always applies. To only warn the requester, make a soft day-2 policy with the effect approval instead. |
 | A `SOFT` quota or other policy | The same as a hard one: the plan says rvav's has no enforcement. |
