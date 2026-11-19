@@ -2767,6 +2767,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/projects/{projectId}/user-quotas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What each member of a project may take there
+         * @description With `project.settings.read` in the project. A line limits what each
+         *     member owns in the project, their deployments and running requests,
+         *     those made for them included. It applies besides the project's own
+         *     quota and rvav's (ADR-0047).
+         */
+        get: operations["getProjectUserQuotas"];
+        /**
+         * Replace what each member of a project may take there
+         * @description With `project.quotas.manage` in the project, any limit: the lines
+         *     it adds or changes are marked `set_by_admin`. With
+         *     `project.policies.manage` (project admins), limits within the
+         *     project's own quota (refused with the code `looser` above it),
+         *     keeping the lines marked `set_by_admin` as they are (403
+         *     otherwise). Audited as `policy.quota.user.set` (ADR-0047).
+         */
+        put: operations["setProjectUserQuotas"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/quotas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The quota of all of rvav, and of each user across it
+         * @description With `project.settings.read` for all of rvav (ADR-0047).
+         */
+        get: operations["getGlobalQuotas"];
+        /**
+         * Replace the quota of all of rvav, and of each user across it
+         * @description With `project.quotas.manage` for all of rvav (administrators).
+         *     Audited as `policy.quota.global.set` (ADR-0047).
+         */
+        put: operations["setGlobalQuotas"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/lease-policies": {
         parameters: {
             query?: never;
@@ -5402,8 +5461,17 @@ export interface components {
             /** @description The allowed clusters, datastores or networks it ruled out (or passed over, for a soft one). */
             excluded: string[];
         };
+        /**
+         * @description Whose use a quota counts (ADR-0047): the project's (`project`), the
+         *     project's in one environment (`environment`), what the deployment's
+         *     owner holds in the project (`project_user`), all of rvav's
+         *     (`global`), or what the owner holds across rvav (`global_user`).
+         * @enum {string}
+         */
+        QuotaLevel: "project" | "environment" | "project_user" | "global" | "global_user";
         QuotaImpact: {
             resource: components["schemas"]["QuotaResource"];
+            level: components["schemas"]["QuotaLevel"];
             /** @description Set for a limit of one environment; absent for the project-wide one. */
             environment?: components["schemas"]["EnvironmentKey"];
             limit?: number | null;
@@ -7905,6 +7973,39 @@ export interface components {
         QuotaLimitList: {
             items: components["schemas"]["QuotaLimit"][];
         };
+        UserQuotaWrite: {
+            resource: components["schemas"]["QuotaResource"];
+            /** @description Null for no limit. */
+            limit: number | null;
+            /** @enum {string} */
+            enforcement: "hard" | "soft";
+        };
+        UserQuota: components["schemas"]["UserQuotaWrite"] & {
+            /**
+             * @description Whoever manages the project's quotas (`project.quotas.manage`)
+             *     set it last: the project's admins read it but don't change or
+             *     remove it (ADR-0047).
+             */
+            set_by_admin: boolean;
+        };
+        UserQuotaWriteList: {
+            items: components["schemas"]["UserQuotaWrite"][];
+        };
+        UserQuotaList: {
+            items: components["schemas"]["UserQuota"][];
+        };
+        GlobalQuota: {
+            resource: components["schemas"]["QuotaResource"];
+            /** @description What each user owns across rvav; false for all of rvav together. */
+            per_user: boolean;
+            /** @description Null for no limit. */
+            limit: number | null;
+            /** @enum {string} */
+            enforcement: "hard" | "soft";
+        };
+        GlobalQuotaList: {
+            items: components["schemas"]["GlobalQuota"][];
+        };
         LeasePolicy: {
             environment: components["schemas"]["EnvironmentKey"];
             /** @description A project's override of the environment's policy; null for the environment's own. */
@@ -8095,6 +8196,8 @@ export interface components {
         };
         PolicyQuotaLine: {
             resource: components["schemas"]["QuotaResource"];
+            /** @description The user's levels count what the explained user (`as_user_id`, or the caller) owns. */
+            level: components["schemas"]["QuotaLevel"];
             /** @description The environment the limit is for, or empty for the project as a whole. */
             scope: string;
             limit?: number | null;
@@ -13424,6 +13527,110 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getProjectUserQuotas: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserQuotaList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setProjectUserQuotas: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserQuotaWriteList"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserQuotaList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getGlobalQuotas: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalQuotaList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setGlobalQuotas: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GlobalQuotaList"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalQuotaList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
         };
     };

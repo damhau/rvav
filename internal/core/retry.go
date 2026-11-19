@@ -153,7 +153,7 @@ func (s *Service) checkDay2Retry(ctx context.Context, p *auth.Principal, r store
 	}
 	inputs := map[string]any{}
 	_ = json.Unmarshal(r.Inputs, &inputs)
-	overSoft, err := s.day2Quota(ctx, a, d, *target, inputs)
+	overSoft, err := s.day2Quota(ctx, p, a, d, *target, inputs)
 	if err != nil {
 		return err
 	}

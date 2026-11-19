@@ -3642,6 +3642,90 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /admin/projects/{projectId}/user-quotas:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectIdPath" }
+    get:
+      tags: [admin]
+      operationId: getProjectUserQuotas
+      summary: What each member of a project may take there
+      description: |
+        With `project.settings.read` in the project. A line limits what each
+        member owns in the project, their deployments and running requests,
+        those made for them included. It applies besides the project's own
+        quota and rvav's (ADR-0047).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserQuotaList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: setProjectUserQuotas
+      summary: Replace what each member of a project may take there
+      description: |
+        With `project.quotas.manage` in the project, any limit: the lines
+        it adds or changes are marked `set_by_admin`. With
+        `project.policies.manage` (project admins), limits within the
+        project's own quota (refused with the code `looser` above it),
+        keeping the lines marked `set_by_admin` as they are (403
+        otherwise). Audited as `policy.quota.user.set` (ADR-0047).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserQuotaWriteList" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserQuotaList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/quotas:
+    get:
+      tags: [admin]
+      operationId: getGlobalQuotas
+      summary: The quota of all of rvav, and of each user across it
+      description: With `project.settings.read` for all of rvav (ADR-0047).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GlobalQuotaList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [admin]
+      operationId: setGlobalQuotas
+      summary: Replace the quota of all of rvav, and of each user across it
+      description: |
+        With `project.quotas.manage` for all of rvav (administrators).
+        Audited as `policy.quota.global.set` (ADR-0047).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GlobalQuotaList" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GlobalQuotaList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /admin/lease-policies:
     get:
       tags: [admin]
@@ -7279,11 +7363,21 @@ components:
           description: The allowed clusters, datastores or networks it ruled out (or passed over, for a soft one).
           items: { type: string }
 
+    QuotaLevel:
+      type: string
+      description: |
+        Whose use a quota counts (ADR-0047): the project's (`project`), the
+        project's in one environment (`environment`), what the deployment's
+        owner holds in the project (`project_user`), all of rvav's
+        (`global`), or what the owner holds across rvav (`global_user`).
+      enum: [project, environment, project_user, global, global_user]
+      x-enum-varnames: [QuotaLevelProject, QuotaLevelEnvironment, QuotaLevelProjectUser, QuotaLevelGlobal, QuotaLevelGlobalUser]
     QuotaImpact:
       type: object
-      required: [resource, used, adding, exceeds]
+      required: [resource, level, used, adding, exceeds]
       properties:
         resource: { $ref: "#/components/schemas/QuotaResource" }
+        level: { $ref: "#/components/schemas/QuotaLevel" }
         environment:
           $ref: "#/components/schemas/EnvironmentKey"
           description: Set for a limit of one environment; absent for the project-wide one.
@@ -10409,6 +10503,60 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/QuotaLimit" }
+    UserQuotaWrite:
+      type: object
+      required: [resource, limit, enforcement]
+      additionalProperties: false
+      properties:
+        resource: { $ref: "#/components/schemas/QuotaResource" }
+        limit: { type: [integer, "null"], minimum: 0, description: Null for no limit. }
+        enforcement: { type: string, enum: [hard, soft] }
+    UserQuota:
+      allOf:
+        - $ref: "#/components/schemas/UserQuotaWrite"
+        - type: object
+          required: [set_by_admin]
+          properties:
+            set_by_admin:
+              type: boolean
+              description: |
+                Whoever manages the project's quotas (`project.quotas.manage`)
+                set it last: the project's admins read it but don't change or
+                remove it (ADR-0047).
+    UserQuotaWriteList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/UserQuotaWrite" }
+    UserQuotaList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/UserQuota" }
+    GlobalQuota:
+      type: object
+      required: [resource, per_user, limit, enforcement]
+      additionalProperties: false
+      properties:
+        resource: { $ref: "#/components/schemas/QuotaResource" }
+        per_user:
+          type: boolean
+          description: What each user owns across rvav; false for all of rvav together.
+        limit: { type: [integer, "null"], minimum: 0, description: Null for no limit. }
+        enforcement: { type: string, enum: [hard, soft] }
+    GlobalQuotaList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/GlobalQuota" }
     LeasePolicy:
       type: object
       required: [environment, max_extensions, grace_days, expiry_action]
@@ -10628,9 +10776,12 @@ components:
           items: { $ref: "#/components/schemas/PolicyQuotaLine" }
     PolicyQuotaLine:
       type: object
-      required: [resource, scope, used, reserved, enforcement]
+      required: [resource, level, scope, used, reserved, enforcement]
       properties:
         resource: { $ref: "#/components/schemas/QuotaResource" }
+        level:
+          $ref: "#/components/schemas/QuotaLevel"
+          description: The user's levels count what the explained user (`as_user_id`, or the caller) owns.
         scope: { type: string, description: "The environment the limit is for, or empty for the project as a whole." }
         limit: { type: [integer, "null"] }
         enforcement: { type: string, enum: [hard, soft] }

@@ -63,7 +63,7 @@ func (s *Service) projectChoices(ctx context.Context, p *auth.Principal, d store
 		}
 		code := proj.Code
 		opt := api.Option{Value: proj.ID, Label: proj.Name, Meta: &code}
-		reason, err := s.cannotMove(ctx, proj, d, t)
+		reason, err := s.cannotMove(ctx, p, proj, d, t)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func (s *Service) projectChoices(ctx context.Context, p *auth.Principal, d store
 }
 
 // cannotMove says why the deployment's VMs can't move to the project ("" when they can).
-func (s *Service) cannotMove(ctx context.Context, proj store.Project, d store.DeploymentRow, t day2.Target) (string, error) {
+func (s *Service) cannotMove(ctx context.Context, p *auth.Principal, proj store.Project, d store.DeploymentRow, t day2.Target) (string, error) {
 	taken, err := s.Store.TakenDeploymentNames(ctx, s.Store.Pool, proj.ID, d.ID, []string{d.Name})
 	if err != nil {
 		return "", err
@@ -116,7 +116,7 @@ func (s *Service) cannotMove(ctx context.Context, proj store.Project, d store.De
 	if err != nil {
 		return "", err
 	}
-	q, err := s.quotaCheck(ctx, proj, d.Environment, env.Name, "It", add)
+	q, err := s.quotaCheck(ctx, ownerScope(p, proj, env, d, movedLevels), "It", add)
 	if err != nil || len(q.Hard) == 0 {
 		return "", err
 	}
@@ -158,38 +158,58 @@ func day2Add(a *day2.Action, t day2.Target, inputs map[string]any) map[string]in
 	return nil
 }
 
+// movedLevels are the quotas moving a deployment to another project
+// checks: what it holds across rvav doesn't change. handedLevels are
+// those handing it over checks: the new owner's (ADR-0047).
+var (
+	movedLevels  = []api.QuotaLevel{api.QuotaLevelProject, api.QuotaLevelEnvironment, api.QuotaLevelProjectUser}
+	handedLevels = []api.QuotaLevel{api.QuotaLevelProjectUser, api.QuotaLevelGlobalUser}
+)
+
+// ownerScope is where a deployment counts in proj, for its owner.
+func ownerScope(p *auth.Principal, proj store.Project, env store.Environment, d store.DeploymentRow, levels []api.QuotaLevel) quotaScope {
+	return quotaScope{Project: proj, Env: env.Key, EnvName: env.Name, OwnerID: d.OwnerID, OwnerName: d.OwnerName,
+		You: d.OwnerID == p.User.ID, Levels: levels}
+}
+
 // day2Quota checks what the action adds to a quota: resizing and disks add
-// to the deployment's project, moving adds the deployment to the new one. A
-// hard limit passed refuses it; it returns the resources over a soft one.
-func (s *Service) day2Quota(ctx context.Context, a *day2.Action, d store.DeploymentRow, t day2.Target, inputs map[string]any) ([]string, error) {
-	var proj store.Project
+// to the deployment's project, moving adds the deployment to the new one,
+// and handing it over to its new owner. A hard limit passed refuses it; it
+// returns the resources over a soft one.
+func (s *Service) day2Quota(ctx context.Context, p *auth.Principal, a *day2.Action, d store.DeploymentRow, t day2.Target,
+	inputs map[string]any) ([]string, error) {
+	proj, err := s.Store.GetProject(ctx, d.ProjectID)
+	if err != nil {
+		return nil, err
+	}
 	var add map[string]int
+	var levels []api.QuotaLevel
 	what := "The change"
 	switch a.Key {
 	case "disk_add", "disk_extend":
 		add = day2Add(a, t, inputs)
-		var err error
-		if proj, err = s.Store.GetProject(ctx, d.ProjectID); err != nil {
-			return nil, err
-		}
 		what = "The disk"
 	case "resize":
 		cpu, _ := inputs["cpu_count"].(float64)
 		mem, _ := inputs["memory_gb"].(float64)
 		add = map[string]int{"vcpu": max(int(cpu)-t.VM.CpuCount, 0), "memory_gb": max(int(mem)-t.VM.MemoryMb/1024, 0)}
-		var err error
-		if proj, err = s.Store.GetProject(ctx, d.ProjectID); err != nil {
-			return nil, err
-		}
 		what = "The new size"
 	case "change_project":
 		id, _ := inputs["project"].(string)
-		var err error
 		if proj, err = s.Store.GetProject(ctx, id); err != nil {
 			return nil, err
 		}
-		add = deploymentUsage(t)
+		add, levels = deploymentUsage(t), movedLevels
 		what = "Moving it"
+	case "change_owner":
+		id, _ := inputs["owner"].(string)
+		owner, err := s.Store.GetUser(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		d.OwnerID, d.OwnerName = owner.ID, owner.Name
+		add, levels = deploymentUsage(t), handedLevels
+		what = "Handing it over"
 	default:
 		return nil, nil
 	}
@@ -197,12 +217,12 @@ func (s *Service) day2Quota(ctx context.Context, a *day2.Action, d store.Deploym
 	if err != nil {
 		return nil, err
 	}
-	q, err := s.quotaCheck(ctx, proj, d.Environment, env.Name, what, add)
+	q, err := s.quotaCheck(ctx, ownerScope(p, proj, env, d, levels), what, add)
 	if err != nil {
 		return nil, err
 	}
 	if len(q.Hard) > 0 {
-		field := map[string]string{"resize": "/inputs/cpu_count", "change_project": "/inputs/project"}[a.Key]
+		field := map[string]string{"resize": "/inputs/cpu_count", "change_project": "/inputs/project", "change_owner": "/inputs/owner"}[a.Key]
 		if field == "" {
 			field = "/inputs/size_gb"
 		}

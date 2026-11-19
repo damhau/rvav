@@ -712,7 +712,7 @@ func (s *Service) ExplainPolicies(ctx context.Context, p *auth.Principal, q api.
 	if out.Naming, err = s.explainNaming(ctx, proj, env, full); err != nil {
 		return out, err
 	}
-	if out.Quota, err = s.explainQuota(ctx, proj.ID, env.Key); err != nil {
+	if out.Quota, err = s.explainQuota(ctx, as, proj, env); err != nil {
 		return out, err
 	}
 	if q.ItemId != nil && *q.ItemId != "" {
@@ -821,32 +821,6 @@ func (s *Service) explainNaming(ctx context.Context, proj store.Project, env sto
 	}
 	dec.Outcome = &msg
 	return dec, nil
-}
-
-func (s *Service) explainQuota(ctx context.Context, projectID, env string) ([]api.PolicyQuotaLine, error) {
-	out := []api.PolicyQuotaLine{}
-	for _, scope := range []string{"", env} {
-		limits, err := s.Store.QuotaLimits(ctx, projectID, scope)
-		if err != nil {
-			return nil, err
-		}
-		if len(limits) == 0 {
-			continue
-		}
-		used, err := s.Store.QuotaUsed(ctx, projectID, scope)
-		if err != nil {
-			return nil, err
-		}
-		reserved, err := s.Store.QuotaReserved(ctx, projectID, scope)
-		if err != nil {
-			return nil, err
-		}
-		for _, l := range limits {
-			out = append(out, api.PolicyQuotaLine{Resource: api.QuotaResource(l.Resource), Scope: scope, Limit: l.Limit,
-				Enforcement: api.PolicyQuotaLineEnforcement(l.Enforcement), Used: used[l.Resource], Reserved: reserved[l.Resource]})
-		}
-	}
-	return out, nil
 }
 
 func (s *Service) explainApproval(ctx context.Context, as *auth.Principal, proj store.Project, env store.Environment, itemID string,

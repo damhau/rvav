@@ -276,6 +276,7 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
           const used = q.used[resource];
           return {
             resource,
+            level: "project",
             limit,
             used,
             adding: delta[resource],

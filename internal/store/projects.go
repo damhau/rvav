@@ -66,6 +66,25 @@ func (s *Store) QuotaLimits(ctx context.Context, projectID, environment string) 
 // QuotaUsed sums what live deployments allocate. Deployments still being
 // provisioned are counted as reserved by their request instead.
 func (s *Store) QuotaUsed(ctx context.Context, projectID, environment string) (QuotaAmounts, error) {
+	return s.QuotaUsedBy(ctx, QuotaFilter{ProjectID: projectID, Environment: environment})
+}
+
+// QuotaReserved sums the planned amounts of requests not finished yet,
+// including those waiting for approval: approving them must not take a
+// project over a limit that others counted on.
+func (s *Store) QuotaReserved(ctx context.Context, projectID, environment string) (QuotaAmounts, error) {
+	return s.QuotaReservedBy(ctx, QuotaFilter{ProjectID: projectID, Environment: environment})
+}
+
+// QuotaFilter is whose use a quota counts: a project's or all of rvav's,
+// in one environment or all, and one owner's or everyone's; empty
+// fields count everything (ADR-0047).
+type QuotaFilter struct {
+	ProjectID, Environment, OwnerID string
+}
+
+// QuotaUsedBy is QuotaUsed for any scope.
+func (s *Store) QuotaUsedBy(ctx context.Context, f QuotaFilter) (QuotaAmounts, error) {
 	var vcpu, memMB, storage, vms int
 	err := s.Pool.QueryRow(ctx, `
 		select coalesce(sum((r.properties->'vm'->>'cpu_count')::int), 0),
@@ -74,9 +93,9 @@ func (s *Store) QuotaUsed(ctx context.Context, projectID, environment string) (Q
 		                     from jsonb_array_elements(r.properties->'vm'->'disks') d)), 0),
 		       count(*)
 		from resources r join deployments dp on dp.id = r.deployment_id
-		where r.type = 'vsphere.vm' and dp.project_id = $1
-		  and ($2 = '' or dp.environment = $2)
-		  and dp.status not in ('provisioning', 'deleted')`, projectID, environment).
+		where r.type = 'vsphere.vm' and ($1 = '' or dp.project_id = $1)
+		  and ($2 = '' or dp.environment = $2) and ($3 = '' or dp.owner_id = $3)
+		  and dp.status not in ('provisioning', 'deleted')`, f.ProjectID, f.Environment, f.OwnerID).
 		Scan(&vcpu, &memMB, &storage, &vms)
 	if err != nil {
 		return nil, err
@@ -84,18 +103,17 @@ func (s *Store) QuotaUsed(ctx context.Context, projectID, environment string) (Q
 	return QuotaAmounts{"vcpu": vcpu, "memory_gb": memMB / 1024, "storage_gb": storage, "vm_count": vms}, nil
 }
 
-// QuotaReserved sums the planned amounts of requests not finished yet,
-// including those waiting for approval: approving them must not take a
-// project over a limit that others counted on.
-func (s *Store) QuotaReserved(ctx context.Context, projectID, environment string) (QuotaAmounts, error) {
+// QuotaReservedBy is QuotaReserved for any scope: a request counts for
+// its owner, who owns what it builds or changes.
+func (s *Store) QuotaReservedBy(ctx context.Context, f QuotaFilter) (QuotaAmounts, error) {
 	out := QuotaAmounts{}
 	rows, err := s.Pool.Query(ctx, `
 		select q.key, coalesce(sum(q.value::int), 0)
 		from requests r, jsonb_each_text(case when jsonb_typeof(r.plan->'quota') = 'object'
 		                                      then r.plan->'quota' else '{}' end) q
-		where r.project_id = $1 and ($2 = '' or r.environment = $2)
+		where ($1 = '' or r.project_id = $1) and ($2 = '' or r.environment = $2) and ($3 = '' or r.owner_id = $3)
 		  and r.status in ('pending_approval', 'queued', 'scheduled', 'running')
-		group by q.key`, projectID, environment)
+		group by q.key`, f.ProjectID, f.Environment, f.OwnerID)
 	if err != nil {
 		return nil, err
 	}

@@ -346,7 +346,7 @@ func (s *Service) RunAction(ctx context.Context, p *auth.Principal, deploymentID
 	if errs = append(errs, justificationErrs(draft.Justification)...); len(errs) > 0 {
 		return store.RequestRow{}, &ValidationError{Errors: errs}
 	}
-	overSoft, err := s.day2Quota(ctx, a, d, *target, inputs)
+	overSoft, err := s.day2Quota(ctx, p, a, d, *target, inputs)
 	if err != nil {
 		return store.RequestRow{}, err
 	}

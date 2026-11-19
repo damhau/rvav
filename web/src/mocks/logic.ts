@@ -715,6 +715,7 @@ export function preview(
           const used = q.used[resource];
           return {
             resource,
+            level: "project",
             limit,
             used,
             adding: need[resource],

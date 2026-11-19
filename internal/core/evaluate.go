@@ -299,7 +299,7 @@ func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.
 		return nil, err
 	}
 	// Quota first: approval policies may ask approval for a soft quota.
-	if err := s.evaluateQuota(ctx, ev, strict); err != nil {
+	if err := s.evaluateQuota(ctx, ev, p); err != nil {
 		return nil, err
 	}
 	if err := s.evaluateApproval(ctx, p, ev, strict); err != nil {
@@ -735,7 +735,18 @@ func (s *Service) previewHolders(ctx context.Context, projectID string, roles []
 	return slices.DeleteFunc(append(ids, members...), func(id string) bool { return id == requesterID }), nil
 }
 
-func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, _ bool) error {
+// ownerScope is where a request's deployments count: its project and
+// environment, and whoever will own them.
+func (ev *Evaluation) ownerScope(p *auth.Principal) quotaScope {
+	owner := p.User
+	if ev.OnBehalfOf != nil {
+		owner = *ev.OnBehalfOf
+	}
+	return quotaScope{Project: ev.Project, Env: ev.Env.Key, EnvName: ev.Env.Name, OwnerID: owner.ID, OwnerName: owner.Name,
+		You: owner.ID == p.User.ID}
+}
+
+func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, p *auth.Principal) error {
 	ev.QuotaAdd = map[string]int{"vcpu": 0, "memory_gb": 0, "storage_gb": 0, "vm_count": 0}
 	if ev.Blueprint.Kind == blueprint.KindVM {
 		ev.QuotaAdd = ev.vmQuota()
@@ -748,7 +759,7 @@ func (s *Service) evaluateQuota(ctx context.Context, ev *Evaluation, _ bool) err
 			}
 		}
 	}
-	q, err := s.quotaCheck(ctx, ev.Project, ev.Env.Key, ev.Env.Name, "This request", ev.QuotaAdd)
+	q, err := s.quotaCheck(ctx, ev.ownerScope(p), "This request", ev.QuotaAdd)
 	if err != nil {
 		return err
 	}

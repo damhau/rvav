@@ -341,7 +341,8 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 	u.same = d.Status != "failed" && ev.Version.ID == d.VersionID && sameInputs(ev.Version.UISchema, d.Inputs, ev.Inputs)
 
 	// Quota on the net change; approval policies see the update.
-	q, err := s.quotaCheck(ctx, ev.Project, ev.Env.Key, ev.Env.Name, "This update", u.delta)
+	q, err := s.quotaCheck(ctx, quotaScope{Project: ev.Project, Env: ev.Env.Key, EnvName: ev.Env.Name, OwnerID: d.OwnerID,
+		OwnerName: d.OwnerName, You: d.OwnerID == p.User.ID}, "This update", u.delta)
 	if err != nil {
 		return nil, err
 	}
