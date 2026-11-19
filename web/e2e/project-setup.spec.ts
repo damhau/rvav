@@ -86,11 +86,11 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   // The RHEL 9 server item, open to Payments too.
   await nav(page, "Catalog items");
   await page.getByRole("link", { name: "RHEL 9 server", exact: true }).click();
-  await page.getByRole("tab", { name: "Entitlements" }).click();
+  await page.getByRole("tab", { name: "Sharing" }).click();
   await page.getByRole("radio", { name: /Chosen projects/ }).check();
   await page.getByRole("checkbox", { name: "Payments" }).click();
-  await page.getByRole("button", { name: "Save entitlements" }).click();
-  await expect(page.getByText("Entitlements saved")).toBeVisible();
+  await page.getByRole("button", { name: "Save projects" }).click();
+  await expect(page.getByText("Projects saved")).toBeVisible();
 
   // In Payments: the form offers only what the rule allows, and the VM is named by the policy.
   await page.getByRole("button", { name: /^Project/ }).click();

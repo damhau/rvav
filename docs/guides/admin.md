@@ -1104,7 +1104,29 @@ An item's tabs:
   - **Discard** a draft.
 
   **Compare** shows what changed between two versions.
-- **Entitlements:** which projects may request it.
+- **Sharing:** who may request it.
+  - **Projects:** every project, those made later included, or the
+    projects you choose. Click **Save projects**.
+  - **Who may request it:** in each project, all its members by default.
+    To share the item there with chosen people only, click **Share**, pick
+    the project, choose **Chosen people**, and add users, OIDC groups (as
+    the identity provider's token names them) and project roles. Before
+    you save, the sheet lists who can request it in the project and why,
+    who is left out, and anyone named who has no role that may request
+    there. Pick **Every project** to name who may request it in each
+    project, when it is shared with every project. Shares add up: someone
+    requests it when any share covers them.
+
+  Sharing doesn't replace the roles: only people whose role in the
+  project lets them request see the item there, as before. Administrators
+  and catalog admins see only what is shared with them, like anyone. An API
+  token carries no groups, so it requests only what its user is named for,
+  holds a role for, or what is shared with all members.
+
+  When you narrow an item's sharing, saved drafts stay, but their submit is
+  refused for those left out. Requests already submitted, waiting for
+  approval or scheduled, run as they were submitted. A role an item names
+  can't be deleted until you change the item's sharing.
 
 Items can be exported and imported as YAML, between installations.
 
@@ -1186,8 +1208,9 @@ its published version. **rvav publishes, the repository proposes:**
   or discard it (rvav commits its own file again). A new file becomes a new
   item, a draft. The item's details (name, summary, category) stay as rvav
   has them.
-- **Never in the repository:** drafts, entitlements, secrets' values, and
-  items imported from AWX.
+- **Never in the repository:** drafts, sharing, secrets' values, and
+  items imported from AWX. A sharing block pushed to the repository is
+  put back by a commit, as the item's details are.
 
 Above the items, **Catalog items** shows the repository, when it was
 last read, and how many files need you. **Details** lists those files,

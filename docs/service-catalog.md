@@ -621,7 +621,11 @@ stays, its submit is refused; a request already submitted, waiting for
 approval or scheduled, runs. Categories aren't shared: an item is. The
 YAML export has the item's sharing, with projects by code and users by
 email; an import that makes a new item shares it so, while the catalog's
-repository never has it.
+repository never has it. vRA's content sharing policies become shares when
+the catalog is imported ([vRA import](operations/vra-import.md)). Catalog
+admins share an item in **Administration › Catalog items** › the item ›
+**Sharing**, whose sheet lists who can request it before saving
+([admin guide](guides/admin.md)).
 
 ## 3. Custom forms
 

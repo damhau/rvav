@@ -50,6 +50,7 @@ import { extensibilityHandlers } from "./extensibility";
 import { notificationHandlers } from "./notifications";
 import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
+import { sharedWith, sharingHandlers } from "./sharing";
 import { listingHandlers, visibleDeployments } from "./listing";
 import { faults } from "./faults";
 import { demand, preview, resolveField, ruled, summarize, vmCount } from "./logic";
@@ -389,6 +390,7 @@ export const handlers = [
   ...notificationHandlers(db, base, wait),
   ...signInHandlers(base, wait),
   ...draftHandlers(db, base, wait),
+  ...sharingHandlers(db, base, wait),
   ...listingHandlers(db, base, wait),
 
   // AWX templates with the day2 label, offered as day-2 actions (ADR-0018).
@@ -509,7 +511,7 @@ export const handlers = [
   http.get(`${base}/catalog/categories`, async ({ request }) => {
     await wait();
     const projectId = new URL(request.url).searchParams.get("project_id");
-    const items = db.items.filter((i) => projectId && i.projectIds.includes(projectId));
+    const items = db.items.filter((i) => projectId && sharedWith(db, i, projectId));
     return json<Ok<"/catalog/categories", "get">>({
       items: db.categories.map((c) => ({ ...c, item_count: items.filter((i) => i.category === c.key).length })),
     });
@@ -524,7 +526,7 @@ export const handlers = [
     const favourite = url.searchParams.get("favourite") === "true";
     const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
     const items = db.items
-      .filter((i) => projectId && i.projectIds.includes(projectId))
+      .filter((i) => projectId && sharedWith(db, i, projectId))
       .filter((i) => !category || i.category === category)
       .filter((i) => !type || i.type === type)
       .filter((i) => !favourite || db.favourites.has(i.id))
@@ -533,9 +535,12 @@ export const handlers = [
     return json<S["CatalogItemPage"]>(page(items, url));
   }),
 
-  http.get<{ itemId: string }>(`${base}/catalog/items/:itemId`, async ({ params }) => {
+  http.get<{ itemId: string }>(`${base}/catalog/items/:itemId`, async ({ params, request }) => {
     await wait();
     const item = itemByKey(params.itemId);
+    const projectId = new URL(request.url).searchParams.get("project_id");
+    if (item && projectId && item.projectIds.includes(projectId) && !sharedWith(db, item, projectId))
+      return notFound("Catalog item");
     return item ? json<S["CatalogItem"]>(publicItem(item)) : notFound("Catalog item");
   }),
 
@@ -567,6 +572,8 @@ export const handlers = [
         "You can't request items in this project",
         "Your roles there don't let you request.",
       );
+    if (projectId && item.projectIds.includes(projectId) && !sharedWith(db, item, projectId))
+      return notFound("Catalog item");
     return json<S["RequestForm"]>(db.forms[item.id]!);
   }),
 
@@ -645,6 +652,14 @@ export const handlers = [
     if (!item || !project) return notFound("Catalog item or project");
     if (!can(db.me, "request.submit", project.id)) {
       return problem(403, "forbidden", "You can't request items in this project");
+    }
+    if (item.projectIds.includes(project.id) && !sharedWith(db, item, project.id)) {
+      return problem(
+        403,
+        "forbidden",
+        "You can't request this item here",
+        `${item.name} is shared in ${project.name} with chosen people, and you aren't one of them.`,
+      );
     }
     const check = preview(db, item, project, draft, true);
     // As the server: the inputs after the rules, so a field they hide isn't checked.

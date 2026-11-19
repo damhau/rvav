@@ -54,7 +54,7 @@ web/
 │  │  └─ admin/
 │  │     ├─ catalog-items/
 │  │     │  ├─ index.tsx       # items, categories, secrets, AWX templates
-│  │     │  └─ $itemId.tsx     # an item: versions, designer, YAML, details, entitlements
+│  │     │  └─ $itemId.tsx     # an item: versions, designer, YAML, details, sharing
 │  │     └─ ...
 │  ├─ features/                # domain modules (UI + hooks + queries)
 │  │  ├─ catalog/
@@ -377,7 +377,9 @@ Catalog admins and administrators build items under **Catalog items**
   deprecated version, withdraw the published one, export as YAML or
   discard; **Compare** two versions), **Form designer**, **Definition**
   (the version as YAML), **Details** (icon from rvav's own set),
-  **Entitlements** and, in Git, **Git**.
+  **Sharing** (the projects, then a table of who may request it in each,
+  changed in a sheet that previews who can request; `SharingTab.tsx`) and,
+  in Git, **Git**.
 - The **Definition** tab is a CodeMirror 6 editor, loaded only when opened.
   A YAML parse error, or a 422 from the server with JSON pointers under
   `/definition`, shows on its line (`definitionYaml.ts` walks the YAML

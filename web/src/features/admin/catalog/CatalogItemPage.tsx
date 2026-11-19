@@ -1,6 +1,6 @@
 // A catalog item for catalog admins (ADR-0019): its versions (publish,
 // roll back, withdraw, discard, compare, export), its draft's definition as
-// YAML, its details and the projects that may request it.
+// YAML, its details and who may request it in which projects.
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Ellipsis } from "lucide-react";
@@ -28,6 +28,7 @@ import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, relative } from "@/lib/utils";
 import { GitBadge, ItemGitTab } from "./GitPanels";
+import { SharingTab } from "./SharingTab";
 import { ItemChangeDialog, requestableIn } from "./ItemsPanel";
 import { fromYaml, problemsOnLines, toYaml } from "./definitionYaml";
 import { closeDraft, resetDraft, useDraftCopy } from "./designer/draftStore";
@@ -613,74 +614,6 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
   );
 }
 
-function EntitlementsTab({ item }: { item: AdminCatalogItem }) {
-  const refresh = useRefresh(item.id);
-  const [all, setAll] = useState(item.entitlements.all_projects);
-  const [chosen, setChosen] = useState(new Set(item.entitlements.project_ids));
-  const save = useMutation({
-    mutationFn: () =>
-      call(
-        api.PUT("/admin/catalog/items/{itemId}/entitlements", {
-          params: { path: { itemId: item.id } },
-          body: { all_projects: all, project_ids: all ? [] : [...chosen] },
-        }),
-      ),
-    onSuccess: () => {
-      refresh();
-      toast.success("Entitlements saved");
-    },
-    onError: (e) => toastError(e, "Saving failed"),
-  });
-  const projects = item.entitlements.projects ?? [];
-  return (
-    <Panel
-      title="Who may request it"
-      footer={
-        <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>
-          {save.isPending ? "Saving…" : "Save entitlements"}
-        </Button>
-      }
-    >
-      <div className="flex max-w-xl flex-col gap-3 text-body">
-        <div role="radiogroup" aria-label="Open to" className="flex flex-col gap-1.5">
-          {[
-            { v: true, label: "Every project", hint: "projects made later included" },
-            { v: false, label: "Chosen projects", hint: "" },
-          ].map((o) => (
-            <label key={o.label} className="flex items-center gap-2">
-              <input type="radio" name="open-to" checked={all === o.v} onChange={() => setAll(o.v)} />
-              {o.label}
-              {o.hint && <span className="text-secondary text-faint">{o.hint}</span>}
-            </label>
-          ))}
-        </div>
-        {!all && (
-          <ul aria-label="Projects" className="flex flex-col gap-1 rounded-md border border-line p-2">
-            {projects.map((p) => (
-              <li key={p.id} className="flex min-h-7 items-center gap-2">
-                <Checkbox
-                  id={`project-${p.id}`}
-                  checked={chosen.has(p.id)}
-                  onChange={(on) =>
-                    setChosen((s) => {
-                      const n = new Set(s);
-                      if (on) n.add(p.id);
-                      else n.delete(p.id);
-                      return n;
-                    })
-                  }
-                />
-                <label htmlFor={`project-${p.id}`}>{p.name}</label>
-                <span className="font-mono text-caption text-faint">{p.code}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </Panel>
-  );
-}
-
 /** What concerns the whole item: its request form, its YAML, withdrawing and deleting it. */
 function ItemMenu({ item, onAsk }: { item: AdminCatalogItem; onAsk: (action: "withdraw" | "delete") => void }) {
   const navigate = useNavigate();
@@ -829,7 +762,7 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
           <TabsTrigger value="designer">Form designer</TabsTrigger>
           <TabsTrigger value="definition">Definition</TabsTrigger>
           <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="entitlements">Entitlements</TabsTrigger>
+          <TabsTrigger value="entitlements">Sharing</TabsTrigger>
           {it.git && <TabsTrigger value="git">Git</TabsTrigger>}
         </TabsList>
         <TabsContent value="versions" className="pt-4">
@@ -845,7 +778,7 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
           <DetailsTab key={it.id + it.name + it.icon} item={it} />
         </TabsContent>
         <TabsContent value="entitlements" className="pt-4">
-          <EntitlementsTab key={JSON.stringify(it.entitlements)} item={it} />
+          <SharingTab item={it} />
         </TabsContent>
         {it.git && (
           <TabsContent value="git" className="pt-4">

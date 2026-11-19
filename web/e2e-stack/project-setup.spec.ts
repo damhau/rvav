@@ -101,11 +101,11 @@ test("a project set up in the browser requests a VM", async ({ page }) => {
   // The RHEL 9 server item, open to the project too.
   await nav(page, "Catalog items");
   await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "RHEL 9 server", exact: true }).click();
-  await page.getByRole("tab", { name: "Entitlements" }).click();
+  await page.getByRole("tab", { name: "Sharing" }).click();
   await page.getByRole("radio", { name: /Chosen projects/ }).check();
   await page.getByRole("checkbox", { name, exact: true }).click();
-  await page.getByRole("button", { name: "Save entitlements" }).click();
-  await expect(page.getByText("Entitlements saved")).toBeVisible();
+  await page.getByRole("button", { name: "Save projects" }).click();
+  await expect(page.getByText("Projects saved")).toBeVisible();
 
   // In the project: only what the rule allows, the VM named by the policy, built for real.
   await page.getByRole("button", { name: /^Project/ }).click();

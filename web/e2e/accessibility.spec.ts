@@ -355,11 +355,11 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("option", { name: "Yes or no" }).click();
       await page.getByRole("button", { name: "Save draft" }).click();
       await expect(page.getByText(/^Draft [\d.]+ saved$/)).toBeVisible();
-      await page.getByRole("tab", { name: "Entitlements" }).click();
+      await page.getByRole("tab", { name: "Sharing" }).click();
       await page.getByRole("radio", { name: /Chosen projects/ }).check();
       await page.getByRole("checkbox", { name: "Web Platform" }).click();
-      await page.getByRole("button", { name: "Save entitlements" }).click();
-      await expect(page.getByText("Entitlements saved")).toBeVisible();
+      await page.getByRole("button", { name: "Save projects" }).click();
+      await expect(page.getByText("Projects saved")).toBeVisible();
       await page.getByRole("tab", { name: "Versions" }).click();
       await page.getByRole("button", { name: "Publish" }).click();
       await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
@@ -443,11 +443,11 @@ for (const theme of ["light", "dark"] as const) {
 
       await page.getByRole("button", { name: "Save draft" }).click();
       await expect(page.getByText(/^Draft [\d.]+ saved$/)).toBeVisible();
-      await page.getByRole("tab", { name: "Entitlements" }).click();
+      await page.getByRole("tab", { name: "Sharing" }).click();
       await page.getByRole("radio", { name: /Chosen projects/ }).check();
       await page.getByRole("checkbox", { name: "Web Platform" }).click();
-      await page.getByRole("button", { name: "Save entitlements" }).click();
-      await expect(page.getByText("Entitlements saved")).toBeVisible();
+      await page.getByRole("button", { name: "Save projects" }).click();
+      await expect(page.getByText("Projects saved")).toBeVisible();
       await page.getByRole("tab", { name: "Versions" }).click();
       await page.getByRole("button", { name: "Publish" }).click();
       await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
@@ -533,11 +533,11 @@ for (const theme of ["light", "dark"] as const) {
 
       await page.getByRole("button", { name: "Save draft" }).click();
       await expect(page.getByText(/^Draft [\d.]+ saved$/)).toBeVisible();
-      await page.getByRole("tab", { name: "Entitlements" }).click();
+      await page.getByRole("tab", { name: "Sharing" }).click();
       await page.getByRole("radio", { name: /Chosen projects/ }).check();
       await page.getByRole("checkbox", { name: "Web Platform" }).click();
-      await page.getByRole("button", { name: "Save entitlements" }).click();
-      await expect(page.getByText("Entitlements saved")).toBeVisible();
+      await page.getByRole("button", { name: "Save projects" }).click();
+      await expect(page.getByText("Projects saved")).toBeVisible();
       await page.getByRole("tab", { name: "Versions" }).click();
       await page.getByRole("button", { name: "Publish" }).click();
       await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();

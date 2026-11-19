@@ -28,6 +28,7 @@ import {
   type StoredEntry,
 } from "./formLibrary";
 import { applyStates, fieldStates, userGroups, validateInputs } from "./logic";
+import { assignable, builtinRoles, customRoles } from "./roles";
 import type { Db, StoredItem } from "./seed";
 
 type S = components["schemas"];
@@ -41,7 +42,29 @@ interface AdminState {
   versions: Record<string, Version[]>; // by item ID, newest first
   allProjects: Set<string>;
   sortOrder: Record<string, number>;
+  /** By item ID, once its sharing was saved: before, every share is for all members. */
+  sharing: Record<string, ItemSharing>;
 }
+
+type Audience = S["CatalogAudience"];
+
+/** How an item is shared (G1.2): with every project, and each project it is shared with, by audience. */
+export interface ItemSharing {
+  all: boolean;
+  everywhere: Audience;
+  projects: Record<string, Audience>;
+}
+
+const nobody = (): Audience => ({ user_ids: [], groups: [], roles: [] });
+export const allMembers = (a: Audience | undefined) => !a || a.user_ids.length + a.groups.length + a.roles.length === 0;
+const tidy = (l: string[]) => [...new Set(l.map((x) => x.trim()))].sort();
+
+/** The item's sharing, when it was saved since the mocks started. */
+export const itemSharing = (db: Db, itemId: string): ItemSharing | undefined => state(db).sharing[itemId];
+
+/** The roles given in projects, built in or custom, an audience may name. */
+export const projectRoles = (db: Db): S["RoleRef"][] =>
+  [...builtinRoles, ...customRoles(db)].filter((r) => assignable(r, true)).map((r) => ({ key: r.key, name: r.name }));
 
 const storedGroup = (
   key: string,
@@ -312,6 +335,7 @@ function state(db: Db): AdminState {
       versions,
       allProjects: new Set(db.items.filter((i) => i.source.kind === "awx").map((i) => i.id)),
       sortOrder: Object.fromEntries(db.categories.map((c, i) => [c.key, i * 10])),
+      sharing: {},
     };
   }
   return d.catalogAdmin;
@@ -356,10 +380,19 @@ function adminItem(db: Db, item: StoredItem): S["AdminCatalogItem"] {
 }
 
 function entitlements(db: Db, item: StoredItem): S["CatalogEntitlements"] {
+  const sh = state(db).sharing[item.id];
+  const audiences = Object.entries(sh?.projects ?? {})
+    .filter(([, a]) => !allMembers(a))
+    .map(([project_id, a]) => ({ project_id, ...a }));
+  const named = new Set([...audiences.flatMap((a) => a.user_ids), ...(sh?.everywhere.user_ids ?? [])]);
   return {
     all_projects: state(db).allProjects.has(item.id),
-    project_ids: [...item.projectIds].sort(),
+    project_ids: sh ? Object.keys(sh.projects).sort() : [...item.projectIds].sort(),
+    everywhere: sh?.everywhere ?? nobody(),
+    audiences,
     projects: db.projects.map((p) => ({ id: p.id, code: p.code, name: p.name })),
+    roles: projectRoles(db),
+    users: db.users.filter((u) => named.has(u.id)),
   };
 }
 
@@ -1243,10 +1276,46 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       if (!item) return problem(404, "Not found");
       const e = (await request.json()) as S["CatalogEntitlements"];
       const st = state(db);
+      const old = st.sharing[item.id];
+      const projects = [...new Set(e.project_ids)].sort();
+      const errors: S["FieldError"][] = [];
+      const audiences: Record<string, Audience> = {};
+      const given = e.audiences ?? Object.entries(old?.projects ?? {}).map(([project_id, a]) => ({ project_id, ...a }));
+      given.forEach((a, i) => {
+        if (!projects.includes(a.project_id)) {
+          if (e.audiences)
+            errors.push({
+              field: `/audiences/${i}/project_id`,
+              code: "not_shared",
+              message: `The item isn't shared with ${a.project_id}: add it to project_ids.`,
+            });
+          return;
+        }
+        a.groups.forEach((g, j) => {
+          if (!g.trim())
+            errors.push({ field: `/audiences/${i}/groups/${j}`, code: "required", message: "Give the group's name." });
+        });
+        audiences[a.project_id] = { user_ids: tidy(a.user_ids), groups: tidy(a.groups), roles: tidy(a.roles) };
+      });
+      const everywhere = e.everywhere ?? (e.all_projects && old?.all ? old.everywhere : nobody());
+      if (!e.all_projects && !allMembers(everywhere))
+        errors.push({
+          field: "/everywhere",
+          code: "not_all_projects",
+          message: "Name who may request in every project only when the item is shared with every project.",
+        });
+      if (errors.length) return problem(422, "Some values need fixing", errors);
+      st.sharing[item.id] = {
+        all: e.all_projects,
+        everywhere: e.all_projects
+          ? { user_ids: tidy(everywhere.user_ids), groups: tidy(everywhere.groups), roles: tidy(everywhere.roles) }
+          : nobody(),
+        projects: Object.fromEntries(projects.map((id) => [id, audiences[id] ?? nobody()])),
+      };
       if (e.all_projects) st.allProjects.add(item.id);
       else st.allProjects.delete(item.id);
-      item.projectIds = e.all_projects ? db.projects.map((p) => p.id) : [...e.project_ids];
-      return HttpResponse.json({ ...entitlements(db, item), all_projects: e.all_projects, project_ids: e.project_ids });
+      item.projectIds = e.all_projects ? db.projects.map((p) => p.id) : projects;
+      return HttpResponse.json(entitlements(db, item));
     }),
     http.get(`${base}/admin/catalog/items/:id/export`, async ({ params, request }) => {
       await wait();

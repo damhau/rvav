@@ -193,10 +193,10 @@ async function designed(page: Page, yaml = definition) {
 async function publish(page: Page) {
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText(/^Draft [\d.]+ saved$/)).toBeVisible();
-  await page.getByRole("tab", { name: "Entitlements" }).click();
+  await page.getByRole("tab", { name: "Sharing" }).click();
   await page.getByRole("checkbox", { name: "Web Platform" }).click();
-  await page.getByRole("button", { name: "Save entitlements" }).click();
-  await expect(page.getByText("Entitlements saved")).toBeVisible();
+  await page.getByRole("button", { name: "Save projects" }).click();
+  await expect(page.getByText("Projects saved")).toBeVisible();
   await page.getByRole("tab", { name: "Versions" }).click();
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
@@ -345,13 +345,13 @@ test("then a branch on the answer, its side telling the owner; saved, offered an
   await page.keyboard.press("Enter");
   await expect(page.getByText(/^Draft [\d.]+ saved$/)).toBeVisible();
   await tabTo(page, page.getByRole("tab", { name: "Definition" }), "Shift+Tab");
-  await selectTab(page, "Entitlements", "ArrowRight");
+  await selectTab(page, "Sharing", "ArrowRight");
   await tabTo(page, page.getByRole("checkbox", { name: "Web Platform" }));
   await page.keyboard.press("Space");
-  await tabTo(page, page.getByRole("button", { name: "Save entitlements" }));
+  await tabTo(page, page.getByRole("button", { name: "Save projects" }));
   await page.keyboard.press("Enter");
-  await expect(page.getByText("Entitlements saved")).toBeVisible();
-  await tabTo(page, page.getByRole("tab", { name: "Entitlements" }), "Shift+Tab");
+  await expect(page.getByText("Projects saved")).toBeVisible();
+  await tabTo(page, page.getByRole("tab", { name: "Sharing" }), "Shift+Tab");
   await page.keyboard.press("Home");
   await expect(page.getByRole("tab", { name: "Versions" })).toHaveAttribute("aria-selected", "true");
   await tabTo(page, page.getByRole("button", { name: "Publish" }));

@@ -31,6 +31,10 @@ one to ask your project admin or administrator for.
    the toolbar. Each card shows what kind of item it is (a VM blueprint, a
    composite, an AWX job template) and a line on what it gives you. Star
    the ones you use often. **Request** on a card opens its form directly.
+   The catalog shows the items shared with you in the current project: an
+   item can be shared with all the project's members, or only with chosen
+   people, groups or roles. If an item you used before is missing, ask a
+   catalog admin; a draft you saved for it can't be submitted.
 2. **The item's page:** open an item to read its description, the version
    that requests use, whether it needs approval, how long it usually takes,
    and what it builds: its VMs, networks and groups, or a composite's steps

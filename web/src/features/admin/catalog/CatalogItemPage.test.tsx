@@ -191,7 +191,7 @@ describe("the item's header and versions", () => {
   it("opens the tab the address names", async () => {
     renderApp("/admin/catalog-items/rhel9-server?tab=entitlements");
     expect(await screen.findByRole("region", { name: "Who may request it" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Entitlements" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Sharing" })).toHaveAttribute("aria-selected", "true");
   });
 });
 

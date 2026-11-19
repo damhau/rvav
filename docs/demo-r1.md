@@ -57,7 +57,7 @@ The S9 acceptance: a project set up end to end without SQL or YAML.
    **Members**, she adds Thomas (found by name), and can't remove herself
    while she is its only project admin.
 8. Léa, as catalog admin: **Catalog items** → *RHEL 9 server* →
-   **Entitlements** → Payments.
+   **Sharing** → Payments.
 
 ## 2. Requesting in the new project (Thomas)
 1. Project switcher → *Payments* → Catalog → **RHEL 9 server**. Only the

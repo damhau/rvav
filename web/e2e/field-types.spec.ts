@@ -111,11 +111,11 @@ test("a form with every field type, in the designer and requested", async ({ pag
   await expect(preview.getByLabel("Secret", { exact: true })).toBeVisible();
   await bothThemes(page, "designer");
 
-  await page.getByRole("tab", { name: "Entitlements" }).click();
+  await page.getByRole("tab", { name: "Sharing" }).click();
   await page.getByRole("radio", { name: /Chosen projects/ }).check();
   await page.getByRole("checkbox", { name: "Web Platform" }).click();
-  await page.getByRole("button", { name: "Save entitlements" }).click();
-  await expect(page.getByText("Entitlements saved")).toBeVisible();
+  await page.getByRole("button", { name: "Save projects" }).click();
+  await expect(page.getByText("Projects saved")).toBeVisible();
   await page.getByRole("tab", { name: "Versions" }).click();
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText("1.0 published")).toBeVisible();
