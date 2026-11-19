@@ -547,12 +547,17 @@ you have approved or rejected. Select a row to open it in a side panel,
 which shows:
 - what is asked and why;
 - the rules that made it need approval;
-- its cost in quota.
+- its cost in quota: **Quota after** shows, for vCPU and memory, the quota
+  with the least room left once it's done, such as the project's or the
+  quota of the person it's for.
 
 **Deciding:**
 - **Approve:** you may change the inputs your organisation lets approvers
   change, such as a smaller size. The change is recorded and the
-  requester told. To approve as asked, without opening it, choose
+  requester told. A smaller or equal size always fits. A larger one is
+  checked, for what it adds, against the hard quotas and deployment
+  limits of the person the request is for, and refused when it doesn't
+  fit. To approve as asked, without opening it, choose
   **Approve** in the row's **⋯** menu.
 - **Reject:** with a comment saying why, which the requester reads.
   **Reject…** in the row's **⋯** menu opens the side panel at the comment.

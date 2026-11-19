@@ -701,6 +701,65 @@ export function ruled(db: Db, item: StoredItem, project: Project, draft: Request
 }
 
 /**
+ * What a stored request asks of its owner's quotas and deployment limits
+ * with these inputs: what it holds, the deployments it makes and the
+ * largest one's size.
+ */
+function requestAsks(db: Db, r: StoredRequest, inputs: Inputs) {
+  const req = r.request;
+  const item = db.items.find((i) => i.id === req.catalog_item.id);
+  const project = db.projects.find((p) => p.id === req.project.id);
+  if (!item || !project) return undefined;
+  const need = demand(item, inputs, req.count ?? 1);
+  const owner = req.on_behalf_of ?? req.requester;
+  const env = db.environments.find((e) => e.key === req.environment) ?? { key: req.environment, name: req.environment };
+  const made = need.vm_count === 0 ? 0 : multiParts(item.slug, inputs) ? 1 : need.vm_count;
+  return {
+    need,
+    made,
+    vcpu: made === 1 ? need.vcpu : need.vcpu / Math.max(need.vm_count, 1),
+    memory: made === 1 ? need.memory_gb : need.memory_gb / Math.max(need.vm_count, 1),
+    sc: { project, env, owner, you: owner.id === db.me.user.id },
+  };
+}
+
+/**
+ * As the server's check of an approver's edit (ADR-0047): the request's
+ * owner's hard quotas and deployment limits, for what the edit adds to
+ * what the request holds already. Soft ones stay silent, as the requester
+ * accepted them on submit.
+ */
+export function approverEditRefusals(db: Db, r: StoredRequest, inputs: Inputs): FieldError[] {
+  const before = requestAsks(db, r, r.request.inputs ?? {});
+  const after = requestAsks(db, r, inputs);
+  if (!before || !after) return [];
+  const growth = Object.fromEntries(
+    (Object.keys(after.need) as QuotaResource[]).map((k) => [k, Math.max(after.need[k] - before.need[k], 0)]),
+  );
+  const addVcpu = Math.max(after.vcpu - before.vcpu, 0);
+  const addMemory = Math.max(after.memory - before.memory, 0);
+  const limits = after.made
+    ? limitCheck(db, after.sc, {
+        toOwner: 0,
+        toProject: 0,
+        vcpu: after.vcpu,
+        memory: after.memory,
+        addVcpu,
+        addMemory,
+        many: after.made > 1,
+      }).hard
+    : [];
+  return [
+    ...quotaCheck(db, after.sc, "This change", growth).hard.map((message) => ({
+      field: "",
+      code: "quota_exceeded",
+      message,
+    })),
+    ...limits.map((message) => ({ field: "", code: "limit_exceeded", message })),
+  ];
+}
+
+/**
  * As the server's retry after a rollback, which gave back the request's
  * quota, its deployments' place in the deployment limits and their names:
  * why it can't take them again, "" when it can. Its approval stands, so a
@@ -708,17 +767,9 @@ export function ruled(db: Db, item: StoredItem, project: Project, draft: Request
  */
 export function rolledBackRetryRefusal(db: Db, r: StoredRequest): string {
   const req = r.request;
-  const item = db.items.find((i) => i.id === req.catalog_item.id);
-  const project = db.projects.find((p) => p.id === req.project.id);
-  if (!item || !project) return "";
-  const inputs = req.inputs ?? {};
-  const need = demand(item, inputs, req.count ?? 1);
-  const owner = req.on_behalf_of ?? req.requester;
-  const env = db.environments.find((e) => e.key === req.environment) ?? { key: req.environment, name: req.environment };
-  const sc = { project, env, owner, you: owner.id === db.me.user.id };
-  const made = need.vm_count === 0 ? 0 : multiParts(item.slug, inputs) ? 1 : need.vm_count;
-  const vcpu = made === 1 ? need.vcpu : need.vcpu / Math.max(need.vm_count, 1);
-  const memory = made === 1 ? need.memory_gb : need.memory_gb / Math.max(need.vm_count, 1);
+  const a = requestAsks(db, r, req.inputs ?? {});
+  if (!a) return "";
+  const { need, made, vcpu, memory, sc } = a;
   const hard = [
     ...(need.vm_count ? quotaCheck(db, sc, "This request", need).hard : []),
     ...(made
@@ -734,6 +785,7 @@ export function rolledBackRetryRefusal(db: Db, r: StoredRequest): string {
       : []),
   ];
   if (hard.length) return hard.join(" ");
+  const project = sc.project;
   const gone = db.deployments.filter((d) => req.deployment_ids?.includes(d.id) && d.status === "deleted");
   const taken = gone.find((d) =>
     db.deployments.some(

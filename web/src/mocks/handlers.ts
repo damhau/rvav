@@ -62,7 +62,17 @@ import { sharedWith, sharingHandlers } from "./sharing";
 import { listingHandlers, seesDeployment, visibleDeployments } from "./listing";
 import { faults } from "./faults";
 import { namesDeployments } from "./deploymentNames";
-import { demand, policyVars, preview, resolveField, rolledBackRetryRefusal, ruled, summarize, vmCount } from "./logic";
+import {
+  approverEditRefusals,
+  demand,
+  policyVars,
+  preview,
+  resolveField,
+  rolledBackRetryRefusal,
+  ruled,
+  summarize,
+  vmCount,
+} from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
 import {
   cancel,
@@ -1062,6 +1072,13 @@ export const handlers = [
       }
       if (to !== f.value) changes.push({ field, label: f.label, from: f.value, to });
     }
+    const over = changes.length
+      ? approverEditRefusals(db, stored, {
+          ...stored.request.inputs,
+          ...Object.fromEntries(changes.map((c) => [c.field, c.to])),
+        })
+      : [];
+    if (over.length) return problem(422, "validation", "Some inputs need attention", over[0]!.message, over);
     a.votes.push(vote(db.me.user, body.decision, comment, changes));
     if (changes.length) {
       stored.request.inputs = { ...stored.request.inputs, ...Object.fromEntries(changes.map((c) => [c.field, c.to])) };
