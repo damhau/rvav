@@ -1301,7 +1301,8 @@ To add an entry:
 4. Choose its **Kind**:
    - **REST call** calls a URL on a host that REST value sources may call
      (**Administration › Integrations › Allowed hosts**). A source maps
-     the answer with JSONPath: **Items**, **Value**, **Label**, **Detail**.
+     the answer with JSONPath: **Items**, **Value**, **Label**, **Detail**,
+     and **Parent** for a tree, where each item names its parent's value.
      A validation reads **Valid at**, **Message at** and **Errors at**
      (`$.valid`, `$.message` and `$.errors` when empty). **Secret** names a
      stored secret that rvav sends as a bearer token.
@@ -1314,12 +1315,16 @@ To add an entry:
    doesn't read the form's inputs, so forms with different inputs can
    share it.
 6. Under **Test**, give the parameters values and select **Run test** to
-   see the options, the value, or what the check says.
+   see the options, the value, or what the check says. To test it as a
+   form of a project would run it, choose the **Project** and the
+   **Environment**: the entry then reads `project` and `environment`, and a
+   REST call opens the project's secret of that name before the global one.
 7. Select **Add**.
 
 To change an entry, open its row's menu and select **Change or test**.
 Saving makes the entry's next version; the versions before it don't
-change. Each item that names an earlier version gets a draft that names
+change. What the sheet doesn't show, such as a `cache_seconds` set through the
+API, stays as it was unless you change the kind. Each item that names an earlier version gets a draft that names
 the new one, so the change reaches requesters only when you publish those
 drafts. **Used by** lists the items' versions that name the entry, and
 which of its versions each names.

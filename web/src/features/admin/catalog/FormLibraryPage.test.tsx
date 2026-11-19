@@ -45,7 +45,97 @@ async function openRow(user: ReturnType<typeof userEvent.setup>, name: string, a
   await user.click(await screen.findByRole("menuitem", { name: action }));
 }
 
+const tree = {
+  ...used,
+  key: "cmdbTree",
+  name: "CMDB tree",
+  params: {
+    url: "https://cmdb.corp.example/api/tree",
+    items: "$[*]",
+    value: "$.id",
+    label: "$.name",
+    parent: "$.parent",
+    cache_seconds: 120,
+  },
+  parameters: [],
+  used_by: [],
+};
+
+const pickIn = async (user: ReturnType<typeof userEvent.setup>, at: HTMLElement, name: string, option: string) => {
+  await user.click(within(at).getByRole("combobox", { name }));
+  await user.click(await screen.findByRole("option", { name: option }));
+};
+
 describe("Form library", () => {
+  it("keeps a tree's parent and what the sheet doesn't show", { timeout: 20_000 }, async () => {
+    const bodies: { params: Record<string, unknown> }[] = [];
+    server.use(
+      http.get("*/api/v1/admin/form-library", () => HttpResponse.json({ items: [tree] })),
+      http.put("*/api/v1/admin/form-library/:key", async ({ request }) => {
+        bodies.push((await request.json()) as (typeof bodies)[number]);
+        return HttpResponse.json({ ...tree, version: 2, versions: [1, 2], drafts: [] });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/admin/form-library");
+    await openRow(user, "CMDB tree", "Change or test");
+    const sheet = await screen.findByRole("dialog", { name: "Change CMDB tree" });
+    const label = within(sheet).getByRole("textbox", { name: "Label" });
+    expect(within(sheet).getByRole("textbox", { name: "Parent" })).toHaveValue("$.parent");
+    await user.clear(label);
+    await user.type(label, "$.title");
+    await user.click(within(sheet).getByRole("button", { name: "Save as a new version" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]!.params).toEqual({ ...tree.params, label: "$.title" });
+  });
+
+  it("puts a problem with a parameter on its row, past a row left out", { timeout: 20_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/form-library");
+    await user.click(await screen.findByRole("button", { name: "New entry" }));
+    const sheet = await screen.findByRole("dialog", { name: "New form library entry" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Key" }), "twoRows");
+    await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Two rows");
+    await user.click(within(sheet).getByRole("button", { name: "Add parameter" }));
+    await user.click(within(sheet).getByRole("button", { name: "Add parameter" }));
+    await user.type(within(sheet).getByLabelText("Name", { selector: "#fl-prm-1-name" }), "env");
+    await user.click(within(sheet).getByRole("button", { name: "Add" }));
+    const second = within(sheet).getByLabelText("Label", { selector: "#fl-prm-1-label" });
+    await waitFor(() => expect(second).toHaveAccessibleDescription(/label/i));
+    expect(second).toHaveAttribute("aria-invalid", "true");
+    expect(within(sheet).getByLabelText("Label", { selector: "#fl-prm-0-label" })).not.toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+  });
+
+  it(
+    "tests with a parameter named with a space, as a project's form in an environment",
+    { timeout: 20_000 },
+    async () => {
+      const user = userEvent.setup();
+      renderApp("/admin/form-library");
+      await user.click(await screen.findByRole("button", { name: "New entry" }));
+      const sheet = await screen.findByRole("dialog", { name: "New form library entry" });
+      await user.type(within(sheet).getByRole("textbox", { name: "Key" }), "where");
+      await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Where");
+      await pickIn(user, sheet, "Kind", "CEL expression");
+      await user.click(within(sheet).getByRole("button", { name: "Add parameter" }));
+      await user.type(within(sheet).getByLabelText("Name", { selector: "#fl-prm-0-name" }), "tier ");
+      await user.type(within(sheet).getByLabelText("Label", { selector: "#fl-prm-0-label" }), "Tier");
+      await user.click(within(sheet).getByRole("textbox", { name: "Options" }));
+      await user.paste("[params.tier, environment, project.code]");
+      const testing = within(sheet).getByRole("group", { name: "Test" });
+      const tier = within(testing).getByRole("textbox", { name: "Tier" });
+      await user.type(tier, "gold");
+      expect(tier).toHaveValue("gold");
+      await pickIn(user, testing, "Project", "Web Platform");
+      await pickIn(user, testing, "Environment", "Development");
+      await user.click(within(sheet).getByRole("button", { name: "Run test" }));
+      expect(await within(sheet).findByText("3 options")).toBeInTheDocument();
+      for (const o of ["gold", "dev", "web"]) expect(within(testing).getAllByText(o).length).toBeGreaterThan(0);
+    },
+  );
   it("adds a validation after testing it", { timeout: 20_000 }, async () => {
     const user = userEvent.setup();
     renderApp("/admin/form-library");

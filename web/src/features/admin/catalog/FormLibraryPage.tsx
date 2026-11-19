@@ -22,7 +22,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { keys, q } from "@/lib/query";
+import { adm, keys, q } from "@/lib/query";
 import { relative, toText } from "@/lib/utils";
 
 type Entry = components["schemas"]["FormLibraryEntry"];
@@ -39,7 +39,7 @@ const kindLabel: Record<Kind, string> = { rest: "REST call", cel: "CEL expressio
 /** The parameters an entry's kind and purpose take, in the order the sheet shows them. */
 const paramFields: Record<Purpose, Record<Kind, string[]>> = {
   source: {
-    rest: ["url", "method", "body", "secret", "items", "value", "label", "meta"],
+    rest: ["url", "method", "body", "secret", "items", "value", "label", "meta", "parent"],
     cel: ["options", "value"],
   },
   validation: { rest: ["url", "method", "body", "secret", "valid", "message", "errors"], cel: ["check"] },
@@ -58,6 +58,11 @@ const paramLabel: Record<string, { label: string; hint?: string; code?: boolean;
   value: { label: "Value", hint: "JSONPath in each item to its value, such as $.id.", code: true },
   label: { label: "Label", hint: "JSONPath in each item to what requesters see.", code: true },
   meta: { label: "Detail", hint: "JSONPath in each item to a detail shown under it.", code: true },
+  parent: {
+    label: "Parent",
+    hint: "JSONPath in each item to its parent's value, for a tree. Empty for a flat list.",
+    code: true,
+  },
   valid: { label: "Valid at", hint: "JSONPath to true or false in the answer. $.valid when empty.", code: true },
   message: { label: "Message at", hint: "JSONPath to the refusal's message. $.message when empty.", code: true },
   errors: {
@@ -97,6 +102,23 @@ function typed(v: string): unknown {
   if (t !== "" && Number.isFinite(Number(t))) return Number(t);
   return v;
 }
+
+/** The rows sent, by their index on screen: rows with neither a name nor a label are left out. */
+const sentRows = (rows: ParamRow[]) => rows.flatMap((r, i) => (r.name.trim() || r.label.trim() ? [i] : []));
+
+/** The server's problems with the parameter it got n-th, put on that row on screen. */
+function onScreen(errors: Record<string, string>, rows: number[]): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(errors).map(([at, why]) => [
+      at.replace(/^(\/entry)?\/parameters\/(\d+)/, (all, entry: string | undefined, n: string) =>
+        rows[Number(n)] === undefined ? all : `${entry ?? ""}/parameters/${rows[Number(n)]}`,
+      ),
+      why,
+    ]),
+  );
+}
+
+const none = "none";
 
 /** The server's problems no field of the sheet shows. */
 function unplaced(errors: Record<string, string>, shown: string[], parameters: number): string[] {
@@ -191,12 +213,20 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
     })),
   );
   const [tryWith, setTryWith] = useState<Record<string, string>>({});
+  const [tryProject, setTryProject] = useState(none);
+  const [tryEnvironment, setTryEnvironment] = useState(none);
+  const projects = useQuery(adm.projectNames());
+  const environments = useQuery(q.environments());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const shown = paramFields[use][kind];
   const body = (): EntryWrite => {
-    const p: Record<string, unknown> = {};
-    for (const k of shown) if (params[k]?.trim()) p[k] = params[k];
-    if (kind === "rest" && params.cache_seconds) p.cache_seconds = Number(params.cache_seconds);
+    // What the sheet doesn't show, such as cache_seconds, stays as it was while the kind does.
+    const kept = existing && existing.use === use && existing.kind === kind;
+    const p: Record<string, unknown> = kept ? { ...existing.params } : {};
+    for (const k of shown) {
+      delete p[k];
+      if (params[k]?.trim()) p[k] = params[k];
+    }
     return {
       name,
       description,
@@ -205,8 +235,8 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
       params: p,
       ...(use === "source" && search ? { search: true } : {}),
       ...(use === "validation" && message.trim() ? { message: message.trim() } : {}),
-      parameters: parameters
-        .filter((r) => r.name.trim() || r.label.trim())
+      parameters: sentRows(parameters)
+        .map((i) => parameters[i]!)
         .map((r) => ({
           name: r.name.trim(),
           label: r.label.trim(),
@@ -216,7 +246,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
     };
   };
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (_rows: number[]) =>
       existing
         ? call(api.PUT("/admin/form-library/{key}", { params: { path: { key: existing.key } }, body: body() }))
         : call(api.POST("/admin/form-library", { body: { ...body(), key } })),
@@ -239,27 +269,30 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
       });
       onClose();
     },
-    onError: (e) => {
-      setErrors(fieldErrors(e));
+    onError: (e, rows) => {
+      setErrors(onScreen(fieldErrors(e), rows));
       if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The entry wasn't saved");
     },
   });
+  const named = new Set(parameters.map((r) => r.name.trim()).filter(Boolean));
   const test = useMutation({
-    mutationFn: () =>
+    mutationFn: (_rows: number[]) =>
       call(
         api.POST("/admin/form-library/test", {
           body: {
             entry: { ...body(), ...(existing ? { key: existing.key } : key ? { key } : {}) },
             params: Object.fromEntries(
               Object.entries(tryWith)
-                .filter(([, v]) => v.trim())
+                .filter(([k, v]) => named.has(k) && v.trim())
                 .map(([k, v]) => [k, typed(v)]),
             ),
+            ...(tryProject !== none ? { project_id: tryProject } : {}),
+            ...(tryEnvironment !== none ? { environment: tryEnvironment } : {}),
           },
         }),
       ),
-    onError: (e) => {
-      if (isApiError(e) && e.fieldErrors.length) setErrors(fieldErrors(e));
+    onError: (e, rows) => {
+      if (isApiError(e) && e.fieldErrors.length) setErrors(onScreen(fieldErrors(e), rows));
     },
   });
   const testFailure =
@@ -289,7 +322,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
       submitDisabled={!name.trim() || (!existing && !key)}
       onSubmit={() => {
         setErrors({});
-        save.mutate();
+        save.mutate(sentRows(parameters));
       }}
     >
       {elsewhere.length > 0 && (
@@ -476,21 +509,59 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-secondary font-medium">Test</legend>
         <p className="text-secondary text-muted">
-          Runs the entry as written, unsaved changes included, with these parameter values.
+          Runs the entry as written, unsaved changes included, with these parameter values, as a form of this project
+          and environment would.
         </p>
-        {parameters
-          .filter((r) => r.name.trim())
-          .map((r) => (
-            <Field key={r.name} label={r.label || r.name} htmlFor={`fl-try-${r.name}`}>
+        <div className="grid grid-cols-2 gap-3">
+          <Field
+            label="Project"
+            htmlFor="fl-try-project"
+            hint="For project, and a REST call's secret of the project."
+            error={err("/project_id")}
+          >
+            <Select
+              id="fl-try-project"
+              value={tryProject}
+              loading={projects.isPending}
+              onChange={setTryProject}
+              options={[
+                { value: none, label: "None" },
+                ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
+              ]}
+            />
+          </Field>
+          <Field label="Environment" htmlFor="fl-try-environment" error={err("/environment")}>
+            <Select
+              id="fl-try-environment"
+              value={tryEnvironment}
+              loading={environments.isPending}
+              onChange={setTryEnvironment}
+              options={[
+                { value: none, label: "None" },
+                ...(environments.data?.items ?? []).map((e) => ({ value: e.key, label: e.name })),
+              ]}
+            />
+          </Field>
+        </div>
+        {[...named].map((n) => {
+          const r = parameters.find((x) => x.name.trim() === n)!;
+          return (
+            <Field key={n} label={r.label.trim() || n} htmlFor={`fl-try-${n}`}>
               <Input
-                id={`fl-try-${r.name}`}
-                value={tryWith[r.name] ?? ""}
-                onChange={(e) => setTryWith((t) => ({ ...t, [r.name.trim()]: e.target.value }))}
+                id={`fl-try-${n}`}
+                value={tryWith[n] ?? ""}
+                onChange={(e) => setTryWith((t) => ({ ...t, [n]: e.target.value }))}
               />
             </Field>
-          ))}
+          );
+        })}
         <div>
-          <Button type="button" variant="secondary" disabled={test.isPending} onClick={() => test.mutate()}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={test.isPending}
+            onClick={() => test.mutate(sentRows(parameters))}
+          >
             {test.isPending ? "Testing…" : "Run test"}
           </Button>
         </div>
