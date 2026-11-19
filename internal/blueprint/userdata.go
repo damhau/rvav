@@ -39,6 +39,11 @@ func CheckUserData(text string) error {
 	if err != nil {
 		return err
 	}
+	// A template called with an input as its dot prints it as {{ . }},
+	// which the walk below can't tell from anything else.
+	if len(t.Templates()) > 1 || callsTemplate(t.Root) {
+		return errors.New("user data can't define or call templates ({{ define }}, {{ template }}, {{ block }}): write the text out where it goes")
+	}
 	var bad []string
 	var walk func(n parse.Node, fromInputs bool)
 	walk = func(n parse.Node, fromInputs bool) {
@@ -71,6 +76,29 @@ func CheckUserData(text string) error {
 	}
 	_, err = UserDataSecrets(text)
 	return err
+}
+
+func callsTemplate(n parse.Node) bool {
+	switch n := n.(type) {
+	case *parse.TemplateNode:
+		return true
+	case *parse.ListNode:
+		if n == nil {
+			return false
+		}
+		for _, c := range n.Nodes {
+			if callsTemplate(c) {
+				return true
+			}
+		}
+	case *parse.IfNode:
+		return callsTemplate(n.List) || callsTemplate(n.ElseList)
+	case *parse.RangeNode:
+		return callsTemplate(n.List) || callsTemplate(n.ElseList)
+	case *parse.WithNode:
+		return callsTemplate(n.List) || callsTemplate(n.ElseList)
+	}
+	return false
 }
 
 // usesInputs says whether a pipeline reads an input, or a variable (which

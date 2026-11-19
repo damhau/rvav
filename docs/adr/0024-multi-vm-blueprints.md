@@ -147,7 +147,8 @@ and vCenters.
   ips, index), `.inputs`, `.project`, `.environment`, `.request` and
   `.components` (below), where an
   input is printed only through `json` (`{{ .inputs.motd | json }}`, a
-  quoted scalar), so what a requester types can't add YAML of its own; the
+  quoted scalar), so what a requester types can't add YAML of its own (user
+  data can't define or call templates, which would print an input as `{{ . }}`); the
   metadata holds the host name and the network (version 2), so the
   addresses are set the same way.
 - **Windows**: Sysprep sets the computer name, the time zone (a Windows

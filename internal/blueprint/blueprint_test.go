@@ -177,17 +177,21 @@ func TestIPAMInherits(t *testing.T) {
 
 func TestCheckUserData(t *testing.T) {
 	for text, ok := range map[string]bool{
-		"#cloud-config\nhostname: {{ .vm.name }}":              true,
-		"motd: {{ .inputs.motd | json }}":                      true,
-		"{{ if .inputs.debug }}debug: true{{ end }}":           true,
-		"{{ $m := .inputs.motd }}motd: {{ $m | json }}":        true,
-		"motd: {{ .inputs.motd }}":                             false,
-		"motd: {{ printf \"%s\" .inputs.motd }}":               false,
-		"{{ $m := .inputs.motd }}motd: {{ $m }}":               false,
-		"{{ range .inputs.users }}- {{ . }}\n{{ end }}":        false,
-		"{{ range .inputs.users }}- {{ . | json }}\n{{ end }}": true,
-		"{{ with .inputs.motd }}motd: {{ . }}{{ end }}":        false,
-		"fqdn: {{ $.vm.fqdn }}":                                true,
+		"#cloud-config\nhostname: {{ .vm.name }}":                               true,
+		"motd: {{ .inputs.motd | json }}":                                       true,
+		"{{ if .inputs.debug }}debug: true{{ end }}":                            true,
+		"{{ $m := .inputs.motd }}motd: {{ $m | json }}":                         true,
+		"motd: {{ .inputs.motd }}":                                              false,
+		"motd: {{ printf \"%s\" .inputs.motd }}":                                false,
+		"{{ $m := .inputs.motd }}motd: {{ $m }}":                                false,
+		"{{ range .inputs.users }}- {{ . }}\n{{ end }}":                         false,
+		"{{ range .inputs.users }}- {{ . | json }}\n{{ end }}":                  true,
+		"{{ with .inputs.motd }}motd: {{ . }}{{ end }}":                         false,
+		"fqdn: {{ $.vm.fqdn }}":                                                 true,
+		`{{ define "x" }}{{ .inputs.motd }}{{ end }}{{ template "x" . }}`:       false,
+		`{{ define "x" }}motd: {{ . }}{{ end }}{{ template "x" .inputs.motd }}`: false,
+		`{{ block "x" .inputs.motd }}motd: {{ . }}{{ end }}`:                    false,
+		`{{ if .vm.name }}{{ template "missing" }}{{ end }}`:                    false,
 	} {
 		if err := CheckUserData(text); (err == nil) != ok {
 			t.Errorf("%q: %v", text, err)
