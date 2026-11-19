@@ -46,6 +46,7 @@ func (r refuseRelease) Release(ctx context.Context, a efficientip.Address) error
 // past failures deletes what it can, lists what was left and forgets it,
 // and the deployment is deleted (B18). What was left stays where it is: the
 // VM can be onboarded, the address shows in the EfficientIP reconciliation.
+// The VM left keeps its address, which isn't released under it (X1.6).
 func TestDeleteGoesOnPastFailures(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -151,7 +152,7 @@ func TestDeleteGoesOnPastFailures(t *testing.T) {
 				t.Fatalf("step %s = %+v, want %s", key, steps[key], want)
 			}
 		}
-		if got, want := deref(steps["rvav.left"].Detail), "Left: VM erp-app02, IP address "+addr.IP; got != want {
+		if got, want := deref(steps["rvav.left"].Detail), "Left: VM erp-app02, IP address "+addr.IP+", IP address "+addr2.IP; got != want {
 			t.Fatalf("left = %q, want %q", got, want)
 		}
 		var d api.DeploymentDetail
@@ -173,7 +174,7 @@ func TestDeleteGoesOnPastFailures(t *testing.T) {
 		if !orphan() {
 			t.Fatal("the address left is not in the reconciliation")
 		}
-		if addresses, _, err := ipam.Find(ctx, []string{addr2.IP}, nil); err != nil || len(addresses) != 0 {
+		if addresses, _, err := ipam.Find(ctx, []string{addr2.IP}, nil); err != nil || len(addresses) != 1 {
 			t.Fatalf("erp-app02's address after the deletion = %v %v", addresses, err)
 		}
 	}, model)

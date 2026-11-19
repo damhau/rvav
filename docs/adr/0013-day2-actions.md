@@ -74,7 +74,9 @@ asked (`ignore_failures`, X1.3, #143), Delete marks its steps in vCenter,
 EfficientIP and NSX this way, each of them tries all its resources, and a
 last step lists what they left and forgets it. The request succeeds and
 the deployment is deleted. rvav's own steps, such as the lease check,
-still stop it.
+still stop it. The addresses and DNS records of a VM left this way are
+left with it (X1.6, #146): released, EfficientIP would give them to
+another VM while it still runs with them.
 
 ## Consequences
 - One timeline, inbox and audit model for everything users do.

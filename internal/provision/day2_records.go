@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/damhau/rvav/internal/day2"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vmprops"
@@ -347,10 +348,11 @@ func (a *Activities) setProject(ctx context.Context, in OpInput) (string, error)
 // deleteResources deletes one resource (destroy_vm) or every resource of a
 // type (delete_resources) of the deployment.
 func (a *Activities) deleteResources(ctx context.Context, in OpInput) (string, error) {
-	list, err := a.deploymentResources(ctx, in.DeploymentID, argStr(in.Op.Args, "type"))
+	all, err := a.deploymentResources(ctx, in.DeploymentID, "")
 	if err != nil {
 		return "", err
 	}
+	typ := argStr(in.Op.Args, "type")
 	// A VM removed by an update names its own records (ADR-0042): an
 	// empty list deletes none.
 	ids := argStrs(in.Op.Args, "resources")
@@ -358,10 +360,21 @@ func (a *Activities) deleteResources(ctx context.Context, in OpInput) (string, e
 	if id := argStr(in.Op.Args, "resource"); id != "" {
 		ids, named = append(ids, id), true
 	}
+	// A deletion going on past a VM it couldn't delete leaves that VM its
+	// addresses and records: released, they would be given to another
+	// while it still runs with them.
+	var running map[string]string
+	if in.Op.KeepGoing && !named {
+		running = stillUsed(all)
+	}
 	var done []string
 	var failed []error
-	for _, r := range list {
-		if named && !slices.Contains(ids, r.ID) {
+	for _, r := range all {
+		if typ != "" && r.Type != typ || named && !slices.Contains(ids, r.ID) {
+			continue
+		}
+		if vm, ok := running[r.ID]; ok {
+			done = append(done, "kept "+leftName(r)+" of "+vm+", which is still there")
 			continue
 		}
 		what, err := a.deleteResource(ctx, r)
@@ -379,6 +392,31 @@ func (a *Activities) deleteResources(ctx context.Context, in OpInput) (string, e
 		}
 	}
 	return strings.Join(done, ", "), errors.Join(failed...)
+}
+
+// stillUsed are, by ID, the addresses and DNS records of the recorded
+// VMs, with the name of the VM each one is for.
+func stillUsed(list []store.Resource) map[string]string {
+	var rest []day2.Resource
+	var vms []day2.Resource
+	for _, r := range list {
+		res := day2.Resource{ID: r.ID, Type: r.Type, Name: r.Name, Properties: r.Properties}
+		if r.Type == "vsphere.vm" {
+			res.VM = day2.VM(r.Properties)
+			vms = append(vms, res)
+			continue
+		}
+		rest = append(rest, res)
+	}
+	out := map[string]string{}
+	for _, vm := range vms {
+		for _, r := range day2.OwnResources(vm, append([]day2.Resource{vm}, rest...)) {
+			if r.Type == "ipam.address" || r.Type == "dns.record" {
+				out[r.ID] = vm.Name
+			}
+		}
+	}
+	return out
 }
 
 // setLease ends the deployment's lease the given number of days from now.
