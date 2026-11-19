@@ -115,7 +115,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   await page.getByRole("textbox", { name: "Role" }).fill("web");
   await expect(page.locator("#f-vm_name")).toHaveText(/paydevweb01/);
   await page.getByRole("button", { name: "Submit request" }).click();
-  await expect(page.getByText(/more vm count than Payments has left/).first()).toBeVisible();
+  await expect(page.getByText(/needs 1 VM but Payments has 0 left/).first()).toBeVisible();
   await expect(page).not.toHaveURL(/\/requests\/REQ-/);
   expect(errors).toEqual([]);
 });

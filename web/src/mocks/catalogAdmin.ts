@@ -779,6 +779,20 @@ export function requestableForm(db: Db, item: StoredItem, versionId: string | nu
   return v && versionForm(db, item, v);
 }
 
+/**
+ * The item and form of a version a requester may request, as `/forms/values`
+ * resolves them without `as_user_id`: the default's, or an earlier one still
+ * offered (ADR-0046).
+ */
+export function requestedForm(db: Db, versionId: string) {
+  for (const item of db.items) {
+    if (item.version.id !== versionId && !requestableVersions(db, item).some((v) => v.id === versionId)) continue;
+    const form = requestableForm(db, item, versionId);
+    if (form) return { item, form, user: { id: db.me.user.id, roles: [], groups: [] } };
+  }
+  return undefined;
+}
+
 /** A property group's input in a form: its schema and its field, as the server's store.GroupInput gives them. */
 function groupInput(i: S["PropertyGroupInput"]): [Record<string, unknown>, S["UiField"]] {
   const options = i.options ?? [];

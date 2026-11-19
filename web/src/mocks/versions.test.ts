@@ -45,6 +45,12 @@ describe("the mocks' requestable versions", () => {
     });
     const onV1 = await call(api.POST("/requests/preview", { body: request(v1.id) }));
     expect(onV1.errors.filter((e) => e.field === "/version_id")).toEqual([]);
+    const clusters = await call(
+      api.POST("/forms/values", {
+        body: { version_id: v1.id, project_id: "prj_web", environment: "dev", field: "cluster", inputs: {} },
+      }),
+    );
+    expect(clusters.options?.length).toBeGreaterThan(0);
 
     admin = await call(
       api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", { ...at(v1.id), body: {} }),

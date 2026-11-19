@@ -20,7 +20,7 @@ import { actionWarnings, busy, requestSteps, type Op, type RunResult } from "./d
 import { unaccepted } from "./warnings";
 import { DOMAIN, sizes, type SizeKey } from "./inventory";
 import { approvalFor, reserveIp, ruled, vmNames } from "./logic";
-import { userQuotaCheck } from "./quotas";
+import { quotaCheck } from "./quotas";
 import { limitCheck } from "./limits";
 import type { Db, StoredItem } from "./seed";
 
@@ -269,39 +269,17 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   const group: Partial<Record<UpdateChange["kind"], number>> = { vm_add: 1, vm_remove: 2, job: 3 };
   changes.sort((a, b) => (group[a.kind] ?? 0) - (group[b.kind] ?? 0));
 
-  const q = db.quota[project.id];
-  const quota: QuotaImpact[] = q
-    ? (Object.keys(delta) as QuotaResource[])
-        .filter((r) => delta[r] !== 0)
-        .map((resource) => {
-          const limit = q.limits[resource];
-          const used = q.used[resource];
-          return {
-            resource,
-            level: "project",
-            limit,
-            used,
-            adding: delta[resource],
-            exceeds: limit !== null && delta[resource] > 0 && used + delta[resource] > limit,
-            enforcement: "hard",
-          };
-        })
-    : [];
-  for (const l of quota)
-    if (l.exceeds)
-      errors.push({
-        field: "",
-        code: "quota_exceeded",
-        message: `This update needs ${l.adding} more ${l.resource.replace("_", " ")} than ${project.name} has left.`,
-      });
-  const levels = userQuotaCheck(
+  const env = db.environments.find((e) => e.key === d.environment) ?? { key: d.environment, name: d.environment };
+  // As the server's: the net change at every level, for the deployment's owner.
+  const checked = quotaCheck(
     db,
-    { project, owner: d.owner, you: d.owner.id === db.me.user.id },
+    { project, env, owner: d.owner, you: d.owner.id === db.me.user.id },
     "This update",
     delta,
   );
-  quota.push(...levels.lines);
-  for (const message of levels.hard) errors.push({ field: "", code: "quota_exceeded", message });
+  // The project's own lines for what the update changes only, as the mock has always shown them.
+  const quota: QuotaImpact[] = checked.lines.filter((l) => l.level !== "project" || l.adding !== 0);
+  for (const message of checked.hard) errors.push({ field: "", code: "quota_exceeded", message });
   // As the server's updateLimits: the deployment's size after, held to a limit only when it grows.
   const now = d.resources.reduce(
     (n, r) => (r.type === "vsphere.vm" && "vm" in r ? { vcpu: n.vcpu + r.vm.cpu_count, memory: n.memory + Math.round(r.vm.memory_mb / 1024) } : n), // prettier-ignore
@@ -309,12 +287,7 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
   );
   const limits = limitCheck(
     db,
-    {
-      project,
-      env: db.environments.find((e) => e.key === d.environment) ?? { key: d.environment, name: d.environment },
-      owner: d.owner,
-      you: d.owner.id === db.me.user.id,
-    },
+    { project, env, owner: d.owner, you: d.owner.id === db.me.user.id },
     { toOwner: 0, toProject: 0, vcpu: now.vcpu + delta.vcpu, memory: now.memory + delta.memory_gb, addVcpu: delta.vcpu, addMemory: delta.memory_gb }, // prettier-ignore
   );
   for (const message of limits.hard) errors.push({ field: "", code: "limit_exceeded", message });
@@ -384,7 +357,7 @@ function plan(db: Db, d: DeploymentDetail, draft: UpdateDraft): Plan | { status:
       ...(limits.lines.length ? { limits: limits.lines } : {}),
       approval:
         delta.vm_count > 0 || delta.vcpu > 0 || delta.memory_gb > 0
-          ? approvalFor(db, item, d.environment, inputs)
+          ? approvalFor(db, item, d.environment, inputs, undefined, checked.overSoft)
           : { required: false, policies: [], typical_wait_seconds: null },
       ...(warnings.length ? { warnings } : {}),
     },

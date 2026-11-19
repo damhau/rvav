@@ -1,7 +1,9 @@
-// Each member's quota in a project and rvav's own (ADR-0047), as the
-// server's quotas_admin.go, and the lines its quota check adds for them.
+// Quotas at their five levels (ADR-0014, ADR-0047), as the server's
+// quota.go and quotas_admin.go: the project's, in one environment, each
+// member's, all of rvav's and each user's across rvav.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
+import { adminState } from "./administration";
 import { audited } from "./governance";
 import type { Db } from "./seed";
 
@@ -20,21 +22,39 @@ export function quotaState(db: Db): QuotaState {
 
 const zero = (): Usage => ({ vcpu: 0, memory_gb: 0, storage_gb: 0, vm_count: 0 });
 
-/** What a user's live deployments hold, in a project or across rvav. */
-function owned(db: Db, ownerId: string, projectId?: string): Usage {
+type Deployment = Db["deployments"][number];
+
+/** What a deployment's VMs count against a quota, as the server's deploymentUsage. */
+export function deploymentUsage(d: Pick<Deployment, "resources">): Usage {
   const out = zero();
-  for (const d of db.deployments) {
-    if (d.owner.id !== ownerId || d.status === "deleted" || (projectId && d.project.id !== projectId)) continue;
-    for (const r of d.resources) {
-      if (r.type !== "vsphere.vm" || !("vm" in r)) continue;
-      out.vcpu += r.vm.cpu_count;
-      out.memory_gb += Math.round(r.vm.memory_mb / 1024);
-      out.storage_gb += r.vm.disks.reduce((n, k) => n + k.capacity_gb, 0);
-      out.vm_count += 1;
-    }
+  for (const r of d.resources) {
+    if (r.type !== "vsphere.vm" || !("vm" in r)) continue;
+    out.vcpu += r.vm.cpu_count;
+    out.memory_gb += Math.floor(r.vm.memory_mb / 1024);
+    out.storage_gb += r.vm.disks.reduce((n, k) => n + k.capacity_gb, 0);
+    out.vm_count += 1;
   }
   return out;
 }
+
+/** What the live deployments that match hold. */
+function held(db: Db, matches: (d: Deployment) => boolean): Usage {
+  const out = zero();
+  for (const d of db.deployments) {
+    if (d.status === "deleted" || !matches(d)) continue;
+    const u = deploymentUsage(d);
+    for (const r of resources) out[r] += u[r];
+  }
+  return out;
+}
+
+/** What a user's live deployments hold, in a project or across rvav. */
+const owned = (db: Db, ownerId: string, projectId?: string) =>
+  held(db, (d) => d.owner.id === ownerId && (!projectId || d.project.id === projectId));
+
+/** What a project's live deployments hold in one environment. */
+const inEnvironment = (db: Db, projectId: string, env: string) =>
+  held(db, (d) => d.project.id === projectId && d.environment === env);
 
 function allOfRvav(db: Db): Usage {
   const out = zero();
@@ -47,25 +67,49 @@ const amount = (r: Resource, n: number) => (r === "vm_count" && n === 1 ? "1 VM"
 
 export type QuotaOwner = { project: { id: string; name: string }; owner: { id: string; name: string }; you: boolean };
 
-/**
- * The lines the user and rvav levels add to a quota check, with the hard
- * refusals, in the server's words; what names the change ("This request").
- */
-export function userQuotaCheck(db: Db, o: QuotaOwner, what: string, adding: Partial<Usage>) {
+export type QuotaScope = QuotaOwner & { env: { key: string; name: string } };
+
+type Level = {
+  level: S["QuotaLevel"];
+  limits: { resource: Resource; limit?: number | null; enforcement: "hard" | "soft" }[];
+  used: Usage;
+  where: string;
+  whom: string;
+};
+
+/** The levels a change in sc counts at, in the order the server checks them. */
+function levelsOf(db: Db, sc: QuotaScope): Level[] {
   const st = quotaState(db);
-  const whose = o.you ? "your" : `${o.owner.name}'s`;
-  const levels: {
-    level: S["QuotaLevel"];
-    limits: { resource: Resource; limit?: number | null; enforcement: "hard" | "soft" }[];
-    used: Usage;
-    where: string;
-    whom: string;
-  }[] = [
+  const own = adminState(db).quotas[sc.project.id] ?? [];
+  const project = db.quota[sc.project.id];
+  const whose = sc.you ? "your" : `${sc.owner.name}'s`;
+  return [
+    {
+      level: "project",
+      // The project's own lines are always shown; their limits are what its quota PUT keeps here.
+      limits: project
+        ? resources.map((r) => ({
+            resource: r,
+            limit: project.limits[r],
+            enforcement: own.find((l) => !l.environment && l.resource === r)?.enforcement ?? "hard",
+          }))
+        : [],
+      used: project?.used ?? zero(),
+      where: sc.project.name,
+      whom: "a project admin",
+    },
+    {
+      level: "environment",
+      limits: own.filter((l) => l.environment === sc.env.key),
+      used: inEnvironment(db, sc.project.id, sc.env.key),
+      where: `${sc.project.name} in ${sc.env.name}`,
+      whom: "a project admin",
+    },
     {
       level: "project_user",
-      limits: st.perUser[o.project.id] ?? [],
-      used: owned(db, o.owner.id, o.project.id),
-      where: `${whose} quota in ${o.project.name}`,
+      limits: st.perUser[sc.project.id] ?? [],
+      used: owned(db, sc.owner.id, sc.project.id),
+      where: `${whose} quota in ${sc.project.name}`,
       whom: "a project admin",
     },
     {
@@ -78,14 +122,24 @@ export function userQuotaCheck(db: Db, o: QuotaOwner, what: string, adding: Part
     {
       level: "global_user",
       limits: st.global.filter((g) => g.per_user),
-      used: owned(db, o.owner.id),
+      used: owned(db, sc.owner.id),
       where: `${whose} quota across rvav`,
       whom: "an administrator",
     },
   ];
+}
+
+/**
+ * As the server's quotaCheck: what adding does at each level (those in
+ * `only`, or all five), the hard limits passed in its words ("This request
+ * needs …"), and the resources over a soft limit, which need approval.
+ */
+export function quotaCheck(db: Db, sc: QuotaScope, what: string, adding: Partial<Usage>, only?: S["QuotaLevel"][]) {
   const lines: S["QuotaImpact"][] = [];
   const hard: string[] = [];
-  for (const lv of levels)
+  const overSoft: Resource[] = [];
+  for (const lv of levelsOf(db, sc)) {
+    if (only && !only.includes(lv.level)) continue;
     for (const r of resources) {
       const l = lv.limits.find((x) => x.resource === r);
       if (!l) continue;
@@ -96,30 +150,47 @@ export function userQuotaCheck(db: Db, o: QuotaOwner, what: string, adding: Part
         hard.push(
           `${what} needs ${amount(r, add)} but ${lv.where} has ${Math.max(l.limit! - used, 0)} left. Choose a smaller size or ask ${lv.whom} to raise the quota.`,
         );
-      lines.push({ resource: r, level: lv.level, limit: l.limit ?? null, used, adding: add, exceeds, enforcement: l.enforcement }); // prettier-ignore
+      else if (exceeds && !overSoft.includes(r)) overSoft.push(r);
+      lines.push({
+        resource: r,
+        level: lv.level,
+        ...(lv.level === "environment" ? { environment: sc.env.key } : {}),
+        limit: l.limit ?? null,
+        used,
+        adding: add,
+        exceeds,
+        enforcement: l.enforcement,
+      });
     }
-  return { lines, hard };
+  }
+  return { lines, hard, overSoft };
 }
 
-/** What applies here's lines for the user and rvav levels, counting what userId holds. */
-export function explainQuotaLines(db: Db, projectId: string, userId: string): S["PolicyQuotaLine"][] {
-  const st = quotaState(db);
-  const mine = owned(db, userId, projectId);
-  const all = allOfRvav(db);
-  const across = owned(db, userId);
-  const line = (l: S["UserQuota"] | S["GlobalQuota"], level: S["QuotaLevel"], used: Usage): S["PolicyQuotaLine"] => ({
-    resource: l.resource,
-    level,
-    scope: "",
-    limit: l.limit ?? null,
-    enforcement: l.enforcement,
-    used: used[l.resource],
-    reserved: 0,
+/** What applies here's quota lines in a project and environment, counting what userId holds, as explainQuota. */
+export function explainQuotaLines(db: Db, projectId: string, env: string, userId: string): S["PolicyQuotaLine"][] {
+  const project = db.projects.find((p) => p.id === projectId);
+  const user = db.users.find((u) => u.id === userId);
+  if (!project) return [];
+  const own = adminState(db).quotas[projectId] ?? [];
+  const sc: QuotaScope = {
+    project,
+    env: { key: env, name: env },
+    owner: { id: userId, name: user?.name ?? userId },
+    you: userId === db.me.user.id,
+  };
+  return levelsOf(db, sc).flatMap((lv) => {
+    // The project's lines as an administrator wrote them, not every resource.
+    const limits = lv.level === "project" ? own.filter((l) => !l.environment) : lv.limits;
+    return limits.map((l) => ({
+      resource: l.resource,
+      level: lv.level,
+      scope: lv.level === "environment" ? env : "",
+      limit: l.limit ?? null,
+      enforcement: l.enforcement,
+      used: lv.used[l.resource],
+      reserved: 0,
+    }));
   });
-  return [
-    ...(st.perUser[projectId] ?? []).map((l) => line(l, "project_user", mine)),
-    ...st.global.map((l) => (l.per_user ? line(l, "global_user", across) : line(l, "global", all))),
-  ];
 }
 
 function holdsIn(db: Db, projectId: string, permission: string): boolean {

@@ -29,7 +29,7 @@ import { celBool, celEval } from "./cel";
 import { warning } from "./warnings";
 import { multiParts, partVMs, previewComponents } from "./components";
 import { requestedNames } from "./deploymentNames";
-import { userQuotaCheck } from "./quotas";
+import { quotaCheck } from "./quotas";
 import { limitCheck } from "./limits";
 import { roleRefs } from "./roles";
 import { bound, entryVars, validationErrors } from "./formLibrary";
@@ -498,6 +498,7 @@ export function policyVars(
   env: EnvironmentKey,
   inputs: Inputs,
   project: Pick<Project, "id" | "code" | "name">,
+  overSoft: string[] = [],
 ) {
   const me = db.me.user.id;
   const size = sizes[inputs.size as SizeKey];
@@ -514,7 +515,7 @@ export function policyVars(
       permissions: db.me.permissions,
     },
     request: { kind: "provision" },
-    quota: { over_soft: false, over: [] },
+    quota: { over_soft: overSoft.length > 0, over: overSoft },
   };
 }
 
@@ -537,9 +538,10 @@ function savedApprovals(
   env: EnvironmentKey,
   inputs: Inputs,
   project: Pick<Project, "id" | "code" | "name">,
+  overSoft: string[],
 ): ApprovalPreview["policies"] {
   const me = db.me.user.id;
-  const vars = policyVars(db, item, env, inputs, project);
+  const vars = policyVars(db, item, env, inputs, project, overSoft);
   const out: ApprovalPreview["policies"] = [];
   for (const pol of adminState(db).approvals) {
     if (pol.id === "pol_prd_vm" || !pol.enabled) continue;
@@ -582,6 +584,7 @@ export function approvalFor(
   env: EnvironmentKey,
   inputs: Inputs,
   project?: Pick<Project, "id" | "code" | "name">,
+  overSoft: string[] = [],
 ): ApprovalPreview {
   const leads = {
     name: "Infrastructure leads",
@@ -607,7 +610,15 @@ export function approvalFor(
       levels: [leads],
     });
   }
-  if (project) policies.push(...savedApprovals(db, item, env, inputs, project));
+  // The server's seeded "Over a soft quota" policy (pol_soft_quota).
+  if (overSoft.length && item.type === "vm_blueprint")
+    policies.push({
+      policy_id: "pol_soft_quota",
+      name: "Over a soft quota",
+      reason: "Over the project's soft quota",
+      levels: [leads],
+    });
+  if (project) policies.push(...savedApprovals(db, item, env, inputs, project, overSoft));
   return { required: policies.length > 0, policies, typical_wait_seconds: policies.length ? 7200 : null };
 }
 
@@ -722,46 +733,22 @@ export function preview(
     });
   }
   const need = demand(item, inputs, count);
-  const q = db.quota[project.id];
-  const quota: QuotaImpact[] =
-    need.vm_count === 0 || !q
-      ? []
-      : (Object.keys(need) as QuotaResource[]).map((resource) => {
-          const limit = q.limits[resource];
-          const used = q.used[resource];
-          return {
-            resource,
-            level: "project",
-            limit,
-            used,
-            adding: need[resource],
-            exceeds: limit !== null && used + need[resource] > limit,
-            enforcement: "hard",
-          };
-        });
-  for (const line of quota) {
-    if (line.exceeds) {
-      errors.push({
-        field: "",
-        code: "quota_exceeded",
-        message: `This request needs ${line.adding} more ${line.resource.replace("_", " ")} than ${project.name} has left.`,
-      });
-    }
-  }
   const owner = (draft.on_behalf_of && db.users.find((u) => u.id === draft.on_behalf_of)) || db.me.user;
-  if (need.vm_count > 0) {
-    const levels = userQuotaCheck(db, { project, owner, you: owner.id === db.me.user.id }, "This request", need);
-    quota.push(...levels.lines);
-    for (const message of levels.hard) errors.push({ field: "", code: "quota_exceeded", message });
-  }
-  // As the server's evaluateLimits: a multi-VM item makes one deployment, a single-VM item one per VM.
-  const made = need.vm_count === 0 ? 0 : multiParts(item.slug, inputs) ? 1 : need.vm_count;
-  const vcpu = made === 1 ? need.vcpu : need.vcpu / need.vm_count;
-  const memory = made === 1 ? need.memory_gb : need.memory_gb / need.vm_count;
   const where = db.environments.find((e) => e.key === draft.environment) ?? {
     key: draft.environment,
     name: draft.environment,
   };
+  // As the server's: every level holds for the owner, the project's own lines always shown.
+  const checked =
+    need.vm_count === 0
+      ? undefined
+      : quotaCheck(db, { project, env: where, owner, you: owner.id === db.me.user.id }, "This request", need);
+  const quota: QuotaImpact[] = checked?.lines ?? [];
+  for (const message of checked?.hard ?? []) errors.push({ field: "", code: "quota_exceeded", message });
+  // As the server's evaluateLimits: a multi-VM item makes one deployment, a single-VM item one per VM.
+  const made = need.vm_count === 0 ? 0 : multiParts(item.slug, inputs) ? 1 : need.vm_count;
+  const vcpu = made === 1 ? need.vcpu : need.vcpu / need.vm_count;
+  const memory = made === 1 ? need.memory_gb : need.memory_gb / need.vm_count;
   const limits =
     made === 0
       ? undefined
@@ -835,7 +822,7 @@ export function preview(
     ...(components ? { components } : {}),
     quota,
     ...(limits?.lines.length ? { limits: limits.lines } : {}),
-    approval: approvalFor(db, item, draft.environment, inputs, project),
+    approval: approvalFor(db, item, draft.environment, inputs, project, checked?.overSoft),
     ...(warnings.length ? { warnings } : {}),
     lease: {
       default_days: lease?.terms.default_days ?? null,

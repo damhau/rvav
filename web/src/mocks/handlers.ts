@@ -40,6 +40,7 @@ import {
   notMember,
   requestableForm,
   requestableVersions,
+  requestedForm,
   requestTopology,
   staleVersion,
 } from "./catalogAdmin";
@@ -652,12 +653,13 @@ export const handlers = [
     const designer =
       body.as_user_id && project ? designerForm(db, body.version_id, project.code, body.as_user_id) : undefined;
     if (designer && !designer.member) return notMember(db, designer.user.id);
-    const item = designer?.item ?? db.items.find((i) => i.version.id === body.version_id);
+    const requested = designer ?? requestedForm(db, body.version_id);
+    const item = requested?.item;
     if (!item || !project) return notFound("Form");
     const env = body.environment ?? project.environments[0] ?? "dev";
     let result: S["FieldValues"] | null;
     try {
-      result = resolveField(db, item, project, env, body.field, body.inputs ?? {}, designer, body.search);
+      result = resolveField(db, item, project, env, body.field, body.inputs ?? {}, requested, body.search);
     } catch (e) {
       return problem(400, "bad-request", `The expression failed: ${String(e)}`);
     }

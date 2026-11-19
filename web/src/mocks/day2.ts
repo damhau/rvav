@@ -17,11 +17,19 @@ import type {
 } from "@/lib/api/types";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
-import { adminState } from "./administration";
+import { adminState, placed, rolesGiven } from "./administration";
 import { leaseChoices } from "./leases";
 import { celBool } from "./cel";
-import { editedDetails, editProblem, MAX_DEPLOYMENT_DESCRIPTION, MAX_DEPLOYMENT_NAME } from "./deploymentNames";
+import {
+  editedDetails,
+  editProblem,
+  MAX_DEPLOYMENT_DESCRIPTION,
+  MAX_DEPLOYMENT_NAME,
+  takenName,
+} from "./deploymentNames";
+import { type LimitAsk, limitCheck } from "./limits";
 import { userGroups } from "./logic";
+import { deploymentUsage, quotaCheck, type QuotaScope } from "./quotas";
 import type { Db, StoredRequest } from "./seed";
 import { unaccepted, warning } from "./warnings";
 
@@ -57,10 +65,10 @@ interface MockAction {
   destructive?: boolean;
   confirm?: string;
   typeName?: boolean;
-  unavailable?: (vm: VmResource | undefined, d: DeploymentDetail) => string | null;
+  unavailable?: (vm: VmResource | undefined, d: DeploymentDetail, db: Db) => string | null;
   form?: (vm: VmResource | undefined, d: DeploymentDetail, db: Db) => ActionForm;
   validate?: (vm: VmResource | undefined, inputs: Inputs, d: DeploymentDetail, db: Db) => FieldError | null;
-  ops: (vm: VmResource | undefined, inputs: Inputs, d: DeploymentDetail) => Op[];
+  ops: (vm: VmResource | undefined, inputs: Inputs, d: DeploymentDetail, db: Db) => Op[];
 }
 
 const on = (vm?: VmResource) => vm?.vm.power_state === "on";
@@ -154,6 +162,65 @@ const groupChoice = (groups: GroupRef[]) =>
     ],
   ]);
 const nsxOp = (key: string, title: string, apply: Op["apply"]): Op => ({ key, title, system: "nsx", apply });
+
+type QuotaLevel = components["schemas"]["QuotaLevel"];
+
+const vmsOf = (d: DeploymentDetail) => d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
+
+const envOf = (db: Db, key: string) => db.environments.find((e) => e.key === key) ?? { key, name: key };
+
+/** Where the deployment counts, in a project and for an owner, as the server's ownerScope. */
+const ownerScope = (db: Db, d: DeploymentDetail, project = d.project, owner: UserRef = d.owner): QuotaScope => ({
+  project,
+  env: envOf(db, d.environment),
+  owner,
+  you: owner.id === db.me.user.id,
+});
+
+// As the server's: a move checks the new project's quotas, a handover the new owner's (ADR-0047).
+const movedLevels: QuotaLevel[] = ["project", "environment", "project_user"];
+const handedLevels: QuotaLevel[] = ["project_user", "global_user"];
+
+/** Who may own the deployment: its project's members but its owner. */
+const memberChoices = (db: Db, d: DeploymentDetail) =>
+  db.users
+    .filter((u) => u.id !== d.owner.id && rolesGiven(db, d.project.id, u.id).length > 0)
+    .map((u) => ({ value: u.id, label: u.name, ...(u.email ? { meta: u.email } : {}) }));
+
+/** Why the deployment can't move to the project ("" when it can), as the server's cannotMove. */
+function cannotMove(db: Db, p: Db["projects"][number], d: DeploymentDetail): string {
+  const taken = takenName(db, p.id, [d.name], d.id);
+  if (taken) return `${p.name} already has a deployment named ${taken}. Rename this one first (Edit deployment).`;
+  for (const { vm } of vmsOf(d)) {
+    const cluster = vm.cluster ?? "";
+    if (!placed(db, p.id, d.environment, "cluster", cluster)) return `${p.name} does not place VMs on ${cluster}.`;
+    for (const disk of vm.disks)
+      if (disk.datastore && !placed(db, p.id, d.environment, "datastore", disk.datastore))
+        return `${p.name} does not use datastore ${disk.datastore}.`;
+    for (const n of vm.nics)
+      if (!placed(db, p.id, d.environment, "network", n.network)) return `${p.name} does not use network ${n.network}.`;
+  }
+  return quotaCheck(db, ownerScope(db, d, p), "It", deploymentUsage(d), movedLevels).hard[0] ?? "";
+}
+
+/**
+ * The projects the deployment may move to: where the caller can request,
+ * with its environment. Those that can't take its VMs are offered disabled,
+ * with the reason.
+ */
+const projectChoices = (db: Db, d: DeploymentDetail) =>
+  db.projects
+    .filter(
+      (p) =>
+        p.id !== d.project.id &&
+        !adminState(db).extra[p.id]?.archived_at &&
+        p.environments.includes(d.environment) &&
+        can(db.me, "request.submit", p.id),
+    )
+    .map((p) => {
+      const why = cannotMove(db, p, d);
+      return { value: p.id, label: p.name, meta: p.code, ...(why ? { disabled: true, disabled_reason: why } : {}) };
+    });
 
 export const catalogue: MockAction[] = [
   {
@@ -581,6 +648,85 @@ export const catalogue: MockAction[] = [
     ops: () => [],
   },
   {
+    key: "change_owner",
+    name: "Change owner",
+    group: "access",
+    deployment: true,
+    unavailable: (_vm, d, db) => (memberChoices(db, d).length ? null : "No other member of the project can own it."),
+    form: (_vm, d, db) =>
+      form("New owner", [
+        ["owner", { type: "string", enum: memberChoices(db, d).map((o) => o.value) }, { label: "Owner", widget: "select", options: memberChoices(db, d) }], // prettier-ignore
+      ]),
+    validate: (_vm, i, d, db) =>
+      memberChoices(db, d).some((o) => o.value === i.owner)
+        ? null
+        : invalid("owner", "enum", "Choose one of the project's members."),
+    ops: (_vm, i, d, db) => {
+      const owner = db.users.find((u) => u.id === i.owner);
+      return [
+        {
+          key: "rvav.owner",
+          title: `Hand ${d.name} over to its new owner`,
+          system: "rvav",
+          apply: (dep) => {
+            if (owner) dep.owner = owner;
+          },
+        },
+      ];
+    },
+  },
+  {
+    key: "change_project",
+    name: "Move to another project",
+    group: "access",
+    deployment: true,
+    unavailable: (_vm, d, db) => {
+      const choices = projectChoices(db, d);
+      if (choices.some((p) => !p.disabled)) return null;
+      return choices[0]
+        ? `No other project can take it: ${choices[0].disabled_reason}`
+        : "You can request in no other project with this environment.";
+    },
+    form: (_vm, d, db) => {
+      const choices = projectChoices(db, d);
+      return form("Project", [
+        [
+          "project",
+          { type: "string", enum: choices.filter((p) => !p.disabled).map((p) => p.value) },
+          { label: "Project", widget: "select", options: choices, help: "The project's quota and placement rules must allow it." }, // prettier-ignore
+        ],
+      ]);
+    },
+    validate: (_vm, i, d, db) => {
+      const p = projectChoices(db, d).find((x) => x.value === i.project);
+      if (!p) return invalid("project", "enum", "Choose one of the projects offered.");
+      return p.disabled ? invalid("project", "not_allowed", p.disabled_reason ?? "") : null;
+    },
+    ops: (_vm, i, d, db) => {
+      const to = db.projects.find((p) => p.id === i.project);
+      return [
+        vcenter("vsphere.move", "Move the VMs to the project's folder", () => {}),
+        {
+          key: "rvav.project",
+          title: `Move ${d.name} to its new project`,
+          system: "rvav",
+          apply: (dep) => {
+            if (!to) return;
+            // The mock's project usage is a figure of its own: what the deployment holds goes with it.
+            const held = deploymentUsage(dep);
+            const from = db.quota[dep.project.id];
+            const into = db.quota[to.id];
+            for (const r of Object.keys(held) as (keyof typeof held)[]) {
+              if (from) from.used[r] = Math.max(from.used[r] - held[r], 0);
+              if (into) into.used[r] += held[r];
+            }
+            dep.project = { id: to.id, code: to.code, name: to.name };
+          },
+        },
+      ];
+    },
+  },
+  {
     key: "edit",
     name: "Edit deployment",
     group: "configuration",
@@ -775,9 +921,28 @@ export const busy = (db: Db, d: DeploymentDetail, vm?: VmResource) =>
       (!vm || !r.request.resource || r.request.resource.id === vm.id),
   );
 
+// The server's seeded day-2 policies that ask approval over a soft quota (d2p_soft_quota_*):
+// administrators' own policy decides first, so they don't ask them.
+const softQuota: Record<string, { id: string; reason: string; roles: string[] }> = {
+  resize: { id: "d2p_soft_quota_resize", reason: "Over the project's soft quota", roles: ["owner", "member", "project-admin"] }, // prettier-ignore
+  change_project: { id: "d2p_soft_quota_move", reason: "Over the new project's soft quota", roles: ["owner", "project-admin"] }, // prettier-ignore
+};
+
+function softQuotaPolicy(db: Db, a: MockAction, d: DeploymentDetail, overSoft: string[]) {
+  const pol = softQuota[a.key];
+  if (!pol || overSoft.length === 0 || db.me.roles.some((r) => r.key === "admin")) return undefined;
+  const roles = [
+    ...(db.me.projects.find((p) => p.project.id === d.project.id)?.roles.map((r) => r.key) ?? []),
+    ...(d.owner.id === db.me.user.id ? ["owner"] : []),
+  ];
+  return pol.roles.some((r) => roles.includes(r)) ? pol : undefined;
+}
+
 // Why the action needs approval ("" when it doesn't); inputs are unknown when listing.
-function approvalReason(db: Db, a: MockAction, d: DeploymentDetail, inputs?: Inputs): string {
+function approvalReason(db: Db, a: MockAction, d: DeploymentDetail, inputs?: Inputs, overSoft: string[] = []): string {
   if (a.key === "delete" && d.environment === "prd") return "Deleting a production deployment needs sign-off";
+  const soft = softQuotaPolicy(db, a, d, overSoft);
+  if (soft) return soft.reason;
   if (a.key === "extend_lease") {
     const c = leaseChoices(db, d);
     const days = Number(inputs?.days);
@@ -800,7 +965,15 @@ function approvalReason(db: Db, a: MockAction, d: DeploymentDetail, inputs?: Inp
 const osFamily = (guestOS?: string | null) => (guestOS?.toLowerCase().includes("windows") ? "windows" : "linux");
 
 /** What a day-2 policy's condition sees, as the server's day2Vars; inputs are unknown when listing. */
-function day2Vars(db: Db, a: MockAction, d: DeploymentDetail, roles: Set<string>, vm?: VmResource, inputs?: Inputs) {
+function day2Vars(
+  db: Db,
+  a: MockAction,
+  d: DeploymentDetail,
+  roles: Set<string>,
+  vm?: VmResource,
+  inputs?: Inputs,
+  overSoft: string[] = [],
+) {
   const env = db.environments.find((e) => e.key === d.environment);
   const families = [
     ...new Set(d.resources.filter((r): r is VmResource => r.type === "vsphere.vm").map((r) => osFamily(r.vm.guest_os))),
@@ -833,8 +1006,70 @@ function day2Vars(db: Db, a: MockAction, d: DeploymentDetail, roles: Set<string>
       permissions: db.me.projects.find((p) => p.project.id === d.project.id)?.permissions ?? db.me.permissions,
     },
     inputs: inputs ?? null,
-    quota: { over_soft: false, over: [] },
+    quota: { over_soft: overSoft.length > 0, over: overSoft },
   };
+}
+
+/**
+ * As the server's day2Quota and day2Limits: what resizing, moving or
+ * handing the deployment over adds to the quotas and deployment limits that
+ * apply. A hard one passed refuses it at the input it is about; it returns
+ * the resources over a soft quota and the soft limits' warnings.
+ */
+function day2Checks(db: Db, a: MockAction, d: DeploymentDetail, vm: VmResource | undefined, inputs: Inputs) {
+  const none = { errors: [] as FieldError[], overSoft: [] as string[], warnings: [] as PolicyWarning[] };
+  const now = deploymentUsage(d);
+  let ask: LimitAsk = { toOwner: 0, toProject: 0, vcpu: now.vcpu, memory: now.memory_gb, addVcpu: 0, addMemory: 0 };
+  let sc = ownerScope(db, d);
+  let add: Partial<typeof now> = now;
+  let levels: QuotaLevel[] | undefined;
+  let what: string;
+  let field = (kind?: string): string =>
+    kind === "memory_gb_per_deployment" ? "/inputs/memory_gb" : "/inputs/cpu_count";
+  switch (a.key) {
+    case "resize": {
+      const cpu = Number(inputs.cpu_count) - (vm?.vm.cpu_count ?? 0);
+      const mem = Number(inputs.memory_gb) - Math.floor((vm?.vm.memory_mb ?? 0) / 1024);
+      add = { vcpu: Math.max(cpu, 0), memory_gb: Math.max(mem, 0) };
+      ask = { ...ask, vcpu: now.vcpu + cpu, memory: now.memory_gb + mem, addVcpu: cpu, addMemory: mem };
+      what = "The new size";
+      break;
+    }
+    case "change_project": {
+      const p = db.projects.find((x) => x.id === inputs.project);
+      if (!p) return none;
+      sc = ownerScope(db, d, p);
+      levels = movedLevels;
+      ask = { ...ask, toOwner: 1, toProject: 1, addVcpu: now.vcpu, addMemory: now.memory_gb };
+      what = "Moving it";
+      field = () => "/inputs/project";
+      break;
+    }
+    case "change_owner": {
+      const owner = db.users.find((u) => u.id === inputs.owner);
+      if (!owner) return none;
+      sc = ownerScope(db, d, d.project, owner);
+      levels = handedLevels;
+      ask = { toOwner: 1, toProject: 0, vcpu: 0, memory: 0, addVcpu: 0, addMemory: 0 };
+      what = "Handing it over";
+      field = () => "/inputs/owner";
+      break;
+    }
+    default:
+      return none;
+  }
+  const q = quotaCheck(db, sc, what, add, levels);
+  if (q.hard.length)
+    return { ...none, errors: q.hard.map((message) => ({ field: field(), code: "quota_exceeded", message })) };
+  const l = limitCheck(db, sc, ask);
+  // limitCheck says each hard limit passed in the order of its lines.
+  const refused = l.lines.filter((x) => x.exceeds && x.enforcement !== "soft");
+  if (l.hard.length)
+    return {
+      ...none,
+      errors: l.hard.map((message, i) => ({ field: field(refused[i]?.kind), code: "limit_exceeded", message })),
+    };
+  return { ...none, overSoft: q.overSoft, warnings: l.soft };
 }
 
 /**
@@ -925,7 +1160,7 @@ export function actionsFor(db: Db, d: DeploymentDetail): Day2Action[] {
             : null) ??
         (runs(a) ? null : `Your role in ${d.project.name} does not allow ${a.name}.`) ??
         hardDeny(a, vm) ??
-        a.unavailable?.(vm, d) ??
+        a.unavailable?.(vm, d, db) ??
         null;
       const why = approvalReason(db, a, d);
       const lease = a.key === "extend_lease" ? why : "";
@@ -1042,15 +1277,19 @@ export function runAction(
     ? missing
     : [a.validate?.(vm, inputs, d, db)].filter((e): e is FieldError => Boolean(e));
   if (problems.length) return { error: { status: 422, title: "Some inputs need attention", errors: problems } };
+  const checked = day2Checks(db, a, d, vm, inputs);
+  if (checked.errors.length)
+    return { error: { status: 422, title: "Some inputs need attention", errors: checked.errors } };
 
-  const why = approvalReason(db, a, d, inputs);
-  const warnings = warningsFor(db, a, d, a.key === "extend_lease" ? why : "");
+  const why = approvalReason(db, a, d, inputs, checked.overSoft);
+  const warnings = [...warningsFor(db, a, d, a.key === "extend_lease" ? why : ""), ...checked.warnings];
   const warned = unaccepted(warnings, draft);
   if (warned.length) return { error: { status: 422, title: "Some values need fixing", errors: warned } };
   const needsApproval = why !== "" && !(a.key === "extend_lease" && leaseSoft(db, d));
+  const soft = softQuotaPolicy(db, a, d, checked.overSoft);
   const marc: UserRef = db.users.find((u) => u.id === "usr_mkeller")!;
   const steps = requestSteps(
-    a.ops(vm, inputs, d),
+    a.ops(vm, inputs, d, db),
     needsApproval,
     `No day-2 policy asks for approval in ${d.environment}`,
   );
@@ -1089,11 +1328,11 @@ export function runAction(
           required: true,
           policies: [
             {
-              policy_id: a.key === "delete" ? "d2p_prd_delete" : "lease_policy",
-              name: a.key === "delete" ? "Deleting in production" : "Lease policy",
+              policy_id: a.key === "delete" ? "d2p_prd_delete" : (soft?.id ?? "lease_policy"),
+              name: a.key === "delete" ? "Deleting in production" : soft ? "Over a soft quota" : "Lease policy",
               reason: why,
               levels: [
-                a.key === "delete"
+                a.key === "delete" || soft
                   ? { name: "Infrastructure leads", approvers: [marc], mode: "any" }
                   : { name: "Project approvers", approvers: [marc], mode: "any" },
               ],
