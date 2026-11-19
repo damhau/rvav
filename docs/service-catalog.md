@@ -1452,8 +1452,12 @@ only).
 - Any job template can become a day-2 action bound to resource types and
   conditions, for example "Install monitoring agent" (Linux VMs only) or
   "Patch now".
-- Form generated from the survey; the target VM is passed as `limit` plus
-  `extra_vars.rvav` context (deployment, resource, project, requester).
+- Form generated from the survey, unless an administrator designs one in
+  the form designer: layout, value sources and rules, with defaults read
+  from the target VM or deployment
+  ([ADR-0050](adr/0050-designed-day2-forms.md)). The target VM is passed
+  as `limit` plus `extra_vars.rvav` context (deployment, resource,
+  project, requester).
 
 ### Common to all
 - Confirmation dialogs with a clear preview of what will change.

@@ -190,7 +190,10 @@ actions in the Automation group, with their form from the survey; an
 administrator chooses whether they run on VMs or whole deployments, a CEL
 condition for where they are offered, and can turn them off. A run refreshes
 the inventory and launches the template on rvav's inventory with the VM as
-`limit` ([ADR-0018](adr/0018-awx-day2-actions.md)).
+`limit` ([ADR-0018](adr/0018-awx-day2-actions.md)). An administrator can
+also design the action's form in rvav's form designer: the job then gets the
+inputs that form leaves as its extra variables, and AWX still checks them
+against the survey ([ADR-0050](adr/0050-designed-day2-forms.md)).
 
 ### Dynamic inventory: AWX pulls from rvav
 

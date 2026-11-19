@@ -1680,7 +1680,8 @@ sign it, GitLab sends it as its token.
 
 - **Day-2 actions:** AWX templates with the day-2 label become actions on
   VMs, their survey becoming the action's form
-  ([ADR-0018](../adr/0018-awx-day2-actions.md)).
+  ([ADR-0018](../adr/0018-awx-day2-actions.md)), unless you
+  [design the action's form](#design-a-day-2-actions-form).
 - **Subscriptions:** events sent to webhooks, AWX or custom workflows
   ([ADR-0021](../adr/0021-event-subscriptions.md)).
   - The **Topic** list groups the topics by what their events are about
@@ -1705,6 +1706,51 @@ panel and turns it off or on (a day-2 action is offered or not). A
 subscription or custom workflow can also be removed from its menu: rvav
 first says what stops. A subscription's row opens its page, where
 **Change subscription** is the main action and a menu has the rest.
+
+### Design a day-2 action's form
+
+An AWX action asks for its template's survey, and a workflow action for
+the form its input schema gives. To give an action a form of its own,
+with sections, value sources and rules, as a catalog item's form has
+([ADR-0050](../adr/0050-designed-day2-forms.md)):
+
+1. Go to **Administration › Day-2 actions**. The **Form** column says
+   which form each action asks for.
+2. In the action's row menu, select **Design the form**. The form
+   designer opens on the survey's or the input schema's form, to start
+   from.
+3. Change the fields, the layout and the rules as in a catalog item's
+   form designer. Each change is saved as a draft: people keep getting
+   the survey's form.
+4. In **Preview**, choose a deployment and, for an action on VMs, the VM
+   under **Runs on**. The preview works the form out there, as you.
+5. Select **Turn on**. From its next run, the action asks for this form.
+
+An action's form differs from a catalog item's in these ways:
+
+- It shows in a dialog: lay it out as one page or as tabs, not as a
+  wizard.
+- It takes no files and no secrets. Ask for an address to fetch a file
+  from, and keep a secret in AWX or in rvav's secrets.
+- Its rules and sources also read what the action runs on:
+  - `resource`: on a VM, `name`, `power_state`, `cpu_count`,
+    `memory_gb`, `disk_gb`, `guest_os`, `os_family`, `fqdn`, `ip`,
+    `moref`, `cluster`, `folder`, `tags` and `custom_properties`; on a
+    whole deployment, `name`, `os_family` and `vms`, each with `name`,
+    `fqdn` and `ip`.
+  - `deployment`: `id`, `name`, `description`, `owner_id` and `item`.
+
+  For example, the default
+  `resource.os_family == 'windows' ? 'telegraf' : 'node_exporter'`
+  picks an agent for the VM.
+- The survey or the input schema stays what AWX or the workflow checks.
+  When the form doesn't ask for what they require, or asks for it as
+  another type, the page lists where they differ: AWX or the workflow may
+  refuse such a run. A survey changed in AWX doesn't change the form.
+
+If rvav refuses to turn the form on, the designer marks the fields to
+fix. To go back to the survey's form, select **Turn off**. To delete the
+form, select **Drop the form** in the page's menu.
 
 ## Existing VMs and EfficientIP
 

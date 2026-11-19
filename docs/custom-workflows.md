@@ -173,8 +173,11 @@ with `POST /api/v1/admin/workflows`:
     `{kind: workflow, workflow: <key>}`.
   - **Day-2 action:** `wf.<key>` on VMs or deployments, with a name, a CEL
     condition and *offered*. Its form is generated from the input schema
-    (`title`, `description`, `default`, `enum`). The day-2 policies decide
-    who runs it.
+    (`title`, `description`, `default`, `enum`), unless an administrator
+    designs one under Administration → Day-2 actions
+    ([ADR-0050](adr/0050-designed-day2-forms.md)). The workflow gets the
+    inputs the designed form leaves, still validated against the input
+    schema. The day-2 policies decide who runs it.
   - **Subscription target:** started with the event in `event`, found again
     on retries.
   - **Composite step:** `workflow: <key>` in a composite's steps, with
