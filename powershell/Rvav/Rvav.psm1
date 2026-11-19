@@ -86,7 +86,7 @@ function Invoke-RvavApi {
     .EXAMPLE
     Invoke-RvavApi -Path admin/approval-policies
     .EXAMPLE
-    Invoke-RvavApi -Method POST -Path requests/R-0042/cancel -Idempotent
+    Invoke-RvavApi -Method POST -Path requests/REQ-10042/cancel
     #>
     [CmdletBinding()]
     param(
@@ -337,7 +337,7 @@ function Get-RvavRequest {
     .SYNOPSIS
     Gets requests: one by its ID or number, or those you may see.
     .EXAMPLE
-    Get-RvavRequest R-0042
+    Get-RvavRequest REQ-10042
     .EXAMPLE
     Get-RvavRequest -Mine -Status running, pending_approval
     #>
@@ -448,7 +448,7 @@ function Get-RvavDeployment {
     .EXAMPLE
     Get-RvavDeployment -ProjectId prj_web -Environment prd
     .EXAMPLE
-    Get-RvavDeployment -Id (Get-RvavRequest R-0042).deployment_ids
+    Get-RvavDeployment -Id (Get-RvavRequest REQ-10042).deployment_ids
     #>
     [CmdletBinding(DefaultParameterSetName = 'List')]
     [OutputType('Rvav.Deployment')]
@@ -710,7 +710,7 @@ function Approve-RvavApproval {
     .SYNOPSIS
     Approves a request's approval level waiting for you.
     .EXAMPLE
-    Get-RvavApproval | Where-Object { $_.request.number -eq 'R-0042' } | Approve-RvavApproval -Comment 'OK for the release'
+    Get-RvavApproval | Where-Object { $_.request.number -eq 'REQ-10042' } | Approve-RvavApproval -Comment 'OK for the release'
     #>
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType('Rvav.Approval')]

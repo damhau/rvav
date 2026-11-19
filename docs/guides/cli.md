@@ -5,6 +5,10 @@ the catalog, follow your requests, run day-2 actions on your deployments,
 and decide approvals. It acts as you, with your roles
 ([ADR-0051](../adr/0051-command-line.md)).
 
+To do the same from PowerShell, see [the Rvav module](powershell.md). To
+keep rvav's configuration and deployments in Terraform, see
+[the rvav provider](terraform.md).
+
 ## Install rvavctl
 
 1. Download the archive for your system from the rvav release:

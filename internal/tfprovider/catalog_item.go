@@ -36,7 +36,7 @@ func newCatalogItemResource() resource.Resource {
 					MarkdownDescription: "A longer description, in Markdown."},
 				"category": schema.StringAttribute{Required: true, MarkdownDescription: "Its category, by key."},
 				"type": schema.StringAttribute{Required: true, PlanModifiers: replaced(),
-					MarkdownDescription: "`vm`, `awx`, `composite` or `workflow`. It can't change."},
+					MarkdownDescription: "`vm_blueprint`, `awx_job_template`, `awx_workflow`, `composite` or `workflow`. It can't change."},
 				"icon": schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: keep,
 					MarkdownDescription: "One of rvav's icons; rvav picks one by type when not given."},
 				"tags":     schema.SetAttribute{Optional: true, ElementType: types.StringType},
