@@ -1113,7 +1113,8 @@ ui_schema:
     follows the inputs it reads. Once the requester changes the field,
     even to empty it, the field keeps their value: a later change to
     those inputs leaves it alone. A read-only field shows what the
-    request gets: its default, else its initial value.
+    request gets: its default, else its initial value. A computed field
+    and one with a value rule show their value instead.
   - On a dropdown whose source suggests an option (`vsphere.clusters`,
     `vsphere.datastores`, `vsphere.networks`), the default rule wins:
     the source gives no suggestion while the field has one.

@@ -39,12 +39,27 @@ describe("defaults", () => {
   it("shows a read-only field's default, else its initial value, whatever the requester typed", () => {
     const ro = { visible: true, required: false, read_only: true };
     const states = { schema: { ...ro, default: "fixed" }, tier: ro, note: ro };
-    expect(withDefaults({ schema: "mine", tier: "gold", note: "typed" }, states, { tier: "bronze" })).toEqual({
+    const form = {
+      initial_values: { tier: "bronze" },
+      ui_schema: { fields: {}, layout: { kind: "page" as const, sections: [] } },
+    };
+    expect(withDefaults({ schema: "mine", tier: "gold", note: "typed" }, states, form)).toEqual({
       schema: "fixed",
       tier: "bronze",
     });
     const kept = { schema: "fixed" };
     expect(withDefaults(kept, { schema: states.schema })).toBe(kept);
+  });
+
+  it("keeps a read-only field whose value is worked out: a computed field's, a value rule's", () => {
+    const ro = { visible: true, required: false, read_only: true };
+    const fields: Record<string, UiField> = {
+      vm_name: { widget: "computed", label: "VM name", value_source: { kind: "builtin", name: "naming.preview" } },
+      fqdn: { widget: "text", label: "FQDN", rules: { value: "inputs.host + '.corp.example'" } },
+    };
+    const values = { vm_name: "web-dev-app001", fqdn: "web.corp.example" };
+    const form = { initial_values: {}, ui_schema: { fields, layout: { kind: "page" as const, sections: [] } } };
+    expect(withDefaults(values, { vm_name: ro, fqdn: ro }, form)).toBe(values);
   });
 
   it("sends a defaulted field the requester emptied as null, and leaves the others out", () => {

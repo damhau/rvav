@@ -25,6 +25,18 @@ async function placed() {
 }
 
 describe("request form against the mock API", () => {
+  it("shows the VM name the naming policy gives, after a role is typed", async () => {
+    const user = userEvent.setup();
+    await openForm();
+    const role = screen.getByLabelText("Role");
+    await user.clear(role);
+    await user.type(role, "front");
+    await waitFor(() => expect(document.getElementById("f-vm_name")).toHaveTextContent(/web-dev-front\d{3}/), {
+      timeout: 5000,
+    });
+    expect(document.getElementById("f-ip_address")).toHaveTextContent(/10\.31\.10\.\d+/);
+  });
+
   it("maps a 422 from the server onto the field", async () => {
     const user = userEvent.setup();
     await openForm();

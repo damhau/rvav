@@ -2,7 +2,7 @@
 // takes one value. The server works them out with the rules; the form shows
 // a field's default while the requester hasn't given it a value, and once
 // they have, keeps theirs.
-import type { FieldStates, UiField, UiWidget } from "@/lib/api/types";
+import type { FieldStates, RequestForm, UiField, UiWidget } from "@/lib/api/types";
 
 const valueWidgets: UiWidget[] = ["text", "textarea", "number", "slider", "date", "datetime", "toggle"];
 
@@ -26,13 +26,15 @@ export function defaulted(ui: UiField): boolean {
 /**
  * What the form shows: the values with the defaults of the fields the
  * requester hasn't given a value. A read-only field shows what the server
- * gives it, as `applyStates` does: its default, else its initial value.
+ * gives it, as `applyStates` does: its default, else its initial value;
+ * one whose value is worked out (a computed field, a value rule) keeps it.
  */
 export function withDefaults(
   values: Record<string, unknown>,
   states?: FieldStates,
-  initial?: Record<string, unknown>,
+  form?: Pick<RequestForm, "ui_schema" | "initial_values">,
 ): Record<string, unknown> {
+  const initial = form?.initial_values;
   let out = values;
   const set = (name: string, v: unknown) => {
     if (out === values) out = { ...values };
@@ -41,6 +43,8 @@ export function withDefaults(
   };
   for (const [name, st] of Object.entries(states ?? {})) {
     const def = st.default ?? undefined;
+    const ui = form?.ui_schema.fields[name];
+    if (ui && (ui.widget === "computed" || computedBy(ui))) continue;
     if (st.read_only) {
       const v = def !== undefined ? def : initial?.[name];
       if (values[name] !== v || Object.hasOwn(values, name) !== (v !== undefined)) set(name, v);

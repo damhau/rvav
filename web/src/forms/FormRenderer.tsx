@@ -78,10 +78,7 @@ export function FormRenderer({
 }: FormRendererProps) {
   const kind = form.ui_schema.layout.kind || "page";
   const parts = formParts(form, fieldStates);
-  const shown = useMemo(
-    () => withDefaults(values, fieldStates, form.initial_values),
-    [values, fieldStates, form.initial_values],
-  );
+  const shown = useMemo(() => withDefaults(values, fieldStates, form), [values, fieldStates, form]);
   const secrets = useMemo(
     () => Object.entries(form.ui_schema.fields).flatMap(([name, f]) => (isSecretField(f) ? [name] : [])),
     [form],

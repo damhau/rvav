@@ -849,7 +849,7 @@ function RequestFormBody({
           previewError={preview.error}
           onRetryPreview={() => void preview.refetch()}
           fetching={preview.isFetching}
-          values={withDefaults(values, shownPreview?.fields, form.initial_values)}
+          values={withDefaults(values, shownPreview?.fields, form)}
           pending={submit.isPending}
           formErrors={formErrors}
           onSubmit={stepped ? undefined : submitDraft}

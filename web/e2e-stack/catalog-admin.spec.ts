@@ -97,7 +97,8 @@ test("an Ubuntu item with a REST dropdown, from YAML to roll back", async ({ pag
   // Open to Web Platform and published.
   await page.getByRole("tab", { name: "Sharing" }).click();
   await page.getByRole("radio", { name: /Chosen projects/ }).check();
-  await page.getByRole("checkbox", { name: "Web Platform" }).click();
+  // The export carries RHEL 9 server's sharing, Web Platform already in it.
+  await page.getByRole("checkbox", { name: "Web Platform" }).check();
   await page.getByRole("button", { name: "Save projects" }).click();
   await expect(page.getByText("Projects saved")).toBeVisible();
   await page.getByRole("tab", { name: "Versions" }).click();
