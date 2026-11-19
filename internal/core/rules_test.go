@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ohler55/ojg/oj"
+
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/policy"
 )
@@ -112,6 +114,42 @@ func TestTyped(t *testing.T) {
 	} {
 		if got := typed(c.v, c.prop); got != c.want {
 			t.Errorf("typed(%v, %v) = %v (%T), want %v", c.v, c.prop, got, got, c.want)
+		}
+	}
+}
+
+func TestMapValue(t *testing.T) {
+	parse := func(s string) any {
+		v, err := oj.ParseString(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	for _, c := range []struct {
+		answer, items, value string
+		want                 any
+		fails                string
+	}{
+		{`{"data": [{"login": "ana", "cores": 4}, {"login": "bob"}]}`, "$.data", "$.login", "ana", ""},
+		{`{"data": [{"login": "ana", "cores": 4}]}`, "$.data", "$.cores", int64(4), ""},
+		{`{"owner": {"login": "ana"}}`, "$", "$.owner.login", "ana", ""},
+		{`[{"ip": "10.0.0.5"}]`, "$", "$.ip", "10.0.0.5", ""},
+		{`"web-07"`, "$", "$", "web-07", ""},
+		{`{"enabled": true}`, "$", "$.enabled", true, ""},
+		{`{"data": []}`, "$.data", "$.login", nil, "no item"},
+		{`{"data": [{"name": "ana"}]}`, "$.data", "$.login", nil, "no value"},
+		{`{"data": [{"login": ["a", "b"]}]}`, "$.data", "$.login", nil, "a list or an object"},
+	} {
+		got, err := mapValue(parse(c.answer), c.items, c.value)
+		if c.fails != "" {
+			if err == nil || !strings.Contains(err.Error(), c.fails) {
+				t.Errorf("%s at %s: %v, %v; want an error with %q", c.answer, c.value, got, err, c.fails)
+			}
+			continue
+		}
+		if err != nil || got != c.want {
+			t.Errorf("%s at %s: %v (%T), %v; want %v", c.answer, c.value, got, got, err, c.want)
 		}
 	}
 }

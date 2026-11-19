@@ -6023,9 +6023,12 @@ components:
 
             On a field that takes one value rather than a choice (`text`,
             `textarea`, `number`, `slider`, `date`, `datetime`, `toggle`),
-            a `cel` source's `value` gives the field its default (see
+            a `rest` or `cel` source gives the field its default (see
             `UiRules.default`), as the input's type takes it: a text input
-            takes a number as its digits. On a `computed` field, it gives
+            takes a number as its digits. A `rest` source's is what `value`
+            finds in the first item `items` finds (the answer's first item
+            when it is a list, or the answer itself, without `items`); a
+            `cel` source's is its `value`. On a `computed` field, it gives
             the field's value, which the server works out again on preview
             and submit. A source that fails gives no default. The field's
             `depends_on` names the inputs its source reads: those with a
@@ -6118,8 +6121,8 @@ components:
         value:
           description: |
             For computed fields and sources such as `naming.preview` or
-            `ipam.next_free_address`, and a `cel` source's single value: a
-            `computed` field's value, or another field's default.
+            `ipam.next_free_address`, and a `rest` or `cel` source's single
+            value: a `computed` field's value, or another field's default.
         default:
           type: string
           description: Suggested option value when the current value is empty or no longer valid.

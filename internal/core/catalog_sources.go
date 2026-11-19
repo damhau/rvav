@@ -158,6 +158,7 @@ type RESTSources struct {
 
 type restEntry struct {
 	opts  []api.Option
+	value any
 	until time.Time
 }
 
@@ -217,18 +218,42 @@ func jsonEscape(s string) string {
 func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs map[string]any, search string,
 	secret func(name string) (store.Secret, string, error)) ([]api.Option, int, error) {
 	p := func(k string) string { s, _ := params[k].(string); return s }
+	e, cacheSeconds, err := r.answer(ctx, params, inputs, search, secret, "options", func(data any) (restEntry, error) {
+		opts, err := mapOptions(data, cmp.Or(p("items"), "$"), cmp.Or(p("value"), "$"), p("label"), p("meta"), p("parent"))
+		return restEntry{opts: opts}, err
+	})
+	return e.opts, cacheSeconds, err
+}
+
+// Value calls the source for one value: what the value path finds in the
+// first item the items path finds, or in the answer itself.
+func (r *RESTSources) Value(ctx context.Context, params map[string]any, inputs map[string]any,
+	secret func(name string) (store.Secret, string, error)) (any, int, error) {
+	p := func(k string) string { s, _ := params[k].(string); return s }
+	e, cacheSeconds, err := r.answer(ctx, params, inputs, "", secret, "value", func(data any) (restEntry, error) {
+		v, err := mapValue(data, cmp.Or(p("items"), "$"), cmp.Or(p("value"), "$"))
+		return restEntry{value: v}, err
+	})
+	return e.value, cacheSeconds, err
+}
+
+// answer calls the source, or takes what the cache keeps of its answer for
+// the same call read the same way (mode), and reads it with read.
+func (r *RESTSources) answer(ctx context.Context, params map[string]any, inputs map[string]any, search string,
+	secret func(name string) (store.Secret, string, error), mode string, read func(data any) (restEntry, error)) (restEntry, int, error) {
+	p := func(k string) string { s, _ := params[k].(string); return s }
 	if !restcall.FixedOrigin(p("url")) {
-		return nil, 0, &BadRequestError{Msg: "The source's URL lets inputs choose its host: inputs may fill its path and query only."}
+		return restEntry{}, 0, &BadRequestError{Msg: "The source's URL lets inputs choose its host: inputs may fill its path and query only."}
 	}
 	for _, m := range sourceRef.FindAllStringSubmatch(p("url"), -1) {
 		if v, _ := refValue(m[1], inputs, search); v == "." || v == ".." {
-			return nil, 0, &BadRequestError{Msg: fmt.Sprintf("%s can't be %q in the source's URL.", cmp.Or(m[1], "The search"), v)}
+			return restEntry{}, 0, &BadRequestError{Msg: fmt.Sprintf("%s can't be %q in the source's URL.", cmp.Or(m[1], "The search"), v)}
 		}
 	}
 	target := fill(p("url"), inputs, search, restcall.Escape)
 	u, err := url.Parse(target)
 	if err != nil || !r.Allowed(ctx, u) {
-		return nil, 0, &BadRequestError{Msg: fmt.Sprintf("The source's host %q is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", hostOf(target))}
+		return restEntry{}, 0, &BadRequestError{Msg: fmt.Sprintf("The source's host %q is not one of the hosts REST value sources may call (Administration › Integrations › Allowed hosts).", hostOf(target))}
 	}
 	method := strings.ToUpper(cmp.Or(p("method"), http.MethodGet))
 	body := fill(p("body"), inputs, search, jsonEscape)
@@ -246,44 +271,45 @@ func (r *RESTSources) Options(ctx context.Context, params map[string]any, inputs
 	if name := p("secret"); name != "" {
 		sec, value, err := secret(name)
 		if err != nil {
-			return nil, 0, fmt.Errorf("secret %s: %w", name, err)
+			return restEntry{}, 0, fmt.Errorf("secret %s: %w", name, err)
 		}
 		call.Credential = &restcall.Credential{Kind: sec.Kind, Username: sec.Username, Header: sec.Header, Value: value}
 		sealedAs = sec.SealName()
 	}
 	// The mapping is in the key too: two fields may read one answer differently.
-	key := strings.Join([]string{method + " " + target, body, sealedAs, p("items"), p("value"), p("label"), p("meta"), p("parent")}, "\n")
+	key := strings.Join([]string{mode, method + " " + target, body, sealedAs, p("items"), p("value"), p("label"), p("meta"), p("parent")}, "\n")
 	r.mu.Lock()
 	if e, ok := r.cache[key]; ok && time.Now().Before(e.until) {
 		r.mu.Unlock()
-		return e.opts, cacheSeconds, nil
+		return e, cacheSeconds, nil
 	}
 	r.mu.Unlock()
 
 	answer, err := r.Do(ctx, call)
 	switch {
 	case err != nil:
-		return nil, 0, &UpstreamError{System: "REST source " + u.Host, Err: err}
+		return restEntry{}, 0, &UpstreamError{System: "REST source " + u.Host, Err: err}
 	case answer.Status >= 300:
-		return nil, 0, &UpstreamError{System: "REST source " + u.Host, Err: fmt.Errorf("it answered %s", restcall.StatusText(answer.Status))}
+		return restEntry{}, 0, &UpstreamError{System: "REST source " + u.Host, Err: fmt.Errorf("it answered %s", restcall.StatusText(answer.Status))}
 	}
 	data, err := oj.Parse(answer.Body)
 	if err != nil {
-		return nil, 0, &UpstreamError{System: "REST source " + u.Host, Err: fmt.Errorf("its answer is not JSON: %w", err)}
+		return restEntry{}, 0, &UpstreamError{System: "REST source " + u.Host, Err: fmt.Errorf("its answer is not JSON: %w", err)}
 	}
-	opts, err := mapOptions(data, cmp.Or(p("items"), "$"), cmp.Or(p("value"), "$"), p("label"), p("meta"), p("parent"))
+	e, err := read(data)
 	if err != nil {
-		return nil, 0, &BadRequestError{Msg: err.Error()}
+		return restEntry{}, 0, &BadRequestError{Msg: err.Error()}
 	}
 	if cacheSeconds > 0 {
 		r.mu.Lock()
 		if r.cache == nil || len(r.cache) > 1000 {
 			r.cache = map[string]restEntry{}
 		}
-		r.cache[key] = restEntry{opts: opts, until: time.Now().Add(time.Duration(cacheSeconds) * time.Second)}
+		e.until = time.Now().Add(time.Duration(cacheSeconds) * time.Second)
+		r.cache[key] = e
 		r.mu.Unlock()
 	}
-	return opts, cacheSeconds, nil
+	return e, cacheSeconds, nil
 }
 
 func hostOf(target string) string {
@@ -291,6 +317,37 @@ func hostOf(target string) string {
 		return u.Host
 	}
 	return target
+}
+
+// mapValue is what valuePath finds in the first item itemsPath finds: a
+// text, a number or true or false.
+func mapValue(data any, itemsPath, valuePath string) (any, error) {
+	items, err := jp.ParseString(itemsPath)
+	if err != nil {
+		return nil, fmt.Errorf("the items path %q is not valid JSONPath: %v", itemsPath, err)
+	}
+	value, err := jp.ParseString(valuePath)
+	if err != nil {
+		return nil, fmt.Errorf("the value path %q is not valid JSONPath: %v", valuePath, err)
+	}
+	found := items.Get(data)
+	if len(found) == 1 {
+		if list, ok := found[0].([]any); ok {
+			found = list
+		}
+	}
+	if len(found) == 0 {
+		return nil, fmt.Errorf("the answer has no item at %s", itemsPath)
+	}
+	got := value.Get(found[0])
+	if len(got) == 0 || got[0] == nil {
+		return nil, fmt.Errorf("the answer's first item has no value at %s", valuePath)
+	}
+	switch got[0].(type) {
+	case string, bool, int64, float64:
+		return got[0], nil
+	}
+	return nil, fmt.Errorf("the value at %s is a list or an object, not a text, a number or true or false", valuePath)
 }
 
 // mapOptions picks the items with a JSONPath, then each one's value, label,

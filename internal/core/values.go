@@ -213,9 +213,16 @@ func (s *Service) resolveSource(ctx context.Context, p *auth.Principal, proj sto
 	}
 	switch src.Kind {
 	case api.Rest:
-		opts, cacheSeconds, err := s.REST.Options(ctx, raw, inputs, search, func(name string) (store.Secret, string, error) {
-			return s.secretValue(ctx, proj.ID, name)
-		})
+		secret := func(name string) (store.Secret, string, error) { return s.secretValue(ctx, proj.ID, name) }
+		if singleSource(field) {
+			value, cacheSeconds, err := s.REST.Value(ctx, raw, inputs, secret)
+			if err != nil {
+				return out, err
+			}
+			out.Value, out.CacheSeconds = value, &cacheSeconds
+			return out, nil
+		}
+		opts, cacheSeconds, err := s.REST.Options(ctx, raw, inputs, search, secret)
 		if err != nil {
 			return out, err
 		}
