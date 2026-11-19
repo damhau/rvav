@@ -258,12 +258,12 @@ test("templates, sizes and network mappings", async ({ page }) => {
   await page.getByRole("button", { name: "Map a network" }).click();
   const map = page.getByRole("dialog", { name: "Map a network" });
   await map.getByRole("textbox", { name: "vCenter network" }).fill("dvpg-lab-dev-vl999");
-  await map.getByRole("textbox", { name: "Subnet" }).fill("10.99.0");
+  await map.getByRole("textbox", { name: "Subnet", exact: true }).fill("10.99.0");
   await map.getByRole("textbox", { name: "DNS zone" }).fill("lab.corp.example");
   await map.getByRole("button", { name: "Save mapping" }).click();
   await expect(map.getByText("A subnet such as 10.31.10.0/24.")).toBeVisible();
-  await map.getByRole("textbox", { name: "Subnet" }).fill("10.99.0.0/24");
-  await map.getByRole("textbox", { name: "Gateway" }).fill("10.99.0.1");
+  await map.getByRole("textbox", { name: "Subnet", exact: true }).fill("10.99.0.0/24");
+  await map.getByRole("textbox", { name: "Gateway", exact: true }).fill("10.99.0.1");
   await map.getByRole("button", { name: "Save mapping" }).click();
   const networks = page.getByRole("region", { name: "Network mappings" });
   await expect(networks.getByRole("row", { name: /dvpg-lab-dev-vl999/ })).toContainText("By hand");
