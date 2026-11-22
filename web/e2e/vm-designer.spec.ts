@@ -1,111 +1,9 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { parse } from "yaml";
 import { bothThemes, scan } from "./axe";
+import { arrowTo, choose, selectTab, skipToContent, tabTo } from "./keyboard";
 
-// I1.4's VM designer (ADR-0032, ADR-0066) on the mock backend. Each
-// keyboard step waits for what it does (the list shown, the option
-// highlighted, the focus moved) rather than counting keys: a count breaks
-// when a list opens on another option or a render lands late (#197).
-
-type Way = "Tab" | "Shift+Tab";
-
-/**
- * Tab until `target` has the focus: Shift+Tab when it comes before what has
- * the focus. When nothing has (what had it went away), Tab goes on from
- * where it was: `gone` is the way to the target from there.
- */
-async function tabTo(page: Page, target: Locator, gone?: Way) {
-  await expect(target).toBeVisible();
-  const at = () => target.evaluate((e) => e === document.activeElement);
-  const before = await target.evaluate((e) => {
-    const now = document.activeElement;
-    if (!now || now === document.body) return undefined;
-    return !!(e.compareDocumentPosition(now) & Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-  const back = (w: Way): Way => (w === "Tab" ? "Shift+Tab" : "Tab");
-  const ways: Way[] = before === undefined ? [gone ?? "Tab", back(gone ?? "Tab")] : [before ? "Shift+Tab" : "Tab"];
-  for (const key of ways) {
-    for (let i = 0; i < 150; i++) {
-      if (await at()) return;
-      await page.keyboard.press(key);
-    }
-  }
-  if (!(await at())) throw new Error(`${ways.join(" then ")} never reached ${target.toString()}`);
-}
-
-async function skipToContent(page: Page, name = "Skip to content") {
-  await tabTo(page, page.getByRole("link", { name }), "Tab");
-  await page.keyboard.press("Enter");
-}
-
-/**
- * In a list opened from the focused select: Enter opens it, then the arrow
- * keys to the option, each key waited for until the highlight has moved,
- * then Enter, waited for until the list is gone.
- */
-async function choose(page: Page, name: string | RegExp) {
-  await page.keyboard.press("Enter");
-  const list = page.getByRole("listbox");
-  await expect(list).toBeVisible();
-  const target = list.getByRole("option", { name, exact: typeof name === "string" });
-  await expect(target).toBeVisible();
-  const want = await target.evaluate((t) =>
-    [...t.closest("[role=listbox]")!.querySelectorAll("[role=option]")].indexOf(t),
-  );
-  const highlighted = () =>
-    list.evaluate((l) =>
-      [...l.querySelectorAll("[role=option]")].findIndex(
-        (o) => o.hasAttribute("data-highlighted") || o === document.activeElement,
-      ),
-    );
-  for (let i = 0; i < 40; i++) {
-    const now = await highlighted();
-    if (now === want) {
-      await page.keyboard.press("Enter");
-      await expect(list).toBeHidden();
-      return;
-    }
-    await page.keyboard.press(now > want ? "ArrowUp" : "ArrowDown");
-    await expect.poll(highlighted).not.toBe(now);
-  }
-  throw new Error(`no option ${name.toString()}`);
-}
-
-/** Drawn: React has rendered what a key changed, and run its effects. */
-const drawn = (page: Page) =>
-  page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-
-/** The tabs: from the one selected to `name`, a key at a time, each waited for. */
-async function selectTab(page: Page, name: string, key: "ArrowRight" | "ArrowLeft") {
-  const target = page.getByRole("tab", { name, exact: true });
-  const selected = page.getByRole("tab", { selected: true });
-  for (let i = 0; i < 8 && (await target.getAttribute("aria-selected")) !== "true"; i++) {
-    await tabTo(page, selected, "Shift+Tab");
-    const was = (await selected.textContent()) ?? "";
-    await page.keyboard.press(key);
-    await expect(selected).not.toHaveText(was);
-    await drawn(page);
-  }
-  await expect(target).toHaveAttribute("aria-selected", "true");
-}
-
-/** On a graph, from the focused node: Home to the first, then down, a node at a time, each waited for. */
-async function arrowTo(page: Page, target: Locator) {
-  const at = () => target.evaluate((e) => e === document.activeElement);
-  const now = () => page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "");
-  const press = async (key: string) => {
-    const before = await now();
-    await page.keyboard.press(key);
-    await drawn(page);
-    return (await now()) !== before;
-  };
-  await press("Home");
-  for (let row = 0; row < 12 && !(await at()); row++) {
-    for (const key of ["ArrowRight", "ArrowLeft"]) while (!(await at()) && (await press(key)));
-    if (!(await at()) && !(await press("ArrowDown"))) break;
-  }
-  if (!(await at())) throw new Error(`the arrow keys never reached ${target.toString()}`);
-}
+// I1.4's VM designer (ADR-0032, ADR-0066) on the mock backend.
 
 /**
  * The editor's whole text. CodeMirror draws only the lines near its
@@ -332,7 +230,7 @@ async function buildOnCanvas(page: Page, w: Words, slug: string) {
 
   // web, from its details: on the network, then built after db.
   await tabTo(page, topology.locator(".react-flow__node[tabindex='0']"), "Shift+Tab");
-  await arrowTo(page, node(/^\d+ VMs? web\./));
+  await arrowTo(page, node(/^\d+ VMs? web\./), { home: true });
   await page.keyboard.press("Enter");
   const web = page.getByRole("region", { name: w.selected("web") });
   await expect(web).toBeVisible();

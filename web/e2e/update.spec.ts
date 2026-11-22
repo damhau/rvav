@@ -1,27 +1,11 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { bothThemes, scan, theme } from "./axe";
+import { chooseItem, press, selectTab } from "./keyboard";
 
 // Updating a deployment (X1.4, ADR-0042), by keyboard on the mock backend:
 // the Actions menu opens the update's page, the summary previews what a new
 // input changes, a confirmation asks before it runs, and a change rvav can't
 // make in place says why.
-
-/** Tab, or Shift+Tab when it comes before the focus, until `target` has the focus. */
-async function tabTo(page: Page, target: Locator) {
-  await expect(target).toBeVisible();
-  const at = () => target.evaluate((e) => e === document.activeElement);
-  const back = await target.evaluate((e) => {
-    const now = document.activeElement;
-    return !!now && now !== document.body && !!(e.compareDocumentPosition(now) & Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-  for (let i = 0; i < 150 && !(await at()); i++) await page.keyboard.press(back ? "Shift+Tab" : "Tab");
-  await expect(target).toBeFocused();
-}
-
-async function press(page: Page, target: Locator, key = "Enter") {
-  await tabTo(page, target);
-  await page.keyboard.press(key);
-}
 
 // A fading toast fails axe's contrast check.
 async function noToast(page: Page) {
@@ -34,11 +18,7 @@ async function openUpdate(page: Page, name: string) {
   await press(page, page.getByRole("link", { name, exact: true }));
   await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
   await press(page, page.getByRole("button", { name: "Actions", exact: true }));
-  const update = page.getByRole("menuitem", { name: "Update", exact: true });
-  await expect(update).toBeVisible();
-  for (let i = 0; i < 40 && !(await update.evaluate((e) => e === document.activeElement)); i++)
-    await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("Enter");
+  await chooseItem(page, page.getByRole("menuitem", { name: "Update", exact: true }));
   await expect(page.getByRole("heading", { name: `Update ${name}`, level: 1 })).toBeVisible();
 }
 
@@ -78,12 +58,8 @@ test("an update is previewed, then applied once confirmed", async ({ page }) => 
   await bothThemes(page, "an update's request");
 
   await press(page, page.getByRole("main").getByRole("link", { name: "web-tst-search", exact: true }).first());
-  const sections = page.getByRole("tablist", { name: "Deployment sections" });
-  const history = sections.getByRole("tab", { name: "History" });
-  await tabTo(page, sections.getByRole("tab", { name: "Overview" }));
-  for (let i = 0; i < 6 && !(await history.evaluate((e) => e === document.activeElement)); i++)
-    await page.keyboard.press("ArrowRight");
-  await expect(history).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tablist", { name: "Deployment sections" })).toBeVisible();
+  await selectTab(page, "History");
   await expect(page.getByRole("region", { name: "History" }).getByRole("link", { name: "Updated" })).toBeVisible();
 });
 

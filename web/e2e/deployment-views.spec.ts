@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { bothThemes, scan, theme } from "./axe";
+import { chooseItem, tabTo } from "./keyboard";
 
 // X1.2: the deployments list's filters, sort, layouts and saved views, and the
 // Resources page's VMs, in mock mode.
@@ -25,19 +26,6 @@ async function overlayInBothThemes(page: Page, open: () => Promise<void>, where:
     await expect(page.getByRole("menu").or(page.getByRole("dialog")).or(page.getByRole("alertdialog"))).toHaveCount(0);
   }
   await theme(page, "Light");
-}
-
-/** Presses Tab until the element named `name` has the focus. */
-async function tabTo(page: Page, name: string) {
-  for (let i = 0; i < 80; i++) {
-    await page.keyboard.press("Tab");
-    const focused = await page.evaluate(() => {
-      const e = document.activeElement as HTMLElement | null;
-      return (e?.getAttribute("aria-label") ?? e?.textContent ?? "").trim();
-    });
-    if (focused === name) return;
-  }
-  throw new Error(`nothing named ${name} within 80 tabs`);
 }
 
 test("filter and sort the deployments, show them as cards, and save the view", async ({ page }) => {
@@ -152,17 +140,15 @@ test("the deployments' layout, a saved view and a VM's properties with the keybo
     page.getByRole("table", { name: "Deployments" }).getByRole("link", { name: "web-prd-front" }),
   ).toBeVisible();
 
-  await tabTo(page, "Cards");
+  await tabTo(page, page.getByRole("button", { name: "Cards", exact: true }));
   await page.keyboard.press("Enter");
   await expect(page.getByRole("list", { name: "Deployments" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Cards" })).toHaveAttribute("aria-pressed", "true");
 
-  await tabTo(page, "Views");
+  await tabTo(page, page.getByRole("button", { name: "Views", exact: true }));
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menu")).toBeVisible();
-  await page.keyboard.press("ArrowDown");
-  await expect(page.getByRole("menuitem", { name: "Save as a new view…" })).toBeFocused();
-  await page.keyboard.press("Enter");
+  await chooseItem(page, page.getByRole("menuitem", { name: "Save as a new view…" }));
   const dialog = page.getByRole("dialog", { name: "Save this view" });
   await expect(dialog.getByRole("textbox", { name: "Name" })).toBeFocused();
   await page.keyboard.type("Cards");
@@ -176,7 +162,7 @@ test("the deployments' layout, a saved view and a VM's properties with the keybo
   await expect(
     page.getByRole("table", { name: "VMs" }).getByRole("button", { name: "web-prd-front001" }),
   ).toBeVisible();
-  await tabTo(page, "web-prd-cache001");
+  await tabTo(page, page.getByRole("button", { name: "web-prd-cache001", exact: true }));
   await page.keyboard.press("Enter");
   const sheet = page.getByRole("dialog", { name: "web-prd-cache001" });
   await expect(sheet).toBeVisible();

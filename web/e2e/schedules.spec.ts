@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { bothThemes, scan, theme } from "./axe";
+import { choose, chooseItem, press, tabTo } from "./keyboard";
 
 // Recurring schedules (E1.5, ADR-0057) on the mock backend, from the keyboard
 // only: a requester schedules a job every 6 hours from its request form, then
@@ -8,55 +9,22 @@ import { bothThemes, scan, theme } from "./axe";
 // Scanned in either theme, the sheets too; at 320 px the page reflows
 // without scrolling sideways.
 
-/** Tabs forward until the focused element's id, label or text matches, as a keyboard user would; it may be focused already. */
-async function tabTo(page: Page, target: RegExp) {
-  for (let i = 0; i <= 80; i++) {
-    const got = await page.evaluate(() => {
-      const e = document.activeElement;
-      return [e?.id ?? "", e?.getAttribute("aria-label") ?? "", e?.textContent ?? ""];
-    });
-    if (got.some((part) => target.test(part))) return;
-    await page.keyboard.press("Tab");
-  }
-  throw new Error(`nothing matching ${target} within 80 tabs`);
-}
-
-/** Opens the focused select and picks an option with the arrows, up or down: the list doesn't wrap. */
-async function pick(page: Page, option: string) {
-  await page.keyboard.press("Enter");
-  const wanted = page.getByRole("option", { name: option, exact: true });
-  await expect(wanted).toBeVisible();
-  const names = await page.getByRole("option").allTextContents();
-  for (let i = 0; i < 8 && !(await wanted.evaluate((e) => e === document.activeElement)); i++) {
-    const at = names.indexOf((await page.evaluate(() => document.activeElement?.textContent)) ?? "");
-    await page.keyboard.press(at > names.indexOf(option) ? "ArrowUp" : "ArrowDown");
-  }
-  await page.keyboard.press("Enter");
-  await expect(wanted).toHaveCount(0);
-}
-
 /** Opens a schedule's row menu and runs one of its items. */
 async function act(page: Page, schedule: string, item: string) {
-  await tabTo(page, new RegExp(`^Actions for ${schedule}$`));
-  await page.keyboard.press("Enter");
-  const wanted = page.getByRole("menuitem", { name: item, exact: true });
-  await expect(wanted).toBeVisible();
-  for (let i = 0; i < 5 && !(await wanted.evaluate((e) => e === document.activeElement)); i++)
-    await page.keyboard.press("ArrowDown");
-  await expect(wanted).toBeFocused();
-  await page.keyboard.press("Enter");
+  await press(page, page.getByRole("button", { name: `Actions for ${schedule}`, exact: true }));
+  await chooseItem(page, page.getByRole("menuitem", { name: item, exact: true }));
 }
 
 async function scheduleForm(page: Page) {
   await page.goto("/catalog/tls-cert/request");
   await expect(page.getByRole("heading", { name: "Request Renew TLS certificate" })).toBeVisible();
   await expect(page.getByText("No approval needed")).toBeVisible();
-  await tabTo(page, /^f-target$/);
+  await tabTo(page, page.locator("#f-target"));
   await page.keyboard.type("api.corp.example");
   // The preview is debounced: one older than the target would put the focus there on a refusal.
   await page.waitForTimeout(400);
-  await tabTo(page, /^start$/);
-  await pick(page, "Again and again, on a schedule");
+  await tabTo(page, page.locator("#start"));
+  await choose(page, "Again and again, on a schedule");
   await expect(page.getByRole("button", { name: "Create schedule", exact: true })).toBeVisible();
 }
 
@@ -65,16 +33,16 @@ test("a requester schedules a job from the keyboard, then pauses, resumes and de
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await scheduleForm(page);
-  await tabTo(page, /^schedule-name$/);
+  await tabTo(page, page.locator("#schedule-name"));
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.type("API certificate");
-  await tabTo(page, /^every$/);
+  await tabTo(page, page.locator("#every"));
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.type("6");
   await page.keyboard.press("Tab");
   await expect(page.getByRole("combobox", { name: "Unit", exact: true })).toBeFocused();
-  await pick(page, "hours");
-  await tabTo(page, /^Create schedule$/);
+  await choose(page, "hours");
+  await tabTo(page, page.getByRole("button", { name: "Create schedule", exact: true }));
   await page.keyboard.press("Enter");
   await expect(page.getByText("API certificate scheduled")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Schedules", exact: true })).toBeVisible();
@@ -86,10 +54,10 @@ test("a requester schedules a job from the keyboard, then pauses, resumes and de
   await act(page, "API certificate", "Pause");
   const pause = page.getByRole("dialog", { name: "Pause API certificate", exact: true });
   await expect(pause).toBeVisible();
-  await tabTo(page, /^pause-note$/);
+  await tabTo(page, page.locator("#pause-note"));
   await page.keyboard.type("Frozen for the sale.");
   await scan(page, "Pausing a schedule");
-  await tabTo(page, /^Pause$/);
+  await tabTo(page, pause.getByRole("button", { name: "Pause", exact: true }));
   await page.keyboard.press("Enter");
   await expect(page.getByText("API certificate paused")).toBeVisible();
   await expect(row).toContainText("PausedFrozen for the sale.");
@@ -124,7 +92,7 @@ test("a requester schedules a job from the keyboard, then pauses, resumes and de
   await act(page, "API certificate", "Delete");
   const confirm = page.getByRole("alertdialog", { name: "Delete API certificate?", exact: true });
   await expect(confirm).toContainText("The requests it started stay, and still name it.");
-  await tabTo(page, /^Delete schedule$/);
+  await tabTo(page, confirm.getByRole("button", { name: "Delete schedule", exact: true }));
   await page.keyboard.press("Enter");
   await expect(page.getByText("API certificate deleted")).toBeVisible();
   await expect(row).toHaveCount(0);
@@ -146,11 +114,11 @@ test("a cron expression that isn't one is refused next to it, and a run names it
   for (const name of ["Light", "Dark"] as const) {
     await scheduleForm(page);
     await theme(page, name);
-    await tabTo(page, /^repeat-kind$/);
-    await pick(page, "At the times of a cron expression");
-    await tabTo(page, /^cron$/);
+    await tabTo(page, page.locator("#repeat-kind"));
+    await choose(page, "At the times of a cron expression");
+    await tabTo(page, page.locator("#cron"));
     await page.keyboard.type("0 2 * *");
-    await tabTo(page, /^Create schedule$/);
+    await tabTo(page, page.getByRole("button", { name: "Create schedule", exact: true }));
     await page.keyboard.press("Enter");
     const cron = page.getByRole("textbox", { name: "Cron expression", exact: true });
     await expect(cron).toBeFocused();

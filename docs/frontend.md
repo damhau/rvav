@@ -1402,6 +1402,13 @@ into a constant.
   `e2e/focus-return.spec.ts` opens the phone drawer, the command palette, an
   approval's panel, a typed confirmation and a token's revoke with the
   keyboard only, and checks where the focus goes on open and on close.
+- **A spec with the keyboard only** takes its keys from `e2e/keyboard.ts`:
+  `tabTo`, `press` and `typeInto` for Tab, `choose` and `chooseIn` for a
+  select's option, `chooseItem` for a menu's item, `selectTab` for tabs and
+  `arrowTo` for the canvas. Radix moves the focus a moment after an arrow
+  key, and gives it back to a select a moment after its list closes; each
+  helper waits for its key to land before the next, and its failure names
+  the target and where the focus is. Don't copy a loop of keys into a spec.
 - Colour is never the only signal: status always has an icon and text.
 - **Text colours:** the `faint` text colour keeps 4.5:1 on every background
   it's used on, in both themes. Code is highlighted with the app's colours,

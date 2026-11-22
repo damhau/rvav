@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { choose, typeAndTab } from "./keyboard";
 
 // A composite's branch and message (D2.5, ADR-0033) on the mock backend: added
 // in the designer from the keyboard, each edit one step of the YAML's history;
@@ -8,27 +9,6 @@ import { expect, type Page, test } from "@playwright/test";
 // can't be read fails its branch, masked. In the mocks a case reads the form, a
 // person's answer or a REST call's status, other outputs as null;
 // d2-acceptance.spec.ts branches on an answer.
-
-/** In a list opened from the keyboard, the arrow keys to an option, then Enter. */
-async function choose(page: Page, name: string | RegExp) {
-  await page.keyboard.press("Enter");
-  const option = page.getByRole("option", { name });
-  await expect(page.getByRole("listbox")).toBeVisible();
-  for (let i = 0; i < 40; i++) {
-    if (await option.evaluate((e) => e === document.activeElement || e.hasAttribute("data-highlighted"))) {
-      await page.keyboard.press("Enter");
-      return;
-    }
-    await page.keyboard.press("ArrowDown");
-  }
-  throw new Error(`no option ${name.toString()}`);
-}
-
-/** Types into the focused field and leaves it, which commits it, for the next one. */
-async function typeAndTab(page: Page, text: string) {
-  await page.keyboard.type(text);
-  await page.keyboard.press("Tab");
-}
 
 /** A new composite item, its Definition tab open: a new one needs no approval, so it runs on its own. */
 async function newItem(page: Page, name: string, slug: string) {
@@ -52,7 +32,7 @@ const aMessage = "A message to people";
 async function fillAdd(page: Page, runs: string | RegExp, key: string, title: string) {
   const add = page.getByRole("dialog", { name: "Add a step" });
   await expect(add.getByRole("combobox", { name: "What it runs" })).toBeFocused();
-  await choose(page, runs);
+  await choose(page, runs, { exact: false });
   await add.getByRole("textbox", { name: "Key" }).fill(key);
   await add.getByRole("textbox", { name: "Title" }).fill(title);
   await add.getByRole("button", { name: "Add step" }).focus();

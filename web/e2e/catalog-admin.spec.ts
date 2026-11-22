@@ -1,5 +1,6 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { bothThemes, scan, theme } from "./axe";
+import { chooseIn } from "./keyboard";
 
 // Catalog administration against the mock backend (S8, ADR-0019).
 
@@ -469,23 +470,13 @@ test("Version keeps the keyboard focus when another version is picked", async ({
   await page.getByRole("menuitem", { name: "Publish 3.3, keeping 3.2 requestable" }).click();
   await expect(page.getByText("Published 3.3, 3.2")).toBeVisible();
 
-  const pick = async (version: Locator, label: string) => {
-    await version.focus();
-    await page.keyboard.press("Enter");
-    const option = page.getByRole("option", { name: label, exact: true });
-    await expect(option).toBeVisible();
-    for (let i = 0; i < 5 && !(await option.evaluate((e) => e === document.activeElement)); i++)
-      await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("Enter");
-  };
-
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Catalog", exact: true }).click();
   await page.getByRole("link", { name: "RHEL 9 server", exact: true }).first().click();
   await page.getByRole("main").getByRole("link", { name: "Request", exact: true }).click();
   const version = page.getByRole("combobox", { name: "Version" });
   await expect(version).toHaveText("3.3 (newest)");
   await page.getByRole("textbox", { name: "Name (optional)" }).fill("Legacy batch");
-  await pick(version, "3.2");
+  await chooseIn(page, version, "3.2", { focus: true });
   await expect(page.getByText("An earlier version: the newest is 3.3.")).toBeVisible();
   await expect(version).toHaveText("3.2");
   await expect(version).toBeFocused();
@@ -500,7 +491,7 @@ test("Version keeps the keyboard focus when another version is picked", async ({
   const to = page.getByRole("combobox", { name: "Version" });
   await expect(to).toHaveText("3.3 (newest)");
   await page.getByRole("textbox", { name: "Role" }).fill("gateway");
-  await pick(to, "3.2 (this deployment's)");
+  await chooseIn(page, to, "3.2 (this deployment's)", { focus: true });
   await expect(page.getByText("Its own version: the update changes its inputs.")).toBeVisible();
   await expect(to).toBeFocused();
   await expect(to).toHaveAttribute("aria-expanded", "false");

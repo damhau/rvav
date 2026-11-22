@@ -1,20 +1,11 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { bothThemes } from "./axe";
+import { tabTo } from "./keyboard";
 
 // A run's data (E1.5, ADR-0057) on the mock backend: the seeded PostgreSQL
 // cluster that failed (REQ-10484) shows what its failed step was given, and,
 // from the keyboard, what another step was given and gave. Scanned in either
 // theme; at 320 px the data reflows without scrolling sideways.
-
-/** Tabs forward until the focused element's text matches, as a keyboard user would. */
-async function tabTo(page: Page, text: RegExp) {
-  for (let i = 0; i < 80; i++) {
-    await page.keyboard.press("Tab");
-    const got = await page.evaluate(() => document.activeElement?.textContent ?? "");
-    if (text.test(got)) return;
-  }
-  throw new Error(`nothing matching ${text} within 80 tabs`);
-}
 
 test("a run's data: the failed step's, then another's from the keyboard", async ({ page }) => {
   const errors: string[] = [];
@@ -30,7 +21,7 @@ test("a run's data: the failed step's, then another's from the keyboard", async 
 
   await page.getByRole("button", { name: "Timeline", exact: true }).focus();
   await page.keyboard.press("Enter");
-  await tabTo(page, /^Show data of Backups · pgbackrest-stanza$/);
+  await tabTo(page, page.getByRole("button", { name: "Show data of Backups · pgbackrest-stanza", exact: true }));
   await page.keyboard.press("Enter");
   await expect(
     page.getByRole("button", { name: "Showing data of Backups · pgbackrest-stanza", exact: true }),

@@ -68,10 +68,10 @@ export async function typeAndTab(page: Page, text: string, replace = false) {
   await page.keyboard.press("Tab");
 }
 
-/** The page's skip link, then Enter: Tab goes on from the page's content, past the navigation. */
-export async function skipToContent(page: Page) {
+/** The page's skip link (`name` in the language shown), then Enter: Tab goes on from the page's content. */
+export async function skipToContent(page: Page, name = "Skip to content") {
   // The page's first Tab stop: the first Tab of a page just opened.
-  await tabTo(page, page.getByRole("link", { name: "Skip to content" }), "Tab");
+  await tabTo(page, page.getByRole("link", { name }), "Tab");
   await page.keyboard.press("Enter");
 }
 
@@ -234,9 +234,10 @@ export async function selectTab(
 /**
  * On a graph, the arrow keys from the focused node to `target`: along each
  * row, then down to the next. It never goes up: visit an upper node (a
- * branch) before the one below it (a step on its side).
+ * branch) before the one below it (a step on its side), or start from the
+ * graph's first node with `home`.
  */
-export async function arrowTo(page: Page, target: Locator) {
+export async function arrowTo(page: Page, target: Locator, { home = false } = {}) {
   const at = () => target.evaluate((e) => e === document.activeElement);
   const now = () => page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "");
   const move = async (key: string) => {
@@ -245,6 +246,7 @@ export async function arrowTo(page: Page, target: Locator) {
     await drawn(page);
     return (await now()) !== before;
   };
+  if (home) await move("Home");
   for (let row = 0; row < 12; row++) {
     if (await at()) return;
     for (const key of ["ArrowRight", "ArrowLeft"]) {

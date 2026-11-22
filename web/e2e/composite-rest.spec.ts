@@ -1,4 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { choose, typeAndTab } from "./keyboard";
 
 // A composite's REST call step (D2.2, ADR-0033) on the mock backend, from the
 // keyboard: added in the designer, its fields and undo filled in tab order,
@@ -6,18 +7,6 @@ import { expect, type Page, test } from "@playwright/test";
 // requested. A requester's form shows its method and what it reads, masked;
 // its run has a REST node. An item of only REST calls, which needs no approval,
 // runs to its end, its timeline saying what the call answered.
-
-/** Opens a select from the keyboard and picks an option by its text. */
-async function choose(page: Page, option: string | RegExp) {
-  await page.keyboard.press("Enter");
-  await page.getByRole("option", { name: option }).click();
-}
-
-/** Types into the focused field and leaves it, which commits it, for the next one. */
-async function typeAndTab(page: Page, text: string) {
-  await page.keyboard.type(text);
-  await page.keyboard.press("Tab");
-}
 
 test("a REST call step filled in from the keyboard, published, requested and run", async ({ page }) => {
   test.slow();
@@ -37,7 +26,7 @@ test("a REST call step filled in from the keyboard, published, requested and run
   await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Add a step" });
   await expect(dialog.getByRole("combobox", { name: "What it runs" })).toBeFocused();
-  await choose(page, "A REST call");
+  await choose(page, "A REST call", { click: true, exact: false });
   await dialog.getByRole("textbox", { name: "Key" }).fill("cmdb");
   await dialog.getByRole("textbox", { name: "Title" }).fill("Register in the CMDB");
   await dialog.getByRole("button", { name: "Add step" }).click();
@@ -50,7 +39,7 @@ test("a REST call step filled in from the keyboard, published, requested and run
   // Its fields, in the order they are tabbed through.
   const call = details.getByRole("group", { name: "REST call" });
   await call.getByRole("combobox", { name: "Method" }).focus();
-  await choose(page, "POST");
+  await choose(page, "POST", { click: true, exact: false });
   await expect(editor).toContainText("method: POST");
   await call.getByRole("combobox", { name: "Method" }).focus();
   await page.keyboard.press("Tab");
@@ -59,7 +48,7 @@ test("a REST call step filled in from the keyboard, published, requested and run
   await expect(call.getByRole("textbox", { name: "Body" })).toBeFocused();
   await typeAndTab(page, "{'name': inputs.role, 'token': 'abc-literal'}");
   await expect(call.getByRole("combobox", { name: "Secret" })).toBeFocused();
-  await choose(page, /^webhook-signing/);
+  await choose(page, /^webhook-signing/, { click: true });
   await call.getByRole("combobox", { name: "Secret" }).focus();
   await page.keyboard.press("Tab");
   await expect(call.getByRole("textbox", { name: "Accepted statuses" })).toBeFocused();
@@ -72,7 +61,7 @@ test("a REST call step filled in from the keyboard, published, requested and run
 
   // Its undo is another call.
   await details.getByRole("combobox", { name: "Undone by" }).focus();
-  await choose(page, "A REST call");
+  await choose(page, "A REST call", { click: true, exact: false });
   await expect(editor).toContainText("method: DELETE");
   await details.getByRole("textbox", { name: "Undo's URL" }).focus();
   await typeAndTab(page, "https://cmdb.corp.example/api/ci/${steps.cmdb.json.id}");

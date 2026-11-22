@@ -1,27 +1,11 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { bothThemes, scan, theme } from "./axe";
+import { chooseIn, press, tabTo } from "./keyboard";
 
 // Supervisors, and approvers by role or manager (G1.1, ADR-0041), by
 // keyboard on the mock backend: the Supervisor given in a project, approval
 // and day-2 levels that ask project roles and the requester's manager, and
 // a request's page saying whom a level asks.
-
-/** Tab, or Shift+Tab when it comes before the focus, until `target` has the focus. */
-async function tabTo(page: Page, target: Locator) {
-  await expect(target).toBeVisible();
-  const at = () => target.evaluate((e) => e === document.activeElement);
-  const back = await target.evaluate((e) => {
-    const now = document.activeElement;
-    return !!now && now !== document.body && !!(e.compareDocumentPosition(now) & Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-  for (let i = 0; i < 150 && !(await at()); i++) await page.keyboard.press(back ? "Shift+Tab" : "Tab");
-  await expect(target).toBeFocused();
-}
-
-async function press(page: Page, target: Locator, key = "Enter") {
-  await tabTo(page, target);
-  await page.keyboard.press(key);
-}
 
 // A fading toast fails axe's contrast check.
 async function noToast(page: Page) {
@@ -91,10 +75,7 @@ test("the Supervisor is given in a project, and a request says whom its level as
   await press(page, page.getByRole("region", { name: "Projects" }).getByRole("link", { name: "Web Platform" }));
   await expect(page.getByRole("heading", { name: "Web Platform", level: 1 })).toBeVisible();
   const members = page.getByRole("region", { name: "Members" });
-  await press(page, page.getByRole("combobox", { name: "As", exact: true }));
-  await expect(page.getByRole("option", { name: "Supervisor", exact: true })).toBeVisible();
-  await page.keyboard.type("Sup");
-  await page.keyboard.press("Enter");
+  await chooseIn(page, page.getByRole("combobox", { name: "As", exact: true }), "Supervisor", { typed: "Sup" });
   await expect(page.getByRole("combobox", { name: "As", exact: true })).toHaveText(/Supervisor/);
   await press(page, members.getByRole("textbox", { name: "Add someone" }), "C");
   await page.keyboard.type("laire");

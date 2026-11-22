@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { choose, typeAndTab } from "./keyboard";
 
 // A composite's wait for a person (D2.3, ADR-0033) on the mock backend, from
 // the keyboard: added in the designer, its fields filled in tab order, the
@@ -6,18 +7,6 @@ import { expect, type Page, test } from "@playwright/test";
 // A requester's form says that it waits for a person, not what it asks of whom.
 // Those it names answer on the request's page, and the run goes on; a reject
 // fails it, a Retry asks again, and a cancel takes the question away.
-
-/** Opens a select from the keyboard and picks an option by its text. */
-async function choose(page: Page, option: string | RegExp) {
-  await page.keyboard.press("Enter");
-  await page.getByRole("option", { name: option }).click();
-}
-
-/** Types into the focused field and leaves it, which commits it, for the next one. */
-async function typeAndTab(page: Page, text: string) {
-  await page.keyboard.type(text);
-  await page.keyboard.press("Tab");
-}
 
 /** A new composite item, its Definition tab open: a new one needs no approval, so it runs on its own. */
 async function newItem(page: Page, name: string, slug: string) {
@@ -39,7 +28,7 @@ async function addAsk(page: Page, key: string, title: string) {
   await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
   await expect(add.getByRole("combobox", { name: "What it runs" })).toBeFocused();
-  await choose(page, "A person");
+  await choose(page, "A person", { click: true, exact: false });
   await add.getByRole("textbox", { name: "Key" }).fill(key);
   await add.getByRole("textbox", { name: "Title" }).fill(title);
   await add.getByRole("button", { name: "Add step" }).click();
@@ -102,7 +91,7 @@ test("a wait with a form, filled in from the keyboard, published, requested and 
   await expect(q1.getByRole("textbox", { name: "Question" })).toBeFocused();
   await typeAndTab(page, "Keep or delete?");
   await expect(q1.getByRole("combobox", { name: "Type" })).toBeFocused();
-  await choose(page, "A choice");
+  await choose(page, "A choice", { click: true, exact: false });
   await expect(editor).toContainText("type: choice");
   await expect(problems).toContainText("List what it may be.");
   await q1.getByRole("combobox", { name: "Type" }).focus();
@@ -126,7 +115,7 @@ test("a wait with a form, filled in from the keyboard, published, requested and 
   await typeAndTab(page, "48h");
   await expect(problems).toHaveCount(0);
   await expect(details.getByRole("combobox", { name: "Then" })).toBeFocused();
-  await choose(page, "It goes on with no answer");
+  await choose(page, "It goes on with no answer", { click: true, exact: false });
   await expect(editor).toContainText("on_timeout: continue");
 
   // Undone and redone in one step each, with the YAML.
@@ -147,7 +136,7 @@ test("a wait with a form, filled in from the keyboard, published, requested and 
   // A later step is told what it can read of the answer.
   await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
-  await choose(page, "A REST call");
+  await choose(page, "A REST call", { click: true, exact: false });
   await add.getByRole("textbox", { name: "Key" }).fill("cmdb");
   await add.getByRole("button", { name: "Add step" }).click();
   const call = page.getByRole("region", { name: "Selected: cmdb" }).getByRole("group", { name: "REST call" });
@@ -183,7 +172,7 @@ test("a wait with a form, filled in from the keyboard, published, requested and 
   const decision = answer.getByRole("combobox", { name: "Keep or delete?" });
   await expect(answer).toContainText("Answer this.");
   await expect(decision).toBeFocused();
-  await choose(page, "delete");
+  await choose(page, "delete", { click: true, exact: false });
   await decision.focus();
   await answer.getByRole("button", { name: "Send answer" }).focus();
   await page.keyboard.press("Enter");
@@ -267,7 +256,7 @@ test("a wait for someone else: its names stay off the form, and only they get th
   await details.getByRole("textbox", { name: "Timeout" }).fill("2h");
   await details.getByRole("textbox", { name: "Timeout" }).press("Tab");
   await expect(details.getByRole("combobox", { name: "Then" })).toBeFocused();
-  await choose(page, "It escalates");
+  await choose(page, "It escalates", { click: true, exact: false });
   const problems = details.getByRole("list", { name: "Problems with this step" });
   await expect(problems).toContainText("Say whom to escalate to");
   await details.getByRole("textbox", { name: "Escalate to OIDC group" }).fill("chiefs");

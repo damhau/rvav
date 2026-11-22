@@ -1,27 +1,11 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { bothThemes, scan, theme } from "./axe";
+import { choose, press, selectTab, tabTo } from "./keyboard";
 
 // An item shared with chosen people (G1.2, ADR-0019), by keyboard on the
 // mock backend: Léa shares Ubuntu in Web Platform with the rvav-web group
 // only, the sheet saying who can request before she saves, and then she,
 // a Web Platform member outside the group, no longer finds it there.
-
-/** Tab, or Shift+Tab when it comes before the focus, until `target` has the focus. */
-async function tabTo(page: Page, target: Locator) {
-  await expect(target).toBeVisible();
-  const at = () => target.evaluate((e) => e === document.activeElement);
-  const back = await target.evaluate((e) => {
-    const now = document.activeElement;
-    return !!now && now !== document.body && !!(e.compareDocumentPosition(now) & Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-  for (let i = 0; i < 150 && !(await at()); i++) await page.keyboard.press(back ? "Shift+Tab" : "Tab");
-  await expect(target).toBeFocused();
-}
-
-async function press(page: Page, target: Locator, key = "Enter") {
-  await tabTo(page, target);
-  await page.keyboard.press(key);
-}
 
 // A fading toast fails axe's contrast check.
 async function noToast(page: Page) {
@@ -43,11 +27,7 @@ test("an item shared with a group in a project, by keyboard", async ({ page }) =
   await press(page, nav.getByRole("link", { name: "Catalog items" }));
   await press(page, page.getByRole("region", { name: "Items" }).getByRole("link", { name: ubuntu }));
   await expect(page.getByRole("heading", { name: ubuntu, level: 1 })).toBeVisible();
-  const sharing = page.getByRole("tab", { name: "Sharing", exact: true });
-  await tabTo(page, page.getByRole("tab", { selected: true }));
-  for (let i = 0; i < 6 && (await sharing.getAttribute("aria-selected")) !== "true"; i++)
-    await page.keyboard.press("ArrowRight");
-  await expect(sharing).toHaveAttribute("aria-selected", "true");
+  await selectTab(page, "Sharing");
   const shares = page.getByRole("table", { name: "Shares" });
   await expect(shares.getByRole("row", { name: /Web Platform/ })).toContainText("All members");
 
@@ -55,10 +35,7 @@ test("an item shared with a group in a project, by keyboard", async ({ page }) =
   const sheet = page.getByRole("dialog", { name: `Share ${ubuntu}` });
   const project = sheet.getByRole("combobox", { name: "Project" });
   await expect(project).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("option", { name: /Web Platform/ })).toBeVisible();
-  await page.keyboard.type("Web");
-  await page.keyboard.press("Enter");
+  await choose(page, /Web Platform/, { typed: "Web" });
   await expect(project).toHaveText(/Web Platform/);
   await expect(sheet.getByText("2 people in Web Platform can request it.")).toBeVisible();
 

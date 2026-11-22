@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { choose, typeAndTab } from "./keyboard";
 
 // A composite's waits for a time and for a condition (D2.4, ADR-0033) on the
 // mock backend: added in the designer from the keyboard, their fields in tab
@@ -7,18 +8,6 @@ import { expect, type Page, test } from "@playwright/test";
 // the run's graph and says on the timeline what for and until when; a cancel
 // stops it. The mocks count a tick as a minute of a wait, and a poll's condition
 // holds at its third check: `72h` and `every: 6h` stay, `every: 1m` runs on.
-
-/** Opens a select from the keyboard and picks an option by its text. */
-async function choose(page: Page, option: string | RegExp) {
-  await page.keyboard.press("Enter");
-  await page.getByRole("option", { name: option }).click();
-}
-
-/** Types into the focused field and leaves it, which commits it, for the next one. */
-async function typeAndTab(page: Page, text: string) {
-  await page.keyboard.type(text);
-  await page.keyboard.press("Tab");
-}
 
 /** A new composite item, its Definition tab open: a new one needs no approval, so it runs on its own. */
 async function newItem(page: Page, name: string, slug: string) {
@@ -43,7 +32,7 @@ async function addStep(page: Page, runs: string | RegExp, key: string, title: st
   await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
   await expect(add.getByRole("combobox", { name: "What it runs" })).toBeFocused();
-  await choose(page, runs);
+  await choose(page, runs, { click: true, exact: false });
   await add.getByRole("textbox", { name: "Key" }).fill(key);
   await add.getByRole("textbox", { name: "Title" }).fill(title);
   await add.getByRole("button", { name: "Add step" }).click();
@@ -157,7 +146,7 @@ test("a wait and a poll, filled in from the keyboard, published, requested, wait
   await expect(poll.getByRole("textbox", { name: "Deadline" })).toHaveValue("72h");
   await page.keyboard.press("Tab");
   await expect(poll.getByRole("combobox", { name: "Then" })).toBeFocused();
-  await choose(page, "It goes on");
+  await choose(page, "It goes on", { click: true, exact: false });
   await expect(editor).toContainText("on_timeout: continue");
 
   // On the graph and the list, what they wait for and until when.
@@ -222,7 +211,7 @@ test("a poll checks and waits, a time passed goes on at once, and a deadline can
   await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
   await expect(add.getByRole("combobox", { name: "What it runs" })).toBeFocused();
-  await choose(page, "A REST call");
+  await choose(page, "A REST call", { click: true, exact: false });
   await add.getByRole("textbox", { name: "Key" }).fill("note");
   await add.getByRole("button", { name: "Add step" }).click();
   const note = page.getByRole("region", { name: "Selected: note" }).getByRole("group", { name: "REST call" });
