@@ -558,6 +558,9 @@ make:
   which inputs your configuration gives. The next apply sends your inputs
   as an update, and rvav makes no request when the deployment already has
   those values.
+- A catalog item's `changelog`: Terraform keeps the changelog of the
+  versions it writes, so an imported item has none. The next apply records
+  yours, and makes no version when the definition is the same.
 
 A catalog item's `definition` that differs only in its formatting, such
 as a file indented otherwise than rvav's JSON, isn't a change.
