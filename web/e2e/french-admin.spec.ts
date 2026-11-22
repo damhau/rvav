@@ -108,6 +108,21 @@ test("integrations, in French, and back to English without a reload", async ({ p
   ).toBeVisible();
   await bothThemes(page, "AWX");
 
+  await integration(page, "ServiceNow");
+  const snow = page.getByRole("region", { name: "Jeton de ServiceNow", exact: true });
+  await expect(snow.getByRole("button", { name: "Créer un nouveau jeton" })).toBeVisible();
+  const cmdb = page.getByRole("region", { name: "CMDB", exact: true });
+  await expect(cmdb.getByRole("button", { name: "Rapprocher maintenant" })).toBeVisible();
+  await expect(cmdb.getByRole("table", { name: "CI que rvav n'a plus" })).toBeVisible();
+  await bothThemes(page, "ServiceNow");
+  await snow.getByRole("button", { name: "Révoquer" }).click();
+  const revoke = page.getByRole("alertdialog", { name: /^Révoquer le jeton de ServiceNow/ });
+  await expect(revoke.getByRole("button", { name: "Révoquer le jeton" })).toBeVisible();
+  await scan(page, "revoking ServiceNow's token");
+  await revoke.getByRole("button", { name: "Annuler" }).click();
+  await expect(revoke).toBeHidden();
+  await integration(page, "AWX");
+
   await page.getByRole("button", { name: /^Compte/ }).click();
   await page.getByRole("menuitem", { name: "English" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
@@ -183,6 +198,7 @@ test.describe("a French browser, at 320 px", () => {
     "/admin/integrations/vcenter",
     "/admin/integrations/nsx",
     "/admin/integrations/awx",
+    "/admin/integrations/servicenow",
     "/admin/setup",
     "/admin/branding",
     "/admin/audit",

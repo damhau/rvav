@@ -2,8 +2,10 @@
 // on people's behalf with, and the CIs rvav keeps in its CMDB.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { CopyText, Time } from "@/components/common/misc";
@@ -22,6 +24,7 @@ import { failed } from "./governance/common";
 type S = components["schemas"];
 
 export function ServiceNowToken() {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const q = useQuery(adm.serviceNowToken());
   const [asking, setAsking] = useState(false);
@@ -30,9 +33,9 @@ export function ServiceNowToken() {
     mutationFn: () => call(api.POST("/admin/integrations/servicenow/token")),
     onSuccess: () => {
       refresh();
-      toast.success("ServiceNow's token is made");
+      toast.success(t("serviceNow.token.madeToast"));
     },
-    onError: (e) => failed(e, "No token made"),
+    onError: (e) => failed(e, t("serviceNow.token.notMade")),
   });
   const revoke = useMutation({
     mutationFn: () => call(api.DELETE("/admin/integrations/servicenow/token")),
@@ -40,71 +43,91 @@ export function ServiceNowToken() {
       setAsking(false);
       make.reset();
       refresh();
-      toast.success("ServiceNow's token is revoked");
+      toast.success(t("serviceNow.token.revokedToast"));
     },
-    onError: (e) => failed(e, "The token wasn't revoked"),
+    onError: (e) => failed(e, t("serviceNow.token.notRevoked")),
   });
   if (q.isPending) return <Skeleton className="h-40" />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
-  const { token: t, allowed_sources: sources, requests_per_minute: perMinute } = q.data;
+  const { token, allowed_sources: sources, requests_per_minute: perMinute } = q.data;
   const done = make.data;
+  const used = token?.last_used_at
+    ? t("serviceNow.token.lastCalled", { when: relative(token.last_used_at) })
+    : t("serviceNow.token.notUsed");
   return (
-    <Panel title="ServiceNow's token" actions={!t ? <Badge tone="warn">None made</Badge> : undefined}>
+    <Panel
+      title={t("serviceNow.token.title")}
+      actions={!token ? <Badge tone="warn">{t("serviceNow.token.noneMade")}</Badge> : undefined}
+    >
       <div className="flex max-w-3xl flex-col gap-3">
         <p className="text-body text-muted">
-          ServiceNow calls rvav with an API token that only ServiceNow&apos;s endpoints take (
-          <span className="font-mono">/api/v1/servicenow/</span>): it reads the catalog and requests on people&apos;s
-          behalf what they may request themselves, nothing more. rvav makes it for a user of its own, valid a year;
-          making a new one revokes the one before.
+          <Trans t={t} i18nKey="serviceNow.token.about" components={{ path: <span className="font-mono" /> }} />
         </p>
         <p className="text-secondary">
-          {t ? (
-            <>
-              Made <time dateTime={t.created_at}>{fullDate(t.created_at)}</time>
-              {t.expires_at && (
-                <>
-                  , expires <time dateTime={t.expires_at}>{fullDate(t.expires_at)}</time>
-                </>
-              )}
-              ; {t.last_used_at ? `ServiceNow last called rvav ${relative(t.last_used_at)}` : "not used yet"}.
-            </>
+          {token ? (
+            <Trans
+              t={t}
+              i18nKey={token.expires_at ? "serviceNow.token.madeExpires" : "serviceNow.token.made"}
+              values={{
+                made: fullDate(token.created_at),
+                expires: token.expires_at ? fullDate(token.expires_at) : "",
+                used,
+              }}
+              components={{
+                made: <time dateTime={token.created_at} />,
+                expires: <time dateTime={token.expires_at} />,
+              }}
+            />
           ) : (
-            "None made: ServiceNow can't call rvav."
+            t("serviceNow.token.none")
           )}
         </p>
         <p className="text-secondary text-muted">
-          Taken from {sources.length ? <span className="font-mono">{sources.join(", ")}</span> : "any address"}, up to{" "}
-          {perMinute} requests a minute: set them in the connection above.
+          {sources.length ? (
+            <Trans
+              t={t}
+              i18nKey="serviceNow.token.takenFrom"
+              count={perMinute}
+              values={{ sources: sources.join(", ") }}
+              components={{ sources: <span className="font-mono" /> }}
+            />
+          ) : (
+            t("serviceNow.token.takenAny", { count: perMinute })
+          )}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => make.mutate()} disabled={make.isPending}>
-            {make.isPending ? "Making…" : t ? "Make a new token" : "Make a token"}
+            {make.isPending
+              ? t("serviceNow.token.making")
+              : token
+                ? t("serviceNow.token.makeNew")
+                : t("serviceNow.token.make")}
           </Button>
-          {t && (
+          {token && (
             <Button variant="danger" onClick={() => setAsking(true)}>
-              Revoke
+              {t("serviceNow.token.revoke")}
             </Button>
           )}
         </div>
         {done && (
           <section
-            aria-label="ServiceNow's token made"
+            aria-label={t("serviceNow.token.madeLabel")}
             aria-live="polite"
             className="flex flex-col gap-1.5 rounded-md border border-line p-3 text-secondary"
           >
-            <p>Put it in the API Key credential of ServiceNow&apos;s rvav alias. rvav shows it this once.</p>
+            <p>{t("serviceNow.token.putIt")}</p>
             <CopyText value={done.secret} className="max-w-full" />
-            {done.revoked ? <p>The token made before is revoked.</p> : null}
+            {done.revoked ? <p>{t("serviceNow.token.revoked")}</p> : null}
           </section>
         )}
       </div>
       <ConfirmDialog
         open={asking}
         onOpenChange={setAsking}
-        title="Revoke ServiceNow's token?"
-        description="ServiceNow can no longer call rvav: its catalog import, order forms and orders fail until you make a new token and put it in ServiceNow."
-        consequences="Requests already made go on, and rvav still writes their progress to ServiceNow."
-        confirmLabel="Revoke token"
+        title={t("serviceNow.token.revokeTitle")}
+        description={t("serviceNow.token.revokeDescription")}
+        consequences={t("serviceNow.token.revokeConsequences")}
+        confirmLabel={t("serviceNow.token.revokeConfirm")}
         pending={revoke.isPending}
         onConfirm={() => revoke.mutate()}
       />
@@ -112,10 +135,10 @@ export function ServiceNowToken() {
   );
 }
 
-const failureColumns: Column<S["ServiceNowFailure"]>[] = [
+const failureColumns = (t: TFunction<"admin">): Column<S["ServiceNowFailure"]>[] => [
   {
     id: "deployment",
-    header: "Deployment",
+    header: t("serviceNow.cmdb.deployment"),
     cell: (f) => (
       <Link
         to="/deployments/$deploymentId"
@@ -126,15 +149,15 @@ const failureColumns: Column<S["ServiceNowFailure"]>[] = [
       </Link>
     ),
   },
-  { id: "error", header: "Why", cell: (f) => <span className="break-words">{f.error}</span> },
-  { id: "attempts", header: "Attempts", cell: (f) => f.attempts, align: "end", className: "tnum" },
-  { id: "next", header: "Next try", cell: (f) => <Time iso={f.next_attempt_at} /> },
+  { id: "error", header: t("serviceNow.cmdb.why"), cell: (f) => <span className="break-words">{f.error}</span> },
+  { id: "attempts", header: t("serviceNow.cmdb.attempts"), cell: (f) => f.attempts, align: "end", className: "tnum" },
+  { id: "next", header: t("serviceNow.cmdb.nextTry"), cell: (f) => <Time iso={f.next_attempt_at} /> },
 ];
 
-const orphanColumns: Column<S["ServiceNowOrphan"]>[] = [
+const orphanColumns = (t: TFunction<"admin">): Column<S["ServiceNowOrphan"]>[] => [
   {
     id: "name",
-    header: "CI",
+    header: t("serviceNow.cmdb.ci"),
     cell: (o) => (
       <a
         href={o.url}
@@ -144,101 +167,106 @@ const orphanColumns: Column<S["ServiceNowOrphan"]>[] = [
       >
         {o.name}
         <ExternalLink className="size-3" aria-hidden />
-        <span className="sr-only">(opens in a new tab)</span>
+        <span className="sr-only">{t("serviceNow.cmdb.newTab")}</span>
       </a>
     ),
   },
   {
     id: "uuid",
-    header: "Instance UUID",
+    header: t("serviceNow.cmdb.uuid"),
     cell: (o) => <span className="font-mono text-secondary">{o.instance_uuid ?? "—"}</span>,
   },
-  { id: "updated", header: "Changed in ServiceNow", cell: (o) => (o.updated_at ? `${o.updated_at} UTC` : "—") },
+  {
+    id: "updated",
+    header: t("serviceNow.cmdb.changed"),
+    cell: (o) => (o.updated_at ? t("serviceNow.cmdb.utc", { when: o.updated_at }) : "—"),
+  },
 ];
 
 export function ServiceNowCmdb() {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const q = useQuery(adm.serviceNowCmdb());
   const reconcile = useMutation({
     mutationFn: () => call(api.POST("/admin/integrations/servicenow/cmdb/reconcile")),
     onSuccess: (r) => {
       qc.setQueryData(["admin", "servicenow-cmdb"], r);
-      toast.success("rvav reconciles within seconds", { description: "Refresh the report in a minute." });
+      toast.success(t("serviceNow.cmdb.reconcilingToast"), { description: t("serviceNow.cmdb.reconcilingHint") });
     },
-    onError: (e) => failed(e, "No reconcile asked for"),
+    onError: (e) => failed(e, t("serviceNow.cmdb.notAsked")),
   });
   if (q.isPending) return <Skeleton className="h-48" />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
   const c = q.data;
   return (
     <Panel
-      title="CMDB"
-      description="Each VM of the projects chosen is a CI, made when built, updated after day-2 actions and drift, and retired when it goes."
+      title={t("serviceNow.cmdb.title")}
+      description={t("serviceNow.cmdb.description")}
       actions={
         <>
-          {!c.enabled && <Badge tone="neutral">Off</Badge>}
+          {!c.enabled && <Badge tone="neutral">{t("serviceNow.cmdb.off")}</Badge>}
           <Button variant="secondary" onClick={() => void q.refetch()} disabled={q.isFetching}>
-            Refresh
+            {t("serviceNow.cmdb.refresh")}
           </Button>
           <Button onClick={() => reconcile.mutate()} disabled={!c.enabled || reconcile.isPending}>
-            {reconcile.isPending ? "Asking…" : "Reconcile now"}
+            {reconcile.isPending ? t("serviceNow.cmdb.asking") : t("serviceNow.cmdb.reconcile")}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-4">
-        {!c.enabled && (
-          <p className="text-secondary text-muted">
-            Tick Keep VMs as CIs in the connection above, and save, for rvav to keep VMs in ServiceNow&apos;s CMDB.
-          </p>
-        )}
+        {!c.enabled && <p className="text-secondary text-muted">{t("serviceNow.cmdb.tick")}</p>}
         <KeyValues
           items={[
-            { label: "CI class", value: <span className="font-mono text-secondary">{c.class}</span> },
-            { label: "Discovery source", value: <span className="font-mono text-secondary">{c.data_source}</span> },
+            { label: t("serviceNow.cmdb.class"), value: <span className="font-mono text-secondary">{c.class}</span> },
             {
-              label: "Projects",
-              value: c.projects.length ? c.projects.map((p) => p.name).join(", ") : "Every project",
+              label: t("serviceNow.cmdb.source"),
+              value: <span className="font-mono text-secondary">{c.data_source}</span>,
             },
-            { label: "CIs kept", value: <span className="tnum">{c.kept}</span> },
-            { label: "Retired", value: <span className="tnum">{c.retired}</span> },
             {
-              label: "Waiting",
+              label: t("serviceNow.cmdb.projects"),
+              value: c.projects.length ? c.projects.map((p) => p.name).join(", ") : t("serviceNow.cmdb.everyProject"),
+            },
+            { label: t("serviceNow.cmdb.kept"), value: <span className="tnum">{c.kept}</span> },
+            { label: t("serviceNow.cmdb.retired"), value: <span className="tnum">{c.retired}</span> },
+            {
+              label: t("serviceNow.cmdb.waiting"),
               value: (
                 <span className="tnum">
-                  {c.queued} {c.queued === 1 ? "deployment" : "deployments"}
-                  {c.failing > 0 && `, ${c.failing} refused and tried again`}
+                  {t("serviceNow.cmdb.deployments", { count: c.queued })}
+                  {c.failing > 0 && t("serviceNow.cmdb.refusedAgain", { n: c.failing })}
                 </span>
               ),
             },
             {
-              label: "Reconciled",
+              label: t("serviceNow.cmdb.reconciled"),
               value: c.reconciled_at ? (
                 <>
                   <Time iso={c.reconciled_at} />
                   {c.next_reconcile_at && (
                     <>
-                      , next <Time iso={c.next_reconcile_at} />
+                      {t("serviceNow.cmdb.next")}
+                      <Time iso={c.next_reconcile_at} />
                     </>
                   )}
-                  {c.servicenow !== undefined && <>: ServiceNow has {c.servicenow} CIs of this source, not retired</>}
+                  {c.servicenow !== undefined && t("serviceNow.cmdb.servicenowHas", { count: c.servicenow })}
                 </>
               ) : (
-                "Not yet"
+                t("serviceNow.cmdb.notYet")
               ),
             },
           ]}
         />
         {c.reconcile_error && (
           <p role="alert" className="text-secondary text-bad">
-            ServiceNow&apos;s CIs couldn&apos;t be read: {c.reconcile_error}
+            {t("serviceNow.cmdb.readFailed", { error: c.reconcile_error })}
           </p>
         )}
         {c.failures.length > 0 && (
-          <Section title="Deployments ServiceNow refused" level={3}>
+          <Section title={t("serviceNow.cmdb.refused")} level={3}>
             <DataTable
-              label="Deployments ServiceNow refused"
-              columns={failureColumns}
+              label={t("serviceNow.cmdb.refused")}
+              columns={failureColumns(t)}
               rows={c.failures}
               rowKey={(f) => f.deployment_id}
               minWidth={640}
@@ -246,16 +274,18 @@ export function ServiceNowCmdb() {
           </Section>
         )}
         {c.reconciled_at && (
-          <Section title="CIs rvav no longer has" level={3}>
+          <Section title={t("serviceNow.cmdb.orphans")} level={3}>
             <p className="text-secondary text-muted">
               {c.orphans_total === 0
-                ? "None: every CI of this source that isn't retired is a VM rvav keeps."
-                : `CIs of this source, not retired, with no VM in rvav${c.orphans_total > c.orphans.length ? ` (the first ${c.orphans.length} of ${c.orphans_total})` : ""}. rvav doesn't retire them: decide in ServiceNow.`}
+                ? t("serviceNow.cmdb.orphansNone")
+                : c.orphans_total > c.orphans.length
+                  ? t("serviceNow.cmdb.orphansFirst", { shown: c.orphans.length, total: c.orphans_total })
+                  : t("serviceNow.cmdb.orphansAll")}
             </p>
             {c.orphans.length > 0 && (
               <DataTable
-                label="CIs rvav no longer has"
-                columns={orphanColumns}
+                label={t("serviceNow.cmdb.orphans")}
+                columns={orphanColumns(t)}
                 rows={c.orphans}
                 rowKey={(o) => o.sys_id}
                 minWidth={640}

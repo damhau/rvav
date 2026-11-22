@@ -40,6 +40,7 @@ const translated = [
   "src/features/admin/InventoryToken.tsx",
   "src/features/admin/NSXManagers.tsx",
   "src/features/admin/ServerCertificate.tsx",
+  "src/features/admin/ServiceNow.tsx",
   "src/features/admin/SetupPage.tsx",
   "src/features/admin/SystemPage.tsx",
   "src/features/admin/VCenters.tsx",

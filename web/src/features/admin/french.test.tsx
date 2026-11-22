@@ -53,6 +53,26 @@ describe("integrations, in French", () => {
     expect(within(vcenters).getByRole("button", { name: "Ajouter un vCenter" })).toBeInTheDocument();
   });
 
+  it("makes ServiceNow's token and reads its CMDB report", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/integrations/servicenow");
+    const token = await screen.findByRole("region", { name: "Jeton de ServiceNow" });
+    expect(await within(token).findByText(/ServiceNow a appelé rvav pour la dernière fois/)).toBeInTheDocument();
+    expect(token).toHaveTextContent(/Accepté depuis n'importe quelle adresse, jusqu'à \d+ requêtes par minute/);
+    await user.click(within(token).getByRole("button", { name: "Créer un nouveau jeton" }));
+    const made = await within(token).findByRole("region", { name: "Jeton de ServiceNow créé" });
+    expect(made).toHaveTextContent("Le jeton créé auparavant est révoqué.");
+    const cmdb = screen.getByRole("region", { name: "CMDB" });
+    expect(await within(cmdb).findByText("Tous les projets")).toBeInTheDocument();
+    expect(within(cmdb).getByRole("table", { name: "Déploiements refusés par ServiceNow" })).toBeInTheDocument();
+    expect(within(cmdb).getByRole("table", { name: "CI que rvav n'a plus" })).toHaveTextContent(
+      "(s'ouvre dans un nouvel onglet)",
+    );
+    expect(i18n.t("admin:serviceNow.cmdb.servicenowHas", { count: 1, lng: "en" })).toBe(
+      ": ServiceNow has 1 CI of this source, not retired",
+    );
+  });
+
   it("shows the identity provider's settings", { timeout: 15_000 }, async () => {
     renderApp("/admin/integrations/oidc");
     const p = await screen.findByRole("region", { name: "Paramètres du fournisseur" });
