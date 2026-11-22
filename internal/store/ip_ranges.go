@@ -288,3 +288,65 @@ func (s *Store) ReleaseRequestAddresses(ctx context.Context, requestID string, k
 		requestID, nonNil(keep))
 	return pgx.CollectRows(rows, pgx.RowToStructByName[IPAllocation])
 }
+
+// orphanAllocation: no deployment has the allocation's VM, and the request
+// that took it has ended.
+const orphanAllocation = ` not exists (select 1 from resources r join deployments rd on rd.id = r.deployment_id
+		where r.type = 'vsphere.vm' and r.deployment_id = a.deployment_id and r.name = a.hostname and rd.status <> 'deleted')
+	and not exists (select 1 from requests q where q.id = a.request_id
+		and q.status in ('pending_approval', 'scheduled', 'queued', 'running', 'cancelling'))`
+
+// OrphanIPAllocations are the addresses ranges gave to VMs no deployment
+// has any more (ADR-0063), as an unregistered VM leaves them.
+func (s *Store) OrphanIPAllocations(ctx context.Context) ([]IPAllocation, error) {
+	rows, _ := s.Pool.Query(ctx, ipAllocationSelect+` where`+orphanAllocation+` order by a.created_at, a.id`)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[IPAllocation])
+}
+
+// ReleaseOrphanAllocation gives back the address a range gave, when it is
+// an orphan (ErrInUse otherwise), with the resource that records it.
+func (s *Store) ReleaseOrphanAllocation(ctx context.Context, rangeID, address string) (IPAllocation, error) {
+	var out IPAllocation
+	err := s.Tx(ctx, func(tx pgx.Tx) error {
+		rows, _ := tx.Query(ctx, ipAllocationSelect+` where a.range_id = $1 and a.address = $2 for update of a`, rangeID, address)
+		al, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[IPAllocation])
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		out = al
+		tag, err := tx.Exec(ctx, `delete from ip_allocations a where a.id = $1 and`+orphanAllocation, al.ID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrInUse
+		}
+		_, err = tx.Exec(ctx, `delete from resources where type = 'ipam.address' and external_id = $1`, "rvav:"+al.ID)
+		return err
+	})
+	return out, err
+}
+
+// AddressedVM is a VM of the inventory with the address vCenter reports
+// for it, and the deployment that has it, if any.
+type AddressedVM struct {
+	VCenter        string  `db:"vcenter"`
+	Name           string  `db:"name"`
+	IPAddress      string  `db:"ip_address"`
+	DeploymentID   *string `db:"deployment_id"`
+	DeploymentName *string `db:"deployment_name"`
+}
+
+// AddressedVMs lists the VMs of these vCenters that have an address.
+func (s *Store) AddressedVMs(ctx context.Context, vcenters []string) ([]AddressedVM, error) {
+	rows, _ := s.Pool.Query(ctx, `select v.vcenter, v.name, v.ip_address, m.id as deployment_id, m.name as deployment_name
+		from inv_vms v left join lateral (
+			select d.id, d.name from resources r join deployments d on d.id = r.deployment_id
+			where r.type = 'vsphere.vm' and d.status <> 'deleted'
+			  and (r.external_id = v.instance_uuid or r.external_id = v.moref and v.instance_uuid = '') limit 1) m on true
+		where v.vcenter = any($1) and v.ip_address <> '' order by v.vcenter, v.name`, nonNil(vcenters))
+	return pgx.CollectRows(rows, pgx.RowToStructByName[AddressedVM])
+}

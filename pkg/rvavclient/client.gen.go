@@ -6965,6 +6965,26 @@ type IpamOrphanAddress struct {
 	Subnet string `json:"subnet"`
 }
 
+// IpamOrphanAllocation defines model for IpamOrphanAllocation.
+type IpamOrphanAllocation struct {
+	// Adapter The adapter's key in the blueprint; absent for the VM's first.
+	Adapter      *string   `json:"adapter,omitempty"`
+	Address      string    `json:"address"`
+	AllocatedAt  time.Time `json:"allocated_at"`
+	DeploymentId *string   `json:"deployment_id,omitempty"`
+
+	// DeploymentName Absent once the deployment is gone.
+	DeploymentName *string `json:"deployment_name,omitempty"`
+
+	// Hostname The VM's name.
+	Hostname  string  `json:"hostname"`
+	Network   string  `json:"network"`
+	RangeId   string  `json:"range_id"`
+	RangeName string  `json:"range_name"`
+	RequestId *string `json:"request_id,omitempty"`
+	Vcenter   string  `json:"vcenter"`
+}
+
 // IpamOrphanRecord defines model for IpamOrphanRecord.
 type IpamOrphanRecord struct {
 	EfficientipId string `json:"efficientip_id"`
@@ -6977,6 +6997,9 @@ type IpamOrphanRecord struct {
 type IpamReconcile struct {
 	CheckedAt time.Time `json:"checked_at"`
 
+	// Efficientip Whether EfficientIP was compared; false when none is set, and its counts and lists are then empty.
+	Efficientip bool `json:"efficientip"`
+
 	// ManagedAddresses Addresses in EfficientIP with rvav_managed=1.
 	ManagedAddresses int `json:"managed_addresses"`
 
@@ -6986,7 +7009,33 @@ type IpamReconcile struct {
 	// Missing What deployments own that EfficientIP no longer has.
 	Missing         []IpamMissing       `json:"missing"`
 	OrphanAddresses []IpamOrphanAddress `json:"orphan_addresses"`
-	OrphanRecords   []IpamOrphanRecord  `json:"orphan_records"`
+
+	// OrphanAllocations Addresses rvav's IP ranges gave to VMs no deployment has any more (ADR-0063).
+	OrphanAllocations []IpamOrphanAllocation `json:"orphan_allocations"`
+	OrphanRecords     []IpamOrphanRecord     `json:"orphan_records"`
+
+	// Unallocated The inventory's VMs whose address is in an IP range that didn't give it to them.
+	Unallocated []IpamUnallocated `json:"unallocated"`
+}
+
+// IpamUnallocated defines model for IpamUnallocated.
+type IpamUnallocated struct {
+	// Address The address vCenter reports for the VM.
+	Address string `json:"address"`
+
+	// DeploymentId The deployment that has the VM, when rvav manages it.
+	DeploymentId   *string `json:"deployment_id,omitempty"`
+	DeploymentName *string `json:"deployment_name,omitempty"`
+
+	// HeldBy The VM the range gave the address to, when it gave it to another.
+	HeldBy *string `json:"held_by,omitempty"`
+
+	// Network The range's network.
+	Network   string `json:"network"`
+	RangeId   string `json:"range_id"`
+	RangeName string `json:"range_name"`
+	Vcenter   string `json:"vcenter"`
+	Vm        string `json:"vm"`
 }
 
 // ItemRef defines model for ItemRef.
@@ -14844,13 +14893,26 @@ type ClientInterface interface {
 	// Corresponds with GET /admin/ip-ranges/{id}/allocations (the `ListIpAllocations` operationId).
 	ListIpAllocations(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ReconcileIpam Compare EfficientIP with what rvav recorded
+	// ReleaseIpAllocation Give back an address a range gave a VM rvav no longer has
+	//
+	// For the orphans of the reconcile report: refused (409) while a
+	// deployment has the VM, or the request that took the address runs.
+	// rvav gives addresses back itself when it deletes a VM. Audited.
+	//
+	// Corresponds with DELETE /admin/ip-ranges/{id}/allocations/{address} (the `ReleaseIpAllocation` operationId).
+	ReleaseIpAllocation(ctx context.Context, id IdPath, address string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReconcileIpam Compare EfficientIP and rvav's IP ranges with what rvav recorded
 	//
 	// Addresses and DNS records EfficientIP has with the class parameter
 	// `rvav_managed=1` that no deployment owns (orphans, for example left by
 	// a failed run), and addresses and records a deployment owns that
 	// EfficientIP no longer has. Nothing is changed. A request running
 	// while the check runs may show its newest objects as orphans.
+	// Also, and without EfficientIP (`efficientip` is then false), the
+	// addresses rvav's IP ranges gave to VMs no deployment has any more,
+	// once the request that took them ended, and the inventory's VMs whose
+	// address is in a range that didn't give it to them.
 	// Needs `infrastructure.manage` (administrators).
 	//
 	// Corresponds with GET /admin/ipam/reconcile (the `ReconcileIpam` operationId).
@@ -19950,13 +20012,36 @@ func (c *Client) ListIpAllocations(ctx context.Context, id IdPath, reqEditors ..
 	return c.Client.Do(req)
 }
 
-// ReconcileIpam Compare EfficientIP with what rvav recorded
+// ReleaseIpAllocation Give back an address a range gave a VM rvav no longer has
+//
+// For the orphans of the reconcile report: refused (409) while a
+// deployment has the VM, or the request that took the address runs.
+// rvav gives addresses back itself when it deletes a VM. Audited.
+//
+// Corresponds with DELETE /admin/ip-ranges/{id}/allocations/{address} (the `ReleaseIpAllocation` operationId).
+func (c *Client) ReleaseIpAllocation(ctx context.Context, id IdPath, address string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReleaseIpAllocationRequest(c.Server, id, address)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReconcileIpam Compare EfficientIP and rvav's IP ranges with what rvav recorded
 //
 // Addresses and DNS records EfficientIP has with the class parameter
 // `rvav_managed=1` that no deployment owns (orphans, for example left by
 // a failed run), and addresses and records a deployment owns that
 // EfficientIP no longer has. Nothing is changed. A request running
 // while the check runs may show its newest objects as orphans.
+// Also, and without EfficientIP (`efficientip` is then false), the
+// addresses rvav's IP ranges gave to VMs no deployment has any more,
+// once the request that took them ended, and the inventory's VMs whose
+// address is in a range that didn't give it to them.
 // Needs `infrastructure.manage` (administrators).
 //
 // Corresponds with GET /admin/ipam/reconcile (the `ReconcileIpam` operationId).
@@ -29109,6 +29194,47 @@ func NewListIpAllocationsRequest(server string, id IdPath) (*http.Request, error
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReleaseIpAllocationRequest constructs an http.Request for the ReleaseIpAllocation method
+func NewReleaseIpAllocationRequest(server string, id IdPath, address string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "address", address, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ip-ranges/%s/allocations/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -40076,13 +40202,28 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /admin/ip-ranges/{id}/allocations (the `ListIpAllocations` operationId).
 	ListIpAllocationsWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*ListIpAllocationsResponse, error)
 
-	// ReconcileIpamWithResponse Compare EfficientIP with what rvav recorded
+	// ReleaseIpAllocationWithResponse Give back an address a range gave a VM rvav no longer has
+	//
+	// For the orphans of the reconcile report: refused (409) while a
+	// deployment has the VM, or the request that took the address runs.
+	// rvav gives addresses back itself when it deletes a VM. Audited.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /admin/ip-ranges/{id}/allocations/{address} (the `ReleaseIpAllocation` operationId).
+	ReleaseIpAllocationWithResponse(ctx context.Context, id IdPath, address string, reqEditors ...RequestEditorFn) (*ReleaseIpAllocationResponse, error)
+
+	// ReconcileIpamWithResponse Compare EfficientIP and rvav's IP ranges with what rvav recorded
 	//
 	// Addresses and DNS records EfficientIP has with the class parameter
 	// `rvav_managed=1` that no deployment owns (orphans, for example left by
 	// a failed run), and addresses and records a deployment owns that
 	// EfficientIP no longer has. Nothing is changed. A request running
 	// while the check runs may show its newest objects as orphans.
+	// Also, and without EfficientIP (`efficientip` is then false), the
+	// addresses rvav's IP ranges gave to VMs no deployment has any more,
+	// once the request that took them ended, and the inventory's VMs whose
+	// address is in a range that didn't give it to them.
 	// Needs `infrastructure.manage` (administrators).
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -48713,6 +48854,68 @@ func (r ListIpAllocationsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListIpAllocationsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReleaseIpAllocationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ReleaseIpAllocationResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ReleaseIpAllocationResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ReleaseIpAllocationResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r ReleaseIpAllocationResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r ReleaseIpAllocationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReleaseIpAllocationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReleaseIpAllocationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReleaseIpAllocationResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -63906,13 +64109,34 @@ func (c *ClientWithResponses) ListIpAllocationsWithResponse(ctx context.Context,
 	return ParseListIpAllocationsResponse(rsp)
 }
 
-// ReconcileIpamWithResponse Compare EfficientIP with what rvav recorded
+// ReleaseIpAllocationWithResponse Give back an address a range gave a VM rvav no longer has
+//
+// For the orphans of the reconcile report: refused (409) while a
+// deployment has the VM, or the request that took the address runs.
+// rvav gives addresses back itself when it deletes a VM. Audited.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /admin/ip-ranges/{id}/allocations/{address} (the `ReleaseIpAllocation` operationId).
+func (c *ClientWithResponses) ReleaseIpAllocationWithResponse(ctx context.Context, id IdPath, address string, reqEditors ...RequestEditorFn) (*ReleaseIpAllocationResponse, error) {
+	rsp, err := c.ReleaseIpAllocation(ctx, id, address, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReleaseIpAllocationResponse(rsp)
+}
+
+// ReconcileIpamWithResponse Compare EfficientIP and rvav's IP ranges with what rvav recorded
 //
 // Addresses and DNS records EfficientIP has with the class parameter
 // `rvav_managed=1` that no deployment owns (orphans, for example left by
 // a failed run), and addresses and records a deployment owns that
 // EfficientIP no longer has. Nothing is changed. A request running
 // while the check runs may show its newest objects as orphans.
+// Also, and without EfficientIP (`efficientip` is then false), the
+// addresses rvav's IP ranges gave to VMs no deployment has any more,
+// once the request that took them ended, and the inventory's VMs whose
+// address is in a range that didn't give it to them.
 // Needs `infrastructure.manage` (administrators).
 //
 // Returns a wrapper object for the known response body format(s).
@@ -72990,6 +73214,56 @@ func ParseListIpAllocationsResponse(rsp *http.Response) (*ListIpAllocationsRespo
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReleaseIpAllocationResponse parses an HTTP response from a ReleaseIpAllocationWithResponse call
+func ParseReleaseIpAllocationResponse(rsp *http.Response) (*ReleaseIpAllocationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReleaseIpAllocationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	}
 

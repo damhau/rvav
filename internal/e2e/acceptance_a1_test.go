@@ -419,6 +419,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"naming-policies/{id}":           naming.Id,
 		"lease-rules/{id}":               leaseRule.Id,
 		"ip-ranges/{id}":                 ipRange.Id,
+		"allocations/{address}":          "10.22.30.10",
 		"approval-policies/{id}":         first("/api/v1/admin/approval-policies").Items[0].Id,
 		"day2-policies/{id}":             first("/api/v1/admin/day2-policies").Items[0].Id,
 		"deployment-limit-policies/{id}": limits.Id,

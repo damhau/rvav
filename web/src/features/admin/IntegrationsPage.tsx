@@ -93,10 +93,12 @@ function Report({ report }: { report: IpamReconcile }) {
   return (
     <div className="flex flex-col">
       <p className="px-4 py-3 text-secondary text-muted">
-        EfficientIP has {report.managed_addresses} addresses and {report.managed_records} DNS records tagged for rvav.
+        {report.efficientip
+          ? `EfficientIP has ${report.managed_addresses} addresses and ${report.managed_records} DNS records tagged for rvav.`
+          : "EfficientIP is not set: it was not compared."}{" "}
         Checked {fullDate(report.checked_at)}.
       </p>
-      {clean && (
+      {clean && report.efficientip && (
         <EmptyState
           icon={CircleCheck}
           title="Nothing to reconcile"

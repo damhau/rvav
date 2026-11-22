@@ -2044,13 +2044,17 @@ paths:
     get:
       tags: [admin]
       operationId: reconcileIpam
-      summary: Compare EfficientIP with what rvav recorded
+      summary: Compare EfficientIP and rvav's IP ranges with what rvav recorded
       description: |
         Addresses and DNS records EfficientIP has with the class parameter
         `rvav_managed=1` that no deployment owns (orphans, for example left by
         a failed run), and addresses and records a deployment owns that
         EfficientIP no longer has. Nothing is changed. A request running
         while the check runs may show its newest objects as orphans.
+        Also, and without EfficientIP (`efficientip` is then false), the
+        addresses rvav's IP ranges gave to VMs no deployment has any more,
+        once the request that took them ended, and the inventory's VMs whose
+        address is in a range that didn't give it to them.
         Needs `infrastructure.manage` (administrators).
       responses:
         "200":
@@ -4051,6 +4055,28 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/ip-ranges/{id}/allocations/{address}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+      - name: address
+        in: path
+        required: true
+        schema: { type: string, examples: [10.51.0.10] }
+    delete:
+      tags: [admin]
+      operationId: releaseIpAllocation
+      summary: Give back an address a range gave a VM rvav no longer has
+      description: |
+        For the orphans of the reconcile report: refused (409) while a
+        deployment has the VM, or the request that took the address runs.
+        rvav gives addresses back itself when it deletes a VM. Audited.
+      responses:
+        "204": { description: Released }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /admin/templates:
     get:
@@ -7639,9 +7665,13 @@ components:
               message: { type: string }
     IpamReconcile:
       type: object
-      required: [checked_at, managed_addresses, managed_records, orphan_addresses, orphan_records, missing]
+      required: [checked_at, efficientip, managed_addresses, managed_records, orphan_addresses, orphan_records, missing,
+        orphan_allocations, unallocated]
       properties:
         checked_at: { type: string, format: date-time }
+        efficientip:
+          type: boolean
+          description: Whether EfficientIP was compared; false when none is set, and its counts and lists are then empty.
         managed_addresses:
           type: integer
           description: Addresses in EfficientIP with rvav_managed=1.
@@ -7658,6 +7688,42 @@ components:
           type: array
           description: What deployments own that EfficientIP no longer has.
           items: { $ref: "#/components/schemas/IpamMissing" }
+        orphan_allocations:
+          type: array
+          description: Addresses rvav's IP ranges gave to VMs no deployment has any more (ADR-0063).
+          items: { $ref: "#/components/schemas/IpamOrphanAllocation" }
+        unallocated:
+          type: array
+          description: The inventory's VMs whose address is in an IP range that didn't give it to them.
+          items: { $ref: "#/components/schemas/IpamUnallocated" }
+    IpamOrphanAllocation:
+      type: object
+      required: [range_id, range_name, vcenter, network, address, hostname, allocated_at]
+      properties:
+        range_id: { type: string }
+        range_name: { type: string }
+        vcenter: { type: string }
+        network: { type: string }
+        address: { type: string }
+        hostname: { type: string, description: The VM's name. }
+        adapter: { type: string, description: "The adapter's key in the blueprint; absent for the VM's first." }
+        deployment_id: { type: string }
+        deployment_name: { type: string, description: Absent once the deployment is gone. }
+        request_id: { type: string }
+        allocated_at: { type: string, format: date-time }
+    IpamUnallocated:
+      type: object
+      required: [vm, vcenter, address, range_id, range_name, network]
+      properties:
+        vm: { type: string }
+        vcenter: { type: string }
+        address: { type: string, description: The address vCenter reports for the VM. }
+        range_id: { type: string }
+        range_name: { type: string }
+        network: { type: string, description: The range's network. }
+        deployment_id: { type: string, description: "The deployment that has the VM, when rvav manages it." }
+        deployment_name: { type: string }
+        held_by: { type: string, description: "The VM the range gave the address to, when it gave it to another." }
     IpamOrphanAddress:
       type: object
       required: [efficientip_id, ip, name, subnet]

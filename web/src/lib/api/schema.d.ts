@@ -1638,12 +1638,16 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Compare EfficientIP with what rvav recorded
+         * Compare EfficientIP and rvav's IP ranges with what rvav recorded
          * @description Addresses and DNS records EfficientIP has with the class parameter
          *     `rvav_managed=1` that no deployment owns (orphans, for example left by
          *     a failed run), and addresses and records a deployment owns that
          *     EfficientIP no longer has. Nothing is changed. A request running
          *     while the check runs may show its newest objects as orphans.
+         *     Also, and without EfficientIP (`efficientip` is then false), the
+         *     addresses rvav's IP ranges gave to VMs no deployment has any more,
+         *     once the request that took them ended, and the inventory's VMs whose
+         *     address is in a range that didn't give it to them.
          *     Needs `infrastructure.manage` (administrators).
          */
         get: operations["reconcileIpam"];
@@ -3140,6 +3144,31 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/ip-ranges/{id}/allocations/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+                address: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Give back an address a range gave a VM rvav no longer has
+         * @description For the orphans of the reconcile report: refused (409) while a
+         *     deployment has the VM, or the request that took the address runs.
+         *     rvav gives addresses back itself when it deletes a VM. Audited.
+         */
+        delete: operations["releaseIpAllocation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5658,6 +5687,8 @@ export interface components {
         IpamReconcile: {
             /** Format: date-time */
             checked_at: string;
+            /** @description Whether EfficientIP was compared; false when none is set, and its counts and lists are then empty. */
+            efficientip: boolean;
             /** @description Addresses in EfficientIP with rvav_managed=1. */
             managed_addresses: number;
             /** @description DNS records in EfficientIP with rvav_managed=1. */
@@ -5666,6 +5697,42 @@ export interface components {
             orphan_records: components["schemas"]["IpamOrphanRecord"][];
             /** @description What deployments own that EfficientIP no longer has. */
             missing: components["schemas"]["IpamMissing"][];
+            /** @description Addresses rvav's IP ranges gave to VMs no deployment has any more (ADR-0063). */
+            orphan_allocations: components["schemas"]["IpamOrphanAllocation"][];
+            /** @description The inventory's VMs whose address is in an IP range that didn't give it to them. */
+            unallocated: components["schemas"]["IpamUnallocated"][];
+        };
+        IpamOrphanAllocation: {
+            range_id: string;
+            range_name: string;
+            vcenter: string;
+            network: string;
+            address: string;
+            /** @description The VM's name. */
+            hostname: string;
+            /** @description The adapter's key in the blueprint; absent for the VM's first. */
+            adapter?: string;
+            deployment_id?: string;
+            /** @description Absent once the deployment is gone. */
+            deployment_name?: string;
+            request_id?: string;
+            /** Format: date-time */
+            allocated_at: string;
+        };
+        IpamUnallocated: {
+            vm: string;
+            vcenter: string;
+            /** @description The address vCenter reports for the VM. */
+            address: string;
+            range_id: string;
+            range_name: string;
+            /** @description The range's network. */
+            network: string;
+            /** @description The deployment that has the VM, when rvav manages it. */
+            deployment_id?: string;
+            deployment_name?: string;
+            /** @description The VM the range gave the address to, when it gave it to another. */
+            held_by?: string;
         };
         IpamOrphanAddress: {
             efficientip_id: string;
@@ -16166,6 +16233,31 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    releaseIpAllocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Released */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listVmTemplates: {

@@ -589,6 +589,9 @@ export const handlers = [
     await wait();
     return json<S["IpamReconcile"]>({
       checked_at: new Date().toISOString(),
+      efficientip: true,
+      orphan_allocations: [],
+      unallocated: [],
       managed_addresses: 13,
       managed_records: 26,
       orphan_addresses: [

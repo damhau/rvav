@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 
@@ -15,16 +14,24 @@ import (
 
 // ReconcileIPAM compares EfficientIP with what deployments own: addresses
 // and records tagged rvav_managed=1 that no deployment owns, and owned ones
-// EfficientIP no longer has (ADR-0015). It changes nothing.
+// EfficientIP no longer has (ADR-0015); and rvav's IP ranges with what VMs
+// hold (ADR-0063). Without EfficientIP it compares the ranges only. It
+// changes nothing.
 func (s *Service) ReconcileIPAM(ctx context.Context, p *auth.Principal) (api.IpamReconcile, error) {
 	report := api.IpamReconcile{CheckedAt: time.Now().UTC(), OrphanAddresses: []api.IpamOrphanAddress{},
-		OrphanRecords: []api.IpamOrphanRecord{}, Missing: []api.IpamMissing{}}
+		OrphanRecords: []api.IpamOrphanRecord{}, Missing: []api.IpamMissing{},
+		OrphanAllocations: []api.IpamOrphanAllocation{}, Unallocated: []api.IpamUnallocated{}}
 	if !p.Everywhere(auth.InfrastructureManage) {
 		return report, ErrForbidden
 	}
-	if s.IPAM == nil {
-		return report, &UpstreamError{System: "EfficientIP", Err: errors.New("no EfficientIP is configured")}
+	if err := s.reconcileRanges(ctx, &report); err != nil {
+		return report, err
 	}
+	// Settings that make no client are EfficientIP set, and failing.
+	if notSet, ok := s.IPAM.(efficientip.NotSet); s.IPAM == nil || ok && notSet.Err == nil {
+		return report, nil
+	}
+	report.Efficientip = true
 	addresses, records, err := s.IPAM.Managed(ctx)
 	if err != nil {
 		return report, &UpstreamError{System: "EfficientIP", Err: err}

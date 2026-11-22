@@ -86,10 +86,21 @@ the name. The guest gets the DNS servers and the search domains, after its
 own domain, through its customization or cloud-init.
 
 ### Reconcile
-The reconcile report, which needed EfficientIP, also runs without it, and
-compares the ranges with what VMs hold: an address given to a VM the
-deployment no longer has, and a VM in the inventory whose address is in a
-range but was never given by it.
+The reconcile report, which needed EfficientIP, also runs without it
+(`efficientip: false`), and compares the ranges with what VMs hold:
+
+- An orphan allocation: no deployment has the VM any more, and the request
+  that took the address has ended. Unregistering a VM leaves its address
+  held, since the VM still uses it; this is how it shows.
+- An unallocated VM: a VM of the inventory whose address, as vCenter
+  reports it, is in a range of its vCenter, not excluded, and given to no
+  VM or to another (`held_by`).
+
+An administrator gives an orphan back with `DELETE
+/admin/ip-ranges/{id}/allocations/{address}`, audited; it is refused (409)
+for an address a deployment's VM holds. rvav gives addresses back itself in
+every other case, so this is the only manual release. An unallocated VM is
+fixed by excluding its address, or by moving the VM.
 
 ## Consequences
 - An administrator manages ranges in Infrastructure › IP ranges, from

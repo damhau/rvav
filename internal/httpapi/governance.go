@@ -773,3 +773,7 @@ func (s *Server) ListIpAllocations(w http.ResponseWriter, r *http.Request, id ap
 	items, err := s.Core.IPAllocations(r.Context(), principal(r), id)
 	s.reply(w, r, http.StatusOK, api.IpAllocationList{Items: items}, err)
 }
+
+func (s *Server) ReleaseIpAllocation(w http.ResponseWriter, r *http.Request, id api.IdPath, address string) {
+	s.replyEmpty(w, r, s.Core.ReleaseIPAllocation(r.Context(), principal(r), id, address))
+}
