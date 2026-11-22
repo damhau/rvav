@@ -87,7 +87,7 @@ func SampleEstate(now time.Time) Estate {
 				map[string]any{"size": "small", "environment": "dev", "role": "web"}, machine("vra-web-001", "10.31.10.141", 2, 4096)),
 			deployment("dep-vra-2", "vra-web-pair", "vra-prj-web", "bp-rhel9", "bp-rhel9", "1", "lea.martin@corp.example", days(45), now,
 				map[string]any{"size": "medium", "environment": "dev", "role": "api"},
-				machine("vra-api-001", "10.31.10.142", 4, 16384), machine("vra-api-002", "10.31.10.143", 4, 16384)),
+				kept(machine("vra-api-001", "10.31.10.142", 4, 16384)), machine("vra-api-002", "10.31.10.143", 4, 16384)),
 			deployment("dep-vra-3", "vra-db-001", "vra-prj-data", "bp-db", "bp-db", "1", "lea.martin@corp.example", nil, now,
 				map[string]any{"environment": "dev", "dbVersion": "16"}, machine("vra-db-001", "10.31.10.144", 4, 16384)),
 			deployment("dep-vra-4", "vra-gone", "vra-prj-web", "bp-rhel9", "bp-rhel9", "2", "thomas.nguyen@corp.example", days(10), now,
@@ -178,6 +178,12 @@ func machine(name, ip string, cpus, memMB int) Resource {
 	return Resource{ID: "res-" + name, Name: "Cloud_vSphere_Machine_1", Type: MachineType, Properties: map[string]any{
 		"resourceName": name, "address": ip, "cpuCount": cpus, "totalMemoryMB": memMB, "powerState": "ON",
 		"datastoreName": "vsan-gva-dev-cl01"}}
+}
+
+// kept is a machine whose resource says vRA keeps it from deletion.
+func kept(r Resource) Resource {
+	r.PreventDelete = new(true)
+	return r
 }
 
 func rhelTemplate(cloudInit bool) string {

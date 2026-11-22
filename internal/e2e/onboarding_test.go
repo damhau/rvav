@@ -104,14 +104,8 @@ func TestOnboarding(t *testing.T) {
 		var item api.CatalogItem
 		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id=prj_web", "lmartin", nil, 200, &item)
 		days := 30
-		ref := func(moref string) struct {
-			Moref   string `json:"moref"`
-			Vcenter string `json:"vcenter"`
-		} {
-			return struct {
-				Moref   string `json:"moref"`
-				Vcenter string `json:"vcenter"`
-			}{moref, "vc01.corp.example"}
+		ref := func(moref string) api.OnboardingVmRef {
+			return api.OnboardingVmRef{Moref: moref, Vcenter: "vc01.corp.example"}
 		}
 		draft := api.OnboardingDraft{ProjectId: "prj_web", Environment: "dev", OwnerId: "usr_tnguyen", CatalogItemId: item.Id,
 			LeaseDays: &days}

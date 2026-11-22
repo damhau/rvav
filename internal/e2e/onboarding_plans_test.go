@@ -352,10 +352,7 @@ func TestOnboardingPlans(t *testing.T) {
 	}, model)
 }
 
-type vmRefT = struct {
-	Moref   string `json:"moref"`
-	Vcenter string `json:"vcenter"`
-}
+type vmRefT = api.OnboardingVmRef
 
 func asString(v any) *string {
 	if s, ok := v.(string); ok {

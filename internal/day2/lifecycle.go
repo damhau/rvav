@@ -206,7 +206,8 @@ func init() {
 			}
 			return ""
 		},
-		Confirm: "Its blueprint keeps these VMs from being deleted. Once allowed, those who may delete the deployment can.",
+		Confirm: "Delete protection keeps these VMs from being deleted: their blueprint's, or vRA's for VMs adopted from vRA. " +
+			"Once allowed, those who may delete the deployment can.",
 		Ops: func(t Target, _ map[string]any) []Op {
 			return []Op{{Key: "rvav.allow_delete", Title: "Allow deleting " + strings.Join(protected(t), ", "), System: "rvav",
 				Op: "allow_delete"}}
@@ -218,7 +219,7 @@ func init() {
 		Confirm: "Deletes the VMs and releases their IP addresses and DNS records. This can't be undone.",
 		Unavailable: func(t Target, _ Choices) string {
 			if names := protected(t); len(names) > 0 {
-				return "Its blueprint keeps " + strings.Join(names, ", ") + " from being deleted: an administrator allows it first (Allow deletion)."
+				return "Delete protection keeps " + strings.Join(names, ", ") + " from being deleted: an administrator allows it first (Allow deletion)."
 			}
 			return ""
 		},

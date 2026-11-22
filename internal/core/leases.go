@@ -23,7 +23,7 @@ import (
 // was down, or the deployment predates leases) is moved on a day so the
 // owner is told first. Requests waiting for approval don't hold expiry up;
 // those still waiting are cancelled before a deletion. A deployment whose
-// blueprint keeps its VMs from deletion isn't deleted, and nothing of it is
+// VMs are kept from deletion isn't deleted, and nothing of it is
 // cancelled: its owner is told once. A deployment busy
 // with a running request waits for the next round; an expiry that failed
 // is tried again after a day. It returns the requests started.
@@ -125,7 +125,7 @@ func (s *Service) ExpireLeases(ctx context.Context, now time.Time) ([]string, er
 }
 
 // keptFromDeletion is why the deployment's Delete is refused, "" when it
-// isn't: its blueprint keeps a VM from deletion (ADR-0038).
+// isn't: a VM is kept from deletion (ADR-0038).
 func (s *Service) keptFromDeletion(ctx context.Context, d store.DeploymentRow) (string, error) {
 	resources, err := s.Store.ListResources(ctx, d.ID)
 	if err != nil {

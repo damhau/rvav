@@ -84,7 +84,13 @@ test("see the dry run, map projects, import, and import again", async ({ page })
   await expect(
     deployments.getByRole("row", { name: /vra-db-001/ }).getByText(/database-server isn't published/),
   ).toBeVisible();
-  await expect(deployments.getByRole("row", { name: /VRA Web Pair/ }).getByText("vra-web-pair in rvav")).toBeVisible();
+  const pair = deployments.getByRole("row", { name: /VRA Web Pair/ });
+  await expect(pair.getByText("vra-web-pair in rvav")).toBeVisible();
+  // vRA keeps one of its VMs from deletion, which adoption keeps.
+  await expect(pair.getByRole("listitem").filter({ hasText: "vra-api-001" })).toHaveText(
+    "vra-api-001 Kept from deletion",
+  );
+  await expect(pair.getByRole("listitem").filter({ hasText: "vra-api-002" })).toHaveText("vra-api-002");
 
   // Again: nothing new.
   await page.getByRole("button", { name: "Import…" }).click();
@@ -107,6 +113,17 @@ test("adopt one project's deployments, mark it moved, then not", async ({ page }
   await web.getByRole("button", { name: "Adopt 2 deployments (Web Platform)" }).click();
   await expect(page.getByText("Adopted 2 deployments of Web Platform")).toBeVisible();
   await expect(web.getByText("2 of 3 adopted. Still in vRA: vra-gone.")).toBeVisible();
+  await page.getByRole("tab", { name: /Deployments/ }).click();
+  const pair = page.getByRole("table", { name: "vRA deployments" }).getByRole("row", { name: /VRA Web Pair/ });
+  await expect(pair.getByRole("listitem").filter({ hasText: "vra-api-001" })).toHaveText(
+    "vra-api-001 Kept from deletion",
+  );
+  await pair.getByRole("button", { name: "Notes on VRA Web Pair: 1 note" }).click();
+  const notes = page.getByRole("dialog", { name: "Notes on VRA Web Pair" });
+  await expect(notes.getByText("Kept from deletion, as in vRA: vra-api-001.", { exact: false })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(notes).toBeHidden();
+  await page.getByRole("tab", { name: /Cutover/ }).click();
 
   await web.getByRole("button", { name: "Mark as moved… (Web Platform)" }).click();
   const dialog = page.getByRole("dialog", { name: "Move Web Platform to rvav" });

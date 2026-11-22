@@ -84,10 +84,11 @@ func (s *Service) vraRvav(ctx context.Context, e *vra.Estate, projectMap map[str
 		if prev, dup := r.VMs[v.Name]; dup {
 			// Two vCenters have a VM of that name: which one vRA built isn't
 			// known by name alone. One rvav manages is adopted, though.
-			r.VMs[v.Name] = vraimport.VMRef{Name: v.Name, Ambiguous: true, Managed: prev.Managed || v.Managed}
+			r.VMs[v.Name] = vraimport.VMRef{Name: v.Name, Ambiguous: true, Managed: prev.Managed || v.Managed,
+				PreventDelete: prev.PreventDelete || v.PreventDelete}
 			continue
 		}
-		r.VMs[v.Name] = vraimport.VMRef{VCenter: v.VCenter, Moref: v.Moref, Name: v.Name, Managed: v.Managed}
+		r.VMs[v.Name] = vraimport.VMRef{VCenter: v.VCenter, Moref: v.Moref, Name: v.Name, Managed: v.Managed, PreventDelete: v.PreventDelete}
 	}
 	if r.Adopted, err = s.Store.AdoptedVRADeployments(ctx); err != nil {
 		return r, err
@@ -303,10 +304,11 @@ func (s *Service) adoptPlans(ctx context.Context, p *auth.Principal, plans []vra
 		d := api.OnboardingDraft{ProjectId: pl.ProjectID, Environment: pl.Environment, OwnerId: pl.OwnerID,
 			CatalogItemId: pl.CatalogItemID, LeaseDays: pl.LeaseDays, DeploymentName: &plans[i].RvavName}
 		for _, vm := range pl.VMs {
-			d.Vms = append(d.Vms, struct {
-				Moref   string `json:"moref"`
-				Vcenter string `json:"vcenter"`
-			}{Moref: vm.Moref, Vcenter: vm.VCenter})
+			ref := api.OnboardingVmRef{Moref: vm.Moref, Vcenter: vm.VCenter}
+			if vm.PreventDelete {
+				ref.PreventDelete = new(true)
+			}
+			d.Vms = append(d.Vms, ref)
 		}
 		res, err := s.AdoptVMs(ctx, p, d)
 		var ve *ValidationError

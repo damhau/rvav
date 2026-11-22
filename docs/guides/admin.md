@@ -1969,6 +1969,14 @@ of the type or an item version names it.
   and nothing is changed there or in vCenter
   ([ADR-0026](../adr/0026-onboarding.md),
   [ADR-0044](../adr/0044-onboarding-plans.md)).
+
+  To keep the VMs from being deleted, as a blueprint's `prevent_delete`
+  does, select **Keep from deletion**: the deployment's **Delete** is
+  refused until an administrator runs its **Allow deletion**. Select it
+  for VMs vRA keeps from deletion: the vRA import adopts its own
+  deployments with their protection, and its plan names the VMs left for
+  you to adopt here
+  ([Delete protection](../operations/vra-import.md#delete-protection)).
 - **Onboarding plans:** adopt the VMs a filter matches, again and again,
   as they appear. **Deployments › Adopt existing VMs** opens them, as does
   the **Plans** tab of **Onboarding**. To make one:

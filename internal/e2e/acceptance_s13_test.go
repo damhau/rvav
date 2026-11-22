@@ -73,10 +73,7 @@ func TestInventoryAndReportingAcceptance(t *testing.T) {
 		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id=prj_web", "lmartin", nil, 200, &item)
 		draft := api.OnboardingDraft{ProjectId: "prj_web", Environment: "prd", OwnerId: "usr_lmartin", CatalogItemId: item.Id}
 		for _, v := range page.Items {
-			draft.Vms = append(draft.Vms, struct {
-				Moref   string `json:"moref"`
-				Vcenter string `json:"vcenter"`
-			}{v.Moref, v.Vcenter})
+			draft.Vms = append(draft.Vms, api.OnboardingVmRef{Moref: v.Moref, Vcenter: v.Vcenter})
 		}
 
 		// One operation adopts them all, each into its own deployment.

@@ -10275,6 +10275,21 @@ components:
         total: { type: integer, description: How many VMs match the filters. }
         next_cursor: { type: string }
 
+    OnboardingVmRef:
+      type: object
+      required: [vcenter, moref]
+      properties:
+        vcenter: { type: string }
+        moref: { type: string }
+        prevent_delete:
+          type: boolean
+          description: |
+            Keeps the VM from being deleted, as a blueprint's
+            `prevent_delete` does (ADR-0038): the deployment's Delete is
+            refused and names it until an administrator runs the
+            deployment's Allow deletion. The vRA import sets it for the VMs
+            vRA keeps from deletion (`preventDelete`).
+
     OnboardingDraft:
       type: object
       required: [vms, project_id, environment, owner_id, catalog_item_id]
@@ -10283,12 +10298,7 @@ components:
           type: array
           minItems: 1
           maxItems: 200
-          items:
-            type: object
-            required: [vcenter, moref]
-            properties:
-              vcenter: { type: string }
-              moref: { type: string }
+          items: { $ref: "#/components/schemas/OnboardingVmRef" }
         project_id: { type: string }
         environment: { type: string }
         owner_id: { type: string, description: "A member of the project, who owns the deployments." }
@@ -10331,12 +10341,7 @@ components:
           type: array
           minItems: 1
           maxItems: 200
-          items:
-            type: object
-            required: [vcenter, moref]
-            properties:
-              vcenter: { type: string }
-              moref: { type: string }
+          items: { $ref: "#/components/schemas/OnboardingVmRef" }
         component:
           type: string
           description: The component of the deployment's blueprint they join. Needed when it has more than one.
@@ -10811,6 +10816,14 @@ components:
               vcenter: { type: string }
               moref: { type: string }
               name: { type: string }
+              prevent_delete:
+                type: boolean
+                description: |
+                  Kept from deletion. Before adoption, because vRA keeps it
+                  from deletion (its cloud template's `preventDelete`), which
+                  adoption keeps; once adopted, because rvav still does
+                  (until an administrator runs the deployment's Allow
+                  deletion).
         deployments: { type: array, items: { type: string }, description: "The rvav deployments it became, once adopted." }
     VraPolicyPlan:
       type: object

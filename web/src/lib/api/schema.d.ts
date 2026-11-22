@@ -7629,11 +7629,20 @@ export interface components {
             total: number;
             next_cursor?: string;
         };
+        OnboardingVmRef: {
+            vcenter: string;
+            moref: string;
+            /**
+             * @description Keeps the VM from being deleted, as a blueprint's
+             *     `prevent_delete` does (ADR-0038): the deployment's Delete is
+             *     refused and names it until an administrator runs the
+             *     deployment's Allow deletion. The vRA import sets it for the VMs
+             *     vRA keeps from deletion (`preventDelete`).
+             */
+            prevent_delete?: boolean;
+        };
         OnboardingDraft: {
-            vms: {
-                vcenter: string;
-                moref: string;
-            }[];
+            vms: components["schemas"]["OnboardingVmRef"][];
             project_id: string;
             environment: string;
             /** @description A member of the project, who owns the deployments. */
@@ -7669,10 +7678,7 @@ export interface components {
         OnboardingIntoDraft: {
             /** @description A deployment of a VM item, ready, that no request runs on. */
             deployment_id: string;
-            vms: {
-                vcenter: string;
-                moref: string;
-            }[];
+            vms: components["schemas"]["OnboardingVmRef"][];
             /** @description The component of the deployment's blueprint they join. Needed when it has more than one. */
             component?: string;
         };
@@ -8103,6 +8109,14 @@ export interface components {
                 vcenter: string;
                 moref: string;
                 name: string;
+                /**
+                 * @description Kept from deletion. Before adoption, because vRA keeps it
+                 *     from deletion (its cloud template's `preventDelete`), which
+                 *     adoption keeps; once adopted, because rvav still does
+                 *     (until an administrator runs the deployment's Allow
+                 *     deletion).
+                 */
+                prevent_delete?: boolean;
             }[];
             /** @description The rvav deployments it became, once adopted. */
             deployments?: string[];

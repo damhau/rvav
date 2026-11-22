@@ -249,7 +249,7 @@ check it) or *unmapped* (left out).
 | `${secret.x}` in `cloudConfig` | `{{ secret "x" }}`: the stored secret, printed as it is. Its name becomes an rvav name (lower case, a dash for any other character: `Root_Password` is `root-password`). vRA never gives a secret's value, so the item waits (a conflict) until you store each secret it opens in rvav under that name (**Catalog items › Secrets**), then import again. A secret anywhere else, such as a property or a tag, is reported. |
 | An input of a property group (`$ref: /ref/property-groups/<name>`) | The item names the rvav property group that vRA's becomes ([Property groups](#property-groups)), and the form gets the group's inputs in place of the input. `${input.<input>.<property>}` is `${inputs.<property>}`. A group that wasn't read is reported, and so are a group input of the same name as a form input (or `cluster`, `datastore`, `network`) or another group's, which rvav refuses to save, and two inputs of the same group (`primary` and `secondary`), which read the same answers in rvav. |
 | `${propgroup.<group>.<property>}` | `${propgroup.<key>.<property>}`, and the item names the group. In `cloudConfig`, the constant's value is written in, with an info note: a later change to the group doesn't reach the item's cloud-init. |
-| `preventDelete: true` on a machine | The component's `prevent_delete`: its VMs can't be deleted until an administrator runs the deployment's **Allow deletion**. |
+| `preventDelete: true` on a machine | The component's `prevent_delete`: its VMs can't be deleted until an administrator runs the deployment's **Allow deletion**. Adopting a vRA deployment keeps its VMs' protection too ([Deployments](#deployments)). |
 | Other resource flags (`ignoreChanges`, `createBeforeDelete`, `forceRecreate`, `allocatePerInstance`, `dependsOnPrevious`...) | Reported, left out. Timeouts (`createTimeout`...) are left out with an info note: rvav's own apply. |
 | `folderName` | The component's `folder`, below the VM folder of the placement rule folder's datacenter. `${input.x}` is `${inputs.x}`; a folder that reads a machine is reported. |
 | A machine's `name` or `hostName` | Reported, left out: the item's naming names the VMs, its `{seq}` numbering them across deployments, where `${count.index}` would repeat ([ADR-0024](../adr/0024-multi-vm-blueprints.md)). |
@@ -418,6 +418,7 @@ onboarding ([ADR-0026](../adr/0026-onboarding.md)):
 | vRA | rvav |
 |---|---|
 | Its vSphere machines (`resourceName`) | The VMs of that name in the vCenters rvav reads. A name two vCenters both have isn't adopted. |
+| A machine's delete protection (`preventDelete`) | The VM's delete protection, as a blueprint's `prevent_delete` gives it ([ADR-0038](../adr/0038-names-groups-secrets-properties.md)): the deployment's **Delete** is refused and names the VM, and the end of its lease doesn't delete it, until an administrator runs the deployment's **Allow deletion**. See [Delete protection](#delete-protection). |
 | Its project | The rvav project it is mapped to (`-project`), or the one of the same name. |
 | Its `environment` (or `env`) input | Its environment, which must be one of the project's. |
 | Its owner (or who created it) | The rvav user of that email, who must hold a role in the project that requests there (`request.submit`), such as Member or Project admin. |
@@ -441,6 +442,40 @@ An adopted deployment has no inputs in rvav: vRA's aren't carried over.
 Its first **Update** opens the item's form with the fields' defaults, and
 applies only what you change from them. Before you confirm it, check the
 plan against what its VMs have.
+
+### Delete protection
+
+`preventDelete` is a resource flag of the cloud template, outside the
+resource's properties
+([Automation Assembler resource flags for requests](https://techdocs.broadcom.com/us/en/vmware-cis/aria/aria-automation/all/resource-flags-for-requests.html)).
+vRA's API reference documents no field for it on a deployment's resources
+or on the IaaS API's machines, so rvav reads, for each machine:
+1. Its resource's `preventDelete`, beside its `dependsOn` or in its
+   properties, when vRA gives one.
+2. Otherwise, the flag on the machine's resource in the template version
+   the deployment was requested from (`blueprintVersion`), or in the
+   template's current content when vRA names no version. A machine with a
+   count, such as `Cloud_vSphere_Machine_1[1]`, reads its resource's flag.
+
+`${input.x}` reads the deployment's input `x`. Any other expression, or an
+input the deployment hasn't, keeps the VM from deletion, with a warning
+on that VM.
+
+In vRA, `preventDelete` keeps a machine from being deleted by an update,
+but deleting the deployment deletes it. In rvav, it holds against
+deleting the deployment too, as a blueprint's `prevent_delete` does.
+
+The plan shows which VMs are kept from deletion: on the **Deployments**
+tab of **Administration › vRA import**, a VM vRA keeps shows **Kept from
+deletion** before it's adopted, and a VM rvav keeps after. In the JSON of
+`rvav vra-adopt` and the API, it's the VM's `prevent_delete`. When vRA
+keeps a VM that rvav doesn't, the plan warns: an administrator ran
+**Allow deletion**, or rvav adopted it before it kept vRA's protection.
+
+VMs adopted by hand, from **Onboarding**, keep nothing on their own: a
+name two vCenters have, or a VM left out of an adopted deployment. To
+keep them from deletion, select **Keep from deletion** when you adopt
+them. The plan's note names the VMs vRA keeps.
 
 ### vRA's onboarding plans
 

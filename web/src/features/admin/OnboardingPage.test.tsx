@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
+import { http } from "msw";
 import { describe, expect, it } from "vitest";
+import { server } from "@/mocks/node";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
@@ -60,6 +62,30 @@ describe("Onboarding", () => {
     expect(await screen.findByRole("region", { name: "Adopted 2 VMs into 2 deployments" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Adopt 2 VMs" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Selected VMs" })).toBeNull();
+  });
+
+  it("keeps the VMs it adopts from deletion when asked", { timeout: 15_000 }, async () => {
+    const sent: unknown[] = [];
+    server.use(
+      http.post("*/api/v1/admin/onboarding", async ({ request }) => {
+        sent.push(await request.clone().json());
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/admin/onboarding");
+    await search(user, "app-old", "8 VMs");
+    await user.click(screen.getByRole("checkbox", { name: "Select app-old01" }));
+    await user.click(screen.getByRole("button", { name: "Adopt 1 VM…" }));
+    const sheet = await screen.findByRole("dialog", { name: "Adopt 1 VM" });
+    await choose(user, "Project", "Web Platform");
+    await choose(user, "Environment", "dev");
+    await choose(user, "Owner", "Léa Martin");
+    await choose(user, "Catalog item", "RHEL 9 server");
+    await user.click(within(sheet).getByRole("checkbox", { name: /Keep from deletion/ }));
+    await user.click(within(sheet).getByRole("button", { name: "Adopt 1 VM" }));
+
+    expect(await screen.findByRole("region", { name: "Adopted 1 VM into 1 deployment" })).toBeInTheDocument();
+    expect(sent).toEqual([expect.objectContaining({ vms: [expect.objectContaining({ prevent_delete: true })] })]);
   });
 
   it("puts the focus on the first field the server refuses", { timeout: 15_000 }, async () => {

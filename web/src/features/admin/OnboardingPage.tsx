@@ -12,6 +12,7 @@ import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { PowerDot } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
@@ -52,8 +53,9 @@ function AdoptSheet({
   const [t, setT] = useState<Target>(emptyTarget);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [local, setLocal] = useState<Record<number, string>>({});
+  const [keep, setKeep] = useState(false);
   useFocusRefused(errors);
-  const refs = vms.map((v) => ({ vcenter: v.vcenter, moref: v.moref }));
+  const refs = vms.map((v) => ({ vcenter: v.vcenter, moref: v.moref, ...(keep ? { prevent_delete: true } : {}) }));
   const adopt = useMutation({
     mutationFn: () => {
       const component = t.component.trim() || undefined;
@@ -139,6 +141,16 @@ function AdoptSheet({
             </li>
           ))}
         </ul>
+        <label htmlFor="ob-keep" className="mt-1 flex items-start gap-2 text-body">
+          <Checkbox id="ob-keep" className="mt-0.5" checked={keep} onChange={setKeep} />
+          <span>
+            <span className="font-medium">Keep from deletion</span>
+            <span className="block text-secondary text-muted">
+              Deleting their deployment is refused until an administrator runs its Allow deletion, as for a
+              blueprint&apos;s prevent_delete. For VMs vRA keeps from deletion.
+            </span>
+          </span>
+        </label>
       </section>
     </Sheet>
   );

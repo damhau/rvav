@@ -3,7 +3,7 @@
 // then import the catalog as drafts with its sharing, and adopt
 // deployments. It can run again. vRA is only read.
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Circle, CircleCheck, Download, FileUp, Hand, RefreshCw, TriangleAlert } from "lucide-react";
+import { Circle, CircleCheck, Download, FileUp, Hand, Lock, RefreshCw, TriangleAlert } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -713,11 +713,23 @@ function DeploymentsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => 
     {
       id: "vms",
       header: "VMs",
-      cell: (d) => (
-        <span className="font-mono text-secondary">
-          {(d.vms ?? []).map((v) => v.name).join(", ") || <span className="text-faint">none found</span>}
-        </span>
-      ),
+      cell: (d) =>
+        d.vms?.length ? (
+          <ul className="flex flex-col gap-0.5">
+            {d.vms.map((v) => (
+              <li key={`${v.vcenter}/${v.moref}/${v.name}`} className="flex flex-wrap items-center gap-1.5">
+                <span className="font-mono text-secondary">{v.name}</span>
+                {v.prevent_delete && (
+                  <Badge tone="neutral" title="Its deletion waits for an administrator to run Allow deletion.">
+                    <Lock aria-hidden /> Kept from deletion
+                  </Badge>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="text-faint">none found</span>
+        ),
     },
     {
       id: "adoption",

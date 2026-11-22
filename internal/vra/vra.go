@@ -317,11 +317,24 @@ type Share struct {
 }
 
 // Resource is something a deployment holds: a machine, a disk, a network.
+// Name is its resource's name in the cloud template, with [n] for each VM
+// of a machine with a count.
 type Resource struct {
 	ID         string         `json:"id"`
 	Name       string         `json:"name"`
 	Type       string         `json:"type"` // Cloud.vSphere.Machine, Cloud.vSphere.Disk...
 	Properties map[string]any `json:"properties,omitempty"`
+	// PreventDelete is the resource's preventDelete flag, should the
+	// deployment API give one. vRA's reference documents none: the flag is
+	// the cloud template's, outside the resource's properties
+	// ("Automation Assembler resource flags for requests",
+	// https://techdocs.broadcom.com/us/en/vmware-cis/aria/aria-automation/all/resource-flags-for-requests.html),
+	// and a deployment's resources (id, name, type, properties, dependsOn,
+	// state, syncStatus...) and the IaaS API's machines have no field for
+	// it. It is read where the resource has its other flag, dependsOn, and
+	// the importer also reads the template's (vraimport.Protected).
+	// Estates stored without it read as nil.
+	PreventDelete *bool `json:"preventDelete,omitempty"`
 }
 
 // Deployment is what a vRA request made.

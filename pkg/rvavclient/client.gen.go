@@ -7659,12 +7659,9 @@ type OnboardingDraft struct {
 	LeaseDays *int `json:"lease_days,omitempty"`
 
 	// OwnerId A member of the project, who owns the deployments.
-	OwnerId   string `json:"owner_id"`
-	ProjectId string `json:"project_id"`
-	Vms       []struct {
-		Moref   string `json:"moref"`
-		Vcenter string `json:"vcenter"`
-	} `json:"vms"`
+	OwnerId   string            `json:"owner_id"`
+	ProjectId string            `json:"project_id"`
+	Vms       []OnboardingVmRef `json:"vms"`
 }
 
 // OnboardingFilter Which VMs of the inventory a plan matches. Every criterion given
@@ -7690,11 +7687,8 @@ type OnboardingIntoDraft struct {
 	Component *string `json:"component,omitempty"`
 
 	// DeploymentId A deployment of a VM item, ready, that no request runs on.
-	DeploymentId string `json:"deployment_id"`
-	Vms          []struct {
-		Moref   string `json:"moref"`
-		Vcenter string `json:"vcenter"`
-	} `json:"vms"`
+	DeploymentId string            `json:"deployment_id"`
+	Vms          []OnboardingVmRef `json:"vms"`
 }
 
 // OnboardingPlan defines model for OnboardingPlan.
@@ -7880,6 +7874,19 @@ type OnboardingVmPage struct {
 
 	// Total How many VMs match the filters.
 	Total int `json:"total"`
+}
+
+// OnboardingVmRef defines model for OnboardingVmRef.
+type OnboardingVmRef struct {
+	Moref string `json:"moref"`
+
+	// PreventDelete Keeps the VM from being deleted, as a blueprint's
+	// `prevent_delete` does (ADR-0038): the deployment's Delete is
+	// refused and names it until an administrator runs the
+	// deployment's Allow deletion. The vRA import sets it for the VMs
+	// vRA keeps from deletion (`preventDelete`).
+	PreventDelete *bool  `json:"prevent_delete,omitempty"`
+	Vcenter       string `json:"vcenter"`
 }
 
 // Option defines model for Option.
@@ -11009,9 +11016,16 @@ type VraDeploymentPlan struct {
 	RvavName *string                 `json:"rvav_name,omitempty"`
 	Status   VraDeploymentPlanStatus `json:"status"`
 	Vms      *[]struct {
-		Moref   string `json:"moref"`
-		Name    string `json:"name"`
-		Vcenter string `json:"vcenter"`
+		Moref string `json:"moref"`
+		Name  string `json:"name"`
+
+		// PreventDelete Kept from deletion. Before adoption, because vRA keeps it
+		// from deletion (its cloud template's `preventDelete`), which
+		// adoption keeps; once adopted, because rvav still does
+		// (until an administrator runs the deployment's Allow
+		// deletion).
+		PreventDelete *bool  `json:"prevent_delete,omitempty"`
+		Vcenter       string `json:"vcenter"`
 	} `json:"vms,omitempty"`
 	VraId      string `json:"vra_id"`
 	VraProject string `json:"vra_project"`

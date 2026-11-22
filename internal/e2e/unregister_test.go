@@ -45,10 +45,7 @@ func TestUnregister(t *testing.T) {
 		if err := sync.SyncOnce(ctx); err != nil {
 			t.Fatal(err)
 		}
-		type ref = struct {
-			Moref   string `json:"moref"`
-			Vcenter string `json:"vcenter"`
-		}
+
 		var item api.CatalogItem
 		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id=prj_web", lead, nil, 200, &item)
 		onboard := func(name *string, morefs ...string) api.OnboardingResult {
@@ -56,7 +53,7 @@ func TestUnregister(t *testing.T) {
 			draft := api.OnboardingDraft{ProjectId: "prj_web", Environment: "dev", OwnerId: "usr_tnguyen", CatalogItemId: item.Id,
 				DeploymentName: name}
 			for _, m := range morefs {
-				draft.Vms = append(draft.Vms, ref{m, "vc01.corp.example"})
+				draft.Vms = append(draft.Vms, api.OnboardingVmRef{Moref: m, Vcenter: "vc01.corp.example"})
 			}
 			var res api.OnboardingResult
 			h.json("POST", "/api/v1/admin/onboarding", admin, draft, 200, &res)

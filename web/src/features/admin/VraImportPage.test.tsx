@@ -149,6 +149,31 @@ describe("vRA import", () => {
     );
   });
 
+  it("marks the VMs kept from deletion, before adoption and once adopted", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=deployments");
+    const vm = async (name: string) =>
+      (await within(await screen.findByRole("table", { name: "vRA deployments" })).findByText(name)).closest("li");
+    expect(await vm("vra-api-001")).toHaveTextContent(/^vra-api-001 Kept from deletion$/);
+    expect(await vm("vra-api-002")).toHaveTextContent(/^vra-api-002$/);
+    await user.click(screen.getByRole("button", { name: "Notes on VRA Web Pair: 2 notes" }));
+    expect(await screen.findByRole("dialog", { name: "Notes on VRA Web Pair" })).toHaveTextContent(
+      /vRA keeps vra-api-001 from deletion \(preventDelete\): rvav does too once adopted/,
+    );
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("tab", { name: /Cutover/ }));
+    await user.click(await screen.findByRole("button", { name: "Adopt 2 deployments (Web Platform)" }));
+    expect(await screen.findByText("Adopted 2 deployments of Web Platform")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: /Deployments/ }));
+    await user.click(await screen.findByRole("button", { name: "Notes on VRA Web Pair: 1 note" }));
+    expect(await screen.findByRole("dialog", { name: "Notes on VRA Web Pair" })).toHaveTextContent(
+      "Kept from deletion, as in vRA: vra-api-001.",
+    );
+    await user.keyboard("{Escape}");
+    expect(await vm("vra-api-001")).toHaveTextContent(/^vra-api-001 Kept from deletion$/);
+  });
+
   it("marks a project moved from a side panel, and not moved once confirmed", async () => {
     const user = userEvent.setup();
     renderApp("/admin/vra-import?tab=cutover");

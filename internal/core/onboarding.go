@@ -78,6 +78,8 @@ type adoptee struct {
 	fqdn      string
 	addresses []efficientip.Address
 	records   []efficientip.Record
+	// preventDelete keeps it from deletion (ADR-0038).
+	preventDelete bool
 }
 
 // adoptedDeployment is one deployment of an OnboardingResult.
@@ -89,10 +91,7 @@ type adoptedDeployment = struct {
 	Vms       []string `json:"vms"`
 }
 
-type vmRef = struct {
-	Moref   string `json:"moref"`
-	Vcenter string `json:"vcenter"`
-}
+type vmRef = api.OnboardingVmRef
 
 // AdoptVMs adopts VMs into deployments: each its own, named after it, or
 // all in one. All are adopted, or none.
@@ -252,6 +251,7 @@ func (s *Service) pickVMs(ctx context.Context, refs []vmRef, add addFunc) ([]ado
 			return nil, err
 		}
 		vms[i].inv = v
+		vms[i].preventDelete = ref.PreventDelete != nil && *ref.PreventDelete
 	}
 	return vms, nil
 }
@@ -331,7 +331,7 @@ func (s *Service) createDeployment(ctx context.Context, tx pgx.Tx, dest *destina
 	if err := s.Store.InsertDeployment(ctx, tx, dep); err != nil {
 		return adoptedDeployment{}, err
 	}
-	res, err := s.recordGroup(ctx, tx, dep.ID, dest.compKey, group)
+	res, kept, err := s.recordGroup(ctx, tx, dep.ID, dest.compKey, group)
 	if err != nil {
 		return res, err
 	}
@@ -340,6 +340,9 @@ func (s *Service) createDeployment(ctx context.Context, tx pgx.Tx, dest *destina
 		"catalog_item": dest.item}
 	if dest.compKey != "" {
 		audit["component"] = dest.compKey
+	}
+	if len(kept) > 0 {
+		audit["prevent_delete"] = kept
 	}
 	maps.Copy(audit, detail)
 	return res, s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: actor, Action: "deployment.adopted", TargetType: "deployment",
@@ -391,7 +394,7 @@ func (s *Service) joinDeployment(ctx context.Context, tx pgx.Tx, dest *destinati
 	if m != nil {
 		return adoptedDeployment{}, m
 	}
-	res, err := s.recordGroup(ctx, tx, id, dest.compKey, group)
+	res, kept, err := s.recordGroup(ctx, tx, id, dest.compKey, group)
 	if err != nil {
 		return res, err
 	}
@@ -406,6 +409,9 @@ func (s *Service) joinDeployment(ctx context.Context, tx pgx.Tx, dest *destinati
 	if dest.compKey != "" {
 		audit["component"] = dest.compKey
 	}
+	if len(kept) > 0 {
+		audit["prevent_delete"] = kept
+	}
 	if raised != nil {
 		audit["inputs"] = raised
 	}
@@ -414,18 +420,23 @@ func (s *Service) joinDeployment(ctx context.Context, tx pgx.Tx, dest *destinati
 		TargetID: id, ProjectID: &dep.ProjectID, Detail: audit})
 }
 
-// recordGroup records VMs as resources of a deployment.
-func (s *Service) recordGroup(ctx context.Context, tx pgx.Tx, depID, component string, group []*adoptee) (adoptedDeployment, error) {
+// recordGroup records VMs as resources of a deployment, and names those
+// kept from deletion.
+func (s *Service) recordGroup(ctx context.Context, tx pgx.Tx, depID, component string, group []*adoptee) (adoptedDeployment, []string, error) {
 	res := adoptedDeployment{Id: depID, Vms: []string{}}
+	var kept []string
 	for _, a := range group {
 		if err := s.recordAdoptee(ctx, tx, depID, component, a); err != nil {
-			return res, err
+			return res, nil, err
 		}
 		res.Vms = append(res.Vms, a.vm.Name)
 		res.Addresses += len(a.addresses)
 		res.Records += len(a.records)
+		if a.preventDelete {
+			kept = append(kept, a.vm.Name)
+		}
 	}
-	return res, nil
+	return res, kept, nil
 }
 
 // adoptionItem is the published VM item adopted VMs' deployments are of,
@@ -541,7 +552,7 @@ func (s *Service) recordAdoptee(ctx context.Context, tx pgx.Tx, depID, component
 	props, _ = vmprops.Settle(nil, props, vmprops.All...)
 	ext := cmp.Or(a.vm.InstanceUUID, a.vm.Moref)
 	if _, err := s.Store.UpsertResource(ctx, tx, store.Resource{ID: ids.New(ids.Resource), DeploymentID: depID, Type: "vsphere.vm",
-		Name: a.vm.Name, ExternalID: &ext, Properties: props}); err != nil {
+		Name: a.vm.Name, ExternalID: &ext, Properties: props, PreventDelete: a.preventDelete}); err != nil {
 		if errors.Is(err, store.ErrTaken) {
 			return &takenError{vcenter: a.inv.VCenter, moref: a.inv.Moref, what: a.vm.Name, vm: true}
 		}

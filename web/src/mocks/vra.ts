@@ -96,10 +96,15 @@ const vraProjects: {
   { id: "vra-prj-legacy", name: "Legacy Apps" },
 ];
 
-/** vRA's deployments: their project, template, owner and VMs; a reason when they can't be adopted whatever rvav has. */
-const vraDeployments: { id: string; name: string; project: string; template: string; owner: string; vms: string[]; why?: string }[] = [
+/**
+ * vRA's deployments: their project, template, owner and VMs, those vRA keeps from deletion; a reason when they can't be
+ * adopted whatever rvav has.
+ */
+const vraDeployments: { id: string; name: string; project: string; template: string; owner: string; vms: string[]; kept?: string[];
+  why?: string }[] = [
   { id: "dep-vra-1", name: "vra-web-001", project: "vra-prj-web", template: "bp-rhel9", owner: "thomas.nguyen@corp.example", vms: ["vra-web-001"] },
-  { id: "dep-vra-2", name: "VRA Web Pair", project: "vra-prj-web", template: "bp-rhel9", owner: "lea.martin@corp.example", vms: ["vra-api-001", "vra-api-002"] },
+  { id: "dep-vra-2", name: "VRA Web Pair", project: "vra-prj-web", template: "bp-rhel9", owner: "lea.martin@corp.example", vms: ["vra-api-001", "vra-api-002"],
+    kept: ["vra-api-001"] },
   { id: "dep-vra-3", name: "vra-db-001", project: "vra-prj-data", template: "bp-db", owner: "lea.martin@corp.example", vms: ["vra-db-001"] },
   { id: "dep-vra-4", name: "vra-gone", project: "vra-prj-web", template: "bp-rhel9", owner: "thomas.nguyen@corp.example", vms: [],
     why: "Its VMs (vra-gone-001) aren't in the vCenters rvav reads: deleted, or in a vCenter rvav doesn't have." },
@@ -178,13 +183,16 @@ function plan(db: Db, st: State): S["VraPlan"] {
     const p = project(d.project);
     const t = templates.find((x) => x.id === d.template)!;
     const base = { vra_id: d.id, name: d.name, rvav_name: rvavName(d.name), vra_project: p.name, owner: d.owner, notes: [] as S["VraNote"][],
-      vms: d.vms.map((n, i) => ({ vcenter: "vc01.corp.example", moref: `vm-${7100 + i}`, name: n })) }; // prettier-ignore
+      vms: d.vms.map((n, i) => ({ vcenter: "vc01.corp.example", moref: `vm-${7100 + i}`, name: n, prevent_delete: d.kept?.includes(n) || undefined })) }; // prettier-ignore
+    const kept = d.kept?.join(", ");
     const skip = (where: string, text: string): S["VraDeploymentPlan"] => ({
       ...base,
       status: "skipped",
       notes: [{ level: "unmapped", where, text }],
     });
-    if (st.adopted.has(d.id)) return { ...base, status: "adopted", deployments: [`dep_${rvavName(d.name)}`] };
+    if (st.adopted.has(d.id))
+      return { ...base, status: "adopted", deployments: [`dep_${rvavName(d.name)}`],
+        notes: kept ? [{ level: "info", where: "vms", text: `Kept from deletion, as in vRA: ${kept}. An administrator runs the deployment's Allow deletion first.` }] : [] }; // prettier-ignore
     if (d.why) return skip("vms", d.why);
     if (p.how === "stays") return skip("project", `vRA project ${p.name} stays in vRA, as chosen.`);
     if (!p.rvav_project_id)
@@ -195,7 +203,10 @@ function plan(db: Db, st: State): S["VraPlan"] {
     if (!st.shared.has(`${t.id}/${p.rvav_project_id}`))
       return skip("item", `${t.slug} isn't offered to ${p.rvav_project_name} in rvav: share it there.`);
     return { ...base, status: "adopt", project_id: p.rvav_project_id, environment: "dev", catalog_item_id: `itm_${t.slug}`,
-      notes: base.name === base.rvav_name ? [] : [{ level: "info", where: "name", text: `Named ${base.rvav_name} in rvav: lower-case letters, digits, dots and dashes.` }] }; // prettier-ignore
+      notes: [
+        ...(kept ? [{ level: "info" as const, where: "vms", text: `vRA keeps ${kept} from deletion (preventDelete): rvav does too once adopted, until an administrator runs the deployment's Allow deletion.` }] : []),
+        ...(base.name === base.rvav_name ? [] : [{ level: "info" as const, where: "name", text: `Named ${base.rvav_name} in rvav: lower-case letters, digits, dots and dashes.` }]),
+      ] }; // prettier-ignore
   });
   const count = (f: (x: S["VraItemPlan"]) => boolean) => items.filter(f).length;
   const tpls: S["VraTemplatePlan"][] = images.map((t) => ({

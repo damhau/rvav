@@ -11,22 +11,25 @@ import (
 
 // Reads for the vRA importer (P2, ADR-0027).
 
-// InventoryVM is a VM of the inventory by name, and whether an rvav
-// deployment has it.
+// InventoryVM is a VM of the inventory by name, whether an rvav
+// deployment has it, and whether it keeps it from deletion.
 type InventoryVM struct {
-	VCenter string `db:"vcenter"`
-	Moref   string `db:"moref"`
-	Name    string `db:"name"`
-	Managed bool   `db:"managed"`
+	VCenter       string `db:"vcenter"`
+	Moref         string `db:"moref"`
+	Name          string `db:"name"`
+	Managed       bool   `db:"managed"`
+	PreventDelete bool   `db:"prevent_delete"`
 }
 
 // InventoryVMsNamed lists the inventory's VMs of these names.
 func (s *Store) InventoryVMsNamed(ctx context.Context, names []string) ([]InventoryVM, error) {
-	rows, _ := s.Pool.Query(ctx, `select v.vcenter, v.moref, v.name,
-		exists (select 1 from resources r join deployments d on d.id = r.deployment_id
-		        where r.type = 'vsphere.vm' and d.status <> 'deleted'
-		          and (r.external_id = v.instance_uuid or r.external_id = v.moref and v.instance_uuid = '')) as managed
-		from inv_vms v where v.name = any($1) order by v.name, v.vcenter`, nonNil(names))
+	rows, _ := s.Pool.Query(ctx, `select v.vcenter, v.moref, v.name, r.prevent_delete is not null as managed,
+			coalesce(r.prevent_delete, false) as prevent_delete
+		from inv_vms v left join lateral (
+			select bool_or(r.prevent_delete) as prevent_delete from resources r join deployments d on d.id = r.deployment_id
+			where r.type = 'vsphere.vm' and d.status <> 'deleted'
+			  and (r.external_id = v.instance_uuid or r.external_id = v.moref and v.instance_uuid = '')) r on true
+		where v.name = any($1) order by v.name, v.vcenter`, nonNil(names))
 	return pgx.CollectRows(rows, pgx.RowToStructByName[InventoryVM])
 }
 

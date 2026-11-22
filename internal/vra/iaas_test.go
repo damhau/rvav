@@ -48,3 +48,23 @@ func TestIaaSShapes(t *testing.T) {
 		t.Fatalf("read back = %+v, %v", back, err)
 	}
 }
+
+// TestResourceFlags: a deployment's resource with preventDelete beside its
+// properties, as its cloud template has the flag; one stored without it
+// reads as unsaid.
+func TestResourceFlags(t *testing.T) {
+	var r Resource
+	if err := json.Unmarshal([]byte(`{"id": "r1", "name": "Cloud_vSphere_Machine_1[0]", "type": "Cloud.vSphere.Machine",
+		"dependsOn": [], "preventDelete": true, "properties": {"resourceName": "web-01"}}`), &r); err != nil ||
+		r.PreventDelete == nil || !*r.PreventDelete || r.Properties["resourceName"] != "web-01" {
+		t.Fatalf("resource = %+v, %v", r, err)
+	}
+	var stored Resource
+	if err := json.Unmarshal([]byte(`{"id": "r1", "name": "Cloud_vSphere_Machine_1", "type": "Cloud.vSphere.Machine"}`), &stored); err != nil ||
+		stored.PreventDelete != nil {
+		t.Fatalf("a stored resource = %+v, %v", stored, err)
+	}
+	if b, err := json.Marshal(stored); err != nil || strings.Contains(string(b), "preventDelete") {
+		t.Fatalf("written = %s, %v", b, err)
+	}
+}

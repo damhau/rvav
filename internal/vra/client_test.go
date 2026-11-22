@@ -51,8 +51,12 @@ func TestRead(t *testing.T) {
 			t.Fatalf("%s: rhel9 = %+v", name, rhel)
 		}
 		d := e.Deployments[0]
-		if len(d.Resources) != 1 || d.Resources[0].Properties["resourceName"] != "vra-web-001" || d.LeaseExpireAt == nil {
+		if len(d.Resources) != 1 || d.Resources[0].Properties["resourceName"] != "vra-web-001" || d.LeaseExpireAt == nil ||
+			d.Resources[0].PreventDelete != nil {
 			t.Fatalf("%s: deployment = %+v", name, d)
+		}
+		if pair := e.Deployments[1].Resources; pair[0].PreventDelete == nil || !*pair[0].PreventDelete || pair[1].PreventDelete != nil {
+			t.Fatalf("%s: vra-web-pair's delete protection = %+v", name, pair)
 		}
 		// vRO, and what runs it.
 		if len(e.Subscriptions) != 4 || !e.Subscriptions[1].Blocking || len(e.ResourceActions) != 1 ||

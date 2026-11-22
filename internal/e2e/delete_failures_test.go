@@ -81,10 +81,7 @@ func TestDeleteGoesOnPastFailures(t *testing.T) {
 		draft := api.OnboardingDraft{ProjectId: "prj_web", Environment: "dev", OwnerId: "usr_tnguyen", CatalogItemId: item.Id,
 			DeploymentName: present.Ptr("erp-dev")}
 		for _, m := range []string{app01, app02} {
-			draft.Vms = append(draft.Vms, struct {
-				Moref   string `json:"moref"`
-				Vcenter string `json:"vcenter"`
-			}{m, "vc01.corp.example"})
+			draft.Vms = append(draft.Vms, api.OnboardingVmRef{Moref: m, Vcenter: "vc01.corp.example"})
 		}
 		var adopted api.OnboardingResult
 		h.json("POST", "/api/v1/admin/onboarding", admin, draft, 200, &adopted)

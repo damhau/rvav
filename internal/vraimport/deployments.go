@@ -29,6 +29,9 @@ type VMRef struct {
 	// Ambiguous: more than one vCenter has a VM of this name, and which
 	// vRA built isn't known by name alone.
 	Ambiguous bool `json:"ambiguous,omitempty"`
+	// PreventDelete: kept from deletion. In a plan, vRA's for a VM to adopt
+	// (Protected), which adoption keeps; rvav's for one it manages.
+	PreventDelete bool `json:"prevent_delete,omitempty"`
 }
 
 // RvavProject is what planning needs of an rvav project.
@@ -128,9 +131,15 @@ func ownerOf(d vra.Deployment) string {
 	return d.CreatedBy
 }
 
-// machines are a deployment's vSphere machines by name.
-func machines(d vra.Deployment) []string {
-	var out []string
+// machine is a deployment's vSphere machine: its VM's name, and its
+// resource.
+type machine struct {
+	name string
+	res  vra.Resource
+}
+
+func machines(d vra.Deployment) []machine {
+	var out []machine
 	for _, res := range d.Resources {
 		if res.Type != vra.MachineType {
 			continue
@@ -139,7 +148,7 @@ func machines(d vra.Deployment) []string {
 		if name == "" {
 			name = res.Name
 		}
-		out = append(out, name)
+		out = append(out, machine{name, res})
 	}
 	return out
 }
@@ -157,7 +166,10 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment, slugs map[string]st
 	// Its VMs, in rvav's inventory.
 	var missing, ambiguous, unmanaged []string
 	managed := 0
-	for _, name := range machines(d) {
+	keeps := map[string]Protection{}
+	for _, m := range machines(d) {
+		name := m.name
+		keeps[name] = Protected(e, d, m.res)
 		vm, ok := r.VMs[name]
 		switch {
 		case !ok:
@@ -169,6 +181,7 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment, slugs map[string]st
 			ambiguous = append(ambiguous, name)
 		default:
 			unmanaged = append(unmanaged, name)
+			vm.PreventDelete = keeps[name].On
 			p.VMs = append(p.VMs, vm)
 		}
 	}
@@ -206,13 +219,16 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment, slugs map[string]st
 	if deps := r.Adopted[d.ID]; len(deps) > 0 || managed > 0 {
 		p.Status, p.Deployments = Adopted, deps
 		note(Info, "vms", "rvav manages it already.")
+		protectionNotes(&p, keeps, note)
 		if len(unmanaged) > 0 {
-			note(Warning, "vms", "Not adopted with it: "+strings.Join(unmanaged, ", ")+". Adopt them from Onboarding into its deployment.")
+			note(Warning, "vms", "Not adopted with it: "+strings.Join(unmanaged, ", ")+". Adopt them from Onboarding into its deployment."+
+				keepThere(unmanaged, keeps))
 		}
 		return p
 	}
 	if len(ambiguous) > 0 {
-		return skip("vms", "More than one vCenter has a VM named "+strings.Join(ambiguous, ", ")+": adopt them from Onboarding, where each is chosen by its vCenter.")
+		return skip("vms", "More than one vCenter has a VM named "+strings.Join(ambiguous, ", ")+
+			": adopt them from Onboarding, where each is chosen by its vCenter."+keepThere(ambiguous, keeps))
 	}
 	if len(p.VMs) == 0 {
 		if len(missing) > 0 {
@@ -223,6 +239,7 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment, slugs map[string]st
 	if len(missing) > 0 {
 		note(Warning, "vms", "Not in the vCenters rvav reads: "+strings.Join(missing, ", ")+". The others are adopted.")
 	}
+	protectionNotes(&p, keeps, note)
 
 	// Its name, as rvav takes it.
 	switch {
