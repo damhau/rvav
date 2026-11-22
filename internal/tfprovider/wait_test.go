@@ -3,6 +3,7 @@ package tfprovider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -161,6 +162,22 @@ func TestCreateTimeout(t *testing.T) {
 	}
 	if str(obj, "id") != "dep_1" {
 		t.Errorf("the deployment kept = %v", obj)
+	}
+}
+
+// TestFailedSummary names what ended an action: only an error that rvav
+// answered with is its refusal.
+func TestFailedSummary(t *testing.T) {
+	r := &restResource{name: "deployment"}
+	for err, want := range map[error]string{
+		&interrupted{"REQ-1", context.DeadlineExceeded}: "Terraform stopped waiting to create the deployment",
+		&rvavclient.Error{Status: 422}:                  "rvav refused to create the deployment",
+		&rvavclient.Error{Status: 503}:                  "Can't create the deployment",
+		errors.New("REQ-1 rejected: Not now"):           "Can't create the deployment",
+	} {
+		if got := r.failed("create", fmt.Errorf("creating: %w", err)); got != want {
+			t.Errorf("failed(%v) = %q, want %q", err, got, want)
+		}
 	}
 }
 

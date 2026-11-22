@@ -13,6 +13,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+
+	"github.com/damhau/rvav/pkg/rvavclient"
 )
 
 // restResource is a resource that is one object of rvav's API, its
@@ -104,7 +106,7 @@ func (r *restResource) Create(ctx context.Context, req resource.CreateRequest, r
 	case errors.As(err, &w):
 		resp.Diagnostics.AddWarning(w.summary, w.detail)
 	case err != nil:
-		resp.Diagnostics.AddError("rvav refused to create the "+title(r.name), err.Error())
+		resp.Diagnostics.AddError(r.failed("create", err), err.Error())
 	}
 }
 
@@ -155,7 +157,7 @@ func (r *restResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	st := stateJSON(r.fieldsOf(), req.State.Raw)
 	obj, err := r.update(ctx, r.conn, str(st, "id"), body, st)
 	if err != nil {
-		resp.Diagnostics.AddError("rvav refused to change the "+title(r.name), err.Error())
+		resp.Diagnostics.AddError(r.failed("change", err), err.Error())
 		return
 	}
 	r.put(&resp.State, &resp.Diagnostics, obj, req.Plan.Raw)
@@ -169,7 +171,7 @@ func (r *restResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	case errors.As(err, &w):
 		resp.Diagnostics.AddWarning(w.summary, w.detail)
 	case err != nil && !notFound(err):
-		resp.Diagnostics.AddError("rvav refused to delete the "+title(r.name), err.Error())
+		resp.Diagnostics.AddError(r.failed("delete", err), err.Error())
 	}
 }
 
@@ -203,6 +205,21 @@ func (r *restResource) ModifyPlan(_ context.Context, req resource.ModifyPlanRequ
 }
 
 // title is a resource type's name as words: approval policy.
+// failed is the summary of err, which ended an action on the resource:
+// rvav refused the call, a wait ended before the request did, or the
+// request didn't succeed.
+func (r *restResource) failed(action string, err error) string {
+	var refused *rvavclient.Error
+	var stop *interrupted
+	switch {
+	case errors.As(err, &stop):
+		return "Terraform stopped waiting to " + action + " the " + title(r.name)
+	case errors.As(err, &refused) && refused.Status < 500:
+		return "rvav refused to " + action + " the " + title(r.name)
+	}
+	return "Can't " + action + " the " + title(r.name)
+}
+
 func title(name string) string {
 	b := []byte(name)
 	for i, c := range b {
