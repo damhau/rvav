@@ -196,6 +196,61 @@ func TestFreeMemory(t *testing.T) {
 	}
 }
 
+// TestFreeMemoryReserved: what other requests' VMs not built yet hold
+// counts as taken, in the cluster and in the pool they go in (#189).
+func TestFreeMemoryReserved(t *testing.T) {
+	pl := tagged()
+	q := placementQuery{plan: blueprint.VMPlan{DiskGB: 50, MemoryGB: 30}, count: 1, anyDatastore: true, anyNetwork: true,
+		hasTemplate: func(string) bool { return true }, vmGB: 50}
+	pl.reserved = []store.Reserved{
+		{RequestID: "req_a", VCenter: "vc", Cluster: "dev-1", ResourcePool: "rvav/dev", MemoryMB: 30_000, VMs: 2},
+		{RequestID: "req_b", VCenter: "vc", Cluster: "dev-1", MemoryMB: 15_000, VMs: 1},
+		{RequestID: "req_c", VCenter: "other", Cluster: "app-2", MemoryMB: 40_000, VMs: 4},
+	}
+	dev, app2 := &pl.clusters[2], &pl.clusters[1]
+	if got := pl.freeOn(dev, ""); got != 45_000 {
+		t.Fatalf("dev-1 has %d MB free, want 90 000 less 45 000 reserved", got)
+	}
+	if got := pl.freeOn(app2, ""); got != 50_000 {
+		t.Fatalf("app-2 has %d MB free: a cluster of that name in another vCenter counted", got)
+	}
+	if ch, _, _ := pl.choose(q); ch.cluster == nil || ch.cluster.Name != "app-2" {
+		t.Fatalf("chose %v, want app-2 (50 000 MB free, dev-1 45 000)", ch.cluster)
+	}
+	// A pool's limit counts what is reserved in it and in those below it.
+	pl.pools = []store.InvResourcePool{{VCenter: "vc", Cluster: "dev-1", Path: "rvav", MemoryLimitMB: 40_000},
+		{VCenter: "vc", Cluster: "dev-1", Path: "rvav/dev", MemoryLimitMB: -1}}
+	if got := pl.freeOn(dev, "rvav"); got != 10_000 {
+		t.Fatalf("dev-1 in pool rvav has %d MB, want 40 000 less the 30 000 of rvav/dev", got)
+	}
+	if got := pl.freeOn(dev, "rvav/dev"); got != 45_000 {
+		t.Fatalf("dev-1 in pool rvav/dev, without a limit, has %d MB", got)
+	}
+	if mb, vms := pl.reservedOn(dev, "rvav/dev"); mb != 30_000 || vms != 2 {
+		t.Fatalf("reserved in rvav/dev = %d MB, %d VMs", mb, vms)
+	}
+	// Spread counts them as rvav's VMs.
+	if got := pl.vmsOn(dev); got != 3 {
+		t.Fatalf("dev-1 has %d of rvav's VMs, want the 3 reserved", got)
+	}
+}
+
+// TestPlacedStill: the room a strategy counted on is taken when others
+// reserved more there since, on a cluster the request places VMs on.
+func TestPlacedStill(t *testing.T) {
+	pl := tagged()
+	pl.reserved = []store.Reserved{{RequestID: "req_a", VCenter: "vc", Cluster: "dev-1", MemoryMB: 8192, VMs: 1}}
+	a, b := &vmPart{count: 2}, &vmPart{count: 1}
+	a.chose(pl, &pl.clusters[2])
+	pl.reserved = append(pl.reserved, store.Reserved{RequestID: "req_b", VCenter: "vc", Cluster: "dev-1", MemoryMB: 4096, VMs: 1})
+	b.chose(pl, &pl.clusters[2])
+	ev := &Evaluation{Parts: []vmPart{*a, *b, {count: 0, seen: &reservedSeen{key: "vc/app-1"}}}}
+	seen := ev.seenOn()
+	if len(seen) != 1 || seen["vc/dev-1"] != (reservedSeen{key: "vc/dev-1", mb: 8192, vms: 1}) {
+		t.Fatalf("seen = %+v, want the least of the two components on dev-1", seen)
+	}
+}
+
 func TestPickDatastoreAndNetwork(t *testing.T) {
 	pl := tagged()
 	ds, results, why := pl.pickDatastore("app-2", "", 100, constraints(t, "storage rvav-tier/gold:soft"))

@@ -158,6 +158,9 @@ type placement struct {
 	planned map[string]int
 	// plannedMB is the memory of the VMs the request places, by cluster.
 	plannedMB map[string]int64
+	// reserved is what other requests' VMs not built yet hold, by cluster
+	// and resource pool (ADR-0036); loaded by withReservations.
+	reserved []store.Reserved
 	// added are the vCenters added besides the vCenter integration's.
 	added vcenterSet
 }

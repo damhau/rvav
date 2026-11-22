@@ -75,7 +75,11 @@ func (s *Service) ChangeMachine(ctx context.Context, ch provision.MachineChange)
 		if err != nil {
 			return err
 		}
-		return s.Store.SetRequestPlan(ctx, tx, req.ID, raw)
+		if err := s.Store.SetRequestPlan(ctx, tx, req.ID, raw); err != nil {
+			return err
+		}
+		// Its VMs hold their room where they go now (ADR-0036).
+		return s.holdPlacement(ctx, tx, nil, req.ID, plan.Reservations())
 	})
 	return vm, did, err
 }
@@ -110,8 +114,16 @@ func (c *machineChange) placement(ctx context.Context) (*placement, error) {
 		return c.pl, nil
 	}
 	pl, err := c.s.placement(ctx, c.req.ProjectID, c.req.Environment)
+	if err != nil {
+		return nil, err
+	}
+	// Other requests' VMs not built yet count; this request's don't, so
+	// that the VM moved doesn't count twice.
+	if err := c.s.withReservations(ctx, pl, c.req.ID); err != nil {
+		return nil, err
+	}
 	c.pl = pl
-	return pl, err
+	return pl, nil
 }
 
 func (c *machineChange) envName(ctx context.Context) string {

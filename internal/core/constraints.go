@@ -234,11 +234,26 @@ func (pl *placement) strategyOf(cands []*store.InvCluster) string {
 	return store.StrategyMostFreeMemory
 }
 
+// reservedOn is what other requests' VMs not built yet hold on a cluster:
+// their memory and how many they are; with a pool, only in that pool and
+// those below it (ADR-0036).
+func (pl *placement) reservedOn(c *store.InvCluster, pool string) (int64, int) {
+	var mb int64
+	var vms int
+	for _, r := range pl.reserved {
+		if r.VCenter == c.VCenter && r.Cluster == c.Name && (pool == "" || r.ResourcePool == pool || strings.HasPrefix(r.ResourcePool, pool+"/")) {
+			mb, vms = mb+r.MemoryMB, vms+r.VMs
+		}
+	}
+	return mb, vms
+}
+
 // freeOn is the memory a cluster has free for new VMs (ADR-0036): that of
 // its hosts in service the rule allows, when the inventory has their
-// memory, else the cluster's; at most the limit of the resource pool they
-// go in;
-// less the memory of the VMs the request places there before.
+// memory, else the cluster's, less what other requests' VMs not built yet
+// hold there; at most the limit of the resource pool they go in, less what
+// those VMs hold in it; less the memory of the VMs the request places
+// there before.
 func (pl *placement) freeOn(c *store.InvCluster, pool string) int64 {
 	free := c.MemoryTotalMB - c.MemoryUsedMB
 	r := pl.rule(c.Name)
@@ -255,20 +270,24 @@ func (pl *placement) freeOn(c *store.InvCluster, pool string) int64 {
 			free = total - used
 		}
 	}
+	reserved, _ := pl.reservedOn(c, "")
+	free -= reserved
 	if pool == "" && r != nil {
 		pool = r.ResourcePool
 	}
 	if p := pl.pool(*c, pool); pool != "" && p != nil && p.MemoryLimitMB >= 0 {
-		free = min(free, p.MemoryLimitMB)
+		inPool, _ := pl.reservedOn(c, pool)
+		free = min(free, p.MemoryLimitMB-inPool)
 	}
 	return free - pl.plannedMB[c.VCenter+"/"+c.Name]
 }
 
-// vmsOn are rvav's VMs on a cluster: those of its deployments, and those
-// the request places there before.
+// vmsOn are rvav's VMs on a cluster: those of its deployments, those of
+// other requests not built yet, and those the request places there before.
 func (pl *placement) vmsOn(c *store.InvCluster) int {
 	key := c.VCenter + "/" + c.Name
-	return pl.vms[key] + pl.planned[key]
+	_, reserved := pl.reservedOn(c, "")
+	return pl.vms[key] + reserved + pl.planned[key]
 }
 
 // pick is the cluster the strategy chooses among the candidates

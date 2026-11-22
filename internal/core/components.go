@@ -101,6 +101,9 @@ type vmPart struct {
 	// the vCenters it can't be cloned in (ADR-0037).
 	image         *store.VMTemplate
 	imageExcluded []string
+	// seen is what other requests' VMs not built yet held on the cluster
+	// the strategy chose, when it chose it (ADR-0036).
+	seen *reservedSeen
 	// linkedClone: its VMs are linked clones of the template's current
 	// snapshot, as the blueprint says, else the catalogue template.
 	linkedClone bool
@@ -162,6 +165,13 @@ func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) e
 	}
 	pl, err := s.placement(ctx, ev.Project.ID, ev.Env.Key)
 	if err != nil {
+		return err
+	}
+	var self string
+	if ev.edit != nil {
+		self = ev.edit.requestID
+	}
+	if err := s.withReservations(ctx, pl, self); err != nil {
 		return err
 	}
 	if len(pl.rules) == 0 && ev.Env.Key != "" {
@@ -419,6 +429,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		switch {
 		case ch.cluster != nil:
 			plan.Cluster, part.chosen = ch.cluster.Name, true
+			part.chose(pl, ch.cluster)
 			part.hosts, part.strategy, part.strategyNote = ch.hosts, ch.strategy, ch.note
 		case why != "" && why == noTemplate:
 			add("", "no_template", why)

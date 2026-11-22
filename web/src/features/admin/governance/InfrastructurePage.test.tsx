@@ -239,9 +239,11 @@ describe("Templates and networks", () => {
     renderApp("/admin/infrastructure");
     await user.click(await screen.findByRole("tab", { name: "vCenter objects" }));
     const region = await screen.findByRole("region", { name: "vCenter objects" });
-    expect(await within(region).findByRole("row", { name: /^GVA-PRD-CL01 Cluster/ })).toHaveTextContent(
-      "rvav-tier/gold",
-    );
+    const prd = await within(region).findByRole("row", { name: /^GVA-PRD-CL01 Cluster/ });
+    expect(prd).toHaveTextContent("rvav-tier/gold");
+    // What requests not built yet hold, which placement counts as taken (ADR-0036).
+    expect(prd).toHaveTextContent("GB memory free, 32 GB of it held for VMs not built yet");
+    expect(within(region).getByRole("row", { name: /^GVA-PRD-CL02 Cluster/ })).not.toHaveTextContent("held for");
     expect(within(region).getByRole("row", { name: /^dvpg-web-prd-vl210/ })).toHaveTextContent("rvav-zone/dmz");
     expect(within(region).getByRole("row", { name: /^dvpg-app-dev-vl310/ })).toHaveTextContent("None");
     // Hosts, resource pools and datastore clusters too (ADR-0036).

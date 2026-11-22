@@ -149,6 +149,9 @@ const (
 	LockMigrate int64 = 0x7276_6176_0004
 	// LockNSXSync keeps one NSX tag sync at a time (ADR-0028).
 	LockNSXSync int64 = 0x7276_6176_0005
+	// LockPlacement keeps one at a time the placements that found the room
+	// they counted on taken by others placed at the same time (ADR-0036).
+	LockPlacement int64 = 0x7276_6176_0007
 )
 
 // WithLock runs fn holding a PostgreSQL advisory lock, waiting for whoever

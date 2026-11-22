@@ -1520,6 +1520,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           name: c.name,
           hosts: c.hosts,
           memory_free_gb: Math.round(c.hosts * 512 * (c.memFreePct / 100)),
+          // Two 16 GB VMs of a request not built yet (ADR-0036).
+          memory_reserved_gb: c.name === "GVA-PRD-CL01" ? 32 : 0,
           tags: tags[c.name] ?? [],
         })),
         datastores: [

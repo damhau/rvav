@@ -13,7 +13,8 @@ import (
 
 // Housekeeper applies rvav's own policies (core.Service): snapshot
 // retention and leases. Housekeeping also starts the onboarding plans
-// whose schedule is due (Onboarder).
+// whose schedule is due (Onboarder), and sweeps the placement reservations
+// that no longer count.
 type Housekeeper interface {
 	ExpireSnapshots(ctx context.Context, now time.Time) ([]string, error)
 	ExpireLeases(ctx context.Context, now time.Time) ([]string, error)
@@ -42,6 +43,10 @@ func Housekeeping(ctx workflow.Context) error {
 	if workflow.GetVersion(ctx, "onboarding-plans", workflow.DefaultVersion, 1) == 1 {
 		plans := workflow.ExecuteActivity(ctx, a.StartOnboardingPlans)
 		errs = append(errs, plans.Get(ctx, nil))
+	}
+	// Runs before #189 had no placement reservations.
+	if workflow.GetVersion(ctx, "placement-reservations", workflow.DefaultVersion, 1) == 1 {
+		errs = append(errs, workflow.ExecuteActivity(ctx, a.SweepReservations).Get(ctx, nil))
 	}
 	return errors.Join(append(errs, snapshots.Get(ctx, nil), leases.Get(ctx, nil))...)
 }

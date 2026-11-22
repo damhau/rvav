@@ -174,6 +174,10 @@ func (s *Service) PreviewUpdate(ctx context.Context, p *auth.Principal, deployme
 // UpdateDeployment asks for the update of a deployment to this version and
 // these inputs: a request of kind update, approved and run as a new one.
 func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deploymentID string, draft api.UpdateDraft) (store.RequestRow, error) {
+	return s.placing(ctx, func() (store.RequestRow, error) { return s.updateDeployment(ctx, p, deploymentID, draft) })
+}
+
+func (s *Service) updateDeployment(ctx context.Context, p *auth.Principal, deploymentID string, draft api.UpdateDraft) (store.RequestRow, error) {
 	u, err := s.planUpdate(ctx, p, deploymentID, draft, true)
 	if err != nil {
 		return store.RequestRow{}, err
@@ -286,9 +290,13 @@ func (s *Service) UpdateDeployment(ctx context.Context, p *auth.Principal, deplo
 		for _, c := range u.all() {
 			kinds = append(kinds, string(c.Kind))
 		}
-		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "deployment.update", TargetType: "deployment",
+		if err := s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "deployment.update", TargetType: "deployment",
 			TargetID: d.ID, ProjectID: &d.ProjectID, Detail: map[string]any{
-				"request": req.Number, "from_version": u.from.Number, "to_version": ev.Version.Number, "changes": kinds}})
+				"request": req.Number, "from_version": u.from.Number, "to_version": ev.Version.Number, "changes": kinds}}); err != nil {
+			return err
+		}
+		// The VMs it adds; last, so that their clusters are held the least time.
+		return s.holdPlacement(ctx, tx, ev, req.ID, plan.Reservations())
 	})
 	if err != nil {
 		return store.RequestRow{}, err

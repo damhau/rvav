@@ -507,6 +507,16 @@ chooses among the clusters left. A request's preview shows the resource
 pool, hosts and strategy, and the timeline says when a strategy other
 than **Most free memory** chose the cluster.
 
+The strategies count the VMs of other requests that aren't built yet
+([ADR-0036](../adr/0036-placement-targets.md#reservations-189)): each
+VM a request places holds its memory on its cluster until the VM exists.
+Requests sent at the same time spread over the clusters with room
+instead of all choosing the one that looked freest. A VM's hold ends
+when the VM exists in vCenter, when its build fails, is rolled back or is
+cancelled, or after six hours. To see what's held, open **Administration
+› Templates and networks**, then the **vCenter objects** tab: a cluster's
+row says how much of its free memory is held for VMs not built yet.
+
 **What the project gets** under the rules lists the clusters, datastores
 and networks they allow, and what stops a request, such as a cluster
 without the rule's resource pool.

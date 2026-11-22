@@ -397,8 +397,13 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 				return err
 			}
 		}
-		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "request.retry", TargetType: "request",
-			TargetID: r.ID, ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "error": deref(r.ErrorMessage)}})
+		if err := s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "request.retry", TargetType: "request",
+			TargetID: r.ID, ProjectID: &r.ProjectID, Detail: map[string]any{"request": r.Number, "error": deref(r.ErrorMessage)}}); err != nil {
+			return err
+		}
+		// Its VMs not built, or rolled back, hold their room again where
+		// they were placed (ADR-0036).
+		return s.holdPlacement(ctx, tx, nil, r.ID, plan.Reservations())
 	})
 	if err != nil {
 		return r, err

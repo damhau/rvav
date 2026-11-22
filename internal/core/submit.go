@@ -29,6 +29,10 @@ func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 // submit is Submit; with fire, a recurring schedule's run (ADR-0057),
 // recorded with its request so that a firing tried again submits once.
 func (s *Service) submit(ctx context.Context, p *auth.Principal, d api.RequestDraft, fire *provision.ScheduleFiring) (store.RequestRow, error) {
+	return s.placing(ctx, func() (store.RequestRow, error) { return s.submitOnce(ctx, p, d, fire) })
+}
+
+func (s *Service) submitOnce(ctx context.Context, p *auth.Principal, d api.RequestDraft, fire *provision.ScheduleFiring) (store.RequestRow, error) {
 	ev, err := s.Evaluate(ctx, p, d, true)
 	if err != nil {
 		return store.RequestRow{}, err
@@ -218,6 +222,10 @@ func (s *Service) submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 			if err := s.Store.InsertDeployment(ctx, tx, dep); err != nil {
 				return err
 			}
+		}
+		// Last, so that its clusters are held the least time.
+		if err := s.holdPlacement(ctx, tx, ev, req.ID, plan.Reservations()); err != nil {
+			return err
 		}
 		return outbox.Submitted(ctx, tx, req.ID)
 	})

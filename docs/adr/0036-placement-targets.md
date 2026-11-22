@@ -4,7 +4,8 @@
 - Date: 2026-11-18
 - Extends the placement rules of [ADR-0020](0020-administration.md), the
   placement of [ADR-0024](0024-multi-vm-blueprints.md) and the constraint
-  tags of [ADR-0035](0035-constraint-tags.md). T1.3 (#136).
+  tags of [ADR-0035](0035-constraint-tags.md). T1.3 (#136); reservations
+  across requests, I1 (#189).
 
 ## Context
 A placement rule names clusters, datastores and networks, and rvav clones
@@ -66,13 +67,15 @@ takes new VMs.
   room for the component's VMs (their memory), so clusters fill one after
   the other. When none has room, the most free memory.
 - **`spread`**: the cluster with the fewest VMs of rvav's deployments not
-  deleted, counting the VMs of the request's earlier components; ties go
-  to the most free memory.
+  deleted, counting the VMs other requests reserved there (#189) and those
+  of the request's earlier components; ties go to the most free memory.
 - A cluster's free memory is that of its hosts in service (not in
   maintenance or disconnected) that the rule's host patterns allow, when
-  the inventory has their memory, else the cluster's; at most the memory
-  limit of the resource pool the VMs go in; less the memory of the VMs
-  the request's earlier components placed there (T1.7).
+  the inventory has their memory, else the cluster's, less what other
+  requests reserved there; at most the memory limit of the resource pool
+  the VMs go in, less what other requests reserved in that pool and those
+  below it (#189); less the memory of the VMs the request's earlier
+  components placed there (T1.7).
 - The strategy is the rule's that allows the candidate clusters; when
   rules of different strategies allow them, the first by priority wins.
 - The preview's `placement.strategy` says which strategy chose the
@@ -82,6 +85,45 @@ takes new VMs.
   room for 2 VMs of 8 GB"), titled "Placed by rules" alone or "Placed by
   rules and constraint tags". The default adds none, so that requests
   placed the usual way keep their timelines.
+
+### Reservations (#189)
+The inventory's free memory doesn't know the VMs of requests not built
+yet. So that requests placed at once don't all choose the same cluster,
+each VM a request places holds its memory and vCPU on its cluster and
+resource pool: a row of `placement_reservations` per VM, by request.
+- **Made** in the transaction that records the request, the update
+  adding VMs, an approver's edit placing them again, a retry, or a
+  subscription's answer moving a VM (ADR-0054); and again, with a fresh
+  expiry, when the build starts (`MarkRunning`), after an approval or a
+  schedule. Plans without a vCenter in their VMs reserve nothing.
+- **Counted** while its request waits (`pending_approval`, `scheduled`,
+  `queued`) or runs, until it expires, and until its VM exists: in the
+  inventory (`inv_vms`, from the full read or a change notification), or
+  recorded as its deployment's VM resource right after the clone. So a
+  build that fails, is rolled back, is cancelled or is rejected stops
+  counting at once, and a retry counts again. Whether a row counts is
+  decided when it is read, so no path that ends a build has to release
+  it. Housekeeping deletes the rows that no longer count, every round.
+- **Expires** six hours after it was made or its build started: the
+  longest a single step may run (an AWX job's timeout). A build still
+  running has cloned its VMs well within that; one whose worker or
+  workflow is gone stops counting within the day. A request approved
+  later than that builds where it was placed and counts again from its
+  start.
+- **Concurrency**, as quotas (ADR-0047): placement reads the reservations
+  without a lock and records, for each cluster a strategy chose, what
+  others held there. The transaction then takes a transaction advisory
+  lock per cluster its VMs go to (`hashtext('rvav.placement')`, keys in
+  order, the last locks it takes), reads them again and, when others hold
+  more on a chosen cluster, gives up. The request is then placed again,
+  one at a time behind a session lock (`LockPlacement`), so that each
+  counts what those before it reserved; after five tries it is a 409.
+  More reserved elsewhere doesn't make a chosen cluster overfill, so only
+  the chosen clusters are checked; a bound cluster is locked, not
+  checked.
+- **Seen** in Administration › Templates and networks › vCenter objects:
+  a cluster's memory free, and how much of it is held for VMs not built
+  yet (`memory_reserved_gb`).
 
 ### Host tags
 A compute constraint (ADR-0035) is met by a host carrying the tag, or its
@@ -158,9 +200,16 @@ without hosts in the inventory are matched by their own tags, as before.
   out when empty, and the workflows read them only when present.
 - The preview shows rvav's datastore; with Storage DRS on, the VM may end
   up on another datastore of the same datastore cluster.
-- Strategies reserve nothing across requests: spread counts the VMs of
-  deployments rvav has recorded, which a request has only once its clone
-  is done, and free memory comes from the inventory sync, at most a couple
-  of minutes old. Requests placed at once can choose the same cluster, and
-  a pool's limit is compared with the VMs a request places, not with what
-  the pool already runs (the inventory reads its limit, not its use).
+- Requests placed at once count each other's VMs (#189): they spread over
+  the clusters with room instead of all choosing the one that looked
+  freest. Memory still never refuses a placement, it ranks clusters; only
+  a subscription moving a VM is refused when the cluster has no room.
+- From a VM's clone to the inventory's next full read, at most one sync
+  interval, its memory counts neither as reserved nor as used by vCenter;
+  and vCenter's used memory is what VMs consume, not their size.
+- A pool's limit is compared with what requests reserve and place in it,
+  not with what the pool already runs (the inventory reads its limit, not
+  its use).
+- A reservation left by a build that is gone steers placement for at most
+  six hours; of placements, it can refuse only a subscription's move of a
+  VM onto its cluster.

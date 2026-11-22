@@ -1002,7 +1002,9 @@ function objectsOf(inv: S["VsphereInventory"]): VsphereObject[] {
       kind: "cluster" as const,
       vcenter: c.vcenter,
       name: c.name,
-      detail: `${c.hosts} hosts, ${c.memory_free_gb} GB memory free`,
+      detail:
+        `${c.hosts} hosts, ${c.memory_free_gb} GB memory free` +
+        (c.memory_reserved_gb > 0 ? `, ${c.memory_reserved_gb} GB of it held for VMs not built yet` : ""),
       tags: c.tags,
     })),
     ...inv.hosts.map((h) => ({

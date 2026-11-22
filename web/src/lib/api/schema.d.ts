@@ -9072,7 +9072,10 @@ export interface components {
             vcenter: string;
             name: string;
             hosts: number;
+            /** @description What vCenter last said is free. */
             memory_free_gb: number;
+            /** @description Of that free memory, what the VMs of requests not built yet hold: placement counts it as taken (ADR-0036). */
+            memory_reserved_gb: number;
             /** @description category/tag */
             tags: string[];
         };

@@ -438,9 +438,16 @@ func (s *Service) VsphereInventory(ctx context.Context, p *auth.Principal) (api.
 			Datastores: nonNilStrings(d.Datastores), FreeGb: int(d.FreeGB), CapacityGb: int(d.CapacityGB), Sdrs: d.SDRS,
 			Tags: nonNilStrings(d.Tags)})
 	}
+	reserved, err := s.Store.Reservations(ctx, s.Store.Pool, "")
+	if err != nil {
+		return api.VsphereInventory{}, err
+	}
+	held := (&placement{reserved: reserved}).reservedOn
 	for _, c := range clusters {
+		mb, _ := held(&c, "")
 		out.Clusters = append(out.Clusters, api.InventoryCluster{Vcenter: c.VCenter, Name: c.Name, Hosts: c.HostCount,
-			MemoryFreeGb: int((c.MemoryTotalMB - c.MemoryUsedMB) / 1024), Tags: nonNilStrings(c.Tags)})
+			MemoryFreeGb: int((c.MemoryTotalMB - c.MemoryUsedMB) / 1024), MemoryReservedGb: int((mb + 1023) / 1024),
+			Tags: nonNilStrings(c.Tags)})
 	}
 	for _, d := range datastores {
 		out.Datastores = append(out.Datastores, api.InventoryDatastore{Vcenter: d.VCenter, Name: d.Name, FreeGb: int(d.FreeGB),

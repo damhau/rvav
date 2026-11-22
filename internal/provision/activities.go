@@ -462,6 +462,14 @@ func (a *Activities) MarkRunning(ctx context.Context, requestID string) (bool, e
 		if err := a.Store.SetRequestStatus(ctx, tx, requestID, "running"); err != nil {
 			return err
 		}
+		// Its VMs hold their room again from the build's start: an approval,
+		// a schedule or the run before a retry may have outlasted their
+		// reservations (ADR-0036).
+		if rows := plan.Reservations(); len(rows) > 0 {
+			if err := a.Store.Reserve(ctx, tx, requestID, rows); err != nil {
+				return err
+			}
+		}
 		if r.DeploymentID != nil {
 			during := "updating"
 			if plan.Day2 != nil && plan.Day2.During != "" {

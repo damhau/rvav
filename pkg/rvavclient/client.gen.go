@@ -6673,9 +6673,14 @@ type IntegrationWrite struct {
 
 // InventoryCluster defines model for InventoryCluster.
 type InventoryCluster struct {
-	Hosts        int    `json:"hosts"`
-	MemoryFreeGb int    `json:"memory_free_gb"`
-	Name         string `json:"name"`
+	Hosts int `json:"hosts"`
+
+	// MemoryFreeGb What vCenter last said is free.
+	MemoryFreeGb int `json:"memory_free_gb"`
+
+	// MemoryReservedGb Of that free memory, what the VMs of requests not built yet hold: placement counts it as taken (ADR-0036).
+	MemoryReservedGb int    `json:"memory_reserved_gb"`
+	Name             string `json:"name"`
 
 	// Tags category/tag
 	Tags    []string `json:"tags"`

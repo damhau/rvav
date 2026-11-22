@@ -513,7 +513,7 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, by *auth.Principal,
 	if err := json.Unmarshal(req.Plan, &plan); err != nil {
 		return nil, nil, nil, nil, err
 	}
-	edit := &requestEdit{ownerID: owner.ID, ownerName: owner.Name, by: by.User.ID, held: plan.Quota}
+	edit := &requestEdit{requestID: req.ID, ownerID: owner.ID, ownerName: owner.Name, by: by.User.ID, held: plan.Quota}
 	edit.vcpu, edit.memoryGB = largestPlanned(plan)
 	draft := api.RequestDraft{CatalogItemId: req.ItemID, VersionId: req.VersionID, ProjectId: req.ProjectID,
 		Environment: api.EnvironmentKey(req.Environment), Inputs: inputs, Count: present.Ptr(req.Count),
@@ -539,6 +539,11 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, by *auth.Principal,
 			return nil, nil, nil, nil, err
 		}
 		plan.Placement, plan.PlacementTitle = ev.placementNotes(), ev.placementTitle()
+		if err := s.holdPlacement(ctx, tx, ev, req.ID, plan.Reservations()); errors.Is(err, errPlacementMoved) {
+			return nil, nil, nil, nil, &ConflictError{Msg: "Requests placed meanwhile took the room chosen for these VMs. Save your changes again."}
+		} else if err != nil {
+			return nil, nil, nil, nil, err
+		}
 	case blueprint.KindAWX:
 		plan.ExtraVars = ev.Inputs
 	}

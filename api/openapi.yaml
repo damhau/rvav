@@ -11937,12 +11937,17 @@ components:
         tags: { type: array, items: { type: string } }
     InventoryCluster:
       type: object
-      required: [vcenter, name, hosts, memory_free_gb, tags]
+      required: [vcenter, name, hosts, memory_free_gb, memory_reserved_gb, tags]
       properties:
         vcenter: { type: string }
         name: { type: string }
         hosts: { type: integer }
-        memory_free_gb: { type: integer }
+        memory_free_gb: { type: integer, description: "What vCenter last said is free." }
+        memory_reserved_gb:
+          type: integer
+          description: >-
+            Of that free memory, what the VMs of requests not built yet hold:
+            placement counts it as taken (ADR-0036).
         tags: { type: array, items: { type: string }, description: "category/tag" }
     InventoryDatastore:
       type: object

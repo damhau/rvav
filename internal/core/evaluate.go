@@ -107,6 +107,7 @@ type Evaluation struct {
 // for its owner, and it holds its quota and its deployments' size
 // already: the edit is checked for what it adds.
 type requestEdit struct {
+	requestID          string
 	ownerID, ownerName string
 	// by is the approver who edits it.
 	by string
