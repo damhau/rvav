@@ -54,6 +54,8 @@ async function choose(page: Page, name: string | RegExp) {
   for (let i = 0; i < 40; i++) {
     if (await option.evaluate((e) => e === document.activeElement || e.hasAttribute("data-highlighted"))) {
       await page.keyboard.press("Enter");
+      // An open list keeps Tab to itself: a Tab pressed before it closes is lost.
+      await expect(page.getByRole("listbox")).toHaveCount(0);
       return;
     }
     await page.keyboard.press("ArrowDown");
