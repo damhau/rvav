@@ -2,6 +2,7 @@ package efficientip
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -468,7 +469,7 @@ func TestInstances(t *testing.T) {
 }
 
 // Each way rvav signs in is the one configuration.md's row and the
-// Administration field's hint list.
+// Administration field's hint list, in the English the form's hint key names.
 func TestAuthsDocumented(t *testing.T) {
 	doc, err := os.ReadFile("../../../docs/operations/configuration.md")
 	if err != nil {
@@ -476,6 +477,18 @@ func TestAuthsDocumented(t *testing.T) {
 	}
 	form, err := os.ReadFile("../../../web/src/features/admin/IntegrationSettings.tsx")
 	if err != nil {
+		t.Fatal(err)
+	}
+	locale, err := os.ReadFile("../../../web/src/locales/en/admin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var en struct {
+		Integrations struct {
+			Hint map[string]string `json:"hint"`
+		} `json:"integrations"`
+	}
+	if err := json.Unmarshal(locale, &en); err != nil {
 		t.Fatal(err)
 	}
 	var row, hint string
@@ -486,7 +499,11 @@ func TestAuthsDocumented(t *testing.T) {
 	}
 	// The field's definition, on one line or as Prettier breaks it.
 	if _, after, ok := strings.Cut(string(form), `env: "RVAV_EFFICIENTIP_AUTH"`); ok {
-		hint, _, _ = strings.Cut(after, "}")
+		field, _, _ := strings.Cut(after, "}")
+		if _, key, ok := strings.Cut(field, `t("integrations.hint.`); ok {
+			key, _, _ = strings.Cut(key, `"`)
+			hint = en.Integrations.Hint[key]
+		}
 	}
 	if row == "" || hint == "" {
 		t.Fatalf("no RVAV_EFFICIENTIP_AUTH in configuration.md (%q) or the form (%q)", row, hint)

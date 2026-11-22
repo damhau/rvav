@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CircleCheck, CircleX, ExternalLink, Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { CopyText } from "@/components/common/misc";
 import { Panel } from "@/components/ui/panel";
@@ -17,52 +18,21 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { TRIAL_CHANNEL, type TrialMessage, openTrial, webOverrides } from "@/lib/auth";
 import { failed, fieldErrors } from "./governance/common";
-import { SavedBy } from "./IntegrationSettings";
+import { CheckLine, SavedBy } from "./IntegrationSettings";
 import { ServerCertificate } from "./ServerCertificate";
 
 type S = components["schemas"];
 type Name = "issuer" | "discovery_url" | "client_id" | "scopes" | "groups_claim" | "manager_claim";
 
-const settings: { name: Name; label: string; env: string; hint: string; placeholder?: string }[] = [
-  {
-    name: "issuer",
-    label: "Issuer",
-    env: "RVAV_OIDC_ISSUER",
-    hint: "As in its tokens, and as the browser reaches it. Entra ID: https://login.microsoftonline.com/<tenant>/v2.0",
-  },
-  {
-    name: "discovery_url",
-    label: "Discovery URL",
-    env: "RVAV_OIDC_DISCOVERY_URL",
-    hint: "Only when rvav reaches the provider at another address than the browser (inside a cluster)",
-  },
-  {
-    name: "client_id",
-    label: "Client ID",
-    env: "RVAV_OIDC_CLIENT_ID",
-    hint: "The web app's client at the provider; tokens must have it as their audience",
-  },
-  {
-    name: "scopes",
-    label: "Scopes",
-    env: "RVAV_OIDC_SCOPES",
-    hint: "Space-separated, with openid. Entra ID: also offline_access and a scope of rvav's API, api://<client>/access",
-    placeholder: "openid profile email",
-  },
-  {
-    name: "groups_claim",
-    label: "Groups claim",
-    env: "RVAV_OIDC_GROUPS_CLAIM",
-    hint: "The claim group mappings read: groups, or roles for Entra ID's app roles",
-    placeholder: "groups",
-  },
-  {
-    name: "manager_claim",
-    label: "Manager claim",
-    env: "RVAV_OIDC_MANAGER_CLAIM",
-    hint: "The claim with the user's manager, by email or subject, for approval levels that ask the requester's manager",
-    placeholder: "manager",
-  },
+type Label = "issuer" | "discovery" | "clientId" | "scopes" | "groupsClaim" | "managerClaim";
+
+const settings: { name: Name; label: Label; env: string; placeholder?: string }[] = [
+  { name: "issuer", label: "issuer", env: "RVAV_OIDC_ISSUER" },
+  { name: "discovery_url", label: "discovery", env: "RVAV_OIDC_DISCOVERY_URL" },
+  { name: "client_id", label: "clientId", env: "RVAV_OIDC_CLIENT_ID" },
+  { name: "scopes", label: "scopes", env: "RVAV_OIDC_SCOPES", placeholder: "openid profile email" },
+  { name: "groups_claim", label: "groupsClaim", env: "RVAV_OIDC_GROUPS_CLAIM", placeholder: "groups" },
+  { name: "manager_claim", label: "managerClaim", env: "RVAV_OIDC_MANAGER_CLAIM", placeholder: "manager" },
 ];
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -70,6 +40,7 @@ const str = (v: unknown) => (typeof v === "string" ? v : "");
 export const redirectUri = () => `${globalThis.location.origin}/auth/callback`;
 
 export function IdentityProvider({ it }: { it: S["Integration"] }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const web = webOverrides();
   const lockedBy = (n: Name) =>
@@ -104,15 +75,13 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
     mutationFn: () => call(api.PUT("/admin/integrations/{kind}", { params: { path: { kind: "oidc" } }, body: body() })),
     onSuccess: (saved) => {
       void qc.invalidateQueries({ queryKey: ["admin", "integrations"] });
-      toast.success(saved.configured ? "Identity provider saved" : "Identity provider cleared", {
-        description: saved.configured
-          ? "It applies now: sign-in uses it within a few seconds, without a restart."
-          : "Only the local administrator and API tokens sign in now.",
+      toast.success(saved.configured ? t("identityProvider.saved") : t("identityProvider.cleared"), {
+        description: saved.configured ? t("identityProvider.appliesNow") : t("identityProvider.localOnly"),
       });
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("integrations.notSaved"));
     },
   });
   const test = useMutation({
@@ -125,7 +94,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
     onSuccess: (r) => setTested(r.ok ? key : null),
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "The test didn't run");
+      failed(e, t("integrations.testDidntRun"));
     },
   });
   const trial = useMutation({
@@ -135,7 +104,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
           body: { settings: tried.current, access_token: token },
         }),
       ),
-    onError: (e) => failed(e, "The trial couldn't be checked"),
+    onError: (e) => failed(e, t("identityProvider.trialFailed")),
   });
 
   // The trial window's token, or why there is none.
@@ -145,7 +114,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
     ch.onmessage = (e: MessageEvent<TrialMessage>) => {
       setWaiting(false);
       if (e.data.token) trial.mutate(e.data.token);
-      else setTrialError(e.data.error ?? "No token came back.");
+      else setTrialError(e.data.error ?? t("identityProvider.noToken"));
     };
     return () => ch.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- trial.mutate is stable
@@ -161,7 +130,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
       scope: values.scopes.trim() || "openid profile email",
     });
     if (!w) {
-      setTrialError("The browser blocked the window: allow pop-ups for this site, then try again.");
+      setTrialError(t("identityProvider.popupBlocked"));
       return;
     }
     setWaiting(true);
@@ -170,19 +139,19 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
   const canTry = tested === key && values.issuer.trim() !== "" && values.client_id.trim() !== "";
   return (
     <Panel
-      title="Provider settings"
-      actions={!it.configured && <Badge tone="warn">Not set</Badge>}
+      title={t("identityProvider.title")}
+      actions={!it.configured && <Badge tone="warn">{t("identityProvider.notSet")}</Badge>}
       footer={
         <>
           <SavedBy it={it} />
           <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
-            {test.isPending ? "Testing…" : "Test provider"}
+            {test.isPending ? t("integrations.testing") : t("identityProvider.test")}
           </Button>
           <Button type="button" disabled={!canTry || waiting || trial.isPending} onClick={startTrial}>
-            <ExternalLink aria-hidden /> {waiting ? "Signing in…" : "Try signing in"}
+            <ExternalLink aria-hidden /> {waiting ? t("identityProvider.signingIn") : t("identityProvider.try")}
           </Button>
           <Button type="submit" form="oidc-settings" variant="primary" disabled={save.isPending}>
-            {save.isPending ? "Saving…" : "Save settings"}
+            {save.isPending ? t("integrations.saving") : t("integrations.saveSettings")}
           </Button>
         </>
       }
@@ -197,18 +166,25 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
         }}
       >
         <p className="max-w-3xl text-secondary text-muted">
-          Everyone but the local administrator signs in here, and gets roles from the groups mapped in{" "}
-          <Link to="/admin/projects" search={{ tab: "groups" }} className="text-accent underline underline-offset-2">
-            Projects › Identity provider groups
-          </Link>
-          . A saved provider applies without a restart. The local administrator still signs in when it is down.
+          <Trans
+            t={t}
+            i18nKey="identityProvider.about"
+            components={{
+              groups: (
+                <Link
+                  to="/admin/projects"
+                  search={{ tab: "groups" }}
+                  className="text-accent underline underline-offset-2"
+                />
+              ),
+            }}
+          />
         </p>
         <div className="flex max-w-3xl flex-col gap-1 rounded-md border border-line px-3 py-2 text-secondary">
-          <span className="font-medium">Redirect URI, to register at the provider</span>
+          <span className="font-medium">{t("identityProvider.redirect")}</span>
           <CopyText value={redirectUri()} />
           <span className="text-faint">
-            As a single-page application's (Entra ID: the Single-page application platform; Keycloak: a public client
-            with PKCE). Sign-out comes back to {globalThis.location.origin}/.
+            {t("identityProvider.redirectHint", { origin: globalThis.location.origin })}
           </span>
         </div>
         <div className="grid max-w-3xl grid-cols-1 gap-3 md:grid-cols-2">
@@ -218,16 +194,16 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
             return (
               <Field
                 key={s.name}
-                label={s.label}
+                label={t(`identityProvider.${s.label}`)}
                 htmlFor={id}
                 error={errors[`/settings/${s.name}`]}
                 hint={
                   lock ? (
                     <span className="inline-flex items-center gap-1">
-                      <Lock className="size-3" aria-hidden /> Set by {lock}
+                      <Lock className="size-3" aria-hidden /> {t("integrations.setBy", { env: lock })}
                     </span>
                   ) : (
-                    s.hint
+                    t(`identityProvider.${s.label}Hint`)
                   )
                 }
               >
@@ -244,29 +220,26 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
             );
           })}
         </div>
-        {!canTry && (
-          <p className="text-secondary text-faint">
-            Test the provider first: the trial sign-in uses the settings above, before they are saved, in a window of
-            its own.
-          </p>
-        )}
+        {!canTry && <p className="text-secondary text-faint">{t("identityProvider.testFirst")}</p>}
         {test.data && (
           <section
-            aria-label="Identity provider test"
+            aria-label={t("identityProvider.testLabel")}
             aria-live="polite"
             className="flex flex-col gap-1 rounded-md border border-line p-3 text-secondary"
           >
-            <p className="font-medium">{test.data.ok ? "Every check passed: try signing in." : "A check failed."}</p>
+            <p className="font-medium">
+              {test.data.ok ? t("identityProvider.allPassed") : t("integrations.oneFailed")}
+            </p>
             <ul className="flex flex-col gap-0.5">
               {test.data.checks.map((c) => (
                 <li key={c.name} className="flex items-start gap-1.5">
                   {c.ok ? (
-                    <CircleCheck className="mt-px size-3.5 shrink-0 text-ok" aria-label="Passed" />
+                    <CircleCheck className="mt-px size-3.5 shrink-0 text-ok" aria-label={t("integrations.passed")} />
                   ) : (
-                    <CircleX className="mt-px size-3.5 shrink-0 text-bad" aria-label="Failed" />
+                    <CircleX className="mt-px size-3.5 shrink-0 text-bad" aria-label={t("integrations.failed")} />
                   )}
                   <span className="break-all">
-                    <span className="font-medium">{c.name}:</span> {c.message}
+                    <CheckLine name={c.name} message={c.message} />
                   </span>
                 </li>
               ))}
@@ -276,13 +249,13 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
         )}
         {waiting && (
           <p role="status" className="text-secondary text-muted">
-            Sign in at the provider in the new window.{" "}
+            {t("identityProvider.waiting")}{" "}
             <button
               type="button"
               className="text-accent underline underline-offset-2"
               onClick={() => setWaiting(false)}
             >
-              Stop waiting
+              {t("identityProvider.stopWaiting")}
             </button>
           </p>
         )}
@@ -298,10 +271,11 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
 }
 
 function TrialResult({ r }: { r: S["OidcTrial"] }) {
+  const { t } = useTranslation("admin");
   const none = r.global_roles.length === 0 && r.project_roles.length === 0;
   return (
     <section
-      aria-label="Trial sign-in"
+      aria-label={t("identityProvider.trial")}
       aria-live="polite"
       className="flex flex-col gap-3 rounded-md border border-line p-3 text-secondary"
     >
@@ -311,32 +285,42 @@ function TrialResult({ r }: { r: S["OidcTrial"] }) {
         ) : (
           <CircleX className="mt-px size-3.5 shrink-0 text-bad" aria-hidden />
         )}
-        {r.accepted ? "rvav accepts this token." : "rvav refuses this token."}
+        {r.accepted ? t("identityProvider.accepted") : t("identityProvider.refused")}
       </p>
       {r.message && <p className={r.accepted ? "text-warn" : "text-bad"}>{r.message}</p>}
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
-        <dt className="text-muted">Subject</dt>
+        <dt className="text-muted">{t("identityProvider.subject")}</dt>
         <dd className="font-mono break-all">{r.subject ?? "—"}</dd>
-        <dt className="text-muted">Name</dt>
+        <dt className="text-muted">{t("identityProvider.name")}</dt>
         <dd>{r.name ?? "—"}</dd>
-        <dt className="text-muted">Email</dt>
+        <dt className="text-muted">{t("identityProvider.email")}</dt>
         <dd>{r.email ?? "—"}</dd>
         <dt className="text-muted">
-          Groups (<span className="font-mono">{r.groups_claim ?? "groups"}</span>)
+          <Trans
+            t={t}
+            i18nKey="identityProvider.groups"
+            values={{ claim: r.groups_claim ?? "groups" }}
+            components={{ claim: <span className="font-mono" /> }}
+          />
         </dt>
         <dd className="flex flex-wrap gap-1">
-          {r.groups.length === 0 ? "None" : r.groups.map((g) => <Badge key={g}>{g}</Badge>)}
+          {r.groups.length === 0 ? t("identityProvider.none") : r.groups.map((g) => <Badge key={g}>{g}</Badge>)}
         </dd>
         <dt className="text-muted">
-          Manager (<span className="font-mono">{r.manager_claim ?? "manager"}</span>)
+          <Trans
+            t={t}
+            i18nKey="identityProvider.manager"
+            values={{ claim: r.manager_claim ?? "manager" }}
+            components={{ claim: <span className="font-mono" /> }}
+          />
         </dt>
-        <dd className="break-all">{r.manager ?? "None"}</dd>
+        <dd className="break-all">{r.manager ?? t("identityProvider.none")}</dd>
         {r.accepted && (
           <>
-            <dt className="text-muted">Roles given</dt>
+            <dt className="text-muted">{t("identityProvider.rolesGiven")}</dt>
             <dd className="flex flex-wrap gap-1">
               {none
-                ? "None: no group mapping matches, so this user could sign in but do nothing."
+                ? t("identityProvider.noRoles")
                 : [
                     ...r.global_roles.map((role) => (
                       <Badge key={role} tone="accent">
@@ -345,7 +329,7 @@ function TrialResult({ r }: { r: S["OidcTrial"] }) {
                     )),
                     ...r.project_roles.map((p) => (
                       <Badge key={p.project.id} tone="outline">
-                        {p.role} in {p.project.name}
+                        {t("identityProvider.roleIn", { role: p.role, project: p.project.name })}
                       </Badge>
                     )),
                   ]}
@@ -354,7 +338,7 @@ function TrialResult({ r }: { r: S["OidcTrial"] }) {
         )}
       </dl>
       <details>
-        <summary className="cursor-pointer text-muted">The token's claims</summary>
+        <summary className="cursor-pointer text-muted">{t("identityProvider.claims")}</summary>
         <pre className="mt-1 max-h-72 overflow-auto rounded-sm bg-sunken p-2 font-mono text-caption">
           {JSON.stringify(r.claims, null, 2)}
         </pre>

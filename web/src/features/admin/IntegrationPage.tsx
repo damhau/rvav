@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Plug } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
@@ -21,6 +22,7 @@ const isKind = (k: string): k is Kind => (integrationKinds as readonly string[])
 
 /** One integration's page: its settings, test and what goes with it (the console and other vCenters, AWX's inventory token, other NSX Managers, ServiceNow's token and CMDB). */
 export function IntegrationPage({ kind }: { kind: string }) {
+  const { t } = useTranslation(["admin", "shell"]);
   const list = useQuery(adm.integrations());
   const known = isKind(kind);
   const it = known ? list.data?.items.find((i) => i.kind === kind) : undefined;
@@ -30,10 +32,10 @@ export function IntegrationPage({ kind }: { kind: string }) {
       <PageHeader
         breadcrumbs={
           <Breadcrumbs>
-            <Link to="/admin/integrations">Integrations</Link>
+            <Link to="/admin/integrations">{t("shell:nav.admin.integrations")}</Link>
           </Breadcrumbs>
         }
-        title={known ? integrationTitle(kind) : "Integration not found"}
+        title={known ? integrationTitle(kind) : t("integrations.page.notFound")}
         description={known ? integrationAbout(kind) : undefined}
       />
       {list.isPending && <Skeleton className="h-64" />}
@@ -41,22 +43,24 @@ export function IntegrationPage({ kind }: { kind: string }) {
       {list.isSuccess && !it && (
         <EmptyState
           icon={Plug}
-          title="No such integration"
-          body={`rvav doesn't connect to anything called ${kind}.`}
+          title={t("integrations.page.noSuch")}
+          body={t("integrations.page.noSuchBody", { kind })}
           action={
             <Button asChild>
-              <Link to="/admin/integrations">All integrations</Link>
+              <Link to="/admin/integrations">{t("integrations.page.all")}</Link>
             </Button>
           }
         />
       )}
       {it &&
         (it.kind === "oidc" ? (
-          <IdentityProvider key={it.updated_at ?? "unsaved"} it={it} />
+          <IdentityProvider key={`${it.kind}:${it.updated_at ?? "unsaved"}`} it={it} />
         ) : (
-          <Integration key={it.updated_at ?? "unsaved"} it={{ ...it, kind: it.kind }} />
+          <Integration key={`${it.kind}:${it.updated_at ?? "unsaved"}`} it={{ ...it, kind: it.kind }} />
         ))}
-      {console && <Integration key={console.updated_at ?? "unsaved"} it={{ ...console, kind: "console" }} />}
+      {console && (
+        <Integration key={`console:${console.updated_at ?? "unsaved"}`} it={{ ...console, kind: "console" }} />
+      )}
       {it && kind === "vcenter" && <VCenters />}
       {it && kind === "awx" && <InventoryToken />}
       {it && kind === "nsx" && <NSXManagers />}

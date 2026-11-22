@@ -5,22 +5,21 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, LoaderCircle, Clock } from "lucide-react";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import type { components } from "@/lib/api/schema";
+import { i18n } from "@/lib/i18n";
 import { adm } from "@/lib/query";
 
 type Process = components["schemas"]["Process"];
 
-export const roles: Record<Process["role"], string> = {
-  api: "API",
-  worker: "Worker",
-  sync: "Inventory sync",
-  dev: "rvav dev",
-};
+/** What a process of rvav does, as its role says. */
+export const roleName = (role: Process["role"]) => i18n.t(`admin:applying.role.${role}`);
 
 /** How often the processes are asked while a change applies. */
 export const APPLY_POLL_MS = 1000;
 
 export function Applying({ revision }: { revision: number }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const procs = useQuery({
     ...adm.processes(),
@@ -40,18 +39,14 @@ export function Applying({ revision }: { revision: number }) {
 
   return (
     <section
-      aria-label="Applying the settings"
+      aria-label={t("applying.label")}
       className="flex flex-col gap-2 rounded-md border border-line p-3 text-secondary"
     >
       <p role="status" className="font-medium">
-        {done
-          ? "Applied: every process runs with these settings."
-          : procs.isError
-            ? "rvav's API is starting again with these settings…"
-            : "Applying: each process finishes the work it runs, then starts again with these settings."}
+        {done ? t("applying.done") : procs.isError ? t("applying.apiRestarting") : t("applying.running")}
       </p>
       {items.length > 0 && (
-        <ul className="flex flex-col gap-1" aria-label="rvav's processes">
+        <ul className="flex flex-col gap-1" aria-label={t("applying.processes")}>
           {items.map((p) => {
             const applied = p.revision >= revision;
             return (
@@ -63,16 +58,16 @@ export function Applying({ revision }: { revision: number }) {
                 ) : (
                   <Clock className="size-3.5 shrink-0 text-faint" aria-hidden />
                 )}
-                <span className="font-medium">{roles[p.role]}</span>
+                <span className="font-medium">{roleName(p.role)}</span>
                 <span className="font-mono text-faint">{p.host}</span>
                 <span>
                   {applied
-                    ? "Applied"
+                    ? t("applying.applied")
                     : p.state === "draining"
-                      ? "Finishing its running work"
+                      ? t("applying.draining")
                       : p.state === "restarting"
-                        ? "Exited, starting again"
-                        : "Runs with the earlier settings"}
+                        ? t("applying.restarting")
+                        : t("applying.earlier")}
                 </span>
               </li>
             );

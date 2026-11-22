@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Panel } from "@/components/ui/panel";
@@ -17,6 +18,7 @@ import { fullDate, relative } from "@/lib/format";
 import { failed, fieldErrors } from "./governance/common";
 
 export function InventoryToken() {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const q = useQuery(adm.inventoryToken());
   const [url, setUrl] = useState("");
@@ -31,22 +33,28 @@ export function InventoryToken() {
     onSuccess: () => {
       setErrors({});
       void qc.invalidateQueries({ queryKey: ["admin", "inventory-token"] });
-      toast.success("The inventory token is in AWX");
+      toast.success(t("inventoryToken.madeToast"));
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "No token made");
+      failed(e, t("inventoryToken.noneMadeToast"));
     },
   });
   if (q.isPending) return <Skeleton className="h-40" />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
   const st = q.data;
-  const t = st.token;
+  const token = st.token;
   const done = make.data;
   return (
     <Panel
-      title="Inventory token"
-      actions={st.locked ? <Badge tone="neutral">Locked</Badge> : !t ? <Badge tone="warn">None made</Badge> : undefined}
+      title={t("inventoryToken.title")}
+      actions={
+        st.locked ? (
+          <Badge tone="neutral">{t("inventoryToken.locked")}</Badge>
+        ) : !token ? (
+          <Badge tone="warn">{t("inventoryToken.noneMade")}</Badge>
+        ) : undefined
+      }
     >
       <form
         className="flex max-w-3xl flex-col gap-3"
@@ -56,38 +64,39 @@ export function InventoryToken() {
           make.mutate();
         }}
       >
-        <p className="text-body text-muted">
-          AWX&apos;s inventory source reads rvav&apos;s VMs with an API token that reads the inventory only, kept in its
-          rvav API credential. rvav makes it for a user of its own, valid a year, and puts it in AWX; the one made
-          before is revoked.
-        </p>
+        <p className="text-body text-muted">{t("inventoryToken.about")}</p>
         {st.locked ? (
           <p className="inline-flex items-center gap-1 text-secondary text-faint">
-            <Lock className="size-3" aria-hidden /> Set by RVAV_INVENTORY_TOKEN: rvav awx-bootstrap puts that one in
-            AWX.
+            <Lock className="size-3" aria-hidden /> {t("inventoryToken.lockedBy")}
           </p>
         ) : (
           <>
             <p className="text-secondary">
-              {t ? (
-                <>
-                  Made <time dateTime={t.created_at}>{fullDate(t.created_at)}</time>
-                  {t.expires_at && (
-                    <>
-                      , expires <time dateTime={t.expires_at}>{fullDate(t.expires_at)}</time>
-                    </>
-                  )}
-                  ; {t.last_used_at ? `AWX last read the inventory ${relative(t.last_used_at)}` : "not read yet"}.
-                </>
+              {token ? (
+                <Trans
+                  t={t}
+                  i18nKey={token.expires_at ? "inventoryToken.madeExpires" : "inventoryToken.made"}
+                  values={{
+                    made: fullDate(token.created_at),
+                    expires: token.expires_at ? fullDate(token.expires_at) : "",
+                    read: token.last_used_at
+                      ? t("inventoryToken.lastRead", { when: relative(token.last_used_at) })
+                      : t("inventoryToken.notRead"),
+                  }}
+                  components={{
+                    made: <time dateTime={token.created_at} />,
+                    expires: <time dateTime={token.expires_at ?? undefined} />,
+                  }}
+                />
               ) : (
-                "rvav hasn't made one: AWX reads the inventory with a token made by hand, or not at all."
+                t("inventoryToken.none")
               )}
             </p>
             <Field
-              label="rvav's address, as AWX reaches it"
+              label={t("inventoryToken.url")}
               htmlFor="inventory-url"
               error={errors["/url"]}
-              hint={`Empty keeps the one in AWX's credential, or else ${st.public_url || "rvav's public URL"}`}
+              hint={t("inventoryToken.urlHint", { url: st.public_url || t("inventoryToken.publicUrl") })}
             >
               <Input
                 id="inventory-url"
@@ -100,27 +109,28 @@ export function InventoryToken() {
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={make.isPending || !st.source_set}>
                 {make.isPending
-                  ? "Making…"
-                  : t
-                    ? "Make a new token and put it in AWX"
-                    : "Make a token and put it in AWX"}
+                  ? t("inventoryToken.making")
+                  : token
+                    ? t("inventoryToken.makeNew")
+                    : t("inventoryToken.make")}
               </Button>
-              {!st.source_set && (
-                <span className="text-secondary text-faint">Set the inventory source ID above, and save, first.</span>
-              )}
+              {!st.source_set && <span className="text-secondary text-faint">{t("inventoryToken.sourceFirst")}</span>}
             </div>
             {done && (
               <section
-                aria-label="Inventory token made"
+                aria-label={t("inventoryToken.madeLabel")}
                 aria-live="polite"
                 className="flex flex-col gap-0.5 rounded-md border border-line p-3 text-secondary"
               >
                 <p>
-                  In AWX&apos;s credential <span className="font-medium">{done.credential}</span>
-                  {done.attached ? ", now set on the inventory source" : ""}, reading rvav at{" "}
-                  <span className="font-mono">{done.url}</span>.
+                  <Trans
+                    t={t}
+                    i18nKey={done.attached ? "inventoryToken.inCredentialAttached" : "inventoryToken.inCredential"}
+                    values={{ credential: done.credential, url: done.url }}
+                    components={{ name: <span className="font-medium" />, url: <span className="font-mono" /> }}
+                  />
                 </p>
-                {done.revoked ? <p>The token made before is revoked.</p> : null}
+                {done.revoked ? <p>{t("inventoryToken.revoked")}</p> : null}
                 {done.update && <p>{done.update}</p>}
               </section>
             )}

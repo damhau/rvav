@@ -15,7 +15,7 @@ import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { fullDate, relative } from "@/lib/format";
-import { roles } from "./Applying";
+import { roleName } from "./Applying";
 import { integrationPage, integrationTitle } from "./IntegrationSettings";
 
 type S = components["schemas"];
@@ -92,7 +92,7 @@ function Processes({ system }: { system: S["System"] }) {
       header: "Process",
       cell: (p) => (
         <>
-          <span className="font-medium">{roles[p.role]}</span>{" "}
+          <span className="font-medium">{roleName(p.role)}</span>{" "}
           <span className="font-mono text-secondary text-faint">{p.host}</span>
         </>
       ),

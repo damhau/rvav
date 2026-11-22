@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { CircleCheck } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { Badge } from "@/components/ui/badge";
@@ -23,15 +25,16 @@ export const integrationsTabs = ["connections", "checks"] as const;
 export type IntegrationsTab = (typeof integrationsTabs)[number];
 
 function State({ it }: { it: S["Integration"] }) {
-  if (it.applying) return <Badge tone="warn">Applying</Badge>;
-  if (it.configured) return <Badge tone="ok">Configured</Badge>;
-  return <Badge tone="neutral">Not configured</Badge>;
+  const { t } = useTranslation("admin");
+  if (it.applying) return <Badge tone="warn">{t("integrations.state.applying")}</Badge>;
+  if (it.configured) return <Badge tone="ok">{t("integrations.state.configured")}</Badge>;
+  return <Badge tone="neutral">{t("integrations.state.notConfigured")}</Badge>;
 }
 
-const connectionColumns: Column<S["Integration"]>[] = [
+const connectionColumns = (t: TFunction<"admin">): Column<S["Integration"]>[] => [
   {
     id: "connection",
-    header: "Connection",
+    header: t("integrations.columns.connection"),
     cell: (it) => (
       <>
         <Link
@@ -45,36 +48,35 @@ const connectionColumns: Column<S["Integration"]>[] = [
       </>
     ),
   },
-  { id: "state", header: "State", cell: (it) => <State it={it} /> },
+  { id: "state", header: t("integrations.columns.state"), cell: (it) => <State it={it} /> },
   {
     id: "saved",
-    header: "Last saved",
+    header: t("integrations.columns.saved"),
     className: "whitespace-nowrap",
     cell: (it) =>
       it.updated_at ? (
         <span className="text-secondary">
           <span title={fullDate(it.updated_at)}>{relative(it.updated_at)}</span>
-          {it.updated_by && <span className="block text-muted">by {it.updated_by.name}</span>}
+          {it.updated_by && (
+            <span className="block text-muted">{t("integrations.by", { name: it.updated_by.name })}</span>
+          )}
         </span>
       ) : (
-        <span className="text-secondary text-faint">Never</span>
+        <span className="text-secondary text-faint">{t("integrations.never")}</span>
       ),
   },
 ];
 
 function Connections() {
+  const { t } = useTranslation("admin");
   const list = useQuery(adm.integrations());
   // The console's settings are on vCenter's page.
   const items = list.data?.items.filter((it) => integrationPage(it.kind) === it.kind);
   return (
-    <Panel
-      title="Connections"
-      description="Open one to change its settings and test it. A setting an environment variable sets can't be changed here."
-      flush
-    >
+    <Panel title={t("integrations.connections.title")} description={t("integrations.connections.description")} flush>
       <DataTable
-        label="Connections"
-        columns={connectionColumns}
+        label={t("integrations.connections.title")}
+        columns={connectionColumns(t)}
         rows={items}
         rowKey={(it) => it.kind}
         rowLinks
@@ -88,84 +90,112 @@ function Connections() {
 
 const mono = "font-mono text-secondary";
 
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 function Report({ report }: { report: IpamReconcile }) {
+  const { t } = useTranslation("admin");
   const clean = report.orphan_addresses.length + report.orphan_records.length + report.missing.length === 0;
   return (
     <div className="flex flex-col">
       <p className="px-4 py-3 text-secondary text-muted">
         {report.efficientip
-          ? `EfficientIP has ${report.managed_addresses} addresses and ${report.managed_records} DNS records tagged for rvav.`
-          : "EfficientIP is not set: it was not compared."}{" "}
-        Checked {fullDate(report.checked_at)}.
+          ? t("integrations.reconcile.tagged", {
+              addresses: t("integrations.reconcile.addresses", { count: report.managed_addresses }),
+              records: t("integrations.reconcile.records", { count: report.managed_records }),
+            })
+          : t("integrations.reconcile.notSet")}{" "}
+        {t("integrations.reconcile.checked", { date: fullDate(report.checked_at) })}
       </p>
       {report.orphan_allocations.length + report.unallocated.length > 0 && (
         <p className="border-t border-line px-4 py-3 text-secondary">
-          rvav&apos;s IP ranges: {count(report.orphan_allocations.length, "address", "addresses")} of VMs rvav no longer
-          has, {count(report.unallocated.length, "VM", "VMs")} on an address their range didn&apos;t give.{" "}
+          {t("integrations.reconcile.ranges", {
+            addresses: t("integrations.reconcile.addresses", { count: report.orphan_allocations.length }),
+            vms: t("integrations.reconcile.vms", { count: report.unallocated.length }),
+          })}{" "}
           <Link
             to="/admin/infrastructure"
             search={{ tab: "ip-ranges" }}
             className="font-medium text-accent hover:underline"
           >
-            Reconcile them on the IP ranges tab
+            {t("integrations.reconcile.toRanges")}
           </Link>
         </p>
       )}
       {clean && report.efficientip && (
         <EmptyState
           icon={CircleCheck}
-          title="Nothing to reconcile"
-          body="Every address and record tagged for rvav belongs to a deployment, and every deployment's addresses and records are in EfficientIP."
+          title={t("integrations.reconcile.cleanTitle")}
+          body={t("integrations.reconcile.cleanBody")}
         />
       )}
       {report.orphan_addresses.length > 0 && (
-        <section aria-label="Addresses no deployment owns" className="border-t border-line">
-          <h3 className="px-4 py-2.5 text-body font-semibold">Addresses no deployment owns</h3>
+        <section aria-label={t("integrations.reconcile.orphanAddresses")} className="border-t border-line">
+          <h3 className="px-4 py-2.5 text-body font-semibold">{t("integrations.reconcile.orphanAddresses")}</h3>
           <DataTable
-            label="Addresses no deployment owns"
+            label={t("integrations.reconcile.orphanAddresses")}
             rows={report.orphan_addresses}
             rowKey={(a) => a.efficientip_id}
             minWidth={560}
             columns={[
-              { id: "ip", header: "Address", cell: (a) => <span className={mono}>{a.ip}</span> },
-              { id: "name", header: "Name", cell: (a) => a.name || "—" },
-              { id: "subnet", header: "Subnet", cell: (a) => <span className={mono}>{a.subnet}</span> },
-              { id: "id", header: "EfficientIP ID", cell: (a) => <span className={mono}>{a.efficientip_id}</span> },
+              {
+                id: "ip",
+                header: t("integrations.reconcile.column.address"),
+                cell: (a) => <span className={mono}>{a.ip}</span>,
+              },
+              { id: "name", header: t("integrations.reconcile.column.name"), cell: (a) => a.name || "—" },
+              {
+                id: "subnet",
+                header: t("integrations.reconcile.column.subnet"),
+                cell: (a) => <span className={mono}>{a.subnet}</span>,
+              },
+              {
+                id: "id",
+                header: t("integrations.reconcile.column.id"),
+                cell: (a) => <span className={mono}>{a.efficientip_id}</span>,
+              },
             ]}
           />
         </section>
       )}
       {report.orphan_records.length > 0 && (
-        <section aria-label="DNS records no deployment owns" className="border-t border-line">
-          <h3 className="px-4 py-2.5 text-body font-semibold">DNS records no deployment owns</h3>
+        <section aria-label={t("integrations.reconcile.orphanRecords")} className="border-t border-line">
+          <h3 className="px-4 py-2.5 text-body font-semibold">{t("integrations.reconcile.orphanRecords")}</h3>
           <DataTable
-            label="DNS records no deployment owns"
+            label={t("integrations.reconcile.orphanRecords")}
             rows={report.orphan_records}
             rowKey={(r) => r.efficientip_id}
             minWidth={560}
             columns={[
-              { id: "fqdn", header: "Name", cell: (r) => <span className={mono}>{r.fqdn}</span> },
-              { id: "type", header: "Type", cell: (r) => r.type },
-              { id: "value", header: "Value", cell: (r) => <span className={mono}>{r.value}</span> },
-              { id: "id", header: "EfficientIP ID", cell: (r) => <span className={mono}>{r.efficientip_id}</span> },
+              {
+                id: "fqdn",
+                header: t("integrations.reconcile.column.name"),
+                cell: (r) => <span className={mono}>{r.fqdn}</span>,
+              },
+              { id: "type", header: t("integrations.reconcile.column.type"), cell: (r) => r.type },
+              {
+                id: "value",
+                header: t("integrations.reconcile.column.value"),
+                cell: (r) => <span className={mono}>{r.value}</span>,
+              },
+              {
+                id: "id",
+                header: t("integrations.reconcile.column.id"),
+                cell: (r) => <span className={mono}>{r.efficientip_id}</span>,
+              },
             ]}
           />
         </section>
       )}
       {report.missing.length > 0 && (
-        <section aria-label="Missing in EfficientIP" className="border-t border-line">
-          <h3 className="px-4 py-2.5 text-body font-semibold">Owned by a deployment, missing in EfficientIP</h3>
+        <section aria-label={t("integrations.reconcile.missing")} className="border-t border-line">
+          <h3 className="px-4 py-2.5 text-body font-semibold">{t("integrations.reconcile.missingHeading")}</h3>
           <DataTable
-            label="Missing in EfficientIP"
+            label={t("integrations.reconcile.missing")}
             rows={report.missing}
             rowKey={(m) => `${m.deployment_id}/${m.name}`}
             minWidth={560}
             columns={[
               {
                 id: "deployment",
-                header: "Deployment",
+                header: t("integrations.reconcile.column.deployment"),
                 cell: (m) => (
                   <Link
                     to="/deployments/$deploymentId"
@@ -176,10 +206,14 @@ function Report({ report }: { report: IpamReconcile }) {
                   </Link>
                 ),
               },
-              { id: "what", header: "What", cell: (m) => <span className={mono}>{m.name}</span> },
+              {
+                id: "what",
+                header: t("integrations.reconcile.column.what"),
+                cell: (m) => <span className={mono}>{m.name}</span>,
+              },
               {
                 id: "id",
-                header: "EfficientIP ID",
+                header: t("integrations.reconcile.column.id"),
                 cell: (m) => <span className={mono}>{m.efficientip_id ?? "—"}</span>,
               },
             ]}
@@ -191,12 +225,13 @@ function Report({ report }: { report: IpamReconcile }) {
 }
 
 function Reconcile() {
+  const { t } = useTranslation("admin");
   const [run, setRun] = useState(false);
   const report = useQuery({ ...q.ipamReconcile(), enabled: run });
   return (
     <Panel
-      title="EfficientIP reconcile"
-      description="Compares EfficientIP with what rvav recorded. Nothing is changed."
+      title={t("integrations.reconcile.title")}
+      description={t("integrations.reconcile.description")}
       flush
       actions={
         <Button
@@ -205,17 +240,15 @@ function Reconcile() {
           disabled={report.isFetching}
           onClick={() => (run ? void report.refetch() : setRun(true))}
         >
-          {report.isFetching ? "Checking…" : report.data ? "Check again" : "Run the check"}
+          {report.isFetching
+            ? t("integrations.reconcile.checking")
+            : report.data
+              ? t("integrations.reconcile.again")
+              : t("integrations.reconcile.run")}
         </Button>
       }
     >
-      {!run && (
-        <p className="px-4 py-3 text-secondary text-muted">
-          It lists the addresses and records tagged for rvav that no deployment owns (for example left by a failed run),
-          and those a deployment owns that EfficientIP no longer has. A request running during the check may show its
-          newest objects here.
-        </p>
-      )}
+      {!run && <p className="px-4 py-3 text-secondary text-muted">{t("integrations.reconcile.about")}</p>}
       {run && report.isPending && <SkeletonRows rows={3} cols={4} />}
       {report.isError && <ErrorState error={report.error} onRetry={() => void report.refetch()} />}
       {report.data && <Report report={report.data} />}
@@ -224,22 +257,20 @@ function Reconcile() {
 }
 
 export function IntegrationsPage({ tab = "connections" }: { tab?: IntegrationsTab }) {
+  const { t } = useTranslation(["admin", "shell"]);
   const navigate = useNavigate();
   return (
     <Page>
-      <PageHeader
-        title="Integrations"
-        description="Where people sign in, the systems rvav connects to and notifies through, and whether EfficientIP agrees with what rvav recorded."
-      />
+      <PageHeader title={t("shell:nav.admin.integrations")} description={t("integrations.description")} />
       <Tabs
         value={tab}
         onValueChange={(next) =>
           void navigate({ to: "/admin/integrations", search: { tab: next as IntegrationsTab }, replace: true })
         }
       >
-        <TabsList aria-label="Integrations">
-          <TabsTrigger value="connections">Connections</TabsTrigger>
-          <TabsTrigger value="checks">Checks</TabsTrigger>
+        <TabsList aria-label={t("shell:nav.admin.integrations")}>
+          <TabsTrigger value="connections">{t("integrations.tabs.connections")}</TabsTrigger>
+          <TabsTrigger value="checks">{t("integrations.tabs.checks")}</TabsTrigger>
         </TabsList>
         <TabsContent value="connections" className="pt-4">
           <Connections />
