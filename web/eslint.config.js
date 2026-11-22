@@ -29,19 +29,7 @@ const translated = [
   "src/features/admin/access/**",
   "src/features/admin/notifications/**",
   "src/features/admin/governance/policies/**",
-  "src/features/deployments/DeploymentsPage.tsx",
-  "src/features/deployments/listing.tsx",
-  "src/features/deployments/PersonFilter.tsx",
-  "src/features/deployments/bulk.tsx",
-  "src/features/deployments/actions.tsx",
-  "src/features/deployments/DeploymentDetailPage.tsx",
-  "src/features/deployments/CustomResources.tsx",
-  "src/features/deployments/properties.ts",
-  "src/features/deployments/RemoteAccess.tsx",
-  "src/features/deployments/VmProperties.tsx",
-  "src/features/deployments/ConsolePage.tsx",
-  "src/features/deployments/topology.ts",
-  "src/features/deployments/DeploymentTopology.tsx",
+  "src/features/deployments/**",
 ];
 
 // The props of rvav's building blocks and the attributes a person reads or

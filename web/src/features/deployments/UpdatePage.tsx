@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
@@ -40,7 +41,9 @@ import type {
   UpdateDraft,
   UpdatePreview,
 } from "@/lib/api/types";
+import { formatNumber, formatSize } from "@/lib/format";
 import { useDebounced } from "@/lib/hooks";
+import { i18n } from "@/lib/i18n";
 import { keys, q } from "@/lib/query";
 import { cn, newIdempotencyKey } from "@/lib/utils";
 
@@ -81,21 +84,17 @@ const controlOf = (name: string) => (name === "$version_id" ? document.getElemen
 
 /** Why a checked update can't go on to its confirmation; null when it can. */
 export function blockedBy(p: UpdatePreview, name: string): { title: string; reasons: string[] } | null {
-  if (!p.allowed) return { title: p.reason ?? `${name} can't be updated now.`, reasons: [] };
+  if (!p.allowed) return { title: p.reason ?? i18n.t("deployments:update.cantNow", { name }), reasons: [] };
   if (p.refused.length > 0)
-    return {
-      title: "These changes can't be made in place. Change them back, or delete the deployment and request it again.",
-      reasons: p.refused.map((r) => r.reason),
-    };
-  if (p.unchanged)
-    return { title: `${name} already has this version and these inputs: change an input to update it.`, reasons: [] };
+    return { title: i18n.t("deployments:update.notInPlace"), reasons: p.refused.map((r) => r.reason) };
+  if (p.unchanged) return { title: i18n.t("deployments:update.unchanged", { name }), reasons: [] };
   return null;
 }
 
 /** "3.1 → 3.2", or "3.2" when the version stays. */
 function versionLine(p: UpdatePreview) {
   return p.from_version.id === p.to_version.id
-    ? `${p.to_version.number}, unchanged`
+    ? i18n.t("deployments:update.versionSame", { number: p.to_version.number })
     : `${p.from_version.number} → ${p.to_version.number}`;
 }
 
@@ -119,13 +118,16 @@ function Summary({
   /** Why the update can't be reviewed yet: a file still sending. */
   holding?: string;
 }) {
+  const { t } = useTranslation("deployments");
   const blocked = !preview || !preview.allowed || preview.refused.length > 0 || preview.unchanged;
   return (
     <div className="lg:sticky lg:top-4" aria-busy={fetching}>
       <Panel
-        title="What the update does"
+        title={t("update.summary")}
         flush
-        actions={fetching && <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />}
+        actions={
+          fetching && <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label={t("update.updating")} />
+        }
         footer={
           <>
             {holding && (
@@ -140,7 +142,7 @@ function Summary({
               disabled={blocked || pending || Boolean(holding)}
             >
               {pending && <LoaderCircle className="animate-spin" aria-hidden />}
-              Review the update
+              {t("update.review")}
             </Button>
           </>
         }
@@ -155,7 +157,7 @@ function Summary({
         ) : (
           <>
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 px-4 py-3">
-              <dt className="text-muted">Version</dt>
+              <dt className="text-muted">{t("details.version")}</dt>
               <dd className="m-0 font-mono text-secondary">{versionLine(preview)}</dd>
             </dl>
             {!preview.allowed && (
@@ -165,32 +167,28 @@ function Summary({
             )}
             {preview.refused.length > 0 && (
               <div className="flex flex-col gap-1.5 border-t border-line bg-bad-soft px-4 py-3">
-                <span className="font-medium text-bad">Can't be changed in place</span>
-                <ul aria-label="Refused" className="flex list-disc flex-col gap-1 pl-4 text-secondary">
+                <span className="font-medium text-bad">{t("update.refused")}</span>
+                <ul aria-label={t("update.refusedList")} className="flex list-disc flex-col gap-1 pl-4 text-secondary">
                   {preview.refused.map((r, i) => (
                     <li key={`${r.component ?? ""}-${r.setting ?? ""}-${i}`}>{r.reason}</li>
                   ))}
                 </ul>
-                <span className="text-secondary text-muted">
-                  Change them back, or delete the deployment and request it again.
-                </span>
+                <span className="text-secondary text-muted">{t("update.changeBack")}</span>
               </div>
             )}
             <div className="flex flex-col gap-2 border-t border-line px-4 py-3">
-              <span className="label">Changes</span>
+              <span className="label">{t("update.changes")}</span>
               {preview.changes.length === 0 ? (
                 <span className="text-secondary text-muted">
-                  {preview.unchanged
-                    ? "Change an input to see what the update does."
-                    : "Nothing changes on the VMs: the deployment keeps the new inputs."}
+                  {preview.unchanged ? t("update.changeInput") : t("update.nothingChanges")}
                 </span>
               ) : (
-                <ol aria-label="Changes" className="flex flex-col gap-2">
+                <ol aria-label={t("update.changes")} className="flex flex-col gap-2">
                   {preview.changes.map((c, i) => (
                     <li key={`${c.kind}-${c.vm ?? ""}-${i}`} className="flex flex-col gap-0.5">
                       <span className="flex flex-wrap items-baseline gap-1.5">
                         <span className={cn("font-medium", c.destructive && "text-bad")}>{c.title}</span>
-                        {c.destructive && <Badge tone="bad">Deletes</Badge>}
+                        {c.destructive && <Badge tone="bad">{t("update.deletes")}</Badge>}
                       </span>
                       {c.detail && <span className="text-secondary text-muted">{c.detail}</span>}
                     </li>
@@ -200,16 +198,17 @@ function Summary({
             </div>
             {preview.quota.length > 0 && (
               <div className="flex flex-col gap-2.5 border-t border-line px-4 py-3">
-                <span className="label">Quota after this update</span>
+                <span className="label">{t("update.quota")}</span>
                 {tightest(preview.quota).map((l) => {
                   const [name, unit] = quotaLabel[l.resource];
                   const frees = l.adding < 0;
+                  const amount = unit === "GB" ? formatSize(-l.adding, "GB") : formatNumber(-l.adding);
+                  const freed = t("update.frees", { amount });
+                  const soft = l.exceeds && l.enforcement === "soft";
                   return (
                     <Meter
                       key={l.resource}
-                      label={`${name}${quotaWhere(l)}${
-                        frees ? ` · frees ${-l.adding}${unit ? ` ${unit}` : ""}` : ""
-                      }${l.exceeds && l.enforcement === "soft" ? " · over the soft limit" : ""}`}
+                      label={`${name}${quotaWhere(l)}${frees ? ` · ${freed}` : ""}${soft ? ` · ${t("update.overSoft")}` : ""}`}
                       unit={unit}
                       used={frees ? l.used + l.adding : l.used}
                       adding={frees ? 0 : l.adding}
@@ -219,7 +218,7 @@ function Summary({
                 })}
               </div>
             )}
-            <LimitMeters title="Limits after this update" lines={preview.limits ?? []} />
+            <LimitMeters title={t("update.limits")} lines={preview.limits ?? []} />
             <div
               className={cn(
                 "flex flex-col gap-0.5 border-t border-line px-4 py-3",
@@ -227,20 +226,15 @@ function Summary({
               )}
             >
               <span className="font-medium">
-                {preview.approval.required ? approvalTitle(preview.approval) : "No approval needed"}
+                {preview.approval.required ? approvalTitle(preview.approval) : t("update.noApproval")}
               </span>
               <span className="text-secondary">
-                {preview.approval.required
-                  ? approvalBody(preview.approval)
-                  : "The update starts as soon as you confirm it."}
+                {preview.approval.required ? approvalBody(preview.approval) : t("update.startsOnConfirm")}
               </span>
             </div>
             {Boolean(preview.warnings?.length) && (
               <div className="border-t border-line px-4 py-3">
-                <PolicyWarnings
-                  warnings={preview.warnings ?? []}
-                  note="You may update anyway: the request keeps the warning."
-                />
+                <PolicyWarnings warnings={preview.warnings ?? []} note={t("update.mayAnyway")} />
               </div>
             )}
           </>
@@ -277,6 +271,8 @@ function UpdateBody({
   /** Set when the form remounts for a version picked: the focus goes back to Version. */
   focusVersion?: RefObject<boolean>;
 }) {
+  // Also renders the text sendingText writes again on a language switch.
+  const { t } = useTranslation("deployments");
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [values, setValues] = useState(() => {
@@ -361,8 +357,8 @@ function UpdateBody({
       void qc.invalidateQueries({ queryKey: keys.deployments.history(d.id) });
       void qc.invalidateQueries({ queryKey: keys.requests.lists() });
       void qc.invalidateQueries({ queryKey: keys.vms.all });
-      toast.success(`${r.number} submitted`, {
-        description: r.status === "pending_approval" ? "Waiting for approval." : "The update has started.",
+      toast.success(t("update.submitted", { number: r.number }), {
+        description: r.status === "pending_approval" ? t("update.waiting") : t("update.started"),
       });
       void navigate({ to: "/requests/$requestId", params: { requestId: r.number } });
     },
@@ -392,8 +388,10 @@ function UpdateBody({
         retired(e.fieldErrors);
         return;
       }
-      toast.error(isApiError(e) ? e.problem.title : "The update was not sent", {
-        description: isApiError(e) ? `${e.problem.detail ?? ""} Request ID ${e.requestId}`.trim() : undefined,
+      toast.error(isApiError(e) ? e.problem.title : t("update.notSent"), {
+        description: isApiError(e)
+          ? t("update.requestId", { detail: e.problem.detail ?? "", id: e.requestId }).trim()
+          : undefined,
       });
     },
   });
@@ -411,7 +409,7 @@ function UpdateBody({
     .filter((name) => !placed.includes(name))
     .map((name) => ({
       key: name,
-      ...(name === "$version_id" ? { label: "Version" } : { label: name, code: true }),
+      ...(name === "$version_id" ? { label: t("details.version") } : { label: name, code: true }),
       message: fieldErrors[name]!,
     }));
   const focusFirst = () => {
@@ -451,7 +449,7 @@ function UpdateBody({
           ),
       });
     } catch (e) {
-      toast.error(isApiError(e) ? e.problem.title : "The update couldn't be checked", {
+      toast.error(isApiError(e) ? e.problem.title : t("update.notChecked"), {
         description: isApiError(e) ? e.problem.detail : undefined,
       });
       return;
@@ -480,12 +478,12 @@ function UpdateBody({
   const holding = sendingText(useSendingFiles());
   const secrets = Object.entries(d.inputs).some(([k, v]) => v === masked && fields[k]?.secret);
   const reason = (
-    <Panel as="fieldset" title="Reason">
-      <Field label="Reason" htmlFor="justification" hint="Approvers read it.">
+    <Panel as="fieldset" title={t("update.reason")}>
+      <Field label={t("update.reason")} htmlFor="justification" hint={t("update.reasonHint")}>
         <Textarea
           id="justification"
           rows={2}
-          placeholder="Why does it change? Add a ticket number if there is one."
+          placeholder={t("update.reasonPlaceholder")}
           value={justification}
           onChange={(e) => setJustification(e.target.value)}
         />
@@ -515,15 +513,13 @@ function UpdateBody({
       <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4">
         {attention.length > 0 && <Attention ref={attentionRef} count={attention.length} unplaced={unplaced} />}
         {secrets && (
-          <p className="rounded-lg border border-line bg-sunken px-4 py-3 text-secondary">
-            rvav doesn't show the secret inputs: give them again.
-          </p>
+          <p className="rounded-lg border border-line bg-sunken px-4 py-3 text-secondary">{t("update.secrets")}</p>
         )}
         <FormRenderer
           form={form}
           values={values}
           onChange={setValue}
-          onBlur={(name) => setTouched((t) => (t.has(name) ? t : new Set(t).add(name)))}
+          onBlur={(name) => setTouched((was) => (was.has(name) ? was : new Set(was).add(name)))}
           errors={fieldErrors}
           ctx={{ versionId: form.version_id, projectId: d.project.id, environment: d.environment }}
           fieldStates={p?.fields}
@@ -554,7 +550,7 @@ function UpdateBody({
                 onClick={() => void review()}
                 disabled={submit.isPending || Boolean(holding)}
               >
-                Review the update
+                {t("update.review")}
               </Button>
             ),
             holding,
@@ -610,20 +606,22 @@ function ConfirmUpdate({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useTranslation("deployments");
   const destructive = p.changes.filter((c) => c.destructive);
-  const what = p.changes.length === 1 ? "this change" : `these ${p.changes.length} changes`;
   const rest = p.changes.length - destructive.length;
+  const warned = Boolean(p.warnings?.length);
+  const confirmLabel = p.approval.required
+    ? t(warned ? "update.confirm.submitAnyway" : "update.confirm.submit")
+    : t(warned ? "update.confirm.updateAnyway" : "update.confirm.update");
   return (
     <ConfirmDialog
       open
       onOpenChange={(open) => !open && onCancel()}
-      title={`Update ${name}?`}
+      title={t("update.confirm.title", { name })}
       description={
         p.changes.length === 0
-          ? "Nothing changes on the VMs: the deployment keeps the new inputs."
-          : p.approval.required
-            ? `It waits for approval, then makes ${what}.`
-            : `rvav makes ${what} now.`
+          ? t("update.nothingChanges")
+          : t(p.approval.required ? "update.confirm.approval" : "update.confirm.now", { count: p.changes.length })
       }
       consequences={
         (p.changes.length > 0 || Boolean(p.warnings?.length)) && (
@@ -632,23 +630,23 @@ function ConfirmUpdate({
               <ul className="flex list-disc flex-col gap-0.5 pl-4">
                 {(destructive.length ? destructive : p.changes).map((c, i) => (
                   <li key={`${c.kind}-${c.vm ?? ""}-${i}`}>
-                    {c.title}
-                    {c.destructive && c.detail ? `: ${c.detail.charAt(0).toLowerCase()}${c.detail.slice(1)}` : ""}
+                    {c.destructive && c.detail
+                      ? t("update.changeDetail", {
+                          title: c.title,
+                          detail: `${c.detail.charAt(0).toLowerCase()}${c.detail.slice(1)}`,
+                        })
+                      : c.title}
                   </li>
                 ))}
-                {destructive.length > 0 && rest > 0 && (
-                  <li>
-                    and {rest} more change{rest === 1 ? "" : "s"}
-                  </li>
-                )}
+                {destructive.length > 0 && rest > 0 && <li>{t("update.more", { count: rest })}</li>}
               </ul>
             )}
             <PolicyWarnings warnings={p.warnings ?? []} note="" refusal={refused} />
           </div>
         )
       }
-      confirmLabel={`${p.approval.required ? "Submit for approval" : "Update"}${p.warnings?.length ? " anyway" : ""}`}
-      cancelLabel="Keep editing"
+      confirmLabel={confirmLabel}
+      cancelLabel={t("update.confirm.keepEditing")}
       tone={destructive.length ? "danger" : "primary"}
       pending={pending}
       onConfirm={onConfirm}
@@ -657,6 +655,7 @@ function ConfirmUpdate({
 }
 
 export function UpdatePage({ deploymentId }: { deploymentId: string }) {
+  const { t } = useTranslation("deployments");
   const dep = useQuery(q.deployment(deploymentId));
   const d = dep.data;
   const slug = d?.catalog_item.slug ?? "";
@@ -671,14 +670,14 @@ export function UpdatePage({ deploymentId }: { deploymentId: string }) {
       <PageHeader
         breadcrumbs={
           <Breadcrumbs>
-            <Link to="/deployments">Deployments</Link>
+            <Link to="/deployments">{t("list.title")}</Link>
             <Link to="/deployments/$deploymentId" params={{ deploymentId }}>
               {d?.name ?? "…"}
             </Link>
           </Breadcrumbs>
         }
-        title={d ? `Update ${d.name}` : <Skeleton className="h-5 w-56" />}
-        description="Change its inputs, or move it to another version of the item. Review what changes before it runs."
+        title={d ? t("update.title", { name: d.name }) : <Skeleton className="h-5 w-56" />}
+        description={t("update.lead")}
         meta={d && <UpdateMeta d={d} item={item.data} />}
       />
       {error ? (
@@ -721,20 +720,19 @@ function VersionPicker({
   onChange: (versionId: string) => void;
   error?: string;
 }) {
+  const { t } = useTranslation("deployments");
   const label = (v: { id: string; number: string }) =>
     v.id === item.version.id
-      ? `${v.number} (newest)`
+      ? t("update.version.newest", { number: v.number })
       : v.id === d.version.id
-        ? `${v.number} (this deployment's)`
+        ? t("update.version.own", { number: v.number })
         : v.number;
   return (
     <Field
-      label="Version"
+      label={t("details.version")}
       htmlFor="version"
       error={error}
-      hint={
-        value === d.version.id ? "Its own version: the update changes its inputs." : "Its inputs move to this version."
-      }
+      hint={value === d.version.id ? t("update.version.ownHint") : t("update.version.moveHint")}
     >
       <Select
         id="version"
@@ -747,6 +745,7 @@ function VersionPicker({
 }
 
 function UpdateMeta({ d, item }: { d: DeploymentDetail; item?: CatalogItem }) {
+  const { t } = useTranslation("deployments");
   return (
     <>
       <span className="flex items-center gap-1.5">
@@ -754,7 +753,9 @@ function UpdateMeta({ d, item }: { d: DeploymentDetail; item?: CatalogItem }) {
       </span>
       <span>
         {d.catalog_item.name} {d.version.number}
-        {item && item.version.id !== d.version.id ? ` · version ${item.version.number} is out` : ""}
+        {item && item.version.id !== d.version.id
+          ? ` · ${t("update.version.out", { number: item.version.number })}`
+          : ""}
       </span>
     </>
   );
