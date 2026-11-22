@@ -117,3 +117,15 @@ describe("the form designer's layout", () => {
     expect(within(preview).getByRole("group", { name: "Size" })).toBeInTheDocument();
   }, 15_000);
 });
+
+describe("the form designer's fields", () => {
+  it("leaves the focus on a field moved to the top by keyboard, on the arrow that still moves it", async () => {
+    const { user, fields } = await openDesigner();
+    const up = within(fields).getByRole("button", { name: "Move VM name up" });
+    act(() => up.focus());
+    await user.keyboard("{Enter}");
+    expect(await within(fields).findByText("VM name moved to position 1 of 2 in Basics.")).toBeInTheDocument();
+    await waitFor(() => expect(within(fields).getByRole("button", { name: "Move VM name down" })).toHaveFocus());
+    expect(up).toBeDisabled();
+  }, 15_000);
+});

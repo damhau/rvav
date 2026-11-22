@@ -297,7 +297,9 @@ routes.
 - The focus never falls to the page. A `Button` that turns disabled while
   it has the focus, such as a submit button while its save runs, keeps
   it: it says `aria-disabled` and ignores presses until the focus
-  leaves, then is disabled. What a save removes or replaces hands the
+  leaves, then is disabled. Code that picks where the focus goes next
+  passes over it as a disabled one, as the form designer's arrows do
+  after a move. What a save removes or replaces hands the
   focus to what stands in for it: the field a suggestion filled, a
   template's status line.
 - A failed load says so and offers **Try again**, in a menu too: never an

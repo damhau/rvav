@@ -32,7 +32,8 @@ export function focusLater(...ids: string[]) {
   requestAnimationFrame(() => {
     for (const id of ids) {
       const el = document.getElementById(id) as HTMLButtonElement | null;
-      if (el && !el.disabled) return el.focus();
+      // A Button that turns disabled while focused is only aria-disabled until the focus leaves it.
+      if (el && !el.disabled && el.getAttribute("aria-disabled") !== "true") return el.focus();
     }
   });
 }
