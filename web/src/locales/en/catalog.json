@@ -1,1 +1,68 @@
-{}
+{
+  "approval": {
+    "hint": {
+      "never": "No approval",
+      "conditional": "Approval in production",
+      "always": "Needs approval"
+    },
+    "text": {
+      "never": "No approval needed",
+      "conditional": "Needs approval in production",
+      "always": "Always needs approval"
+    }
+  },
+  "favourite": {
+    "notUpdated": "Couldn't update your favourites",
+    "requestId": "Request ID {{id}}",
+    "add": "Add {{name}} to favourites",
+    "remove": "Remove {{name}} from favourites",
+    "button": "Favourite"
+  },
+  "page": {
+    "title": "Catalog",
+    "leadMayRequest": "What you can request in {{project}}. Open an item to see what it builds, then request it.",
+    "leadMayNotRequest": "What {{project}} offers. Your roles in {{project}} don't let you request: open an item to see what it builds.",
+    "search": "Search the catalog",
+    "searchPlaceholder": "Search by name or summary",
+    "category": "Category",
+    "allCategories": "All categories",
+    "kind": "Kind",
+    "allKinds": "All kinds",
+    "clear": "Clear filters",
+    "count_one": "{{count}} item",
+    "count_other": "{{count}} items",
+    "noMatch": "No items match",
+    "noMatchBody": "Try other words or another category. Ask a catalog administrator if something you need is missing.",
+    "nothingShared": "Nothing is shared with {{project}} yet",
+    "nothingSharedBody": "Catalog administrators share items with projects. Ask them for what you need, or switch to another project.",
+    "requestItem": "Request<sr> {{name}}</sr>"
+  },
+  "item": {
+    "title": "Catalog item",
+    "request": "Request",
+    "mayNotRequest": "Your roles in {{project}} don't let you request",
+    "about": "About this item",
+    "whatItDoes": "What it does",
+    "launchesJobTemplate": "Launches the AWX job template {{name}} with what you fill in.",
+    "launchesWorkflow": "Launches the AWX workflow {{name}} with what you fill in.",
+    "runsSteps": "Runs its steps with what you fill in. It builds no VMs of its own.",
+    "stepsInOrder": "Steps, in the order they run",
+    "whatItBuilds": "What it builds",
+    "stepsOf": "Steps of {{name}}",
+    "topologyOf": "Topology of {{name}}",
+    "details": "Details",
+    "kind": "Kind",
+    "category": "Category",
+    "version": "Version",
+    "published": "· published <time/>",
+    "newestOf": "The newest. Requests use it unless you pick {{versions}}, still offered.",
+    "usesPublished": "Requests use the published version.",
+    "approval": "Approval",
+    "usuallyTakes": "Usually takes",
+    "awxTemplate": "AWX template",
+    "tags": "Tags",
+    "requested": "Requested",
+    "requestedTimes_one": "{{count}} time in the last 30 days",
+    "requestedTimes_other": "{{count}} times in the last 30 days"
+  }
+}

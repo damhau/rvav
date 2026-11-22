@@ -1,4 +1,5 @@
 import type { CatalogItem, CatalogItemType } from "@/lib/api/types";
+import { i18n } from "@/lib/i18n";
 
 export const catalogKinds: CatalogItemType[] = [
   "vm_blueprint",
@@ -9,18 +10,10 @@ export const catalogKinds: CatalogItemType[] = [
 ];
 
 /** What a card says of the approval an item needs, kept short. */
-export const approvalHint = {
-  never: "No approval",
-  conditional: "Approval in production",
-  always: "Needs approval",
-} as const;
+export const approvalHint = (a: CatalogItem["approval"]) => i18n.t(`catalog:approval.hint.${a}`);
 
 /** The same, as a sentence on the item's page. */
-export const approvalText = {
-  never: "No approval needed",
-  conditional: "Needs approval in production",
-  always: "Always needs approval",
-} as const;
+export const approvalText = (a: CatalogItem["approval"]) => i18n.t(`catalog:approval.text.${a}`);
 
 /** `v3.2`, or AWX's own `AWX #47`. */
 export const versionLabel = (item: Pick<CatalogItem, "version">) =>

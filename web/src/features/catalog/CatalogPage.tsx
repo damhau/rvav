@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LayoutGrid, SearchX } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
@@ -25,6 +26,7 @@ export interface CatalogSearch {
 }
 
 function Card({ item, mayRequest }: { item: CatalogItem; mayRequest: boolean }) {
+  const { t } = useTranslation("catalog");
   const duration = roughDuration(item.typical_duration_seconds);
   return (
     <div className="relative flex flex-col gap-3 rounded-lg border border-line bg-surface p-4 transition-colors focus-within:border-line-strong hover:border-line-strong">
@@ -56,13 +58,18 @@ function Card({ item, mayRequest }: { item: CatalogItem; mayRequest: boolean }) 
         )}
         {item.approval !== "never" && (
           <span className="rounded-sm bg-warn-soft px-1.5 py-px font-medium text-warn">
-            {approvalHint[item.approval]}
+            {approvalHint(item.approval)}
           </span>
         )}
         {mayRequest && (
           <Button asChild size="sm" className="relative z-10 ml-auto">
             <Link to="/catalog/$itemId/request" params={{ itemId: item.slug }}>
-              Request<span className="sr-only"> {item.name}</span>
+              <Trans
+                t={t}
+                i18nKey="page.requestItem"
+                values={{ name: item.name }}
+                components={{ sr: <span className="sr-only" /> }}
+              />
             </Link>
           </Button>
         )}
@@ -72,6 +79,7 @@ function Card({ item, mayRequest }: { item: CatalogItem; mayRequest: boolean }) 
 }
 
 export function CatalogPage({ search }: { search: CatalogSearch }) {
+  const { t } = useTranslation("catalog");
   const { projectId, project, me } = useCurrentProject();
   const mayRequest = can(me, "request.submit", projectId);
   const navigate = useNavigate({ from: "/catalog/" });
@@ -94,49 +102,45 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
   return (
     <Page>
       <PageHeader
-        title="Catalog"
-        description={
-          mayRequest
-            ? `What you can request in ${project.name}. Open an item to see what it builds, then request it.`
-            : `What ${project.name} offers. Your roles in ${project.name} don't let you request: open an item to see what it builds.`
-        }
+        title={t("page.title")}
+        description={t(mayRequest ? "page.leadMayRequest" : "page.leadMayNotRequest", { project: project.name })}
       />
       <div className="flex flex-wrap items-center gap-2">
         <TableSearch
-          label="Search the catalog"
-          placeholder="Search by name or summary"
+          label={t("page.search")}
+          placeholder={t("page.searchPlaceholder")}
           value={text}
           onChange={setText}
           className="w-72"
         />
         <Select
-          aria-label="Category"
+          aria-label={t("page.category")}
           value={search.category ?? "any"}
           onChange={(v) => set({ category: v === "any" ? undefined : v })}
           loading={categories.isPending}
           options={[
-            { value: "any", label: "All categories" },
+            { value: "any", label: t("page.allCategories") },
             ...(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name, meta: String(c.item_count) })),
           ]}
           className="w-48"
         />
         <Select
-          aria-label="Kind"
+          aria-label={t("page.kind")}
           value={search.type ?? "any"}
           onChange={(v) => set({ type: v === "any" ? undefined : (v as CatalogItemType) })}
           options={[
-            { value: "any", label: "All kinds" },
-            ...catalogKinds.map((t) => ({ value: t, label: itemTypeLabel(t) })),
+            { value: "any", label: t("page.allKinds") },
+            ...catalogKinds.map((k) => ({ value: k, label: itemTypeLabel(k) })),
           ]}
           className="w-48"
         />
         {filtered && (
           <Button variant="quiet" onClick={clear}>
-            Clear filters
+            {t("page.clear")}
           </Button>
         )}
         <span className="ml-auto text-secondary text-muted" aria-live="polite">
-          {count === undefined ? "" : `${count} ${count === 1 ? "item" : "items"}`}
+          {count === undefined ? "" : t("page.count", { count })}
         </span>
       </div>
       {items.isPending ? (
@@ -156,15 +160,15 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
           {filtered ? (
             <EmptyState
               icon={SearchX}
-              title="No items match"
-              body="Try other words or another category. Ask a catalog administrator if something you need is missing."
-              action={<Button onClick={clear}>Clear filters</Button>}
+              title={t("page.noMatch")}
+              body={t("page.noMatchBody")}
+              action={<Button onClick={clear}>{t("page.clear")}</Button>}
             />
           ) : (
             <EmptyState
               icon={LayoutGrid}
-              title={`Nothing is shared with ${project.name} yet`}
-              body="Catalog administrators share items with projects. Ask them for what you need, or switch to another project."
+              title={t("page.nothingShared", { project: project.name })}
+              body={t("page.nothingSharedBody")}
             />
           )}
         </div>

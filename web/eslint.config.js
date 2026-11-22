@@ -21,6 +21,7 @@ const translated = [
   "src/features/account/**",
   "src/features/overview/**",
   "src/features/notifications/**",
+  "src/features/catalog/**",
 ];
 
 // The props of rvav's building blocks and the attributes a person reads or

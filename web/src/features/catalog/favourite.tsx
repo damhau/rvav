@@ -1,8 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api, call, isApiError } from "@/lib/api/client";
+import { i18n } from "@/lib/i18n";
 import type { CatalogItem, CatalogItemPage } from "@/lib/api/types";
 import { keys } from "@/lib/query";
 import { cn } from "@/lib/utils";
@@ -32,8 +34,8 @@ function useFavourite(item: CatalogItem) {
     },
     onError: (e, _fav, ctx) => {
       ctx?.snapshot.forEach(([key, data]) => qc.setQueryData(key, data));
-      toast.error("Couldn't update your favourites", {
-        description: isApiError(e) ? `Request ID ${e.requestId}` : undefined,
+      toast.error(i18n.t("catalog:favourite.notUpdated"), {
+        description: isApiError(e) ? i18n.t("catalog:favourite.requestId", { id: e.requestId }) : undefined,
       });
     },
     onSettled: () => void qc.invalidateQueries({ queryKey: keys.catalog.all }),
@@ -42,12 +44,13 @@ function useFavourite(item: CatalogItem) {
 
 /** The star on a catalog card: a toggle named after the item. */
 export function FavouriteStar({ item }: { item: CatalogItem }) {
+  const { t } = useTranslation("catalog");
   const mutation = useFavourite(item);
   return (
     <button
       type="button"
       aria-pressed={item.favourite}
-      aria-label={item.favourite ? `Remove ${item.name} from favourites` : `Add ${item.name} to favourites`}
+      aria-label={t(item.favourite ? "favourite.remove" : "favourite.add", { name: item.name })}
       onClick={() => mutation.mutate(!item.favourite)}
       className="relative z-10 -m-1 rounded-sm p-1 text-faint hover:text-warn"
     >
@@ -58,11 +61,12 @@ export function FavouriteStar({ item }: { item: CatalogItem }) {
 
 /** The same toggle as a button with its text, for an item's page. */
 export function FavouriteButton({ item }: { item: CatalogItem }) {
+  const { t } = useTranslation("catalog");
   const mutation = useFavourite(item);
   return (
     <Button aria-pressed={item.favourite} onClick={() => mutation.mutate(!item.favourite)}>
       <Star className={cn(item.favourite && "fill-warn text-warn")} aria-hidden />
-      Favourite
+      {t("favourite.button")}
     </Button>
   );
 }

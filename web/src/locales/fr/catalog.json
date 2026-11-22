@@ -1,1 +1,70 @@
-{}
+{
+  "approval": {
+    "hint": {
+      "never": "Sans approbation",
+      "conditional": "Approbation en production",
+      "always": "Approbation requise"
+    },
+    "text": {
+      "never": "Aucune approbation requise",
+      "conditional": "Approbation requise en production",
+      "always": "Approbation toujours requise"
+    }
+  },
+  "favourite": {
+    "notUpdated": "Vos favoris n'ont pas pu être mis à jour",
+    "requestId": "ID de la requête {{id}}",
+    "add": "Ajouter {{name}} aux favoris",
+    "remove": "Retirer {{name}} des favoris",
+    "button": "Favori"
+  },
+  "page": {
+    "title": "Catalogue",
+    "leadMayRequest": "Ce que vous pouvez demander dans {{project}}. Ouvrez un élément pour voir ce qu'il construit, puis demandez-le.",
+    "leadMayNotRequest": "Ce que {{project}} propose. Vos rôles dans {{project}} ne vous permettent pas de faire des demandes\u00a0: ouvrez un élément pour voir ce qu'il construit.",
+    "search": "Rechercher dans le catalogue",
+    "searchPlaceholder": "Rechercher par nom ou par résumé",
+    "category": "Catégorie",
+    "allCategories": "Toutes les catégories",
+    "kind": "Type",
+    "allKinds": "Tous les types",
+    "clear": "Effacer les filtres",
+    "count_one": "{{count}} élément",
+    "count_many": "{{count}} éléments",
+    "count_other": "{{count}} éléments",
+    "noMatch": "Aucun élément ne correspond",
+    "noMatchBody": "Essayez d'autres mots ou une autre catégorie. S'il vous manque quelque chose, demandez-le à un administrateur du catalogue.",
+    "nothingShared": "Rien n'est encore partagé avec {{project}}",
+    "nothingSharedBody": "Les administrateurs du catalogue partagent les éléments avec les projets. Demandez-leur ce dont vous avez besoin, ou passez à un autre projet.",
+    "requestItem": "Demander<sr> {{name}}</sr>"
+  },
+  "item": {
+    "title": "Élément de catalogue",
+    "request": "Demander",
+    "mayNotRequest": "Vos rôles dans {{project}} ne vous permettent pas de faire des demandes",
+    "about": "À propos de cet élément",
+    "whatItDoes": "Ce qu'il fait",
+    "launchesJobTemplate": "Lance le modèle de job AWX {{name}} avec ce que vous remplissez.",
+    "launchesWorkflow": "Lance le workflow AWX {{name}} avec ce que vous remplissez.",
+    "runsSteps": "Exécute ses étapes avec ce que vous remplissez. Il ne construit aucune VM lui-même.",
+    "stepsInOrder": "Étapes, dans l'ordre d'exécution",
+    "whatItBuilds": "Ce qu'il construit",
+    "stepsOf": "Étapes de {{name}}",
+    "topologyOf": "Topologie de {{name}}",
+    "details": "Détails",
+    "kind": "Type",
+    "category": "Catégorie",
+    "version": "Version",
+    "published": "· publiée <time/>",
+    "newestOf": "La plus récente. Les demandes l'utilisent, sauf si vous choisissez {{versions}}, toujours proposée.",
+    "usesPublished": "Les demandes utilisent la version publiée.",
+    "approval": "Approbation",
+    "usuallyTakes": "Durée habituelle",
+    "awxTemplate": "Modèle AWX",
+    "tags": "Tags",
+    "requested": "Demandé",
+    "requestedTimes_one": "{{count}} fois ces 30 derniers jours",
+    "requestedTimes_many": "{{count}} fois ces 30 derniers jours",
+    "requestedTimes_other": "{{count}} fois ces 30 derniers jours"
+  }
+}
