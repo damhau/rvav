@@ -142,4 +142,7 @@ type CustomProps struct {
 	Inputs       map[string]any     `json:"inputs,omitempty"`
 	Properties   map[string]any     `json:"properties"`
 	Titles       map[string]string  `json:"property_titles,omitempty"`
+	// Creating is set while its create runs, and stays when create failed:
+	// what it made, if anything, is deleted by the type's delete then.
+	Creating bool `json:"creating,omitempty"`
 }

@@ -11074,6 +11074,14 @@ components:
               type: object
               description: The titles the type's property schema gives its properties.
               additionalProperties: { type: string }
+            creating:
+              type: boolean
+              description: |
+                Its create is running, or failed part way: what it made, if
+                anything, isn't known, and `properties` is empty. A rollback
+                or the deployment's deletion runs the type's delete with
+                `resource.creating` true, the create's inputs and no
+                properties.
     GroupRef:
       description: An NSX security group, by its ID and name.
       type: object

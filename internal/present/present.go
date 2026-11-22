@@ -543,6 +543,9 @@ func Resource(r store.Resource, links map[string]store.VCenterLink) (api.Resourc
 		if len(p.Titles) > 0 {
 			v.PropertyTitles = &p.Titles
 		}
+		if p.Creating {
+			v.Creating = &p.Creating
+		}
 		err := out.FromCustomResource(v)
 		return out, err == nil
 	case "vsphere.drs_rule":

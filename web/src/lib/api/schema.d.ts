@@ -8396,6 +8396,14 @@ export interface components {
             property_titles?: {
                 [key: string]: string;
             };
+            /**
+             * @description Its create is running, or failed part way: what it made, if
+             *     anything, isn't known, and `properties` is empty. A rollback
+             *     or the deployment's deletion runs the type's delete with
+             *     `resource.creating` true, the create's inputs and no
+             *     properties.
+             */
+            creating?: boolean;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript

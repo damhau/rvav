@@ -13,6 +13,19 @@ import (
 const stepCols = `id, request_id, parent_id, position, key, title, detail, system, status, started_at,
 	finished_at, error, external_kind, external_id, external_url, has_log, outputs, inputs, due_at`
 
+// PutStep adds a top-level step after the others, or changes the one of its
+// key: a rollback's, which each rollback writes again.
+func (s *Store) PutStep(ctx context.Context, db DB, st Step) (Step, error) {
+	rows, _ := db.Query(ctx, `insert into request_steps (id, request_id, position, key, title, detail, system, status,
+			started_at, finished_at, error)
+		values ($1, $2, (select coalesce(max(position) + 1, 0) from request_steps where request_id = $2 and parent_id is null),
+			$3, $4, $5, $6, $7, $8, $9, $10)
+		on conflict (request_id, key) do update set title = excluded.title, detail = excluded.detail, system = excluded.system,
+			status = excluded.status, started_at = excluded.started_at, finished_at = excluded.finished_at, error = excluded.error
+		returning `+stepCols, st.ID, st.RequestID, st.Key, st.Title, st.Detail, st.System, st.Status, st.StartedAt, st.FinishedAt, st.Error)
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Step])
+}
+
 // InsertSteps creates the pending top-level steps of a request.
 func (s *Store) InsertSteps(ctx context.Context, db DB, steps []Step) error {
 	for _, st := range steps {

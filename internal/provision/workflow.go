@@ -3,6 +3,7 @@ package provision
 import (
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
@@ -142,10 +143,7 @@ func Provision(ctx workflow.Context, requestID string) error {
 		return workflow.NewContinueAsNewError(ctx, Provision, requestID)
 	default:
 		if info.Plan.Rollback {
-			rollbackResources(ctx, info, false)
-			if rbErr := workflow.ExecuteActivity(ctx, a.Rollback, requestID, info.ProjectID).Get(ctx, nil); rbErr != nil {
-				workflow.GetLogger(ctx).Error("rollback after failure", "err", rbErr)
-			}
+			rollBackAfter(ctx, info, "rollback after failure")
 		}
 		return workflow.ExecuteActivity(ctx, a.Finish, FinishInput{RequestID: requestID, ProjectID: info.ProjectID,
 			Outcome: "failed", StepKey: failedStep, Message: errMessage(err)}).Get(ctx, nil)
@@ -259,12 +257,44 @@ func awaitApprovals(ctx workflow.Context, info Info) (approved, cancelled bool, 
 func RollbackWorkflow(ctx workflow.Context, requestID string) error {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 	var a *Activities
-	msg := ""
-	rollbackResources(ctx, Info{RequestID: requestID}, true)
-	if err := workflow.ExecuteActivity(ctx, a.Rollback, requestID, "").Get(ctx, nil); err != nil {
-		msg = errMessage(err)
-	}
+	msg := rollBack(ctx, Info{RequestID: requestID}, true)
 	return workflow.ExecuteActivity(ctx, a.RolledBack, requestID, msg).Get(ctx, nil)
+}
+
+// versionRollbackStops: a rollback stops before the VMs when a custom
+// resource, which may use them, wasn't deleted, and says so (E1.6).
+const versionRollbackStops = "rollback-stops"
+
+func rollbackStops(ctx workflow.Context) bool {
+	return workflow.GetVersion(ctx, versionRollbackStops, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+}
+
+// rollBack deletes what a failed request made: its custom resources first,
+// then the rest, which stays when one of those wasn't deleted (ADR-0056).
+// It says why it didn't finish; "" when it did.
+func rollBack(ctx workflow.Context, info Info, force bool) string {
+	var a *Activities
+	if failed := rollbackResources(ctx, info, force); len(failed) > 0 && rollbackStops(ctx) {
+		return "Its custom resources weren't all deleted, so what they may use stays: " + strings.Join(failed, "; ")
+	}
+	if err := workflow.ExecuteActivity(ctx, a.Rollback, info.RequestID, info.ProjectID).Get(ctx, nil); err != nil {
+		return errMessage(err)
+	}
+	return ""
+}
+
+// rollBackAfter is the rollback of a request that failed or was cancelled:
+// one that didn't finish is the timeline's "Roll back failed".
+func rollBackAfter(ctx workflow.Context, info Info, what string) {
+	var a *Activities
+	msg := rollBack(ctx, info, false)
+	if msg == "" {
+		return
+	}
+	workflow.GetLogger(ctx).Error(what, "err", msg)
+	if rollbackStops(ctx) {
+		_ = workflow.ExecuteActivity(ctx, a.RollbackFailed, info.RequestID, info.ProjectID, msg).Get(ctx, nil)
+	}
 }
 
 // finishCancelled rolls back (when something may have been created) and
@@ -274,10 +304,7 @@ func finishCancelled(ctx workflow.Context, info Info, rollback bool) error {
 	dctx, _ := workflow.NewDisconnectedContext(ctx)
 	dctx = workflow.WithActivityOptions(dctx, activityOptions)
 	if rollback {
-		rollbackResources(dctx, info, false)
-		if err := workflow.ExecuteActivity(dctx, a.Rollback, info.RequestID, info.ProjectID).Get(dctx, nil); err != nil {
-			workflow.GetLogger(ctx).Error("rollback after cancel", "err", err)
-		}
+		rollBackAfter(dctx, info, "rollback after cancel")
 	}
 	return workflow.ExecuteActivity(dctx, a.Finish, FinishInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Outcome: "cancelled"}).Get(dctx, nil)
 }

@@ -11,7 +11,6 @@ import (
 	"go.temporal.io/sdk/activity"
 
 	"github.com/damhau/rvav/internal/day2"
-	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/vmprops"
@@ -385,12 +384,7 @@ func (a *Activities) RolledBack(ctx context.Context, requestID, errMsg string) e
 	status := "deleted"
 	if errMsg != "" {
 		status = "failed"
-		now := time.Now().UTC()
-		sys := "rvav"
-		steps, _ := a.Store.ListSteps(ctx, requestID)
-		st := store.Step{ID: ids.New(ids.Step), RequestID: requestID, Position: len(steps), Key: "rollback", Title: "Roll back failed",
-			System: &sys, Status: "failed", StartedAt: &now, FinishedAt: &now, Error: &errMsg}
-		if err := a.Store.InsertSteps(ctx, a.Store.Pool, []store.Step{st}); err != nil && !store.IsUniqueViolation(err) {
+		if err := a.rollbackStep(ctx, requestID, r.ProjectID, "Roll back failed", "", errMsg); err != nil {
 			return err
 		}
 	}

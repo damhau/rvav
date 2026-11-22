@@ -1954,22 +1954,36 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 		}
 	}
 	// Add a step so the timeline shows what was undone.
-	steps, _ := a.Store.ListSteps(ctx, requestID)
-	pos := 0
-	for _, s := range steps {
-		if s.ParentID == nil && s.Position >= pos {
-			pos = s.Position + 1
+	return a.rollbackStep(ctx, requestID, projectID, "Rolled back", strings.Join(done, ", "), "")
+}
+
+// rollbackStep is the timeline's step for a rollback: "Rolled back", or
+// "Roll back failed" with why. A later rollback writes it again.
+func (a *Activities) rollbackStep(ctx context.Context, requestID, projectID, title, detail, errMsg string) error {
+	if projectID == "" {
+		if r, err := a.Store.GetRequest(ctx, requestID); err == nil {
+			projectID = r.ProjectID
 		}
 	}
 	now := time.Now().UTC()
 	sys := "rvav"
-	st := store.Step{ID: ids.New(ids.Step), RequestID: requestID, Position: pos, Key: "rollback", Title: "Rolled back",
-		Detail: strings.Join(done, ", "), System: &sys, Status: "done", StartedAt: &now, FinishedAt: &now}
-	if err := a.Store.InsertSteps(ctx, a.Store.Pool, []store.Step{st}); err != nil && !store.IsUniqueViolation(err) {
+	st := store.Step{ID: ids.New(ids.Step), RequestID: requestID, Key: "rollback", Title: title, Detail: detail, System: &sys,
+		Status: "done", StartedAt: &now, FinishedAt: &now}
+	if errMsg != "" {
+		st.Status, st.Error = "failed", &errMsg
+	}
+	st, err := a.Store.PutStep(ctx, a.Store.Pool, st)
+	if err != nil {
 		return err
 	}
 	a.Events.Step(ctx, projectID, requestID, st)
 	return nil
+}
+
+// RollbackFailed records a rollback that didn't finish: its custom
+// resources weren't all deleted, so what they may use stays (ADR-0056).
+func (a *Activities) RollbackFailed(ctx context.Context, requestID, projectID, errMsg string) error {
+	return a.rollbackStep(ctx, requestID, projectID, "Roll back failed", "", errMsg)
 }
 
 func deploymentsOf(list []store.Resource) []string {

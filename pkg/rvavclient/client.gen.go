@@ -5361,7 +5361,13 @@ type CustomProperties map[string]string
 // CustomResource A resource of a custom resource type (ADR-0056): the type's custom
 // workflow or AWX template made it, and deletes it with the deployment.
 type CustomResource struct {
-	Id string `json:"id"`
+	// Creating Its create is running, or failed part way: what it made, if
+	// anything, isn't known, and `properties` is empty. A rollback
+	// or the deployment's deletion runs the type's delete with
+	// `resource.creating` true, the create's inputs and no
+	// properties.
+	Creating *bool  `json:"creating,omitempty"`
+	Id       string `json:"id"`
 
 	// Key Its key in the blueprint (`resources[].key`), or the key of the composite step that made it.
 	//

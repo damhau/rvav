@@ -199,26 +199,30 @@ func runResource(ctx workflow.Context, info Info, stepKey string, run ResourceRu
 }
 
 // rollbackResources deletes the custom resources a failed request made,
-// the last made first, before the rest of the rollback.
-func rollbackResources(ctx workflow.Context, info Info, force bool) {
+// the last made first, before the rest of the rollback. It says which it
+// couldn't delete, and why.
+func rollbackResources(ctx workflow.Context, info Info, force bool) []string {
 	if !force && !info.Plan.makesResources() {
-		return
+		return nil
 	}
 	if workflow.GetVersion(ctx, versionResources, workflow.DefaultVersion, 1) == workflow.DefaultVersion {
-		return
+		return nil
 	}
 	var a *Activities
 	var list []RolledBackResource
 	if err := workflow.ExecuteActivity(ctx, a.RequestResources, info.RequestID).Get(ctx, &list); err != nil {
 		workflow.GetLogger(ctx).Error("custom resources to roll back", "err", err)
-		return
+		return []string{"its custom resources: " + errMessage(err)}
 	}
+	var failed []string
 	for _, r := range list {
 		run := ResourceRun{Phase: PhaseDelete, ResourceID: r.ID, Title: "Delete " + r.Name}
 		if _, err := runResource(ctx, info, "rollback:"+KeyResource+r.ID, run, nil); err != nil {
 			workflow.GetLogger(ctx).Error("roll back a custom resource", "resource", r.ID, "err", err)
+			failed = append(failed, r.Name+": "+errMessage(err))
 		}
 	}
+	return failed
 }
 
 // RolledBackResource is a custom resource a rollback deletes.
@@ -284,7 +288,12 @@ func (a *Activities) PrepareResource(ctx context.Context, in ResourceInput) (Res
 	if driver == nil {
 		return ResourceCall{Skip: t.Title + " has no " + run.Phase + " step."}, nil
 	}
-	call := ResourceCall{ResourceID: cmp.Or(run.ResourceID, ids.New(ids.Resource))}
+	call := ResourceCall{ResourceID: run.ResourceID}
+	if call.ResourceID == "" {
+		if call.ResourceID, err = a.begunResource(ctx, in.RequestID, unit); err != nil {
+			return ResourceCall{}, err
+		}
+	}
 	dep, err := a.Store.GetDeployment(ctx, unit.DeploymentID)
 	if err != nil {
 		return ResourceCall{}, fmt.Errorf("the deployment of %s: %w", unit.Key, err)
@@ -307,6 +316,9 @@ func (a *Activities) PrepareResource(ctx context.Context, in ResourceInput) (Res
 	call.Resource = map[string]any{"id": call.ResourceID, "type": map[string]any{"key": t.Key, "title": t.Title}, "key": unit.Key,
 		"name": name, "deployment_id": dep.ID, "phase": run.Phase, "inputs": orEmpty(props.Inputs),
 		"properties": orEmpty(props.Properties)}
+	if props.Creating {
+		call.Resource["creating"] = true
+	}
 	if run.Phase == PhaseCreate || run.Phase == PhaseUpdate {
 		call.Resource["inputs"] = call.Inputs
 	}
@@ -344,7 +356,36 @@ func (a *Activities) PrepareResource(ctx context.Context, in ResourceInput) (Res
 			return ResourceCall{}, err
 		}
 	}
+	if run.Phase == PhaseCreate {
+		// Kept from now on, so that a create failing part way is deleted
+		// by the rollback with what it has (ADR-0056).
+		props := store.CustomProps{ResourceType: store.CustomResourceType{Key: t.Key, Title: t.Title}, Key: unit.Key, Source: run.Source,
+			System: DriverSystem(&t.Lifecycle.Delete), Inputs: call.Inputs, Properties: map[string]any{},
+			Titles: propertyTitles(t.PropertySchema), Creating: true}
+		raw, _ := json.Marshal(props)
+		r := store.Resource{ID: call.ResourceID, DeploymentID: dep.ID, Type: CustomResource, Name: name, ExternalID: &call.ResourceID,
+			Properties: raw, RequestID: &in.RequestID}
+		if _, err := a.Store.UpsertResource(ctx, a.Store.Pool, r); err != nil {
+			return ResourceCall{}, err
+		}
+	}
 	return call, nil
+}
+
+// begunResource is the ID of the custom resource a request makes under the
+// unit's key: the one an earlier try began, else a new one.
+func (a *Activities) begunResource(ctx context.Context, requestID string, unit ResourceUnit) (string, error) {
+	list, err := a.Store.ResourcesForRequest(ctx, requestID)
+	if err != nil {
+		return "", err
+	}
+	for _, r := range list {
+		var p store.CustomProps
+		if r.Type == CustomResource && r.DeploymentID == unit.DeploymentID && json.Unmarshal(r.Properties, &p) == nil && p.Key == unit.Key {
+			return r.ID, nil
+		}
+	}
+	return ids.New(ids.Resource), nil
 }
 
 // FinishResource records what the step gave: the resource made, its

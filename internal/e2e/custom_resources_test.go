@@ -18,6 +18,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/awxcatalog"
 	"github.com/damhau/rvav/internal/integrations/awx"
+	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/pkg/rvavflow"
 )
 
@@ -528,6 +529,149 @@ func TestCustomResourceStep(t *testing.T) {
 			422, &problem, "Idempotency-Key", uuid.NewString())
 		if len(problem.Errors) == 0 || !strings.Contains(problem.Errors[0].Message, "isn't offered to this project") {
 			t.Fatalf("a resource whose create workflow isn't offered to the project = %+v", problem.Errors)
+		}
+	})
+}
+
+// TestCustomResourceRollbacks: a rollback whose custom resource delete
+// fails stops before the VMs, which it may use, and says so: the
+// deployment stays failed, with a "Roll back failed" step, until a
+// rollback deletes it; a create that fails part way leaves a resource
+// marked creating, which the rollback deletes with what it has (E1.6,
+// ADR-0056).
+func TestCustomResourceRollbacks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, owner = "mkeller", "tnguyen"
+		inputs := map[string]any{"type": "object", "required": []any{"members"}, "properties": map[string]any{
+			"members": map[string]any{"type": "array", "title": "Members"}, "port": map[string]any{"type": "integer"}}}
+		for _, key := range []string{"lb-create", "lb-delete"} {
+			h.json("POST", "/api/v1/admin/workflows", admin, api.WorkflowRegistrationWrite{Key: new(key), Title: key,
+				WorkflowType: key + ".v1", TaskQueue: "platform-workflows", Usages: []api.WorkflowUsage{api.WorkflowUsageResourceType},
+				InputSchema: &inputs}, 201, nil)
+		}
+		h.json("POST", "/api/v1/admin/resource-types", admin, api.ResourceTypeWrite{Key: new("load-balancer"), Title: "Load balancer",
+			Create: api.ResourceTypeDriver{Kind: api.ResourceDriverWorkflow, Name: "lb-create"},
+			Delete: api.ResourceTypeDriver{Kind: api.ResourceDriverWorkflow, Name: "lb-delete"}}, 201, nil)
+		publish := func(slug string, rollback bool) api.AdminCatalogItem {
+			t.Helper()
+			def := vmWithDBUser()
+			def.Blueprint["rollback_on_failure"] = rollback
+			def.Blueprint["steps"] = []any{
+				def.Blueprint["steps"].([]any)[0],
+				map[string]any{"key": "lb", "title": "Its load balancer", "resource": map[string]any{"type": "load-balancer"},
+					"with": map[string]any{"members": "[steps.vm.ip]", "port": "443"}},
+				map[string]any{"key": "monitoring", "awx": map[string]any{"job_template": "monitoring-agent", "title": "Monitoring"},
+					"with": map[string]any{"target": "steps.lb.vip"}},
+			}
+			var item api.AdminCatalogItem
+			h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: slug, Name: "VM behind a load balancer " + slug,
+				Summary: "A VM and its load balancer.", Category: "compute", Type: api.Composite, Definition: &def}, 201, &item)
+			h.json("POST", "/api/v1/admin/catalog/items/"+slug+"/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
+			h.json("PUT", "/api/v1/admin/catalog/items/"+slug+"/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
+			return item
+		}
+		type driver = func(workflow.Context, rvavflow.Context) (map[string]any, error)
+		var deleted []rvavflow.CustomResource
+		deleting := func(fail bool) driver {
+			return func(_ workflow.Context, rc rvavflow.Context) (map[string]any, error) {
+				deleted = append(deleted, *rc.Resource)
+				if fail {
+					return nil, errors.New("the load balancer API is down")
+				}
+				return map[string]any{}, nil
+			}
+		}
+		halfCreate := func(_ workflow.Context, rc rvavflow.Context) (map[string]any, error) {
+			return nil, errors.New("made the VIP 10.31.20.99, then the pool failed")
+		}
+		request := func(item api.AdminCatalogItem, create, del driver) api.Request {
+			t.Helper()
+			var req api.Request
+			h.json("POST", "/api/v1/requests", owner, api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id,
+				ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "web", "size": "S", "cluster": "GVA-DEV-CL01",
+					"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "database": "orders", "role_name": "orders_ro"}},
+				202, &req, "Idempotency-Key", uuid.NewString())
+			h.runWorkflow(req.Id, func(env *testsuite.TestWorkflowEnvironment) {
+				env.RegisterWorkflowWithOptions(create, workflow.RegisterOptions{Name: "lb-create.v1"})
+				env.RegisterWorkflowWithOptions(del, workflow.RegisterOptions{Name: "lb-delete.v1"})
+			})
+			h.json("GET", "/api/v1/requests/"+req.Id, owner, nil, 200, &req)
+			return req
+		}
+		rollback := func(req api.Request, del driver) {
+			t.Helper()
+			h.json("POST", "/api/v1/requests/"+req.Id+"/rollback", owner, nil, 202, nil)
+			var s testsuite.WorkflowTestSuite
+			s.SetLogger(nil)
+			env := s.NewTestWorkflowEnvironment()
+			env.RegisterActivity(h.acts)
+			env.RegisterWorkflowWithOptions(del, workflow.RegisterOptions{Name: "lb-delete.v1"})
+			env.ExecuteWorkflow(provision.RollbackWorkflow, req.Id)
+			if err := env.GetWorkflowError(); err != nil {
+				t.Fatalf("rollback workflow: %v", err)
+			}
+		}
+		type left struct {
+			deployment  string
+			custom, vms int
+			step        api.Step
+		}
+		leftOf := func(req api.Request) left {
+			t.Helper()
+			var l left
+			dep := (*req.DeploymentIds)[0]
+			_ = h.store.Pool.QueryRow(ctx, `select status from deployments where id = $1`, dep).Scan(&l.deployment)
+			_ = h.store.Pool.QueryRow(ctx, `select count(*) from resources where deployment_id = $1 and type = 'custom'`, dep).Scan(&l.custom)
+			_ = h.store.Pool.QueryRow(ctx, `select count(*) from resources where deployment_id = $1 and type = 'vsphere.vm'`, dep).Scan(&l.vms)
+			l.step = timelineOf(h, owner, req.Id)["rollback"]
+			return l
+		}
+
+		// Rolled back on failure, the delete fails: the VM stays.
+		auto := publish("vm-lb-auto", true)
+		h.awx.FailTask = "monitoring : install node_exporter"
+		failed := request(auto, lbCreate, deleting(true))
+		if l := leftOf(failed); failed.Status != api.RequestStatusFailed || l.deployment != "failed" || l.custom != 1 || l.vms != 1 ||
+			l.step.Title != "Roll back failed" || l.step.Status != api.StepStatusFailed || !strings.Contains(deref(l.step.Error), "the load balancer API is down") {
+			t.Fatalf("a rollback whose delete fails: %s, left %+v", failed.Status, l)
+		}
+
+		// A create that fails part way: its resource is deleted with what it has.
+		deleted = nil
+		half := request(auto, halfCreate, deleting(false))
+		h.awx.FailTask = ""
+		if l := leftOf(half); half.Status != api.RequestStatusFailed || l.custom != 0 || l.vms != 0 || l.step.Status != api.StepStatusDone ||
+			len(deleted) != 1 || !deleted[0].Creating || len(deleted[0].Properties) != 0 || deleted[0].Inputs["port"] != float64(443) {
+			t.Fatalf("a create failing part way: %s, left %+v, deletes %+v", half.Status, l, deleted)
+		}
+		if got := customEvents(ctx, h, half.Id); !slices.Equal(got, []string{"custom.create.pre lb", "custom.delete.pre lb", "custom.delete.post lb"}) {
+			t.Fatalf("its events = %v", got)
+		}
+
+		// Kept on failure, rolled back by hand: a failed delete keeps the
+		// deployment failed, and a later rollback finishes it.
+		kept := publish("vm-lb-kept", false)
+		h.awx.FailTask = "monitoring : install node_exporter"
+		manual := request(kept, lbCreate, deleting(true))
+		h.awx.FailTask = ""
+		if lb := customOf(h, owner, (*manual.DeploymentIds)[0])["lb"]; lb.Creating != nil {
+			t.Fatalf("a load balancer made is still creating: %+v", lb)
+		}
+		rollback(manual, deleting(true))
+		var notified int
+		_ = h.store.Pool.QueryRow(ctx, `select count(*) from notifications where request_id = $1 and kind = 'request_rolled_back'`, manual.Id).Scan(&notified)
+		if l := leftOf(manual); l.deployment != "failed" || l.custom != 1 || l.vms != 1 || l.step.Status != api.StepStatusFailed || notified != 0 {
+			t.Fatalf("a rollback by hand whose delete fails: left %+v, %d notified", l, notified)
+		}
+		rollback(manual, lbDelete)
+		_ = h.store.Pool.QueryRow(ctx, `select count(*) from notifications where request_id = $1 and kind = 'request_rolled_back'`, manual.Id).Scan(&notified)
+		if l := leftOf(manual); l.deployment != "deleted" || l.custom != 0 || l.vms != 0 || l.step.Title != "Rolled back" ||
+			l.step.Status != api.StepStatusDone || l.step.Error != nil || notified != 1 {
+			t.Fatalf("rolled back again: left %+v, %d notified", l, notified)
 		}
 	})
 }

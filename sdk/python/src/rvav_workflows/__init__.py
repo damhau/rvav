@@ -77,7 +77,8 @@ class Context:
     #: The event of a subscription (``rvav.event.v1``), else None.
     event: dict[str, Any] | None = None
     #: The custom resource a resource type's step or a day-2 action acts on,
-    #: else None.
+    #: else None. For a delete of one whose create failed part way,
+    #: ``creating`` is true, ``properties`` empty and ``inputs`` the create's.
     resource: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 

@@ -132,6 +132,13 @@ new request, an update, a day-2 action, a deletion or a rollback.
 
 - **Inputs:** `create` and `update` get the inputs `with` binds. `delete`
   and `read` get the resource's properties.
+- **A create that fails part way:** the resource is recorded, marked
+  `creating`, before its create runs, and the mark goes once create
+  returns. One whose create failed keeps it: what it made, if anything,
+  isn't known. Its `delete` then gets `resource.creating` true, no
+  properties and the create's inputs as `resource.inputs`, and must
+  delete what create may have made from those, succeeding when there is
+  nothing (E1.6). A retried create reuses the resource's ID.
 - **A custom workflow** starts as a child workflow, as any custom
   workflow step does. Its context has `inputs` and `resource`: `id`,
   `type` (`key`, `title`), `key`, `name`, `deployment_id`, `phase`
@@ -216,6 +223,13 @@ the **Actions** menu and in each resource's menu.
   a step `rollback:resource:<id>`, "Delete <name>". A composite without
   `rollback_on_failure` keeps them, as it keeps its VMs, until someone
   rolls the request back.
+- A delete that fails in a rollback stops it before the VMs, which the
+  resource may use: the request's `rollback` step is "Roll back failed"
+  with each resource and why, the deployment stays `failed`, and its
+  owner isn't told it was rolled back. Another rollback, or the
+  deployment's deletion, runs the deletes again; a rollback that then
+  finishes writes the step again as "Rolled back" (E1.6, behind
+  `rollback-stops`).
 
 ### Updates
 An update ([ADR-0042](0042-deployment-updates.md)) compares the

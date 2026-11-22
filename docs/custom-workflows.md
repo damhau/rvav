@@ -95,7 +95,7 @@ decode it leniently. The helpers do: Python keeps unknown fields in
 | `inputs` | The form, validated against the registered input schema. A secret field arrives as `{"$secret": "<field>"}`: its value stays out of workflow histories and goes only to AWX jobs and cloud-init (S14.6). A composite's conditions and bindings see that marker too, so they can't test or transform a secret input. |
 | `steps` | A composite's earlier steps' outputs |
 | `event` | A subscription's event (`rvav.event.v1`); null otherwise |
-| `resource` | For a resource type's step: `id`, `type` (`key`, `title`), `key`, `name`, `deployment_id`, `phase` (`create`, `update`, `read`, `delete`), `inputs` and `properties`. For a day-2 action on a custom resource: the same, with `phase` `day2`. Null otherwise. Go: `rvavflow.Context.Resource`; Python: `Context.resource` ([ADR-0056](adr/0056-custom-resource-types.md)) |
+| `resource` | For a resource type's step: `id`, `type` (`key`, `title`), `key`, `name`, `deployment_id`, `phase` (`create`, `update`, `read`, `delete`), `inputs` and `properties`. For a delete of a resource whose create failed part way, `creating` is true, `properties` is empty and `inputs` are the create's: delete what it may have made, and succeed when there is nothing. For a day-2 action on a custom resource: the same, with `phase` `day2`. Null otherwise. Go: `rvavflow.Context.Resource`; Python: `Context.resource` ([ADR-0056](adr/0056-custom-resource-types.md)) |
 
 ### What rvav does for it
 

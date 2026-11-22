@@ -65,6 +65,10 @@ type CustomResource struct {
 	Phase        string         `json:"phase"`
 	Inputs       map[string]any `json:"inputs"`
 	Properties   map[string]any `json:"properties"`
+	// Creating is set for a delete of a resource whose create failed part
+	// way: Properties is empty, Inputs the create's; delete what it may
+	// have made, and nothing when there is nothing to delete.
+	Creating bool `json:"creating,omitempty"`
 }
 
 type ResourceType struct {
