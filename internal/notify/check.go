@@ -10,7 +10,9 @@ import (
 // field it names, in every branch, is one of its kind's variables.
 
 // node is what dot or a variable holds while a template is checked: a
-// variable's path, or anything when it came from a function.
+// variable's path, or anything when it came from a function. A function's
+// result has no field the check could find: or and and give back one of
+// their arguments, so {{with or $ 0}} would hide every field after it.
 type node struct {
 	path string
 	any  bool
@@ -56,6 +58,7 @@ func (c *checker) fail(n parse.Node, format string, a ...any) {
 func (c *checker) field(at parse.Node, n node, names []string) node {
 	for _, name := range names {
 		if n.any {
+			c.fail(at, "%s is a field of what a function gave, which can't be checked: name the variable itself, such as .Request.Number", name)
 			return n
 		}
 		p := n.path + "." + name

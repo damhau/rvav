@@ -245,7 +245,11 @@ export function checkFields(nodes: Node[], vars: string[], lists: string[]) {
   const field = (line: number, on: Seen, path: string[]): Seen => {
     let at = on;
     for (const name of path) {
-      if (at === "any") return "any";
+      if (at === "any")
+        return fail(
+          line,
+          `${name} is a field of what a function gave, which can't be checked: name the variable itself, such as .Request.Number`,
+        );
       if ("item" in at) fail(line, `the items of ${at.item} are text: they have no field ${name}`);
       const p = (at as { path: string }).path + "." + name;
       if (!names.has(p)) {

@@ -79,6 +79,7 @@ describe("the mocks' notification templates", () => {
     expect(problemOf("{{range .Approval.Reasons}}{{range $.Approval.Reasons}}x{{end}}{{end}}")).toBe(
       "line 1: a range can't be inside another",
     );
+    expect(problemOf("{{with (or $ 0)}}{{.Kind}}{{end}}")).toMatch(/^line 1: Kind is a field of what a function gave/);
     expect(problemOf("{{range .Approval.Reasons}}x{{else}}{{range .Approval.Reasons}}y{{end}}{{end}}")).toBe("");
   });
 

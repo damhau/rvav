@@ -25,7 +25,8 @@ import (
 type Workflows interface {
 	Start(ctx context.Context, requestID string) error
 	// Restart runs a failed request's workflow again, in place of its run
-	// before, which may not have closed yet.
+	// before, which may not have closed yet. Like Rollback, it errs only
+	// when the run didn't start or Temporal can't say it did.
 	Restart(ctx context.Context, requestID string) error
 	Cancel(ctx context.Context, requestID string) error
 	// Approval signals that an approval level was decided (approved or rejected).

@@ -338,12 +338,17 @@ func (cl *Client) client(ctx context.Context) (*vim25.Client, error) {
 // connection's options and its pinned certificate (package trust).
 func (cl *Client) connect(ctx context.Context) (*govmomi.Client, error) {
 	sc := soap.NewClient(cl.url, cl.tls.Insecure)
-	if roots := cl.tls.RootCAs(); roots != nil && !cl.tls.Insecure {
-		sc.DefaultTransport().TLSClientConfig.RootCAs = roots
+	o := cl.tls
+	if o.Host == "" {
+		o.Host = cl.url.Hostname()
 	}
-	if pin, ok := trust.NormalFingerprint(cl.tls.Pin); ok {
-		sc.SetThumbprint(cl.url.Host, pin)
-	}
+	tr := sc.DefaultTransport()
+	tr.TLSClientConfig = trust.Config(o)
+	// govmomi's own TLS dial matches a certificate that isn't trusted
+	// against its thumbprints with SHA-1 too, which panics in FIPS 140-only
+	// mode unless GODEBUG's text says so (ADR-0060): the transport's own
+	// handshake checks the pin, by SHA-256 only.
+	tr.DialTLSContext = nil
 	vc, err := vim25.NewClient(ctx, sc)
 	if err != nil {
 		return nil, err

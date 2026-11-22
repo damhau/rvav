@@ -29,9 +29,12 @@ SHA-1 in go-jose for an identity provider's keys that carry `x5c`, MD5 in
 pgx and in go-mail's CRAM-MD5, SHA-1 in go-mail's SCRAM-SHA-1 and NTLM, the
 SHA-1 thumbprint of an ESXi host, X25519 and the hashed host keys of
 `known_hosts` (HMAC-SHA-1) in x/crypto's SSH, HMAC keys under 112 bits for
-any secret a person chooses, and argon2id, which Go doesn't refuse but
-FIPS 140 doesn't approve. A panic in a request is answered with a 500;
-one in go-oidc's key fetch ends the whole process.
+any secret a person chooses, argon2id, which Go doesn't refuse but
+FIPS 140 doesn't approve, and govmomi's SHA-1 thumbprint of a vCenter
+certificate it doesn't trust, which it skips when `GODEBUG`'s text asks
+for only mode and computes, a panic, when the mode came otherwise. A
+panic in a request is answered with a 500; one in go-oidc's key fetch
+ends the whole process.
 
 ## Decision
 
@@ -68,6 +71,13 @@ settings show `RVAV_FIPS` as the mode in effect.
 - **SMTP sign-in** picks SCRAM-SHA-256, or PLAIN or LOGIN over TLS, and
   says so when the server offers neither; go-mail would pick CRAM-MD5,
   SCRAM-SHA-1 or NTLM, before PLAIN.
+- **A vCenter's pinned certificate** is checked by rvav's own TLS
+  configuration (package `trust`), by its SHA-256 fingerprint, in every
+  mode: govmomi's TLS dial, which matches a certificate it doesn't trust
+  against SHA-256 and SHA-1 thumbprints, isn't used. A vCenter whose
+  certificate no longer matches its pin fails its sign-in as any pinned
+  connection does, where a build or a test with only mode set without
+  `GODEBUG` (`//go:debug fips140=only`) would end the process.
 - **The console** checks an ESXi host's certificate by the SHA-256
   thumbprint vCenter gives with the ticket. When vCenter gives a SHA-1
   one only, `on` checks that: the one non-approved algorithm rvav
@@ -118,7 +128,9 @@ key set, the SSH handshake, and `TestFIPSOnly`, which runs end-to-end
 tests in only mode against the run's database: the processes starting,
 local sign-in, an identity provider's tokens, a request provisioned in
 vcsim, webhooks signed with HMAC, audit events forwarded to syslog over
-mutual TLS, API tokens and the System page.
+mutual TLS, API tokens and the System page. A dependency that reads
+`GODEBUG` itself, as govmomi does, is tested in only mode set by
+`//go:debug` too (`internal/integrations/vsphere/fipsonly`).
 
 ## Consequences
 - In `on` and `only`, every TLS peer must speak TLS 1.2 or 1.3 with an

@@ -72,6 +72,11 @@ the part and the line:
   walks the parse tree, following `with`, `range` and `$variables`, so
   `{{if .Ready}}{{.Requst.Number}}{{end}}` is refused even though the
   sample takes the other branch;
+- a field of what a function gives, such as `{{with or $ 0}}{{.Kind}}{{end}}`
+  or `{{(date .Lease.ExpiresAt).Year}}`: the walk can't tell what a
+  function's result holds, and `or` and `and` hand back one of their
+  arguments, so a field under them would go unchecked, any at all under
+  `$` (O1.7, #173);
 - `{{define}}`, `{{block}}` and `{{template}}`, a `range` over
   anything but a list variable, and a `range` inside another, which
   writes a list's length squared, or to the power of how deep it goes;

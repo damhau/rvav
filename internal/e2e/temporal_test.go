@@ -2,10 +2,12 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -226,6 +228,109 @@ func TestRetryAsTheRunCloses(t *testing.T) {
 		}
 		ended(r, run, letGo)
 	})
+}
+
+// TestRetryOrRollbackWhenTheStartErs: a rollback whose start errs leaves
+// its deployment failed, to try again. A retry or a rollback whose start
+// errs once Temporal took it, such as one that timed out, is under way: it
+// used to fail, and set its deployment failed while the run deleted it.
+func TestRetryOrRollbackWhenTheStartErs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	ts := startTemporal(t)
+	starts := &erringStarts{}
+	tc, err := client.Dial(client.Options{HostPort: ts.FrontendHostPort(), Interceptors: []interceptor.ClientInterceptor{starts},
+		Logger: sdklog.NewStructuredLogger(slog.New(slog.DiscardHandler))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tc.Close()
+
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const queue, user, web = "rvav-rollback-start-e2e", "tnguyen", "prj_web"
+		h.svc.Workflows = &provision.Temporal{Client: tc, TaskQueue: queue}
+		w := provision.NewWorker(tc, queue, h.acts)
+		if err := w.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer w.Stop()
+
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id="+web, "lmartin", nil, 200, &form)
+		h.awx.FailTask = "idm : join realm"
+		var r api.Request
+		h.json("POST", "/api/v1/requests", user, api.RequestDraft{CatalogItemId: form.ItemId, VersionId: form.VersionId,
+			ProjectId: web, Environment: "dev", Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01",
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline", "idm-join"}}},
+			202, &r, "Idempotency-Key", uuid.NewString())
+		r = h.waitStatus(r.Id, user, api.RequestStatusFailed)
+		dep := (*r.DeploymentIds)[0]
+		status := func() api.DeploymentStatus {
+			var d api.Deployment
+			h.json("GET", "/api/v1/deployments/"+dep, user, nil, 200, &d)
+			return d.Status
+		}
+
+		starts.mode.Store(errAfterStart)
+		h.json("POST", "/api/v1/requests/"+r.Id+"/retry", user, nil, 202, nil)
+		starts.mode.Store(0)
+		r = h.waitStatus(r.Id, user, api.RequestStatusFailed)
+
+		starts.mode.Store(refuseStart)
+		h.json("POST", "/api/v1/requests/"+r.Id+"/rollback", user, nil, 502, nil)
+		if st := status(); st != api.DeploymentStatusFailed {
+			t.Fatalf("after a rollback Temporal refused, the deployment is %s, want failed", st)
+		}
+
+		starts.mode.Store(errAfterStart)
+		h.json("POST", "/api/v1/requests/"+r.Id+"/rollback", user, nil, 202, nil)
+		deadline := time.Now().Add(time.Minute)
+		for st := status(); st != api.DeploymentStatusDeleted; st = status() {
+			if st != api.DeploymentStatusDeleting {
+				t.Fatalf("while its rollback runs, the deployment is %s, want deleting", st)
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("the deployment wasn't deleted")
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	})
+}
+
+const (
+	refuseStart int32 = iota + 1
+	errAfterStart
+)
+
+// erringStarts makes starts err: refused, or once Temporal started the
+// run.
+type erringStarts struct {
+	interceptor.InterceptorBase
+	mode atomic.Int32
+}
+
+func (e *erringStarts) InterceptClient(next interceptor.ClientOutboundInterceptor) interceptor.ClientOutboundInterceptor {
+	return &erringStart{ClientOutboundInterceptorBase: interceptor.ClientOutboundInterceptorBase{Next: next}, mode: &e.mode}
+}
+
+type erringStart struct {
+	interceptor.ClientOutboundInterceptorBase
+	mode *atomic.Int32
+}
+
+func (e *erringStart) ExecuteWorkflow(ctx context.Context, in *interceptor.ClientExecuteWorkflowInput) (client.WorkflowRun, error) {
+	switch e.mode.Load() {
+	case refuseStart:
+		return nil, errors.New("connection refused")
+	case errAfterStart:
+		if _, err := e.Next.ExecuteWorkflow(ctx, in); err != nil {
+			return nil, err
+		}
+		return nil, context.DeadlineExceeded
+	}
+	return e.Next.ExecuteWorkflow(ctx, in)
 }
 
 // holdFailed holds a failed request's Finish once it has recorded the

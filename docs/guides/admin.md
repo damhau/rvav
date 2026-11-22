@@ -2553,7 +2553,9 @@ title that a requester typed can't add links or markup.
 Saving refuses a template, with the part and the line, when:
 
 - it doesn't parse;
-- it names a variable the notification doesn't have, in any branch;
+- it names a variable the notification doesn't have, in any branch, or
+  a field of what a function gives, such as `{{(or .Request .Project).Name}}`:
+  name the variable itself;
 - it uses `define`, `block` or `template`, a `range` over anything but
   a list, such as `.Approval.Reasons`, or a `range` inside another;
 - its subject or text is empty, or a part is too long: 1 KB for the

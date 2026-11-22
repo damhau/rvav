@@ -5,9 +5,11 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/worker"
 )
 
@@ -84,13 +86,37 @@ func (t *Temporal) Rollback(ctx context.Context, requestID string) error {
 // between returns the old run and runs nothing (#180). Retry and roll back
 // take the failed request under its lock first, so one start per failure
 // gets here.
+//
+// A start that errs, such as one that timed out, may still have started
+// the run: it is nil when the request's run is this start's, which its
+// memo tells, so the caller doesn't undo what the run is doing.
 func (t *Temporal) replace(ctx context.Context, requestID string, run any) error {
+	start := uuid.NewString()
 	_, err := t.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 		ID:                       WorkflowID(requestID),
 		TaskQueue:                t.TaskQueue,
 		WorkflowIDConflictPolicy: enumspb.WORKFLOW_ID_CONFLICT_POLICY_TERMINATE_EXISTING,
+		Memo:                     map[string]any{memoStart: start},
 	}, run, requestID)
+	if err == nil || t.startedBy(ctx, requestID, start) {
+		return nil
+	}
 	return err
+}
+
+// memoStart is the memo field that names the start of a run.
+const memoStart = "rvav_start"
+
+func (t *Temporal) startedBy(ctx context.Context, requestID, start string) bool {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	desc, err := t.Client.DescribeWorkflowExecution(ctx, WorkflowID(requestID), "")
+	if err != nil {
+		return false
+	}
+	p := desc.GetWorkflowExecutionInfo().GetMemo().GetFields()[memoStart]
+	var got string
+	return p != nil && converter.GetDefaultDataConverter().FromPayload(p, &got) == nil && got == start
 }
 
 // NewWorker registers the workflow and activities on the task queue.
