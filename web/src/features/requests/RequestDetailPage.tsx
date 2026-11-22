@@ -188,7 +188,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                       deployment: r.title.replace(/^Update · /, ""),
                     }}
                     components={{
-                      link: (
+                      target: (
                         <Link
                           to="/deployments/$deploymentId"
                           params={{ deploymentId: r.deployment_id }}
@@ -205,7 +205,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                     i18nKey="detail.actionOn"
                     values={{ action: r.action?.name ?? "", resource: r.resource?.name ?? t("detail.theDeployment") }}
                     components={{
-                      link: (
+                      target: (
                         <Link
                           to="/deployments/$deploymentId"
                           params={{ deploymentId: r.deployment_id }}

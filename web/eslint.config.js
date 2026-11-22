@@ -25,6 +25,7 @@ const translated = [
   "src/features/approvals/**",
   "src/features/reports/**",
   "src/features/resources/**",
+  "src/features/requests/**",
   "src/features/admin/access/**",
   "src/features/admin/notifications/**",
   "src/features/admin/governance/policies/**",

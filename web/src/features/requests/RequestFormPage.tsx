@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LoaderCircle } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
@@ -48,6 +49,7 @@ import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, localInput, newIdempotencyKey } from "@/lib/utils";
 import { fullDate, relative, roughDuration } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { ComponentsPreview, PlacedBy } from "./ComponentsPreview";
 import { LimitMeters } from "./limits";
 import { quotaLabel, quotaWhere, tightest } from "./quota";
@@ -56,21 +58,26 @@ const RequestTopology = lazy(() => import("./RequestTopology"));
 
 type ApprovalPreview = RequestPreview["approval"];
 
-/** The request's own options, by the key their errors map to (`mapFieldErrors`). */
-const requestOptions: Record<string, string> = {
-  $version_id: "Version",
-  $environment: "Environment",
-  $deployment_name: "Deployment name",
-  $deployment_description: "Description",
-  $count: "How many",
-  $lease_days: "Lease",
-  $scheduled_at: "Start at",
-  $on_behalf_of: "For someone else",
-  $schedule_name: "Schedule name",
-  $every_minutes: "Every",
-  $cron: "Cron expression",
-  $timezone: "Time zone",
-};
+/** The request's own options' names, by the key their errors map to (`mapFieldErrors`). */
+const requestOptions = {
+  $version_id: "version",
+  $environment: "environment",
+  $deployment_name: "deploymentName",
+  $deployment_description: "deploymentDescription",
+  $count: "count",
+  $lease_days: "lease",
+  $scheduled_at: "startAt",
+  $on_behalf_of: "onBehalfOf",
+  $schedule_name: "scheduleName",
+  $every_minutes: "every",
+  $cron: "cron",
+  $timezone: "timezone",
+} as const;
+
+const optionName = (name: string) =>
+  Object.hasOwn(requestOptions, name)
+    ? i18n.t(`requests:form.option.${requestOptions[name as keyof typeof requestOptions]}`)
+    : undefined;
 
 /** A schedule's own fields (ADR-0057), by the keys the page places them under. */
 const scheduleFields: Record<string, string> = {
@@ -137,24 +144,25 @@ function leaseOffers(lease?: RequestPreview["lease"]): number[] {
   return [...new Set(offered)].sort((a, b) => a - b);
 }
 
-const times = (n: number) => (n === 1 ? "once" : n === 2 ? "twice" : `${n} times`);
+const times = (n: number) => (n === 2 ? i18n.t("requests:form.twice") : i18n.t("requests:form.times", { count: n }));
 
 /** What the lease field says of the lease a request gets: who sets it, its extensions and lifetime. */
 function leaseHint(lease: NonNullable<RequestPreview["lease"]>): string {
+  const t = i18n.getFixedT(null, "requests");
   const soft = lease.enforcement === "soft";
   const extensions = lease.max_extensions ?? 2;
   return [
-    lease.policy ? `Set by ${lease.policy}.` : "",
-    "You get reminders 7 days and 1 day before.",
+    lease.policy ? t("form.lease.setBy", { policy: lease.policy }) : "",
+    t("form.lease.reminders"),
     extensions > 0
-      ? `You can extend it ${times(extensions)}.`
+      ? t("form.lease.extend", { times: times(extensions) })
       : soft
-        ? "Extending it warns, and you may go on."
-        : "Extending it needs approval.",
+        ? t("form.lease.extendWarns")
+        : t("form.lease.extendApproval"),
     lease.max_lifetime_days != null
-      ? `It lives ${lease.max_lifetime_days} days at most: past that, an extension ${soft ? "warns" : "needs approval"}.`
+      ? t(soft ? "form.lease.lifetimeWarns" : "form.lease.lifetimeApproval", { count: lease.max_lifetime_days })
       : "",
-    soft && lease.max_days != null ? `Longer than ${lease.max_days} days warns, and you may go on.` : "",
+    soft && lease.max_days != null ? t("form.lease.longerWarns", { count: lease.max_days }) : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -215,17 +223,24 @@ export interface FormStart {
 
 /** "Needs approval from Infrastructure leads", or "…, then Network security" for several levels. */
 export function approvalTitle(approval: ApprovalPreview) {
-  const groups = [...new Set(approval.policies.flatMap((p) => p.levels.map((l) => l.name ?? "an approver")))];
-  return `Needs approval from ${groups.join(", then ")}`;
+  const t = i18n.getFixedT(null, "requests");
+  const groups = [
+    ...new Set(approval.policies.flatMap((p) => p.levels.map((l) => l.name ?? t("form.approval.anApprover")))),
+  ];
+  return t("form.approval.needs", { groups: groups.join(t("form.approval.then")) });
 }
 
 /** The policy reasons as written by admins, plus the usual wait. */
 export function approvalBody(approval: ApprovalPreview) {
   const reasons = approval.policies.map((p) => p.reason.replace(/\.$/, "")).join(". ");
+  const t = i18n.getFixedT(null, "requests");
   const wait = approval.typical_wait_seconds;
   if (!wait) return `${reasons}.`;
-  const usual = wait < 5400 ? `${Math.max(1, Math.round(wait / 60))} minutes` : `${Math.round(wait / 3600)} hours`;
-  return `${reasons}. Usually decided within ${usual}.`;
+  const usual =
+    wait < 5400
+      ? t("form.approval.minutes", { count: Math.max(1, Math.round(wait / 60)) })
+      : t("form.approval.hours", { count: Math.round(wait / 3600) });
+  return t("form.approval.usually", { reasons, usual });
 }
 
 function EnvironmentPicker({
@@ -241,11 +256,12 @@ function EnvironmentPicker({
   onChange: (env: string) => void;
   error?: string;
 }) {
+  const { t } = useTranslation("requests");
   const list = environments.filter((e) => allowed.includes(e.key)).sort((a, b) => a.order - b.order);
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <span id="env-label" className="text-secondary font-medium">
-        Environment
+        {t("form.env.label")}
       </span>
       <div
         role="radiogroup"
@@ -276,11 +292,7 @@ function EnvironmentPicker({
       <FieldNote
         id="env-note"
         error={error}
-        hint={
-          list.find((e) => e.key === value)?.production
-            ? "Production: stricter policies and no lease."
-            : "Placement, quota and policies follow the environment."
-        }
+        hint={list.find((e) => e.key === value)?.production ? t("form.env.production") : t("form.env.other")}
       />
     </div>
   );
@@ -331,6 +343,7 @@ function Summary({
   /** Why it can't be submitted yet: a file still sending. */
   holding?: string;
 }) {
+  const { t } = useTranslation(["requests", "common"]);
   const approval = preview?.approval;
   const post = Array.isArray(values.post_config) && !oneDeployment ? (values.post_config as string[]) : [];
   const single = !oneDeployment;
@@ -338,25 +351,32 @@ function Summary({
   const deployments = preview?.deployment_names;
   const rows = [
     deployments?.length
-      ? { label: deployments.length > 1 ? "Deployments" : "Deployment", value: deployments.join(", ") }
+      ? {
+          label: deployments.length > 1 ? t("form.summary.deployments") : t("form.summary.deployment"),
+          value: deployments.join(", "),
+        }
       : null,
     single && preview?.names?.length
-      ? { label: preview.names.length > 1 ? "Names" : "Name", value: preview.names.join(", "), mono: true }
+      ? {
+          label: preview.names.length > 1 ? t("form.summary.names") : t("form.summary.name"),
+          value: preview.names.join(", "),
+          mono: true,
+        }
       : null,
     single && preview?.placement?.cluster
       ? {
-          label: "Placement",
+          label: t("form.summary.placement"),
           value: [preview.placement.cluster, preview.placement.datastore].filter(Boolean).join(" · "),
           mono: true,
         }
       : null,
     single && (placement?.resource_pool || placement?.hosts?.length || placement?.datastore_cluster)
       ? {
-          label: "Within",
+          label: t("form.summary.within"),
           value: [
-            placement.resource_pool && `pool ${placement.resource_pool}`,
-            placement.hosts?.length && `hosts ${placement.hosts.join(", ")}`,
-            placement.datastore_cluster && `datastore cluster ${placement.datastore_cluster}`,
+            placement.resource_pool && t("form.summary.pool", { pool: placement.resource_pool }),
+            placement.hosts?.length && t("preview.hosts", { hosts: placement.hosts.join(", ") }),
+            placement.datastore_cluster && t("form.summary.datastoreCluster", { cluster: placement.datastore_cluster }),
           ]
             .filter(Boolean)
             .join(" · "),
@@ -365,27 +385,36 @@ function Summary({
       : null,
     single && placement?.strategy && placement.strategy !== "most_free_memory"
       ? {
-          label: "Chosen by",
-          value: placement.strategy === "binpack" ? "Binpack" : "Spread",
+          label: t("form.summary.chosenBy"),
+          value: placement.strategy === "binpack" ? t("form.summary.binpack") : t("form.summary.spread"),
         }
       : null,
     single && preview?.placement?.network
       ? {
-          label: "Network",
+          label: t("form.summary.network"),
           value: [preview.placement.network, preview.placement.subnet].filter(Boolean).join(" · "),
           mono: true,
         }
       : null,
     single && preview?.addresses?.length
-      ? { label: "Address", value: `${preview.addresses[0]} (next free)`, mono: true }
+      ? {
+          label: t("form.summary.address"),
+          value: t("form.summary.nextFree", { address: preview.addresses[0] }),
+          mono: true,
+        }
       : null,
     post.length
-      ? { label: "After boot", value: `${post.length} AWX job${post.length === 1 ? "" : "s"}: ${post.join(", ")}` }
+      ? {
+          label: t("form.summary.afterBoot"),
+          value: t("form.summary.jobs", { count: post.length, list: post.join(", ") }),
+        }
       : null,
     preview?.lease
       ? {
-          label: "Lease",
-          value: preview.lease.expires_at ? `Until ${fullDate(preview.lease.expires_at)}` : "No expiry",
+          label: t("form.summary.lease"),
+          value: preview.lease.expires_at
+            ? t("form.summary.until", { date: fullDate(preview.lease.expires_at) })
+            : t("common:lease.none"),
         }
       : null,
   ].filter((r): r is { label: string; value: string; mono?: boolean } => r !== null);
@@ -393,9 +422,13 @@ function Summary({
   return (
     <div className="lg:sticky lg:top-4" aria-busy={fetching}>
       <Panel
-        title="Summary"
+        title={t("form.summary.title")}
         flush
-        actions={fetching && <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />}
+        actions={
+          fetching && (
+            <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label={t("form.summary.updating")} />
+          )
+        }
         footer={
           <>
             {holding && (
@@ -404,7 +437,7 @@ function Summary({
               </span>
             )}
             <Button type="button" onClick={onSaveDraft} disabled={savingDraft || Boolean(holding)}>
-              Save as draft
+              {t("form.summary.saveDraft")}
             </Button>
             {onSubmit && (
               <SubmitButton
@@ -444,7 +477,7 @@ function Summary({
             (preview.components?.[0]?.placement?.constraints?.length ||
               preview.components?.[0]?.placement?.image?.excluded.length) ? (
               <div className="flex flex-col gap-1.5 border-t border-line px-4 py-3">
-                <span className="label">Placed by tags</span>
+                <span className="label">{t("preview.placedBy")}</span>
                 <PlacedBy
                   constraints={preview.components[0].placement.constraints}
                   image={preview.components[0].placement.image}
@@ -456,12 +489,12 @@ function Summary({
             )}
             {preview.quota.length > 0 && (
               <div className="flex flex-col gap-2.5 border-t border-line px-4 py-3">
-                <span className="label">Quota after this request</span>
+                <span className="label">{t("form.summary.quota")}</span>
                 {tightest(preview.quota).map((l) => (
                   <Meter
                     key={l.resource}
                     label={`${quotaLabel[l.resource][0]}${quotaWhere(l)}${
-                      l.exceeds && l.enforcement === "soft" ? " · over the soft limit" : ""
+                      l.exceeds && l.enforcement === "soft" ? ` · ${t("limit.overSoft")}` : ""
                     }`}
                     unit={quotaLabel[l.resource][1]}
                     used={l.used}
@@ -471,31 +504,29 @@ function Summary({
                 ))}
               </div>
             )}
-            <LimitMeters title="Limits after this request" lines={preview.limits ?? []} />
+            <LimitMeters title={t("form.summary.limits")} lines={preview.limits ?? []} />
             <div
               className={cn(
                 "flex flex-col gap-0.5 border-t border-line px-4 py-3",
                 approval?.required ? "bg-warn-soft text-warn" : "bg-ok-soft text-ok",
               )}
             >
-              <span className="font-medium">{approval?.required ? approvalTitle(approval) : "No approval needed"}</span>
+              <span className="font-medium">
+                {approval?.required ? approvalTitle(approval) : t("form.summary.noApproval")}
+              </span>
               <span className="text-secondary">
                 {repeating
-                  ? `Each run is a request of its own, which policies, approvals and quota check as they check this one${approval?.required ? ": each waits for approval" : ""}.`
+                  ? t(approval?.required ? "form.summary.eachRunApproval" : "form.summary.eachRun")
                   : approval?.required
                     ? approvalBody(approval)
                     : scheduled
-                      ? "Provisioning starts at the time you chose."
-                      : "Provisioning starts as soon as you submit."}
+                      ? t("form.summary.startsLater")
+                      : t("form.summary.startsNow")}
               </span>
             </div>
             {warnings.length > 0 && (
               <div className="border-t border-line px-4 py-3">
-                <PolicyWarnings
-                  warnings={warnings}
-                  note="You may submit anyway: the request keeps the warning."
-                  refusal={warnedRefusal}
-                />
+                <PolicyWarnings warnings={warnings} note={t("form.summary.submitAnyway")} refusal={warnedRefusal} />
               </div>
             )}
           </>
@@ -530,6 +561,8 @@ function SubmitButton({
   warned?: boolean;
   repeating?: boolean;
 }) {
+  const { t } = useTranslation("requests");
+  const what = repeating ? "schedule" : approval ? "approval" : "request";
   // Pending, it keeps the focus: a refusal then moves it to what to fix.
   return (
     <Button
@@ -541,8 +574,7 @@ function SubmitButton({
       className="aria-disabled:opacity-50"
     >
       {pending && <LoaderCircle className="animate-spin" aria-hidden />}
-      {repeating ? "Create schedule" : approval ? "Submit for approval" : "Submit request"}
-      {warned && " anyway"}
+      {t(warned ? `form.submit.${what}Anyway` : `form.submit.${what}`)}
     </Button>
   );
 }
@@ -570,6 +602,7 @@ function RequestFormBody({
   /** Set when the form remounts for a version picked: the focus goes back to Version. */
   focusVersion?: RefObject<boolean>;
 }) {
+  const { t } = useTranslation(["requests", "common"]);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const firstEnv =
@@ -741,15 +774,17 @@ function RequestFormBody({
       }
       void qc.invalidateQueries({ queryKey: keys.requests.lists() });
       void qc.invalidateQueries({ queryKey: keys.deployments.lists() });
-      toast.success(`${request.number} submitted`, {
-        description: request.status === "pending_approval" ? "Waiting for approval." : "Provisioning has started.",
+      toast.success(t("form.toast.submitted", { number: request.number }), {
+        description: request.status === "pending_approval" ? t("form.toast.waiting") : t("form.toast.started"),
       });
       void navigate({ to: "/requests/$requestId", params: { requestId: request.number } });
     },
     onError: (e) => {
       if (showRefusal(e, mapFieldErrors)) return;
-      toast.error(isApiError(e) ? e.problem.title : "The request was not sent", {
-        description: isApiError(e) ? `${e.problem.detail ?? ""} Request ID ${e.requestId}`.trim() : undefined,
+      toast.error(isApiError(e) ? e.problem.title : t("form.toast.notSent"), {
+        description: isApiError(e)
+          ? `${e.problem.detail ?? ""} ${t("form.toast.requestId", { id: e.requestId })}`.trim()
+          : undefined,
       });
     },
   });
@@ -759,15 +794,17 @@ function RequestFormBody({
     mutationFn: (body: ScheduleWrite) => call(api.POST("/schedules", { body })),
     onSuccess: (made) => {
       void qc.invalidateQueries({ queryKey: ["schedules"] });
-      toast.success(`${made.name} scheduled`, {
-        description: made.next_runs[0] ? `Its first run is ${relative(made.next_runs[0])}.` : undefined,
+      toast.success(t("form.toast.scheduled", { name: made.name }), {
+        description: made.next_runs[0] ? t("form.toast.firstRun", { when: relative(made.next_runs[0]) }) : undefined,
       });
       void navigate({ to: "/schedules" });
     },
     onError: (e) => {
       if (showRefusal(e, mapScheduleErrors)) return;
-      toast.error(isApiError(e) ? e.problem.title : "The schedule was not made", {
-        description: isApiError(e) ? `${e.problem.detail ?? ""} Request ID ${e.requestId}`.trim() : undefined,
+      toast.error(isApiError(e) ? e.problem.title : t("form.toast.notScheduled"), {
+        description: isApiError(e)
+          ? `${e.problem.detail ?? ""} ${t("form.toast.requestId", { id: e.requestId })}`.trim()
+          : undefined,
       });
     },
   });
@@ -794,10 +831,10 @@ function RequestFormBody({
     onSuccess: (saved) => {
       setSavedDraft(saved.id);
       void qc.invalidateQueries({ queryKey: ["me", "drafts"] });
-      toast.success("Draft saved", { description: "Find it under Requests, to finish later." });
+      toast.success(t("form.toast.draftSaved"), { description: t("form.toast.draftWhere") });
     },
     onError: (e) => {
-      toast.error(isApiError(e) ? e.problem.title : "The draft was not saved", {
+      toast.error(isApiError(e) ? e.problem.title : t("form.toast.draftNotSaved"), {
         description: isApiError(e) ? e.problem.detail : undefined,
       });
     },
@@ -831,7 +868,7 @@ function RequestFormBody({
     .filter((name) => !placed.includes(name))
     .map((name) => ({
       key: name,
-      ...(requestOptions[name] ? { label: requestOptions[name] } : { label: name, code: true }),
+      ...(optionName(name) ? { label: optionName(name)! } : { label: name, code: true }),
       message: fieldErrors[name]!,
     }));
   const focusFirst = () => {
@@ -898,22 +935,26 @@ function RequestFormBody({
   // What the item builds, drawn when there is more to it than one VM on a
   // network (the summary says that much): a composite's steps, an item's
   // components, segments and groups.
-  const graph = useMemo(() => (form.topology ? blueprintGraph(form.topology, "/topology") : null), [form.topology]);
+  const graph = useMemo(
+    () => (form.topology ? blueprintGraph(form.topology, "/topology") : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [form.topology, i18n.language],
+  );
   const drawn = graph && (graph.kind === "composite" || graph.nodes.length > 2) ? graph : null;
 
   const shownNames = shownPreview?.deployment_names;
   const requestPanels = (
     <>
       {named && (
-        <Panel as="fieldset" title="Deployment">
+        <Panel as="fieldset" title={t("form.panels.deployment")}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field
-              label="Name (optional)"
+              label={t("form.panels.name")}
               htmlFor="deployment-name"
               hint={
                 shownNames && shownNames.length > 1
-                  ? `Named ${shownNames[0]} to ${shownNames[shownNames.length - 1]}.`
-                  : `Unique in ${project.name}. Left empty, rvav names it.`
+                  ? t("form.panels.namedRange", { first: shownNames[0], last: shownNames[shownNames.length - 1] })
+                  : t("form.panels.unique", { project: project.name })
               }
               error={fieldErrors.$deployment_name}
             >
@@ -927,9 +968,9 @@ function RequestFormBody({
               />
             </Field>
             <Field
-              label="Description (optional)"
+              label={t("form.panels.description")}
               htmlFor="deployment-description"
-              hint="What it is for, shown with it."
+              hint={t("form.panels.descriptionHint")}
               error={fieldErrors.$deployment_description}
             >
               <Textarea
@@ -945,15 +986,13 @@ function RequestFormBody({
           </div>
         </Panel>
       )}
-      <Panel as="fieldset" title="Lease and reason">
+      <Panel as="fieldset" title={t("form.panels.leaseAndReason")}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field
-            label="Lease"
+            label={t("form.panels.lease")}
             htmlFor="lease"
             error={fieldErrors.$lease_days}
-            hint={
-              leaseOptions.length && lease ? leaseHint(lease) : "Production deployments and AWX jobs have no lease."
-            }
+            hint={leaseOptions.length && lease ? leaseHint(lease) : t("form.lease.none")}
           >
             {leaseOptions.length ? (
               <Select
@@ -963,30 +1002,35 @@ function RequestFormBody({
                   setLeaseDays(Number(v));
                   clearServerError("$lease_days");
                 }}
-                options={leaseOptions.map((d) => ({ value: String(d), label: `${d} days` }))}
+                options={leaseOptions.map((d) => ({ value: String(d), label: t("form.lease.days", { count: d }) }))}
               />
             ) : (
-              <Input id="lease" readOnly value="No expiry" className="border-dashed bg-sunken text-muted" />
+              <Input
+                id="lease"
+                readOnly
+                value={t("common:lease.none")}
+                className="border-dashed bg-sunken text-muted"
+              />
             )}
           </Field>
-          <Field label="Reason" htmlFor="justification" hint="Approvers read it.">
+          <Field label={t("form.panels.reason")} htmlFor="justification" hint={t("form.panels.reasonHint")}>
             <Textarea
               id="justification"
               rows={2}
-              placeholder="What is this for? Add a ticket number if there is one."
+              placeholder={t("form.panels.reasonPlaceholder")}
               value={justification}
               onChange={(e) => setJustification(e.target.value)}
             />
           </Field>
         </div>
       </Panel>
-      <Panel as="fieldset" title="Options">
+      <Panel as="fieldset" title={t("form.panels.options")}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {many && (
             <Field
-              label="How many"
+              label={t("form.panels.howMany")}
               htmlFor="count"
-              hint="Identical deployments, named one after the other (at most 20)."
+              hint={t("form.panels.howManyHint")}
               error={fieldErrors.$count}
             >
               <Input
@@ -1004,7 +1048,7 @@ function RequestFormBody({
             </Field>
           )}
           <div className="flex min-w-0 flex-col gap-3">
-            <Field label="Start" htmlFor="start">
+            <Field label={t("form.panels.start")} htmlFor="start">
               <Select
                 id="start"
                 value={repeat ? "repeat" : later ? "later" : "now"}
@@ -1015,15 +1059,17 @@ function RequestFormBody({
                 options={[
                   {
                     value: "now",
-                    label: shownPreview?.approval.required ? "As soon as it is approved" : "As soon as it is submitted",
+                    label: shownPreview?.approval.required
+                      ? t("form.panels.whenApproved")
+                      : t("form.panels.whenSubmitted"),
                   },
-                  { value: "later", label: "At a time I choose" },
-                  ...(repeatable ? [{ value: "repeat", label: "Again and again, on a schedule" }] : []),
+                  { value: "later", label: t("form.panels.atTime") },
+                  ...(repeatable ? [{ value: "repeat", label: t("form.panels.repeat") }] : []),
                 ]}
               />
             </Field>
             {later && (
-              <Field label="Start at" htmlFor="start-at" error={fieldErrors.$scheduled_at}>
+              <Field label={t("form.panels.startAt")} htmlFor="start-at" error={fieldErrors.$scheduled_at}>
                 <Input
                   id="start-at"
                   type="datetime-local"
@@ -1038,9 +1084,9 @@ function RequestFormBody({
             {repeat && (
               <>
                 <Field
-                  label="Schedule name"
+                  label={t("form.panels.scheduleName")}
                   htmlFor="schedule-name"
-                  hint="Each run is a request of its own, which names it."
+                  hint={t("form.panels.scheduleNameHint")}
                   error={fieldErrors.$schedule_name}
                 >
                   <Input
@@ -1053,22 +1099,22 @@ function RequestFormBody({
                     }}
                   />
                 </Field>
-                <Field label="Repeats" htmlFor="repeat-kind">
+                <Field label={t("form.panels.repeats")} htmlFor="repeat-kind">
                   <Select
                     id="repeat-kind"
                     value={repeatKind}
                     onChange={(v) => setRepeatKind(v === "cron" ? "cron" : "every")}
                     options={[
-                      { value: "every", label: "At a fixed interval" },
-                      { value: "cron", label: "At the times of a cron expression" },
+                      { value: "every", label: t("form.panels.fixed") },
+                      { value: "cron", label: t("form.panels.cronTimes") },
                     ]}
                   />
                 </Field>
                 {repeatKind === "every" ? (
                   <Field
-                    label="Every"
+                    label={t("form.panels.every")}
                     htmlFor="every"
-                    hint="From 5 minutes to 31 days, counted from 00:00 UTC: every day runs at midnight UTC. For a time of day, use a cron expression."
+                    hint={t("form.panels.everyHint")}
                     error={fieldErrors.$every_minutes}
                   >
                     <div className="flex gap-2">
@@ -1085,7 +1131,7 @@ function RequestFormBody({
                       />
                       <Select
                         id="every-unit"
-                        aria-label="Unit"
+                        aria-label={t("form.panels.unit")}
                         className="w-32"
                         value={everyUnit}
                         onChange={(v) => {
@@ -1093,9 +1139,9 @@ function RequestFormBody({
                           clearServerError("$every_minutes");
                         }}
                         options={[
-                          { value: "1", label: "minutes" },
-                          { value: "60", label: "hours" },
-                          { value: "1440", label: "days" },
+                          { value: "1", label: t("form.panels.minutes") },
+                          { value: "60", label: t("form.panels.hours") },
+                          { value: "1440", label: t("form.panels.days") },
                         ]}
                       />
                     </div>
@@ -1103,9 +1149,9 @@ function RequestFormBody({
                 ) : (
                   <>
                     <Field
-                      label="Cron expression"
+                      label={t("form.panels.cron")}
                       htmlFor="cron"
-                      hint="Minute, hour, day of month, month and day of week: 0 2 * * 1-5 is 2:00 on weekdays."
+                      hint={t("form.panels.cronHint")}
                       error={fieldErrors.$cron}
                     >
                       <Input
@@ -1120,9 +1166,9 @@ function RequestFormBody({
                       />
                     </Field>
                     <Field
-                      label="Time zone"
+                      label={t("form.panels.timezone")}
                       htmlFor="timezone"
-                      hint="The IANA name the times are read in, such as Europe/Zurich."
+                      hint={t("form.panels.timezoneHint")}
                       error={fieldErrors.$timezone}
                     >
                       <Input
@@ -1143,11 +1189,15 @@ function RequestFormBody({
             <div className="flex min-w-0 flex-col gap-1 md:col-span-2">
               {onBehalfOf ? (
                 <>
-                  <span className="text-secondary font-medium">For someone else</span>
+                  <span className="text-secondary font-medium">{t("form.panels.forSomeone")}</span>
                   <div className="flex items-center gap-2 text-body">
                     <span>
-                      On behalf of <strong>{onBehalfOf.name}</strong>{" "}
-                      <span className="text-secondary text-muted">{onBehalfOf.email}</span>: they will own it.
+                      <Trans
+                        t={t}
+                        i18nKey="form.panels.onBehalf"
+                        values={{ name: onBehalfOf.name, email: onBehalfOf.email }}
+                        components={{ strong: <strong />, muted: <span className="text-secondary text-muted" /> }}
+                      />
                     </span>
                     <Button
                       size="sm"
@@ -1157,13 +1207,13 @@ function RequestFormBody({
                         clearServerError("$on_behalf_of");
                       }}
                     >
-                      For myself instead
+                      {t("form.panels.forMyself")}
                     </Button>
                   </div>
                 </>
               ) : (
                 <UserPicker
-                  label="For someone else (optional)"
+                  label={t("form.panels.forSomeoneOptional")}
                   id="on-behalf"
                   onPick={(u) => {
                     setOnBehalfOf(u);
@@ -1210,21 +1260,26 @@ function RequestFormBody({
             ),
             holding,
             leadingRows: [
-              ...(versions.length > 1 ? [{ label: "Version", value: versionOf(item, form.version_id).number }] : []),
-              { label: "Environment", value: environments.find((e) => e.key === environment)?.name ?? environment },
+              ...(versions.length > 1
+                ? [{ label: t("form.version.label"), value: versionOf(item, form.version_id).number }]
+                : []),
+              {
+                label: t("form.env.label"),
+                value: environments.find((e) => e.key === environment)?.name ?? environment,
+              },
             ],
           }}
           leading={
             <>
               {versions.length > 1 && (
                 <Field
-                  label="Version"
+                  label={t("form.version.label")}
                   htmlFor="version"
                   error={fieldErrors.$version_id}
                   hint={
                     form.version_id === item.version.id
-                      ? "The newest. Earlier versions are still offered."
-                      : `An earlier version: the newest is ${item.version.number}.`
+                      ? t("form.version.newest")
+                      : t("form.version.earlier", { number: item.version.number })
                   }
                 >
                   <Select
@@ -1233,7 +1288,7 @@ function RequestFormBody({
                     onChange={pickVersion}
                     options={versions.map((v) => ({
                       value: v.id,
-                      label: v.id === item.version.id ? `${v.number} (newest)` : v.number,
+                      label: v.id === item.version.id ? t("form.version.newestOption", { number: v.number }) : v.number,
                     }))}
                   />
                 </Field>
@@ -1285,6 +1340,7 @@ function RequestFormBody({
 }
 
 export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; draftId?: string; from?: string }) {
+  const { t } = useTranslation("requests");
   const { me, projectId, setProjectId } = useCurrentProject();
   const item = useQuery(q.catalogItem(itemKey, projectId));
   const project = useQuery(q.project(projectId));
@@ -1332,9 +1388,7 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
     (Boolean(draftId) && !saved.data) ||
     (Boolean(from) && !past.data) ||
     (member && startProject !== undefined && startProject !== projectId && !switched.current);
-  const elsewhere = member
-    ? null
-    : new Error("This is in a project you don't work in: ask one of its members to request it.");
+  const elsewhere = member ? null : new Error(t("form.page.elsewhere"));
   const error =
     item.error ?? form.error ?? project.error ?? environments.error ?? saved.error ?? past.error ?? elsewhere;
 
@@ -1343,7 +1397,7 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
       <PageHeader
         breadcrumbs={
           <Breadcrumbs>
-            <Link to="/catalog">Catalog</Link>
+            <Link to="/catalog">{t("form.page.catalog")}</Link>
             {item.data && (
               <Link to="/catalog/$itemId" params={{ itemId: item.data.slug }}>
                 {item.data.name}
@@ -1355,7 +1409,7 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
           item.data ? (
             <span className="flex items-center gap-3">
               <ItemIcon name={item.data.icon} type={item.data.type} className="size-9" />
-              Request {item.data.name}
+              {t("form.page.title", { name: item.data.name })}
             </span>
           ) : (
             <Skeleton className="h-5 w-56" />
@@ -1365,9 +1419,11 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
           item.data && (
             <>
               {itemTypeLabel(item.data.type)} {versionOf(item.data, form.data?.version_id).number}
-              {item.data.source.awx_template_name ? ` · launches ${item.data.source.awx_template_name}` : ""}
+              {item.data.source.awx_template_name
+                ? ` · ${t("form.page.launches", { template: item.data.source.awx_template_name })}`
+                : ""}
               {item.data.typical_duration_seconds
-                ? ` · usually done in ${roughDuration(item.data.typical_duration_seconds)}`
+                ? ` · ${t("form.page.usually", { duration: roughDuration(item.data.typical_duration_seconds) })}`
                 : ""}
             </>
           )

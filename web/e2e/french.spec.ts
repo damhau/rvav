@@ -80,7 +80,7 @@ test("French chosen in the top bar shows at once, on every page, until English i
   await expect(page.getByText("Impossible de charger les options.")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("combobox", { name: "Cluster" })).toHaveText("Non chargé");
   // The request page's own words are translated with features/requests.
-  await page.getByRole("button", { name: /^Submit/ }).click();
+  await page.getByRole("button", { name: /^Soumettre/ }).click();
   await expect(page.getByText("2 champs demandent votre attention.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Réessayer" })).toBeFocused();
   await bothThemes(page, "request form refused");
