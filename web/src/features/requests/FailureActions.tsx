@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -26,6 +27,7 @@ export function FailureActions({
   rolledBack?: Step;
   announce?: boolean;
 }) {
+  const { t } = useTranslation("requests");
   const undone = request.kind === "provision" && rolledBack;
   const [alert] = useState(announce);
   const qc = useQueryClient();
@@ -34,56 +36,56 @@ export function FailureActions({
     qc.setQueryData(keys.requests.detail(r.number), r);
     void qc.invalidateQueries({ queryKey: keys.requests.steps(r.id) });
     if (r.deployment_ids?.[0]) void qc.invalidateQueries({ queryKey: keys.deployments.detail(r.deployment_ids[0]) });
-    toast.success(`${r.number}: ${what}`);
+    toast.success(t("failure.toast", { number: r.number, what }));
   };
   const failed = (e: unknown) =>
-    toast.error(isApiError(e) ? e.problem.title : "That didn't work", {
+    toast.error(isApiError(e) ? e.problem.title : t("failure.didNotWork"), {
       description: isApiError(e) ? e.problem.detail : undefined,
     });
   const params = { params: { path: { requestId: request.id } } };
   const retry = useMutation({
     mutationFn: () => call(api.POST("/requests/{requestId}/retry", params)),
-    onSuccess: (r) => done(r, undone ? "running again" : "running again from the failed step"),
+    onSuccess: (r) => done(r, undone ? t("failure.runningAgain") : t("failure.runningAgainFromFailed")),
     onError: failed,
   });
   const rollback = useMutation({
     mutationFn: () => call(api.POST("/requests/{requestId}/rollback", params)),
     onSuccess: (r) => {
       setConfirmRollback(false);
-      done(r, "rolling back");
+      done(r, t("failure.rollingBack"));
     },
     onError: failed,
   });
   return (
     <div
       role={alert ? "alert" : "group"}
-      aria-label={alert ? undefined : `${request.number} failed`}
+      aria-label={alert ? undefined : t("failure.failed", { number: request.number })}
       className="mt-1 flex flex-col gap-2 rounded-lg border border-bad bg-bad-soft px-3.5 py-3"
     >
       <span className="font-semibold text-bad">{request.error?.message}</span>
       <span className="text-secondary">
         {request.kind !== "provision"
-          ? "Retrying runs the failed step and the ones after it; the steps that were done are kept."
+          ? t("failure.retryKeeps")
           : undone
-            ? `It was rolled back: ${undone.detail || "what it created was deleted"}. Retry runs it again from its first step, without asking for approval again.`
-            : "What was created is kept so you can look at it. Retry runs the failed step and the ones after it; Roll back deletes the VM, its IP address and DNS records."}
+            ? t("failure.rolledBack", { detail: undone.detail || t("failure.createdDeleted") })
+            : t("failure.keptForLook")}
       </span>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="primary" onClick={() => retry.mutate()} disabled={retry.isPending}>
-          {undone ? "Retry" : "Retry from the failed step"}
+          {undone ? t("failure.retry") : t("failure.retryFromFailed")}
         </Button>
         {request.kind === "provision" && !undone && (
           <>
             <Button size="sm" variant="danger" onClick={() => setConfirmRollback(true)}>
-              Roll back
+              {t("failure.rollBack")}
             </Button>
             <ConfirmDialog
               open={confirmRollback}
               onOpenChange={setConfirmRollback}
-              title={`Roll back ${request.number}?`}
-              description="Deletes what it created: the VM, its IP address and DNS records. You can retry it afterwards."
-              confirmLabel="Roll back"
-              cancelLabel="Keep it"
+              title={t("failure.confirmTitle", { number: request.number })}
+              description={t("failure.confirmBody")}
+              confirmLabel={t("failure.rollBack")}
+              cancelLabel={t("failure.keep")}
               pending={rollback.isPending}
               onConfirm={() => rollback.mutate()}
             />

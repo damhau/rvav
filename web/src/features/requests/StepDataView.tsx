@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useId } from "react";
+import { useTranslation } from "react-i18next";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import type { Step } from "@/lib/api/types";
 import { q } from "@/lib/query";
@@ -8,15 +9,16 @@ import { q } from "@/lib/query";
 const masked = "••••";
 
 function Value({ v }: { v: unknown }) {
+  const { t } = useTranslation("requests");
   if (v === masked)
     return (
       <>
         <span aria-hidden>{masked}</span>
-        <span className="sr-only">Secret, masked</span>
+        <span className="sr-only">{t("stepData.secret")}</span>
       </>
     );
-  if (v === null || v === undefined) return <span className="text-muted">null</span>;
-  if (v === "") return <span className="text-muted">empty</span>;
+  if (v === null || v === undefined) return <span className="text-muted">{t("stepData.null")}</span>;
+  if (v === "") return <span className="text-muted">{t("stepData.empty")}</span>;
   if (typeof v === "object")
     return (
       <pre className="m-0 font-mono text-secondary break-words whitespace-pre-wrap">{JSON.stringify(v, null, 2)}</pre>
@@ -63,6 +65,7 @@ function Fields({
 
 /** What a step was given and what it gave (ADR-0057), secrets masked by the server. */
 export function StepDataView({ requestId, step }: { requestId: string; step: Step }) {
+  const { t } = useTranslation("requests");
   const data = useQuery(q.stepData(requestId, step.id, `${step.status}:${step.finished_at ?? ""}`));
   if (data.isPending) return <Skeleton className="h-24" />;
   if (data.isError) return <ErrorState error={data.error} onRetry={() => void data.refetch()} className="p-0" />;
@@ -72,20 +75,18 @@ export function StepDataView({ requestId, step }: { requestId: string; step: Ste
   const key = /^step:([a-z][a-z0-9_]*)$/.exec(step.key)?.[1];
   return (
     <div className="flex flex-col gap-4">
-      <Fields title="Inputs" values={d.inputs} empty="It was given nothing it keeps." />
+      <Fields title={t("stepData.inputs")} values={d.inputs} empty={t("stepData.givenNothing")} />
       {d.outputs_hidden ? (
         <section className="flex flex-col gap-1.5">
-          <h3 className="text-body font-medium">Outputs</h3>
-          <p className="text-secondary text-muted">
-            Only the people it asks, and those who read every approval, read the answer.
-          </p>
+          <h3 className="text-body font-medium">{t("stepData.outputs")}</h3>
+          <p className="text-secondary text-muted">{t("stepData.outputsHidden")}</p>
         </section>
       ) : (
         <Fields
-          title="Outputs"
+          title={t("stepData.outputs")}
           values={d.outputs}
-          empty={unfinished ? "Nothing yet: it hasn't finished." : "It gave nothing."}
-          note={key ? `Later steps read them as steps.${key}.<name>.` : undefined}
+          empty={unfinished ? t("stepData.notYet") : t("stepData.gaveNothing")}
+          note={key ? t("stepData.laterSteps", { key }) : undefined}
         />
       )}
     </div>

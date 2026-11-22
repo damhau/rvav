@@ -7,6 +7,7 @@
 // Loaded lazily, like the topology on the request form: React Flow stays out
 // of the other pages.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Canvas, type CanvasGraph, type CanvasNode, type CanvasStatus, type CanvasView } from "@/components/canvas";
 import { NodeFacts } from "@/components/canvas/CanvasList";
 import { statusLabel } from "@/components/canvas/graph";
@@ -42,6 +43,7 @@ export default function RequestRun({
   dataStep,
   onOpenData,
 }: RequestRunProps) {
+  const { t } = useTranslation("requests");
   const [view, setView] = useState<CanvasView>("graph");
   const byNode = useMemo(() => runSteps(graph, steps), [graph, steps]);
   const status = useMemo(() => runStatus(graph, byNode), [graph, byNode]);
@@ -64,7 +66,7 @@ export default function RequestRun({
     <>
       <Canvas
         graph={graph}
-        label={`Run of ${request.number}`}
+        label={t("run.label", { number: request.number })}
         status={status}
         taken={taken}
         selected={selected}
@@ -72,7 +74,7 @@ export default function RequestRun({
         view={view}
         onViewChange={setView}
         list={{
-          label: "Timeline",
+          label: t("run.timeline"),
           content: (
             <div>
               <Timeline
@@ -125,11 +127,12 @@ function RunDetails({
   onOpenData?: (step: Step) => void;
   children?: React.ReactNode;
 }) {
+  const { t } = useTranslation("requests");
   // The timeline offers the output of its own steps' jobs; these are deeper (a VM step's post-configuration).
   const deeper = flatten(steps.flatMap((s) => s.children)).filter((s) => s.has_log && s.status !== "pending");
   return (
     <div
-      aria-label={`Selected: ${node.title}`}
+      aria-label={t("run.selected", { title: node.title })}
       role="region"
       className="flex flex-col gap-2 rounded-md border border-line bg-surface p-3 text-secondary"
     >
@@ -160,7 +163,7 @@ function RunDetails({
           selectedDataStep={dataStep}
         />
       ) : (
-        <p className="text-muted">Nothing has run here yet.</p>
+        <p className="text-muted">{t("run.nothingYet")}</p>
       )}
       {deeper.length > 0 && (
         <ul className="flex flex-col gap-1">
@@ -172,7 +175,7 @@ function RunDetails({
                 aria-pressed={logStep === s.id}
                 className="text-left text-secondary font-medium text-accent hover:underline"
               >
-                {logStep === s.id ? "Showing the output of" : "Show the output of"} {s.title}
+                {t(logStep === s.id ? "run.showingOutput" : "run.showOutput", { title: s.title })}
               </button>
             </li>
           ))}

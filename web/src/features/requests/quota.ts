@@ -1,14 +1,23 @@
 import type { components } from "@/lib/api/schema";
+import { i18n } from "@/lib/i18n";
 
 type QuotaImpact = components["schemas"]["QuotaImpact"];
 type QuotaLevel = components["schemas"]["QuotaLevel"];
 
-/** A quota resource's name and unit. */
+/** A quota resource's name, in the language shown, and unit. */
 export const quotaLabel: Record<components["schemas"]["QuotaResource"], [string, string]> = {
-  vcpu: ["vCPU", ""],
-  memory_gb: ["Memory", "GB"],
-  storage_gb: ["Storage", "GB"],
-  vm_count: ["VMs", ""],
+  get vcpu(): [string, string] {
+    return [i18n.t("common:quota.vcpu"), ""];
+  },
+  get memory_gb(): [string, string] {
+    return [i18n.t("common:quota.memory_gb"), "GB"];
+  },
+  get storage_gb(): [string, string] {
+    return [i18n.t("common:quota.storage_gb"), "GB"];
+  },
+  get vm_count(): [string, string] {
+    return [i18n.t("common:quota.vm_count"), ""];
+  },
 };
 
 const left = (l: QuotaImpact) => (l.limit == null ? Infinity : l.limit - l.used - Math.max(l.adding, 0));
@@ -32,13 +41,13 @@ export function tightest(lines: QuotaImpact[]): QuotaImpact[] {
 export function quotaWhere(l: { level: QuotaLevel; environment?: string; scope?: string }): string {
   switch (l.level) {
     case "environment":
-      return ` in ${l.environment ?? l.scope ?? ""}`;
+      return ` ${i18n.t("requests:quotaWhere.environment", { environment: l.environment ?? l.scope ?? "" })}`;
     case "project_user":
-      return " · per member";
+      return ` · ${i18n.t("requests:quotaWhere.member")}`;
     case "global":
-      return " · all of rvav";
+      return ` · ${i18n.t("requests:quotaWhere.global")}`;
     case "global_user":
-      return " · per user, all of rvav";
+      return ` · ${i18n.t("requests:quotaWhere.globalUser")}`;
     default:
       return "";
   }

@@ -4,6 +4,7 @@
 // What it asks comes from the server for those who may read it.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ApprovalHistory, dueText } from "@/components/common/approvals";
 import { Time } from "@/components/common/misc";
@@ -38,6 +39,7 @@ function Question({
   error?: string;
   onChange: (v: Value) => void;
 }) {
+  const { t } = useTranslation("requests");
   if (field.type === "boolean")
     return (
       <div className="flex flex-col gap-1">
@@ -48,14 +50,14 @@ function Question({
         {error && <p className="text-secondary text-bad">{error}</p>}
       </div>
     );
-  const required = field.required ? <span className="text-secondary text-faint">Required</span> : undefined;
+  const required = field.required ? <span className="text-secondary text-faint">{t("ask.required")}</span> : undefined;
   if (field.type === "choice")
     return (
       <Field label={field.label} htmlFor={id} error={error} aside={required}>
         <Select
           id={id}
           value={typeof value === "string" ? value : ""}
-          placeholder="Choose"
+          placeholder={t("ask.choose")}
           options={(field.options ?? []).map((o) => ({ value: o, label: o }))}
           onChange={onChange}
         />
@@ -81,6 +83,7 @@ function answerValue(f: ApprovalQuestionField, v: Value): Value {
 
 /** The answer of someone a step asks: its form, or approve and reject. */
 function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: () => void }) {
+  const { t } = useTranslation("requests");
   const qc = useQueryClient();
   const question = approval.question;
   const form = question?.form ?? [];
@@ -117,7 +120,7 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
       void qc.invalidateQueries({ queryKey: keys.approvals.lists() });
       void qc.invalidateQueries({ queryKey: keys.approvals.forRequest(a.request.id) });
       void qc.invalidateQueries({ queryKey: keys.requests.detail(a.request.number) });
-      toast.success(decision === "reject" ? `Rejected: ${a.level.name}` : `Answer sent: ${a.level.name}`);
+      toast.success(t(decision === "reject" ? "ask.rejected" : "ask.sent", { level: a.level.name }));
       onAnswered();
     },
     onError: (e) => {
@@ -132,7 +135,7 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
       }
       // Answered by someone else meanwhile, or no longer asked.
       void qc.invalidateQueries({ queryKey: keys.approvals.forRequest(approval.request.id) });
-      toast.error(isApiError(e) ? e.problem.title : "The answer was not sent", {
+      toast.error(isApiError(e) ? e.problem.title : t("ask.notSent"), {
         description: isApiError(e) ? (found[0]?.message ?? e.problem.detail) : undefined,
       });
     },
@@ -140,7 +143,7 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
 
   const reject = () => {
     if (!comment.trim()) {
-      setErrors({ "/comment": "Say why you reject it: the requester sees this comment." });
+      setErrors({ "/comment": t("ask.sayWhy") });
       commentRef.current?.focus();
       return;
     }
@@ -149,7 +152,7 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
 
   return (
     <form
-      aria-label={`Your answer: ${approval.level.name}`}
+      aria-label={t("ask.yourAnswer", { level: approval.level.name })}
       className="flex flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault();
@@ -161,7 +164,7 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
         {question?.message && <p className="whitespace-pre-wrap">{question.message}</p>}
         {approval.due_at && (
           <span className="text-secondary text-muted">
-            Due <Time iso={approval.due_at} />
+            <Trans t={t} i18nKey="ask.due" components={{ time: <Time iso={approval.due_at} /> }} />
             {dueText(approval) && `, ${dueText(approval)}`}
           </span>
         )}
@@ -180,10 +183,14 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
         />
       ))}
       <Field
-        label="Comment"
+        label={t("ask.comment")}
         htmlFor={commentId}
         error={errors["/comment"]}
-        aside={<span className="text-secondary text-faint">{form.length > 0 ? "Optional" : "Required to reject"}</span>}
+        aside={
+          <span className="text-secondary text-faint">
+            {form.length > 0 ? t("ask.optional") : t("ask.requiredToReject")}
+          </span>
+        }
       >
         <Textarea
           id={commentId}
@@ -197,11 +204,11 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
       </Field>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" variant="primary" disabled={answer.isPending}>
-          {form.length > 0 ? "Send answer" : "Approve"}
+          {form.length > 0 ? t("ask.send") : t("ask.approve")}
         </Button>
         {form.length === 0 && (
           <Button type="button" variant="danger" disabled={answer.isPending} onClick={reject}>
-            Reject
+            {t("ask.reject")}
           </Button>
         )}
       </div>
@@ -211,11 +218,12 @@ function AnswerForm({ approval, onAnswered }: { approval: Approval; onAnswered: 
 
 /** A request's steps that wait for a person: those to answer, and what the others got. */
 export function AskPanel({ rows }: { rows: Approval[] }) {
+  const { t } = useTranslation("requests");
   const box = useRef<HTMLDivElement>(null);
   const mine = rows.filter((a) => a.can_decide);
   const others = rows.filter((a) => !a.can_decide);
   return (
-    <Panel title="Waits for a person">
+    <Panel title={t("ask.title")}>
       {/* The form goes with its answer: the focus stays here, not on the page's top. */}
       <div ref={box} tabIndex={-1} className="flex flex-col gap-4 outline-none">
         {mine.map((a) => (
@@ -223,7 +231,7 @@ export function AskPanel({ rows }: { rows: Approval[] }) {
         ))}
         {others.length > 0 && (
           <div className={mine.length > 0 ? "border-t border-line pt-3.5" : undefined}>
-            <ApprovalHistory levels={others} label="Steps that wait for a person" />
+            <ApprovalHistory levels={others} label={t("ask.others")} />
           </div>
         )}
       </div>

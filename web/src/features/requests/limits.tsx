@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Meter } from "@/components/common/meter";
 import type { components } from "@/lib/api/schema";
+import { i18n } from "@/lib/i18n";
 import { q } from "@/lib/query";
 
 type S = components["schemas"];
@@ -14,12 +16,20 @@ export const limitKinds: Kind[] = [
   "memory_gb_per_deployment",
 ];
 
-/** A deployment limit's name and unit. */
+/** A deployment limit's name, in the language shown, and unit. */
 export const limitLabel: Record<Kind, [string, string]> = {
-  deployments_per_user: ["Deployments per user", ""],
-  deployments_per_project: ["Deployments per project", ""],
-  vcpu_per_deployment: ["vCPU per deployment", ""],
-  memory_gb_per_deployment: ["Memory per deployment", "GB"],
+  get deployments_per_user(): [string, string] {
+    return [i18n.t("requests:limit.kind.deployments_per_user"), ""];
+  },
+  get deployments_per_project(): [string, string] {
+    return [i18n.t("requests:limit.kind.deployments_per_project"), ""];
+  },
+  get vcpu_per_deployment(): [string, string] {
+    return [i18n.t("requests:limit.kind.vcpu_per_deployment"), ""];
+  },
+  get memory_gb_per_deployment(): [string, string] {
+    return [i18n.t("requests:limit.kind.memory_gb_per_deployment"), "GB"];
+  },
 };
 
 export function useEnvName() {
@@ -32,6 +42,7 @@ export function useEnvName() {
  * or the largest deployment's size, against each limit that applies.
  */
 export function LimitMeters({ title, lines }: { title: string; lines: S["DeploymentLimitLine"][] }) {
+  const { t } = useTranslation("requests");
   const envName = useEnvName();
   if (lines.length === 0) return null;
   return (
@@ -40,9 +51,9 @@ export function LimitMeters({ title, lines }: { title: string; lines: S["Deploym
       {lines.map((l) => (
         <Meter
           key={l.kind}
-          label={`${limitLabel[l.kind][0]}${l.environment ? ` in ${envName(l.environment)}` : ""}${
-            l.exceeds && l.enforcement === "soft" ? " · over the soft limit" : ""
-          }`}
+          label={`${limitLabel[l.kind][0]}${
+            l.environment ? ` ${t("limit.inEnvironment", { environment: envName(l.environment) })}` : ""
+          }${l.exceeds && l.enforcement === "soft" ? ` · ${t("limit.overSoft")}` : ""}`}
           unit={limitLabel[l.kind][1]}
           used={l.value}
           total={l.limit}

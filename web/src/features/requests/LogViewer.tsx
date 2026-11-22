@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api, call } from "@/lib/api/client";
 import type { LogLine, Step } from "@/lib/api/types";
 import { keys } from "@/lib/query";
@@ -26,6 +27,7 @@ export function LogViewer({ requestId, step }: { requestId: string; step: Step }
 }
 
 function LogStream({ requestId, step }: { requestId: string; step: Step }) {
+  const { t } = useTranslation("requests");
   const head = useQuery({
     queryKey: keys.requests.logHead(requestId, step.id),
     queryFn: () => 0,
@@ -84,7 +86,7 @@ function LogStream({ requestId, step }: { requestId: string; step: Step }) {
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
       tabIndex={0}
       role="log"
-      aria-label={`Output of ${step.title}`}
+      aria-label={t("log.label", { title: step.title })}
       onScroll={(e) => {
         const el = e.currentTarget;
         follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
@@ -92,17 +94,15 @@ function LogStream({ requestId, step }: { requestId: string; step: Step }) {
       className="h-[380px] overflow-auto bg-log-bg px-3 py-2.5 font-mono text-caption leading-[1.55]"
     >
       {lines.length === 0 && !error && (
-        <p className="text-log-dim">
-          {step.status === "pending" ? "The job hasn't started yet." : "Waiting for output…"}
-        </p>
+        <p className="text-log-dim">{step.status === "pending" ? t("log.notStarted") : t("log.waiting")}</p>
       )}
       {lines.map((l) => (
         <div key={l.n} className={cn("break-words whitespace-pre-wrap", kindClass[l.kind ?? "plain"])}>
           {l.text || " "}
         </div>
       ))}
-      {error && <p className="text-log-bad">Couldn't load the job output. It will be retried on the next update.</p>}
-      {complete && lines.length > 0 && <p className="mt-1 text-log-dim">— end of output —</p>}
+      {error && <p className="text-log-bad">{t("log.notLoaded")}</p>}
+      {complete && lines.length > 0 && <p className="mt-1 text-log-dim">{t("log.end")}</p>}
     </div>
   );
 }

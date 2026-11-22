@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Braces, ExternalLink, SquareTerminal } from "lucide-react";
 import { lazy, Suspense, useMemo, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { blueprintGraph } from "@/components/canvas/blueprint";
 import { ApprovalHistory } from "@/components/common/approvals";
@@ -27,6 +28,7 @@ import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { toText } from "@/lib/utils";
 import { duration } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { AskPanel } from "./AskPanel";
 import { FailureActions } from "./FailureActions";
 import { LogViewer } from "./LogViewer";
@@ -48,12 +50,16 @@ function formatItem(v: unknown): string {
 
 function formatValue(v: unknown): string {
   if (Array.isArray(v))
-    return v.map(formatItem).join(v.some((x) => typeof x === "object" && x !== null) ? "; " : ", ") || "none";
+    return (
+      v.map(formatItem).join(v.some((x) => typeof x === "object" && x !== null) ? "; " : ", ") ||
+      i18n.t("requests:detail.none")
+    );
   if (v === null || v === undefined || v === "") return "–";
   return toText(v);
 }
 
 function CancelButton({ request }: { request: ServiceRequest }) {
+  const { t } = useTranslation("requests");
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const cancel = useMutation({
@@ -61,32 +67,27 @@ function CancelButton({ request }: { request: ServiceRequest }) {
     onSuccess: (r) => {
       qc.setQueryData(keys.requests.detail(r.number), r);
       setOpen(false);
-      toast(r.status === "cancelled" ? `${r.number} cancelled` : `Cancelling ${r.number}`, {
-        description:
-          r.status === "cancelled" ? undefined : "It stops after the current step and rolls back what it created.",
+      toast(t(r.status === "cancelled" ? "detail.cancelled" : "detail.cancelling", { number: r.number }), {
+        description: r.status === "cancelled" ? undefined : t("detail.stopsAfter"),
       });
     },
     onError: (e) =>
-      toast.error(isApiError(e) ? e.problem.title : "Couldn't cancel the request", {
+      toast.error(isApiError(e) ? e.problem.title : t("detail.notCancelled"), {
         description: isApiError(e) ? e.problem.detail : undefined,
       }),
   });
   return (
     <>
       <Button variant="danger" onClick={() => setOpen(true)}>
-        Cancel request
+        {t("detail.cancel")}
       </Button>
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
-        title={`Cancel ${request.number}?`}
-        description={
-          request.status === "running"
-            ? "The request stops after the step that is running now. The VM, IP address and DNS records it created are removed."
-            : "The request is withdrawn before anything is created."
-        }
-        confirmLabel="Cancel request"
-        cancelLabel="Keep it running"
+        title={t("detail.cancelTitle", { number: request.number })}
+        description={request.status === "running" ? t("detail.cancelRunning") : t("detail.cancelWaiting")}
+        confirmLabel={t("detail.cancel")}
+        cancelLabel={t("detail.keepRunning")}
         pending={cancel.isPending}
         onConfirm={() => cancel.mutate()}
       />
@@ -95,6 +96,7 @@ function CancelButton({ request }: { request: ServiceRequest }) {
 }
 
 export function RequestDetailPage({ requestKey }: { requestKey: string }) {
+  const { t } = useTranslation("requests");
   useNow(1000);
   const request = useQuery(q.request(requestKey));
   const id = request.data?.id;
@@ -116,7 +118,8 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   const graph = useMemo(() => {
     const g = topology.data?.topology ? blueprintGraph(topology.data.topology, "/topology") : null;
     return g?.kind === "composite" ? g : null;
-  }, [topology.data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topology.data, i18n.language]);
   // The node selected: at first, the one the request failed at.
   const [chosenNode, setChosenNode] = useState<string | null | undefined>(undefined);
 
@@ -157,7 +160,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
       <PageHeader
         breadcrumbs={
           <Breadcrumbs>
-            <Link to="/requests">Requests</Link>
+            <Link to="/requests">{t("detail.breadcrumb")}</Link>
           </Breadcrumbs>
         }
         title={r ? r.title : <Skeleton className="h-5 w-72" />}
@@ -171,30 +174,46 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
               </span>
               <span>
                 {r.schedule
-                  ? `Started by the schedule ${r.schedule.name}, as ${r.requester.name}`
-                  : `Requested by ${r.requester.name}`}
+                  ? t("detail.bySchedule", { schedule: r.schedule.name, name: r.requester.name })
+                  : t("detail.requestedBy", { name: r.requester.name })}
               </span>
               {r.kind === "update" && r.deployment_id ? (
                 <span>
-                  To {r.catalog_item.name} {r.version.number} on{" "}
-                  <Link
-                    to="/deployments/$deploymentId"
-                    params={{ deploymentId: r.deployment_id }}
-                    className="text-accent underline underline-offset-2"
-                  >
-                    {r.title.replace(/^Update · /, "")}
-                  </Link>
+                  <Trans
+                    t={t}
+                    i18nKey="detail.updateTo"
+                    values={{
+                      item: r.catalog_item.name,
+                      version: r.version.number,
+                      deployment: r.title.replace(/^Update · /, ""),
+                    }}
+                    components={{
+                      link: (
+                        <Link
+                          to="/deployments/$deploymentId"
+                          params={{ deploymentId: r.deployment_id }}
+                          className="text-accent underline underline-offset-2"
+                        />
+                      ),
+                    }}
+                  />
                 </span>
               ) : r.kind === "day2" && r.deployment_id ? (
                 <span>
-                  {r.action?.name} on{" "}
-                  <Link
-                    to="/deployments/$deploymentId"
-                    params={{ deploymentId: r.deployment_id }}
-                    className="text-accent underline underline-offset-2"
-                  >
-                    {r.resource?.name ?? "the deployment"}
-                  </Link>
+                  <Trans
+                    t={t}
+                    i18nKey="detail.actionOn"
+                    values={{ action: r.action?.name ?? "", resource: r.resource?.name ?? t("detail.theDeployment") }}
+                    components={{
+                      link: (
+                        <Link
+                          to="/deployments/$deploymentId"
+                          params={{ deploymentId: r.deployment_id }}
+                          className="text-accent underline underline-offset-2"
+                        />
+                      ),
+                    }}
+                  />
                 </span>
               ) : (
                 <span>
@@ -202,14 +221,17 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 </span>
               )}
               <span>
-                Submitted <Time iso={r.submitted_at} />
+                <Trans t={t} i18nKey="detail.submitted" components={{ time: <Time iso={r.submitted_at} /> }} />
               </span>
               <span className="tnum">
                 {r.status === "succeeded"
-                  ? `All ${r.progress.total} steps done`
+                  ? t("detail.allDone", { count: r.progress.total })
                   : running
-                    ? `Step ${Math.min(r.progress.total, r.progress.done + 1)} of ${r.progress.total}`
-                    : `${r.progress.done} of ${r.progress.total} steps done`}
+                    ? t("progress.step", {
+                        n: Math.min(r.progress.total, r.progress.done + 1),
+                        total: r.progress.total,
+                      })
+                    : t("detail.doneOf", { done: r.progress.done, count: r.progress.total })}
                 {elapsed ? ` · ${elapsed}` : ""}
               </span>
             </>
@@ -226,14 +248,14 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                     params={{ itemId: r.catalog_item.slug }}
                     search={{ from: r.number }}
                   >
-                    Request again
+                    {t("detail.requestAgain")}
                   </Link>
                 </Button>
               )}
               {deploymentId && (
                 <Button variant={r.status === "succeeded" ? "primary" : "secondary"} asChild>
                   <Link to="/deployments/$deploymentId" params={{ deploymentId }}>
-                    Open deployment
+                    {t("detail.openDeployment")}
                   </Link>
                 </Button>
               )}
@@ -245,11 +267,11 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
       <div className="flex flex-wrap items-start gap-4">
         <Panel
           className="flex-[999_1_520px]"
-          title="Steps"
+          title={t("detail.steps")}
           actions={
             running ? (
               <span className="flex items-center gap-1.5 text-caption text-faint">
-                <span className="size-1.5 rounded-full bg-ok" aria-hidden /> Live
+                <span className="size-1.5 rounded-full bg-ok" aria-hidden /> {t("detail.live")}
               </span>
             ) : null
           }
@@ -294,20 +316,20 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
 
         <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-4">
           <Panel
-            title="AWX job output"
+            title={t("detail.awx")}
             flush
             description={logStep && <span className="font-mono break-words">{logStep.title.replace(/^AWX /, "")}</span>}
             footer={
               logStep?.external_ref?.url && (
                 <>
-                  <span className="mr-auto">Follows the job live.</span>
+                  <span className="mr-auto">{t("detail.followsLive")}</span>
                   <a
                     href={logStep.external_ref.url}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 text-accent hover:underline"
                   >
-                    Open in AWX <ExternalLink className="size-3" aria-hidden />
+                    {t("detail.openInAwx")} <ExternalLink className="size-3" aria-hidden />
                   </a>
                 </>
               )
@@ -316,27 +338,19 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
             {id && logStep ? (
               <LogViewer requestId={id} step={logStep} />
             ) : (
-              <EmptyState
-                icon={SquareTerminal}
-                title="No AWX job"
-                body="This request has no AWX job, or it hasn't been planned yet."
-              />
+              <EmptyState icon={SquareTerminal} title={t("detail.noAwx")} body={t("detail.noAwxBody")} />
             )}
           </Panel>
 
           {withData.length > 0 && (
             <Panel
-              title="Step data"
+              title={t("detail.stepData")}
               description={dataStep && <span className="font-mono break-words">{dataStep.title}</span>}
             >
               {id && dataStep ? (
                 <StepDataView requestId={id} step={dataStep} />
               ) : (
-                <EmptyState
-                  icon={Braces}
-                  title="No step chosen"
-                  body="Choose Show data on a step to read what it was given and what it gave."
-                />
+                <EmptyState icon={Braces} title={t("detail.noStep")} body={t("detail.noStepBody")} />
               )}
             </Panel>
           )}
@@ -344,19 +358,19 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
           {asked.length > 0 && <AskPanel rows={asked} />}
 
           {Boolean(r?.warnings?.length) && (
-            <Panel title="Policy warnings" description="The requester went on despite them.">
+            <Panel title={t("detail.warnings")} description={t("detail.warningsBody")}>
               <PolicyWarnings warnings={r?.warnings ?? []} note="" />
             </Panel>
           )}
 
           {levels.length > 0 && (
             <Panel
-              title="Approval"
+              title={t("detail.approval")}
               actions={
                 mine ? (
                   <Button size="sm" variant="primary" asChild>
                     <Link to="/approvals" search={{ id: mine.id }}>
-                      Decide
+                      {t("detail.decide")}
                     </Link>
                   </Button>
                 ) : null
@@ -366,9 +380,9 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
             </Panel>
           )}
 
-          <Panel title="What was asked for">
+          <Panel title={t("detail.asked")}>
             {r && Object.keys(r.inputs ?? {}).length === 0 && !r.justification ? (
-              <p className="text-secondary text-muted">Nothing: the item asks no questions.</p>
+              <p className="text-secondary text-muted">{t("detail.nothingAsked")}</p>
             ) : r ? (
               <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5">
                 {Object.entries(r.inputs ?? {}).map(([k, v]) => (
@@ -385,7 +399,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 ))}
                 {r.justification && (
                   <div className="contents">
-                    <dt className="text-muted">Reason</dt>
+                    <dt className="text-muted">{t("detail.reason")}</dt>
                     <dd className="m-0">{r.justification}</dd>
                   </div>
                 )}
