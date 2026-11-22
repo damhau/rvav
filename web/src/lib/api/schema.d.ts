@@ -10092,7 +10092,7 @@ export interface components {
             name: string;
             /** @description An OIDC group whose members approve. */
             group?: string;
-            /** @description User IDs. */
+            /** @description User IDs. The policy lists give their names in `users`. */
             approvers?: string[];
             /**
              * @description Roles given in projects, built-in or custom, by key (ADR-0041):
@@ -10154,6 +10154,12 @@ export interface components {
             items: components["schemas"]["ApprovalPolicy"][];
             /** @description The roles a level may name, those given in projects. */
             level_roles: components["schemas"]["RoleRef"][];
+            /**
+             * @description The users the listed levels name, as approvers or to escalate
+             *     to, by ID with their names (no email). An ID no user has is
+             *     left out.
+             */
+            users: components["schemas"]["UserRef"][];
         };
         Day2PolicyWrite: {
             name: string;
@@ -10192,6 +10198,12 @@ export interface components {
             items: components["schemas"]["Day2Policy"][];
             /** @description The roles a level may name, those given in projects. */
             level_roles: components["schemas"]["RoleRef"][];
+            /**
+             * @description The users the listed levels name, as approvers or to escalate
+             *     to, by ID with their names (no email). An ID no user has is
+             *     left out.
+             */
+            users: components["schemas"]["UserRef"][];
         };
         /**
          * @description What a deployment limit caps: how many deployments each user, or

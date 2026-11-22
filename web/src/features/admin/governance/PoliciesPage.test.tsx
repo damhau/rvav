@@ -59,7 +59,9 @@ describe("Policies", () => {
     await user.click(menu);
     await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Remove Production VMs?" });
-    expect(confirm).toHaveAccessibleDescription("Requests stop waiting for rvav-infra-leads because of it.");
+    expect(confirm).toHaveAccessibleDescription(
+      "Requests stop waiting for rvav-infra-leads, Marc Keller because of it.",
+    );
     expect(confirm).toHaveTextContent("Requests already waiting keep the approvals they were given.");
     await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(menu).toHaveFocus());
@@ -279,6 +281,29 @@ describe("Policies", () => {
 // projects' own to write, and no naming policies.
 describe("Policies as a project admin", () => {
   afterEach(() => localStorage.removeItem("rvav.mock.as"));
+
+  it("names the approvers of the policies they read, and gives the ID of one rvav doesn't know", async () => {
+    localStorage.setItem("rvav.mock.as", "project-admin");
+    resetDb();
+    adminState(db).approvals.push({
+      id: "pol_web_leavers",
+      name: "Web leavers",
+      reason: "",
+      condition: "true",
+      item_type: null,
+      project_id: "prj_web",
+      levels: [{ name: "Former lead", approvers: ["usr_gone"], mode: "any" }],
+      priority: 120,
+      enabled: true,
+      set_by_admin: false,
+    });
+    renderApp("/admin/policies");
+    const region = await screen.findByRole("region", { name: "Approval policies" });
+    const production = await within(region).findByRole("row", { name: /Production VMs/ });
+    expect(production).toHaveTextContent("rvav-infra-leads, Marc Keller");
+    expect(production).not.toHaveTextContent("usr_mkeller");
+    expect(within(region).getByRole("row", { name: /Web leavers/ })).toHaveTextContent("usr_gone");
+  });
 
   it("writes a soft day-2 policy for their project, and only reads every project's", async () => {
     localStorage.setItem("rvav.mock.as", "project-admin");

@@ -13182,7 +13182,10 @@ components:
       properties:
         name: { type: string }
         group: { type: string, description: An OIDC group whose members approve. }
-        approvers: { type: array, items: { type: string }, description: User IDs. }
+        approvers:
+          type: array
+          items: { type: string }
+          description: User IDs. The policy lists give their names in `users`.
         roles:
           type: array
           items: { type: string }
@@ -13238,7 +13241,7 @@ components:
                 (ADR-0045). False for a project admin's own.
     ApprovalPolicyList:
       type: object
-      required: [items, level_roles]
+      required: [items, level_roles, users]
       properties:
         items:
           type: array
@@ -13247,6 +13250,13 @@ components:
           type: array
           description: The roles a level may name, those given in projects.
           items: { $ref: "#/components/schemas/RoleRef" }
+        users:
+          type: array
+          description: |
+            The users the listed levels name, as approvers or to escalate
+            to, by ID with their names (no email). An ID no user has is
+            left out.
+          items: { $ref: "#/components/schemas/UserRef" }
     Day2PolicyWrite:
       type: object
       required: [name, effect]
@@ -13289,7 +13299,7 @@ components:
                 (ADR-0045). False for a project admin's own.
     Day2PolicyList:
       type: object
-      required: [items, level_roles]
+      required: [items, level_roles, users]
       properties:
         items:
           type: array
@@ -13298,6 +13308,13 @@ components:
           type: array
           description: The roles a level may name, those given in projects.
           items: { $ref: "#/components/schemas/RoleRef" }
+        users:
+          type: array
+          description: |
+            The users the listed levels name, as approvers or to escalate
+            to, by ID with their names (no email). An ID no user has is
+            left out.
+          items: { $ref: "#/components/schemas/UserRef" }
     DeploymentLimitKind:
       type: string
       description: |

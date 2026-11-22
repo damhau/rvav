@@ -22,7 +22,15 @@ func (s *Server) ListApprovalPolicies(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		roles, err = s.Core.LevelRoles(r.Context(), principal(r))
 	}
-	s.reply(w, r, http.StatusOK, api.ApprovalPolicyList{Items: items, LevelRoles: roles}, err)
+	var levels []api.ApprovalLevel
+	for _, p := range items {
+		levels = append(levels, p.Levels...)
+	}
+	var users []api.UserRef
+	if err == nil {
+		users, err = s.Core.LevelUsers(r.Context(), levels)
+	}
+	s.reply(w, r, http.StatusOK, api.ApprovalPolicyList{Items: items, LevelRoles: roles, Users: users}, err)
 }
 
 func (s *Server) CreateApprovalPolicy(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +61,17 @@ func (s *Server) ListDay2Policies(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		roles, err = s.Core.LevelRoles(r.Context(), principal(r))
 	}
-	s.reply(w, r, http.StatusOK, api.Day2PolicyList{Items: items, LevelRoles: roles}, err)
+	var levels []api.ApprovalLevel
+	for _, p := range items {
+		if p.Levels != nil {
+			levels = append(levels, *p.Levels...)
+		}
+	}
+	var users []api.UserRef
+	if err == nil {
+		users, err = s.Core.LevelUsers(r.Context(), levels)
+	}
+	s.reply(w, r, http.StatusOK, api.Day2PolicyList{Items: items, LevelRoles: roles, Users: users}, err)
 }
 
 func (s *Server) CreateDay2Policy(w http.ResponseWriter, r *http.Request) {

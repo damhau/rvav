@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -138,6 +139,79 @@ func TestProjectPolicies(t *testing.T) {
 			if byProjectAdmin[a] == 0 {
 				t.Errorf("not audited: %s (%v)", a, byProjectAdmin)
 			}
+		}
+	})
+}
+
+// TestPolicyApproverNames: the approval and day-2 policy lists name the
+// users their levels ask, as approvers or to escalate to, by name without
+// email, to a project admin too. A project admin learns the names of the
+// global policies' and their projects' approvers only, and an ID no user
+// has stays unnamed (#193).
+func TestPolicyApproverNames(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, projectAdmin = "mkeller", "lmartin"
+		asking := func(name, project, approver, escalation string) api.ApprovalPolicyWrite {
+			return api.ApprovalPolicyWrite{Name: name, Condition: "false", ProjectId: &project,
+				Levels: []api.ApprovalLevel{{Name: name, Approvers: &[]string{seed.UserID(approver)}, Timeout: strPtr("48h"),
+					OnTimeout: new(api.ApprovalLevelOnTimeoutEscalate),
+					EscalateTo: &struct {
+						Approvers *[]string `json:"approvers,omitempty"`
+						Group     *string   `json:"group,omitempty"`
+					}{Approvers: &[]string{seed.UserID(escalation)}}}}}
+		}
+		var data api.ApprovalPolicy
+		h.json("POST", "/api/v1/admin/approval-policies", admin, asking("Data leads", "prj_data", "sbrunner", "sbrunner"), 201, &data)
+		h.json("POST", "/api/v1/admin/approval-policies", projectAdmin, asking("Web leads", "prj_web", "tnguyen", "lmartin"), 201, nil)
+		gone := `[{"name": "Former lead", "approvers": ["usr_gone"], "mode": "any"}]`
+		if _, err := h.store.Pool.Exec(ctx, `insert into approval_policies (id, name, reason, condition, project_id, levels, priority)
+			values ('pol_web_gone', 'Web leavers', '', 'false', 'prj_web', $1, 120)`, gone); err != nil {
+			t.Fatal(err)
+		}
+
+		names := func(users []api.UserRef) map[string]string {
+			t.Helper()
+			out := map[string]string{}
+			for _, u := range users {
+				if u.Email != nil {
+					t.Errorf("%s comes with an email", u.Id)
+				}
+				out[u.Id] = u.Name
+			}
+			return out
+		}
+		global := map[string]string{seed.UserID("mkeller"): "Marc Keller", seed.UserID("cdubois"): "Claire Dubois",
+			seed.UserID("afavre"): "Alain Favre"}
+		web := maps.Clone(global)
+		web[seed.UserID("tnguyen")], web[seed.UserID("lmartin")] = "Thomas Nguyen", "Léa Martin"
+		everyone := maps.Clone(web)
+		everyone[seed.UserID("sbrunner")] = "Sophie Brunner"
+
+		var list api.ApprovalPolicyList
+		h.json("GET", "/api/v1/admin/approval-policies", projectAdmin, nil, 200, &list)
+		if got := names(list.Users); !maps.Equal(got, web) {
+			t.Fatalf("a project admin reads approvers %v, want %v", got, web)
+		}
+		if !slices.ContainsFunc(list.Items, func(p api.ApprovalPolicy) bool { return p.Id == "pol_web_gone" }) ||
+			slices.ContainsFunc(list.Items, func(p api.ApprovalPolicy) bool { return p.Id == data.Id }) {
+			t.Fatalf("a project admin lists %+v", list.Items)
+		}
+		h.json("PUT", "/api/v1/admin/approval-policies/"+data.Id, projectAdmin, asking("Data leads", "prj_web", "sbrunner", "sbrunner"), 404, nil)
+
+		h.json("GET", "/api/v1/admin/approval-policies", admin, nil, 200, &list)
+		if got := names(list.Users); !maps.Equal(got, everyone) {
+			t.Fatalf("an administrator reads approvers %v, want %v", got, everyone)
+		}
+
+		var day2 api.Day2PolicyList
+		h.json("GET", "/api/v1/admin/day2-policies", projectAdmin, nil, 200, &day2)
+		leads := map[string]string{seed.UserID("mkeller"): "Marc Keller", seed.UserID("cdubois"): "Claire Dubois"}
+		if got := names(day2.Users); !maps.Equal(got, leads) {
+			t.Fatalf("a project admin reads day-2 approvers %v, want %v", got, leads)
 		}
 	})
 }

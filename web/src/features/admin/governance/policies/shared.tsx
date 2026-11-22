@@ -19,6 +19,7 @@ import { errorAt, failed } from "../common";
 
 type ApprovalLevel = components["schemas"]["ApprovalLevel"];
 type RoleRef = components["schemas"]["RoleRef"];
+type UserRef = components["schemas"]["UserRef"];
 
 export const list = (s: string) =>
   s
@@ -272,12 +273,16 @@ export function PriorityDialog<T extends Ordered>({
   );
 }
 
-/** Who a level asks, in a sentence: its group, users, project roles and the requester's manager. */
-export function askedText(l: ApprovalLevel, roles: RoleRef[]): string {
+/**
+ * Who a level asks, in a sentence: its group, users, project roles and the requester's manager. A user missing
+ * from `users` (the policy list's) shows by ID.
+ */
+export function askedText(l: ApprovalLevel, roles: RoleRef[], users: UserRef[]): string {
   const name = (k: string) => roles.find((r) => r.key === k)?.name ?? k;
+  const person = (id: string) => users.find((u) => u.id === id)?.name ?? id;
   const parts = [
     l.group,
-    l.approvers?.length ? l.approvers.join(", ") : undefined,
+    l.approvers?.length ? l.approvers.map(person).join(", ") : undefined,
     l.roles?.length ? formatList(l.roles.map(name), "disjunction") : undefined,
     l.manager ? i18n.t("admin-governance:policies.levels.managerInText") : undefined,
   ].filter(Boolean);

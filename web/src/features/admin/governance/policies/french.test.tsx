@@ -1,9 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { components } from "@/lib/api/schema";
 import { i18n } from "@/lib/i18n";
-import { db } from "@/mocks/seed";
+import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 import { LeaseSummary } from "./LeasePolicies";
 import { askedText } from "./shared";
@@ -13,6 +13,7 @@ type S = components["schemas"];
 beforeEach(async () => {
   await i18n.changeLanguage("fr");
 });
+afterEach(() => localStorage.removeItem("rvav.mock.as"));
 
 const lease = (days: number, lifetime?: number) =>
   ({ default_days: days, max_days: 30, max_lifetime_days: lifetime, enforcement: "hard" }) as S["LeasePolicy"];
@@ -32,7 +33,18 @@ describe("policies, in French", () => {
       { key: "auditor", name: "Auditeur" },
     ] as S["RoleRef"][];
     const level = { name: "Niveau 1", roles: ["owner", "approver", "auditor"], manager: true } as S["ApprovalLevel"];
-    expect(askedText(level, roles)).toBe("Propriétaire, Approbateur ou Auditeur, le responsable du demandeur");
+    expect(askedText(level, roles, [])).toBe("Propriétaire, Approbateur ou Auditeur, le responsable du demandeur");
+  });
+
+  it("names a level's approvers to a project admin", { timeout: 15_000 }, async () => {
+    localStorage.setItem("rvav.mock.as", "project-admin");
+    resetDb();
+    db.me.locale = "fr";
+    renderApp("/admin/policies");
+    const region = await screen.findByRole("region", { name: "Politiques d'approbation" });
+    const production = await within(region).findByRole("row", { name: /Production VMs/ });
+    expect(production).toHaveTextContent("rvav-infra-leads, Marc Keller");
+    expect(production).not.toHaveTextContent("usr_mkeller");
   });
 
   it("shows the policies page with its tabs, and a day-2 policy's menu", { timeout: 15_000 }, async () => {

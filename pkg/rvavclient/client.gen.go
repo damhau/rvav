@@ -4299,7 +4299,7 @@ type ApprovalHint string
 
 // ApprovalLevel defines model for ApprovalLevel.
 type ApprovalLevel struct {
-	// Approvers User IDs.
+	// Approvers User IDs. The policy lists give their names in `users`.
 	Approvers  *[]string `json:"approvers,omitempty"`
 	EscalateTo *struct {
 		Approvers *[]string `json:"approvers,omitempty"`
@@ -4377,6 +4377,11 @@ type ApprovalPolicyList struct {
 
 	// LevelRoles The roles a level may name, those given in projects.
 	LevelRoles []RoleRef `json:"level_roles"`
+
+	// Users The users the listed levels name, as approvers or to escalate
+	// to, by ID with their names (no email). An ID no user has is
+	// left out.
+	Users []UserRef `json:"users"`
 }
 
 // ApprovalPolicyWrite defines model for ApprovalPolicyWrite.
@@ -5780,6 +5785,11 @@ type Day2PolicyList struct {
 
 	// LevelRoles The roles a level may name, those given in projects.
 	LevelRoles []RoleRef `json:"level_roles"`
+
+	// Users The users the listed levels name, as approvers or to escalate
+	// to, by ID with their names (no email). An ID no user has is
+	// left out.
+	Users []UserRef `json:"users"`
 }
 
 // Day2PolicyWrite defines model for Day2PolicyWrite.

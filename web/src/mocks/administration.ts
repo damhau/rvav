@@ -304,7 +304,13 @@ export function adminState(db: Db): AdminState {
       updated_at: ago(60),
     },
   ];
-  const level = (name: string, group: string): S["ApprovalLevel"] => ({ name, group, mode: "any" });
+  // As the server's seed: the group, and Marc by name.
+  const leads = (): S["ApprovalLevel"] => ({
+    name: "Infrastructure leads",
+    group: "rvav-infra-leads",
+    approvers: ["usr_mkeller"],
+    mode: "any",
+  });
   d.administration = {
     seq: 1000,
     extra: Object.fromEntries(
@@ -432,7 +438,7 @@ export function adminState(db: Db): AdminState {
     approvals: [
       {
         id: "pol_prd_vm", name: "Production VMs", reason: "Production VMs need sign-off", condition: 'environment == "prd"',
-        item_type: "vm_blueprint", project_id: null, levels: [level("Infrastructure leads", "rvav-infra-leads")], priority: 100, enabled: true,
+        item_type: "vm_blueprint", project_id: null, levels: [leads()], priority: 100, enabled: true,
         set_by_admin: true,
       },
     ], // prettier-ignore
@@ -444,7 +450,7 @@ export function adminState(db: Db): AdminState {
       {
         id: "d2p_prd_delete", name: "Deleting in production", reason: "Deleting a production deployment needs sign-off", priority: 20,
         actions: ["delete"], roles: [], condition: "environment.production", effect: "approval", project_id: null, enabled: true, set_by_admin: true,
-        levels: [level("Infrastructure leads", "rvav-infra-leads")],
+        levels: [leads()],
       },
       ...(db.seedDay2 ?? []),
       {
@@ -609,6 +615,15 @@ function holdsIn(db: Db, projectId: string, permission: string): boolean {
 export function mayGive(db: Db, r: MockRole, projectId: string): boolean {
   if (db.me.permissions.includes("access.manage")) return true;
   return holdsIn(db, projectId, "project.members.manage") && r.permissions.every((p) => holdsIn(db, projectId, p));
+}
+
+/** As the server's LevelUsers: whom levels name, as approvers or to escalate to, by ID and name only. */
+function levelUsers(db: Db, levels: S["ApprovalLevel"][]): S["UserRef"][] {
+  const named = new Set(levels.flatMap((l) => [...(l.approvers ?? []), ...(l.escalate_to?.approvers ?? [])]));
+  return db.users
+    .filter((u) => named.has(u.id))
+    .map((u) => ({ id: u.id, name: u.name }))
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function problem(status: number, title: string, errors?: S["FieldError"][], detail?: string) {
@@ -2119,6 +2134,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           priority: number;
           project_id?: string | null;
           set_by_admin: boolean;
+          levels?: S["ApprovalLevel"][];
         }[];
       const save = (id: string, w: Record<string, unknown>, status: number) => {
         const was = list().find((x) => x.id === id);
@@ -2178,9 +2194,14 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           await wait();
           if (!policies.reads()) return forbidden("you may not read policies");
           const levelRoles = [...builtinRoles, ...customRoles(db)].filter((r) => assignable(r, true));
+          const items = list().filter((x) => policies.shows(x.project_id));
           return HttpResponse.json({
-            items: list().filter((x) => policies.shows(x.project_id)),
+            items,
             level_roles: levelRoles.map((r) => ({ key: r.key, name: r.name })),
+            users: levelUsers(
+              db,
+              items.flatMap((x) => x.levels ?? []),
+            ),
           });
         }),
         http.post(`${base}/admin/${path}`, async ({ request }) => {

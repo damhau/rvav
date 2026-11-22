@@ -170,7 +170,8 @@ export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
   const { t } = useTranslation("admin-governance");
   const refresh = useRefreshPolicies("approval-policies");
   const policies = useQuery(adm.approvals());
-  const approversText = (p: Policy) => p.levels.map((l) => askedText(l, policies.data?.level_roles ?? [])).join(" → ");
+  const approversText = (p: Policy) =>
+    p.levels.map((l) => askedText(l, policies.data?.level_roles ?? [], policies.data?.users ?? [])).join(" → ");
   const projects = useProjects();
   const [editing, setEditing] = useState<Policy | "new" | null>(null);
   const [ranking, setRanking] = useState<Policy | null>(null);

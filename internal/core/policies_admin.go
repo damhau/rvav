@@ -348,6 +348,35 @@ func (s *Service) LevelRoles(ctx context.Context, p *auth.Principal) ([]api.Role
 	return s.projectRoles(ctx)
 }
 
+// LevelUsers are the users levels name, as approvers or to escalate to, by
+// name only: a project admin learns no more than whom the policies they
+// read ask. An ID no user has is left out.
+func (s *Service) LevelUsers(ctx context.Context, levels []api.ApprovalLevel) ([]api.UserRef, error) {
+	var named []string
+	for _, l := range levels {
+		named = append(named, derefSlice(l.Approvers)...)
+		if l.EscalateTo != nil {
+			named = append(named, derefSlice(l.EscalateTo.Approvers)...)
+		}
+	}
+	slices.Sort(named)
+	named = slices.Compact(named)
+	out := []api.UserRef{}
+	if len(named) == 0 {
+		return out, nil
+	}
+	found, err := s.Store.FindUsers(ctx, named)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range named {
+		if u, ok := found[id]; ok {
+			out = append(out, api.UserRef{Id: u.ID, Name: u.Name})
+		}
+	}
+	return out, nil
+}
+
 // projectRoles are the roles given in projects, built in or custom.
 func (s *Service) projectRoles(ctx context.Context) ([]api.RoleRef, error) {
 	list, err := s.Store.Roles(ctx)
