@@ -184,6 +184,14 @@ type ServiceNowConfig struct {
 	Secret     string
 	Insecure   bool
 	CertSHA256 string
+	// CMDB: VMs are kept as CIs of Class, sent through the IRE as
+	// DataSource, for the projects named (by ID or code; none, every
+	// project's), reconciled every SyncInterval.
+	CMDB         bool
+	Class        string
+	DataSource   string
+	Projects     []string
+	SyncInterval time.Duration
 }
 
 // Configured says whether rvav has a ServiceNow instance.
@@ -436,6 +444,10 @@ func Load() (Config, error) {
 			Secret:     env("RVAV_SERVICENOW_SECRET", ""),
 			Insecure:   boolean("RVAV_SERVICENOW_INSECURE"),
 			CertSHA256: env("RVAV_SERVICENOW_CERT_SHA256", ""),
+			CMDB:       boolean("RVAV_SERVICENOW_CMDB"),
+			Class:      env("RVAV_SERVICENOW_CMDB_CLASS", "cmdb_ci_vmware_instance"),
+			DataSource: env("RVAV_SERVICENOW_DATA_SOURCE", "rvav"),
+			Projects:   list("RVAV_SERVICENOW_PROJECTS"),
 		},
 		AWX: AWXConfig{
 			Fake:          boolean("RVAV_FAKE_AWX"),
@@ -473,6 +485,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if c.Git.Interval, err = duration("RVAV_GIT_SYNC_INTERVAL", 5*time.Minute); err != nil {
+		return c, err
+	}
+	if c.ServiceNow.SyncInterval, err = duration("RVAV_SERVICENOW_SYNC_INTERVAL", 30*time.Minute); err != nil {
 		return c, err
 	}
 	if c.IPAM.FakeLatency, err = duration("RVAV_FAKE_EFFICIENTIP_LATENCY", 0); err != nil {

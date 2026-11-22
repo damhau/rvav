@@ -6706,7 +6706,9 @@ type Integration struct {
 	// servicenow (ADR-0065): url (https only), auth (basic or oauth,
 	// the client credentials grant), username, client_id, insecure,
 	// cert_sha256 (the secret: the user's password, or the OAuth
-	// client's secret).
+	// client's secret); cmdb (keep VMs as CIs), cmdb_class, data_source
+	// (the IRE's discovery source), projects (IDs or codes; none, every
+	// project), sync_interval (the reconcile's).
 	// smtp: host, port, tls (starttls, tls, none), from, username.
 	// teams: app_id, tenant_id, service_url, login_url, graph_url,
 	// openid_url. slack: api_url.
@@ -9864,6 +9866,74 @@ type ServerCertificate struct {
 
 	// Trusted The system's or the CA bundle's CAs vouch for it, for this host.
 	Trusted bool `json:"trusted"`
+}
+
+// ServiceNowCmdb defines model for ServiceNowCmdb.
+type ServiceNowCmdb struct {
+	// Class Examples: cmdb_ci_vmware_instance
+	Class string `json:"class"`
+
+	// DataSource Examples: rvav
+	DataSource string `json:"data_source"`
+
+	// Enabled The integration is set and `cmdb` is on.
+	Enabled bool `json:"enabled"`
+
+	// Failing Deployments ServiceNow didn't take, tried again with backoff.
+	Failing int `json:"failing"`
+
+	// Failures Those, the latest tried first (at most 50).
+	Failures []ServiceNowFailure `json:"failures"`
+
+	// Kept CIs rvav keeps, not retired.
+	Kept            int        `json:"kept"`
+	NextReconcileAt *time.Time `json:"next_reconcile_at,omitempty"`
+
+	// Orphans CIs of rvav's data source, not retired, that rvav doesn't keep (at most 500).
+	Orphans      []ServiceNowOrphan `json:"orphans"`
+	OrphansTotal int                `json:"orphans_total"`
+
+	// Projects The projects whose VMs are kept; none means every project's.
+	Projects []ProjectRef `json:"projects"`
+
+	// Queued Deployments waiting for a look.
+	Queued int `json:"queued"`
+
+	// ReconcileError Why ServiceNow's CIs couldn't be read at the last reconcile.
+	ReconcileError *string `json:"reconcile_error,omitempty"`
+
+	// ReconciledAt When the last reconcile was; absent before the first.
+	ReconciledAt *time.Time `json:"reconciled_at,omitempty"`
+
+	// Retired CIs rvav retired, their VM gone.
+	Retired int `json:"retired"`
+
+	// Servicenow CIs of rvav's data source ServiceNow has, not retired, at the last reconcile.
+	Servicenow *int `json:"servicenow,omitempty"`
+}
+
+// ServiceNowFailure defines model for ServiceNowFailure.
+type ServiceNowFailure struct {
+	Attempts       int       `json:"attempts"`
+	DeploymentId   string    `json:"deployment_id"`
+	DeploymentName *string   `json:"deployment_name,omitempty"`
+	Error          string    `json:"error"`
+	NextAttemptAt  time.Time `json:"next_attempt_at"`
+}
+
+// ServiceNowOrphan defines model for ServiceNowOrphan.
+type ServiceNowOrphan struct {
+	InstanceUuid *string `json:"instance_uuid,omitempty"`
+	Name         string  `json:"name"`
+	SysId        string  `json:"sys_id"`
+
+	// UpdatedAt When ServiceNow last changed it, as ServiceNow writes it (UTC).
+	//
+	// Examples: 2026-11-22 14:05:31
+	UpdatedAt *string `json:"updated_at,omitempty"`
+
+	// Url The CI in ServiceNow.
+	Url string `json:"url"`
 }
 
 // SettingsRevision defines model for SettingsRevision.
@@ -14954,6 +15024,28 @@ type ClientInterface interface {
 	// Corresponds with POST /admin/integrations/oidc/trial (the `TrialIdentityProvider` operationId).
 	TrialIdentityProvider(ctx context.Context, body TrialIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetServiceNowCmdb The CIs rvav keeps in ServiceNow, and what the last reconcile found
+	//
+	// With the ServiceNow integration's `cmdb` on, each VM of the projects
+	// chosen is a CI, sent through the IRE and retired when the VM goes
+	// (ADR-0065). This counts the CIs kept and retired and the deployments
+	// queued, lists those ServiceNow didn't take with why, and the CIs of
+	// rvav's data source that rvav doesn't keep, as the last reconcile
+	// found them.
+	//
+	// Corresponds with GET /admin/integrations/servicenow/cmdb (the `GetServiceNowCmdb` operationId).
+	GetServiceNowCmdb(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReconcileServiceNowCmdb Reconcile ServiceNow's CMDB at the next pass, within seconds
+	//
+	// Every deployment in scope is looked at again and ServiceNow's CIs of
+	// rvav's data source are read, as every `sync_interval` does. The
+	// report is in GET /admin/integrations/servicenow/cmdb once done.
+	// Audited.
+	//
+	// Corresponds with POST /admin/integrations/servicenow/cmdb/reconcile (the `ReconcileServiceNowCmdb` operationId).
+	ReconcileServiceNowCmdb(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SetIntegrationWithBody Save a connection's settings
 	//
 	// Fields set by environment variables can't be changed here (ADR-0020).
@@ -20037,6 +20129,48 @@ func (c *Client) TrialIdentityProviderWithBody(ctx context.Context, contentType 
 // Corresponds with POST /admin/integrations/oidc/trial (the `TrialIdentityProvider` operationId).
 func (c *Client) TrialIdentityProvider(ctx context.Context, body TrialIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTrialIdentityProviderRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetServiceNowCmdb The CIs rvav keeps in ServiceNow, and what the last reconcile found
+//
+// With the ServiceNow integration's `cmdb` on, each VM of the projects
+// chosen is a CI, sent through the IRE and retired when the VM goes
+// (ADR-0065). This counts the CIs kept and retired and the deployments
+// queued, lists those ServiceNow didn't take with why, and the CIs of
+// rvav's data source that rvav doesn't keep, as the last reconcile
+// found them.
+//
+// Corresponds with GET /admin/integrations/servicenow/cmdb (the `GetServiceNowCmdb` operationId).
+func (c *Client) GetServiceNowCmdb(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServiceNowCmdbRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReconcileServiceNowCmdb Reconcile ServiceNow's CMDB at the next pass, within seconds
+//
+// Every deployment in scope is looked at again and ServiceNow's CIs of
+// rvav's data source are read, as every `sync_interval` does. The
+// report is in GET /admin/integrations/servicenow/cmdb once done.
+// Audited.
+//
+// Corresponds with POST /admin/integrations/servicenow/cmdb/reconcile (the `ReconcileServiceNowCmdb` operationId).
+func (c *Client) ReconcileServiceNowCmdb(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReconcileServiceNowCmdbRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -29330,6 +29464,60 @@ func NewTrialIdentityProviderRequestWithBody(server string, contentType string, 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetServiceNowCmdbRequest constructs an http.Request for the GetServiceNowCmdb method
+func NewGetServiceNowCmdbRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/integrations/servicenow/cmdb")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReconcileServiceNowCmdbRequest constructs an http.Request for the ReconcileServiceNowCmdb method
+func NewReconcileServiceNowCmdbRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/integrations/servicenow/cmdb/reconcile")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -40580,6 +40768,32 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /admin/integrations/oidc/trial (the `TrialIdentityProvider` operationId).
 	TrialIdentityProviderWithResponse(ctx context.Context, body TrialIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*TrialIdentityProviderResponse, error)
 
+	// GetServiceNowCmdbWithResponse The CIs rvav keeps in ServiceNow, and what the last reconcile found
+	//
+	// With the ServiceNow integration's `cmdb` on, each VM of the projects
+	// chosen is a CI, sent through the IRE and retired when the VM goes
+	// (ADR-0065). This counts the CIs kept and retired and the deployments
+	// queued, lists those ServiceNow didn't take with why, and the CIs of
+	// rvav's data source that rvav doesn't keep, as the last reconcile
+	// found them.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/integrations/servicenow/cmdb (the `GetServiceNowCmdb` operationId).
+	GetServiceNowCmdbWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServiceNowCmdbResponse, error)
+
+	// ReconcileServiceNowCmdbWithResponse Reconcile ServiceNow's CMDB at the next pass, within seconds
+	//
+	// Every deployment in scope is looked at again and ServiceNow's CIs of
+	// rvav's data source are read, as every `sync_interval` does. The
+	// report is in GET /admin/integrations/servicenow/cmdb once done.
+	// Audited.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/integrations/servicenow/cmdb/reconcile (the `ReconcileServiceNowCmdb` operationId).
+	ReconcileServiceNowCmdbWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReconcileServiceNowCmdbResponse, error)
+
 	// SetIntegrationWithBodyWithResponse Save a connection's settings
 	//
 	// Fields set by environment variables can't be changed here (ADR-0020).
@@ -49069,6 +49283,123 @@ func (r TrialIdentityProviderResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r TrialIdentityProviderResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetServiceNowCmdbResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ServiceNowCmdb
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetServiceNowCmdbResponse) GetJSON200() *ServiceNowCmdb {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetServiceNowCmdbResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetServiceNowCmdbResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r GetServiceNowCmdbResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServiceNowCmdbResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServiceNowCmdbResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetServiceNowCmdbResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReconcileServiceNowCmdbResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *ServiceNowCmdb
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r ReconcileServiceNowCmdbResponse) GetJSON202() *ServiceNowCmdb {
+	return r.JSON202
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ReconcileServiceNowCmdbResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ReconcileServiceNowCmdbResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r ReconcileServiceNowCmdbResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r ReconcileServiceNowCmdbResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReconcileServiceNowCmdbResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReconcileServiceNowCmdbResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReconcileServiceNowCmdbResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -64755,6 +65086,44 @@ func (c *ClientWithResponses) TrialIdentityProviderWithResponse(ctx context.Cont
 	return ParseTrialIdentityProviderResponse(rsp)
 }
 
+// GetServiceNowCmdbWithResponse The CIs rvav keeps in ServiceNow, and what the last reconcile found
+//
+// With the ServiceNow integration's `cmdb` on, each VM of the projects
+// chosen is a CI, sent through the IRE and retired when the VM goes
+// (ADR-0065). This counts the CIs kept and retired and the deployments
+// queued, lists those ServiceNow didn't take with why, and the CIs of
+// rvav's data source that rvav doesn't keep, as the last reconcile
+// found them.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/integrations/servicenow/cmdb (the `GetServiceNowCmdb` operationId).
+func (c *ClientWithResponses) GetServiceNowCmdbWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServiceNowCmdbResponse, error) {
+	rsp, err := c.GetServiceNowCmdb(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServiceNowCmdbResponse(rsp)
+}
+
+// ReconcileServiceNowCmdbWithResponse Reconcile ServiceNow's CMDB at the next pass, within seconds
+//
+// Every deployment in scope is looked at again and ServiceNow's CIs of
+// rvav's data source are read, as every `sync_interval` does. The
+// report is in GET /admin/integrations/servicenow/cmdb once done.
+// Audited.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/integrations/servicenow/cmdb/reconcile (the `ReconcileServiceNowCmdb` operationId).
+func (c *ClientWithResponses) ReconcileServiceNowCmdbWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReconcileServiceNowCmdbResponse, error) {
+	rsp, err := c.ReconcileServiceNowCmdb(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReconcileServiceNowCmdbResponse(rsp)
+}
+
 // SetIntegrationWithBodyWithResponse Save a connection's settings
 //
 // Fields set by environment variables can't be changed here (ADR-0020).
@@ -73850,6 +74219,93 @@ func ParseTrialIdentityProviderResponse(rsp *http.Response) (*TrialIdentityProvi
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServiceNowCmdbResponse parses an HTTP response from a GetServiceNowCmdbWithResponse call
+func ParseGetServiceNowCmdbResponse(rsp *http.Response) (*GetServiceNowCmdbResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServiceNowCmdbResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServiceNowCmdb
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReconcileServiceNowCmdbResponse parses an HTTP response from a ReconcileServiceNowCmdbWithResponse call
+func ParseReconcileServiceNowCmdbResponse(rsp *http.Response) (*ReconcileServiceNowCmdbResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReconcileServiceNowCmdbResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest ServiceNowCmdb
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	}
 

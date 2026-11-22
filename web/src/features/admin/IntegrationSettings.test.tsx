@@ -133,5 +133,11 @@ describe("integration settings", () => {
     await user.type(url, "http://corp.service-now.com");
     await user.click(within(snow).getByRole("button", { name: "Save settings" }));
     expect(await within(snow).findByText(/The instance's https URL/)).toBeInTheDocument();
+    await user.clear(url);
+    await user.type(url, "https://corp.service-now.com");
+    expect(within(snow).getByRole("checkbox", { name: "Keep VMs as CIs" })).toBeChecked();
+    await user.type(within(snow).getByRole("textbox", { name: "Projects" }), "nope");
+    await user.click(within(snow).getByRole("button", { name: "Save settings" }));
+    expect(await within(snow).findByText('No project has the ID or code "nope".')).toBeInTheDocument();
   }, 20_000);
 });

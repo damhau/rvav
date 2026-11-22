@@ -470,6 +470,18 @@ join" names (KB5020276).
   credentials grant (`/oauth_token.do`), set with `RVAV_SERVICENOW_*` or in
   Administration › Integrations › ServiceNow, whose test shows the
   certificate, signs in and reads one requested item (`sc_req_item`).
+- **CMDB** (`internal/snowsync`, in `rvav sync`): with `cmdb` on, each VM
+  of the projects chosen is a CI of `cmdb_class`, sent through the IRE
+  with `data_source` as its discovery source. The dispatcher queues a
+  deployment for it in the transaction that dispatches its VM and request
+  events (`servicenow_cmdb_queue`); the sync, under its own advisory lock,
+  sends only the VMs whose values changed since rvav last sent them
+  (`servicenow_cis`), tries a refused one again with backoff, and retires
+  (`install_status` 7, never deletes) the CI of a VM that is gone. Every
+  `sync_interval` it looks at every deployment again and lists the CIs of
+  its data source it doesn't keep, without retiring them:
+  `GET /admin/integrations/servicenow/cmdb` shows the counts, the
+  failures and that report.
 - **Fake** (`servicenow.Fake`): an in-process instance for the tests,
   with the Table API's encoded queries, OAuth, and an IRE that identifies
   a VM by its instance UUID, then by its moref and vCenter.

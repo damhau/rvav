@@ -6,6 +6,7 @@ import (
 	"net/mail"
 	"net/url"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -159,6 +160,11 @@ var Fields = map[string][]Field{
 		{"secret", "RVAV_SERVICENOW_SECRET", "string", true},
 		{"insecure", "RVAV_SERVICENOW_INSECURE", "bool", false},
 		{"cert_sha256", "RVAV_SERVICENOW_CERT_SHA256", "string", false},
+		{"cmdb", "RVAV_SERVICENOW_CMDB", "bool", false},
+		{"cmdb_class", "RVAV_SERVICENOW_CMDB_CLASS", "string", false},
+		{"data_source", "RVAV_SERVICENOW_DATA_SOURCE", "string", false},
+		{"projects", "RVAV_SERVICENOW_PROJECTS", "list", false},
+		{"sync_interval", "RVAV_SERVICENOW_SYNC_INTERVAL", "duration", false},
 	},
 	"smtp": {
 		{"host", "RVAV_SMTP_HOST", "string", false},
@@ -428,6 +434,15 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		secret("secret", &c.ServiceNow.Secret)
 		flag("insecure", &c.ServiceNow.Insecure)
 		pin("cert_sha256", &c.ServiceNow.CertSHA256)
+		flag("cmdb", &c.ServiceNow.CMDB)
+		str("cmdb_class", &c.ServiceNow.Class)
+		str("data_source", &c.ServiceNow.DataSource)
+		// Cleared in the UI: every project's.
+		if _, ok := s.Settings["projects"].([]any); ok && !locked["projects"] {
+			c.ServiceNow.Projects = nil
+			strs("projects", &c.ServiceNow.Projects)
+		}
+		dur("sync_interval", &c.ServiceNow.SyncInterval)
 	case "smtp":
 		str("host", &c.SMTP.Host)
 		if v, ok := s.Settings["port"].(float64); ok && v > 0 && !locked["port"] {
@@ -520,7 +535,9 @@ func (c Config) Settings(kind string) map[string]any {
 			"plain_ldap": c.AD.PlainLDAP, "cert_sha256": c.AD.CertSHA256}
 	case "servicenow":
 		return map[string]any{"url": c.ServiceNow.URL, "auth": c.ServiceNow.Auth, "username": c.ServiceNow.Username,
-			"client_id": c.ServiceNow.ClientID, "insecure": c.ServiceNow.Insecure, "cert_sha256": c.ServiceNow.CertSHA256}
+			"client_id": c.ServiceNow.ClientID, "insecure": c.ServiceNow.Insecure, "cert_sha256": c.ServiceNow.CertSHA256,
+			"cmdb": c.ServiceNow.CMDB, "cmdb_class": c.ServiceNow.Class, "data_source": c.ServiceNow.DataSource,
+			"projects": nonNil(c.ServiceNow.Projects), "sync_interval": FormatDuration(c.ServiceNow.SyncInterval)}
 	case "trust":
 		return map[string]any{"ca_bundle": c.CABundle}
 	case "hosts":
@@ -674,6 +691,13 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 		if a, ok := settings["auth"].(string); ok && a != "" && a != "basic" && a != "oauth" {
 			errs["auth"] = "basic or oauth."
 		}
+		// Both go into the Table API's encoded queries.
+		if v, ok := settings["cmdb_class"].(string); ok && v != "" && !snowName.MatchString(v) {
+			errs["cmdb_class"] = "A CMDB class's table name, for example cmdb_ci_vmware_instance."
+		}
+		if v, ok := settings["data_source"].(string); ok && v != "" && !snowSource.MatchString(v) {
+			errs["data_source"] = "A discovery source's value: letters, digits, spaces, - and _, for example rvav."
+		}
 	}
 	if kind == "smtp" {
 		if t, ok := settings["tls"].(string); ok && t != "starttls" && t != "tls" && t != "none" {
@@ -687,6 +711,11 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 	}
 	return errs
 }
+
+var (
+	snowName   = regexp.MustCompile(`^cmdb_ci[a-z0-9_]*$`)
+	snowSource = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9 _-]{0,39}$`)
+)
 
 func nonNil(l []string) []string {
 	if l == nil {

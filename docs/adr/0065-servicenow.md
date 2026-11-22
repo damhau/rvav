@@ -59,7 +59,7 @@ read and update, and the IRE's one call).
 
 ### VMs as CIs
 With `cmdb` on, each VM of a deployment of the projects chosen
-(`projects`: project IDs; none means every project) is a configuration
+(`projects`: project IDs or codes; none means every project) is a configuration
 item of the class `cmdb_class`, `cmdb_ci_vmware_instance` by default:
 the class vCenter discovery uses, whose identification rules ServiceNow
 ships. rvav sends it through the **Identification and Reconciliation
@@ -74,7 +74,7 @@ CI: there is never a second one.
 The values: `name`, `vm_instance_uuid`, `object_id` (the moref),
 `vcenter_uuid` (the vCenter's instance UUID, once the inventory sync has
 read it), `ip_address`, `fqdn`, `cpus`, `memory` (MB), `disks`,
-`disks_size` (GB), `guest_os_fullname`, `state` (`on` or `off`),
+`disks_size` (GB), `guest_os_fullname`, `state` (`on`, `off` or `paused`),
 `install_status` 1 (installed), `operational_status` 1, 2 when the VM
 is missing from vCenter, `correlation_id` (rvav's resource ID) and a
 `short_description` naming the deployment, its project and its owner
@@ -111,12 +111,15 @@ ServiceNow has of its data source that are not retired: those rvav
 doesn't keep are reported as CIs rvav no longer has (a VM deleted while
 the integration was off, a CI copied by hand). The report, with the
 counts and the errors, is on the integration's page and in the API
-(`GET /admin/integrations/servicenow/cmdb`). rvav doesn't retire what the
-report finds: someone decides.
+(`GET /admin/integrations/servicenow/cmdb`; `POST
+/admin/integrations/servicenow/cmdb/reconcile` has the next pass, within
+seconds, reconcile). rvav doesn't retire what the report finds: someone
+decides.
 
 A project taken out of scope keeps its CIs as they are: rvav no longer
 updates them, but still retires a CI it made when its VM goes. Turning
-`cmdb` off stops everything, and retires nothing.
+`cmdb` off stops everything, and retires nothing; turned on again, the
+next pass reconciles, since events went unqueued meanwhile.
 
 ### Requests from ServiceNow
 ServiceNow calls rvav with an rvav API token that only ServiceNow's

@@ -122,6 +122,11 @@ func New(c Config) (*Client, error) {
 // URL is the instance's address.
 func (c *Client) URL() string { return c.base.String() }
 
+// RecordURL is a record's form in the instance's UI.
+func RecordURL(instance, table, sysID string) string {
+	return strings.TrimSuffix(instance, "/") + "/" + url.PathEscape(table) + ".do?sys_id=" + url.QueryEscape(sysID)
+}
+
 // token is an OAuth access token, a new one when fresh.
 func (c *Client) token(ctx context.Context, fresh bool) (string, error) {
 	c.mu.Lock()

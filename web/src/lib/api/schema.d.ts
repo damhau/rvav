@@ -4056,6 +4056,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/integrations/servicenow/cmdb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The CIs rvav keeps in ServiceNow, and what the last reconcile found
+         * @description With the ServiceNow integration's `cmdb` on, each VM of the projects
+         *     chosen is a CI, sent through the IRE and retired when the VM goes
+         *     (ADR-0065). This counts the CIs kept and retired and the deployments
+         *     queued, lists those ServiceNow didn't take with why, and the CIs of
+         *     rvav's data source that rvav doesn't keep, as the last reconcile
+         *     found them.
+         */
+        get: operations["getServiceNowCmdb"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/integrations/servicenow/cmdb/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile ServiceNow's CMDB at the next pass, within seconds
+         * @description Every deployment in scope is looked at again and ServiceNow's CIs of
+         *     rvav's data source are read, as every `sync_interval` does. The
+         *     report is in GET /admin/integrations/servicenow/cmdb once done.
+         *     Audited.
+         */
+        post: operations["reconcileServiceNowCmdb"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/integrations/oidc/trial": {
         parameters: {
             query?: never;
@@ -10425,7 +10473,9 @@ export interface components {
              *     servicenow (ADR-0065): url (https only), auth (basic or oauth,
              *     the client credentials grant), username, client_id, insecure,
              *     cert_sha256 (the secret: the user's password, or the OAuth
-             *     client's secret).
+             *     client's secret); cmdb (keep VMs as CIs), cmdb_class, data_source
+             *     (the IRE's discovery source), projects (IDs or codes; none, every
+             *     project), sync_interval (the reconcile's).
              *     smtp: host, port, tls (starttls, tls, none), from, username.
              *     teams: app_id, tenant_id, service_url, login_url, graph_url,
              *     openid_url. slack: api_url.
@@ -10751,6 +10801,63 @@ export interface components {
             name: string;
             ok: boolean;
             message: string;
+        };
+        ServiceNowCmdb: {
+            /** @description The integration is set and `cmdb` is on. */
+            enabled: boolean;
+            /** @example cmdb_ci_vmware_instance */
+            class: string;
+            /** @example rvav */
+            data_source: string;
+            /** @description The projects whose VMs are kept; none means every project's. */
+            projects: components["schemas"]["ProjectRef"][];
+            /** @description CIs rvav keeps, not retired. */
+            kept: number;
+            /** @description CIs rvav retired, their VM gone. */
+            retired: number;
+            /** @description Deployments waiting for a look. */
+            queued: number;
+            /** @description Deployments ServiceNow didn't take, tried again with backoff. */
+            failing: number;
+            /** @description Those, the latest tried first (at most 50). */
+            failures: components["schemas"]["ServiceNowFailure"][];
+            /**
+             * Format: date-time
+             * @description When the last reconcile was; absent before the first.
+             */
+            reconciled_at?: string;
+            /** Format: date-time */
+            next_reconcile_at?: string;
+            /** @description CIs of rvav's data source ServiceNow has, not retired, at the last reconcile. */
+            servicenow?: number;
+            /** @description CIs of rvav's data source, not retired, that rvav doesn't keep (at most 500). */
+            orphans: components["schemas"]["ServiceNowOrphan"][];
+            orphans_total: number;
+            /** @description Why ServiceNow's CIs couldn't be read at the last reconcile. */
+            reconcile_error?: string;
+        };
+        ServiceNowFailure: {
+            deployment_id: string;
+            deployment_name?: string;
+            attempts: number;
+            error: string;
+            /** Format: date-time */
+            next_attempt_at: string;
+        };
+        ServiceNowOrphan: {
+            sys_id: string;
+            name: string;
+            instance_uuid?: string;
+            /**
+             * @description When ServiceNow last changed it, as ServiceNow writes it (UTC).
+             * @example 2026-11-22 14:05:31
+             */
+            updated_at?: string;
+            /**
+             * Format: uri
+             * @description The CI in ServiceNow.
+             */
+            url: string;
         };
         InventoryToken: {
             /** @description RVAV_INVENTORY_TOKEN sets the token; rvav makes none. */
@@ -17972,6 +18079,51 @@ export interface operations {
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
             502: components["responses"]["UpstreamError"];
+        };
+    };
+    getServiceNowCmdb: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceNowCmdb"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    reconcileServiceNowCmdb: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Asked for */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceNowCmdb"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     trialIdentityProvider: {

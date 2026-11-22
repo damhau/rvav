@@ -243,6 +243,10 @@ func (d *Dispatcher) fanOut(ctx context.Context) (int, error) {
 			told = append(told, got...)
 			done = append(done, ev.ID)
 		}
+		// In this transaction, so that ServiceNow misses none and hears of each once (ADR-0065).
+		if err := d.Store.QueueForServiceNow(ctx, tx, done); err != nil {
+			return err
+		}
 		return d.Store.MarkDispatched(ctx, tx, done)
 	})
 	if err == nil {

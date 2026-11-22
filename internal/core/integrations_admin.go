@@ -211,6 +211,17 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 			bad["url"] = strings.ToUpper(msg[:1]) + msg[1:] + "."
 		}
 	}
+	if l, ok := settings["projects"].([]any); ok && kind == "servicenow" && bad["projects"] == "" {
+		for _, x := range l {
+			if code, _ := x.(string); strings.TrimSpace(code) != "" {
+				if _, err := s.Store.GetProject(ctx, strings.TrimSpace(code)); errors.Is(err, store.ErrNotFound) {
+					bad["projects"] = fmt.Sprintf("No project has the ID or code %q.", code)
+				} else if err != nil {
+					return api.Integration{}, err
+				}
+			}
+		}
+	}
 	for field, msg := range bad {
 		errs = append(errs, fieldErr("/settings/"+field, "invalid", msg))
 	}

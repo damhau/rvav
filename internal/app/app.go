@@ -40,6 +40,7 @@ import (
 	"github.com/damhau/rvav/internal/restcall"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/seed"
+	"github.com/damhau/rvav/internal/snowsync"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/trust"
 	"github.com/damhau/rvav/internal/vcenters"
@@ -747,6 +748,11 @@ func (a *App) RunSync(ctx context.Context) error {
 		catalog := a.Core(nil)
 		go func() { _ = catalog.RunCatalogGit(ctx) }()
 	}
+	// ServiceNow's CMDB and requested items (ADR-0065): read on next use,
+	// so it runs whether set yet or not.
+	snow := &snowsync.Syncer{Store: a.Store, Log: a.Log,
+		Config: func(ctx context.Context) config.ServiceNowConfig { return a.live(ctx).ServiceNow }}
+	go func() { _ = snow.Run(ctx) }()
 	if !a.Cfg.VCenter.Configured() {
 		<-ctx.Done()
 		return nil

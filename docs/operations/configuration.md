@@ -306,6 +306,11 @@ ServiceNow, the settings apply from the next call to ServiceNow.
 | `RVAV_SERVICENOW_SECRET` | none | yes | Integrations › ServiceNow | The user's password, or the OAuth client's secret. |
 | `RVAV_SERVICENOW_INSECURE` | off | | Integrations › ServiceNow | Doesn't check the certificate. For labs only. Turning it on needs the secret again. |
 | `RVAV_SERVICENOW_CERT_SHA256` | none | | Integrations › ServiceNow | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it). A new one needs the secret again. |
+| `RVAV_SERVICENOW_CMDB` | off | | Integrations › ServiceNow | Keeps each VM as a CI, through the Identification and Reconciliation Engine: made when built, updated after day-2 actions and drift, retired (not deleted) when the VM goes. |
+| `RVAV_SERVICENOW_CMDB_CLASS` | `cmdb_ci_vmware_instance` | | Integrations › ServiceNow | The CIs' class, a `cmdb_ci…` table. |
+| `RVAV_SERVICENOW_DATA_SOURCE` | `rvav` | | Integrations › ServiceNow | The IRE's discovery source: a value of the `cmdb_ci.discovery_source` choice list. Add it to the list before turning the CMDB on. |
+| `RVAV_SERVICENOW_PROJECTS` | every project | | Integrations › ServiceNow | Comma-separated IDs or codes of the projects whose VMs are kept. Other projects' CIs stay as they are, and are still retired when their VM goes. |
+| `RVAV_SERVICENOW_SYNC_INTERVAL` | `30m` | | Integrations › ServiceNow | How often rvav looks at every VM again, for changes no event told of, and lists the CIs of its data source it doesn't keep. |
 
 ## Secrets, value sources and webhooks
 

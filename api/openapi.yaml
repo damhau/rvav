@@ -5297,6 +5297,47 @@ paths:
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "502": { $ref: "#/components/responses/UpstreamError" }
 
+  /admin/integrations/servicenow/cmdb:
+    get:
+      tags: [admin]
+      operationId: getServiceNowCmdb
+      summary: The CIs rvav keeps in ServiceNow, and what the last reconcile found
+      description: |
+        With the ServiceNow integration's `cmdb` on, each VM of the projects
+        chosen is a CI, sent through the IRE and retired when the VM goes
+        (ADR-0065). This counts the CIs kept and retired and the deployments
+        queued, lists those ServiceNow didn't take with why, and the CIs of
+        rvav's data source that rvav doesn't keep, as the last reconcile
+        found them.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServiceNowCmdb" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/integrations/servicenow/cmdb/reconcile:
+    post:
+      tags: [admin]
+      operationId: reconcileServiceNowCmdb
+      summary: Reconcile ServiceNow's CMDB at the next pass, within seconds
+      description: |
+        Every deployment in scope is looked at again and ServiceNow's CIs of
+        rvav's data source are read, as every `sync_interval` does. The
+        report is in GET /admin/integrations/servicenow/cmdb once done.
+        Audited.
+      responses:
+        "202":
+          description: Asked for
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServiceNowCmdb" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /admin/integrations/oidc/trial:
     post:
       tags: [admin]
@@ -13578,7 +13619,9 @@ components:
             servicenow (ADR-0065): url (https only), auth (basic or oauth,
             the client credentials grant), username, client_id, insecure,
             cert_sha256 (the secret: the user's password, or the OAuth
-            client's secret).
+            client's secret); cmdb (keep VMs as CIs), cmdb_class, data_source
+            (the IRE's discovery source), projects (IDs or codes; none, every
+            project), sync_interval (the reconcile's).
             smtp: host, port, tls (starttls, tls, none), from, username.
             teams: app_id, tenant_id, service_url, login_url, graph_url,
             openid_url. slack: api_url.
@@ -13958,6 +14001,82 @@ components:
         name: { type: string, examples: [Sign in] }
         ok: { type: boolean }
         message: { type: string }
+    ServiceNowCmdb:
+      type: object
+      required: [enabled, class, data_source, projects, kept, retired, queued, failing, failures, orphans, orphans_total]
+      properties:
+        enabled:
+          type: boolean
+          description: The integration is set and `cmdb` is on.
+        class:
+          type: string
+          examples: [cmdb_ci_vmware_instance]
+        data_source:
+          type: string
+          examples: [rvav]
+        projects:
+          type: array
+          description: The projects whose VMs are kept; none means every project's.
+          items: { $ref: "#/components/schemas/ProjectRef" }
+        kept:
+          type: integer
+          description: CIs rvav keeps, not retired.
+        retired:
+          type: integer
+          description: CIs rvav retired, their VM gone.
+        queued:
+          type: integer
+          description: Deployments waiting for a look.
+        failing:
+          type: integer
+          description: Deployments ServiceNow didn't take, tried again with backoff.
+        failures:
+          type: array
+          description: Those, the latest tried first (at most 50).
+          items: { $ref: "#/components/schemas/ServiceNowFailure" }
+        reconciled_at:
+          type: string
+          format: date-time
+          description: When the last reconcile was; absent before the first.
+        next_reconcile_at:
+          type: string
+          format: date-time
+        servicenow:
+          type: integer
+          description: CIs of rvav's data source ServiceNow has, not retired, at the last reconcile.
+        orphans:
+          type: array
+          description: CIs of rvav's data source, not retired, that rvav doesn't keep (at most 500).
+          items: { $ref: "#/components/schemas/ServiceNowOrphan" }
+        orphans_total:
+          type: integer
+        reconcile_error:
+          type: string
+          description: Why ServiceNow's CIs couldn't be read at the last reconcile.
+    ServiceNowFailure:
+      type: object
+      required: [deployment_id, attempts, error, next_attempt_at]
+      properties:
+        deployment_id: { type: string }
+        deployment_name: { type: string }
+        attempts: { type: integer }
+        error: { type: string }
+        next_attempt_at: { type: string, format: date-time }
+    ServiceNowOrphan:
+      type: object
+      required: [sys_id, name, url]
+      properties:
+        sys_id: { type: string }
+        name: { type: string }
+        instance_uuid: { type: string }
+        updated_at:
+          type: string
+          description: When ServiceNow last changed it, as ServiceNow writes it (UTC).
+          examples: ["2026-11-22 14:05:31"]
+        url:
+          type: string
+          format: uri
+          description: The CI in ServiceNow.
     InventoryToken:
       type: object
       required: [locked, source_set]

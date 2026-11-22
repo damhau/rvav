@@ -25,6 +25,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/seed"
 	"github.com/damhau/rvav/internal/store"
+	"github.com/damhau/rvav/internal/trust"
 )
 
 // withPool is the database's URL with a pool of n connections.
@@ -171,6 +172,8 @@ func TestSyncEveryIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		snow, snowSrv := snowInstance(t)
+
 		vcsim := *c.URL()
 		vcsim.User = nil
 		for _, v := range append(config.Variables(), "RVAV_FAKE_AWX", "RVAV_FAKE_EFFICIENTIP", "RVAV_ALLOW_DEV_AUTH", "RVAV_SECRETS_OLD_KEYS") {
@@ -183,6 +186,8 @@ func TestSyncEveryIntegration(t *testing.T) {
 			"RVAV_FAKE_EFFICIENTIP": "1", "RVAV_FAKE_AWX": "1", "RVAV_AWX_CATALOG_LABELS": "rvav",
 			"RVAV_NSX_URL": nsxSrv.URL, "RVAV_NSX_USERNAME": nsx.FakeUser, "RVAV_NSX_PASSWORD": nsx.FakePassword,
 			"RVAV_GIT_URL": bareRepo(t), "RVAV_GIT_CACHE": t.TempDir(),
+			"RVAV_SERVICENOW_URL": snowSrv.URL, "RVAV_SERVICENOW_USERNAME": snow.Username, "RVAV_SERVICENOW_SECRET": snow.Password,
+			"RVAV_SERVICENOW_CERT_SHA256": trust.Fingerprint(snowSrv.Certificate()), "RVAV_SERVICENOW_CMDB": "1",
 		} {
 			t.Setenv(k, v)
 		}
@@ -219,6 +224,7 @@ func TestSyncEveryIntegration(t *testing.T) {
 			"the AWX catalog sync":          `select count(*) > 0 from awx_templates`,
 			"the NSX tag sync":              `select count(*) > 0 from resources where id = '` + membership + `' and sync_state = 'drifted'`,
 			"the catalog's repository sync": `select count(*) > 0 from catalog_git_repo where read_at is not null and error is null`,
+			"the ServiceNow CMDB reconcile": `select count(*) > 0 from servicenow_state where reconciled_at is not null and report->>'error' is null`,
 		}
 		for deadline := time.Now().Add(30 * time.Second); len(waiting) > 0; time.Sleep(100 * time.Millisecond) {
 			for job, check := range waiting {

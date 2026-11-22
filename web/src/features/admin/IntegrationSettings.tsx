@@ -386,6 +386,38 @@ const fields: Record<
       { name: "client_id", label: "OAuth client ID", env: "RVAV_SERVICENOW_CLIENT_ID", type: "string" },
       pin("RVAV_SERVICENOW_CERT_SHA256"),
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_SERVICENOW_INSECURE", type: "bool" },
+      {
+        name: "cmdb",
+        label: "Keep VMs as CIs",
+        env: "RVAV_SERVICENOW_CMDB",
+        type: "bool",
+        hint: "Made when built, updated after day-2 actions and drift, retired when the VM goes",
+      },
+      {
+        name: "cmdb_class",
+        label: "CI class",
+        env: "RVAV_SERVICENOW_CMDB_CLASS",
+        type: "string",
+        hint: "A cmdb_ci table, cmdb_ci_vmware_instance by default",
+      },
+      {
+        name: "data_source",
+        label: "Discovery source",
+        env: "RVAV_SERVICENOW_DATA_SOURCE",
+        type: "string",
+        hint: "A value of the discovery_source choice list, rvav by default",
+      },
+      {
+        name: "projects",
+        label: "Projects",
+        env: "RVAV_SERVICENOW_PROJECTS",
+        type: "list",
+        hint: "Comma-separated IDs or codes of the projects whose VMs are CIs; empty, every project's",
+      },
+      {
+        ...interval("every VM is looked at again and ServiceNow's CIs are read"),
+        env: "RVAV_SERVICENOW_SYNC_INTERVAL",
+      },
     ],
   },
   // Notification channels (S11, ADR-0023).
