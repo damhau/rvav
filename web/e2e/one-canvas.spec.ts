@@ -1,4 +1,5 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { arrowTo, choose, selectTab, skipToContent, tabTo } from "./keyboard";
 
 // D1's acceptance in the browser (D1.5, ADR-0032), on the mock backend and
 // with the keyboard only: the seeded PostgreSQL cluster gets a step on the
@@ -9,100 +10,6 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 // retried and followed to its end. TestD1Acceptance follows a request of
 // the same edit to its end through the API. The mouse's path is
 // composite-designer.spec.ts and request-run.spec.ts.
-
-type Way = "Tab" | "Shift+Tab";
-
-/**
- * Tab until `target` has the focus: Shift+Tab when it comes before what has
- * the focus (the page has no positive tabindex, so Tab follows the DOM).
- * When nothing has (what had it went away, a button gone or disabled), Tab
- * goes on from where it was: `gone` is the way to the target from there, as
- * the reader knows it (else forward, then back: a walk to the page's end).
- */
-async function tabTo(page: Page, target: Locator, gone?: Way) {
-  await expect(target).toBeVisible();
-  const at = () => target.evaluate((e) => e === document.activeElement);
-  const before = await target.evaluate((e) => {
-    const now = document.activeElement;
-    if (!now || now === document.body) return undefined;
-    return !!(e.compareDocumentPosition(now) & Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-  const back = (w: Way): Way => (w === "Tab" ? "Shift+Tab" : "Tab");
-  const ways: Way[] = before === undefined ? [gone ?? "Tab", back(gone ?? "Tab")] : [before ? "Shift+Tab" : "Tab"];
-  for (const key of ways) {
-    for (let i = 0; i < 150; i++) {
-      if (await at()) return;
-      await page.keyboard.press(key);
-    }
-  }
-  if (!(await at())) throw new Error(`${ways.join(" then ")} never reached ${target.toString()}`);
-}
-
-/** The page's skip link, then Enter: Tab goes on from the page's content, past the navigation. */
-async function skipToContent(page: Page) {
-  // The page's first Tab stop: the first Tab of a page just opened.
-  await tabTo(page, page.getByRole("link", { name: "Skip to content" }), "Tab");
-  await page.keyboard.press("Enter");
-}
-
-/** In a list opened from the keyboard, the arrow keys to an option, then Enter. */
-async function choose(page: Page, name: string | RegExp) {
-  const option = page.getByRole("option", { name, exact: typeof name === "string" });
-  await expect(page.getByRole("listbox")).toBeVisible();
-  for (let i = 0; i < 40; i++) {
-    if (await option.evaluate((e) => e === document.activeElement || e.hasAttribute("data-highlighted"))) {
-      await page.keyboard.press("Enter");
-      return;
-    }
-    await page.keyboard.press("ArrowDown");
-  }
-  throw new Error(`no option ${name.toString()}`);
-}
-
-/** Drawn: React has rendered what a key changed, and run its effects. */
-const drawn = (page: Page) =>
-  page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-
-/**
- * The tabs are one Tab stop, the arrow keys between them, each tab shown as
- * it is reached: from the one selected to `name`, a key at a time, back on
- * the tabs (above their panel) if what one showed took the focus.
- */
-async function selectTab(page: Page, name: string, key: "ArrowRight" | "ArrowLeft") {
-  const target = page.getByRole("tab", { name, exact: true });
-  const selected = page.getByRole("tab", { selected: true });
-  for (let i = 0; i < 8 && (await target.getAttribute("aria-selected")) !== "true"; i++) {
-    await tabTo(page, selected, "Shift+Tab");
-    const was = (await selected.textContent()) ?? "";
-    await page.keyboard.press(key);
-    await expect(selected).not.toHaveText(was);
-    await drawn(page);
-  }
-  await expect(target).toHaveAttribute("aria-selected", "true");
-}
-
-/**
- * On a graph, the arrow keys from the focused node to `target`: along each
- * row, then down to the next.
- */
-async function arrowTo(page: Page, target: Locator) {
-  const at = () => target.evaluate((e) => e === document.activeElement);
-  const now = () => page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "");
-  const press = async (key: string) => {
-    const before = await now();
-    await page.keyboard.press(key);
-    await drawn(page);
-    return (await now()) !== before;
-  };
-  for (let row = 0; row < 12; row++) {
-    if (await at()) return;
-    for (const key of ["ArrowRight", "ArrowLeft"]) {
-      while (await press(key)) if (await at()) return;
-    }
-    if (!(await press("ArrowDown"))) break;
-  }
-  if (!(await at())) throw new Error(`the arrow keys never reached ${target.toString()}`);
-}
 
 test("a composite's step added, published, requested and followed, with the keyboard only", async ({ page }) => {
   // Some 170 keys, each awaited and checked: over 30 s on a slow CI runner.
@@ -134,7 +41,6 @@ test("a composite's step added, published, requested and followed, with the keyb
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Add a step" });
   await expect(dialog.getByRole("combobox", { name: "What it runs" })).toBeFocused();
-  await page.keyboard.press("Enter");
   await choose(page, "Monitoring agent");
   await tabTo(page, dialog.getByRole("textbox", { name: "Key" }));
   await page.keyboard.type("monitor");
@@ -147,10 +53,8 @@ test("a composite's step added, published, requested and followed, with the keyb
 
   // Its inputs: the nodes' first FQDN, and a port written out.
   await tabTo(page, details.getByRole("combobox", { name: /^Agent/ }));
-  await page.keyboard.press("Enter");
   await choose(page, "Database nodes: The first VM's FQDN");
   await tabTo(page, details.getByRole("combobox", { name: /^Port/ }));
-  await page.keyboard.press("Enter");
   await choose(page, "A value or CEL expression");
   await expect(details.getByRole("textbox", { name: "Port: value or CEL expression" })).toBeFocused();
   await page.keyboard.type("9187");

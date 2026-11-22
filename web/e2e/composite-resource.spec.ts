@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { bothThemes } from "./axe";
+import { choose } from "./keyboard";
 
 // A composite's custom resource step (E1.4, ADR-0056) on the mock backend:
 // added in the designer from the keyboard by its type, among the types turned
@@ -7,16 +8,11 @@ import { bothThemes } from "./axe";
 // deployment it joins, and follows that step's new key. Checked with axe in
 // both themes.
 
-async function choose(page: Page, option: string | RegExp) {
-  await page.keyboard.press("Enter");
-  await page.getByRole("option", { name: option }).click();
-}
-
 async function addStep(page: Page, runs: string | RegExp, key: string, title: string) {
   await page.getByRole("button", { name: "Add a step", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add a step" });
   await expect(add.getByRole("combobox", { name: "What it runs" })).toBeFocused();
-  await choose(page, runs);
+  await choose(page, runs, { click: true, exact: false });
   await add.getByRole("textbox", { name: "Key" }).fill(key);
   await add.getByRole("textbox", { name: "Title" }).fill(title);
   await add.getByRole("button", { name: "Add step" }).click();
@@ -48,7 +44,7 @@ test("a custom resource step, by its type, in the deployment of the VM step it n
   // Two VM steps come before it: it names the one whose deployment it joins.
   const deployment = lb.getByRole("combobox", { name: "Deployment" });
   await deployment.focus();
-  await choose(page, /^Web server/);
+  await choose(page, /^Web server/, { click: true });
   const editor = page.getByRole("textbox", { name: /^Definition of Balanced pair/ });
   await expect(editor).toContainText("type: load-balancer");
   await expect(editor).toContainText("deployment: web");

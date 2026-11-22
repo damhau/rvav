@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
+import { arrowTo, choose, selectTab, skipToContent, tabTo } from "./keyboard";
 
 // D2's acceptance in the browser (D2.6, ADR-0033), on the mock backend. The
 // vRO workflow std-ask-requester, which rvav vro-triage -standard puts in group
@@ -13,93 +14,6 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 // throttling: the later ones start from the YAML the earlier ones built, as
 // the mocks reset when a page is opened. TestD2Acceptance runs the same steps
 // through the real server and Temporal, the CMDB receiving the answer.
-
-type Way = "Tab" | "Shift+Tab";
-
-/**
- * Tab until `target` has the focus: Shift+Tab when it comes before what has
- * the focus. When nothing has (what had it went away), `gone` is the way to
- * the target from there (else forward, then back).
- */
-async function tabTo(page: Page, target: Locator, gone?: Way) {
-  await expect(target).toBeVisible();
-  const at = () => target.evaluate((e) => e === document.activeElement);
-  const before = await target.evaluate((e) => {
-    const now = document.activeElement;
-    if (!now || now === document.body) return undefined;
-    return !!(e.compareDocumentPosition(now) & Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-  const back = (w: Way): Way => (w === "Tab" ? "Shift+Tab" : "Tab");
-  const ways: Way[] = before === undefined ? [gone ?? "Tab", back(gone ?? "Tab")] : [before ? "Shift+Tab" : "Tab"];
-  for (const key of ways) {
-    for (let i = 0; i < 150; i++) {
-      if (await at()) return;
-      await page.keyboard.press(key);
-    }
-  }
-  if (!(await at())) throw new Error(`${ways.join(" then ")} never reached ${target.toString()}`);
-}
-
-/** The page's skip link, then Enter: Tab goes on from the page's content. */
-async function skipToContent(page: Page) {
-  await tabTo(page, page.getByRole("link", { name: "Skip to content" }), "Tab");
-  await page.keyboard.press("Enter");
-}
-
-/** Opens the focused list with Enter, then the arrow keys to an option, then Enter. */
-async function choose(page: Page, name: string | RegExp) {
-  await page.keyboard.press("Enter");
-  const option = page.getByRole("option", { name, exact: typeof name === "string" });
-  await expect(page.getByRole("listbox")).toBeVisible();
-  for (let i = 0; i < 40; i++) {
-    if (await option.evaluate((e) => e === document.activeElement || e.hasAttribute("data-highlighted"))) {
-      await page.keyboard.press("Enter");
-      // An open list keeps Tab to itself: a Tab pressed before it closes is lost.
-      await expect(page.getByRole("listbox")).toHaveCount(0);
-      return;
-    }
-    await page.keyboard.press("ArrowDown");
-  }
-  throw new Error(`no option ${name.toString()}`);
-}
-
-/** Drawn: React has rendered what a key changed, and run its effects. */
-const drawn = (page: Page) =>
-  page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-
-/** The tabs are one Tab stop: from the one selected, the arrow keys to `name`. */
-async function selectTab(page: Page, name: string, key: "ArrowRight" | "ArrowLeft") {
-  const target = page.getByRole("tab", { name, exact: true });
-  const selected = page.getByRole("tab", { selected: true });
-  for (let i = 0; i < 8 && (await target.getAttribute("aria-selected")) !== "true"; i++) {
-    await tabTo(page, selected, "Shift+Tab");
-    const was = (await selected.textContent()) ?? "";
-    await page.keyboard.press(key);
-    await expect(selected).not.toHaveText(was);
-    await drawn(page);
-  }
-  await expect(target).toHaveAttribute("aria-selected", "true");
-}
-
-/** On a graph, the arrow keys from the focused node to `target`: along each row, then down. */
-async function arrowTo(page: Page, target: Locator) {
-  const at = () => target.evaluate((e) => e === document.activeElement);
-  const now = () => page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "");
-  const press = async (key: string) => {
-    const before = await now();
-    await page.keyboard.press(key);
-    await drawn(page);
-    return (await now()) !== before;
-  };
-  for (let row = 0; row < 12; row++) {
-    if (await at()) return;
-    for (const key of ["ArrowRight", "ArrowLeft"]) {
-      while (await press(key)) if (await at()) return;
-    }
-    if (!(await press("ArrowDown"))) break;
-  }
-  if (!(await at())) throw new Error(`the arrow keys never reached ${target.toString()}`);
-}
 
 /** In the Add a step dialog, its focus on what it runs: that, a key and a title, then Enter. Its details take the focus. */
 async function addStep(page: Page, runs: string | RegExp, key: string, title: string) {

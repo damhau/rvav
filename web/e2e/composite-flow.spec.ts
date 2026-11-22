@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { bothThemes } from "./axe";
+import { choose, typeAndTab } from "./keyboard";
 
 // A composite's loop, catch path, error handler and wait for a signal (E1.5,
 // ADR-0057) on the mock backend: each added and filled in from the keyboard in
@@ -8,34 +9,10 @@ import { bothThemes } from "./axe";
 // and nothing fails: the wait reaches its deadline and goes on, and the catch
 // path and the error handler are skipped.
 
-/** In a list opened from the keyboard, the arrow keys to an option, then Enter. */
-async function choose(page: Page, name: string | RegExp) {
-  await page.keyboard.press("Enter");
-  const option = page.getByRole("option", { name, exact: typeof name === "string" });
-  await expect(page.getByRole("listbox")).toBeVisible();
-  for (let i = 0; i < 40; i++) {
-    if (await option.evaluate((e) => e === document.activeElement || e.hasAttribute("data-highlighted"))) {
-      await page.keyboard.press("Enter");
-      // An open list keeps Tab to itself: a Tab pressed before it closes is lost.
-      await expect(page.getByRole("listbox")).toHaveCount(0);
-      return;
-    }
-    await page.keyboard.press("ArrowDown");
-  }
-  throw new Error(`no option ${name.toString()}`);
-}
-
 /** Focuses a control and presses Enter on it. */
 async function press(page: Page, control: Locator) {
   await control.focus();
   await page.keyboard.press("Enter");
-}
-
-/** Types into the focused field and leaves it, which commits it, for the next one. */
-async function typeAndTab(page: Page, text: string, replace = false) {
-  if (replace) await page.keyboard.press("Control+a");
-  await page.keyboard.type(text);
-  await page.keyboard.press("Tab");
 }
 
 /** Fills in the open Add a step dialog from the keyboard: what it runs, its key and title; its details take the focus. */

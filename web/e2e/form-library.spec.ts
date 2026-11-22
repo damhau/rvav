@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { bothThemes, scan, theme } from "./axe";
+import { chooseIn } from "./keyboard";
 
 // The form library (F1.5, ADR-0043), by keyboard on the mock backend: an
 // administrator adds a validation to the library and tests it, an item's form
@@ -37,23 +38,6 @@ async function typeInto(field: Locator, text: string) {
   await field.page().keyboard.type(text);
 }
 
-/** Opens the focused list with Enter, then the arrow keys to an option, then Enter. */
-async function choose(page: Page, select: Locator, name: string | RegExp) {
-  await select.focus();
-  await page.keyboard.press("Enter");
-  const option = page.getByRole("option", { name, exact: typeof name === "string" });
-  await expect(page.getByRole("listbox")).toBeVisible();
-  for (let i = 0; i < 20; i++) {
-    if (await option.evaluate((e) => e === document.activeElement || e.hasAttribute("data-highlighted"))) {
-      await page.keyboard.press("Enter");
-      await expect(page.getByRole("listbox")).toHaveCount(0);
-      return;
-    }
-    await page.keyboard.press("ArrowDown");
-  }
-  throw new Error(`no option ${name.toString()}`);
-}
-
 /** Follows a link of the main navigation: a reload would start the mock backend afresh. */
 async function nav(page: Page, link: string) {
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: link, exact: true }).press("Enter");
@@ -75,8 +59,8 @@ test("a form library validation refuses a request on its input, then lets it thr
   const sheet = page.getByRole("dialog", { name: "New form library entry" });
   await typeInto(sheet.getByRole("textbox", { name: "Key" }), "hostPrefix");
   await typeInto(sheet.getByRole("textbox", { name: "Name", exact: true }), "Host prefix");
-  await choose(page, sheet.getByRole("combobox", { name: "Purpose" }), "Validation");
-  await choose(page, sheet.getByRole("combobox", { name: "Kind" }), "CEL expression");
+  await chooseIn(page, sheet.getByRole("combobox", { name: "Purpose" }), "Validation", { focus: true });
+  await chooseIn(page, sheet.getByRole("combobox", { name: "Kind" }), "CEL expression", { focus: true });
   await typeInto(sheet.getByRole("textbox", { name: "Check" }), check);
   await sheet.getByRole("button", { name: "Add parameter" }).press("Enter");
   const parameters = sheet.getByRole("group", { name: "Parameters" });
@@ -140,7 +124,7 @@ test("a form library validation refuses a request on its input, then lets it thr
   const added = props.getByRole("group", { name: "check1" });
   const entry = added.getByRole("combobox", { name: "Entry" });
   await expect(entry).toBeFocused();
-  await choose(page, entry, "Host prefix (hostPrefix)");
+  await chooseIn(page, entry, "Host prefix (hostPrefix)", { focus: true });
   await expect(added.getByRole("combobox", { name: "Version" })).toHaveText("1 (latest)");
   const name = added.getByRole("textbox", { name: "Host name" });
   await typeInto(name, "inputs.host");
