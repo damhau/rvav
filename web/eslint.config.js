@@ -77,6 +77,8 @@ const toastSelectors = [
   "CallExpression[callee.name='toast'] > Literal",
   "CallExpression[callee.name='toast'] > TemplateLiteral",
   "CallExpression[callee.object.name='toast'] > ObjectExpression > Property[key.name='description'] > Literal",
+  // A toast's buttons, whatever the toast function is called.
+  "Property[key.name=/^(action|cancel)$/] Property[key.name='label'] > :matches(Literal, TemplateLiteral)",
 ].map((selector) => ({ selector, message: "A toast is read: translate it with t() (ADR-0061)" }));
 
 const untested = ["**/*.test.ts", "**/*.test.tsx", "src/mocks/**", "src/test/**"];

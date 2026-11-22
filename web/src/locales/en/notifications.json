@@ -17,6 +17,7 @@
   "markReadOf": "Mark read: {{title}}",
   "markRead": "Mark read",
   "loadMore": "Load more",
+  "open": "Open",
   "bell": {
     "unread_one": "Notifications, {{count}} unread",
     "unread_other": "Notifications, {{count}} unread",

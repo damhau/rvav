@@ -3,6 +3,7 @@ import { useRouter } from "@tanstack/react-router";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { apiUrl, rawFetch } from "@/lib/api/client";
+import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { applyEvent } from "./bridge";
 import { LiveClient, type LiveStatus } from "./sse";
@@ -37,7 +38,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           const link = n.link;
           show(n.title, {
             description: n.body,
-            action: link ? { label: "Open", onClick: () => void router.navigate({ to: link }) } : undefined,
+            action: link
+              ? { label: i18n.t("notifications:open"), onClick: () => void router.navigate({ to: link }) }
+              : undefined,
           });
         }),
     });

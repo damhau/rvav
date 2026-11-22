@@ -18,6 +18,7 @@
   "markReadOf": "Marquer comme lue\u00a0: {{title}}",
   "markRead": "Marquer comme lue",
   "loadMore": "Charger la suite",
+  "open": "Ouvrir",
   "bell": {
     "unread_one": "Notifications, {{count}} non lue",
     "unread_many": "Notifications, {{count}} non lues",
