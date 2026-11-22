@@ -212,7 +212,8 @@ shows the same list. Select a row to open its request. **Overview** shows
 your open requests too, with what needs you.
 
 The top of a request's page shows its status, number, project, who asked,
-and how many of its steps are done. **Cancel request**, **Request again** and
+and how many of its steps are done. A request ordered in ServiceNow's
+catalog shows **From ServiceNow** and a link to its requested item there. **Cancel request**, **Request again** and
 **Open deployment** are beside it, when they apply. Below, the page shows
 each step as it runs: the address reserved, the DNS record, the VM cloned and
 customised, each AWX job with its tasks and output. It updates live. You are told when it is ready, or why it failed,

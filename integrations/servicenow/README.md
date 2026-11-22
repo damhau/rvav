@@ -62,7 +62,7 @@ on a real instance yet: they are checked under Node against rvav's API
 ## Install
 
 1. In rvav, go to **Administration › Integrations › ServiceNow** and
-   click **Make token**. Copy the token: rvav shows it once. Making a new
+   click **Make a token**. Copy the token: rvav shows it once. Making a new
    one later revokes this one.
 1. Optional: in the same page, set **Allowed sources** to the instance's
    outbound addresses, or the MID server's, so that rvav refuses the
@@ -155,10 +155,11 @@ integration. Give that account no admin role, only:
   the item.
 - **The RITM is Closed Incomplete.** Its work notes have rvav's reason:
   an input it refused, a quota, an item the person can't request, or a
-  policy warning that the order didn't accept.
+  policy warning that the order didn't accept. "Not from ServiceNow's
+  addresses" means that the call came from outside rvav's **Allowed
+  sources**: add the instance's address, then order again.
 - **The RITM stays Open.** rvav couldn't be reached, refused the token
-  (401, a revoked or expired token; 403, a call from outside **Allowed
-  sources**), or answered 429. The system log has a warning starting
+  (401, a revoked or expired token), or answered 429. The system log has a warning starting
   with `rvav:`, and `rvav: retry` submits the RITM again every 5 minutes
   for 3 days.
 - **An item doesn't show up.** rvav offers an item when it has a

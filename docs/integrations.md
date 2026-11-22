@@ -482,9 +482,41 @@ join" names (KB5020276).
   its data source it doesn't keep, without retiring them:
   `GET /admin/integrations/servicenow/cmdb` shows the counts, the
   failures and that report.
+- **Requests** (`internal/core/servicenow_requests.go`): ServiceNow calls
+  `/api/v1/servicenow/` (the catalog, a user's entitlements, a request on
+  a user's behalf, the request made for a requested item) with a token of
+  scope `servicenow`, made in Administration for rvav's user
+  `usr_rvav-servicenow`. No other token or session is taken there, and
+  that token nowhere else. rvav finds the user by email, else by user
+  name, and submits as that user would. Calls come only from
+  `allowed_sources`, and submissions are limited to
+  `requests_per_minute`.
+- **Work notes** (`internal/snowsync`, in `rvav sync`): the dispatcher
+  queues a note for each event of a request made from ServiceNow
+  (`servicenow_ritm_notes`); the sync sends them in order, one PATCH of
+  `sc_req_item` each, with its `work_notes` and `state` (2 while rvav
+  works, 3 when it succeeded, 4 when it failed, was rejected or
+  cancelled).
+- **ServiceNow's side** (`integrations/servicenow/`): script includes, a
+  business rule, a script action, scheduled jobs and catalog client
+  scripts that import rvav's catalog, fill the order form's projects and
+  submit each order; its README is the install guide. No update set:
+  `TestServiceNowScripts` runs them under Node against rvav's API.
 - **Fake** (`servicenow.Fake`): an in-process instance for the tests,
   with the Table API's encoded queries, OAuth, and an IRE that identifies
   a VM by its instance UUID, then by its moref and vCenter.
+
+### ServiceNow roles (rvav's account)
+
+Give the user or OAuth client rvav signs in with no admin role, only:
+
+- read on `sc_req_item`, and write on its `state` and `work_notes`, for
+  the requested items of rvav's catalog items;
+- for the CMDB: the role that may call the Identification and
+  Reconciliation API (`import_transformer`, or `itil` with the API's
+  ACL), read and write on the CI class (`cmdb_ci_vmware_instance` by
+  default), and read on `sys_user` for the CIs' **Owned by**;
+- **Web service access only** ticked on the user.
 
 ## Identity (OIDC)
 

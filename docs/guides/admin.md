@@ -134,6 +134,8 @@ page:
   rvav, and its TLS settings are kept. Make a new one before it
   expires. Set the inventory source ID first; `RVAV_INVENTORY_TOKEN` locks
   it.
+- **ServiceNow:** the CMDB and requests ordered in ServiceNow: see
+  [ServiceNow](#servicenow).
 
 ### Trusted certificates
 
@@ -741,6 +743,103 @@ OU. The deployment's page lists its objects under **Active Directory**.
   retry it.
 - Renaming the VM renames its object. Rename a joined Windows VM in
   Windows too, and join a Linux one again.
+
+## ServiceNow
+
+rvav can keep each VM as a configuration item (CI) in ServiceNow's CMDB,
+and take the requests that people order in ServiceNow's Service Catalog
+([ADR-0065](../adr/0065-servicenow.md)). Both need the connection.
+
+To connect rvav to ServiceNow:
+
+1. In ServiceNow, make the account rvav signs in with, with the roles in
+   [integrations.md](../integrations.md#servicenow-roles-rvavs-account):
+   a user with **Web service access only** ticked, or an OAuth client
+   (**System OAuth › Application Registry**, **Create an OAuth API
+   endpoint for external clients**) whose **OAuth application user** is
+   that user. ServiceNow offers OAuth clients the client credentials
+   grant from its Washington DC release.
+2. In **Integrations › ServiceNow**, enter the **Instance URL**, such as
+   `https://corp.service-now.com`. rvav refuses `http://`.
+3. In **Sign-in**, enter `basic` and the **User**, or `oauth` and the
+   **OAuth client ID**. Then enter the **Password or client secret**.
+4. Click **Test connection**. The test shows the instance's certificate,
+   signs in and reads one requested item. If rvav doesn't trust the
+   certificate, see [Trusted certificates](#trusted-certificates).
+5. Click **Save settings**.
+
+### Keep VMs as CIs
+
+To keep VMs as CIs:
+
+1. In ServiceNow, add `rvav`, or the discovery source you set in step 3,
+   to the choices of the **Discovery source** field of `cmdb_ci`. Until
+   it's there, ServiceNow refuses rvav's CIs, and the CMDB report says
+   why.
+2. In **Integrations › ServiceNow**, select **Keep VMs as CIs**.
+3. Optional: change the **CI class** (`cmdb_ci_vmware_instance` by
+   default) or the **Discovery source** (`rvav`). To keep only some
+   projects' VMs, enter their IDs or codes in **Projects**, separated by
+   commas.
+4. Click **Save settings**.
+
+rvav sends each VM through ServiceNow's Identification and
+Reconciliation Engine: a CI that discovery already made for the VM, found
+by its instance UUID, else by its managed object reference and vCenter,
+is updated rather than doubled. rvav updates the CI after day-2 actions,
+power changes and drift, and retires it, never deletes it, when the VM
+goes. The CI's **Owned by** is the ServiceNow user with the deployment
+owner's email, when exactly one has it.
+
+The **CMDB** panel of the integration's page shows the CIs that rvav
+keeps and has retired, and lists:
+
+- **Deployments ServiceNow refused**, with ServiceNow's answer. rvav tries
+  each again, from 10 seconds to 15 minutes apart.
+- **CIs rvav no longer has**: CIs of rvav's discovery source, not
+  retired, with no VM in rvav, such as a VM deleted while the CMDB was
+  off. rvav doesn't retire them: decide in ServiceNow.
+
+rvav reconciles every **Sync interval**, 30 minutes by default. To
+reconcile within seconds, click **Reconcile now**.
+
+Removing a project from **Projects** leaves its CIs as they are, and rvav
+still retires them when their VMs go. Clearing **Keep VMs as CIs** stops
+everything and retires nothing.
+
+### Take requests from ServiceNow
+
+People can order rvav's catalog items in ServiceNow. ServiceNow submits
+each order to rvav for the person it's requested for, matched by email
+or user name, and rvav writes the request's progress to the requested item (RITM): its
+work notes, its state and the deployment's link. The request is that
+person's own, with their entitlements, quotas, approvals and policies.
+rvav knows a person from their first sign-in to rvav.
+
+To take requests from ServiceNow:
+
+1. In **Integrations › ServiceNow**, under **ServiceNow's token**, click
+   **Make a token**. Copy the token: rvav shows it once.
+2. Optional: in **Allowed sources**, enter the instance's outbound
+   addresses or networks, or its MID server's, separated by commas. rvav
+   then refuses the token from anywhere else. To let ServiceNow submit
+   more than 30 requests a minute, change **Requests a minute**. Click
+   **Save settings**.
+3. Install rvav's scripts in ServiceNow, with the token: follow
+   [rvav in ServiceNow](../../integrations/servicenow/README.md).
+
+The token is valid for a year, for a user of rvav's own, **ServiceNow
+(rvav)**, and only ServiceNow's endpoints take it. Making a new token
+revokes the one before, and **Revoke** cuts ServiceNow off at once. Both
+are in the audit log.
+
+A request ordered in ServiceNow shows **From ServiceNow** and the RITM's
+number in its header, linked to the RITM, and its deployment shows the
+RITM under **Details**. The audit log has each request made for
+ServiceNow (`servicenow.request`): who it was for, the RITM, the token
+and the address it came from. It also has those rvav refused
+(`servicenow.request_refused`) and the calls over the rate
+(`servicenow.request_limited`).
 
 ## Projects
 

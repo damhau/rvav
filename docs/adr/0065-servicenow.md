@@ -137,7 +137,7 @@ endpoints take, under `/api/v1/servicenow/`:
 - `GET /servicenow/requests/{ritmSysId}`: the request made for a
   requested item, and where it is.
 
-**The token.** rvav makes it on the integration's page (Make token), for
+**The token.** rvav makes it on the integration's page (Make a token), for
 a user of its own, `usr_rvav-servicenow` (`system:servicenow`, "ServiceNow
 (rvav)"), that no one signs in as and that holds no role. The token's
 scope is `servicenow`: such a token is refused everywhere but under
