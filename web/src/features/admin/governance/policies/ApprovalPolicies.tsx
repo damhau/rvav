@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { i18n } from "@/lib/i18n";
 import { adm } from "@/lib/query";
 import { failed, fieldErrors, priorityOf, writable } from "../common";
 import {
@@ -33,18 +35,16 @@ import {
 type S = components["schemas"];
 type Policy = S["ApprovalPolicy"];
 
-const itemTypes: { value: S["CatalogItemType"] | "all"; label: string }[] = [
-  { value: "all", label: "Any" },
-  { value: "vm_blueprint", label: "VM blueprints" },
-  { value: "awx_job_template", label: "AWX job templates" },
-  { value: "awx_workflow", label: "AWX workflows" },
-  { value: "composite", label: "Composite" },
-];
+const itemTypeValues = ["all", "vm_blueprint", "awx_job_template", "awx_workflow", "composite"] as const;
+
+const itemTypes = () =>
+  itemTypeValues.map((value) => ({ value, label: i18n.t(`admin-governance:policies.approval.itemType.${value}`) }));
 
 const put = ({ id, set_by_admin: _set, ...body }: Policy) =>
   call(api.PUT("/admin/approval-policies/{id}", { params: { path: { id } }, body }));
 
 function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshPolicies("approval-policies");
   const projects = useProjects();
   const listed = useQuery(adm.approvals());
@@ -57,7 +57,7 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
           condition: "true",
           item_type: null,
           project_id: projects.initial,
-          levels: [{ name: "Level 1", mode: "any" }],
+          levels: [{ name: t("policies.levels.named", { n: 1 }), mode: "any" }],
           priority: 100,
           enabled: true,
           auto_approve: null,
@@ -74,12 +74,12 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
     },
     onSuccess: () => {
       void refresh();
-      toast.success(`${f.name} saved`);
+      toast.success(t("policies.saved", { name: f.name }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("policies.notSaved"));
     },
   });
   return (
@@ -87,31 +87,31 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={policy ? `Change ${policy.name}` : "New approval policy"}
-      description="Requests it applies to wait for each level's approvers, in order."
+      title={policy ? t("policies.changeNamed", { name: policy.name }) : t("policies.approval.new")}
+      description={t("policies.approval.sheetLead")}
       className="w-[min(640px,100vw)]"
-      submitLabel={save.isPending ? "Saving…" : "Save policy"}
+      submitLabel={save.isPending ? t("policies.saving") : t("policies.savePolicy")}
       onSubmit={() => {
         setErrors({});
         save.mutate();
       }}
     >
       <div className="grid grid-cols-[1fr_120px] gap-3">
-        <Field label="Name" htmlFor="ap-name" error={errors["/name"]}>
+        <Field label={t("policies.name")} htmlFor="ap-name" error={errors["/name"]}>
           <Input id="ap-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         </Field>
-        <Field label="Priority" htmlFor="ap-priority" hint="Lower first">
+        <Field label={t("policies.priority")} htmlFor="ap-priority" hint={t("policies.lowerFirst")}>
           <Input id="ap-priority" type="number" value={priority} onChange={(e) => setPriority(e.target.value)} />
         </Field>
       </div>
-      <Field label="Reason requesters see" htmlFor="ap-reason">
+      <Field label={t("policies.approval.reason")} htmlFor="ap-reason">
         <Input id="ap-reason" value={f.reason ?? ""} onChange={(e) => setF({ ...f, reason: e.target.value })} />
       </Field>
       <Field
-        label="Applies when (CEL)"
+        label={t("policies.appliesWhenCel")}
         htmlFor="ap-condition"
         error={errors["/condition"]}
-        hint={'For example environment == "prd" || inputs.cpu_count > 8'}
+        hint={t("policies.approval.conditionHint", { example: 'environment == "prd" || inputs.cpu_count > 8' })}
       >
         <Textarea
           id="ap-condition"
@@ -122,28 +122,28 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Kind of item" htmlFor="ap-type">
+        <Field label={t("policies.approval.kind")} htmlFor="ap-type">
           <Select
             id="ap-type"
             value={f.item_type ?? "all"}
             onChange={(v) => setF({ ...f, item_type: v === "all" ? null : (v as S["CatalogItemType"]) })}
-            options={itemTypes}
+            options={itemTypes()}
           />
         </Field>
-        <Field label="Project" htmlFor="ap-project" error={errors["/project_id"]}>
+        <Field label={t("policies.project")} htmlFor="ap-project" error={errors["/project_id"]}>
           <Select
             id="ap-project"
             value={f.project_id ?? "all"}
             onChange={(v) => setF({ ...f, project_id: v === "all" ? null : v })}
-            options={projects.options("Every project")}
+            options={projects.options(t("policies.everyProject"))}
           />
         </Field>
       </div>
       <Field
-        label="Approved at once when (CEL, optional)"
+        label={t("policies.approval.auto")}
         htmlFor="ap-auto"
         error={errors["/auto_approve"]}
-        hint="For example a small VM in dev: nobody needs to approve it"
+        hint={t("policies.approval.autoHint")}
       >
         <Input
           id="ap-auto"
@@ -160,13 +160,14 @@ function ApprovalSheet({ policy, onClose }: { policy?: Policy; onClose: () => vo
       />
       <label htmlFor="ap-enabled" className="flex items-center gap-1.5 text-body">
         <Checkbox id="ap-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />
-        Enabled
+        {t("policies.enabled")}
       </label>
     </Sheet>
   );
 }
 
 export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshPolicies("approval-policies");
   const policies = useQuery(adm.approvals());
   const approversText = (p: Policy) => p.levels.map((l) => askedText(l, policies.data?.level_roles ?? [])).join(" → ");
@@ -179,31 +180,31 @@ export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
     mutationFn: (p: Policy) => call(api.DELETE("/admin/approval-policies/{id}", { params: { path: { id: p.id } } })),
     onSuccess: (_, p) => {
       void refresh();
-      toast.success(`${p.name} removed`);
+      toast.success(t("policies.removed", { name: p.name }));
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("policies.notRemoved")),
   });
   const items = policies.data ? [...policies.data.items].sort((a, b) => a.priority - b.priority) : undefined;
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New approval policy
+      {t("policies.approval.new")}
     </Button>
   );
   const columns: Column<Policy>[] = [
     {
       id: "policy",
-      header: "Policy",
+      header: t("policies.policy"),
       cell: (p) => (
         <>
           <span className="font-medium">{p.name}</span>
           {!p.enabled && (
             <Badge tone="neutral" className="ml-2">
-              Off
+              {t("policies.off")}
             </Badge>
           )}
           <div className="text-secondary text-muted">
-            {p.project_id ? projects.name(p.project_id) : "Every project"}
-            {p.item_type && `, ${itemTypes.find((t) => t.value === p.item_type)?.label ?? p.item_type}`}
+            {p.project_id ? projects.name(p.project_id) : t("policies.everyProject")}
+            {p.item_type && `, ${itemTypes().find((x) => x.value === p.item_type)?.label ?? p.item_type}`}
           </div>
           <SetByAdmin policy={p} />
         </>
@@ -211,27 +212,30 @@ export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
     },
     {
       id: "condition",
-      header: "Applies when",
+      header: t("policies.appliesWhen"),
       cell: (p) => <span className="font-mono text-secondary break-all">{p.condition}</span>,
     },
     {
       id: "approvers",
-      header: "Approvers",
+      header: t("policies.approval.approvers"),
       cell: (p) => <span className="text-secondary">{approversText(p)}</span>,
     },
-    { id: "priority", header: "Priority", align: "end", cell: (p) => <span className="tnum">{p.priority}</span> },
+    {
+      id: "priority",
+      header: t("policies.priority"),
+      align: "end",
+      cell: (p) => <span className="tnum">{p.priority}</span>,
+    },
   ];
   return (
     <Panel
-      title="Approval policies"
-      description={`Every policy that matches a request adds its levels of approvers, lower priority first.${
-        rights.global ? "" : " You change your projects' own: they add levels to those of every project."
-      }`}
+      title={t("policies.approval.title")}
+      description={rights.global ? t("policies.approval.lead") : t("policies.approval.leadOwn")}
       flush
       actions={rights.any && Boolean(items?.length) && add}
     >
       <DataTable
-        label="Approval policies"
+        label={t("policies.approval.title")}
         columns={columns}
         rows={items}
         rowKey={(p) => p.id}
@@ -241,12 +245,12 @@ export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
         empty={
           <EmptyState
             icon={ShieldCheck}
-            title="No approval policy"
-            body="Every request runs at once. Add a policy to have some approved first."
+            title={t("policies.approval.emptyTitle")}
+            body={t("policies.approval.emptyBody")}
             action={rights.any && add}
           />
         }
-        rowMenuLabel={(p) => `Actions for ${p.name}`}
+        rowMenuLabel={(p) => t("policies.actionsFor", { name: p.name })}
         rowMenu={
           rights.any && items
             ? (p) =>
@@ -271,10 +275,10 @@ export function ApprovalPolicies({ rights }: { rights: PolicyRights }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.name}?`}
-          description={`Requests stop waiting for ${approversText(removing)} because of it.`}
-          consequences="Requests already waiting keep the approvals they were given. Another policy that matches still applies."
-          confirmLabel="Remove policy"
+          title={t("policies.removeNamed", { name: removing.name })}
+          description={t("policies.approval.removeLead", { approvers: approversText(removing) })}
+          consequences={t("policies.approval.removeConsequences")}
+          confirmLabel={t("policies.removePolicy")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing, { onSuccess: () => setRemoving(null) })}
         />

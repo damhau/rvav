@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Timer } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { i18n } from "@/lib/i18n";
 import { adm, q } from "@/lib/query";
 import { failed, fieldErrors, writable } from "../common";
 import { enforcementOptions, SetByAdmin, useProjects, useRefreshPolicies, type PolicyRights } from "./shared";
@@ -21,11 +23,9 @@ import { enforcementOptions, SetByAdmin, useProjects, useRefreshPolicies, type P
 type S = components["schemas"];
 type Lease = S["LeasePolicy"];
 
-export const expiryLabels: Record<S["LeaseExpiryAction"], string> = {
-  power_off_then_delete: "Power off, then delete after the grace period",
-  delete: "Delete after the grace period",
-  notify_only: "Only tell the owner",
-};
+const expiryActions: S["LeaseExpiryAction"][] = ["power_off_then_delete", "delete", "notify_only"];
+
+export const expiryLabel = (a: S["LeaseExpiryAction"]) => i18n.t(`admin-governance:policies.lease.expiry.${a}`);
 
 type Terms = Pick<
   Lease,
@@ -34,13 +34,19 @@ type Terms = Pick<
 
 /** What a lease policy or rule gives, in a table cell. */
 export function LeaseSummary({ lease }: { lease: Terms }) {
+  const { t } = useTranslation("admin-governance");
   return (
     <span className="text-secondary">
-      {lease.default_days ? `${lease.default_days} days, up to ${lease.max_days ?? "no limit"}` : "None"}
+      {lease.default_days
+        ? t("policies.lease.summary", {
+            count: lease.default_days,
+            max: lease.max_days ?? t("policies.lease.noLimit"),
+          })
+        : t("policies.lease.none")}
       {lease.max_lifetime_days != null && (
-        <span className="block text-muted">Lives {lease.max_lifetime_days} days at most</span>
+        <span className="block text-muted">{t("policies.lease.lifetime", { count: lease.max_lifetime_days })}</span>
       )}
-      {lease.enforcement === "soft" && <span className="block text-muted">Soft: longer warns</span>}
+      {lease.enforcement === "soft" && <span className="block text-muted">{t("policies.lease.softLonger")}</span>}
     </span>
   );
 }
@@ -57,6 +63,7 @@ export function LeaseTermsFields<T extends Terms>({
   setF: (f: T) => void;
   errors: Record<string, string>;
 }) {
+  const { t } = useTranslation("admin-governance");
   const days = (k: "default_days" | "max_days" | "max_lifetime_days", label: string, hint: string) => (
     <Field label={label} htmlFor={`${id}-${k}`} error={errors[`/${k}`]} hint={hint}>
       <Input
@@ -71,9 +78,9 @@ export function LeaseTermsFields<T extends Terms>({
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
-        {days("default_days", "Lease, in days", "Empty for none")}
-        {days("max_days", "At most, in days", "Empty for none")}
-        <Field label="Extensions" htmlFor={`${id}-ext`} error={errors["/max_extensions"]}>
+        {days("default_days", t("policies.lease.leaseDays"), t("policies.lease.emptyForNone"))}
+        {days("max_days", t("policies.lease.maxDays"), t("policies.lease.emptyForNone"))}
+        <Field label={t("policies.lease.extensions")} htmlFor={`${id}-ext`} error={errors["/max_extensions"]}>
           <Input
             id={`${id}-ext`}
             type="number"
@@ -82,7 +89,7 @@ export function LeaseTermsFields<T extends Terms>({
             onChange={(e) => setF({ ...f, max_extensions: Number(e.target.value) })}
           />
         </Field>
-        <Field label="Grace, in days" htmlFor={`${id}-grace`} error={errors["/grace_days"]}>
+        <Field label={t("policies.lease.grace")} htmlFor={`${id}-grace`} error={errors["/grace_days"]}>
           <Input
             id={`${id}-grace`}
             type="number"
@@ -92,30 +99,26 @@ export function LeaseTermsFields<T extends Terms>({
           />
         </Field>
       </div>
-      {days(
-        "max_lifetime_days",
-        "Lifetime, in days",
-        "How long a deployment lives in all, from its creation. An extension past it needs approval. Empty for no limit",
-      )}
-      <Field label="When it expires" htmlFor={`${id}-action`} error={errors["/expiry_action"]}>
+      {days("max_lifetime_days", t("policies.lease.lifetimeDays"), t("policies.lease.lifetimeHint"))}
+      <Field label={t("policies.lease.whenExpires")} htmlFor={`${id}-action`} error={errors["/expiry_action"]}>
         <Select
           id={`${id}-action`}
           value={f.expiry_action}
           onChange={(v) => setF({ ...f, expiry_action: v as S["LeaseExpiryAction"] })}
-          options={Object.entries(expiryLabels).map(([value, label]) => ({ value, label }))}
+          options={expiryActions.map((value) => ({ value, label: expiryLabel(value) }))}
         />
       </Field>
       <Field
-        label="Enforcement"
+        label={t("policies.enforcementLabel")}
         htmlFor={`${id}-enforcement`}
         error={errors["/enforcement"]}
-        hint="Soft: a longer lease, one more extension or one past the lifetime warns the requester instead of being refused or approved."
+        hint={t("policies.lease.enforcementHint")}
       >
         <Select
           id={`${id}-enforcement`}
           value={f.enforcement ?? "hard"}
           onChange={(v) => setF({ ...f, enforcement: v as S["PolicyEnforcement"] })}
-          options={enforcementOptions}
+          options={enforcementOptions()}
         />
       </Field>
     </>
@@ -123,6 +126,7 @@ export function LeaseTermsFields<T extends Terms>({
 }
 
 function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const envs = useQuery(q.environments());
   const projects = useProjects();
   const refresh = useRefreshPolicies("leases");
@@ -144,12 +148,12 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
     mutationFn: () => call(api.PUT("/admin/lease-policies", { body: f })),
     onSuccess: () => {
       void refresh();
-      toast.success("Lease policy saved");
+      toast.success(t("policies.lease.saved"));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("policies.notSaved"));
     },
   });
   return (
@@ -157,16 +161,16 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={lease ? "Change the lease policy" : "New lease policy"}
-      description="How long deployments live in an environment, for every project or one; a project's own policy wins."
-      submitLabel={save.isPending ? "Saving…" : "Save lease policy"}
+      title={lease ? t("policies.lease.change") : t("policies.lease.new")}
+      description={t("policies.lease.sheetLead")}
+      submitLabel={save.isPending ? t("policies.saving") : t("policies.lease.save")}
       onSubmit={() => {
         setErrors({});
         save.mutate();
       }}
     >
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Environment" htmlFor="lease-env" error={errors["/environment"]}>
+        <Field label={t("policies.environment")} htmlFor="lease-env" error={errors["/environment"]}>
           <Select
             id="lease-env"
             value={f.environment}
@@ -176,17 +180,17 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
           />
         </Field>
         <Field
-          label="Project"
+          label={t("policies.project")}
           htmlFor="lease-project"
           error={errors["/project_id"]}
-          hint="A project's own policy wins, but it can't be looser than every project's"
+          hint={t("policies.lease.projectHint")}
         >
           <Select
             id="lease-project"
             value={f.project_id ?? "all"}
             disabled={Boolean(lease)}
             onChange={(v) => setF({ ...f, project_id: v === "all" ? null : v })}
-            options={projects.options("Every project")}
+            options={projects.options(t("policies.everyProject"))}
           />
         </Field>
       </div>
@@ -196,6 +200,7 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
 }
 
 export function LeasePolicies({ rights }: { rights: PolicyRights }) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshPolicies("leases");
   const leases = useQuery(adm.leases());
   const projects = useProjects();
@@ -211,26 +216,26 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
       ),
     onSuccess: (_, l) => {
       void refresh();
-      toast.success(`The lease in ${where(l)} removed`);
+      toast.success(t("policies.lease.removed", { where: where(l) }));
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("policies.notRemoved")),
   });
   const items = leases.data?.items;
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New lease policy
+      {t("policies.lease.new")}
     </Button>
   );
   const columns: Column<Lease>[] = [
     {
       id: "where",
-      header: "Where",
+      header: t("policies.lease.where"),
       sortValue: (l) => where(l),
       cell: (l) => (
         <>
           <span className="font-medium">{l.environment}</span>
           <div className="text-secondary text-muted">
-            {l.project_id ? projects.name(l.project_id) : "Every project"}
+            {l.project_id ? projects.name(l.project_id) : t("policies.everyProject")}
           </div>
           <SetByAdmin policy={l} />
         </>
@@ -238,36 +243,34 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
     },
     {
       id: "lease",
-      header: "Lease",
+      header: t("policies.lease.lease"),
       cell: (l) => <LeaseSummary lease={l} />,
     },
     {
       id: "extensions",
-      header: "Extensions",
+      header: t("policies.lease.extensions"),
       align: "end",
       cell: (l) => <span className="tnum">{l.max_extensions}</span>,
     },
     {
       id: "expiry",
-      header: "When it expires",
+      header: t("policies.lease.whenExpires"),
       cell: (l) => (
         <span className="text-secondary text-muted">
-          {expiryLabels[l.expiry_action]}, {l.grace_days} days&apos; grace
+          {t("policies.lease.expiryGrace", { action: expiryLabel(l.expiry_action), count: l.grace_days })}
         </span>
       ),
     },
   ];
   return (
     <Panel
-      title="Lease policies"
-      description={`How long deployments live in each environment, and what happens when the lease ends. A lease rule that matches comes first.${
-        rights.global ? "" : " You change your projects' own, no looser than every project's."
-      }`}
+      title={t("policies.lease.title")}
+      description={rights.global ? t("policies.lease.lead") : t("policies.lease.leadOwn")}
       flush
       actions={rights.any && Boolean(items?.length) && add}
     >
       <DataTable
-        label="Lease policies"
+        label={t("policies.lease.title")}
         columns={columns}
         rows={items}
         rowKey={(l) => `${l.environment}/${l.project_id ?? ""}`}
@@ -277,23 +280,23 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
         empty={
           <EmptyState
             icon={Timer}
-            title="No lease policy"
-            body="Deployments live until someone deletes them. Add a policy to give them a lease."
+            title={t("policies.lease.emptyTitle")}
+            body={t("policies.lease.emptyBody")}
             action={rights.any && add}
           />
         }
-        rowMenuLabel={(l) => `Actions for the lease in ${where(l)}`}
+        rowMenuLabel={(l) => t("policies.lease.actionsFor", { where: where(l) })}
         rowMenu={
           rights.any
             ? (l) =>
                 rights.changes(l) ? (
                   <>
-                    <MenuItem onSelect={() => setEditing(l)}>Change</MenuItem>
+                    <MenuItem onSelect={() => setEditing(l)}>{t("policies.menu.change")}</MenuItem>
                     {l.project_id && (
                       <>
                         <MenuSeparator />
                         <MenuItem danger onSelect={() => setRemoving(l)}>
-                          Remove
+                          {t("policies.menu.remove")}
                         </MenuItem>
                       </>
                     )}
@@ -307,10 +310,13 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove the lease in ${where(removing)}?`}
-          description={`${projects.name(removing.project_id ?? "")}'s own lease in ${removing.environment} stops applying.`}
-          consequences={`New deployments in ${removing.environment} get the lease every project has there, and extensions follow it. Deployments keep the lease they have.`}
-          confirmLabel="Remove lease policy"
+          title={t("policies.lease.removeTitle", { where: where(removing) })}
+          description={t("policies.lease.removeLead", {
+            project: projects.name(removing.project_id ?? ""),
+            environment: removing.environment,
+          })}
+          consequences={t("policies.lease.removeConsequences", { environment: removing.environment })}
+          confirmLabel={t("policies.lease.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing, { onSuccess: () => setRemoving(null) })}
         />

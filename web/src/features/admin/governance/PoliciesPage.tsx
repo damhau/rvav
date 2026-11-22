@@ -2,6 +2,7 @@
 // deployment limits (ADR-0047), and what applies for a project, environment, item or action. Conditions are CEL,
 // checked by the server on sample variables when saved.
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Page } from "@/components/common/page";
 import { PageHeader } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,6 +22,7 @@ export const policiesTabs = ["approval", "day2", "lease", "limits", "naming", "q
 export type PoliciesTab = (typeof policiesTabs)[number];
 
 export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
+  const { t } = useTranslation(["admin-governance", "shell"]);
   const navigate = useNavigate();
   const { me } = useCurrentProject();
   const rights = usePolicyRights();
@@ -32,12 +34,8 @@ export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
   return (
     <Page>
       <PageHeader
-        title="Policies"
-        description={
-          naming
-            ? "Who approves what, which day-2 actions are allowed, how long deployments live, how many and how large they may be, and how VMs are named."
-            : "Who approves what, which day-2 actions are allowed, how long deployments live and how many and how large they may be in your projects. You read the global policies and your projects', and write your projects' own unless an administrator set them."
-        }
+        title={t("shell:nav.admin.policies")}
+        description={naming ? t("policies.lead") : t("policies.leadProject")}
       />
       <Tabs
         value={shown}
@@ -45,14 +43,14 @@ export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
           void navigate({ to: "/admin/policies", search: { tab: next as PoliciesTab }, replace: true })
         }
       >
-        <TabsList aria-label="Kinds of policy">
-          <TabsTrigger value="approval">Approval</TabsTrigger>
-          <TabsTrigger value="day2">Day-2</TabsTrigger>
-          <TabsTrigger value="lease">Lease</TabsTrigger>
-          <TabsTrigger value="limits">Limits</TabsTrigger>
-          {naming && <TabsTrigger value="naming">Naming</TabsTrigger>}
-          {quotas && <TabsTrigger value="quotas">Quotas</TabsTrigger>}
-          <TabsTrigger value="explain">What applies here</TabsTrigger>
+        <TabsList aria-label={t("policies.tabsLabel")}>
+          <TabsTrigger value="approval">{t("policies.tabs.approval")}</TabsTrigger>
+          <TabsTrigger value="day2">{t("policies.tabs.day2")}</TabsTrigger>
+          <TabsTrigger value="lease">{t("policies.tabs.lease")}</TabsTrigger>
+          <TabsTrigger value="limits">{t("policies.tabs.limits")}</TabsTrigger>
+          {naming && <TabsTrigger value="naming">{t("policies.tabs.naming")}</TabsTrigger>}
+          {quotas && <TabsTrigger value="quotas">{t("policies.tabs.quotas")}</TabsTrigger>}
+          <TabsTrigger value="explain">{t("policies.tabs.explain")}</TabsTrigger>
         </TabsList>
         <TabsContent value="approval" className="pt-4">
           <ApprovalPolicies rights={rights} />

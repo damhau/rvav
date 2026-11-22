@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, Minus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -22,20 +23,21 @@ const day2Actions = [
   "delete",
 ]; // prettier-ignore
 
+const inputsExample = '{"size": "S"}';
+
 function Considered({ list }: { list: S["PolicyConsidered"][] }) {
+  const { t } = useTranslation("admin-governance");
   if (list.length === 0) return null;
   return (
     <ul className="mt-1 flex flex-col gap-0.5 text-secondary">
       {list.map((c) => (
         <li key={c.id} className={c.applies ? "flex gap-1.5" : "flex gap-1.5 text-muted"}>
           {c.applies ? (
-            <Check className="mt-0.5 size-3.5 shrink-0 text-ok" aria-label="Applies" />
+            <Check className="mt-0.5 size-3.5 shrink-0 text-ok" aria-label={t("policies.explain.applies")} />
           ) : (
-            <Minus className="mt-0.5 size-3.5 shrink-0" aria-label="Doesn't apply" />
+            <Minus className="mt-0.5 size-3.5 shrink-0" aria-label={t("policies.explain.notApplies")} />
           )}
-          <span>
-            {c.name}: {c.why}
-          </span>
+          <span>{t("policies.explain.considered", { name: c.name, why: c.why })}</span>
         </li>
       ))}
     </ul>
@@ -43,12 +45,15 @@ function Considered({ list }: { list: S["PolicyConsidered"][] }) {
 }
 
 function Decision({ title, d }: { title: string; d?: S["PolicyDecision"] }) {
+  const { t } = useTranslation("admin-governance");
   if (!d) return null;
   return (
     <Panel title={title} level={3}>
       <div className="flex flex-col gap-1">
         <p className="text-body">{d.outcome}</p>
-        <p className="text-secondary text-muted">Decided by: {d.decided_by ?? "nothing"}</p>
+        <p className="text-secondary text-muted">
+          {t("policies.explain.decidedBy", { by: d.decided_by ?? t("policies.explain.nothing") })}
+        </p>
         <Considered list={d.considered} />
       </div>
     </Panel>
@@ -57,23 +62,32 @@ function Decision({ title, d }: { title: string; d?: S["PolicyDecision"] }) {
 
 /** Each deployment limit here and the policy deciding it, with what counts toward a count already (ADR-0047). */
 function Limits({ limits }: { limits: S["PolicyLimits"] }) {
+  const { t } = useTranslation("admin-governance");
   const envName = useEnvName();
   return (
-    <Panel title="Deployment limits" level={3}>
+    <Panel title={t("policies.limits.title")} level={3}>
       <div className="flex flex-col gap-1">
         {limits.lines.length === 0 ? (
-          <p className="text-secondary text-muted">No limit.</p>
+          <p className="text-secondary text-muted">{t("policies.explain.noLimit")}</p>
         ) : (
           <ul className="flex flex-col gap-0.5 text-secondary">
             {limits.lines.map((l) => {
               const [name, unit] = limitLabel[l.kind];
               const most = `${l.limit}${unit ? ` ${unit}` : ""}`;
+              const soft = l.enforcement === "soft";
+              const values = {
+                name: l.environment
+                  ? t("policies.explain.limitIn", { name, environment: envName(l.environment) })
+                  : name,
+                used: l.used,
+                most,
+                policy: l.policy,
+              };
               return (
                 <li key={l.kind}>
-                  {name}
-                  {l.environment ? ` in ${envName(l.environment)}` : ""}:{" "}
-                  {l.used != null ? `${l.used} of ${most}` : `at most ${most}`}, by {l.policy}
-                  {l.enforcement === "soft" ? ", which warns" : ""}
+                  {l.used != null
+                    ? t(soft ? "policies.explain.limitUsedSoft" : "policies.explain.limitUsed", values)
+                    : t(soft ? "policies.explain.limitAtMostSoft" : "policies.explain.limitAtMost", values)}
                 </li>
               );
             })}
@@ -97,6 +111,7 @@ function parsedInputs(text: string): Record<string, unknown> | undefined | null 
 }
 
 export function WhatApplies() {
+  const { t } = useTranslation("admin-governance");
   const projects = useProjects();
   const envs = useQuery(q.environments());
   const [f, setF] = useState({ project: "", environment: "", item: "none", action: "none", inputs: "" });
@@ -123,26 +138,25 @@ export function WhatApplies() {
           },
         }),
       ),
-    onError: (e) => failed(e, "Couldn't explain"),
+    onError: (e) => failed(e, t("policies.explain.failed")),
   });
   const r = explain.data;
   return (
     <div className="flex flex-col gap-4">
-      <Panel
-        title="What applies here"
-        description="Which policies a request or a day-2 action would meet, and why. Nothing is changed."
-      >
+      <Panel title={t("policies.explain.title")} description={t("policies.explain.lead")}>
         <form
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
             e.preventDefault();
             const inputs = parsedInputs(f.inputs);
-            setInputsError(inputs === null ? 'An object, such as {"size": "S"}.' : undefined);
+            setInputsError(
+              inputs === null ? t("policies.explain.inputsObject", { example: inputsExample }) : undefined,
+            );
             if (inputs === null) setInputsRefused((n) => n + 1);
             else explain.mutate(inputs);
           }}
         >
-          <Field label="Project" htmlFor="ex-project" className="w-48">
+          <Field label={t("policies.project")} htmlFor="ex-project" className="w-48">
             <Select
               id="ex-project"
               value={project}
@@ -150,7 +164,7 @@ export function WhatApplies() {
               options={projects.items.map((p) => ({ value: p.id, label: p.name }))}
             />
           </Field>
-          <Field label="Environment" htmlFor="ex-env" className="w-36">
+          <Field label={t("policies.environment")} htmlFor="ex-env" className="w-36">
             <Select
               id="ex-env"
               value={environment}
@@ -158,61 +172,67 @@ export function WhatApplies() {
               options={(envs.data?.items ?? []).map((e) => ({ value: e.key, label: e.name }))}
             />
           </Field>
-          <Field label="Catalog item" htmlFor="ex-item" className="w-56">
+          <Field label={t("policies.explain.item")} htmlFor="ex-item" className="w-56">
             <Select
               id="ex-item"
               value={f.item}
               onChange={(v) => setF({ ...f, item: v })}
               options={[
-                { value: "none", label: "None" },
+                { value: "none", label: t("policies.explain.none") },
                 ...(items.data?.items ?? []).map((i) => ({ value: i.id, label: i.name })),
               ]}
             />
           </Field>
-          <Field label="Day-2 action" htmlFor="ex-action" className="w-44">
+          <Field label={t("policies.explain.action")} htmlFor="ex-action" className="w-44">
             <Select
               id="ex-action"
               value={f.action}
               onChange={(v) => setF({ ...f, action: v })}
-              options={[{ value: "none", label: "None" }, ...day2Actions.map((a) => ({ value: a, label: a }))]}
+              options={[
+                { value: "none", label: t("policies.explain.none") },
+                ...day2Actions.map((a) => ({ value: a, label: a })),
+              ]}
             />
           </Field>
           <Field
-            label="Inputs (JSON)"
+            label={t("policies.explain.inputs")}
             htmlFor="ex-inputs"
             className="w-56"
             error={inputsError}
-            hint="What lease rules and approval conditions read"
+            hint={t("policies.explain.inputsHint")}
           >
             <Input
               id="ex-inputs"
               className="font-mono"
-              placeholder='{"size": "S"}'
+              placeholder={inputsExample}
               value={f.inputs}
               onChange={(e) => setF({ ...f, inputs: e.target.value })}
             />
           </Field>
           <Button type="submit" variant="primary" disabled={!project || !environment || explain.isPending}>
-            Explain
+            {t("policies.explain.explain")}
           </Button>
         </form>
       </Panel>
       {r && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-live="polite">
-          <Decision title="Approval" d={r.approval} />
-          <Decision title="Day-2" d={r.day2} />
-          <Decision title="Lease" d={r.lease} />
-          <Decision title="Naming" d={r.naming} />
-          <Panel title="Quota" level={3}>
+          <Decision title={t("policies.explain.approval")} d={r.approval} />
+          <Decision title={t("policies.explain.day2")} d={r.day2} />
+          <Decision title={t("policies.explain.lease")} d={r.lease} />
+          <Decision title={t("policies.explain.naming")} d={r.naming} />
+          <Panel title={t("policies.explain.quota")} level={3}>
             {r.quota.length === 0 ? (
-              <p className="text-secondary text-muted">No limit.</p>
+              <p className="text-secondary text-muted">{t("policies.explain.noLimit")}</p>
             ) : (
               <ul className="flex flex-col gap-0.5 text-secondary">
                 {r.quota.map((l) => (
                   <li key={`${l.resource}-${l.level}`}>
-                    {quotaLabel[l.resource][0]}
-                    {quotaWhere(l) || " · the project"}: {l.used + l.reserved} of {l.limit ?? "no limit"}
-                    {l.enforcement === "soft" ? ", then approval" : ""}
+                    {t(l.enforcement === "soft" ? "policies.explain.quotaLineSoft" : "policies.explain.quotaLine", {
+                      name: quotaLabel[l.resource][0],
+                      where: quotaWhere(l) || t("policies.explain.quotaProject"),
+                      taken: l.used + l.reserved,
+                      limit: l.limit ?? t("policies.explain.quotaNoLimit"),
+                    })}
                   </li>
                 ))}
               </ul>

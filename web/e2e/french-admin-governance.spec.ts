@@ -124,6 +124,35 @@ test("notification templates, in French, and back to English without a reload", 
   expect(errors).toEqual([]);
 });
 
+test("policies, in French", async ({ page }) => {
+  test.setTimeout(150_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await inFrench(page);
+
+  await open(page, "Politiques");
+  const approval = page.getByRole("region", { name: "Politiques d'approbation" });
+  await expect(approval.getByRole("columnheader", { name: /^Priorité/ })).toBeVisible();
+  await bothThemes(page, "French policies, approval");
+
+  await approval.getByRole("button", { name: "Nouvelle politique d'approbation" }).click();
+  const sheet = page.getByRole("dialog", { name: "Nouvelle politique d'approbation" });
+  await expect(sheet.getByRole("button", { name: "Enregistrer la politique" })).toBeVisible();
+  await sheet.getByRole("button", { name: "Annuler" }).click();
+  await expect(sheet).toBeHidden();
+
+  await tab(page, "Bail");
+  await expect(page.getByRole("region", { name: "Politiques de bail" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Règles de bail" })).toBeVisible();
+  await bothThemes(page, "French policies, lease");
+
+  await tab(page, "Ce qui s'applique ici");
+  await page.getByRole("button", { name: "Expliquer" }).click();
+  await expect(page.getByRole("region", { name: "Limites de déploiement" })).toBeVisible();
+  await bothThemes(page, "French policies, what applies");
+  expect(errors).toEqual([]);
+});
+
 test.describe("a French browser, at 320 px", () => {
   test.use({ locale: "fr-CH", viewport: { width: 320, height: 640 } });
   for (const path of [
@@ -132,6 +161,9 @@ test.describe("a French browser, at 320 px", () => {
     "/admin/roles?tab=explain",
     "/admin/notification-templates",
     "/admin/notification-templates/approval_needed",
+    "/admin/policies",
+    "/admin/policies?tab=lease",
+    "/admin/policies?tab=explain",
   ]) {
     test(`no sideways scrolling: ${path}`, async ({ page }) => {
       await page.goto(path);

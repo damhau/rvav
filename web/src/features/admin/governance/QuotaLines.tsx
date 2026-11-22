@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { Gauge } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -14,21 +15,17 @@ import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import type { components } from "@/lib/api/schema";
+import { i18n } from "@/lib/i18n";
 import { errorAt, failed, fieldErrors } from "./common";
 
 type S = components["schemas"];
 
-export const quotaResources: { value: S["QuotaResource"]; label: string }[] = [
-  { value: "vcpu", label: "vCPU" },
-  { value: "memory_gb", label: "Memory (GB)" },
-  { value: "storage_gb", label: "Storage (GB)" },
-  { value: "vm_count", label: "VMs" },
-];
-export const resourceName = (r: S["QuotaResource"]) => quotaResources.find((x) => x.value === r)?.label ?? r;
-export const enforcements = [
-  { value: "hard", label: "Refused" },
-  { value: "soft", label: "Needs approval" },
-];
+const resources: S["QuotaResource"][] = ["vcpu", "memory_gb", "storage_gb", "vm_count"];
+
+export const resourceName = (r: S["QuotaResource"]) => i18n.t(`admin-governance:quota.resource.${r}`);
+export const quotaResources = () => resources.map((value) => ({ value, label: resourceName(value) }));
+export const enforcements = () =>
+  (["hard", "soft"] as const).map((value) => ({ value, label: i18n.t(`admin-governance:quota.enforcement.${value}`) }));
 
 export type QuotaLine = {
   resource: S["QuotaResource"];
@@ -64,10 +61,10 @@ function LineSheet({
   onClose: () => void;
   returnFocus?: () => HTMLElement | null;
 }) {
+  const { t } = useTranslation("admin-governance");
   const existing = lines.find((l) => l.resource === editing);
   const [f, setF] = useState(() => ({
-    resource:
-      existing?.resource ?? quotaResources.find((r) => !lines.some((l) => l.resource === r.value))?.value ?? "vcpu",
+    resource: existing?.resource ?? resources.find((r) => !lines.some((l) => l.resource === r)) ?? "vcpu",
     limit: existing?.limit == null ? "" : String(existing.limit),
     enforcement: existing?.enforcement ?? "hard",
   }));
@@ -82,13 +79,13 @@ function LineSheet({
   const items = existing ? lines.map((l) => (l.resource === editing ? row : l)) : [...lines, row];
   const at = items.indexOf(row);
   const problems = fieldErrors(save.error);
-  const own = (field: string) => errorAt(problems, `/items/${at}/${field}`);
+  const own = (pointer: string) => errorAt(problems, `/items/${at}${pointer}`);
   // What the server says about the other lines, or the list as a whole, such as a limit now above a cap.
   const elsewhere = Object.entries(problems).flatMap(([pointer, message]) => {
     if (["resource", "limit", "enforcement"].some((f) => pointer.startsWith(`/items/${at}/${f}`))) return [];
     const i = /^\/items\/(\d+)/.exec(pointer)?.[1];
     const other = i === undefined || i === String(at) ? undefined : items[Number(i)];
-    return [other ? `The ${resourceName(other.resource)} limit: ${message}` : message];
+    return [other ? t("quota.elsewhere", { resource: resourceName(other.resource), message }) : message];
   });
   return (
     <Sheet
@@ -97,35 +94,31 @@ function LineSheet({
       pending={save.isPending}
       returnFocus={returnFocus}
       title={title}
-      description="Requests that would pass a limit are refused, or need an approval."
-      submitLabel={save.isPending ? "Saving…" : "Save limit"}
+      description={t("quota.sheetLead")}
+      submitLabel={save.isPending ? t("quota.saving") : t("quota.save")}
       submitDisabled={twin || !valid}
       onSubmit={() =>
         save.mutate(items, {
           onSuccess: () => {
-            toast.success("Limit saved");
+            toast.success(t("quota.saved"));
             onClose();
           },
         })
       }
     >
-      <Field
-        label="Resource"
-        htmlFor="line-resource"
-        error={twin ? "This resource has a limit already: change that one." : own("resource")}
-      >
+      <Field label={t("quota.resourceLabel")} htmlFor="line-resource" error={twin ? t("quota.twin") : own("/resource")}>
         <Select
           id="line-resource"
           value={f.resource}
           onChange={(v) => setF({ ...f, resource: v as S["QuotaResource"] })}
-          options={quotaResources}
+          options={quotaResources()}
         />
       </Field>
       <Field
-        label="Limit"
+        label={t("quota.limit")}
         htmlFor="line-limit"
-        hint={cap?.(f.resource) ?? "Empty for no limit."}
-        error={valid ? own("limit") : "A whole number, 0 or more."}
+        hint={cap?.(f.resource) ?? t("quota.emptyForNone")}
+        error={valid ? own("/limit") : t("quota.wholeNumber")}
       >
         <Input
           id="line-limit"
@@ -136,12 +129,12 @@ function LineSheet({
           onChange={(e) => setF({ ...f, limit: e.target.value })}
         />
       </Field>
-      <Field label="When passed" htmlFor="line-enforcement" error={own("enforcement")}>
+      <Field label={t("quota.whenPassed")} htmlFor="line-enforcement" error={own("/enforcement")}>
         <Select
           id="line-enforcement"
           value={f.enforcement}
           onChange={(v) => setF({ ...f, enforcement: v as QuotaLine["enforcement"] })}
-          options={enforcements}
+          options={enforcements()}
         />
       </Field>
       {elsewhere.length > 0 && (
@@ -165,7 +158,7 @@ function useSave(save: (items: QuotaWrite[]) => Promise<unknown>, invalidates: Q
       await Promise.all(invalidates.map((queryKey) => qc.invalidateQueries({ queryKey })));
     },
     onError: (e) => {
-      if (!Object.keys(fieldErrors(e)).length) failed(e, "Not saved");
+      if (!Object.keys(fieldErrors(e)).length) failed(e, i18n.t("admin-governance:quota.notSaved"));
     },
   });
 }
@@ -199,6 +192,7 @@ export function QuotaLines({
   save: (items: QuotaWrite[]) => Promise<unknown>;
   invalidates: QueryKey[];
 }) {
+  const { t } = useTranslation("admin-governance");
   const saving = useSave(save, invalidates);
   const [editing, setEditing] = useState<{ resource?: S["QuotaResource"]; fromEmpty?: boolean } | null>(null);
   const addRef = useRef<HTMLButtonElement>(null);
@@ -207,29 +201,29 @@ export function QuotaLines({
   const columns: Column<QuotaLine>[] = [
     {
       id: "resource",
-      header: "Resource",
+      header: t("quota.resourceLabel"),
       sortValue: (l) => resourceName(l.resource),
       cell: (l) => (
         <div>
           <span className="font-medium">{resourceName(l.resource)}</span>
-          {l.set_by_admin && <div className="text-caption text-faint">Set by an administrator</div>}
+          {l.set_by_admin && <div className="text-caption text-faint">{t("policies.setByAdmin")}</div>}
         </div>
       ),
     },
     {
       id: "limit",
-      header: "Limit",
+      header: t("quota.limit"),
       align: "end",
       sortValue: (l) => l.limit ?? -1,
-      cell: (l) => <span className="tabular-nums">{l.limit ?? "None"}</span>,
+      cell: (l) => <span className="tabular-nums">{l.limit ?? t("quota.none")}</span>,
     },
     {
       id: "enforcement",
-      header: "When passed",
-      cell: (l) => <span className="text-secondary">{enforcements.find((e) => e.value === l.enforcement)?.label}</span>,
+      header: t("quota.whenPassed"),
+      cell: (l) => <span className="text-secondary">{t(`quota.enforcement.${l.enforcement}`)}</span>,
     },
   ];
-  const full = all.length >= quotaResources.length;
+  const full = all.length >= resources.length;
   const add = canEdit && !full && (
     <Button
       ref={addRef}
@@ -241,7 +235,7 @@ export function QuotaLines({
         setEditing({ fromEmpty: all.length === 0 });
       }}
     >
-      Add a limit
+      {t("quota.add")}
     </Button>
   );
   return (
@@ -257,12 +251,12 @@ export function QuotaLines({
         empty={
           <EmptyState
             icon={Gauge}
-            title="No limit"
-            body={canEdit ? `${empty} Add a limit on vCPU, memory, storage or VMs.` : empty}
+            title={t("quota.emptyTitle")}
+            body={canEdit ? t("quota.emptyAdd", { empty }) : empty}
             action={add || undefined}
           />
         }
-        rowMenuLabel={(l) => `Actions for the ${resourceName(l.resource)} limit`}
+        rowMenuLabel={(l) => t("quota.actionsFor", { resource: resourceName(l.resource) })}
         rowMenu={
           canEdit
             ? (l) =>
@@ -274,11 +268,11 @@ export function QuotaLines({
                         setEditing({ resource: l.resource });
                       }}
                     >
-                      Change
+                      {t("quota.change")}
                     </MenuItem>
                     <MenuSeparator />
                     <MenuItem danger onSelect={() => setRemoving(l)}>
-                      Remove
+                      {t("quota.remove")}
                     </MenuItem>
                   </>
                 )
@@ -287,7 +281,7 @@ export function QuotaLines({
       />
       {editing !== null && (
         <LineSheet
-          title={editing.resource ? "Change the limit" : "New limit"}
+          title={editing.resource ? t("quota.changeTitle") : t("quota.newTitle")}
           lines={all}
           editing={editing.resource}
           cap={cap}
@@ -300,22 +294,22 @@ export function QuotaLines({
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove the ${resourceName(removing.resource)} limit?`}
-          description="Requests are no longer held to it."
-          consequences="The other levels' limits still apply."
-          confirmLabel="Remove limit"
+          title={t("quota.removeTitle", { resource: resourceName(removing.resource) })}
+          description={t("quota.removeLead")}
+          consequences={t("quota.removeConsequences")}
+          confirmLabel={t("quota.removeConfirm")}
           pending={saving.isPending}
           onConfirm={() =>
             saving.mutate(
               all.filter((l) => l.resource !== removing.resource),
               {
                 onSuccess: () => {
-                  toast.success("Limit removed");
+                  toast.success(t("quota.removed"));
                   setRemoving(null);
                 },
                 // The dialog has no field to show them under.
                 onError: (e) => {
-                  if (Object.keys(fieldErrors(e)).length) failed(e, "Not removed");
+                  if (Object.keys(fieldErrors(e)).length) failed(e, t("quota.notRemoved"));
                 },
               },
             )

@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ListFilter } from "lucide-react";
 import { useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ function RuleSheet({
   onClose: () => void;
   returnFocus?: () => HTMLElement | null;
 }) {
+  const { t } = useTranslation("admin-governance");
   const envs = useQuery(q.environments());
   const projects = useProjects();
   const refresh = useRefreshPolicies("lease-rules");
@@ -64,12 +66,12 @@ function RuleSheet({
     // The rules are read again before the sheet closes, so the focus can go to what replaces the empty state.
     onSuccess: async () => {
       await refresh();
-      toast.success(`${f.name} saved`);
+      toast.success(t("policies.saved", { name: f.name }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("policies.notSaved"));
     },
   });
   return (
@@ -78,28 +80,28 @@ function RuleSheet({
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
       returnFocus={returnFocus}
-      title={rule ? `Change ${rule.name}` : "New lease rule"}
-      description="A lease for the deployments its condition matches. Rules are tried by priority before the lease policies, and the first that matches decides."
+      title={rule ? t("policies.changeNamed", { name: rule.name }) : t("policies.rules.new")}
+      description={t("policies.rules.sheetLead")}
       className="w-[min(640px,100vw)]"
-      submitLabel={save.isPending ? "Saving…" : "Save lease rule"}
+      submitLabel={save.isPending ? t("policies.saving") : t("policies.rules.save")}
       onSubmit={() => {
         setErrors({});
         save.mutate();
       }}
     >
       <div className="grid grid-cols-[1fr_120px] gap-3">
-        <Field label="Name" htmlFor="lr-name" error={errors["/name"]}>
+        <Field label={t("policies.name")} htmlFor="lr-name" error={errors["/name"]}>
           <Input id="lr-name" value={f.name} maxLength={120} onChange={(e) => setF({ ...f, name: e.target.value })} />
         </Field>
-        <Field label="Priority" htmlFor="lr-priority" hint="Lower first">
+        <Field label={t("policies.priority")} htmlFor="lr-priority" hint={t("policies.lowerFirst")}>
           <Input id="lr-priority" type="number" value={priority} onChange={(e) => setPriority(e.target.value)} />
         </Field>
       </div>
       <Field
-        label="Applies when (CEL)"
+        label={t("policies.appliesWhenCel")}
         htmlFor="lr-condition"
         error={errors["/condition"]}
-        hint='Reads what approval conditions read, for example item.slug == "gpu-server" or inputs.size == "S"'
+        hint={t("policies.rules.conditionHint", { first: 'item.slug == "gpu-server"', second: 'inputs.size == "S"' })}
       >
         <Textarea
           id="lr-condition"
@@ -110,28 +112,28 @@ function RuleSheet({
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Environment" htmlFor="lr-env" error={errors["/environment"]}>
+        <Field label={t("policies.environment")} htmlFor="lr-env" error={errors["/environment"]}>
           <Select
             id="lr-env"
             value={f.environment ?? "all"}
             onChange={(v) => setF({ ...f, environment: v === "all" ? null : v })}
             options={[
-              { value: "all", label: "Every environment" },
+              { value: "all", label: t("policies.everyEnvironment") },
               ...(envs.data?.items ?? []).map((e) => ({ value: e.key, label: e.name })),
             ]}
           />
         </Field>
         <Field
-          label="Project"
+          label={t("policies.project")}
           htmlFor="lr-project"
           error={errors["/project_id"]}
-          hint="A project admin's rule gives no more than what administrators set"
+          hint={t("policies.rules.projectHint")}
         >
           <Select
             id="lr-project"
             value={f.project_id ?? "all"}
             onChange={(v) => setF({ ...f, project_id: v === "all" ? null : v })}
-            options={projects.options("Every project")}
+            options={projects.options(t("policies.everyProject"))}
           />
         </Field>
       </div>
@@ -141,6 +143,7 @@ function RuleSheet({
 }
 
 export function LeaseRules({ rights }: { rights: PolicyRights }) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshPolicies("lease-rules");
   const rules = useQuery(adm.leaseRules());
   const envs = useQuery(q.environments());
@@ -154,9 +157,9 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
     mutationFn: (r: Rule) => call(api.DELETE("/admin/lease-rules/{id}", { params: { path: { id: r.id } } })),
     onSuccess: (_, r) => {
       void refresh();
-      toast.success(`${r.name} removed`);
+      toast.success(t("policies.removed", { name: r.name }));
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("policies.notRemoved")),
   });
   const items = rules.data?.items;
   const add = (
@@ -169,19 +172,21 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
         setEditing("new");
       }}
     >
-      New lease rule
+      {t("policies.rules.new")}
     </Button>
   );
   const columns: Column<Rule>[] = [
     {
       id: "rule",
-      header: "Rule",
+      header: t("policies.rules.rule"),
       cell: (r) => (
         <>
           <span className="font-medium">{r.name}</span>
           <div className="text-secondary text-muted">
-            {r.environment ? envName(r.environment) : "Every environment"},{" "}
-            {r.project_id ? projects.name(r.project_id) : "every project"}
+            {t("policies.whereBoth", {
+              environment: r.environment ? envName(r.environment) : t("policies.everyEnvironment"),
+              project: r.project_id ? projects.name(r.project_id) : t("policies.everyProjectInText"),
+            })}
           </div>
           <SetByAdmin policy={r} />
         </>
@@ -189,31 +194,32 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
     },
     {
       id: "condition",
-      header: "Applies when",
+      header: t("policies.appliesWhen"),
       cell: (r) => <span className="font-mono text-secondary">{r.condition}</span>,
     },
-    { id: "lease", header: "Lease", cell: (r) => <LeaseSummary lease={r} /> },
+    { id: "lease", header: t("policies.lease.lease"), cell: (r) => <LeaseSummary lease={r} /> },
     {
       id: "extensions",
-      header: "Extensions",
+      header: t("policies.lease.extensions"),
       align: "end",
       cell: (r) => <span className="tnum">{r.max_extensions}</span>,
     },
-    { id: "priority", header: "Priority", align: "end", cell: (r) => <span className="tnum">{r.priority}</span> },
+    {
+      id: "priority",
+      header: t("policies.priority"),
+      align: "end",
+      cell: (r) => <span className="tnum">{r.priority}</span>,
+    },
   ];
   return (
     <Panel
-      title="Lease rules"
-      description={`A lease for the deployments a condition matches, such as an item or a size. Rules are tried by priority before the lease policies, and the first that matches decides.${
-        rights.global || !rights.any
-          ? ""
-          : " You change your projects' own, which give no more than what administrators set."
-      }`}
+      title={t("policies.rules.title")}
+      description={rights.global || !rights.any ? t("policies.rules.lead") : t("policies.rules.leadOwn")}
       flush
       actions={rights.any && Boolean(items?.length) && add}
     >
       <DataTable
-        label="Lease rules"
+        label={t("policies.rules.title")}
         columns={columns}
         rows={items}
         rowKey={(r) => r.id}
@@ -223,21 +229,21 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
         empty={
           <EmptyState
             icon={ListFilter}
-            title="No lease rule"
-            body={`Every deployment gets its environment's lease, or its project's.${rights.any ? " Add a rule to give some of them another one." : ""}`}
+            title={t("policies.rules.emptyTitle")}
+            body={rights.any ? t("policies.rules.emptyBodyAdd") : t("policies.rules.emptyBody")}
             action={rights.any && add}
           />
         }
-        rowMenuLabel={(r) => `Actions for ${r.name}`}
+        rowMenuLabel={(r) => t("policies.actionsFor", { name: r.name })}
         rowMenu={
           rights.any
             ? (r) =>
                 rights.changes(r) ? (
                   <>
-                    <MenuItem onSelect={() => setEditing(r)}>Change</MenuItem>
+                    <MenuItem onSelect={() => setEditing(r)}>{t("policies.menu.change")}</MenuItem>
                     <MenuSeparator />
                     <MenuItem danger onSelect={() => setRemoving(r)}>
-                      Remove
+                      {t("policies.menu.remove")}
                     </MenuItem>
                   </>
                 ) : null
@@ -255,19 +261,21 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.name}?`}
+          title={t("policies.removeNamed", { name: removing.name })}
           description={
-            <>
-              It stops giving its lease to the deployments where <span className="font-mono">{removing.condition}</span>
-              .
-            </>
+            <Trans
+              t={t}
+              i18nKey="policies.rules.removeLead"
+              values={{ condition: removing.condition }}
+              components={{ mono: <span className="font-mono" /> }}
+            />
           }
           consequences={
             removing.project_id && !removing.set_by_admin
-              ? "New requests get the next rule that matches them, or the lease policies. Deployments it decided follow the administrators' rule it was held to from now on, or else their project's or environment's lease."
-              : "New requests get the next rule that matches them, or the lease policies. Deployments it decided follow their project's or environment's lease from now on."
+              ? t("policies.rules.removeConsequencesHeld")
+              : t("policies.rules.removeConsequences")
           }
-          confirmLabel="Remove lease rule"
+          confirmLabel={t("policies.rules.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing, { onSuccess: () => setRemoving(null) })}
         />

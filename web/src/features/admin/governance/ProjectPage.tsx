@@ -980,11 +980,11 @@ function useSaveQuotas(project: S["AdminProject"]) {
 /** The first resource and place without a limit yet, so a new limit doesn't open on a twin. */
 function firstFree(limits: S["QuotaLimit"][], environments: string[]) {
   const places = ["", ...environments];
-  for (const { value: resource } of resources)
+  for (const { value: resource } of resources())
     for (const environment of places)
       if (!limits.some((l) => l.resource === resource && l.environment === environment))
         return { resource, environment };
-  return { resource: resources[0]!.value, environment: "" };
+  return { resource: resources()[0]!.value, environment: "" };
 }
 
 /** A limit's resource and environment: a project has one limit of each. */
@@ -1046,7 +1046,7 @@ function LimitSheet({
           id="limit-resource"
           value={f.resource}
           onChange={(v) => setF({ ...f, resource: v as S["QuotaResource"] })}
-          options={resources}
+          options={resources()}
         />
       </Field>
       <Field
@@ -1084,7 +1084,7 @@ function LimitSheet({
           id="limit-enforcement"
           value={f.enforcement}
           onChange={(v) => setF({ ...f, enforcement: v as S["QuotaLimit"]["enforcement"] })}
-          options={enforcements}
+          options={enforcements()}
         />
       </Field>
     </Sheet>
@@ -1138,7 +1138,9 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
     {
       id: "enforcement",
       header: "When passed",
-      cell: (l) => <span className="text-secondary">{enforcements.find((e) => e.value === l.enforcement)?.label}</span>,
+      cell: (l) => (
+        <span className="text-secondary">{enforcements().find((e) => e.value === l.enforcement)?.label}</span>
+      ),
     },
   ];
   const add = isAdmin && (

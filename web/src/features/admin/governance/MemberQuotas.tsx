@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { ErrorState } from "@/components/common/feedback";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -21,18 +22,19 @@ export function MemberQuotas({
   isAdmin: boolean;
   isProjectAdmin: boolean;
 }) {
+  const { t } = useTranslation("admin-governance");
   const lines = useQuery(adm.userQuotas(project.id));
   const own = useQuery({ ...adm.quotas(project.id), enabled: !isAdmin && isProjectAdmin });
   const cap = (r: S["QuotaResource"]) => {
     const l = own.data?.items.find((x) => x.resource === r && !x.environment && x.limit != null);
-    return l ? `At most ${l.limit}: ${project.name}'s own limit.` : undefined;
+    return l ? t("quota.member.cap", { limit: l.limit, project: project.name }) : undefined;
   };
   return (
     <QuotaLines
-      title="Each member's quota"
-      description="What each member may hold in the project: the deployments they own and their requests not yet done. A request made for someone counts for them."
-      label="Limits for each member"
-      empty="Each member may take what the project has left."
+      title={t("quota.member.title")}
+      description={t("quota.member.lead")}
+      label={t("quota.member.label")}
+      empty={t("quota.member.empty")}
       lines={lines.data?.items}
       loading={lines.isPending}
       error={lines.isError && <ErrorState error={lines.error} onRetry={() => void lines.refetch()} />}

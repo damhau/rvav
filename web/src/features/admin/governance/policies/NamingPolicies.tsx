@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tag } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { i18n } from "@/lib/i18n";
 import { adm } from "@/lib/query";
 import { errorAt, failed, fieldErrors, OfferEditor, offersText, writable } from "../common";
 import { useProjects } from "./shared";
@@ -23,10 +25,19 @@ type Policy = S["NamingPolicy"];
 
 /** How a policy counts: "From 1, by 1" and whose counter it is. */
 function counterText(p: Pick<Policy, "start" | "increment" | "counter">): string {
-  return `From ${p.start}, by ${p.increment}${p.counter === "policy" ? ", one for the policy" : ""}`;
+  return i18n.t(
+    p.counter === "policy"
+      ? "admin-governance:policies.naming.countedPolicy"
+      : "admin-governance:policies.naming.counted",
+    {
+      start: p.start,
+      increment: p.increment,
+    },
+  );
 }
 
 function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const projects = useProjects();
   const [f, setF] = useState<S["NamingPolicyWrite"]>(
@@ -48,7 +59,7 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
   const counted = () => {
     const problems: Record<string, string> = {};
     for (const k of ["start", "increment"] as const)
-      if (!/^\d+$/.test(counts[k].trim())) problems[`/${k}`] = "Enter a whole number, such as 1.";
+      if (!/^\d+$/.test(counts[k].trim())) problems[`/${k}`] = t("policies.naming.wholeNumber");
     setErrors(problems);
     return Object.keys(problems).length === 0;
   };
@@ -72,7 +83,7 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
       ),
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "No preview");
+      failed(e, t("policies.naming.noPreview"));
     },
   });
   const save = useMutation({
@@ -82,12 +93,12 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
         : call(api.POST("/admin/naming-policies", { body })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "naming"] });
-      toast.success(`${f.name} saved`);
+      toast.success(t("policies.saved", { name: f.name }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("policies.notSaved"));
     },
   });
   return (
@@ -95,21 +106,25 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={policy ? `Change ${policy.name}` : "New naming policy"}
-      description="It names the VMs of the items, projects and environments it is offered to."
-      submitLabel={save.isPending ? "Saving…" : "Save naming policy"}
+      title={policy ? t("policies.changeNamed", { name: policy.name }) : t("policies.naming.new")}
+      description={t("policies.naming.sheetLead")}
+      submitLabel={save.isPending ? t("policies.saving") : t("policies.naming.save")}
       onSubmit={() => {
         if (counted()) save.mutate();
       }}
     >
-      <Field label="Name" htmlFor="nm-name" error={errors["/name"]}>
+      <Field label={t("policies.name")} htmlFor="nm-name" error={errors["/name"]}>
         <Input id="nm-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
       </Field>
       <Field
-        label="Template"
+        label={t("policies.naming.template")}
         htmlFor="nm-template"
         error={errors["/template"]}
-        hint="{project}, {environment}, {role} or {inputs.x}, ending with {seq:03}"
+        hint={t("policies.naming.templateHint", {
+          fields: "{project}, {environment}, {role}",
+          input: "{inputs.x}",
+          seq: "{seq:03}",
+        })}
       >
         <Input
           id="nm-template"
@@ -118,23 +133,23 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
           onChange={(e) => setF({ ...f, template: e.target.value })}
         />
       </Field>
-      <Field label="Counter" htmlFor="nm-counter">
+      <Field label={t("policies.naming.counter")} htmlFor="nm-counter">
         <Select
           id="nm-counter"
           value={f.counter}
           onChange={(v) => setF({ ...f, counter: v as Policy["counter"] })}
           options={[
-            { value: "prefix", label: "One per name prefix (web-prd-app, web-prd-db…)" },
-            { value: "policy", label: "One for the whole policy" },
+            { value: "prefix", label: t("policies.naming.counterPrefix", { examples: "web-prd-app, web-prd-db" }) },
+            { value: "policy", label: t("policies.naming.counterPolicy") },
           ]}
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field
-          label="Start at"
+          label={t("policies.naming.start")}
           htmlFor="nm-start"
           error={errors["/start"]}
-          hint="A counter in use goes on from its last number"
+          hint={t("policies.naming.startHint")}
         >
           <Input
             id="nm-start"
@@ -144,7 +159,7 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
             onChange={(e) => setCounts({ ...counts, start: e.target.value })}
           />
         </Field>
-        <Field label="Increment" htmlFor="nm-increment" error={errors["/increment"]}>
+        <Field label={t("policies.naming.increment")} htmlFor="nm-increment" error={errors["/increment"]}>
           <Input
             id="nm-increment"
             type="number"
@@ -161,28 +176,28 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
         error={errorAt(errors, "/offers")}
       />
       <fieldset className="flex flex-col gap-2 rounded-md border border-line p-3">
-        <legend className="px-1 text-secondary font-medium">Next names</legend>
+        <legend className="px-1 text-secondary font-medium">{t("policies.naming.nextNames")}</legend>
         <div className="grid grid-cols-3 gap-2">
           <Select
-            aria-label="Preview project"
+            aria-label={t("policies.naming.previewProject")}
             value={sample.project || projects.items[0]?.id || ""}
             onChange={(v) => setSample({ ...sample, project: v })}
             options={projects.items.map((p) => ({ value: p.id, label: p.name }))}
           />
           <Input
-            aria-label="Preview environment"
+            aria-label={t("policies.naming.previewEnvironment")}
             value={sample.environment}
             onChange={(e) => setSample({ ...sample, environment: e.target.value })}
           />
           <Input
-            aria-label="Preview role"
+            aria-label={t("policies.naming.previewRole")}
             value={sample.role}
             onChange={(e) => setSample({ ...sample, role: e.target.value })}
           />
         </div>
         <div>
           <Button type="button" size="sm" disabled={preview.isPending} onClick={() => counted() && preview.mutate()}>
-            Preview names
+            {t("policies.naming.preview")}
           </Button>
         </div>
         {preview.data && (
@@ -190,12 +205,22 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
             {preview.data.problem && <p className="text-warn">{preview.data.problem}</p>}
             {preview.data.names.length > 0 && (
               <p>
-                Next: <span className="font-mono">{preview.data.names.join(", ")}</span>
+                <Trans
+                  t={t}
+                  i18nKey="policies.naming.next"
+                  values={{ names: preview.data.names.join(", ") }}
+                  components={{ mono: <span className="font-mono" /> }}
+                />
               </p>
             )}
             {preview.data.skipped.map((s) => (
               <p key={s.name} className="text-muted">
-                Skips <span className="font-mono">{s.name}</span>: taken in {s.taken_in}
+                <Trans
+                  t={t}
+                  i18nKey="policies.naming.skips"
+                  values={{ name: s.name, where: s.taken_in }}
+                  components={{ mono: <span className="font-mono" /> }}
+                />
               </p>
             ))}
           </div>
@@ -206,6 +231,7 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
 }
 
 export function NamingPolicies({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const policies = useQuery(adm.naming());
   const projects = useProjects();
@@ -215,48 +241,48 @@ export function NamingPolicies({ canEdit }: { canEdit: boolean }) {
     mutationFn: (p: Policy) => call(api.DELETE("/admin/naming-policies/{id}", { params: { path: { id: p.id } } })),
     onSuccess: (_, p) => {
       void qc.invalidateQueries({ queryKey: ["admin", "naming"] });
-      toast.success(`${p.name} removed`);
+      toast.success(t("policies.removed", { name: p.name }));
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("policies.notRemoved")),
   });
   const items = policies.data?.items;
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New naming policy
+      {t("policies.naming.new")}
     </Button>
   );
   const columns: Column<Policy>[] = [
     {
       id: "policy",
-      header: "Policy",
+      header: t("policies.policy"),
       sortValue: (p) => p.name,
       cell: (p) => <span className="font-medium">{p.name}</span>,
     },
     {
       id: "template",
-      header: "Template",
+      header: t("policies.naming.template"),
       cell: (p) => <span className="font-mono text-secondary">{p.template}</span>,
     },
     {
       id: "counter",
-      header: "Counter",
+      header: t("policies.naming.counter"),
       cell: (p) => <span className="text-secondary">{counterText(p)}</span>,
     },
     {
       id: "offers",
-      header: "Offered to",
+      header: t("policies.naming.offeredTo"),
       cell: (p) => <span className="text-secondary text-muted">{offersText(p.offers, projects.name)}</span>,
     },
   ];
   return (
     <Panel
-      title="Naming policies"
-      description="The most specific offer wins over a blueprint's own template. A name is never given twice: rvav checks vCenter, DNS and every deployment it made."
+      title={t("policies.naming.title")}
+      description={t("policies.naming.lead")}
       flush
       actions={canEdit && Boolean(items?.length) && add}
     >
       <DataTable
-        label="Naming policies"
+        label={t("policies.naming.title")}
         columns={columns}
         rows={items}
         rowKey={(p) => p.id}
@@ -266,20 +292,20 @@ export function NamingPolicies({ canEdit }: { canEdit: boolean }) {
         empty={
           <EmptyState
             icon={Tag}
-            title="No naming policy"
-            body="Each blueprint's own template names its VMs. Add a policy to name them the same way everywhere."
+            title={t("policies.naming.emptyTitle")}
+            body={t("policies.naming.emptyBody")}
             action={canEdit && add}
           />
         }
-        rowMenuLabel={(p) => `Actions for ${p.name}`}
+        rowMenuLabel={(p) => t("policies.actionsFor", { name: p.name })}
         rowMenu={
           canEdit
             ? (p) => (
                 <>
-                  <MenuItem onSelect={() => setEditing(p)}>Change</MenuItem>
+                  <MenuItem onSelect={() => setEditing(p)}>{t("policies.menu.change")}</MenuItem>
                   <MenuSeparator />
                   <MenuItem danger onSelect={() => setRemoving(p)}>
-                    Remove
+                    {t("policies.menu.remove")}
                   </MenuItem>
                 </>
               )
@@ -291,14 +317,17 @@ export function NamingPolicies({ canEdit }: { canEdit: boolean }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.name}?`}
+          title={t("policies.removeNamed", { name: removing.name })}
           description={
-            <>
-              New VMs stop being named <span className="font-mono">{removing.template}</span>.
-            </>
+            <Trans
+              t={t}
+              i18nKey="policies.naming.removeLead"
+              values={{ template: removing.template }}
+              components={{ mono: <span className="font-mono" /> }}
+            />
           }
-          consequences={`Offered to ${offersText(removing.offers, projects.name)}. They get the next policy that is offered to them, or their blueprint's own template. VMs keep the names they have.`}
-          confirmLabel="Remove naming policy"
+          consequences={t("policies.naming.removeConsequences", { offers: offersText(removing.offers, projects.name) })}
+          confirmLabel={t("policies.naming.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing, { onSuccess: () => setRemoving(null) })}
         />

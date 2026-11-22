@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button, IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -10,6 +11,8 @@ import { Field, FieldNote, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { components } from "@/lib/api/schema";
 import { can, canAnywhere } from "@/lib/can";
+import { formatList } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { errorAt, failed } from "../common";
@@ -69,14 +72,15 @@ interface Owned {
 
 /** Under a project's policy: that an administrator set it, so the project's admins leave it alone (ADR-0045). */
 export function SetByAdmin({ policy }: { policy: Owned }) {
+  const { t } = useTranslation("admin-governance");
   if (!policy.project_id || !policy.set_by_admin) return null;
-  return <div className="text-caption text-faint">Set by an administrator</div>;
+  return <div className="text-caption text-faint">{t("policies.setByAdmin")}</div>;
 }
 
 /** A soft policy warns where a hard one refuses or asks for approval (ADR-0045). */
-export const enforcementOptions = [
-  { value: "hard", label: "Hard: it refuses, or waits for approval" },
-  { value: "soft", label: "Soft: it warns, and the requester may go on" },
+export const enforcementOptions = () => [
+  { value: "hard", label: i18n.t("admin-governance:policies.enforcement.hard") },
+  { value: "soft", label: i18n.t("admin-governance:policies.enforcement.soft") },
 ];
 
 /** What the caller writes: every policy with policies.manage, else their projects' own (ADR-0045). */
@@ -101,7 +105,7 @@ export type PolicyRights = ReturnType<typeof usePolicyRights>;
 
 /** Why a project admin's menu doesn't move policies: it renumbers every project's too. */
 export const movesEveryone = (rights: PolicyRights) =>
-  rights.global ? undefined : "It renumbers the policies of every project: set its priority instead";
+  rights.global ? undefined : i18n.t("admin-governance:policies.movesEveryone");
 
 interface Ordered {
   id: string;
@@ -117,6 +121,7 @@ interface Ordered {
  * changes.
  */
 export function useOrderedPolicies<T extends Ordered>(key: string, put: (p: T) => Promise<unknown>) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshPolicies(key);
   const move = useMutation({
     mutationFn: async ({ items, from, to }: { items: T[]; from: number; to: number }) => {
@@ -128,13 +133,13 @@ export function useOrderedPolicies<T extends Ordered>(key: string, put: (p: T) =
       }
     },
     onSettled: refresh,
-    onError: (e) => failed(e, "Not moved"),
+    onError: (e) => failed(e, t("policies.notMoved")),
   });
   const update = useMutation({
     mutationFn: ({ policy }: { policy: T; done: string }) => put(policy),
     onSuccess: (_, { done }) => toast.success(done),
     onSettled: refresh,
-    onError: (e) => failed(e, "Not saved"),
+    onError: (e) => failed(e, t("policies.notSaved")),
   });
   return { move, update };
 }
@@ -170,35 +175,36 @@ export function OrderedMenu<T extends Ordered>({
   /** Why moving is off, whatever the policy's place. */
   moveWhy?: string;
 }) {
+  const { t } = useTranslation("admin-governance");
   const busy = ops.move.isPending || ops.update.isPending;
-  const waits = busy ? "Waits for the change running" : moveWhy;
-  const up = waits ?? (index === 0 ? "It comes first already" : undefined);
-  const down = waits ?? (index === items.length - 1 ? "It comes last already" : undefined);
+  const waits = busy ? t("policies.menu.waits") : moveWhy;
+  const up = waits ?? (index === 0 ? t("policies.menu.first") : undefined);
+  const down = waits ?? (index === items.length - 1 ? t("policies.menu.last") : undefined);
   return (
     <>
-      <MenuItem onSelect={onChange}>Change</MenuItem>
+      <MenuItem onSelect={onChange}>{t("policies.menu.change")}</MenuItem>
       <MenuSeparator />
       <MenuItem disabled={Boolean(up)} onSelect={() => ops.move.mutate({ items, from: index, to: index - 1 })}>
-        <WithReason label="Move up" why={up} />
+        <WithReason label={t("policies.menu.moveUp")} why={up} />
       </MenuItem>
       <MenuItem disabled={Boolean(down)} onSelect={() => ops.move.mutate({ items, from: index, to: index + 1 })}>
-        <WithReason label="Move down" why={down} />
+        <WithReason label={t("policies.menu.moveDown")} why={down} />
       </MenuItem>
-      <MenuItem onSelect={onPriority}>Set priority</MenuItem>
+      <MenuItem onSelect={onPriority}>{t("policies.menu.setPriority")}</MenuItem>
       <MenuSeparator />
       <MenuItem
         disabled={busy}
         onSelect={() =>
           ops.update.mutate({
             policy: { ...policy, enabled: !policy.enabled },
-            done: `${policy.name} turned ${policy.enabled ? "off" : "on"}`,
+            done: t(policy.enabled ? "policies.turnedOff" : "policies.turnedOn", { name: policy.name }),
           })
         }
       >
-        {policy.enabled ? "Turn off" : "Turn on"}
+        {policy.enabled ? t("policies.menu.turnOff") : t("policies.menu.turnOn")}
       </MenuItem>
       <MenuItem danger onSelect={onRemove}>
-        Remove
+        {t("policies.menu.remove")}
       </MenuItem>
     </>
   );
@@ -214,6 +220,7 @@ export function PriorityDialog<T extends Ordered>({
   ops: ReturnType<typeof useOrderedPolicies<T>>;
   onClose: () => void;
 }) {
+  const { t } = useTranslation(["admin-governance", "common"]);
   const [value, setValue] = useState(String(policy.priority));
   const input = useRef<HTMLInputElement>(null);
   const priority = Number(value);
@@ -221,8 +228,8 @@ export function PriorityDialog<T extends Ordered>({
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent
-        title={`Priority of ${policy.name}`}
-        description="Lower comes first."
+        title={t("policies.priorityDialog.title", { name: policy.name })}
+        description={t("policies.priorityDialog.lead")}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           input.current?.select();
@@ -233,12 +240,15 @@ export function PriorityDialog<T extends Ordered>({
           onSubmit={(e) => {
             e.preventDefault();
             ops.update.mutate(
-              { policy: { ...policy, priority }, done: `${policy.name} at priority ${priority}` },
+              {
+                policy: { ...policy, priority },
+                done: t("policies.priorityDialog.done", { name: policy.name, priority }),
+              },
               { onSuccess: onClose },
             );
           }}
         >
-          <Field label="Priority" htmlFor="policy-priority" className="w-40">
+          <Field label={t("policies.priority")} htmlFor="policy-priority" className="w-40">
             <Input
               id="policy-priority"
               type="number"
@@ -250,10 +260,10 @@ export function PriorityDialog<T extends Ordered>({
           </Field>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={onClose}>
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" variant="primary" disabled={!valid || ops.update.isPending}>
-              Set priority
+              {t("policies.menu.setPriority")}
             </Button>
           </div>
         </form>
@@ -268,11 +278,15 @@ export function askedText(l: ApprovalLevel, roles: RoleRef[]): string {
   const parts = [
     l.group,
     l.approvers?.length ? l.approvers.join(", ") : undefined,
-    l.roles?.length ? l.roles.map(name).join(" or ") : undefined,
-    l.manager ? "the requester's manager" : undefined,
+    l.roles?.length ? formatList(l.roles.map(name), "disjunction") : undefined,
+    l.manager ? i18n.t("admin-governance:policies.levels.managerInText") : undefined,
   ].filter(Boolean);
   return parts.length ? parts.join(", ") : l.name;
 }
+
+const roleId = (level: number, role: string) => `level-${level}-role-${role}`;
+// A Go duration, the same in every language.
+const timeoutExample = "48h";
 
 /** The project roles a level asks, and whether it asks the requester's manager. */
 function LevelAsks({
@@ -288,6 +302,7 @@ function LevelAsks({
   errors: Record<string, string>;
   set: (l: ApprovalLevel) => void;
 }) {
+  const { t } = useTranslation("admin-governance");
   const picked = l.roles ?? [];
   const shown = [...roles, ...picked.filter((k) => !roles.some((r) => r.key === k)).map((k) => ({ key: k, name: k }))];
   const error = errorAt(errors, `/levels/${i}/roles`);
@@ -298,10 +313,10 @@ function LevelAsks({
   return (
     <div className="flex flex-col gap-3 pr-9">
       <fieldset className="flex flex-col gap-1" aria-describedby={`level-${i}-roles-note`}>
-        <legend className="mb-1 text-secondary font-medium text-fg">Project roles</legend>
+        <legend className="mb-1 text-secondary font-medium text-fg">{t("policies.levels.roles")}</legend>
         <div className="flex flex-wrap gap-x-4 gap-y-1.5">
           {shown.map((r) => {
-            const id = `level-${i}-role-${r.key}`;
+            const id = roleId(i, r.key);
             return (
               <div key={r.key} className="flex items-center gap-1.5">
                 <Checkbox id={id} checked={picked.includes(r.key)} onChange={(on) => toggle(r.key, on)} />
@@ -312,11 +327,7 @@ function LevelAsks({
             );
           })}
         </div>
-        <FieldNote
-          id={`level-${i}-roles-note`}
-          error={error}
-          hint="Whoever holds one in the request's project when the level opens, themselves or through a group."
-        />
+        <FieldNote id={`level-${i}-roles-note`} error={error} hint={t("policies.levels.rolesHint")} />
       </fieldset>
       <div className="flex items-start gap-2">
         <Checkbox
@@ -328,10 +339,10 @@ function LevelAsks({
         />
         <div className="flex flex-col">
           <label htmlFor={`level-${i}-manager`} className="text-body">
-            The requester's manager
+            {t("policies.levels.manager")}
           </label>
           <p id={`level-${i}-manager-note`} className="text-secondary text-muted">
-            From the identity provider's manager claim. Without one, the level asks only its other approvers.
+            {t("policies.levels.managerHint")}
           </p>
         </div>
       </div>
@@ -352,10 +363,11 @@ export function LevelsEditor({
   /** The project roles a level may name. */
   roles: RoleRef[];
 }) {
+  const { t } = useTranslation("admin-governance");
   const set = (i: number, l: ApprovalLevel) => onChange(value.map((x, j) => (j === i ? l : x)));
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="mb-1 text-secondary font-medium">Approval levels, in order</legend>
+      <legend className="mb-1 text-secondary font-medium">{t("policies.levels.legend")}</legend>
       {errors["/levels"] && <p className="text-secondary text-bad">{errors["/levels"]}</p>}
       {value.map((l, i) => {
         const at = (k: string) => errors[`/levels/${i}${k}`];
@@ -363,7 +375,7 @@ export function LevelsEditor({
           <div key={i} className="flex flex-col gap-3 rounded-md border border-line p-3">
             <div className="flex items-start gap-2">
               <div className="grid flex-1 grid-cols-2 gap-3">
-                <Field label="Level" htmlFor={`level-${i}-name`} error={at("/name")}>
+                <Field label={t("policies.levels.level")} htmlFor={`level-${i}-name`} error={at("/name")}>
                   <Input
                     id={`level-${i}-name`}
                     value={l.name}
@@ -371,7 +383,7 @@ export function LevelsEditor({
                   />
                 </Field>
                 <Field
-                  label="OIDC group"
+                  label={t("policies.levels.group")}
                   htmlFor={`level-${i}-group`}
                   error={at("") ?? errorAt(errors, `/levels/${i}/approvers`)}
                 >
@@ -384,7 +396,7 @@ export function LevelsEditor({
               </div>
               <IconButton
                 type="button"
-                label={`Remove level ${i + 1}`}
+                label={t("policies.levels.remove", { n: i + 1 })}
                 className="mt-6"
                 onClick={() => onChange(value.filter((_, j) => j !== i))}
               >
@@ -393,22 +405,22 @@ export function LevelsEditor({
             </div>
             <LevelAsks i={i} l={l} roles={roles} errors={errors} set={(next) => set(i, next)} />
             <div className="grid grid-cols-3 gap-3 pr-9">
-              <Field label="Who" htmlFor={`level-${i}-mode`}>
+              <Field label={t("policies.levels.who")} htmlFor={`level-${i}-mode`}>
                 <Select
                   id={`level-${i}-mode`}
                   value={l.mode ?? "any"}
                   onChange={(v) => set(i, { ...l, mode: v as ApprovalLevel["mode"] })}
                   options={[
-                    { value: "any", label: "Any one" },
-                    { value: "all", label: "All" },
+                    { value: "any", label: t("policies.levels.anyOne") },
+                    { value: "all", label: t("policies.levels.all") },
                   ]}
                 />
               </Field>
-              <Field label="Time-out" htmlFor={`level-${i}-timeout`} error={at("/timeout")}>
+              <Field label={t("policies.levels.timeout")} htmlFor={`level-${i}-timeout`} error={at("/timeout")}>
                 <Input
                   id={`level-${i}-timeout`}
                   value={l.timeout ?? ""}
-                  placeholder="48h"
+                  placeholder={timeoutExample}
                   onChange={(e) =>
                     set(
                       i,
@@ -419,7 +431,7 @@ export function LevelsEditor({
                   }
                 />
               </Field>
-              <Field label="Then" htmlFor={`level-${i}-then`} error={at("/on_timeout")}>
+              <Field label={t("policies.levels.then")} htmlFor={`level-${i}-then`} error={at("/on_timeout")}>
                 <Select
                   id={`level-${i}-then`}
                   value={l.on_timeout ?? "none"}
@@ -432,17 +444,17 @@ export function LevelsEditor({
                     })
                   }
                   options={[
-                    { value: "none", label: "Wait" },
-                    { value: "escalate", label: "Escalate" },
-                    { value: "approve", label: "Approve" },
-                    { value: "reject", label: "Reject" },
+                    { value: "none", label: t("policies.levels.wait") },
+                    { value: "escalate", label: t("policies.levels.escalate") },
+                    { value: "approve", label: t("policies.levels.approve") },
+                    { value: "reject", label: t("policies.levels.reject") },
                   ]}
                 />
               </Field>
             </div>
             {l.on_timeout === "escalate" && (
               <Field
-                label="Escalate to OIDC group"
+                label={t("policies.levels.escalateTo")}
                 htmlFor={`level-${i}-escalate`}
                 error={errorAt(errors, `/levels/${i}/escalate_to`)}
                 className="pr-9"
@@ -464,9 +476,11 @@ export function LevelsEditor({
           type="button"
           size="sm"
           variant="quiet"
-          onClick={() => onChange([...value, { name: `Level ${value.length + 1}`, mode: "any" }])}
+          onClick={() =>
+            onChange([...value, { name: t("policies.levels.named", { n: value.length + 1 }), mode: "any" }])
+          }
         >
-          Add a level
+          {t("policies.levels.add")}
         </Button>
       </div>
     </fieldset>
