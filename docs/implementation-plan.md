@@ -44,8 +44,8 @@ features delivered in 1.0.
 
 This table credits a feature once its slice is built. The finer count,
 129 features checked in the code on 2026-11-18 and counted again after
-each parity milestone, is in [vra-parity.md](vra-parity.md): 82% after C2
-(81.7% before rounding) with a partial feature counted as half, 88%
+each parity milestone, is in [vra-parity.md](vra-parity.md): 84% after E1
+(83.6% before rounding) with a partial feature counted as half, 89%
 counted as three quarters.
 
 **Result: 83% in the core 1.0 scope, 86% with the four stretch items
@@ -536,7 +536,10 @@ before rounding, so G1 reaches 80% without passing it. After C2, the
 same day, it counts 82% (81.7%): A15, A23 and A26 are Full, A27 keeps
 its storage limit and criteria missing, and A1, rated again, is Full
 since V1 gave items a page with their description and cards their
-icon.
+icon. After E1 (2026-11-22), it counts 84% (83.6%): B19, C27, D1 and D2
+are Full, and D4, D8, D9 and D11 each miss one part (a composite inside
+a composite, stored files, a debugger, triggers on AMQP, SNMP or
+incoming webhooks).
 
 | Milestone | What it covers | Parity rows |
 |---|---|---|
