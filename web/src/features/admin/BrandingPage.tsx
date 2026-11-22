@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ImageOff, LoaderCircle, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -15,39 +16,43 @@ import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { AccentPalette, Branding, LogoVariant } from "@/lib/api/types";
 import { applyBranding, rvavBranding } from "@/lib/branding";
+import { formatNumber } from "@/lib/format";
 import { useDebounced } from "@/lib/hooks";
 import { adm } from "@/lib/query";
 
 const themes = {
-  light: { label: "Light theme", surface: "#ffffff", fg: "#14191c", line: "#d5dbdf" },
-  dark: { label: "Dark theme", surface: "#161b1e", fg: "#e4e9ec", line: "#273036" },
+  light: { surface: "#ffffff", fg: "#14191c", line: "#d5dbdf" },
+  dark: { surface: "#161b1e", fg: "#e4e9ec", line: "#273036" },
 } as const;
 
 const hexColour = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/;
 
+const twoDecimals = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
 /** How the accent looks in one theme: a button, a link and the current page in the menu. */
 function Swatch({ theme, palette }: { theme: keyof typeof themes; palette: AccentPalette }) {
-  const t = themes[theme];
+  const { t } = useTranslation("admin");
+  const colours = themes[theme];
   return (
     <figure className="m-0 flex min-w-0 flex-1 flex-col gap-1.5">
       <figcaption className="text-caption text-muted">
-        {t.label} <span className="font-mono">{palette.accent}</span>
+        {t(`branding.theme.${theme}`)} <span className="font-mono">{palette.accent}</span>
       </figcaption>
       <div
         className="flex flex-wrap items-center gap-3 rounded-md border p-3 text-secondary"
-        style={{ background: t.surface, color: t.fg, borderColor: t.line }}
+        style={{ background: colours.surface, color: colours.fg, borderColor: colours.line }}
       >
         <span
           className="rounded-md px-3 py-1.5 font-medium"
           style={{ background: palette.accent, color: palette.accent_fg }}
         >
-          Submit request
+          {t("branding.sample.submit")}
         </span>
         <span className="underline" style={{ color: palette.accent }}>
-          A link
+          {t("branding.sample.link")}
         </span>
-        <span className="rounded-md px-2 py-1" style={{ background: palette.accent_soft, color: t.fg }}>
-          Current page
+        <span className="rounded-md px-2 py-1" style={{ background: palette.accent_soft, color: colours.fg }}>
+          {t("branding.sample.current")}
         </span>
       </div>
     </figure>
@@ -55,6 +60,7 @@ function Swatch({ theme, palette }: { theme: keyof typeof themes; palette: Accen
 }
 
 function AccentCheckNote({ accent, onUse }: { accent: string; onUse: (colour: string) => void }) {
+  const { t } = useTranslation("admin");
   const wanted = useDebounced(accent.trim(), 300);
   const valid = hexColour.test(wanted);
   const check = useQuery({
@@ -67,16 +73,16 @@ function AccentCheckNote({ accent, onUse }: { accent: string; onUse: (colour: st
   if (!wanted)
     note = (
       <>
-        <p>rvav&apos;s own accent, in both themes.</p>
+        <p>{t("branding.own")}</p>
         <div className="flex flex-wrap gap-3">
           <Swatch theme="light" palette={rvavBranding.light} />
           <Swatch theme="dark" palette={rvavBranding.dark} />
         </div>
       </>
     );
-  else if (!valid) note = <p>A colour written #rrggbb, such as #5b2a86.</p>;
-  else if (check.isPending) note = <p>Checking the contrast…</p>;
-  else if (check.isError) note = <p className="text-bad">The contrast couldn&apos;t be checked.</p>;
+  else if (!valid) note = <p>{t("branding.format")}</p>;
+  else if (check.isPending) note = <p>{t("branding.checking")}</p>;
+  else if (check.isError) note = <p className="text-bad">{t("branding.checkFailed")}</p>;
   else if (!check.data.ok)
     note = (
       <>
@@ -88,7 +94,7 @@ function AccentCheckNote({ accent, onUse }: { accent: string; onUse: (colour: st
               className="size-3 rounded-sm border border-line"
               style={{ background: check.data.suggestion }}
             />
-            Use {check.data.suggestion}
+            {t("branding.use", { colour: check.data.suggestion })}
           </Button>
         )}
       </>
@@ -97,9 +103,12 @@ function AccentCheckNote({ accent, onUse }: { accent: string; onUse: (colour: st
     note = (
       <>
         <p>
-          Reads at {check.data.ratio.toFixed(2)}:1 in the light theme. The dark theme takes{" "}
-          {check.data.dark!.accent === check.data.light!.accent ? "it as it is" : `${check.data.dark!.accent}, lighter`}{" "}
-          so that its text reads too.
+          {check.data.dark!.accent === check.data.light!.accent
+            ? t("branding.readsSame", { ratio: formatNumber(check.data.ratio, twoDecimals) })
+            : t("branding.readsLighter", {
+                ratio: formatNumber(check.data.ratio, twoDecimals),
+                dark: check.data.dark!.accent,
+              })}
         </p>
         <div className="flex flex-wrap gap-3">
           <Swatch theme="light" palette={check.data.light!} />
@@ -115,6 +124,7 @@ function AccentCheckNote({ accent, onUse }: { accent: string; onUse: (colour: st
 }
 
 function NameAndAccent({ branding }: { branding: Branding }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const [name, setName] = useState(branding.name === rvavBranding.name ? "" : branding.name);
   const [accent, setAccent] = useState(branding.accent ?? "");
@@ -126,26 +136,26 @@ function NameAndAccent({ branding }: { branding: Branding }) {
       applyBranding(b);
       qc.setQueryData(adm.branding().queryKey, b);
       setAccent(b.accent ?? "");
-      toast.success("Branding saved");
+      toast.success(t("branding.saved"));
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The branding wasn't saved");
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, t("branding.notSaved"));
     },
   });
   const picked = hexColour.test(accent.trim()) ? accent.trim() : branding.light.accent;
   const full = (c: string) => (c.length === 4 ? "#" + [...c.slice(1)].map((x) => x + x).join("") : c.toLowerCase());
   return (
     <Panel
-      title="Name and accent colour"
-      description="The menu, the sign-in page, the browser's title and emails show the name. Buttons, links and focus rings take the accent."
+      title={t("branding.nameAccent")}
+      description={t("branding.nameAccentDescription")}
       footer={
         <>
           <Button type="button" variant="quiet" disabled={!accent} onClick={() => setAccent("")}>
-            Use rvav&apos;s colours
+            {t("branding.useRvav")}
           </Button>
           <Button type="submit" form="branding-settings" variant="primary" disabled={save.isPending}>
-            {save.isPending ? "Saving…" : "Save branding"}
+            {save.isPending ? t("integrations.saving") : t("branding.save")}
           </Button>
         </>
       }
@@ -159,9 +169,9 @@ function NameAndAccent({ branding }: { branding: Branding }) {
         }}
       >
         <Field
-          label="Portal name"
+          label={t("branding.portalName")}
           htmlFor="branding-name"
-          hint="Up to 40 characters. Left empty, the portal is called rvav."
+          hint={t("branding.portalNameHint")}
           error={errors["/name"]}
         >
           <Input
@@ -175,7 +185,7 @@ function NameAndAccent({ branding }: { branding: Branding }) {
         </Field>
         <div className="flex min-w-0 flex-col gap-1">
           <label htmlFor="branding-accent" className="text-secondary font-medium text-fg">
-            Accent colour
+            {t("branding.accent")}
           </label>
           <div className="flex items-center gap-2">
             <Input
@@ -191,17 +201,13 @@ function NameAndAccent({ branding }: { branding: Branding }) {
             />
             <input
               type="color"
-              aria-label="Pick the accent colour"
+              aria-label={t("branding.pick")}
               className="h-8 w-12 shrink-0 cursor-pointer rounded-md border border-line-strong bg-surface p-0.5"
               value={full(picked)}
               onChange={(e) => setAccent(e.target.value)}
             />
           </div>
-          <FieldNote
-            id="branding-accent-note"
-            error={errors["/accent"]}
-            hint="The light theme's, as #rrggbb: text in it needs a contrast of 4.5:1. Left empty, rvav's own."
-          />
+          <FieldNote id="branding-accent-note" error={errors["/accent"]} hint={t("branding.accentHint")} />
         </div>
         <AccentCheckNote accent={accent} onUse={setAccent} />
       </form>
@@ -210,12 +216,13 @@ function NameAndAccent({ branding }: { branding: Branding }) {
 }
 
 function LogoRow({ variant, branding }: { variant: LogoVariant; branding: Branding }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const noteId = useId();
   const [error, setError] = useState<string>();
   const url = variant === "light" ? branding.logo_light_url : branding.logo_dark_url;
-  const t = themes[variant];
+  const colours = themes[variant];
   const done = (b: Branding, message: string) => {
     setError(undefined);
     applyBranding(b);
@@ -232,37 +239,37 @@ function LogoRow({ variant, branding }: { variant: LogoVariant; branding: Brandi
           headers: { "Content-Type": "application/octet-stream" },
         }),
       ),
-    onSuccess: (b) => done(b, `${t.label}'s logo saved`),
+    onSuccess: (b) => done(b, t(`branding.logo.${variant}.saved`)),
     onError: (e, f) =>
       setError(
         isApiError(e)
           ? (e.fieldErrors[0]?.message ?? e.problem.detail ?? e.problem.title)
-          : `${f.name} couldn't be uploaded.`,
+          : t("branding.notUploaded", { name: f.name }),
       ),
   });
   const remove = useMutation({
     mutationFn: () => call(api.DELETE("/admin/branding/logos/{variant}", { params: { path: { variant } } })),
-    onSuccess: (b) => done(b, `${t.label}'s logo removed`),
-    onError: (e) => failed(e, "The logo wasn't removed"),
+    onSuccess: (b) => done(b, t(`branding.logo.${variant}.removed`)),
+    onError: (e) => failed(e, t("branding.notRemoved")),
   });
   const fallback =
-    variant === "dark" && branding.logo_light_url ? "The light theme's logo is shown." : "rvav's mark is shown.";
+    variant === "dark" && branding.logo_light_url ? t("branding.fallbackLight") : t("branding.fallbackMark");
   return (
     <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:gap-4">
       <div
         className="flex h-16 w-full shrink-0 items-center justify-center rounded-md border px-3 sm:w-48"
-        style={{ background: t.surface, borderColor: t.line, color: t.fg }}
+        style={{ background: colours.surface, borderColor: colours.line, color: colours.fg }}
       >
         {url ? (
-          <img src={url} alt={`${t.label}'s logo`} className="max-h-10 max-w-full object-contain" />
+          <img src={url} alt={t(`branding.logo.${variant}.alt`)} className="max-h-10 max-w-full object-contain" />
         ) : (
           <ImageOff aria-hidden className="size-5 opacity-60" />
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <h3 className="text-body font-medium">{t.label}</h3>
+        <h3 className="text-body font-medium">{t(`branding.theme.${variant}`)}</h3>
         <p id={noteId} className={error ? "text-secondary text-bad" : "text-secondary text-muted"}>
-          {error ?? (url ? "Shown in the menu and on the sign-in page." : `No logo: ${fallback}`)}
+          {error ?? (url ? t("branding.shown") : t("branding.noLogo", { fallback }))}
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
@@ -276,7 +283,7 @@ function LogoRow({ variant, branding }: { variant: LogoVariant; branding: Brandi
             const f = e.target.files?.[0];
             e.target.value = "";
             if (!f) return;
-            if (f.size > 256 << 10) setError(`${f.name} is larger than 256 KB, the most a logo is.`);
+            if (f.size > 256 << 10) setError(t("branding.tooLarge", { name: f.name }));
             else upload.mutate(f);
           }}
         />
@@ -285,11 +292,11 @@ function LogoRow({ variant, branding }: { variant: LogoVariant; branding: Brandi
           type="button"
           disabled={upload.isPending}
           aria-describedby={noteId}
-          aria-label={`${url ? "Replace" : "Upload"} the ${t.label.toLowerCase()}'s logo`}
+          aria-label={url ? t(`branding.logo.${variant}.replace`) : t(`branding.logo.${variant}.upload`)}
           onClick={() => input.current?.click()}
         >
           {upload.isPending ? <LoaderCircle className="animate-spin" /> : <Upload />}
-          {url ? "Replace" : "Upload"}
+          {url ? t("branding.replace") : t("branding.upload")}
         </Button>
         {url && (
           <Button
@@ -297,10 +304,10 @@ function LogoRow({ variant, branding }: { variant: LogoVariant; branding: Brandi
             type="button"
             variant="danger"
             disabled={remove.isPending}
-            aria-label={`Remove the ${t.label.toLowerCase()}'s logo`}
+            aria-label={t(`branding.logo.${variant}.remove`)}
             onClick={() => remove.mutate()}
           >
-            Remove
+            {t("branding.remove")}
           </Button>
         )}
       </div>
@@ -309,24 +316,19 @@ function LogoRow({ variant, branding }: { variant: LogoVariant; branding: Brandi
 }
 
 export function BrandingPage() {
+  const { t } = useTranslation(["admin", "shell"]);
   const branding = useQuery(adm.branding());
   return (
     <Page>
-      <PageHeader
-        title="Branding"
-        description="The portal's name, accent colour and logos. Everyone sees them, on the sign-in page too, and emails carry them."
-      />
+      <PageHeader title={t("shell:nav.admin.branding")} description={t("branding.description")} />
       {branding.isError ? (
         <ErrorState error={branding.error} onRetry={() => void branding.refetch()} />
       ) : !branding.data ? (
-        <p className="text-secondary text-muted">Loading the branding…</p>
+        <p className="text-secondary text-muted">{t("branding.loading")}</p>
       ) : (
         <>
           <NameAndAccent branding={branding.data} />
-          <Panel
-            title="Logos"
-            description="PNG, JPEG or SVG, 256 KB and 2048 pixels a side at most. An SVG with scripts, links or external pictures is refused. Emails show the light theme's logo when it is a PNG or a JPEG."
-          >
+          <Panel title={t("branding.logos")} description={t("branding.logosDescription")}>
             <div className="flex flex-col divide-y divide-line">
               <LogoRow variant="light" branding={branding.data} />
               <LogoRow variant="dark" branding={branding.data} />

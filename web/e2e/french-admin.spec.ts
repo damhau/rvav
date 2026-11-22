@@ -118,6 +118,62 @@ test("integrations, in French, and back to English without a reload", async ({ p
   expect(errors).toEqual([]);
 });
 
+test("setup, branding, the audit log and the system, in French", async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await inFrench(page);
+
+  await open(page, "Mise en route");
+  await expect(page.getByRole("progressbar", { name: "Étapes faites" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Étapes" }).getByRole("listitem")).toHaveCount(8);
+  await bothThemes(page, "setup");
+
+  await open(page, "Image de marque");
+  await expect(page.getByRole("button", { name: "Enregistrer l'image de marque" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Logos", exact: true })).toBeVisible();
+  await bothThemes(page, "branding");
+
+  await open(page, "Journal d'audit");
+  const events = page.getByRole("table", { name: "Événements d'audit" });
+  await expect(events.getByRole("columnheader", { name: "Quand" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Exporter en CSV" })).toBeVisible();
+  await bothThemes(page, "the audit log");
+  await events
+    .getByRole("button", { name: /^Ouvrir l'événement du/ })
+    .first()
+    .click();
+  const event = page.getByRole("dialog");
+  await expect(event.getByRole("heading", { name: "Détail" })).toBeVisible();
+  await scan(page, "an audit event");
+  await page.keyboard.press("Escape");
+  await expect(event).toBeHidden();
+
+  await open(page, "Transfert de l'audit");
+  const destinations = page.getByRole("region", { name: "Destinations" });
+  await expect(destinations.getByRole("row", { name: /SOC sign-ins/ })).toContainText("En échec");
+  await bothThemes(page, "audit forwarding");
+  await page.getByRole("button", { name: "Nouvelle destination" }).click();
+  const destination = page.getByRole("dialog", { name: "Nouvelle destination" });
+  await expect(destination.getByRole("button", { name: "Enregistrer la destination" })).toBeVisible();
+  await scan(page, "a new audit destination");
+  await destination.getByRole("button", { name: "Annuler" }).click();
+  await expect(destination).toBeHidden();
+
+  await open(page, "Système");
+  await expect(page.getByRole("region", { name: "Cette installation" })).toContainText("Mode FIPS 140-3");
+  await expect(page.getByRole("table", { name: "Processus" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: "Intégrations", exact: true })).toBeVisible();
+  await bothThemes(page, "system");
+
+  await page.getByRole("button", { name: /^Compte/ }).click();
+  await page.getByRole("menuitem", { name: "English" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.getByRole("region", { name: "This install" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Processes" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test.describe("a French browser, at 320 px", () => {
   test.use({ locale: "fr-CH", viewport: { width: 320, height: 640 } });
   for (const path of [
@@ -127,6 +183,11 @@ test.describe("a French browser, at 320 px", () => {
     "/admin/integrations/vcenter",
     "/admin/integrations/nsx",
     "/admin/integrations/awx",
+    "/admin/setup",
+    "/admin/branding",
+    "/admin/audit",
+    "/admin/audit-forwarding",
+    "/admin/system",
   ]) {
     test(`no sideways scrolling: ${path}`, async ({ page }) => {
       await page.goto(path);

@@ -3,6 +3,7 @@
 // An install without seed data or integration settings opens on it.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -22,76 +23,48 @@ type S = components["schemas"];
 type Key = S["SetupStep"]["key"];
 
 type Target =
-  | { to: "/admin/integrations/$kind"; kind: string; label: string }
-  | { to: "/admin/projects"; tab: "projects" | "groups"; label: string }
-  | { to: "/admin/catalog-items"; label: string }
-  | { href: string; label: string };
+  | { to: "/admin/integrations/$kind"; kind: string }
+  | { to: "/admin/projects"; tab: "projects" | "groups" }
+  | { to: "/admin/catalog-items" }
+  | { href: string };
 
-const steps: Record<Key, { title: string; what: string; target: Target }> = {
-  password: {
-    title: "Change the administrator's password",
-    what: "The install's password is known to whoever installed rvav. Signed in as admin, you choose your own.",
-    target: { href: CHANGE_PASSWORD_PATH, label: "Change password" },
-  },
-  provider: {
-    title: "Set the identity provider",
-    what: "Where users sign in: Entra ID, Keycloak, Okta or another OpenID Connect provider. Test it with a trial sign-in before saving.",
-    target: { to: "/admin/integrations/$kind", kind: "oidc", label: "Identity provider" },
-  },
-  admin_group: {
-    title: "Map a group to admin",
-    what: "Its members administer rvav once they sign in with the provider, so the local account is kept for when the provider is down.",
-    target: { to: "/admin/projects", tab: "groups", label: "Identity provider groups" },
-  },
-  vcenter: {
-    title: "Connect vCenter",
-    what: "Where VMs are built, with rvav's service account.",
-    target: { to: "/admin/integrations/$kind", kind: "vcenter", label: "vCenter" },
-  },
-  projects: {
-    title: "Add environments and projects",
-    what: "The environments VMs deploy to (development, production, …), the projects that request in them, with their members or groups, and a placement rule for each: where its VMs go.",
-    target: { to: "/admin/projects", tab: "projects", label: "Projects" },
-  },
-  ipam: {
-    title: "Connect EfficientIP",
-    what: "Each VM's address and DNS records.",
-    target: { to: "/admin/integrations/$kind", kind: "efficientip", label: "EfficientIP" },
-  },
-  awx: {
-    title: "Connect AWX",
-    what: "The jobs that configure VMs once built, and day-2 actions.",
-    target: { to: "/admin/integrations/$kind", kind: "awx", label: "AWX" },
-  },
-  catalog_item: {
-    title: "Publish a first catalog item",
-    what: "What users request: a VM blueprint, an AWX job or both. Then the templates, networks and placement it needs, in Templates and networks.",
-    target: { to: "/admin/catalog-items", label: "Catalog items" },
-  },
+const targets: Record<Key, Target> = {
+  password: { href: CHANGE_PASSWORD_PATH },
+  provider: { to: "/admin/integrations/$kind", kind: "oidc" },
+  admin_group: { to: "/admin/projects", tab: "groups" },
+  vcenter: { to: "/admin/integrations/$kind", kind: "vcenter" },
+  projects: { to: "/admin/projects", tab: "projects" },
+  ipam: { to: "/admin/integrations/$kind", kind: "efficientip" },
+  awx: { to: "/admin/integrations/$kind", kind: "awx" },
+  catalog_item: { to: "/admin/catalog-items" },
 };
 
-function Go({ target, disabled, state }: { target: Target; disabled?: string; state: StepState }) {
+function Go({ step, disabled, state }: { step: Key; disabled?: string; state: StepState }) {
+  const { t } = useTranslation("admin");
+  const target = targets[step];
+  const label = t(`setup.step.${step}.go`);
   if (disabled) return <span className="text-secondary text-faint">{disabled}</span>;
   return (
     <Button size="sm" variant={state === "now" ? "primary" : state === "done" ? "quiet" : "secondary"} asChild>
       {"href" in target ? (
-        <a href={target.href}>{target.label}</a>
+        <a href={target.href}>{label}</a>
       ) : target.to === "/admin/integrations/$kind" ? (
         <Link to="/admin/integrations/$kind" params={{ kind: target.kind }}>
-          {target.label}
+          {label}
         </Link>
       ) : target.to === "/admin/projects" ? (
         <Link to="/admin/projects" search={{ tab: target.tab }}>
-          {target.label}
+          {label}
         </Link>
       ) : (
-        <Link to={target.to}>{target.label}</Link>
+        <Link to={target.to}>{label}</Link>
       )}
     </Button>
   );
 }
 
 export function SetupPage() {
+  const { t } = useTranslation(["admin", "shell"]);
   const qc = useQueryClient();
   const { me } = useCurrentProject();
   // Read again each time it opens: its steps are done on other pages.
@@ -100,41 +73,41 @@ export function SetupPage() {
     mutationFn: (hidden: boolean) => call(api.PUT("/admin/setup", { body: { hidden } })),
     onSuccess: (s) => {
       qc.setQueryData(adm.setup().queryKey, s);
-      toast.success(s.hidden ? "The checklist won't open at sign-in" : "The checklist opens at sign-in again", {
-        description: s.hidden ? "It stays here, in Administration › Setup." : undefined,
+      toast.success(s.hidden ? t("setup.hidden") : t("setup.shown"), {
+        description: s.hidden ? t("setup.hiddenBody") : undefined,
       });
     },
-    onError: (e) => failed(e, "Not changed"),
+    onError: (e) => failed(e, t("setup.notChanged")),
   });
   const done = setup.data?.steps.filter((s) => s.done).length ?? 0;
   const total = setup.data?.steps.length ?? 8;
   const blocked = (s: S["SetupStep"]) =>
-    s.key === "password" && !s.done && !me.local ? "Sign in with the local admin account to change it." : undefined;
+    s.key === "password" && !s.done && !me.local ? t("setup.localOnly") : undefined;
   // The first step this administrator can do from here.
   const now = setup.data?.steps.find((s) => !s.done && !blocked(s))?.key;
   return (
     <Page>
       <PageHeader
-        title="Setup"
-        description="The steps that get a first request through. Each opens its page, and is ticked once that page has what it needs."
+        title={t("shell:nav.admin.setup")}
+        description={t("setup.description")}
         actions={
           setup.data &&
           !setup.data.complete && (
             <Button variant="quiet" disabled={hide.isPending} onClick={() => hide.mutate(!setup.data.hidden)}>
-              {setup.data.hidden ? "Open it at sign-in again" : "Don't open it at sign-in"}
+              {setup.data.hidden ? t("setup.openAgain") : t("setup.dontOpen")}
             </Button>
           )
         }
       />
       <Panel
-        title="Setup checklist"
+        title={t("setup.checklist")}
         flush
         actions={
           setup.data && (
             <span className="flex items-center gap-2 text-secondary text-muted">
               <span
                 role="progressbar"
-                aria-label="Steps done"
+                aria-label={t("setup.stepsDone")}
                 aria-valuemin={0}
                 aria-valuemax={total}
                 aria-valuenow={done}
@@ -142,7 +115,7 @@ export function SetupPage() {
               >
                 <span className="block h-full bg-ok" style={{ width: `${(100 * done) / total}%` }} />
               </span>
-              {done} of {total} done
+              {t("setup.progress", { done, total })}
             </span>
           )
         }
@@ -151,18 +124,18 @@ export function SetupPage() {
         {setup.isError && <ErrorState error={setup.error} onRetry={() => void setup.refetch()} />}
         {setup.data?.complete && (
           <p role="status" className="border-b border-line px-4 py-3 text-body">
-            Every step is done: users can sign in and request. The checklist no longer opens at sign-in.
+            {t("setup.complete")}
           </p>
         )}
         {setup.data && (
-          <ol aria-label="Steps" className="flex flex-col">
+          <ol aria-label={t("setup.steps")} className="flex flex-col">
             {setup.data.steps.map((s, i) => {
-              const step = steps[s.key];
+              const title = t(`setup.step.${s.key}.title`);
               const state: StepState = s.done ? "done" : s.key === now ? "now" : "later";
               return (
                 <li
                   key={s.key}
-                  aria-label={`${step.title}: ${s.done ? "done" : "to do"}`}
+                  aria-label={s.done ? t("setup.stepDone", { title }) : t("setup.stepToDo", { title })}
                   aria-current={state === "now" ? "step" : undefined}
                   className={cn(
                     "flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-4 py-3 last:border-b-0 sm:flex-nowrap",
@@ -171,15 +144,15 @@ export function SetupPage() {
                 >
                   <StepMark n={i + 1} state={state} className="-mt-px" />
                   <div className="flex min-w-0 flex-[1_1_calc(100%-3rem)] flex-col gap-0.5 sm:flex-1">
-                    <p className={cn("text-body font-medium", s.done && "text-muted")}>{step.title}</p>
-                    <p className="text-secondary text-muted">{step.what}</p>
+                    <p className={cn("text-body font-medium", s.done && "text-muted")}>{title}</p>
+                    <p className="text-secondary text-muted">{t(`setup.step.${s.key}.what`)}</p>
                     <p className="text-secondary break-words">
-                      <span className="text-faint">{s.done ? "Done: " : "Now: "}</span>
+                      <span className="text-faint">{s.done ? t("setup.done") : t("setup.now")}</span>
                       {s.detail}
                     </p>
                   </div>
                   <div className="pl-9 sm:pl-0">
-                    <Go target={step.target} disabled={blocked(s)} state={state} />
+                    <Go step={s.key} disabled={blocked(s)} state={state} />
                   </div>
                 </li>
               );

@@ -4,7 +4,9 @@
 // settings, which are changed in the environment only.
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { CircleCheck, Clock, LoaderCircle, Lock, Server, SlidersHorizontal } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { KeyValues, Page } from "@/components/common/page";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -15,50 +17,33 @@ import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { fullDate, relative } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { roleName } from "./Applying";
 import { integrationPage, integrationTitle } from "./IntegrationSettings";
 
 type S = components["schemas"];
 
-const applies: Record<S["SettingsRevision"]["applies"], string> = {
-  next_use: "On next use",
-  applying: "Applying",
-  applied: "Applied",
-};
-
-const states: Record<S["Process"]["state"], string> = {
-  running: "Running",
-  draining: "Finishing its running work",
-  restarting: "Starting again",
-};
-
-const fipsModes: Record<S["FipsStatus"]["mode"], string> = {
-  off: "Off",
-  on: "On",
-  only: "Only",
-};
-
-const fipsMeans: Record<S["FipsStatus"]["mode"], string> = {
-  off: "no FIPS 140 mode",
-  on: "approved algorithms where rvav and Go choose",
-  only: "other algorithms refused",
-};
-
 // "latest": built without GOFIPS140, with its Go release's module.
 const fipsModule = (module: string) =>
-  module === "latest" ? "Go's module, not a validated one" : `Go Cryptographic Module ${module}`;
+  module === "latest" ? i18n.t("admin:system.fips.latest") : i18n.t("admin:system.fips.module", { module });
 
 function Fips({ status }: { status: S["FipsStatus"] }) {
+  const { t } = useTranslation("admin");
   return (
     <>
-      {fipsModes[status.mode]}
-      <span className="text-muted">: {fipsMeans[status.mode]}</span>
+      <Trans
+        t={t}
+        i18nKey="system.fips.line"
+        values={{ mode: t(`system.fips.mode.${status.mode}`), means: t(`system.fips.means.${status.mode}`) }}
+        components={{ means: <span className="text-muted" /> }}
+      />
       <span className="ml-1.5 font-mono text-secondary text-faint">{fipsModule(status.module)}</span>
     </>
   );
 }
 
 function Applies({ value }: { value: S["SettingsRevision"]["applies"] }) {
+  const { t } = useTranslation("admin");
   const Icon = value === "applying" ? LoaderCircle : value === "applied" ? CircleCheck : Clock;
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -69,7 +54,7 @@ function Applies({ value }: { value: S["SettingsRevision"]["applies"] }) {
         )}
         aria-hidden
       />
-      {applies[value]}
+      {t(`system.applies.${value}`)}
     </span>
   );
 }
@@ -84,12 +69,13 @@ function When({ iso }: { iso: string }) {
 
 // No column sorts: the page has nothing to press, and each list is short.
 function Processes({ system }: { system: S["System"] }) {
+  const { t } = useTranslation("admin");
   const versions = new Set(system.processes.map((p) => p.version));
   const modes = new Set(system.processes.map((p) => p.fips.mode));
   const columns: Column<S["Process"]>[] = [
     {
       id: "process",
-      header: "Process",
+      header: t("system.processes.process"),
       cell: (p) => (
         <>
           <span className="font-medium">{roleName(p.role)}</span>{" "}
@@ -97,29 +83,35 @@ function Processes({ system }: { system: S["System"] }) {
         </>
       ),
     },
-    { id: "version", header: "Version", cell: (p) => <span className="font-mono text-secondary">{p.version}</span> },
+    {
+      id: "version",
+      header: t("system.processes.version"),
+      cell: (p) => <span className="font-mono text-secondary">{p.version}</span>,
+    },
     {
       id: "revision",
-      header: "Settings revision",
+      header: t("system.processes.revision"),
       cell: (p) => (
         <>
           <span className="tnum">{p.revision}</span>
-          {p.revision < system.revision && <span className="ml-1.5 text-secondary text-warn">earlier settings</span>}
+          {p.revision < system.revision && (
+            <span className="ml-1.5 text-secondary text-warn">{t("system.processes.earlier")}</span>
+          )}
         </>
       ),
     },
     {
       id: "fips",
       header: "FIPS 140-3",
-      cell: (p) => <span title={fipsModule(p.fips.module)}>{fipsModes[p.fips.mode]}</span>,
+      cell: (p) => <span title={fipsModule(p.fips.module)}>{t(`system.fips.mode.${p.fips.mode}`)}</span>,
     },
-    { id: "state", header: "State", cell: (p) => states[p.state] },
-    { id: "started", header: "Started", cell: (p) => <When iso={p.started_at} /> },
+    { id: "state", header: t("system.processes.state"), cell: (p) => t(`system.state.${p.state}`) },
+    { id: "started", header: t("system.processes.started"), cell: (p) => <When iso={p.started_at} /> },
   ];
   return (
-    <Panel title="Processes" description="Each of rvav's processes, and the settings revision it runs." flush>
+    <Panel title={t("system.processes.title")} description={t("system.processes.description")} flush>
       <DataTable
-        label="Processes"
+        label={t("system.processes.title")}
         columns={columns}
         rows={system.processes}
         rowKey={(p) => p.id}
@@ -127,24 +119,22 @@ function Processes({ system }: { system: S["System"] }) {
         toolbar={
           (versions.size > 1 || modes.size > 1) && (
             <div role="status" className="space-y-1 text-secondary text-warn">
-              {versions.size > 1 && (
-                <p>Processes run {versions.size} versions: an upgrade is under way, or a process was left behind.</p>
-              )}
+              {versions.size > 1 && <p>{t("system.processes.versions", { n: versions.size })}</p>}
               {modes.size > 1 && (
                 <p>
-                  Processes run in {modes.size} FIPS 140-3 modes: give each the same{" "}
-                  <span className="font-mono">RVAV_FIPS</span>, then start them again.
+                  <Trans
+                    t={t}
+                    i18nKey="system.processes.modes"
+                    values={{ n: modes.size }}
+                    components={{ env: <span className="font-mono" /> }}
+                  />
                 </p>
               )}
             </div>
           )
         }
         empty={
-          <EmptyState
-            icon={Server}
-            title="No process"
-            body="No process has recorded itself in the last 30 seconds. Check that rvav's processes run."
-          />
+          <EmptyState icon={Server} title={t("system.processes.noneTitle")} body={t("system.processes.noneBody")} />
         }
       />
     </Panel>
@@ -152,10 +142,11 @@ function Processes({ system }: { system: S["System"] }) {
 }
 
 function Revisions({ system }: { system: S["System"] }) {
+  const { t } = useTranslation("admin");
   const columns: Column<S["SettingsRevision"]>[] = [
     {
       id: "integration",
-      header: "Integration",
+      header: t("system.revisions.integration"),
       cell: (r) => (
         <Link
           to="/admin/integrations/$kind"
@@ -166,23 +157,23 @@ function Revisions({ system }: { system: S["System"] }) {
         </Link>
       ),
     },
-    { id: "revision", header: "Revision", cell: (r) => <span className="tnum">{r.revision}</span> },
+    { id: "revision", header: t("system.revisions.revision"), cell: (r) => <span className="tnum">{r.revision}</span> },
     {
       id: "saved",
-      header: "Saved",
+      header: t("system.revisions.saved"),
       cell: (r) => (
         <>
           <When iso={r.updated_at} />
-          {r.updated_by && <span className="text-muted"> by {r.updated_by.name}</span>}
+          {r.updated_by && <span className="text-muted">{t("system.revisions.by", { name: r.updated_by.name })}</span>}
         </>
       ),
     },
-    { id: "applies", header: "Applies", cell: (r) => <Applies value={r.applies} /> },
+    { id: "applies", header: t("system.revisions.applies"), cell: (r) => <Applies value={r.applies} /> },
   ];
   return (
-    <Panel title="Settings saved in Administration" description="The latest first, and how far each has applied." flush>
+    <Panel title={t("system.revisions.title")} description={t("system.revisions.description")} flush>
       <DataTable
-        label="Settings saved in Administration"
+        label={t("system.revisions.title")}
         columns={columns}
         rows={system.settings}
         rowKey={(r) => r.kind}
@@ -190,8 +181,8 @@ function Revisions({ system }: { system: S["System"] }) {
         empty={
           <EmptyState
             icon={SlidersHorizontal}
-            title="Nothing saved yet"
-            body="None yet: every setting comes from the environment or its default."
+            title={t("system.revisions.noneTitle")}
+            body={t("system.revisions.noneBody")}
           />
         }
       />
@@ -199,11 +190,15 @@ function Revisions({ system }: { system: S["System"] }) {
   );
 }
 
-const installColumns: Column<S["System"]["install"][number]>[] = [
-  { id: "setting", header: "Setting", cell: (s) => <span className="font-mono text-secondary">{s.name}</span> },
+const installColumns = (t: TFunction<"admin">): Column<S["System"]["install"][number]>[] => [
+  {
+    id: "setting",
+    header: t("system.install.setting"),
+    cell: (s) => <span className="font-mono text-secondary">{s.name}</span>,
+  },
   {
     id: "value",
-    header: "Value",
+    header: t("system.install.value"),
     className: "break-all",
     cell: (s) =>
       s.value !== undefined && s.value !== "" ? (
@@ -212,45 +207,37 @@ const installColumns: Column<S["System"]["install"][number]>[] = [
           {s.secret && (
             <span className="ml-1.5 font-sans text-faint">
               <Lock className="mr-0.5 inline size-3" aria-hidden />
-              password hidden
+              {t("system.install.passwordHidden")}
             </span>
           )}
         </span>
       ) : s.secret ? (
         <span className="inline-flex items-center gap-1">
           <Lock className="size-3 text-faint" aria-hidden />
-          {s.set ? "Set" : "Not set"}
+          {s.set ? t("system.install.set") : t("system.install.notSet")}
         </span>
       ) : (
-        <span className="text-faint">none</span>
+        <span className="text-faint">{t("system.install.none")}</span>
       ),
   },
   {
     id: "from",
-    header: "From",
+    header: t("system.install.from"),
     cell: (s) => (
       <span className={s.set ? "text-secondary" : "text-secondary text-muted"}>
-        {s.set ? "Environment" : "Default"}
+        {s.set ? t("system.install.environment") : t("system.install.default")}
       </span>
     ),
   },
 ];
 
 function Install({ system }: { system: S["System"] }) {
+  const { t } = useTranslation("admin");
   return (
-    <Panel
-      title="Install settings"
-      description={
-        <>
-          Set in the environment of each process, as the API answering reads them: change them there, then restart
-          rvav&rsquo;s processes. A secret&rsquo;s value is never shown.
-        </>
-      }
-      flush
-    >
+    <Panel title={t("system.install.title")} description={t("system.install.description")} flush>
       <DataTable
-        label="Install settings"
-        columns={installColumns}
+        label={t("system.install.title")}
+        columns={installColumns(t)}
         rows={system.install}
         rowKey={(s) => s.name}
         minWidth={560}
@@ -260,33 +247,34 @@ function Install({ system }: { system: S["System"] }) {
 }
 
 export function SystemPage() {
+  const { t } = useTranslation(["admin", "shell"]);
   const system = useQuery({ ...adm.system(), refetchInterval: 10_000 });
   const d = system.data;
   return (
     <Page>
       <PageHeader
-        title="System"
+        title={t("shell:nav.admin.system")}
         description={
-          <>
-            rvav as it runs now, read only. Settings saved in{" "}
-            <Link to="/admin/integrations" className="text-accent underline underline-offset-2">
-              Integrations
-            </Link>{" "}
-            apply as they say; install settings are changed in the environment.
-          </>
+          <Trans
+            t={t}
+            i18nKey="system.description"
+            components={{
+              integrations: <Link to="/admin/integrations" className="text-accent underline underline-offset-2" />,
+            }}
+          />
         }
       />
       {system.isPending && <SkeletonRows rows={6} cols={3} />}
       {system.isError && <ErrorState error={system.error} onRetry={() => void system.refetch()} />}
       {d && (
         <>
-          <Panel title="This install">
+          <Panel title={t("system.thisInstall")}>
             <KeyValues
               items={[
-                { label: "Version", value: <span className="font-mono text-secondary">{d.version}</span> },
-                { label: "FIPS 140-3 mode", value: <Fips status={d.fips} /> },
-                { label: "Database schema", value: `Migration ${d.schema}` },
-                { label: "Connection settings", value: `Revision ${d.revision}` },
+                { label: t("system.version"), value: <span className="font-mono text-secondary">{d.version}</span> },
+                { label: t("system.fipsMode"), value: <Fips status={d.fips} /> },
+                { label: t("system.schema"), value: t("system.migration", { n: d.schema }) },
+                { label: t("system.connections"), value: t("system.revision", { n: d.revision }) },
               ]}
             />
           </Panel>

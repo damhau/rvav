@@ -1,8 +1,8 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { i18n } from "@/lib/i18n";
-import { db } from "@/mocks/seed";
+import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 import { roleName } from "./Applying";
 
@@ -61,6 +61,85 @@ describe("integrations, in French", () => {
     expect(within(p).getByRole("link", { name: "Projets › Groupes du fournisseur d'identité" })).toHaveAttribute(
       "href",
       "/admin/projects?tab=groups",
+    );
+  });
+});
+
+describe("system, setup, branding and the audit log, in French", () => {
+  afterEach(() => localStorage.removeItem("rvav.mock.fresh"));
+
+  it("counts details and dropped events as each language does", () => {
+    expect(i18n.t("admin:audit.details", { count: 1 })).toBe("1 détail");
+    expect(i18n.t("admin:audit.details", { count: 2 })).toBe("2 détails");
+    expect(i18n.t("admin:auditForwarding.dropped", { count: 1, n: "1" })).toBe(
+      "L'événement qui l'attend est abandonné. Le journal d'audit le garde.",
+    );
+    expect(i18n.t("admin:auditForwarding.dropped", { count: 1, n: "1", lng: "en" })).toBe(
+      "The event waiting for it is dropped. The audit log keeps it.",
+    );
+  });
+
+  it("opens a new install on the setup checklist", async () => {
+    localStorage.setItem("rvav.mock.fresh", "1");
+    resetDb();
+    db.me.locale = "fr";
+    renderApp("/");
+    expect(await screen.findByRole("heading", { level: 1, name: "Mise en route" })).toBeInTheDocument();
+    expect(await screen.findByText("0 sur 8 faites")).toBeInTheDocument();
+    const steps = within(screen.getByRole("list", { name: "Étapes" })).getAllByRole("listitem");
+    expect(steps[0]).toHaveAccessibleName(/^Changer le mot de passe de l'administrateur\s: à faire$/);
+    expect(within(steps[3]!).getByRole("link", { name: "vCenter" })).toHaveAttribute(
+      "href",
+      "/admin/integrations/vcenter",
+    );
+  });
+
+  it("shows the system, its FIPS mode and the link to the integrations", async () => {
+    renderApp("/admin/system");
+    expect(await screen.findByRole("heading", { level: 1, name: "Système" })).toBeInTheDocument();
+    const install = await screen.findByRole("region", { name: "Cette installation" });
+    expect(install).toHaveTextContent("Mode FIPS 140-3Exclusif : autres algorithmes refusés");
+    expect(within(screen.getByRole("main")).getByRole("link", { name: "Intégrations" })).toHaveAttribute(
+      "href",
+      "/admin/integrations",
+    );
+    expect(screen.getByRole("table", { name: "Processus" })).toHaveTextContent("Synchronisation de l'inventaire");
+  });
+
+  it("reads an accent's contrast with a decimal comma", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/branding");
+    expect(await screen.findByRole("heading", { level: 1, name: "Image de marque" })).toBeInTheDocument();
+    await user.type(await screen.findByLabelText("Couleur d'accent"), "#0b5394");
+    expect(await screen.findByText(/^Se lit à \d+,\d{2}:1 dans le thème clair/)).toBeInTheDocument();
+  });
+
+  it("filters the audit log to failed sign-ins", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/audit");
+    const table = await screen.findByRole("table", { name: "Événements d'audit" });
+    const row = (await within(table).findByText("member.set")).closest("tr")!;
+    expect(row).toHaveTextContent("2 détails");
+    await user.click(screen.getByRole("combobox", { name: "Quoi" }));
+    await user.click(await screen.findByRole("option", { name: "Connexions échouées" }));
+    const failed = (await within(table).findByText("auth.sign_in_failed")).closest("tr")!;
+    expect(failed).toHaveTextContent("Inconnu");
+    expect(failed).toHaveTextContent("depuis 10.20.4.17");
+  });
+
+  it("lists forwarding destinations and asks before dropping what waits", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/audit-forwarding");
+    const region = await screen.findByRole("region", { name: "Destinations" });
+    const soc = await within(region).findByRole("row", { name: /SOC sign-ins/ });
+    expect(soc).toHaveTextContent("Connexions et déconnexions, Jetons d'API");
+    expect(soc).toHaveTextContent("En échec");
+    expect(soc).toHaveTextContent("37 en attente · 912 remis");
+    await user.click(within(region).getByRole("button", { name: "Actions pour SOC sign-ins" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Retirer" }));
+    const confirm = await screen.findByRole("alertdialog", { name: /SOC sign-ins/ });
+    expect(confirm).toHaveTextContent(
+      "Les 37 événements qui l'attendent sont abandonnés. Le journal d'audit les garde.",
     );
   });
 });

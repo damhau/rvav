@@ -2,7 +2,9 @@
 // get a copy of each audit event, how their delivery goes, and a test.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Send } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useId, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -25,6 +27,7 @@ import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { formatNumber, fullDate, relative } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { errorAt, failed, fieldErrors } from "./governance/common";
 
 type S = components["schemas"];
@@ -33,26 +36,26 @@ type Category = S["AuditCategory"];
 type Transport = S["SyslogTransport"];
 type Facility = S["SyslogFacility"];
 
-const categoryLabels: Record<Category, string> = {
-  sign_in: "Sign-ins and sign-outs",
-  token: "API tokens",
-  access: "Access: projects, members, roles",
-  catalog: "Catalog",
-  policy: "Policies and naming",
-  infrastructure: "Infrastructure",
-  extensibility: "Extensibility",
-  settings: "Settings, secrets, integrations",
-  request: "Requests, deployments, approvals",
-  other: "Anything else",
-};
-const allCategories = Object.keys(categoryLabels) as Category[];
-
-const transports: { value: Transport; label: string }[] = [
-  { value: "tls", label: "TLS (RFC 5425)" },
-  { value: "tcp", label: "TCP in clear, for labs" },
-  { value: "udp", label: "UDP, for labs" },
+const allCategories: Category[] = [
+  "sign_in",
+  "token",
+  "access",
+  "catalog",
+  "policy",
+  "infrastructure",
+  "extensibility",
+  "settings",
+  "request",
+  "other",
 ];
+const categoryLabel = (c: Category) => i18n.t(`admin:auditForwarding.category.${c}`);
+
+const transports: Transport[] = ["tls", "tcp", "udp"];
 const facilities: Facility[] = ["kern", "user", "mail", "daemon", "auth", "syslog", "lpr", "news", "uucp", "cron", "authpriv", "ftp", "ntp", "audit", "alert", "clock", "local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7"]; // prettier-ignore
+
+const hostExample = "siem.corp.example";
+const urlExample = "https://siem.corp.example/rvav";
+const pemExample = "-----BEGIN CERTIFICATE-----";
 
 /** No stored secret: Radix's Select can't take an empty value, and no secret's name has brackets. */
 const none = "(none)";
@@ -114,6 +117,7 @@ function bodyOf(d: Draft): S["AuditDestinationWrite"] {
 }
 
 function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () => void }) {
+  const { t } = useTranslation(["admin", "common"]);
   const qc = useQueryClient();
   const formId = useId();
   const secrets = useQuery(adm.secrets());
@@ -130,12 +134,12 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
         : call(api.POST("/admin/audit-destinations", { body: bodyOf(d) })),
     onSuccess: (saved) => {
       invalidate(qc);
-      toast.success(`${saved.name} saved`);
+      toast.success(t("auditForwarding.saved", { name: saved.name }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("integrations.notSaved"));
     },
   });
   const tls = d.transport === "tls";
@@ -144,15 +148,15 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={dest ? `Change ${dest.name}` : "New destination"}
-      description="rvav sends it each audit event written from now on, in order, and keeps those it couldn't send until it can."
+      title={dest ? t("auditForwarding.change", { name: dest.name }) : t("auditForwarding.new")}
+      description={t("auditForwarding.sheetDescription")}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose} disabled={save.isPending}>
-            Cancel
+            {t("common:actions.cancel")}
           </Button>
           <Button type="submit" form={formId} variant="primary" disabled={save.isPending}>
-            {save.isPending ? "Saving…" : "Save destination"}
+            {save.isPending ? t("integrations.saving") : t("auditForwarding.save")}
           </Button>
         </>
       }
@@ -163,40 +167,40 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
         onSubmit={(e) => {
           e.preventDefault();
           if (d.kind === "syslog" && d.port.trim() && !/^\d{1,5}$/.test(d.port.trim())) {
-            setErrors({ "/syslog/port": "A port from 1 to 65535." });
+            setErrors({ "/syslog/port": t("auditForwarding.portRange") });
             return;
           }
           setErrors({});
           save.mutate();
         }}
       >
-        <Field label="Name" htmlFor="adt-name" error={errors["/name"]}>
+        <Field label={t("auditForwarding.name")} htmlFor="adt-name" error={errors["/name"]}>
           <Input id="adt-name" value={d.name} onChange={(e) => set({ name: e.target.value })} />
         </Field>
-        <Field label="Kind" htmlFor="adt-kind" error={errors["/syslog"]}>
+        <Field label={t("auditForwarding.kind")} htmlFor="adt-kind" error={errors["/syslog"]}>
           <Select
             id="adt-kind"
             value={d.kind}
             onChange={(v) => set({ kind: v as Draft["kind"] })}
             options={[
-              { value: "syslog", label: "Syslog server" },
-              { value: "webhook", label: "Webhook" },
+              { value: "syslog", label: t("auditForwarding.syslog") },
+              { value: "webhook", label: t("auditForwarding.webhook") },
             ]}
           />
         </Field>
         {d.kind === "syslog" ? (
           <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px]">
-              <Field label="Host" htmlFor="adt-host" error={errors["/syslog/host"]}>
+              <Field label={t("auditForwarding.host")} htmlFor="adt-host" error={errors["/syslog/host"]}>
                 <Input
                   id="adt-host"
                   className="font-mono text-secondary"
-                  placeholder="siem.corp.example"
+                  placeholder={hostExample}
                   value={d.host}
                   onChange={(e) => set({ host: e.target.value })}
                 />
               </Field>
-              <Field label="Port" htmlFor="adt-port" error={errors["/syslog/port"]}>
+              <Field label={t("auditForwarding.port")} htmlFor="adt-port" error={errors["/syslog/port"]}>
                 <Input
                   id="adt-port"
                   inputMode="numeric"
@@ -208,15 +212,19 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Transport" htmlFor="adt-transport" error={errors["/syslog/transport"]}>
+              <Field
+                label={t("auditForwarding.transportLabel")}
+                htmlFor="adt-transport"
+                error={errors["/syslog/transport"]}
+              >
                 <Select
                   id="adt-transport"
                   value={d.transport}
                   onChange={(v) => set({ transport: v as Transport })}
-                  options={transports}
+                  options={transports.map((value) => ({ value, label: t(`auditForwarding.transport.${value}`) }))}
                 />
               </Field>
-              <Field label="Facility" htmlFor="adt-facility" error={errors["/syslog/facility"]}>
+              <Field label={t("auditForwarding.facility")} htmlFor="adt-facility" error={errors["/syslog/facility"]}>
                 <Select
                   id="adt-facility"
                   value={d.facility}
@@ -226,10 +234,10 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
               </Field>
             </div>
             <Field
-              label="App name"
+              label={t("auditForwarding.appName")}
               htmlFor="adt-app"
               error={errors["/syslog/app_name"]}
-              hint="The APP-NAME of each message, rvav when empty"
+              hint={t("auditForwarding.appNameHint")}
             >
               <Input
                 id="adt-app"
@@ -242,47 +250,47 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
             {tls && (
               <>
                 <Field
-                  label="CA certificates"
+                  label={t("auditForwarding.ca")}
                   htmlFor="adt-ca"
                   error={errors["/syslog/ca_certificate"]}
-                  hint="PEM. The CAs that sign the server's certificate, besides the system's and rvav's CA bundle"
+                  hint={t("auditForwarding.caHint")}
                 >
                   <Textarea
                     id="adt-ca"
                     rows={3}
                     className="font-mono text-secondary"
-                    placeholder="-----BEGIN CERTIFICATE-----"
+                    placeholder={pemExample}
                     value={d.ca}
                     onChange={(e) => set({ ca: e.target.value })}
                   />
                 </Field>
                 <Field
-                  label="Client certificate"
+                  label={t("auditForwarding.cert")}
                   htmlFor="adt-cert"
                   error={errors["/syslog/client_certificate"]}
-                  hint="PEM. What rvav presents when the server asks for a certificate, with its key below"
+                  hint={t("auditForwarding.certHint")}
                 >
                   <Textarea
                     id="adt-cert"
                     rows={3}
                     className="font-mono text-secondary"
-                    placeholder="-----BEGIN CERTIFICATE-----"
+                    placeholder={pemExample}
                     value={d.cert}
                     onChange={(e) => set({ cert: e.target.value })}
                   />
                 </Field>
                 <Field
-                  label="Client key"
+                  label={t("auditForwarding.key")}
                   htmlFor="adt-key"
                   error={errors["/syslog/client_key_secret"]}
-                  hint="The stored secret that holds the key in PEM (Catalog items › Secrets)"
+                  hint={t("auditForwarding.keyHint")}
                 >
                   <Select
                     id="adt-key"
                     value={d.keySecret}
                     loading={secrets.isPending}
                     onChange={(keySecret) => set({ keySecret })}
-                    options={[{ value: none, label: "None" }, ...stored]}
+                    options={[{ value: none, label: t("auditForwarding.none") }, ...stored]}
                   />
                 </Field>
               </>
@@ -291,29 +299,29 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
         ) : (
           <>
             <Field
-              label="URL"
+              label={t("auditForwarding.url")}
               htmlFor="adt-url"
               error={errors["/webhook/url"]}
-              hint="On a host webhooks may call (Integrations › Allowed hosts)"
+              hint={t("auditForwarding.urlHint")}
             >
               <Input
                 id="adt-url"
                 className="font-mono text-secondary"
-                placeholder="https://siem.corp.example/rvav"
+                placeholder={urlExample}
                 value={d.url}
                 onChange={(e) => set({ url: e.target.value })}
               />
             </Field>
             <Field
-              label="Signing secret"
+              label={t("auditForwarding.secret")}
               htmlFor="adt-secret"
               error={errors["/webhook/secret"]}
-              hint="Each call is signed with it in X-Rvav-Signature, as subscriptions' webhooks are"
+              hint={t("auditForwarding.secretHint")}
             >
               <Select
                 id="adt-secret"
                 value={d.secret}
-                placeholder="Choose a stored secret"
+                placeholder={t("auditForwarding.choose")}
                 loading={secrets.isPending}
                 onChange={(secret) => set({ secret })}
                 options={stored}
@@ -322,7 +330,7 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
           </>
         )}
         <fieldset className="flex flex-col gap-2" aria-describedby="adt-events-note">
-          <legend className="mb-1 text-secondary font-medium">Events</legend>
+          <legend className="mb-1 text-secondary font-medium">{t("auditForwarding.events")}</legend>
           <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
             {allCategories.map((c) => (
               <label key={c} htmlFor={`adt-cat-${c}`} className="flex items-center gap-1.5 text-body">
@@ -333,15 +341,19 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
                     set({ categories: on ? [...d.categories, c] : d.categories.filter((x) => x !== c) })
                   }
                 />
-                {categoryLabels[c]}
+                {categoryLabel(c)}
               </label>
             ))}
           </div>
-          <FieldNote id="adt-events-note" error={errorAt(errors, "/categories")} hint="None ticked: every event." />
+          <FieldNote
+            id="adt-events-note"
+            error={errorAt(errors, "/categories")}
+            hint={t("auditForwarding.eventsHint")}
+          />
         </fieldset>
         <label htmlFor="adt-enabled" className="flex items-center gap-1.5 text-body">
           <Checkbox id="adt-enabled" checked={d.enabled} onChange={(enabled) => set({ enabled })} />
-          Send events
+          {t("auditForwarding.send")}
         </label>
       </form>
     </Sheet>
@@ -349,9 +361,10 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
 }
 
 function TestDialog({ name, test, onClose }: { name: string; test: S["AuditDestinationTest"]; onClose: () => void }) {
+  const { t } = useTranslation("admin");
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title={`Test of ${name}`}>
+      <DialogContent title={t("auditForwarding.testOf", { name })}>
         <div className="flex flex-col gap-3 p-4" aria-live="polite">
           <p className="flex items-start gap-1.5 text-body break-words">
             {test.ok ? (
@@ -360,21 +373,23 @@ function TestDialog({ name, test, onClose }: { name: string; test: S["AuditDesti
               <CircleX className="mt-0.5 size-4 shrink-0 text-bad" aria-hidden />
             )}
             <span>
-              <span className="font-medium">{test.ok ? "Delivered" : "Not delivered"}</span> in {test.duration_ms} ms.{" "}
+              <Trans
+                t={t}
+                i18nKey={test.ok ? "auditForwarding.deliveredIn" : "auditForwarding.notDeliveredIn"}
+                values={{ ms: test.duration_ms }}
+                components={{ status: <span className="font-medium" /> }}
+              />{" "}
               {test.message}
             </span>
           </p>
-          <p className="text-secondary text-muted">
-            The test event, settings.audit_destination.test with the ID test, went once: the events waiting aren't
-            affected. The audit log records the test.
-          </p>
+          <p className="text-secondary text-muted">{t("auditForwarding.testNote")}</p>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-const where = (d: Destination) =>
+const where = (t: TFunction<"admin">, d: Destination) =>
   d.syslog ? (
     <>
       <div className="font-mono text-secondary break-all">
@@ -382,34 +397,39 @@ const where = (d: Destination) =>
       </div>
       <div className="text-secondary text-muted">
         {(d.syslog.transport ?? "tls").toUpperCase()} · {d.syslog.facility} · {d.syslog.app_name}
-        {d.syslog.client_certificate ? " · client certificate" : ""}
+        {d.syslog.client_certificate ? t("auditForwarding.clientCert") : ""}
       </div>
     </>
   ) : (
     <>
       <div className="font-mono text-secondary break-all">{d.webhook?.url}</div>
-      <div className="text-secondary text-muted">Signed with {d.webhook?.secret}</div>
+      <div className="text-secondary text-muted">{t("auditForwarding.signedWith", { secret: d.webhook?.secret })}</div>
     </>
   );
 
 function Delivery({ d }: { d: Destination }) {
+  const { t } = useTranslation("admin");
   const s = d.state;
   const when = (iso: string) => <span title={fullDate(iso)}>{relative(iso)}</span>;
+  const at = (iso: string) => ({
+    values: { when: relative(iso) },
+    components: { when: <span title={fullDate(iso)} /> },
+  });
   return (
     <div className="flex flex-col gap-0.5 text-secondary">
       <div className="flex flex-wrap items-center gap-1.5">
         {!d.enabled ? (
-          <Badge tone="neutral">Off</Badge>
+          <Badge tone="neutral">{t("auditForwarding.off")}</Badge>
         ) : s.failures > 0 ? (
-          <Badge tone="bad">Failing</Badge>
+          <Badge tone="bad">{t("auditForwarding.failing")}</Badge>
         ) : s.backlog > 0 ? (
-          <Badge tone="run">Sending</Badge>
+          <Badge tone="run">{t("auditForwarding.sending")}</Badge>
         ) : (
-          <Badge tone="ok">Up to date</Badge>
+          <Badge tone="ok">{t("auditForwarding.upToDate")}</Badge>
         )}
         <span>
-          {s.backlog > 0 ? `${formatNumber(s.backlog)} waiting · ` : ""}
-          {formatNumber(s.delivered)} delivered
+          {s.backlog > 0 ? t("auditForwarding.waiting", { n: formatNumber(s.backlog) }) : ""}
+          {t("auditForwarding.delivered", { n: formatNumber(s.delivered) })}
         </span>
       </div>
       {s.failures > 0 && s.last_error && (
@@ -419,39 +439,46 @@ function Delivery({ d }: { d: Destination }) {
         </div>
       )}
       <div className="text-muted">
-        {s.next_attempt_at && d.enabled && <>Next try {when(s.next_attempt_at)} · </>}
-        {s.last_success_at ? <>Last delivered {when(s.last_success_at)}</> : "Nothing delivered yet"}
+        {s.next_attempt_at && d.enabled && <Trans t={t} i18nKey="auditForwarding.nextTry" {...at(s.next_attempt_at)} />}
+        {s.last_success_at ? (
+          <Trans t={t} i18nKey="auditForwarding.lastDelivered" {...at(s.last_success_at)} />
+        ) : (
+          t("auditForwarding.nothingDelivered")
+        )}
       </div>
     </div>
   );
 }
 
-const columns: Column<Destination>[] = [
+const columns = (t: TFunction<"admin">): Column<Destination>[] => [
   {
     id: "name",
-    header: "Destination",
+    header: t("auditForwarding.destination"),
     sortValue: (d) => d.name,
     cell: (d) => (
       <>
         <div className="font-medium">{d.name}</div>
-        <div className="text-secondary text-muted">{d.kind === "syslog" ? "Syslog server" : "Webhook"}</div>
+        <div className="text-secondary text-muted">
+          {d.kind === "syslog" ? t("auditForwarding.syslog") : t("auditForwarding.webhook")}
+        </div>
       </>
     ),
   },
-  { id: "where", header: "Where", cell: where },
+  { id: "where", header: t("auditForwarding.where"), cell: (d) => where(t, d) },
   {
     id: "events",
-    header: "Events",
+    header: t("auditForwarding.events"),
     cell: (d) => (
       <span className="text-secondary">
-        {d.categories.length ? d.categories.map((c) => categoryLabels[c]).join(", ") : "Every event"}
+        {d.categories.length ? d.categories.map(categoryLabel).join(", ") : t("auditForwarding.everyEvent")}
       </span>
     ),
   },
-  { id: "delivery", header: "Delivery", cell: (d) => <Delivery d={d} /> },
+  { id: "delivery", header: t("auditForwarding.delivery"), cell: (d) => <Delivery d={d} /> },
 ];
 
 export function AuditForwardingPage() {
+  const { t } = useTranslation(["admin", "shell"]);
   const qc = useQueryClient();
   const { me } = useCurrentProject();
   const canEdit = can(me, "integrations.manage");
@@ -463,7 +490,7 @@ export function AuditForwardingPage() {
     mutationFn: (d: Destination) =>
       call(api.POST("/admin/audit-destinations/{id}/test", { params: { path: { id: d.id } } })),
     onSuccess: (t, d) => setTested({ name: d.name, test: t }),
-    onError: (e) => failed(e, "The test didn't run"),
+    onError: (e) => failed(e, t("integrations.testDidntRun")),
   });
   const toggle = useMutation({
     mutationFn: (d: Destination) =>
@@ -475,36 +502,38 @@ export function AuditForwardingPage() {
       ),
     onSuccess: (d) => {
       invalidate(qc);
-      toast.success(d.enabled ? `${d.name} is on` : `${d.name} is off`);
+      toast.success(
+        d.enabled ? t("auditForwarding.isOn", { name: d.name }) : t("auditForwarding.isOff", { name: d.name }),
+      );
     },
-    onError: (e) => failed(e, "Not saved"),
+    onError: (e) => failed(e, t("integrations.notSaved")),
   });
   const remove = useMutation({
     mutationFn: (d: Destination) =>
       call(api.DELETE("/admin/audit-destinations/{id}", { params: { path: { id: d.id } } })),
     onSuccess: (_, d) => {
       invalidate(qc);
-      toast.success(`${d.name} removed`);
+      toast.success(t("auditForwarding.removed", { name: d.name }));
       setRemoving(null);
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("vcenters.notRemoved")),
   });
   const create = canEdit && (
     <Button variant="primary" onClick={() => setEditing("new")}>
-      New destination
+      {t("auditForwarding.new")}
     </Button>
   );
   return (
     <Page>
       <PageHeader
-        title="Audit forwarding"
-        description="Syslog servers and webhooks, such as your SIEM's, that get a copy of each audit event. Events wait in rvav until they are delivered; the audit log keeps them all the same."
+        title={t("shell:nav.admin.auditForwarding")}
+        description={t("auditForwarding.description")}
         actions={list.data?.items.length ? create : undefined}
       />
-      <Panel title="Destinations" flush>
+      <Panel title={t("auditForwarding.destinations")} flush>
         <DataTable
-          label="Destinations"
-          columns={columns}
+          label={t("auditForwarding.destinations")}
+          columns={columns(t)}
           rows={list.data?.items}
           rowKey={(d) => d.id}
           minWidth={860}
@@ -513,26 +542,26 @@ export function AuditForwardingPage() {
           empty={
             <EmptyState
               icon={Send}
-              title="No destination yet"
-              body="Send audit events to a syslog server over TLS, or to a webhook, to keep them in your SIEM."
+              title={t("auditForwarding.emptyTitle")}
+              body={t("auditForwarding.emptyBody")}
               action={create || undefined}
             />
           }
-          rowMenuLabel={(d) => `Actions for ${d.name}`}
+          rowMenuLabel={(d) => t("auditForwarding.actionsFor", { name: d.name })}
           rowMenu={
             canEdit
               ? (d) => (
                   <>
                     <MenuItem disabled={test.isPending} onSelect={() => test.mutate(d)}>
-                      Send a test event
+                      {t("auditForwarding.sendTest")}
                     </MenuItem>
-                    <MenuItem onSelect={() => setEditing(d)}>Change</MenuItem>
+                    <MenuItem onSelect={() => setEditing(d)}>{t("auditForwarding.changeItem")}</MenuItem>
                     <MenuItem disabled={toggle.isPending} onSelect={() => toggle.mutate(d)}>
-                      {d.enabled ? "Turn off" : "Turn on"}
+                      {d.enabled ? t("auditForwarding.turnOff") : t("auditForwarding.turnOn")}
                     </MenuItem>
                     <MenuSeparator />
                     <MenuItem danger onSelect={() => setRemoving(d)}>
-                      Remove
+                      {t("auditForwarding.remove")}
                     </MenuItem>
                   </>
                 )
@@ -546,14 +575,17 @@ export function AuditForwardingPage() {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Stop sending audit events to ${removing.name}?`}
-          description="rvav sends it nothing more."
+          title={t("auditForwarding.stopTitle", { name: removing.name })}
+          description={t("auditForwarding.stopDescription")}
           consequences={
             removing.state.backlog > 0
-              ? `The ${formatNumber(removing.state.backlog)} events waiting for it are dropped. The audit log keeps them.`
-              : "The audit log keeps every event."
+              ? t("auditForwarding.dropped", {
+                  count: removing.state.backlog,
+                  n: formatNumber(removing.state.backlog),
+                })
+              : t("auditForwarding.keepsAll")
           }
-          confirmLabel="Remove destination"
+          confirmLabel={t("auditForwarding.removeDestination")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing)}
         />
