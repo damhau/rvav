@@ -45,9 +45,10 @@ type rvavProvider struct {
 }
 
 type providerModel struct {
-	URL     types.String `tfsdk:"url"`
-	Token   types.String `tfsdk:"token"`
-	Profile types.String `tfsdk:"profile"`
+	URL          types.String `tfsdk:"url"`
+	Token        types.String `tfsdk:"token"`
+	Profile      types.String `tfsdk:"profile"`
+	InsecureHTTP types.Bool   `tfsdk:"insecure_http"`
 }
 
 func (p *rvavProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -72,6 +73,12 @@ func (p *rvavProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp 
 				Optional:            true,
 				MarkdownDescription: "The rvavctl profile to sign in with when no token is given (`rvavctl login`). Default: `default`.",
 			},
+			"insecure_http": schema.BoolAttribute{
+				Optional: true,
+				MarkdownDescription: "Sends the token to an `http://` address of another machine, unencrypted, as `rvavctl --insecure-http` does: " +
+					"for a test rvav only. An `http://` address of this machine, such as `http://localhost:8080`, needs nothing. " +
+					"Default: `false`, unless the rvavctl profile signed in with `rvavctl login --insecure-http`.",
+			},
 		},
 	}
 }
@@ -89,9 +96,9 @@ func (p *rvavProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if cfg.URL.IsUnknown() || cfg.Token.IsUnknown() || cfg.Profile.IsUnknown() {
+	if cfg.URL.IsUnknown() || cfg.Token.IsUnknown() || cfg.Profile.IsUnknown() || cfg.InsecureHTTP.IsUnknown() {
 		resp.Diagnostics.AddError("Unknown provider settings",
-			"url, token and profile must be known when Terraform plans: give them as values or variables.")
+			"url, token, profile and insecure_http must be known when Terraform plans: give them as values or variables.")
 		return
 	}
 	httpClient := &http.Client{Timeout: 2 * time.Minute}
@@ -112,8 +119,21 @@ func (p *rvavProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 
 // target is the rvav to call and the token to call it with, as rvavctl
 // chooses them: the token given or RVAV_TOKEN, else the profile's sign-in,
-// which goes to the profile's rvav only.
+// which goes to the profile's rvav only. A token goes to an http:// address
+// of another machine only when insecure_http, or the profile, says so.
 func (p *rvavProvider) target(cfg providerModel, httpClient *http.Client) (string, oauth2.TokenSource, error) {
+	server, tokens, insecure, err := p.pick(cfg, httpClient)
+	if err != nil {
+		return "", nil, err
+	}
+	if tokens != nil && !insecure && !cfg.InsecureHTTP.ValueBool() && rvavclient.Unencrypted(server) {
+		return "", nil, fmt.Errorf("%s would get the token unencrypted: use its https:// address, or set insecure_http = true", server)
+	}
+	return server, tokens, nil
+}
+
+// pick is target's choice, and whether the profile chose plain http.
+func (p *rvavProvider) pick(cfg providerModel, httpClient *http.Client) (string, oauth2.TokenSource, bool, error) {
 	server := cfg.URL.ValueString()
 	if server == "" {
 		server = p.env("RVAV_URL")
@@ -124,34 +144,34 @@ func (p *rvavProvider) target(cfg providerModel, httpClient *http.Client) (strin
 	}
 	if token != "" {
 		if server == "" {
-			return "", nil, errors.New("a token is given but no address: set url, or RVAV_URL")
+			return "", nil, false, errors.New("a token is given but no address: set url, or RVAV_URL")
 		}
-		return server, rvavclient.StaticToken(token), nil
+		return server, rvavclient.StaticToken(token), false, nil
 	}
 	path := p.configPath
 	if path == "" {
 		var err error
 		if path, err = rvavclient.DefaultProfilesPath(); err != nil {
-			return "", nil, err
+			return "", nil, false, err
 		}
 	}
 	ps, err := rvavclient.LoadProfiles(path)
 	if err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
 	name := cfg.Profile.ValueString()
 	prof := ps.Profiles[cmp.Or(name, "default")]
 	switch {
 	case prof == nil && name != "":
-		return "", nil, fmt.Errorf("no rvavctl profile %q in %s: sign in with rvavctl login --profile %s", name, path, name)
+		return "", nil, false, fmt.Errorf("no rvavctl profile %q in %s: sign in with rvavctl login --profile %s", name, path, name)
 	case prof != nil && (server == "" || sameServer(server, prof.Server)):
 		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
-		return prof.Server, ps.TokenSource(ctx, cmp.Or(name, "default")), nil
+		return prof.Server, ps.TokenSource(ctx, cmp.Or(name, "default")), prof.InsecureHTTP, nil
 	case server == "":
-		return "", nil, errors.New("no rvav to call: set url and token (or RVAV_URL and RVAV_TOKEN), or sign in with rvavctl login")
+		return "", nil, false, errors.New("no rvav to call: set url and token (or RVAV_URL and RVAV_TOKEN), or sign in with rvavctl login")
 	}
 	// An rvav in development mode signs everyone in as one user.
-	return server, nil, nil
+	return server, nil, false, nil
 }
 
 func sameServer(a, b string) bool {

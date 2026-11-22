@@ -399,3 +399,36 @@ resource "rvav_catalog_item" "app" {
 		})
 	})
 }
+
+// TestTerraformUnencrypted gives the provider an http:// address of another
+// machine (O1.7): it refuses to send the token there, as rvavctl does,
+// unless insecure_http. The harness's own loopback address needs nothing.
+func TestTerraformUnencrypted(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		tf := newTerraform(t, h, "mkeller")
+		const project = `
+data "rvav_project" "web" {
+  id = "prj_web"
+}
+`
+		elsewhere := strings.Replace(tf.provider, h.srv.URL, "http://rvav.corp.example", 1)
+		allowed := strings.Replace(tf.provider, "}\n", "  insecure_http = true\n}\n", 1)
+		resource.UnitTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: tf.factories,
+			Steps: []resource.TestStep{{
+				Config:      elsewhere + project,
+				ExpectError: regexp.MustCompile(`(?s)http://rvav\.corp\.example\s+would\s+get\s+the\s+token\s+unencrypted.*insecure_http\s+=\s+true`),
+			}, {
+				Config: tf.provider + project,
+				Check:  resource.TestCheckResourceAttr("data.rvav_project.web", "id", "prj_web"),
+			}, {
+				Config: allowed + project,
+				Check:  resource.TestCheckResourceAttr("data.rvav_project.web", "id", "prj_web"),
+			}},
+		})
+	})
+}

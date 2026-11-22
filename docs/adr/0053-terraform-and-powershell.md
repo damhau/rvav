@@ -8,8 +8,9 @@
 - Amended by O1.7 (#173): a deployment's `secret_inputs`, waits that go
   on through transient errors, a stop and a destroy during a build,
   `timeouts`, an item named by ID or slug, and imports that plan no
-  change; the module's refusal of `http://`, its calls' timeout, a
-  `-WhatIf` that rvav checks, and a wait that its timeout ends.
+  change; the provider's and the module's refusal of `http://`, the
+  module's calls' timeout, a `-WhatIf` that rvav checks, and a wait that
+  its timeout ends.
 
 ## Context
 vRA has a Terraform provider (`vmware/vra`) and PowerCLI's vRA cmdlets.
@@ -60,7 +61,8 @@ A network mirror served by rvav itself was considered, and left for when
 someone needs it: a filesystem mirror covers air-gapped sites and CI.
 
 ### Authentication, as rvavctl's
-The provider block takes `url`, `token` and `profile`, each optional:
+The provider block takes `url`, `token`, `profile` and `insecure_http`,
+each optional:
 - `token`, else `RVAV_TOKEN`: an API token, sent to `url`, else
   `RVAV_URL`. This is the way for CI: a service user's token, in the
   pipeline's secrets.
@@ -70,6 +72,13 @@ The provider block takes `url`, `token` and `profile`, each optional:
   profile's credentials go to its own rvav only.
 - Else, with an address alone, no credentials: an rvav in development
   mode.
+
+A token goes to an `http://` address of another machine only with
+`insecure_http = true`, or from a profile signed in with
+`rvavctl login --insecure-http`, as rvavctl refuses it unless
+`--insecure-http`: the token would cross the network unencrypted. An
+address of the machine itself (`localhost`, a loopback IP) needs
+neither.
 
 An API token acts with the roles given to its user in rvav itself, not
 those of their groups ([ADR-0051](0051-command-line.md)): a service user

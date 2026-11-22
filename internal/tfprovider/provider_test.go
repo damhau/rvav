@@ -16,6 +16,8 @@ func TestTarget(t *testing.T) {
 	ps := &rvavclient.Profiles{Path: path, Profiles: map[string]*rvavclient.Profile{
 		"default": {Server: "https://rvav.corp.example", Token: "rvav_pat_desk"},
 		"lab":     {Server: "https://rvav-lab.corp.example"},
+		"test":    {Server: "http://rvav-test.corp.example", Token: "rvav_pat_test", InsecureHTTP: true},
+		"plain":   {Server: "http://rvav-plain.corp.example", Token: "rvav_pat_plain"},
 	}}
 	if err := ps.Save(); err != nil {
 		t.Fatal(err)
@@ -23,6 +25,7 @@ func TestTarget(t *testing.T) {
 	cases := []struct {
 		name                string
 		url, token, profile string
+		insecure            bool
 		env                 map[string]string
 		server, sent, err   string
 	}{
@@ -38,11 +41,21 @@ func TestTarget(t *testing.T) {
 		{name: "profile's token stays home", url: "https://elsewhere.example", server: "https://elsewhere.example"},
 		{name: "named profile in development mode", profile: "lab", server: "https://rvav-lab.corp.example"},
 		{name: "missing profile", profile: "prod", err: `no rvavctl profile "prod"`},
+		{name: "http elsewhere", url: "http://rvav.corp.example:8080", token: "rvav_pat_ci", err: "unencrypted"},
+		{name: "http elsewhere from the environment", env: map[string]string{"RVAV_URL": "http://ci.example", "RVAV_TOKEN": "rvav_pat_env"},
+			err: "set insecure_http = true"},
+		{name: "insecure_http", url: "http://rvav.corp.example:8080", token: "rvav_pat_ci", insecure: true,
+			server: "http://rvav.corp.example:8080", sent: "rvav_pat_ci"},
+		{name: "loopback", url: "http://127.0.0.1:8080", token: "rvav_pat_ci", server: "http://127.0.0.1:8080", sent: "rvav_pat_ci"},
+		{name: "localhost", url: "http://localhost:8080", token: "rvav_pat_ci", server: "http://localhost:8080", sent: "rvav_pat_ci"},
+		{name: "profile that chose http", profile: "test", server: "http://rvav-test.corp.example", sent: "rvav_pat_test"},
+		{name: "profile over http", profile: "plain", err: "unencrypted"},
+		{name: "development mode over http", url: "http://rvav-dev.corp.example", server: "http://rvav-dev.corp.example"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			p := &rvavProvider{configPath: path, getenv: func(k string) string { return c.env[k] }}
-			cfg := providerModel{URL: str0(c.url), Token: str0(c.token), Profile: str0(c.profile)}
+			cfg := providerModel{URL: str0(c.url), Token: str0(c.token), Profile: str0(c.profile), InsecureHTTP: types.BoolValue(c.insecure)}
 			server, tokens, err := p.target(cfg, http.DefaultClient)
 			if c.err != "" {
 				if err == nil || !strings.Contains(err.Error(), c.err) {

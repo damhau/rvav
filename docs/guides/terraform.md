@@ -109,6 +109,7 @@ provider "rvav" {
 | `url` | `RVAV_URL`, else the rvavctl profile's | rvav's address, the one you open in the browser. |
 | `token` | `RVAV_TOKEN` | An API token, made in the web app (your menu, **API tokens**). |
 | `profile` | `default` | The rvavctl profile to sign in with when there's no token. |
+| `insecure_http` | `false` | Sends the token to an `http://` address of another machine, unencrypted. For a test rvav only. |
 
 The provider signs in with the first of these that it finds:
 
@@ -121,6 +122,13 @@ The provider signs in with the first of these that it finds:
   each takes the sign-in that the other renewed.
 - **Neither:** the provider calls `url` without credentials, which only an
   rvav in development mode accepts.
+
+The provider refuses to send a token to an `http://` address of another
+machine, as `rvavctl` does: the token would cross the network
+unencrypted. Use rvav's `https://` address. For a test rvav, set
+`insecure_http = true`. An `http://` address of your own machine, such as
+`http://localhost:8080`, needs no setting, and neither does a profile
+that you signed in to with `rvavctl login --insecure-http`.
 
 The provider acts with the roles of the user it signs in as. An API token
 has the roles given to its user in rvav itself, not those of their groups.
