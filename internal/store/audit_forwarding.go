@@ -31,7 +31,7 @@ var auditCategories = map[string]string{
 	"catalog": AuditCatalog, "form_library": AuditCatalog, "form_validation": AuditCatalog, "property_group": AuditCatalog,
 	"policy": AuditPolicy, "naming": AuditPolicy,
 	"placement": AuditInfrastructure, "network": AuditInfrastructure, "template": AuditInfrastructure,
-	"size": AuditInfrastructure, "vcenter": AuditInfrastructure,
+	"size": AuditInfrastructure, "vcenter": AuditInfrastructure, "nsx_manager": AuditInfrastructure,
 	"subscription": AuditExtensibility, "workflow": AuditExtensibility, "resource_type": AuditExtensibility,
 	"awx_action": AuditExtensibility, "day2_form": AuditExtensibility,
 	"settings": AuditSettings, "secret": AuditSettings, "vra": AuditSettings, "setup": AuditSettings, "awx": AuditSettings,

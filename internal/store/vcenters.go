@@ -80,7 +80,8 @@ func (s *Store) DeleteVCenter(ctx context.Context, name string) error {
 				return err
 			}
 		}
-		return nil
+		_, err = tx.Exec(ctx, `delete from vcenter_nsx where vcenter = $1`, name)
+		return err
 	})
 }
 

@@ -375,6 +375,8 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	h.svc.Config.VRA.URL, h.svc.Config.VRA.Token = fake.URL, vra.FakeRefreshToken
 	h.json("POST", "/api/v1/admin/vra/snapshots", admin, nil, 201, nil)
 	h.svc.Config.VCenter.Name, h.svc.Config.VCenter.URL = "vc01.corp.example", "https://vc01.corp.example/sdk"
+	h.json("POST", "/api/v1/admin/nsx-managers", admin, api.NsxManagerWrite{Name: "nsx02.corp.example", Url: "https://nsx02.corp.example",
+		Username: new("rvav"), Password: new("a1-nsx-password")}, 201, nil)
 
 	// Off, so that what the walk audits queues nothing and its state holds still.
 	var auditDest api.AuditDestination
@@ -418,6 +420,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"integrations/{kind}":            "awx",
 		"projects/{vraProjectId}":        "vra-prj-web",
 		"vcenters/{name}":                "vc01.corp.example",
+		"nsx-managers/{name}":            "nsx02.corp.example",
 		"subscriptions/{id}":             sub.Id,
 		"subscription-runs/{id}":         run.Id,
 		"audit-destinations/{id}":        auditDest.Id,

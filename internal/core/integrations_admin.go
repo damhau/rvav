@@ -19,6 +19,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/notify"
+	"github.com/damhau/rvav/internal/nsxmanagers"
 	"github.com/damhau/rvav/internal/secretinput"
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
@@ -749,6 +750,29 @@ func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int,
 			return n, err
 		}
 		if done, err := st.ResealIntegration(ctx, kind, row.SecretNonce, store.Sealed{KeyID: keyID, Nonce: nonce, Ciphertext: ct}); err != nil {
+			return n, err
+		} else if done {
+			n++
+		}
+	}
+	managers, err := st.NSXManagers(ctx)
+	if err != nil {
+		return n, err
+	}
+	for _, m := range managers {
+		if len(m.Ciphertext) == 0 || m.KeyID == box.KeyID() {
+			continue
+		}
+		name := nsxmanagers.SecretName(m.Name)
+		plain, err := box.Open(name, m.KeyID, m.Nonce, m.Ciphertext)
+		if err != nil {
+			return n, fmt.Errorf("NSX Manager %s's password: %w", m.Name, err)
+		}
+		keyID, nonce, ct, err := box.Seal(name, plain)
+		if err != nil {
+			return n, err
+		}
+		if done, err := st.ResealNSXManager(ctx, m.Name, m.Nonce, keyID, nonce, ct); err != nil {
 			return n, err
 		} else if done {
 			n++

@@ -7514,6 +7514,80 @@ type NotificationsRead struct {
 	Ids *[]string `json:"ids,omitempty"`
 }
 
+// NsxManager defines model for NsxManager.
+type NsxManager struct {
+	// CertFile A principal-identity certificate rvav signs in with, by its path on rvav's servers.
+	CertFile *string `json:"cert_file,omitempty"`
+
+	// CertSha256 A certificate trusted for it besides those the CAs vouch for, pinned by its SHA-256.
+	CertSha256 *string `json:"cert_sha256,omitempty"`
+
+	// Insecure Its certificate isn't checked.
+	Insecure bool `json:"insecure"`
+
+	// KeyFile The certificate's private key, by its path on rvav's servers.
+	KeyFile *string `json:"key_file,omitempty"`
+
+	// Name How the NSX Manager is known in rvav, for example
+	// `nsx02.corp.example`. The NSX integration's is the host name of
+	// its URL.
+	Name        string `json:"name"`
+	PasswordSet bool   `json:"password_set"`
+
+	// Primary The NSX integration's (Integrations); its settings are changed there, its vCenters here.
+	Primary bool `json:"primary"`
+
+	// Url Examples: https://nsx02.corp.example
+	Url string `json:"url"`
+
+	// Username The account rvav signs in with; empty with a principal-identity certificate.
+	Username string `json:"username"`
+
+	// Vcenters The vCenters it serves, by their names in GET /admin/vcenters:
+	// the segments and security groups of their VMs are made on it.
+	Vcenters []string `json:"vcenters"`
+}
+
+// NsxManagerList defines model for NsxManagerList.
+type NsxManagerList struct {
+	Items []NsxManager `json:"items"`
+}
+
+// NsxManagerVCenters defines model for NsxManagerVCenters.
+type NsxManagerVCenters struct {
+	// Vcenters The vCenters it serves, by their names in GET /admin/vcenters;
+	// they replace those it served. A vCenter another NSX Manager
+	// served moves to this one.
+	Vcenters []string `json:"vcenters"`
+}
+
+// NsxManagerWrite defines model for NsxManagerWrite.
+type NsxManagerWrite struct {
+	// CertFile A principal-identity certificate, by its path on rvav's servers; instead of a password.
+	CertFile *string `json:"cert_file,omitempty"`
+
+	// CertSha256 A certificate trusted besides those the CAs vouch for, by its
+	// SHA-256 (with or without colons); empty, none. A new one needs the
+	// password again, as a new address does.
+	CertSha256 *string `json:"cert_sha256,omitempty"`
+	Insecure   *bool   `json:"insecure,omitempty"`
+
+	// KeyFile The certificate's private key, by its path on rvav's servers.
+	KeyFile *string `json:"key_file,omitempty"`
+	Name    string  `json:"name"`
+
+	// Password Kept when not given on a change.
+	Password *string `json:"password,omitempty"`
+	Url      string  `json:"url"`
+
+	// Username Needed with a password.
+	Username *string `json:"username,omitempty"`
+
+	// Vcenters The vCenters it serves; when given, they replace those it served.
+	// A vCenter another NSX Manager served moves to this one.
+	Vcenters *[]string `json:"vcenters,omitempty"`
+}
+
 // Offer Where something is offered; a null project or environment means all.
 type Offer struct {
 	Environment *EnvironmentKey `json:"environment,omitempty"`
@@ -10440,7 +10514,10 @@ type ValueSource struct {
 	// `rvav.templates` and `rvav.sizes` (what is offered to the
 	// project and environment; ADR-0020), `nsx.segments`
 	// (`tier1` param), `nsx.tier1s`, `nsx.groups` (as `nsx:<ID>`)
-	// and `nsx.services` (ADR-0028), and rvav's own records, which
+	// and `nsx.services` (ADR-0028; from the NSX Manager of the
+	// vCenter the `cluster` or `vcenter` param is in, else of every
+	// vCenter the project's placement uses in the environment;
+	// ADR-0062), and rvav's own records, which
 	// the `project`, `user`, `deployment` and `vsphere_vm` widgets
 	// always take their choices from: `rvav.projects` (those the
 	// requester may request in, by ID), `rvav.users` (people, by
@@ -12190,6 +12267,18 @@ type SetNotificationTemplateJSONRequestBody = NotificationTemplateWrite
 
 // PreviewNotificationTemplateJSONRequestBody defines body for PreviewNotificationTemplate for application/json ContentType.
 type PreviewNotificationTemplateJSONRequestBody = NotificationTemplateWrite
+
+// CreateNsxManagerJSONRequestBody defines body for CreateNsxManager for application/json ContentType.
+type CreateNsxManagerJSONRequestBody = NsxManagerWrite
+
+// UpdateNsxManagerJSONRequestBody defines body for UpdateNsxManager for application/json ContentType.
+type UpdateNsxManagerJSONRequestBody = NsxManagerWrite
+
+// TestNsxManagerJSONRequestBody defines body for TestNsxManager for application/json ContentType.
+type TestNsxManagerJSONRequestBody = NsxManagerWrite
+
+// SetNsxManagerVCentersJSONRequestBody defines body for SetNsxManagerVCenters for application/json ContentType.
+type SetNsxManagerVCentersJSONRequestBody = NsxManagerVCenters
 
 // AdoptVmsJSONRequestBody defines body for AdoptVms for application/json ContentType.
 type AdoptVmsJSONRequestBody = OnboardingDraft
@@ -14807,6 +14896,72 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
 	PreviewNotificationTemplate(ctx context.Context, kind NotificationKind, body PreviewNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListNsxManagers The NSX Managers rvav manages, and the vCenters each serves; the first is the NSX integration's
+	//
+	// Corresponds with GET /admin/nsx-managers (the `ListNsxManagers` operationId).
+	ListNsxManagers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateNsxManagerWithBody Add an NSX Manager
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/nsx-managers (the `CreateNsxManager` operationId).
+	CreateNsxManagerWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateNsxManager Add an NSX Manager
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/nsx-managers (the `CreateNsxManager` operationId).
+	CreateNsxManager(ctx context.Context, body CreateNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteNsxManager Stop managing an added NSX Manager; refused while deployments have segments or groups there
+	//
+	// Corresponds with DELETE /admin/nsx-managers/{name} (the `DeleteNsxManager` operationId).
+	DeleteNsxManager(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateNsxManagerWithBody Change an added NSX Manager (the password is kept when not given)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/nsx-managers/{name} (the `UpdateNsxManager` operationId).
+	UpdateNsxManagerWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateNsxManager Change an added NSX Manager (the password is kept when not given)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/nsx-managers/{name} (the `UpdateNsxManager` operationId).
+	UpdateNsxManager(ctx context.Context, name string, body UpdateNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestNsxManagerWithBody Test an NSX Manager, with its saved settings or, for an added one, the ones given
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/nsx-managers/{name}/test (the `TestNsxManager` operationId).
+	TestNsxManagerWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestNsxManager Test an NSX Manager, with its saved settings or, for an added one, the ones given
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/nsx-managers/{name}/test (the `TestNsxManager` operationId).
+	TestNsxManager(ctx context.Context, name string, body TestNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetNsxManagerVCentersWithBody Link vCenters to an NSX Manager, the NSX integration's too; a vCenter linked to another moves
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/nsx-managers/{name}/vcenters (the `SetNsxManagerVCenters` operationId).
+	SetNsxManagerVCentersWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetNsxManagerVCenters Link vCenters to an NSX Manager, the NSX integration's too; a vCenter linked to another moves
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/nsx-managers/{name}/vcenters (the `SetNsxManagerVCenters` operationId).
+	SetNsxManagerVCenters(ctx context.Context, name string, body SetNsxManagerVCentersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AdoptVmsWithBody Adopt existing VMs into deployments, with their addresses and DNS records from EfficientIP
 	//
@@ -19958,6 +20113,172 @@ func (c *Client) PreviewNotificationTemplateWithBody(ctx context.Context, kind N
 // Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
 func (c *Client) PreviewNotificationTemplate(ctx context.Context, kind NotificationKind, body PreviewNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPreviewNotificationTemplateRequest(c.Server, kind, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListNsxManagers The NSX Managers rvav manages, and the vCenters each serves; the first is the NSX integration's
+//
+// Corresponds with GET /admin/nsx-managers (the `ListNsxManagers` operationId).
+func (c *Client) ListNsxManagers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListNsxManagersRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateNsxManagerWithBody Add an NSX Manager
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/nsx-managers (the `CreateNsxManager` operationId).
+func (c *Client) CreateNsxManagerWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateNsxManagerRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateNsxManager Add an NSX Manager
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/nsx-managers (the `CreateNsxManager` operationId).
+func (c *Client) CreateNsxManager(ctx context.Context, body CreateNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateNsxManagerRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteNsxManager Stop managing an added NSX Manager; refused while deployments have segments or groups there
+//
+// Corresponds with DELETE /admin/nsx-managers/{name} (the `DeleteNsxManager` operationId).
+func (c *Client) DeleteNsxManager(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteNsxManagerRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateNsxManagerWithBody Change an added NSX Manager (the password is kept when not given)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/nsx-managers/{name} (the `UpdateNsxManager` operationId).
+func (c *Client) UpdateNsxManagerWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateNsxManagerRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateNsxManager Change an added NSX Manager (the password is kept when not given)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/nsx-managers/{name} (the `UpdateNsxManager` operationId).
+func (c *Client) UpdateNsxManager(ctx context.Context, name string, body UpdateNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateNsxManagerRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TestNsxManagerWithBody Test an NSX Manager, with its saved settings or, for an added one, the ones given
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/nsx-managers/{name}/test (the `TestNsxManager` operationId).
+func (c *Client) TestNsxManagerWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestNsxManagerRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TestNsxManager Test an NSX Manager, with its saved settings or, for an added one, the ones given
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/nsx-managers/{name}/test (the `TestNsxManager` operationId).
+func (c *Client) TestNsxManager(ctx context.Context, name string, body TestNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestNsxManagerRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetNsxManagerVCentersWithBody Link vCenters to an NSX Manager, the NSX integration's too; a vCenter linked to another moves
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/nsx-managers/{name}/vcenters (the `SetNsxManagerVCenters` operationId).
+func (c *Client) SetNsxManagerVCentersWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetNsxManagerVCentersRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetNsxManagerVCenters Link vCenters to an NSX Manager, the NSX integration's too; a vCenter linked to another moves
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/nsx-managers/{name}/vcenters (the `SetNsxManagerVCenters` operationId).
+func (c *Client) SetNsxManagerVCenters(ctx context.Context, name string, body SetNsxManagerVCentersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetNsxManagerVCentersRequest(c.Server, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -29002,6 +29323,248 @@ func NewPreviewNotificationTemplateRequestWithBody(server string, kind Notificat
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListNsxManagersRequest constructs an http.Request for the ListNsxManagers method
+func NewListNsxManagersRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/nsx-managers")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateNsxManagerRequest calls the generic CreateNsxManager builder with application/json body
+func NewCreateNsxManagerRequest(server string, body CreateNsxManagerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateNsxManagerRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateNsxManagerRequestWithBody constructs an http.Request for the CreateNsxManager method, with any body, and a specified content type
+func NewCreateNsxManagerRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/nsx-managers")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteNsxManagerRequest constructs an http.Request for the DeleteNsxManager method
+func NewDeleteNsxManagerRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/nsx-managers/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateNsxManagerRequest calls the generic UpdateNsxManager builder with application/json body
+func NewUpdateNsxManagerRequest(server string, name string, body UpdateNsxManagerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateNsxManagerRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewUpdateNsxManagerRequestWithBody constructs an http.Request for the UpdateNsxManager method, with any body, and a specified content type
+func NewUpdateNsxManagerRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/nsx-managers/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestNsxManagerRequest calls the generic TestNsxManager builder with application/json body
+func NewTestNsxManagerRequest(server string, name string, body TestNsxManagerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestNsxManagerRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewTestNsxManagerRequestWithBody constructs an http.Request for the TestNsxManager method, with any body, and a specified content type
+func NewTestNsxManagerRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/nsx-managers/%s/test", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSetNsxManagerVCentersRequest calls the generic SetNsxManagerVCenters builder with application/json body
+func NewSetNsxManagerVCentersRequest(server string, name string, body SetNsxManagerVCentersJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetNsxManagerVCentersRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewSetNsxManagerVCentersRequestWithBody constructs an http.Request for the SetNsxManagerVCenters method, with any body, and a specified content type
+func NewSetNsxManagerVCentersRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/nsx-managers/%s/vcenters", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -39086,6 +39649,76 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /admin/notification-templates/{kind}/preview (the `PreviewNotificationTemplate` operationId).
 	PreviewNotificationTemplateWithResponse(ctx context.Context, kind NotificationKind, body PreviewNotificationTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewNotificationTemplateResponse, error)
 
+	// ListNsxManagersWithResponse The NSX Managers rvav manages, and the vCenters each serves; the first is the NSX integration's
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/nsx-managers (the `ListNsxManagers` operationId).
+	ListNsxManagersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNsxManagersResponse, error)
+
+	// CreateNsxManagerWithBodyWithResponse Add an NSX Manager
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/nsx-managers (the `CreateNsxManager` operationId).
+	CreateNsxManagerWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateNsxManagerResponse, error)
+
+	// CreateNsxManagerWithResponse Add an NSX Manager
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/nsx-managers (the `CreateNsxManager` operationId).
+	CreateNsxManagerWithResponse(ctx context.Context, body CreateNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateNsxManagerResponse, error)
+
+	// DeleteNsxManagerWithResponse Stop managing an added NSX Manager; refused while deployments have segments or groups there
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /admin/nsx-managers/{name} (the `DeleteNsxManager` operationId).
+	DeleteNsxManagerWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteNsxManagerResponse, error)
+
+	// UpdateNsxManagerWithBodyWithResponse Change an added NSX Manager (the password is kept when not given)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/nsx-managers/{name} (the `UpdateNsxManager` operationId).
+	UpdateNsxManagerWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateNsxManagerResponse, error)
+
+	// UpdateNsxManagerWithResponse Change an added NSX Manager (the password is kept when not given)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/nsx-managers/{name} (the `UpdateNsxManager` operationId).
+	UpdateNsxManagerWithResponse(ctx context.Context, name string, body UpdateNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNsxManagerResponse, error)
+
+	// TestNsxManagerWithBodyWithResponse Test an NSX Manager, with its saved settings or, for an added one, the ones given
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/nsx-managers/{name}/test (the `TestNsxManager` operationId).
+	TestNsxManagerWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestNsxManagerResponse, error)
+
+	// TestNsxManagerWithResponse Test an NSX Manager, with its saved settings or, for an added one, the ones given
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/nsx-managers/{name}/test (the `TestNsxManager` operationId).
+	TestNsxManagerWithResponse(ctx context.Context, name string, body TestNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*TestNsxManagerResponse, error)
+
+	// SetNsxManagerVCentersWithBodyWithResponse Link vCenters to an NSX Manager, the NSX integration's too; a vCenter linked to another moves
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/nsx-managers/{name}/vcenters (the `SetNsxManagerVCenters` operationId).
+	SetNsxManagerVCentersWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetNsxManagerVCentersResponse, error)
+
+	// SetNsxManagerVCentersWithResponse Link vCenters to an NSX Manager, the NSX integration's too; a vCenter linked to another moves
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/nsx-managers/{name}/vcenters (the `SetNsxManagerVCenters` operationId).
+	SetNsxManagerVCentersWithResponse(ctx context.Context, name string, body SetNsxManagerVCentersJSONRequestBody, reqEditors ...RequestEditorFn) (*SetNsxManagerVCentersResponse, error)
+
 	// AdoptVmsWithBodyWithResponse Adopt existing VMs into deployments, with their addresses and DNS records from EfficientIP
 	//
 	// Each VM becomes a deployment of its own, named after it, or all go
@@ -48208,6 +48841,413 @@ func (r PreviewNotificationTemplateResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PreviewNotificationTemplateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListNsxManagersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NsxManagerList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListNsxManagersResponse) GetJSON200() *NsxManagerList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListNsxManagersResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListNsxManagersResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListNsxManagersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListNsxManagersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListNsxManagersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListNsxManagersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateNsxManagerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *NsxManager
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateNsxManagerResponse) GetJSON201() *NsxManager {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateNsxManagerResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateNsxManagerResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateNsxManagerResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateNsxManagerResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateNsxManagerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateNsxManagerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateNsxManagerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateNsxManagerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteNsxManagerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteNsxManagerResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteNsxManagerResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteNsxManagerResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteNsxManagerResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteNsxManagerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteNsxManagerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteNsxManagerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteNsxManagerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateNsxManagerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NsxManager
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateNsxManagerResponse) GetJSON200() *NsxManager {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateNsxManagerResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateNsxManagerResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateNsxManagerResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UpdateNsxManagerResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateNsxManagerResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateNsxManagerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateNsxManagerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateNsxManagerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateNsxManagerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type TestNsxManagerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationTest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r TestNsxManagerResponse) GetJSON200() *IntegrationTest {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r TestNsxManagerResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r TestNsxManagerResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r TestNsxManagerResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r TestNsxManagerResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r TestNsxManagerResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r TestNsxManagerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TestNsxManagerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestNsxManagerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TestNsxManagerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetNsxManagerVCentersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NsxManager
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetNsxManagerVCentersResponse) GetJSON200() *NsxManager {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetNsxManagerVCentersResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetNsxManagerVCentersResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetNsxManagerVCentersResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetNsxManagerVCentersResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SetNsxManagerVCentersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetNsxManagerVCentersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetNsxManagerVCentersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetNsxManagerVCentersResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -62077,6 +63117,136 @@ func (c *ClientWithResponses) PreviewNotificationTemplateWithResponse(ctx contex
 	return ParsePreviewNotificationTemplateResponse(rsp)
 }
 
+// ListNsxManagersWithResponse The NSX Managers rvav manages, and the vCenters each serves; the first is the NSX integration's
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/nsx-managers (the `ListNsxManagers` operationId).
+func (c *ClientWithResponses) ListNsxManagersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNsxManagersResponse, error) {
+	rsp, err := c.ListNsxManagers(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListNsxManagersResponse(rsp)
+}
+
+// CreateNsxManagerWithBodyWithResponse Add an NSX Manager
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/nsx-managers (the `CreateNsxManager` operationId).
+func (c *ClientWithResponses) CreateNsxManagerWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateNsxManagerResponse, error) {
+	rsp, err := c.CreateNsxManagerWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateNsxManagerResponse(rsp)
+}
+
+// CreateNsxManagerWithResponse Add an NSX Manager
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/nsx-managers (the `CreateNsxManager` operationId).
+func (c *ClientWithResponses) CreateNsxManagerWithResponse(ctx context.Context, body CreateNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateNsxManagerResponse, error) {
+	rsp, err := c.CreateNsxManager(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateNsxManagerResponse(rsp)
+}
+
+// DeleteNsxManagerWithResponse Stop managing an added NSX Manager; refused while deployments have segments or groups there
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /admin/nsx-managers/{name} (the `DeleteNsxManager` operationId).
+func (c *ClientWithResponses) DeleteNsxManagerWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteNsxManagerResponse, error) {
+	rsp, err := c.DeleteNsxManager(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteNsxManagerResponse(rsp)
+}
+
+// UpdateNsxManagerWithBodyWithResponse Change an added NSX Manager (the password is kept when not given)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/nsx-managers/{name} (the `UpdateNsxManager` operationId).
+func (c *ClientWithResponses) UpdateNsxManagerWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateNsxManagerResponse, error) {
+	rsp, err := c.UpdateNsxManagerWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateNsxManagerResponse(rsp)
+}
+
+// UpdateNsxManagerWithResponse Change an added NSX Manager (the password is kept when not given)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/nsx-managers/{name} (the `UpdateNsxManager` operationId).
+func (c *ClientWithResponses) UpdateNsxManagerWithResponse(ctx context.Context, name string, body UpdateNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNsxManagerResponse, error) {
+	rsp, err := c.UpdateNsxManager(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateNsxManagerResponse(rsp)
+}
+
+// TestNsxManagerWithBodyWithResponse Test an NSX Manager, with its saved settings or, for an added one, the ones given
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/nsx-managers/{name}/test (the `TestNsxManager` operationId).
+func (c *ClientWithResponses) TestNsxManagerWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestNsxManagerResponse, error) {
+	rsp, err := c.TestNsxManagerWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestNsxManagerResponse(rsp)
+}
+
+// TestNsxManagerWithResponse Test an NSX Manager, with its saved settings or, for an added one, the ones given
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/nsx-managers/{name}/test (the `TestNsxManager` operationId).
+func (c *ClientWithResponses) TestNsxManagerWithResponse(ctx context.Context, name string, body TestNsxManagerJSONRequestBody, reqEditors ...RequestEditorFn) (*TestNsxManagerResponse, error) {
+	rsp, err := c.TestNsxManager(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestNsxManagerResponse(rsp)
+}
+
+// SetNsxManagerVCentersWithBodyWithResponse Link vCenters to an NSX Manager, the NSX integration's too; a vCenter linked to another moves
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/nsx-managers/{name}/vcenters (the `SetNsxManagerVCenters` operationId).
+func (c *ClientWithResponses) SetNsxManagerVCentersWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetNsxManagerVCentersResponse, error) {
+	rsp, err := c.SetNsxManagerVCentersWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetNsxManagerVCentersResponse(rsp)
+}
+
+// SetNsxManagerVCentersWithResponse Link vCenters to an NSX Manager, the NSX integration's too; a vCenter linked to another moves
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/nsx-managers/{name}/vcenters (the `SetNsxManagerVCenters` operationId).
+func (c *ClientWithResponses) SetNsxManagerVCentersWithResponse(ctx context.Context, name string, body SetNsxManagerVCentersJSONRequestBody, reqEditors ...RequestEditorFn) (*SetNsxManagerVCentersResponse, error) {
+	rsp, err := c.SetNsxManagerVCenters(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetNsxManagerVCentersResponse(rsp)
+}
+
 // AdoptVmsWithBodyWithResponse Adopt existing VMs into deployments, with their addresses and DNS records from EfficientIP
 //
 // Each VM becomes a deployment of its own, named after it, or all go
@@ -71183,6 +72353,326 @@ func ParsePreviewNotificationTemplateResponse(rsp *http.Response) (*PreviewNotif
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListNsxManagersResponse parses an HTTP response from a ListNsxManagersWithResponse call
+func ParseListNsxManagersResponse(rsp *http.Response) (*ListNsxManagersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListNsxManagersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NsxManagerList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateNsxManagerResponse parses an HTTP response from a CreateNsxManagerWithResponse call
+func ParseCreateNsxManagerResponse(rsp *http.Response) (*CreateNsxManagerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateNsxManagerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest NsxManager
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteNsxManagerResponse parses an HTTP response from a DeleteNsxManagerWithResponse call
+func ParseDeleteNsxManagerResponse(rsp *http.Response) (*DeleteNsxManagerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteNsxManagerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateNsxManagerResponse parses an HTTP response from a UpdateNsxManagerWithResponse call
+func ParseUpdateNsxManagerResponse(rsp *http.Response) (*UpdateNsxManagerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateNsxManagerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NsxManager
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestNsxManagerResponse parses an HTTP response from a TestNsxManagerWithResponse call
+func ParseTestNsxManagerResponse(rsp *http.Response) (*TestNsxManagerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestNsxManagerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationTest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetNsxManagerVCentersResponse parses an HTTP response from a SetNsxManagerVCentersWithResponse call
+func ParseSetNsxManagerVCentersResponse(rsp *http.Response) (*SetNsxManagerVCentersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetNsxManagerVCentersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NsxManager
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationFailed

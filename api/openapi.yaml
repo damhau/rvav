@@ -5539,6 +5539,119 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /admin/nsx-managers:
+    get:
+      tags: [admin]
+      operationId: listNsxManagers
+      summary: The NSX Managers rvav manages, and the vCenters each serves; the first is the NSX integration's
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NsxManagerList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createNsxManager
+      summary: Add an NSX Manager
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NsxManagerWrite" }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NsxManager" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/nsx-managers/{name}:
+    parameters:
+      - { name: name, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [admin]
+      operationId: updateNsxManager
+      summary: Change an added NSX Manager (the password is kept when not given)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NsxManagerWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NsxManager" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteNsxManager
+      summary: Stop managing an added NSX Manager; refused while deployments have segments or groups there
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/nsx-managers/{name}/vcenters:
+    parameters:
+      - { name: name, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [admin]
+      operationId: setNsxManagerVCenters
+      summary: Link vCenters to an NSX Manager, the NSX integration's too; a vCenter linked to another moves
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NsxManagerVCenters" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NsxManager" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/nsx-managers/{name}/test:
+    parameters:
+      - { name: name, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      operationId: testNsxManager
+      summary: Test an NSX Manager, with its saved settings or, for an added one, the ones given
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NsxManagerWrite" }
+      responses:
+        "200":
+          description: The checks, passed or not
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IntegrationTest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /admin/event-topics:
     get:
       tags: [admin]
@@ -8213,7 +8326,10 @@ components:
             `rvav.templates` and `rvav.sizes` (what is offered to the
             project and environment; ADR-0020), `nsx.segments`
             (`tier1` param), `nsx.tier1s`, `nsx.groups` (as `nsx:<ID>`)
-            and `nsx.services` (ADR-0028), and rvav's own records, which
+            and `nsx.services` (ADR-0028; from the NSX Manager of the
+            vCenter the `cluster` or `vcenter` param is in, else of every
+            vCenter the project's placement uses in the environment;
+            ADR-0062), and rvav's own records, which
             the `project`, `user`, `deployment` and `vsphere_vm` widgets
             always take their choices from: `rvav.projects` (those the
             requester may request in, by ID), `rvav.users` (people, by
@@ -13303,6 +13419,81 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/VCenter" }
+    NsxManager:
+      type: object
+      required: [name, url, username, insecure, password_set, primary, vcenters]
+      properties:
+        name:
+          type: string
+          description: |
+            How the NSX Manager is known in rvav, for example
+            `nsx02.corp.example`. The NSX integration's is the host name of
+            its URL.
+        url: { type: string, examples: [https://nsx02.corp.example] }
+        username: { type: string, description: The account rvav signs in with; empty with a principal-identity certificate. }
+        cert_file:
+          type: string
+          description: A principal-identity certificate rvav signs in with, by its path on rvav's servers.
+        key_file: { type: string, description: "The certificate's private key, by its path on rvav's servers." }
+        insecure: { type: boolean, description: Its certificate isn't checked. }
+        cert_sha256:
+          type: string
+          description: A certificate trusted for it besides those the CAs vouch for, pinned by its SHA-256.
+        password_set: { type: boolean }
+        primary:
+          type: boolean
+          description: The NSX integration's (Integrations); its settings are changed there, its vCenters here.
+        vcenters:
+          type: array
+          description: |
+            The vCenters it serves, by their names in GET /admin/vcenters:
+            the segments and security groups of their VMs are made on it.
+          items: { type: string }
+    NsxManagerWrite:
+      type: object
+      required: [name, url]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: "^[a-z0-9][a-z0-9.-]{1,62}$" }
+        url: { type: string, minLength: 1 }
+        username: { type: string, description: Needed with a password. }
+        password: { type: string, writeOnly: true, description: Kept when not given on a change. }
+        cert_file:
+          type: string
+          description: A principal-identity certificate, by its path on rvav's servers; instead of a password.
+        key_file: { type: string, description: "The certificate's private key, by its path on rvav's servers." }
+        insecure: { type: boolean }
+        cert_sha256:
+          type: string
+          description: |
+            A certificate trusted besides those the CAs vouch for, by its
+            SHA-256 (with or without colons); empty, none. A new one needs the
+            password again, as a new address does.
+        vcenters:
+          type: array
+          description: |
+            The vCenters it serves; when given, they replace those it served.
+            A vCenter another NSX Manager served moves to this one.
+          items: { type: string }
+    NsxManagerVCenters:
+      type: object
+      required: [vcenters]
+      additionalProperties: false
+      properties:
+        vcenters:
+          type: array
+          description: |
+            The vCenters it serves, by their names in GET /admin/vcenters;
+            they replace those it served. A vCenter another NSX Manager
+            served moves to this one.
+          items: { type: string }
+    NsxManagerList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/NsxManager" }
     IntegrationCheck:
       type: object
       required: [name, ok, message]

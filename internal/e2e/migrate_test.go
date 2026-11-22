@@ -425,3 +425,57 @@ func TestMigrateC2(t *testing.T) {
 		t.Fatalf("day-2 policies after 00086 = %v", policies)
 	}
 }
+
+// TestMigrateNSXManagers upgrades a database with the one NSX Manager and
+// two vCenters to several NSX Managers (ADR-0062): both vCenters, the
+// integration's and the one added, are linked to the integration's NSX
+// Manager, as their VMs' segments and groups went there; down and up again.
+func TestMigrateNSXManagers(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Pool.Exec(ctx, `drop schema public cascade; create schema public`); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := pgx.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := stdlib.OpenDB(*cfg)
+	defer db.Close()
+	goose.SetBaseFS(migrations.FS)
+	if err := goose.SetDialect("postgres"); err != nil {
+		t.Fatal(err)
+	}
+	const before = 98
+	if err := goose.UpToContext(ctx, db, ".", before); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `insert into vcenters (name, url, username) values ('vc02.corp.example', 'https://vc02.corp.example/sdk', 'rvav')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx, databaseURL); err != nil {
+		t.Fatal(err)
+	}
+	links, err := st.VCenterNSX(ctx)
+	if err != nil || !maps.Equal(links, map[string]string{"": "", "vc02.corp.example": ""}) {
+		t.Fatalf("links = %v, %v", links, err)
+	}
+	for _, vc := range []string{"", "vc02.corp.example", "vc01.corp.example"} {
+		if m, ok, err := st.NSXManagerOf(ctx, vc); err != nil || !ok || m != "" {
+			t.Fatalf("%q's NSX Manager = %q %v %v", vc, m, ok, err)
+		}
+	}
+	if err := goose.DownToContext(ctx, db, ".", before); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx, databaseURL); err != nil {
+		t.Fatalf("up again: %v", err)
+	}
+}

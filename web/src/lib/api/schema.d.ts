@@ -4262,6 +4262,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/nsx-managers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The NSX Managers rvav manages, and the vCenters each serves; the first is the NSX integration's */
+        get: operations["listNsxManagers"];
+        put?: never;
+        /** Add an NSX Manager */
+        post: operations["createNsxManager"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/nsx-managers/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Change an added NSX Manager (the password is kept when not given) */
+        put: operations["updateNsxManager"];
+        post?: never;
+        /** Stop managing an added NSX Manager; refused while deployments have segments or groups there */
+        delete: operations["deleteNsxManager"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/nsx-managers/{name}/vcenters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Link vCenters to an NSX Manager, the NSX integration's too; a vCenter linked to another moves */
+        put: operations["setNsxManagerVCenters"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/nsx-managers/{name}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test an NSX Manager, with its saved settings or, for an added one, the ones given */
+        post: operations["testNsxManager"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/event-topics": {
         parameters: {
             query?: never;
@@ -6033,7 +6109,10 @@ export interface components {
              *     `rvav.templates` and `rvav.sizes` (what is offered to the
              *     project and environment; ADR-0020), `nsx.segments`
              *     (`tier1` param), `nsx.tier1s`, `nsx.groups` (as `nsx:<ID>`)
-             *     and `nsx.services` (ADR-0028), and rvav's own records, which
+             *     and `nsx.services` (ADR-0028; from the NSX Manager of the
+             *     vCenter the `cluster` or `vcenter` param is in, else of every
+             *     vCenter the project's placement uses in the environment;
+             *     ADR-0062), and rvav's own records, which
              *     the `project`, `user`, `deployment` and `vsphere_vm` widgets
              *     always take their choices from: `rvav.projects` (those the
              *     requester may request in, by ID), `rvav.users` (people, by
@@ -10208,6 +10287,69 @@ export interface components {
         };
         VCenterList: {
             items: components["schemas"]["VCenter"][];
+        };
+        NsxManager: {
+            /**
+             * @description How the NSX Manager is known in rvav, for example
+             *     `nsx02.corp.example`. The NSX integration's is the host name of
+             *     its URL.
+             */
+            name: string;
+            /** @example https://nsx02.corp.example */
+            url: string;
+            /** @description The account rvav signs in with; empty with a principal-identity certificate. */
+            username: string;
+            /** @description A principal-identity certificate rvav signs in with, by its path on rvav's servers. */
+            cert_file?: string;
+            /** @description The certificate's private key, by its path on rvav's servers. */
+            key_file?: string;
+            /** @description Its certificate isn't checked. */
+            insecure: boolean;
+            /** @description A certificate trusted for it besides those the CAs vouch for, pinned by its SHA-256. */
+            cert_sha256?: string;
+            password_set: boolean;
+            /** @description The NSX integration's (Integrations); its settings are changed there, its vCenters here. */
+            primary: boolean;
+            /**
+             * @description The vCenters it serves, by their names in GET /admin/vcenters:
+             *     the segments and security groups of their VMs are made on it.
+             */
+            vcenters: string[];
+        };
+        NsxManagerWrite: {
+            name: string;
+            url: string;
+            /** @description Needed with a password. */
+            username?: string;
+            /** @description Kept when not given on a change. */
+            password?: string;
+            /** @description A principal-identity certificate, by its path on rvav's servers; instead of a password. */
+            cert_file?: string;
+            /** @description The certificate's private key, by its path on rvav's servers. */
+            key_file?: string;
+            insecure?: boolean;
+            /**
+             * @description A certificate trusted besides those the CAs vouch for, by its
+             *     SHA-256 (with or without colons); empty, none. A new one needs the
+             *     password again, as a new address does.
+             */
+            cert_sha256?: string;
+            /**
+             * @description The vCenters it serves; when given, they replace those it served.
+             *     A vCenter another NSX Manager served moves to this one.
+             */
+            vcenters?: string[];
+        };
+        NsxManagerVCenters: {
+            /**
+             * @description The vCenters it serves, by their names in GET /admin/vcenters;
+             *     they replace those it served. A vCenter another NSX Manager
+             *     served moves to this one.
+             */
+            vcenters: string[];
+        };
+        NsxManagerList: {
+            items: components["schemas"]["NsxManager"][];
         };
         IntegrationCheck: {
             /** @example Sign in */
@@ -17788,6 +17930,172 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listNsxManagers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NsxManagerList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createNsxManager: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NsxManagerWrite"];
+            };
+        };
+        responses: {
+            /** @description Added */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NsxManager"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateNsxManager: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NsxManagerWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NsxManager"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteNsxManager: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    setNsxManagerVCenters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NsxManagerVCenters"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NsxManager"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    testNsxManager: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["NsxManagerWrite"];
+            };
+        };
+        responses: {
+            /** @description The checks, passed or not */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationTest"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
         };
     };

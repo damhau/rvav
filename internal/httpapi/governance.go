@@ -552,6 +552,56 @@ func (s *Server) TestVCenter(w http.ResponseWriter, r *http.Request, name string
 	s.reply(w, r, http.StatusOK, out, err)
 }
 
+// Several NSX Managers (ADR-0062).
+
+func (s *Server) ListNsxManagers(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Core.ListNSXManagers(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) CreateNsxManager(w http.ResponseWriter, r *http.Request) {
+	var b api.NsxManagerWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveNSXManager(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
+
+func (s *Server) UpdateNsxManager(w http.ResponseWriter, r *http.Request, name string) {
+	var b api.NsxManagerWrite
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveNSXManager(r.Context(), principal(r), name, b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) DeleteNsxManager(w http.ResponseWriter, r *http.Request, name string) {
+	s.replyEmpty(w, r, s.Core.DeleteNSXManager(r.Context(), principal(r), name))
+}
+
+func (s *Server) SetNsxManagerVCenters(w http.ResponseWriter, r *http.Request, name string) {
+	var b api.NsxManagerVCenters
+	if !s.decode(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SetNSXManagerVCenters(r.Context(), principal(r), name, b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) TestNsxManager(w http.ResponseWriter, r *http.Request, name string) {
+	var b *api.NsxManagerWrite
+	if r.ContentLength != 0 {
+		b = &api.NsxManagerWrite{}
+		if !s.decode(w, r, b) {
+			return
+		}
+	}
+	out, err := s.Core.TestNSXManager(r.Context(), principal(r), name, b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
 func (s *Server) ListOnboardingVms(w http.ResponseWriter, r *http.Request, params api.ListOnboardingVmsParams) {
 	after, err := cursorOf(params.Cursor)
 	if err != nil {
