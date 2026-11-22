@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -32,12 +33,12 @@ func TestNSXManagers(t *testing.T) {
 		h.json("POST", "/api/v1/admin/vcenters", admin, api.VCenterWrite{Name: "vc02.corp.example", Url: "https://vc02.corp.example/sdk",
 			Username: "rvav", Password: new("vc02-password-1")}, 201, nil)
 
-		// Today's NSX Manager serves the vCenter integration's vCenter; one
-		// added since serves none until linked.
+		// Today's NSX Manager serves the vCenter integration's vCenter, and
+		// one added while it is the only NSX Manager.
 		var list api.NsxManagerList
 		h.json("GET", "/api/v1/admin/nsx-managers", admin, nil, 200, &list)
 		if len(list.Items) != 1 || !list.Items[0].Primary || list.Items[0].Name != "127.0.0.1" ||
-			!slices.Equal(list.Items[0].Vcenters, []string{"vc01.corp.example"}) {
+			!slices.Equal(list.Items[0].Vcenters, []string{"vc01.corp.example", "vc02.corp.example"}) {
 			t.Fatalf("NSX Managers = %+v", list.Items)
 		}
 
@@ -70,6 +71,25 @@ func TestNSXManagers(t *testing.T) {
 		moved := write
 		moved.Url, moved.Password = "https://elsewhere.example", nil
 		h.json("PUT", "/api/v1/admin/nsx-managers/"+nsx02, admin, moved, 422, &problem)
+
+		// Linked at once from two sides: each answers.
+		for range 10 {
+			codes := make([]int, 2)
+			var wg sync.WaitGroup
+			for i, x := range []struct {
+				manager  string
+				vcenters []string
+			}{{nsx02, []string{"vc02.corp.example"}}, {"127.0.0.1", []string{"vc01.corp.example", "vc02.corp.example"}}} {
+				wg.Go(func() {
+					codes[i], _, _ = h.do("PUT", "/api/v1/admin/nsx-managers/"+x.manager+"/vcenters", admin,
+						api.NsxManagerVCenters{Vcenters: x.vcenters})
+				})
+			}
+			wg.Wait()
+			if codes[0] != 200 || codes[1] != 200 {
+				t.Fatalf("linked at once = %v", codes)
+			}
+		}
 
 		// vc02 moves to it from the integration's; vc01 stays.
 		var linked api.NsxManager

@@ -615,8 +615,9 @@ included, open its **Actions** menu and select **Link vCenters**. To change
 the integration's NSX Manager itself, change the NSX settings above the
 list. Its URL can't name an NSX Manager you added: remove that one first.
 
-A vCenter you add later is served by no NSX Manager until you link it.
-With several NSX Managers:
+A vCenter you add while the integration's NSX Manager is the only one
+is served by it. Once you add another NSX Manager, a vCenter you add is
+served by none until you link it. With several NSX Managers:
 - rvav places VMs that need NSX (a segment made for the deployment,
   security groups, or a group to join) only on clusters of a vCenter an
   NSX Manager serves. A request whose VMs need NSX in a vCenter no NSX
@@ -630,8 +631,14 @@ With several NSX Managers:
 - Linking a vCenter to another NSX Manager doesn't move what deployments
   already have in NSX: rvav changes and deletes it where it made it. An
   update can't add VMs to groups on the NSX Manager the vCenter left.
+- An update that adds no VM, such as a resize, doesn't need NSX.
 - You can't remove an NSX Manager while a deployment has a segment, a
-  group, a policy or VM tags on it.
+  group, a policy or VM tags on it, or while a request that waits or runs
+  is to make one.
+- If you point the integration's URL to another NSX Manager, deleting
+  what rvav made on the one before fails, naming both, and rvav keeps
+  its records. Point the URL back to delete it, or delete the deployment
+  going on past failures and remove the objects from NSX yourself.
 - While an NSX Manager doesn't answer, the tag sync still checks the
   other NSX Managers' VMs, and you can still save a catalog item whose
   groups and services another NSX Manager has.

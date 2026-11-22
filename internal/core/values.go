@@ -684,6 +684,14 @@ func (s *Service) offeredNSXManagers(ctx context.Context, projectID, env, name s
 		return nil, &BadRequestError{Msg: "rvav has no NSX Manager: " + name + " needs one, set in Integrations."}
 	}
 	vcenter := params["vcenter"]
+	// A name rvav doesn't know would read as the vCenter integration's.
+	if primary, ok := s.vcenterOfKey(""); vcenter != "" && (!ok || vcenter != primary) {
+		if _, err := s.Store.GetVCenter(ctx, vcenter); errors.Is(err, store.ErrNotFound) {
+			return nil, &BadRequestError{Msg: "rvav manages no vCenter " + vcenter + "."}
+		} else if err != nil {
+			return nil, err
+		}
+	}
 	var pl *placement
 	if env != "" && projectID != "" && (vcenter == "" || params["cluster"] != "") {
 		if pl, err = s.placement(ctx, projectID, env); err != nil {

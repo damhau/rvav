@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -72,9 +74,18 @@ func (s *Store) ResealNSXManager(ctx context.Context, name string, nonce []byte,
 	return tag.RowsAffected() == 1, err
 }
 
+// ManagerPlannedError is a request waiting or running whose plan makes
+// NSX objects on the NSX Manager being removed.
+type ManagerPlannedError struct{ Request string }
+
+func (e *ManagerPlannedError) Error() string {
+	return fmt.Sprintf("request %s makes NSX objects on the NSX Manager", e.Request)
+}
+
 // DeleteNSXManager removes the NSX Manager and unlinks its vCenters;
 // ErrInUse while a deployment not deleted has a segment, a group, a
-// policy or a membership there.
+// policy or a membership there, a ManagerPlannedError while a request
+// waiting or running is to make one.
 func (s *Store) DeleteNSXManager(ctx context.Context, name string) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
 		var used bool
@@ -84,6 +95,17 @@ func (s *Store) DeleteNSXManager(ctx context.Context, name string) error {
 		}
 		if used {
 			return ErrInUse
+		}
+		var number string
+		err := tx.QueryRow(ctx, `select number from requests
+			where status in ('pending_approval', 'scheduled', 'queued', 'running', 'cancelling')
+			and jsonb_path_exists(plan, '$.** ? (@.nsx == $m)', jsonb_build_object('m', $1::text))
+			order by submitted_at limit 1`, name).Scan(&number)
+		if err == nil {
+			return &ManagerPlannedError{Request: number}
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
 		}
 		tag, err := tx.Exec(ctx, `delete from nsx_managers where name = $1`, name)
 		if err != nil {
@@ -130,10 +152,21 @@ func (s *Store) NSXManagerOf(ctx context.Context, vcenter string) (string, bool,
 	return m, err == nil, err
 }
 
+// lockVCenterNSX makes changes to which NSX Manager serves which vCenter
+// one at a time: two at once each deleted what the other then inserted
+// too, and one failed on the key.
+func lockVCenterNSX(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtext('rvav.vcenter_nsx'))`)
+	return err
+}
+
 // LinkVCenters makes an NSX Manager serve these vCenters, and no others;
 // a vCenter another served moves.
 func (s *Store) LinkVCenters(ctx context.Context, manager string, vcenters []string) error {
 	return s.Tx(ctx, func(tx pgx.Tx) error {
+		if err := lockVCenterNSX(ctx, tx); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `delete from vcenter_nsx where manager = $1 or vcenter = any($2::text[])`, manager, vcenters); err != nil {
 			return err
 		}

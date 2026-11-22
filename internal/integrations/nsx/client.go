@@ -89,6 +89,15 @@ func New(o Options) (*Client, error) {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
+// Host is the NSX Manager's host, and its port unless the scheme's own.
+func (c *Client) Host() string {
+	host := strings.ToLower(c.base.Host)
+	if c.base.Port() == map[string]string{"https": "443", "http": "80"}[c.base.Scheme] {
+		host = strings.ToLower(c.base.Hostname())
+	}
+	return host
+}
+
 func (c *Client) do(ctx context.Context, method, path string, q url.Values, body, out any) error {
 	u := *c.base
 	u.Path = strings.TrimSuffix(u.Path, "/") + path

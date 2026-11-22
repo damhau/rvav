@@ -2359,6 +2359,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           ...(current?.inventory ? { inventory: current.inventory } : {}),
         };
         st().vcenters = [...st().vcenters.filter((v) => v.name !== name), vc];
+        // The NSX integration's NSX Manager, the only one, serves it (ADR-0062).
+        if (method === "post" && !st().nsxManagers.length && !(name in st().nsxLinks)) st().nsxLinks[name] = "";
         audited(db, `vcenter.${method === "put" ? "update" : "create"}`, "vcenter", name);
         return HttpResponse.json(vc, { status: method === "post" ? 201 : 200 });
       }),

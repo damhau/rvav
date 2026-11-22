@@ -50,9 +50,11 @@ Following the several vCenters of ADR-0024:
   be changed or removed (I1.6).
 - **Upgrading changes nothing.** The migration links every vCenter that
   exists, the integration's included, to the integration's NSX Manager.
-  A vCenter added later is served by none until it is linked: in another
-  site it is most often under another NSX Manager, and a segment made on
-  the wrong one fails half-way.
+  A vCenter added while no other NSX Manager is added is linked to it
+  too, as every vCenter was before (I1.6). Once another is added, a
+  vCenter added is served by none until it is linked: in another site it
+  is most often under another NSX Manager, and a segment made on the
+  wrong one fails half-way.
 - **The API** is `/admin/nsx-managers`, as `/admin/vcenters` is.
   `/admin/integrations/nsx` keeps working as before. The CLI, the
   Terraform provider and the PowerShell module manage neither vCenters
@@ -80,21 +82,32 @@ Following the several vCenters of ADR-0024:
 - **Resources record it** (`nsx_manager` on `nsx.segment`, `nsx.group`,
   `nsx.policy` and `nsx.membership`). Deletes, day-2 group changes and
   tag drift go to the NSX Manager recorded; a resource without one is the
-  integration's, where every NSX object was made before.
+  integration's, where every NSX object was made before. Those made on
+  the integration's record its host too (`nsx_host`, I1.6): once its URL
+  points to another NSX Manager, a delete that doesn't find the object
+  there fails, naming both, and keeps the resource, rather than taking
+  it for gone. The administrator points the integration back, or deletes
+  the deployment going on past failures and removes the object by hand.
+- **An update that adds no VM** doesn't need NSX: it goes on whichever
+  NSX Manager serves the vCenter now, or none (I1.6).
 - **The tag sync** reads each NSX Manager's VMs. An NSX Manager that
   doesn't answer keeps its VMs' state as it was, the others' are
   compared, and the sync's error names it (I1.6).
 - **A vRA deployment adopted** (ADR-0027) takes its NSX objects from the
   NSX Manager of its VMs' vCenter.
 - **An NSX Manager can't be removed** while a deployment not deleted has
-  an NSX object on it.
+  an NSX object on it, nor while a request waiting or running is to make
+  one (a 409 naming the request, I1.6).
+- **Links change one at a time**, under an advisory lock: two at once
+  each deleted what the other then inserted, and one failed (I1.6).
 
 ### Where segments and groups are chosen
 - The **`nsx.*` value sources** offer the segments, Tier-1 gateways,
   groups and services of the NSX Manager serving the vCenter of the
   `cluster` or `vcenter` parameter; without them, of those serving the
   vCenters the project's placement uses in the environment; without an
-  environment, of every NSX Manager.
+  environment, of every NSX Manager. A `vcenter` rvav doesn't manage is
+  refused (400), not read as the vCenter integration's (I1.6).
 - **Saving a catalog item** checks that each NSX group and service it
   names is on at least one NSX Manager: the environment, and so the NSX
   Manager, is chosen when it is requested. An NSX Manager that doesn't

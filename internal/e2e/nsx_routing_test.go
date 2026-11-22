@@ -67,6 +67,7 @@ func TestNSXFollowsVCenter(t *testing.T) {
 		url.User = nil
 		h.json("POST", "/api/v1/admin/vcenters", admin, api.VCenterWrite{Name: vc02, Url: url.String(), Username: "user",
 			Password: present.Ptr("pass"), Insecure: present.Ptr(true)}, 201, nil)
+		h.json("PUT", "/api/v1/admin/nsx-managers/127.0.0.1/vcenters", admin, api.NsxManagerVCenters{Vcenters: []string{vc01}}, 200, nil)
 		set := &vcenters.Set{Store: h.store, Secrets: h.svc.Secrets, PrimaryName: vc01,
 			Primary: func(context.Context) (vsphere.Driver, error) { return h.vc, nil }}
 		h.acts.VCenters = set

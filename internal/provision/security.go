@@ -40,8 +40,9 @@ type Membership struct {
 	// taken off it, not one another tool had set (a CMDB's role|web).
 	Added []nsx.Tag `json:"added,omitempty"`
 	// NSX is the NSX Manager it is on, "" for the NSX integration's
-	// (ADR-0062).
-	NSX string `json:"nsx_manager,omitempty"`
+	// (ADR-0062), and Host that one's host when it is the integration's.
+	NSX  string `json:"nsx_manager,omitempty"`
+	Host string `json:"nsx_host,omitempty"`
 }
 
 // ours says whether rvav's instance made an NSX object for this
@@ -82,6 +83,8 @@ func (a *Activities) MakeSecurity(ctx context.Context, in SecurityInput) error {
 		on := func(props map[string]any) map[string]any {
 			if u.NSX != "" {
 				props["nsx_manager"] = u.NSX
+			} else {
+				props["nsx_host"] = client.Host()
 			}
 			return props
 		}
@@ -178,7 +181,7 @@ func (a *Activities) JoinGroups(ctx context.Context, in VMInput) error {
 			}
 		}
 		m := Membership{VM: in.VM.Name, InstanceUUID: uuid, Groups: in.VM.NSXGroups, Tags: want, Offered: in.VM.NSXOffered, Added: added,
-			NSX: in.VM.NSX}
+			NSX: in.VM.NSX, Host: integrationHost(in.VM.NSX, client)}
 		if err := a.recordMembership(ctx, in.RequestID, in.ProjectID, in.VM.DeploymentID, m); err != nil {
 			return "", "", err
 		}
@@ -360,7 +363,7 @@ func (a *Activities) leaveGroups(ctx context.Context, r store.Resource) (string,
 	vm, err := client.VM(ctx, m.InstanceUUID)
 	switch {
 	case errors.Is(err, nsx.ErrNotFound):
-		return "", nil // gone with the VM
+		return "", stillThere(r, client, "VM "+r.Name+"'s NSX membership") // else gone with the VM
 	case err != nil:
 		return "", fmt.Errorf("NSX: %w", err)
 	}
@@ -379,7 +382,7 @@ func (a *Activities) deleteGroup(ctx context.Context, r store.Resource) (string,
 	g, err := client.Group(ctx, r.Name)
 	switch {
 	case errors.Is(err, nsx.ErrNotFound):
-		return "", nil
+		return "", stillThere(r, client, "NSX group "+r.Name)
 	case err != nil:
 		return "", fmt.Errorf("NSX: %w", err)
 	case !a.ours(g.Tags, r.DeploymentID):
@@ -405,7 +408,7 @@ func (a *Activities) deletePolicy(ctx context.Context, r store.Resource) (string
 	p, err := client.SecurityPolicy(ctx, r.Name)
 	switch {
 	case errors.Is(err, nsx.ErrNotFound):
-		return "", nil
+		return "", stillThere(r, client, "the security policy "+r.Name)
 	case err != nil:
 		return "", fmt.Errorf("NSX: %w", err)
 	case !a.ours(p.Tags, r.DeploymentID):

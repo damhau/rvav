@@ -377,6 +377,13 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 			"The deployment's NSX security groups are on NSX Manager %s, but its vCenter is now served by %s: an update can't add VMs to them.",
 			s.nsxLabel(m), s.nsxLabel(ev.nsxManager))})
 	}
+	// Only VMs added are made in NSX: the VMs kept stay where theirs were
+	// made, whichever NSX Manager serves their vCenter now (ADR-0062).
+	if len(u.add) == 0 {
+		ev.Errors = slices.DeleteFunc(ev.Errors, func(e api.FieldError) bool {
+			return deref(e.Code) == "no_nsx" || deref(e.Code) == "nsx_managers"
+		})
+	}
 	// A failed deployment's update with its own inputs is a repair: it
 	// builds what is missing and runs its jobs again.
 	u.same = d.Status != "failed" && ev.Version.ID == d.VersionID && sameInputs(ev.Version.UISchema, d.Inputs, ev.Inputs)

@@ -123,6 +123,32 @@ func (a *Activities) nsxClient(ctx context.Context, name, why string) (*nsx.Clie
 	return c, err
 }
 
+// integrationHost is the host an NSX object is made on, recorded when the
+// NSX Manager is the integration's: its URL may point to another NSX
+// Manager later, which doesn't have it (I1.6).
+func integrationHost(manager string, client *nsx.Client) string {
+	if manager != "" {
+		return ""
+	}
+	return client.Host()
+}
+
+// stillThere is nil when NSX not having a resource's object means it is
+// gone; an error, which keeps the resource, when it was made on the
+// integration's NSX Manager and the integration points to another since.
+func stillThere(r store.Resource, client *nsx.Client, what string) error {
+	var p struct {
+		Host string `json:"nsx_host"`
+	}
+	_ = json.Unmarshal(r.Properties, &p)
+	if nsxManagerOf(r) != "" || p.Host == "" || p.Host == client.Host() {
+		return nil
+	}
+	return permanent("%s was made on NSX Manager %s, and the NSX integration now points to %s, which doesn't have it: point the "+
+		"integration back to delete it, or delete the deployment going on past failures and remove it from %s by hand",
+		what, p.Host, client.Host(), p.Host)
+}
+
 // nsxManagerOf is the NSX Manager a resource is on, "" for the NSX
 // integration's, where everything was made before there were several.
 func nsxManagerOf(r store.Resource) string {

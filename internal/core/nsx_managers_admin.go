@@ -276,8 +276,13 @@ func (s *Service) DeleteNSXManager(ctx context.Context, p *auth.Principal, name 
 		return &ConflictError{Msg: name + " is the NSX integration's: clear it in Integrations."}
 	}
 	err := s.Store.DeleteNSXManager(ctx, name)
-	if errors.Is(err, store.ErrInUse) {
+	var planned *store.ManagerPlannedError
+	switch {
+	case errors.Is(err, store.ErrInUse):
 		return &ConflictError{Msg: "Deployments have NSX segments or security groups on " + name + ": delete them, or keep the NSX Manager."}
+	case errors.As(err, &planned):
+		return &ConflictError{Msg: fmt.Sprintf("Request %s is to make NSX segments or security groups on %s: wait until it ends, "+
+			"or cancel it, first.", planned.Request, name)}
 	}
 	if err == nil {
 		s.audit(ctx, p, "nsx_manager.delete", "nsx_manager", name, nil, nil)

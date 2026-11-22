@@ -35,12 +35,25 @@ func (s *Store) GetVCenter(ctx context.Context, name string) (VCenter, error) {
 	return v, notFound(err)
 }
 
-// SaveVCenter adds the vCenter (create: ErrInUse when the name is taken)
-// or changes it; a nil ciphertext keeps the password.
+// SaveVCenter adds the vCenter (create: ErrInUse when the name is taken),
+// served by the NSX integration's NSX Manager while no other is added, or
+// changes it; a nil ciphertext keeps the password.
 func (s *Store) SaveVCenter(ctx context.Context, v VCenter, create bool) error {
 	if create {
-		_, err := s.Pool.Exec(ctx, `insert into vcenters (name, url, username, insecure, key_id, nonce, ciphertext, cert_sha256)
-			values ($1,$2,$3,$4,$5,$6,$7,$8)`, v.Name, v.URL, v.Username, v.Insecure, v.KeyID, v.Nonce, v.Ciphertext, v.CertSHA256)
+		err := s.Tx(ctx, func(tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, `insert into vcenters (name, url, username, insecure, key_id, nonce, ciphertext, cert_sha256)
+				values ($1,$2,$3,$4,$5,$6,$7,$8)`, v.Name, v.URL, v.Username, v.Insecure, v.KeyID, v.Nonce, v.Ciphertext, v.CertSHA256); err != nil {
+				return err
+			}
+			// With the NSX integration's NSX Manager alone, it serves every
+			// vCenter, as before there were several (ADR-0062).
+			if err := lockVCenterNSX(ctx, tx); err != nil {
+				return err
+			}
+			_, err := tx.Exec(ctx, `insert into vcenter_nsx (vcenter, manager) select $1, ''
+				where not exists (select 1 from nsx_managers) on conflict do nothing`, v.Name)
+			return err
+		})
 		if IsUniqueViolation(err) {
 			return ErrInUse
 		}

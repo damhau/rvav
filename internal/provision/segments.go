@@ -97,6 +97,8 @@ func (a *Activities) MakeSegment(ctx context.Context, in SegmentInput) (SegmentR
 		props := map[string]any{"segment_id": sg.ID, "tier1": sg.Tier1, "subnet": out.CIDR, "gateway": out.Gateway, "key": sg.Key}
 		if sg.NSX != "" {
 			props["nsx_manager"] = sg.NSX
+		} else {
+			props["nsx_host"] = client.Host()
 		}
 		if err := a.recordSegmentResource(ctx, in, "nsx.segment", sg.Name, sg.ID, props); err != nil {
 			return "", "", err
@@ -195,6 +197,9 @@ func (a *Activities) deleteSegment(ctx context.Context, r store.Resource) (strin
 	seg, err := client.Segment(ctx, id)
 	switch {
 	case errors.Is(err, nsx.ErrNotFound):
+		if err := stillThere(r, client, "NSX segment "+r.Name); err != nil {
+			return "", err
+		}
 	case err != nil:
 		return "", fmt.Errorf("NSX: %w", err)
 	case !a.ours(seg.Tags, r.DeploymentID):
