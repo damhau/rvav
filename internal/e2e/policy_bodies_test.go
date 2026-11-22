@@ -98,3 +98,29 @@ func TestPolicyBodies(t *testing.T) {
 		}
 	})
 }
+
+// TestExtensibilityBodies: E1's writes replace what they write too, so they
+// refuse a field they don't take (#166).
+func TestExtensibilityBodies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		for _, w := range []struct{ method, path, body string }{
+			{"POST", "/api/v1/admin/variables", `{"group": "cmdb", "name": "site", "value": "gva", "descripton": "Typo"}`},
+			{"PUT", "/api/v1/admin/variables/cmdb.site", `{"value": "gva", "name": "site"}`},
+			{"POST", "/api/v1/admin/subscriptions", `{"name": "Typo", "topic": "compute.provision.post", "target": {"kind": "webhook"}, "enable": false}`},
+			{"PUT", "/api/v1/admin/subscriptions/sub_any", `{"name": "Typo", "topic": "compute.provision.post", "target": {"kind": "webhook"}, "id": "sub_any"}`},
+			{"POST", "/api/v1/admin/resource-types", `{"title": "Typo", "create": {}, "delete": {}, "enable": false}`},
+			{"PUT", "/api/v1/admin/resource-types/any", `{"title": "Typo", "create": {}, "delete": {}, "resources": 3}`},
+			{"PUT", "/api/v1/admin/day2-forms/any", `{"definition": {}, "activ": true}`},
+		} {
+			var problem api.Problem
+			h.json(w.method, w.path, "mkeller", rawYAML(w.body), 400, &problem)
+			if problem.Title != "The request body has a field this operation doesn't take" || !strings.Contains(deref(problem.Detail), "unknown field") {
+				t.Fatalf("%s %s with a field it doesn't take: %+v", w.method, w.path, problem)
+			}
+		}
+	})
+}

@@ -423,9 +423,21 @@ func TestCompositeBranch(t *testing.T) {
 			t.Fatalf("cancelled = %s %q, %d calls after", r.Status, errorOf(r), len(change.got())-before)
 		}
 
-		// A VM is planned at submit: it can't be on a side.
-		onSide := rig.publishDefinition("branch-vm", askDefinition(false, branchOf("choose", []any{caseOf("", "true",
-			map[string]any{"key": "vm", "item": "rhel9-server", "with": map[string]any{"size": "'small'"}})})))
+		// A VM is planned at submit: it can't be on a side. Saving refuses
+		// it there, and a request refuses a version saved before.
+		vmOnSide := askDefinition(false, branchOf("choose", []any{caseOf("", "true",
+			map[string]any{"key": "vm", "item": "rhel9-server", "with": map[string]any{"size": "'small'"}})}))
+		problem.Errors = nil
+		h.json("POST", "/api/v1/admin/catalog/items", rig.admin, api.CatalogItemCreate{Slug: "branch-vm", Name: "branch-vm", Summary: "A VM on a side.",
+			Category: "compute", Type: api.Composite, Definition: &vmOnSide}, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/definition/blueprint/steps/0/branch/cases/0/steps/0" {
+			t.Fatalf("saving a VM on a side = %+v", problem.Errors)
+		}
+		onSide := rig.publishDefinition("branch-vm", askDefinition(false, branchOf("choose", []any{caseOf("", "true", posting(change, "here", "{}"))})))
+		saved, _ := json.Marshal(vmOnSide.Blueprint)
+		if _, err := h.store.Pool.Exec(ctx, `update catalog_item_versions set blueprint = $2 where id = $1`, onSide.VersionId, saved); err != nil {
+			t.Fatal(err)
+		}
 		h.json("POST", "/api/v1/requests", requester, onSide, 422, &problem, "Idempotency-Key", uuid.NewString())
 		if len(problem.Errors) == 0 || !strings.Contains(problem.Errors[0].Message, "can't be on a side") {
 			t.Fatalf("a VM on a side = %+v", problem.Errors)

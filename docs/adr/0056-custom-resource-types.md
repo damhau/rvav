@@ -49,7 +49,10 @@ audited (`resource_type.create`, `resource_type.update`,
 that a draft or published version names, can't be removed: the 409 says
 to turn it off instead. A changed type applies to the resources made
 before: they keep their properties, and its workflows and templates as
-they are now update, read and delete them.
+they are now update, read and delete them. A change replaces the type:
+a field left out takes its default, `enabled` too, which is true (to keep
+a type off, send `false`), and a field the type doesn't have is refused
+(E1.6).
 
 A type turned off refuses the requests and the updates of the items
 that use it ("Load balancer is turned off: ask an administrator to turn

@@ -205,6 +205,12 @@ narrowly.
   any kind (a pass waiting across runs of the workflow, its state in a row
   per step), a branch, and a step with an `undo` (each pass would need its
   own).
+- What a VM step can't be or have, its VMs planned at submit: a loop, a
+  catch path, a condition, an undo, inputs read from steps, a place on a
+  side of a branch, on a catch path or in the error handler, or a group
+  with a catch path. Saving a version refuses each where it is written,
+  as the designer does (E1.6); a request of a version saved before is
+  refused, as it was.
 - **A catch path**, `catch: [steps]`, sits on a step, a side's step or a
   parallel group, not on a step inside a group: a group's steps stop
   together, so one path handles them. On a failure the running siblings

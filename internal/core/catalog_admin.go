@@ -598,8 +598,8 @@ var builtinSources = []string{"vsphere.clusters", "vsphere.datastores", "vsphere
 
 // checkVersion checks a version's definition with what it depends on: its
 // property groups' inputs, its sources' hosts, the secrets and the uploaded
-// images it names, and to publish it, its resource types and the shared
-// variables its steps read.
+// images it names, the items its VM steps request, and to publish it, its
+// resource types and the shared variables its steps read.
 func (s *Service) checkVersion(ctx context.Context, itemType string, d api.CatalogVersionDefinition, prefix string, publish bool) ([]api.FieldError, error) {
 	groups, err := s.groupFields(ctx, d)
 	if err != nil {
@@ -611,11 +611,15 @@ func (s *Service) checkVersion(ctx context.Context, itemType string, d api.Catal
 		return nil, err
 	}
 	types, err := s.checkResourceRefs(ctx, d, prefix, publish)
+	if err != nil {
+		return nil, err
+	}
+	vms, err := s.checkVMSteps(ctx, d, prefix)
 	if err != nil || !publish {
-		return slices.Concat(errs, refs, types), err
+		return slices.Concat(errs, refs, types, vms), err
 	}
 	vars, err := s.checkVariableRefs(ctx, d, prefix)
-	return slices.Concat(errs, refs, types, vars), err
+	return slices.Concat(errs, refs, types, vms, vars), err
 }
 
 // checkFormRefs checks what a form names that rvav keeps apart: the hosts

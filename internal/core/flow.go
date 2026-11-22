@@ -1,6 +1,9 @@
 package core
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -11,6 +14,7 @@ import (
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/policy"
+	"github.com/damhau/rvav/internal/store"
 )
 
 // A composite's loops, catch paths, default error handler and waits for a
@@ -139,4 +143,109 @@ func flowVarsRead(expr string, loop, caught bool) string {
 		}
 	}
 	return ""
+}
+
+// checkVMSteps refuses, where they are written, what a VM step can't be or
+// have: its VMs are planned when the request is submitted, before a branch
+// chooses or a step fails. evaluateComposite says the same of a version
+// saved before.
+func (s *Service) checkVMSteps(ctx context.Context, d api.CatalogVersionDefinition, prefix string) ([]api.FieldError, error) {
+	raw, _ := json.Marshal(d.Blueprint)
+	b, err := blueprint.Parse(raw)
+	if err != nil || len(b.Steps) == 0 {
+		return nil, nil
+	}
+	kinds := map[string]bool{}
+	isVM := func(slug string) (bool, error) {
+		if slug == "" {
+			return false, nil
+		}
+		if vm, ok := kinds[slug]; ok {
+			return vm, nil
+		}
+		item, err := s.Store.GetItem(ctx, slug, "")
+		if errors.Is(err, store.ErrNotFound) {
+			return false, nil
+		} else if err != nil {
+			return false, err
+		}
+		kinds[slug] = item.Type == "vm_blueprint"
+		return kinds[slug], nil
+	}
+	var errs []api.FieldError
+	var walk func(st blueprint.CompositeStep, at string, onSide bool) error
+	walk = func(st blueprint.CompositeStep, at string, onSide bool) error {
+		vm, err := isVM(st.Item)
+		if err != nil {
+			return err
+		}
+		switch {
+		case vm && onSide:
+			errs = append(errs, fieldErr(at, "invalid", "A VM is planned when the request is submitted, before a branch chooses or a step fails, so it can't be on a side of a branch, on a catch path or in the error handler."))
+		case vm:
+			if st.ForEach != nil {
+				errs = append(errs, fieldErr(at+"/for_each", "invalid", "A VM step can't loop: its VMs are planned when the request is submitted. Give its item a count instead."))
+			}
+			if len(st.Catch) > 0 {
+				errs = append(errs, fieldErr(at+"/catch", "invalid", "A VM step has no catch path: what it built is the rollback's to delete, so the request can't go on past it."))
+			}
+			if st.Undo != nil {
+				errs = append(errs, fieldErr(at+"/undo", "invalid", "A VM isn't undone by a job or workflow; a failure deletes it."))
+			}
+			if st.When != "" {
+				errs = append(errs, fieldErr(at+"/when", "invalid", "A VM step has no condition: its VMs are planned when the request is submitted."))
+			}
+			for _, k := range sortedKeys(st.With) {
+				if e, ok := st.With[k].(string); ok && stepRef.MatchString(e) {
+					errs = append(errs, fieldErr(at+"/with/"+k, "invalid", "A VM is planned when the request is submitted, so its inputs come from the form, not from steps."))
+				}
+			}
+		}
+		groupVM := false
+		for j, x := range st.Parallel {
+			if err := walk(x, fmt.Sprintf("%s/parallel/%d", at, j), onSide); err != nil {
+				return err
+			}
+			vm, err := isVM(x.Item)
+			if err != nil {
+				return err
+			}
+			groupVM = groupVM || vm
+		}
+		if groupVM && len(st.Catch) > 0 && !onSide {
+			errs = append(errs, fieldErr(at+"/catch", "invalid", "This group has a VM step, so it has no catch path: what it built is the rollback's to delete, so the request can't go on past it."))
+		}
+		for j, x := range st.Catch {
+			if err := walk(x, fmt.Sprintf("%s/catch/%d", at, j), true); err != nil {
+				return err
+			}
+		}
+		if st.Branch != nil {
+			for i, c := range st.Branch.Cases {
+				for j, x := range c.Steps {
+					if err := walk(x, fmt.Sprintf("%s/branch/cases/%d/steps/%d", at, i, j), true); err != nil {
+						return err
+					}
+				}
+			}
+			for j, x := range st.Branch.Else {
+				if err := walk(x, fmt.Sprintf("%s/branch/else/%d", at, j), true); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	ptr := prefix + "/blueprint"
+	for g, st := range b.Steps {
+		if err := walk(st, fmt.Sprintf("%s/steps/%d", ptr, g), false); err != nil {
+			return nil, err
+		}
+	}
+	for j, x := range b.OnError {
+		if err := walk(x, fmt.Sprintf("%s/on_error/%d", ptr, j), true); err != nil {
+			return nil, err
+		}
+	}
+	return errs, nil
 }

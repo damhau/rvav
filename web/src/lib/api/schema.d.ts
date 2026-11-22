@@ -1783,8 +1783,10 @@ export interface paths {
          *     incomplete, as a draft; an active one (`active`) must be complete,
          *     as a published version, and the action asks for it from its next
          *     run. A form saved elsewhere since `base_revision` is refused (409).
-         *     Not every field fits an action's form: no file uploads, and no
-         *     wizard (the form shows in a dialog).
+         *     Not every field fits an action's form: no file uploads, no secret
+         *     fields (`not_allowed`: a run keeps its inputs with the request as
+         *     they are, so the secret stays in AWX or in rvav's secrets, named),
+         *     and no wizard (the form shows in a dialog).
          */
         put: operations["saveDay2Form"];
         post?: never;
@@ -7056,7 +7058,7 @@ export interface components {
         };
         Day2FormQuery: {
             action: string;
-            /** @description The VM it runs on; absent for an action on the whole deployment. */
+            /** @description The VM or the custom resource it runs on; absent for an action on the whole deployment. */
             resource_id?: string;
             /**
              * @description The form's values so far. Those left out, and those sent as
@@ -7068,7 +7070,7 @@ export interface components {
         };
         Day2FieldValuesQuery: {
             action: string;
-            /** @description The VM it runs on; absent for an action on the whole deployment. */
+            /** @description The VM or the custom resource it runs on; absent for an action on the whole deployment. */
             resource_id?: string;
             /** @description Input name. */
             field: string;
@@ -11098,7 +11100,7 @@ export interface components {
             };
             /** @description The day-2 actions offered on its resources: custom workflows (`wf.<key>`) and AWX actions (`awx.<template>`). */
             actions?: string[];
-            /** @description Items may use it. A disabled type's resources are still deleted. */
+            /** @description Items may use it. A disabled type's resources are still deleted. Left out, it is true: a change that leaves it out turns the type on, so send `false` to keep it off. */
             enabled?: boolean;
         };
         ResourceType: components["schemas"]["ResourceTypeWrite"] & {

@@ -13,7 +13,7 @@ func (s *Server) ListVariables(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) CreateVariable(w http.ResponseWriter, r *http.Request) {
 	var b api.VariableCreate
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.CreateVariable(r.Context(), principal(r), b)
@@ -27,7 +27,7 @@ func (s *Server) GetVariable(w http.ResponseWriter, r *http.Request, key string)
 
 func (s *Server) UpdateVariable(w http.ResponseWriter, r *http.Request, key string) {
 	var b api.VariableUpdate
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.UpdateVariable(r.Context(), principal(r), key, b)

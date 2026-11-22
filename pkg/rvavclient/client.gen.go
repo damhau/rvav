@@ -5489,7 +5489,7 @@ type Day2FieldValuesQuery struct {
 	// stays empty.
 	Inputs map[string]interface{} `json:"inputs"`
 
-	// ResourceId The VM it runs on; absent for an action on the whole deployment.
+	// ResourceId The VM or the custom resource it runs on; absent for an action on the whole deployment.
 	ResourceId *string `json:"resource_id,omitempty"`
 
 	// Search Text typed in a `search` or `user` field, as in `resolveFieldValues`.
@@ -5583,7 +5583,7 @@ type Day2FormQuery struct {
 	// `null`, are worked out as on a run (`Day2Draft.inputs`).
 	Inputs map[string]interface{} `json:"inputs"`
 
-	// ResourceId The VM it runs on; absent for an action on the whole deployment.
+	// ResourceId The VM or the custom resource it runs on; absent for an action on the whole deployment.
 	ResourceId *string `json:"resource_id,omitempty"`
 }
 
@@ -9236,7 +9236,7 @@ type ResourceType struct {
 	Delete      ResourceTypeDriver `json:"delete"`
 	Description *string            `json:"description,omitempty"`
 
-	// Enabled Items may use it. A disabled type's resources are still deleted.
+	// Enabled Items may use it. A disabled type's resources are still deleted. Left out, it is true: a change that leaves it out turns the type on, so send `false` to keep it off.
 	Enabled bool `json:"enabled"`
 
 	// Key Its name in blueprints (`resources[].type`) and composite steps (`resource.type`), set when it is defined (ignored on update).
@@ -9298,7 +9298,7 @@ type ResourceTypeWrite struct {
 	Delete      ResourceTypeDriver `json:"delete"`
 	Description *string            `json:"description,omitempty"`
 
-	// Enabled Items may use it. A disabled type's resources are still deleted.
+	// Enabled Items may use it. A disabled type's resources are still deleted. Left out, it is true: a change that leaves it out turns the type on, so send `false` to keep it off.
 	Enabled *bool `json:"enabled,omitempty"`
 
 	// Key Its name in blueprints (`resources[].type`) and composite steps (`resource.type`), set when it is defined (ignored on update).
@@ -14279,8 +14279,10 @@ type ClientInterface interface {
 	// incomplete, as a draft; an active one (`active`) must be complete,
 	// as a published version, and the action asks for it from its next
 	// run. A form saved elsewhere since `base_revision` is refused (409).
-	// Not every field fits an action's form: no file uploads, and no
-	// wizard (the form shows in a dialog).
+	// Not every field fits an action's form: no file uploads, no secret
+	// fields (`not_allowed`: a run keeps its inputs with the request as
+	// they are, so the secret stays in AWX or in rvav's secrets, named),
+	// and no wizard (the form shows in a dialog).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -14293,8 +14295,10 @@ type ClientInterface interface {
 	// incomplete, as a draft; an active one (`active`) must be complete,
 	// as a published version, and the action asks for it from its next
 	// run. A form saved elsewhere since `base_revision` is refused (409).
-	// Not every field fits an action's form: no file uploads, and no
-	// wizard (the form shows in a dialog).
+	// Not every field fits an action's form: no file uploads, no secret
+	// fields (`not_allowed`: a run keeps its inputs with the request as
+	// they are, so the secret stays in AWX or in rvav's secrets, named),
+	// and no wizard (the form shows in a dialog).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -18811,8 +18815,10 @@ func (c *Client) GetDay2Form(ctx context.Context, action Day2ActionPath, reqEdit
 // incomplete, as a draft; an active one (`active`) must be complete,
 // as a published version, and the action asks for it from its next
 // run. A form saved elsewhere since `base_revision` is refused (409).
-// Not every field fits an action's form: no file uploads, and no
-// wizard (the form shows in a dialog).
+// Not every field fits an action's form: no file uploads, no secret
+// fields (`not_allowed`: a run keeps its inputs with the request as
+// they are, so the secret stays in AWX or in rvav's secrets, named),
+// and no wizard (the form shows in a dialog).
 //
 // Takes any type of body and a specified content type.
 //
@@ -18835,8 +18841,10 @@ func (c *Client) SaveDay2FormWithBody(ctx context.Context, action Day2ActionPath
 // incomplete, as a draft; an active one (`active`) must be complete,
 // as a published version, and the action asks for it from its next
 // run. A form saved elsewhere since `base_revision` is refused (409).
-// Not every field fits an action's form: no file uploads, and no
-// wizard (the form shows in a dialog).
+// Not every field fits an action's form: no file uploads, no secret
+// fields (`not_allowed`: a run keeps its inputs with the request as
+// they are, so the secret stays in AWX or in rvav's secrets, named),
+// and no wizard (the form shows in a dialog).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -39465,8 +39473,10 @@ type ClientWithResponsesInterface interface {
 	// incomplete, as a draft; an active one (`active`) must be complete,
 	// as a published version, and the action asks for it from its next
 	// run. A form saved elsewhere since `base_revision` is refused (409).
-	// Not every field fits an action's form: no file uploads, and no
-	// wizard (the form shows in a dialog).
+	// Not every field fits an action's form: no file uploads, no secret
+	// fields (`not_allowed`: a run keeps its inputs with the request as
+	// they are, so the secret stays in AWX or in rvav's secrets, named),
+	// and no wizard (the form shows in a dialog).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -39479,8 +39489,10 @@ type ClientWithResponsesInterface interface {
 	// incomplete, as a draft; an active one (`active`) must be complete,
 	// as a published version, and the action asks for it from its next
 	// run. A form saved elsewhere since `base_revision` is refused (409).
-	// Not every field fits an action's form: no file uploads, and no
-	// wizard (the form shows in a dialog).
+	// Not every field fits an action's form: no file uploads, no secret
+	// fields (`not_allowed`: a run keeps its inputs with the request as
+	// they are, so the secret stays in AWX or in rvav's secrets, named),
+	// and no wizard (the form shows in a dialog).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -62949,8 +62961,10 @@ func (c *ClientWithResponses) GetDay2FormWithResponse(ctx context.Context, actio
 // incomplete, as a draft; an active one (`active`) must be complete,
 // as a published version, and the action asks for it from its next
 // run. A form saved elsewhere since `base_revision` is refused (409).
-// Not every field fits an action's form: no file uploads, and no
-// wizard (the form shows in a dialog).
+// Not every field fits an action's form: no file uploads, no secret
+// fields (`not_allowed`: a run keeps its inputs with the request as
+// they are, so the secret stays in AWX or in rvav's secrets, named),
+// and no wizard (the form shows in a dialog).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -62969,8 +62983,10 @@ func (c *ClientWithResponses) SaveDay2FormWithBodyWithResponse(ctx context.Conte
 // incomplete, as a draft; an active one (`active`) must be complete,
 // as a published version, and the action asks for it from its next
 // run. A form saved elsewhere since `base_revision` is refused (409).
-// Not every field fits an action's form: no file uploads, and no
-// wizard (the form shows in a dialog).
+// Not every field fits an action's form: no file uploads, no secret
+// fields (`not_allowed`: a run keeps its inputs with the request as
+// they are, so the secret stays in AWX or in rvav's secrets, named),
+// and no wizard (the form shows in a dialog).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

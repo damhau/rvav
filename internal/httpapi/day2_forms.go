@@ -42,7 +42,7 @@ func (s *Server) GetDay2Form(w http.ResponseWriter, r *http.Request, action api.
 
 func (s *Server) SaveDay2Form(w http.ResponseWriter, r *http.Request, action api.Day2ActionPath) {
 	var body api.Day2FormWrite
-	if !s.decode(w, r, &body) {
+	if !s.decodeStrict(w, r, &body) {
 		return
 	}
 	out, err := s.Core.SaveDay2Form(r.Context(), principal(r), action, body)

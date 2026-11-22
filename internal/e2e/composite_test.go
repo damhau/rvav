@@ -147,20 +147,32 @@ func TestCompositeItems(t *testing.T) {
 			t.Fatalf("%s wasn't built again", vmName)
 		}
 
-		// A VM step has no condition: its VMs are planned at submit.
-		when := vmWithDBUser()
-		when.Blueprint["steps"].([]any)[0].(map[string]any)["when"] = `inputs.database != "orders"`
-		var cond api.AdminCatalogItem
-		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "vm-when", Name: "VM when",
-			Summary: "A VM step with a condition.", Category: "compute", Type: api.Composite, Definition: &when}, 201, &cond)
-		h.json("POST", "/api/v1/admin/catalog/items/vm-when/versions/"+cond.DraftVersion.Id+"/publish", admin, nil, 200, nil)
-		h.json("PUT", "/api/v1/admin/catalog/items/vm-when/entitlements", admin, api.CatalogEntitlements{AllProjects: true, ProjectIds: []string{}}, 200, nil)
-		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: cond.Id, VersionId: cond.DraftVersion.Id,
-			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "db", "size": "S", "cluster": "GVA-DEV-CL01",
-				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "database": "orders", "role_name": "orders_ro"}},
-			422, &problem, "Idempotency-Key", uuid.NewString())
-		if len(problem.Errors) == 0 || !strings.Contains(problem.Errors[0].Message, "has no condition") {
-			t.Fatalf("a VM step with a condition = %+v", problem.Errors)
+		// What a VM step can't be or have, its VMs planned at submit, is
+		// refused where it is written when the version is saved.
+		tell := map[string]any{"key": "tell", "title": "Tell", "awx": map[string]any{"job_template": "monitoring-agent"}}
+		for i, refused := range []struct {
+			change func(steps []any)
+			field  string
+		}{
+			{func(steps []any) { steps[0].(map[string]any)["when"] = `inputs.database != "orders"` }, "/steps/0/when"},
+			{func(steps []any) { steps[0].(map[string]any)["for_each"] = map[string]any{"items": "['a', 'b']"} }, "/steps/0/for_each"},
+			{func(steps []any) { steps[0].(map[string]any)["catch"] = []any{tell} }, "/steps/0/catch"},
+			{func(steps []any) {
+				steps[1].(map[string]any)["catch"] = []any{map[string]any{"key": "again", "item": "rhel9-server"}}
+			}, "/steps/1/catch/0"},
+			{func(steps []any) {
+				steps[0] = map[string]any{"parallel": []any{steps[0], map[string]any{"key": "early", "awx": map[string]any{"job_template": "monitoring-agent"}}},
+					"catch": []any{tell}}
+			}, "/steps/0/catch"},
+		} {
+			def := vmWithDBUser()
+			refused.change(def.Blueprint["steps"].([]any))
+			problem.Errors = nil
+			h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: fmt.Sprintf("vm-refused-%d", i), Name: "VM refused",
+				Summary: "A VM step it can't be.", Category: "compute", Type: api.Composite, Definition: &def}, 422, &problem)
+			if !slices.ContainsFunc(problem.Errors, func(e api.FieldError) bool { return e.Field == "/definition/blueprint"+refused.field }) {
+				t.Fatalf("%s: refused with %+v", refused.field, problem.Errors)
+			}
 		}
 
 		// The seeded PostgreSQL cluster needs its inputs (TestPostgresCluster builds one).

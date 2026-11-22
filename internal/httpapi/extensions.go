@@ -20,7 +20,7 @@ func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 	var b api.SubscriptionWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SaveSubscription(r.Context(), principal(r), "", b)
@@ -34,7 +34,7 @@ func (s *Server) GetSubscription(w http.ResponseWriter, r *http.Request, id api.
 
 func (s *Server) UpdateSubscription(w http.ResponseWriter, r *http.Request, id api.IdPath) {
 	var b api.SubscriptionWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SaveSubscription(r.Context(), principal(r), id, b)
@@ -108,7 +108,7 @@ func (s *Server) ListResourceTypes(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) CreateResourceType(w http.ResponseWriter, r *http.Request) {
 	var b api.ResourceTypeWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SaveResourceType(r.Context(), principal(r), "", true, b)
@@ -122,7 +122,7 @@ func (s *Server) GetResourceType(w http.ResponseWriter, r *http.Request, key api
 
 func (s *Server) UpdateResourceType(w http.ResponseWriter, r *http.Request, key api.KeyPath) {
 	var b api.ResourceTypeWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SaveResourceType(r.Context(), principal(r), key, false, b)
