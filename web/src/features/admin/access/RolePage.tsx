@@ -4,6 +4,7 @@ import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Ellipsis, TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -19,6 +20,8 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
+import { formatList } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { errorAt, failed, fieldErrors } from "../governance/common";
@@ -27,18 +30,23 @@ import { AdminWarning, Refusal, refused } from "./refusal";
 
 type S = components["schemas"];
 
-const crumbs = (
-  <Breadcrumbs>
-    <Link to="/admin/roles">Roles</Link>
-  </Breadcrumbs>
-);
+function Crumbs() {
+  const { t } = useTranslation("shell");
+  return (
+    <Breadcrumbs>
+      <Link to="/admin/roles">{t("nav.admin.roles")}</Link>
+    </Breadcrumbs>
+  );
+}
 
 const givenText = (scope: S["RoleScope"], why?: string) =>
   scope === "project"
-    ? "Given in a project only."
+    ? i18n.t("admin-access:role.givenProject")
     : scope === "rvav"
-      ? `Given for all of rvav only${why ? `: ${why}` : "."}`
-      : "Given in a project, or for all of rvav to allow the same in every project.";
+      ? why
+        ? i18n.t("admin-access:role.givenRvavWhy", { why })
+        : i18n.t("admin-access:role.givenRvav")
+      : i18n.t("admin-access:role.givenAny");
 
 /** What a role with these permissions allows and where it can be given: a built-in role's scope is its own. */
 function Allows({
@@ -50,13 +58,14 @@ function Allows({
   permissions: string[];
   builtInScope?: S["RoleScope"];
 }) {
+  const { t } = useTranslation("admin-access");
   const sentences = allows(catalogue, permissions);
   const { scope, why } = builtInScope ? { scope: builtInScope, why: undefined } : scopeOf(catalogue, permissions);
   return (
     <div className="flex flex-col gap-3 text-body">
       {permissions.includes("access.manage") && <AdminWarning />}
       {sentences.length === 0 ? (
-        <p className="text-secondary text-muted">Nothing on its own.</p>
+        <p className="text-secondary text-muted">{t("role.nothing")}</p>
       ) : (
         <ul className="flex list-disc flex-col gap-1 pl-4">
           {sentences.map((s) => (
@@ -70,12 +79,13 @@ function Allows({
 }
 
 function Uses({ role }: { role: S["Role"] }) {
+  const { t } = useTranslation("admin-access");
   return (
     <p className="text-secondary text-muted">
-      {role.holders === 0
-        ? "Given to nobody."
-        : `Given ${role.holders} ${role.holders === 1 ? "time" : "times"}, to users or groups.`}
-      {role.policies.length > 0 && ` Named by the day-2 policies ${role.policies.join(", ")}.`}
+      {role.holders === 0 ? t("role.givenToNobody") : t("role.givenTimes", { count: role.holders })}
+      {role.policies.length > 0 && (
+        <> {t("role.namedBy", { names: formatList(role.policies), count: role.policies.length })}</>
+      )}
     </p>
   );
 }
@@ -132,6 +142,7 @@ function PermissionList({
   value: string[];
   onChange: (v: string[]) => void;
 }) {
+  const { t } = useTranslation("admin-access");
   const held = new Set(value);
   const set = (id: string, on: boolean, drop: (p: string) => boolean = () => false) =>
     onChange(on ? [...value.filter((p) => !drop(p)), id] : value.filter((p) => p !== id));
@@ -151,7 +162,7 @@ function PermissionList({
                   {p.summary}
                   {p.scope === "rvav" && (
                     <Badge tone="outline" className="ml-1.5">
-                      All of rvav only
+                      {t("role.rvavOnlyBadge")}
                     </Badge>
                   )}
                 </>
@@ -163,10 +174,8 @@ function PermissionList({
         </fieldset>
       ))}
       <fieldset className="flex flex-col gap-2">
-        <legend className="label mb-1">Day-2 actions</legend>
-        <p className="text-secondary text-muted">
-          A group allows each of its actions, those added later included; or choose single actions.
-        </p>
+        <legend className="label mb-1">{t("role.day2")}</legend>
+        <p className="text-secondary text-muted">{t("role.day2Lead")}</p>
         {catalogue.day2.map((g) => {
           const all = held.has(g.permission);
           const prefix = `${g.permission}:`;
@@ -183,7 +192,7 @@ function PermissionList({
                 id={g.permission}
                 label={g.permission}
                 mono
-                what={`Every ${g.group} action.`}
+                what={t("role.everyAction", { group: g.group })}
                 checked={all}
                 onChange={(on) => set(g.permission, on, (p) => p.startsWith(prefix))}
               />
@@ -212,9 +221,9 @@ function PermissionList({
 /** Why a custom role can't be deleted, said in place of Delete. */
 export const cantDelete = (role: S["Role"]) =>
   role.holders > 0
-    ? `Delete: given ${role.holders} ${role.holders === 1 ? "time" : "times"}`
+    ? i18n.t("admin-access:roles.cantDeleteGiven", { count: role.holders })
     : role.policies.length > 0
-      ? "Delete: day-2 policies name it"
+      ? i18n.t("admin-access:roles.cantDeletePolicies")
       : undefined;
 
 /** Asks before deleting a custom role, then deletes it. */
@@ -228,6 +237,7 @@ export function DeleteRole({
   /** Called once it is deleted; the role's page is forgotten once what it returns settles. */
   onDeleted?: () => Promise<unknown> | void;
 }) {
+  const { t } = useTranslation("admin-access");
   const qc = useQueryClient();
   const own = adm.role(role.key).queryKey;
   const remove = useMutation({
@@ -239,23 +249,23 @@ export function DeleteRole({
         predicate: (query) => JSON.stringify(query.queryKey) !== JSON.stringify(own),
       });
       void qc.invalidateQueries({ queryKey: ["me"] });
-      toast.success(`${role.name} deleted`);
+      toast.success(t("role.deleted", { name: role.name }));
       onClose();
       void Promise.resolve(onDeleted?.()).then(() => qc.removeQueries({ queryKey: own, exact: true }));
     },
     onError: (e) => {
       onClose();
-      failed(e, "Not deleted");
+      failed(e, t("role.notDeleted"));
     },
   });
   return (
     <ConfirmDialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Delete ${role.name}?`}
-      description="Nobody can be given it any more."
-      consequences="Nobody holds it now, and no day-2 policy names it: nobody loses a permission."
-      confirmLabel="Delete role"
+      title={t("role.deleteTitle", { name: role.name })}
+      description={t("role.deleteBody")}
+      consequences={t("role.deleteConsequences")}
+      confirmLabel={t("role.deleteRole")}
       pending={remove.isPending}
       onConfirm={() => remove.mutate()}
     />
@@ -274,6 +284,7 @@ function RoleForm({
   role?: S["Role"];
   start?: string[];
 }) {
+  const { t } = useTranslation("admin-access");
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [f, setF] = useState({
@@ -296,11 +307,11 @@ function RoleForm({
     },
     onSuccess: (r) => {
       changed();
-      toast.success(role ? `${r.name} saved` : `${r.name} made`);
+      toast.success(role ? t("role.saved", { name: r.name }) : t("role.made", { name: r.name }));
       if (!role) void navigate({ to: "/admin/roles/$roleKey", params: { roleKey: r.key } });
     },
     onError: (e) => {
-      if (!refused(e, [409, 422])) failed(e, "Not saved");
+      if (!refused(e, [409, 422])) failed(e, t("role.notSaved"));
     },
   });
   const errors = fieldErrors(save.error);
@@ -316,17 +327,13 @@ function RoleForm({
       }}
     >
       <div className="flex min-w-0 flex-col gap-5">
-        <Panel title="Role">
+        <Panel title={t("role.panel")}>
           <div className="grid max-w-2xl grid-cols-1 gap-3 md:grid-cols-2">
             <Field
-              label="Key"
+              label={t("role.key")}
               htmlFor="role-key"
               error={errors["/key"] ?? keyTaken}
-              hint={
-                role
-                  ? "Fixed once made."
-                  : "Fixed once made: 2 to 41 lower-case letters, digits and hyphens, starting with a letter."
-              }
+              hint={role ? t("role.keyFixed") : t("role.keyHint")}
             >
               <Input
                 id="role-key"
@@ -337,11 +344,11 @@ function RoleForm({
                 onChange={(e) => setF({ ...f, key: e.target.value })}
               />
             </Field>
-            <Field label="Name" htmlFor="role-name" error={errors["/name"]}>
+            <Field label={t("role.name")} htmlFor="role-name" error={errors["/name"]}>
               <Input id="role-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
             </Field>
             <Field
-              label="Description"
+              label={t("role.description")}
               htmlFor="role-description"
               error={errors["/description"]}
               className="md:col-span-2"
@@ -355,7 +362,7 @@ function RoleForm({
             </Field>
           </div>
         </Panel>
-        <Panel title="Permissions">
+        <Panel title={t("role.permissions")}>
           {permissionsError && (
             <p role="alert" className="mb-3 flex items-start gap-1.5 text-secondary text-bad">
               <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
@@ -370,7 +377,7 @@ function RoleForm({
         </Panel>
       </div>
       <div className="flex flex-col gap-5 lg:sticky lg:top-4 lg:self-start">
-        <Panel title="What it allows">
+        <Panel title={t("role.allows")}>
           <Allows catalogue={catalogue} permissions={f.permissions} />
         </Panel>
         <div className="flex flex-col gap-2">
@@ -384,9 +391,10 @@ function RoleForm({
 
 /** A role that can't be changed here: built in, or read by someone without access.manage. */
 function RoleView({ catalogue, role, canMake }: { catalogue: Catalogue; role: S["Role"]; canMake: boolean }) {
+  const { t } = useTranslation("admin-access");
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-      <Panel title="What it allows">
+      <Panel title={t("role.allows")}>
         <div className="flex flex-col gap-3">
           {role.description && <p className="text-body">{role.description}</p>}
           <Allows
@@ -395,7 +403,7 @@ function RoleView({ catalogue, role, canMake }: { catalogue: Catalogue; role: S[
             builtInScope={role.built_in ? role.scope : undefined}
           />
           {role.permissions.length > 0 && (
-            <ul aria-label="Its permissions" className="flex flex-wrap gap-1.5">
+            <ul aria-label={t("role.itsPermissions")} className="flex flex-wrap gap-1.5">
               {inOrder(catalogue, role.permissions).map((p) => (
                 <li key={p}>
                   <Badge tone="outline" className="font-mono">
@@ -410,8 +418,7 @@ function RoleView({ catalogue, role, canMake }: { catalogue: Catalogue; role: S[
       <div className="flex flex-col gap-2 lg:self-start">
         {role.built_in && (
           <p className="text-secondary text-muted">
-            Built in: it can&apos;t be changed or deleted.{" "}
-            {canMake && "To give someone a little more or less, make a role of your own from it."}
+            {t("role.builtInNote")} {canMake && t("role.makeYourOwn")}
           </p>
         )}
         <Uses role={role} />
@@ -423,32 +430,34 @@ function RoleView({ catalogue, role, canMake }: { catalogue: Catalogue; role: S[
 const saveKey = ["admin", "role", "save"];
 
 function SaveButton({ formId, label }: { formId: string; label: string }) {
+  const { t } = useTranslation("admin-access");
   const saving = useIsMutating({ mutationKey: saveKey }) > 0;
   return (
     <Button type="submit" form={formId} variant="primary" disabled={saving}>
-      {saving ? "Saving…" : label}
+      {saving ? t("role.saving") : label}
     </Button>
   );
 }
 
 function RoleMenu({ role, editable, onDelete }: { role: S["Role"]; editable: boolean; onDelete: () => void }) {
+  const { t } = useTranslation("admin-access");
   const navigate = useNavigate();
   return (
     <Menu>
       <MenuTrigger asChild>
-        <IconButton label={`More actions for ${role.name}`} variant="secondary" className="size-8">
+        <IconButton label={t("role.moreActions", { name: role.name })} variant="secondary" className="size-8">
           <Ellipsis />
         </IconButton>
       </MenuTrigger>
       <MenuContent>
         <MenuItem onSelect={() => void navigate({ to: "/admin/roles/new", search: { from: role.key } })}>
-          Make a role from it
+          {t("roles.makeFrom")}
         </MenuItem>
         {editable && (
           <>
             <MenuSeparator />
             <MenuItem danger disabled={Boolean(cantDelete(role))} onSelect={onDelete}>
-              {cantDelete(role) ?? "Delete role"}
+              {cantDelete(role) ?? t("role.deleteRole")}
             </MenuItem>
           </>
         )}
@@ -458,6 +467,7 @@ function RoleMenu({ role, editable, onDelete }: { role: S["Role"]; editable: boo
 }
 
 export function RolePage({ roleKey }: { roleKey: string }) {
+  const { t } = useTranslation("admin-access");
   const { me } = useCurrentProject();
   const navigate = useNavigate();
   const formId = useId();
@@ -470,14 +480,16 @@ export function RolePage({ roleKey }: { roleKey: string }) {
   return (
     <Page>
       <PageHeader
-        breadcrumbs={crumbs}
-        title={r?.name ?? "Role"}
+        breadcrumbs={<Crumbs />}
+        title={r?.name ?? t("role.fallback")}
         meta={
           r && (
             <>
               <span className="font-mono">{r.key}</span>
-              <Badge tone={r.built_in ? "neutral" : "accent"}>{r.built_in ? "Built in" : "Custom"}</Badge>
-              <span>{scopeText[r.scope]}</span>
+              <Badge tone={r.built_in ? "neutral" : "accent"}>
+                {r.built_in ? t("roles.builtIn") : t("roles.custom")}
+              </Badge>
+              <span>{scopeText(r.scope)}</span>
             </>
           )
         }
@@ -487,12 +499,12 @@ export function RolePage({ roleKey }: { roleKey: string }) {
           (editable ? (
             <>
               <RoleMenu role={r} editable onDelete={() => setDeleting(true)} />
-              <SaveButton formId={formId} label="Save role" />
+              <SaveButton formId={formId} label={t("role.save")} />
             </>
           ) : (
             <Button asChild variant="primary">
               <Link to="/admin/roles/new" search={{ from: r.key }}>
-                Make a role from it
+                {t("roles.makeFrom")}
               </Link>
             </Button>
           ))
@@ -516,6 +528,7 @@ export function RolePage({ roleKey }: { roleKey: string }) {
 }
 
 export function NewRolePage({ from }: { from?: string }) {
+  const { t } = useTranslation("admin-access");
   const formId = useId();
   const source = useQuery({ ...adm.role(from ?? ""), enabled: Boolean(from) });
   const catalogue = useQuery(adm.permissions());
@@ -523,10 +536,10 @@ export function NewRolePage({ from }: { from?: string }) {
   return (
     <Page>
       <PageHeader
-        breadcrumbs={crumbs}
-        title="New role"
-        description={source.data ? `Starting from what ${source.data.name} allows.` : "Choose what it allows."}
-        actions={ready && <SaveButton formId={formId} label="Make role" />}
+        breadcrumbs={<Crumbs />}
+        title={t("role.newTitle")}
+        description={source.data ? t("role.startingFrom", { name: source.data.name }) : t("role.choose")}
+        actions={ready && <SaveButton formId={formId} label={t("role.make")} />}
       />
       {!ready && !catalogue.isError && <Skeleton className="h-64" />}
       {catalogue.isError && <ErrorState error={catalogue.error} onRetry={() => void catalogue.refetch()} />}

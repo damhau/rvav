@@ -4,6 +4,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { PageHeader } from "@/components/ui/page-header";
@@ -13,6 +14,8 @@ import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
+import { formatList } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { td, th, UserPicker } from "../governance/common";
@@ -22,10 +25,12 @@ type S = components["schemas"];
 
 /** Where a role comes from, in words. */
 export function grantText(g: S["AccessGrant"], project: S["ProjectRef"] | null): string {
-  const where = g.given === "project" ? `in ${project?.name ?? "the project"}` : "for all of rvav";
-  if (g.through === "rvav") return "set by rvav";
-  if (g.through === "group") return `through ${g.group ?? "a group"}, ${where}`;
-  return `given ${where}`;
+  const t = i18n.getFixedT(null, "admin-access");
+  if (g.through === "rvav") return t("grant.rvav");
+  const inProject = g.given === "project";
+  const values = { project: project?.name ?? t("grant.theProject"), group: g.group ?? t("grant.aGroup") };
+  if (g.through === "group") return t(inProject ? "grant.groupInProject" : "grant.groupForRvav", values);
+  return t(inProject ? "grant.givenInProject" : "grant.givenForRvav", values);
 }
 
 function RoleName({ role, linked }: { role: S["RoleRef"]; linked: boolean }) {
@@ -62,20 +67,21 @@ export function AccessExplained({
   /** Who and where, in the toolbar before Show. */
   filters?: React.ReactNode;
 }) {
+  const { t } = useTranslation("admin-access");
   const [show, setShow] = useState<Show>("all");
   return (
     <div className="flex flex-col">
       <div className="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
         {filters}
-        <Field label="Show" htmlFor="explain-show" className="w-48">
+        <Field label={t("explain.show")} htmlFor="explain-show" className="w-48">
           <Select
             id="explain-show"
             value={show}
             onChange={(v) => setShow(v as Show)}
             options={[
-              { value: "all", label: "Every permission" },
-              { value: "held", label: "Those held" },
-              { value: "not-held", label: "Those not held" },
+              { value: "all", label: t("explain.showAll") },
+              { value: "held", label: t("explain.showHeld") },
+              { value: "not-held", label: t("explain.showNotHeld") },
             ]}
           />
         </Field>
@@ -98,6 +104,7 @@ function Explanation({
   linked: boolean;
   show: Show;
 }) {
+  const { t } = useTranslation("admin-access");
   const answer = useQuery(adm.explain(userId, projectId));
   const catalogue = useQuery(adm.permissions());
   if (answer.isError) return <ErrorState error={answer.error} onRetry={() => void answer.refetch()} />;
@@ -105,24 +112,24 @@ function Explanation({
   if (!answer.data || !catalogue.data) return <SkeletonRows rows={6} cols={3} />;
   const a = answer.data;
   const c = catalogue.data;
-  const they = self ? "you" : "they";
-  const their = self ? "your" : "their";
-  const where = a.project ? `in ${a.project.name}` : "for all of rvav";
+  const where = a.project ? t("explain.inProject", { project: a.project.name }) : t("explain.forRvav");
+  const groups = formatList(a.groups);
   const info = new Map(c.items.map((p) => [p.id, p]));
   const shown = a.permissions.filter((p) => show === "all" || p.held === (show === "held"));
   const areas = new Map<string, S["AccessPermission"][]>();
   for (const p of shown) {
-    const area = info.get(p.id)?.area ?? "Day-2 actions";
+    const area = info.get(p.id)?.area ?? t("explain.day2Area");
     areas.set(area, [...(areas.get(area) ?? []), p]);
   }
   return (
     <>
       <div className="flex flex-col gap-2 border-b border-line px-4 py-3 text-body">
         <p>
-          {self ? "Your roles" : `${a.user.name}'s roles`} {where}, with the groups of {their} last sign-in
-          {a.groups.length > 0 ? `: ${a.groups.join(", ")}.` : " (none)."}
+          {a.groups.length > 0
+            ? t(self ? "explain.rolesSelf" : "explain.rolesOther", { name: a.user.name, where, groups })
+            : t(self ? "explain.rolesSelfNone" : "explain.rolesOtherNone", { name: a.user.name, where })}
         </p>
-        <ul aria-label={`Roles that count ${where}`} className="flex flex-col gap-0.5">
+        <ul aria-label={t("explain.rolesThatCount", { where })} className="flex flex-col gap-0.5">
           {a.roles.map((g) => (
             <li key={`${g.role.key}/${g.given}/${g.through}/${g.group ?? ""}`}>
               <RoleName role={g.role} linked={linked} />{" "}
@@ -130,25 +137,23 @@ function Explanation({
             </li>
           ))}
         </ul>
-        <p className="text-secondary text-muted">
-          An API token acts with the roles given to {self ? "you" : "them"} only, never those through a group.
-        </p>
+        <p className="text-secondary text-muted">{t(self ? "explain.tokenSelf" : "explain.tokenOther")}</p>
       </div>
       <div className="overflow-x-auto">
         <table
-          aria-label={`What ${self ? "you" : a.user.name} may do ${where}`}
+          aria-label={self ? t("explain.tableSelf", { where }) : t("explain.tableOther", { name: a.user.name, where })}
           className="w-full border-collapse text-body"
         >
           <thead>
             <tr className="label text-left">
               <th scope="col" className={`${th} pl-4`}>
-                Permission
+                {t("explain.permission")}
               </th>
               <th scope="col" className={th}>
-                Held
+                {t("explain.held")}
               </th>
               <th scope="col" className={th}>
-                Granted by
+                {t("explain.grantedBy")}
               </th>
             </tr>
           </thead>
@@ -170,7 +175,9 @@ function Explanation({
                       {info.get(p.id)?.summary ?? allows(c, [p.id])[0]?.text ?? p.id}
                       <span className="block font-mono text-secondary text-muted">{p.id}</span>
                     </td>
-                    <td className={td}>{p.held ? <Badge tone="ok">Held</Badge> : <Badge>Not held</Badge>}</td>
+                    <td className={td}>
+                      {p.held ? <Badge tone="ok">{t("explain.held")}</Badge> : <Badge>{t("explain.notHeld")}</Badge>}
+                    </td>
                     <td className={`${td} text-secondary`}>
                       {p.granted_by.length > 0 ? (
                         <ul className="flex flex-col gap-0.5">
@@ -183,8 +190,8 @@ function Explanation({
                         </ul>
                       ) : (
                         <span className="text-muted">
-                          No role {they} hold {where} grants it.
-                          {p.id === "approval.project" && " It counts from a role given in the project only."}
+                          {t(self ? "explain.noRoleSelf" : "explain.noRoleOther", { where })}
+                          {p.id === "approval.project" && <> {t("explain.projectOnly")}</>}
                         </span>
                       )}
                     </td>
@@ -209,15 +216,12 @@ export function WhatSomeoneMayDo({
   projectId?: string;
   onChange: (s: { user?: string; project?: string }) => void;
 }) {
+  const { t } = useTranslation("admin-access");
   const { me } = useCurrentProject();
   const projects = useQuery(adm.projectNames());
   const who = userId ?? me.user.id;
   return (
-    <Panel
-      title="What someone may do"
-      description="Each permission, held or not, and which of their roles grants it: the answer to why someone can't."
-      flush
-    >
+    <Panel title={t("explain.someone")} description={t("explain.someoneLead")} flush>
       <AccessExplained
         userId={who}
         projectId={projectId}
@@ -226,16 +230,20 @@ export function WhatSomeoneMayDo({
         filters={
           <>
             <div className="w-72">
-              <UserPicker label="Who" id="explain-user" onPick={(u) => onChange({ user: u.id, project: projectId })} />
+              <UserPicker
+                label={t("explain.who")}
+                id="explain-user"
+                onPick={(u) => onChange({ user: u.id, project: projectId })}
+              />
             </div>
-            <Field label="Where" htmlFor="explain-project" className="w-56">
+            <Field label={t("explain.where")} htmlFor="explain-project" className="w-56">
               <Select
                 id="explain-project"
                 value={projectId ?? RVAV}
                 onChange={(v) => onChange({ user: userId, project: v === RVAV ? undefined : v })}
                 loading={projects.isPending}
                 options={[
-                  { value: RVAV, label: "For all of rvav" },
+                  { value: RVAV, label: t("explain.forAllOfRvav") },
                   ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
                 ]}
               />
@@ -251,29 +259,27 @@ const RVAV = "rvav";
 
 /** Account › What I may do: the signed-in person, in their projects or for all of rvav. */
 export function MyAccessPage({ project }: { project?: string }) {
+  const { t } = useTranslation(["admin-access", "shell"]);
   const { me, projectId: current } = useCurrentProject();
   const navigate = useNavigate();
   const chosen = project ?? (current || RVAV);
   return (
     <Page>
-      <PageHeader
-        title="What I may do"
-        description="Each permission, held or not, and which of your roles grants it."
-      />
-      <Panel title="Your permissions" flush>
+      <PageHeader title={t("shell:topBar.whatIMayDo")} description={t("explain.mineLead")} />
+      <Panel title={t("explain.mine")} flush>
         <AccessExplained
           userId={me.user.id}
           projectId={chosen === RVAV ? undefined : chosen}
           self
           linked={can(me, "access.read")}
           filters={
-            <Field label="Where" htmlFor="my-access-project" className="w-56">
+            <Field label={t("explain.where")} htmlFor="my-access-project" className="w-56">
               <Select
                 id="my-access-project"
                 value={chosen}
                 onChange={(v) => void navigate({ to: "/access", search: { project: v }, replace: true })}
                 options={[
-                  { value: RVAV, label: "For all of rvav" },
+                  { value: RVAV, label: t("explain.forAllOfRvav") },
                   ...me.projects.map((p) => ({ value: p.project.id, label: p.project.name })),
                 ]}
               />

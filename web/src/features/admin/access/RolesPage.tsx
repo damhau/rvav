@@ -3,7 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { UserRound } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
@@ -32,10 +34,10 @@ import { cantDelete, DeleteRole } from "./RolePage";
 
 type S = components["schemas"];
 
-const roleColumns: Column<S["Role"]>[] = [
+const roleColumns = (t: TFunction<"admin-access">): Column<S["Role"]>[] => [
   {
     id: "role",
-    header: "Role",
+    header: t("roles.role"),
     sortValue: (r) => r.name,
     cell: (r) => (
       <>
@@ -48,7 +50,7 @@ const roleColumns: Column<S["Role"]>[] = [
             {r.name}
           </Link>
           <span className="font-mono text-secondary text-muted">{r.key}</span>
-          {r.built_in ? <Badge>Built in</Badge> : <Badge tone="accent">Custom</Badge>}
+          {r.built_in ? <Badge>{t("roles.builtIn")}</Badge> : <Badge tone="accent">{t("roles.custom")}</Badge>}
         </div>
         {r.description && <p className="mt-0.5 text-secondary text-muted">{r.description}</p>}
       </>
@@ -56,20 +58,20 @@ const roleColumns: Column<S["Role"]>[] = [
   },
   {
     id: "given",
-    header: "Given",
-    sortValue: (r) => scopeText[r.scope],
-    cell: (r) => <span className="text-secondary">{scopeText[r.scope]}</span>,
+    header: t("roles.given"),
+    sortValue: (r) => scopeText(r.scope),
+    cell: (r) => <span className="text-secondary">{scopeText(r.scope)}</span>,
   },
   {
     id: "permissions",
-    header: "Permissions",
+    header: t("roles.permissions"),
     sortValue: (r) => r.permissions.length,
     cell: (r) => (
       <span className="text-secondary text-muted">
-        {r.permissions.length === 0 ? "None: everyone signed in holds it" : r.permissions.length}
+        {r.permissions.length === 0 ? t("roles.noPermissions") : r.permissions.length}
         {r.permissions.includes("access.manage") && (
           <Badge tone="warn" className="ml-1.5">
-            Manages access
+            {t("roles.managesAccess")}
           </Badge>
         )}
       </span>
@@ -77,52 +79,49 @@ const roleColumns: Column<S["Role"]>[] = [
   },
   {
     id: "holders",
-    header: "Given to",
+    header: t("roles.givenTo"),
     sortValue: (r) => (r.key === "user" ? Infinity : r.holders),
     cell: (r) => (
       <span className="text-secondary text-muted">
         {r.key === "user"
-          ? "Everyone"
+          ? t("roles.everyone")
           : r.holders === 0
-            ? "Nobody"
-            : `${r.holders} ${r.holders === 1 ? "time" : "times"}`}
+            ? t("roles.nobody")
+            : t("roles.times", { count: r.holders })}
       </span>
     ),
   },
 ];
 
 function Roles({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTranslation("admin-access");
   const navigate = useNavigate();
   const roles = useQuery(adm.roles());
   const [deleting, setDeleting] = useState<S["Role"] | null>(null);
   return (
-    <Panel
-      title="Roles"
-      description="A role's page says, in words, what it allows. A built-in role can't be changed: make one of your own from it."
-      flush
-    >
+    <Panel title={t("roles.tabs.roles")} description={t("roles.panelLead")} flush>
       <DataTable
-        label="Roles"
-        columns={roleColumns}
+        label={t("roles.tabs.roles")}
+        columns={roleColumns(t)}
         rows={roles.data?.items}
         rowKey={(r) => r.key}
         rowLinks
         minWidth={720}
         loading={roles.isPending}
         error={roles.isError && <ErrorState error={roles.error} onRetry={() => void roles.refetch()} />}
-        rowMenuLabel={(r) => `Actions for ${r.name}`}
+        rowMenuLabel={(r) => t("roles.actionsFor", { name: r.name })}
         rowMenu={
           canEdit
             ? (r) => (
                 <>
                   <MenuItem onSelect={() => void navigate({ to: "/admin/roles/new", search: { from: r.key } })}>
-                    Make a role from it
+                    {t("roles.makeFrom")}
                   </MenuItem>
                   {!r.built_in && (
                     <>
                       <MenuSeparator />
                       <MenuItem danger disabled={Boolean(cantDelete(r))} onSelect={() => setDeleting(r)}>
-                        {cantDelete(r) ?? "Delete"}
+                        {cantDelete(r) ?? t("roles.delete")}
                       </MenuItem>
                     </>
                   )}
@@ -136,10 +135,10 @@ function Roles({ canEdit }: { canEdit: boolean }) {
   );
 }
 
-const assignmentColumns: Column<S["RoleAssignment"]>[] = [
+const assignmentColumns = (t: TFunction<"admin-access">): Column<S["RoleAssignment"]>[] => [
   {
     id: "who",
-    header: "Who",
+    header: t("rvavRoles.who"),
     sortValue: (a) => a.user.name,
     cell: (a) => (
       <>
@@ -149,7 +148,7 @@ const assignmentColumns: Column<S["RoleAssignment"]>[] = [
   },
   {
     id: "role",
-    header: "Role",
+    header: t("rvavRoles.role"),
     sortValue: (a) => a.role.name,
     cell: (a) => (
       <Link
@@ -163,11 +162,11 @@ const assignmentColumns: Column<S["RoleAssignment"]>[] = [
   },
   {
     id: "given",
-    header: "Given",
+    header: t("rvavRoles.given"),
     sortValue: (a) => a.created_at,
     cell: (a) => (
       <span className="text-secondary text-muted">
-        {a.fixed ? "Set by rvav" : a.created_at ? <Time iso={a.created_at} /> : ""}
+        {a.fixed ? t("rvavRoles.setByRvav") : a.created_at ? <Time iso={a.created_at} /> : ""}
       </span>
     ),
   },
@@ -175,6 +174,7 @@ const assignmentColumns: Column<S["RoleAssignment"]>[] = [
 
 /** Roles given to users for all of rvav; groups get theirs through a group mapping. */
 function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTranslation("admin-access");
   const qc = useQueryClient();
   const list = useQuery(adm.roleAssignments());
   const roles = useQuery(adm.roles());
@@ -190,10 +190,10 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
     mutationFn: (userId: string) => call(api.POST("/admin/role-assignments", { body: { user_id: userId, role } })),
     onSuccess: (a) => {
       changed();
-      toast.success(`${a.user.name} holds ${a.role.name} for all of rvav`);
+      toast.success(t("rvavRoles.holds", { user: a.user.name, role: a.role.name }));
     },
     onError: (e) => {
-      if (!refused(e)) failed(e, "Not given");
+      if (!refused(e)) failed(e, t("rvavRoles.notGiven"));
     },
   });
   const remove = useMutation({
@@ -202,31 +202,39 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
     onSuccess: (_, a) => {
       changed();
       setTaking(null);
-      toast.success(`${a.role.name} taken away from ${a.user.name}`);
+      toast.success(t("rvavRoles.takenAway", { role: a.role.name, user: a.user.name }));
     },
     onError: (e) => {
       setTaking(null);
-      if (!refused(e)) failed(e, "Not taken away");
+      if (!refused(e)) failed(e, t("rvavRoles.notTakenAway"));
     },
   });
   return (
     <Panel
-      title="Given for all of rvav"
-      description="A role given here counts in every project."
+      title={t("rvavRoles.title")}
+      description={t("rvavRoles.lead")}
       flush
       footer={
         <span className="mr-auto">
-          Groups of the identity provider get a role for all of rvav through a group mapping without a project, in{" "}
-          <Link to="/admin/projects" search={{ tab: "groups" }} className="text-accent underline underline-offset-2">
-            Projects › Identity provider groups
-          </Link>
-          . Roles in a project are given on the project&apos;s page.
+          <Trans
+            t={t}
+            i18nKey="rvavRoles.footer"
+            components={{
+              groups: (
+                <Link
+                  to="/admin/projects"
+                  search={{ tab: "groups" }}
+                  className="text-accent underline underline-offset-2"
+                />
+              ),
+            }}
+          />
         </span>
       }
     >
       <DataTable
-        label="Given for all of rvav"
-        columns={assignmentColumns}
+        label={t("rvavRoles.title")}
+        columns={assignmentColumns(t)}
         rows={list.data?.items}
         rowKey={(a) => a.id ?? `${a.user.id}/${a.role.key}`}
         minWidth={560}
@@ -238,7 +246,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
               <div className="flex flex-wrap items-end gap-2">
                 <div className="w-72">
                   <UserPicker
-                    label="Give someone"
+                    label={t("rvavRoles.giveSomeone")}
                     id="rvav-user"
                     onPick={(u) => {
                       remove.reset();
@@ -246,7 +254,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
                     }}
                   />
                 </div>
-                <Field label="The role" htmlFor="rvav-role" className="w-56">
+                <Field label={t("rvavRoles.theRole")} htmlFor="rvav-role" className="w-56">
                   <Select
                     id="rvav-role"
                     value={role}
@@ -255,13 +263,13 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
                     options={offered.map((r) => ({
                       value: r.key,
                       label: r.name,
-                      group: r.built_in ? "Built in" : "Custom",
+                      group: r.built_in ? t("rvavRoles.builtIn") : t("rvavRoles.custom"),
                     }))}
                   />
                 </Field>
               </div>
               {chosen && !chosen.built_in && chosen.permissions.includes("access.manage") && (
-                <AdminWarning who={`whoever holds ${chosen.name}`} />
+                <AdminWarning who={t("refusal.whoeverHolds", { name: chosen.name })} />
               )}
               <Refusal error={give.error} />
               <Refusal error={remove.error} />
@@ -271,15 +279,11 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
         empty={
           <EmptyState
             icon={UserRound}
-            title="Nobody"
-            body={
-              canEdit
-                ? "No role is given to a user for all of rvav. Give one above."
-                : "No role is given to a user for all of rvav."
-            }
+            title={t("rvavRoles.nobody")}
+            body={canEdit ? t("rvavRoles.noneGiveAbove") : t("rvavRoles.none")}
           />
         }
-        rowMenuLabel={(a) => `Actions for ${a.role.name} of ${a.user.name}`}
+        rowMenuLabel={(a) => t("rvavRoles.actionsFor", { role: a.role.name, user: a.user.name })}
         rowMenu={
           canEdit
             ? (a) =>
@@ -291,7 +295,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
                       setTaking(a);
                     }}
                   >
-                    Take it away
+                    {t("rvavRoles.takeAway")}
                   </MenuItem>
                 )
             : undefined
@@ -301,10 +305,10 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setTaking(null)}
-          title={`Take ${taking.role.name} away from ${taking.user.name}?`}
-          description={`They lose what ${taking.role.name} allows for all of rvav, unless a group or a project gives it to them.`}
-          consequences="Requests and approvals they started stay as they are."
-          confirmLabel="Take it away"
+          title={t("rvavRoles.takeTitle", { role: taking.role.name, user: taking.user.name })}
+          description={t("rvavRoles.takeBody", { role: taking.role.name })}
+          consequences={t("rvavRoles.takeConsequences")}
+          confirmLabel={t("rvavRoles.takeAway")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(taking)}
         />
@@ -322,19 +326,20 @@ export interface RolesSearch {
 }
 
 export function RolesPage({ tab, user, project }: RolesSearch) {
+  const { t } = useTranslation(["admin-access", "shell"]);
   const { me } = useCurrentProject();
   const navigate = useNavigate();
   const canEdit = can(me, "access.manage");
   return (
     <Page>
       <PageHeader
-        title="Roles"
-        description="What each role allows, where it can be given, and who holds it."
+        title={t("shell:nav.admin.roles")}
+        description={t("roles.lead")}
         actions={
           canEdit && (
             <Button asChild variant="primary">
               <Link to="/admin/roles/new" search={{}}>
-                New role
+                {t("roles.new")}
               </Link>
             </Button>
           )
@@ -344,10 +349,10 @@ export function RolesPage({ tab, user, project }: RolesSearch) {
         value={tab ?? "roles"}
         onValueChange={(v) => void navigate({ to: "/admin/roles", search: { tab: v as RolesTab }, replace: true })}
       >
-        <TabsList aria-label="Roles sections">
-          <TabsTrigger value="roles">Roles</TabsTrigger>
-          <TabsTrigger value="rvav">For all of rvav</TabsTrigger>
-          <TabsTrigger value="explain">What someone may do</TabsTrigger>
+        <TabsList aria-label={t("roles.sections")}>
+          <TabsTrigger value="roles">{t("roles.tabs.roles")}</TabsTrigger>
+          <TabsTrigger value="rvav">{t("roles.tabs.rvav")}</TabsTrigger>
+          <TabsTrigger value="explain">{t("roles.tabs.explain")}</TabsTrigger>
         </TabsList>
         <TabsContent value="roles" className="pt-4">
           <Roles canEdit={canEdit} />
