@@ -20,6 +20,7 @@ import {
   Waypoints,
 } from "lucide-react";
 import { type ElementType, type ReactNode, type RefObject, useCallback, useMemo, useRef, useState } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { type CanvasEdge, type CanvasGraph, type CanvasNode, NodeDetails, vmGraph, within } from "@/components/canvas";
 import {
@@ -103,7 +104,7 @@ export default function VmDesigner({ name, design }: { name: string; design: Des
   const bp = useMemo(() => edits.blueprintOfText(text), [text]);
   const graph = useMemo(() => vmGraph(bp, edits.prefix, { designed: true }), [bp]);
   const vms = useMemo(() => vmOptions(bp, t("vmDesign.theVmOption")), [bp, t]);
-  const { box, focusNext, apply } = useDesigner(design, setSelected);
+  const { box, focusNext, apply, history, status } = useDesigner(design, setSelected);
 
   const server = design.serverProblems;
   // The blueprint's only: the rest are on their lines in the editor.
@@ -144,11 +145,11 @@ export default function VmDesigner({ name, design }: { name: string; design: Des
           selected,
           onSelect: setSelected,
           renderDetails,
-          actions: <HistoryButtons design={design} />,
+          actions: <HistoryButtons design={history} />,
           design: readOnly
             ? undefined
             : {
-                onConnect: (source, target) => apply(() => edits.connect(text, source, target)),
+                onConnect: (source, target) => connectAndSay(apply, t, text, source, target),
                 drop: { type: partType, onDrop: (v, target) => isPart(v) && add(v, target) },
               },
         }}
@@ -156,9 +157,33 @@ export default function VmDesigner({ name, design }: { name: string; design: Des
       {!readOnly && adding && (
         <AddDialog adding={adding} onClose={() => setAdding(null)} text={text} bp={bp} vms={vms} apply={apply} />
       )}
+      {status}
     </div>
   );
 }
+
+/** Connects two nodes, and says what it wrote. */
+function connectAndSay(
+  apply: Ctx["apply"],
+  t: TFunction<"admin-catalog">,
+  text: string,
+  source: string,
+  target: string,
+  then?: Then,
+): boolean {
+  let says = "";
+  return apply(
+    () => {
+      const c = edits.connection(text, source, target);
+      says = c.says;
+      return c.text;
+    },
+    { ...then, says: () => t("vmDesign.said.connected", { says }) },
+  );
+}
+
+/** A node's connections, as its details list them. */
+const edgesOf = (graph: CanvasGraph, id: string) => graph.edges.filter((e) => e.source === id || e.target === id);
 
 function vmOptions(bp: Raw, theVm: string): Option[] {
   if (!isMulti(bp)) return [{ value: edits.componentId(edits.singleKey), label: theVm }];
@@ -490,7 +515,7 @@ function AddDialog({
 function NodePanel({ node, ctx }: { node: CanvasNode; ctx: Ctx }) {
   const { t } = useTranslation(["admin-catalog", "canvas"]);
   const { text, graph, apply } = ctx;
-  useFocusNext(ctx.focusNext);
+  useFocusNext(ctx.focusNext, text);
   const id = node.id;
   const [refusal, setRefusal] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -500,7 +525,12 @@ function NodePanel({ node, ctx }: { node: CanvasNode; ctx: Ctx }) {
     const ok = apply(make, { ...then, onError: (m) => setErrors((x) => ({ ...x, [field]: m })) });
     if (ok) setErrors(({ [field]: _, ...rest }) => rest);
   };
-  const remove = () => apply(() => edits.removeNode(text, id), { select: null, onError: setRefusal });
+  const remove = () =>
+    apply(() => edits.removeNode(text, id), {
+      select: null,
+      says: t("vmDesign.said.removed", { name: node.title }),
+      onError: setRefusal,
+    });
 
   return (
     <section aria-label={t("canvas:selected", { title: node.title })} className={panelClass}>
@@ -598,6 +628,40 @@ function KeyProp({ at, stem }: { at: PropsCtx; stem: string }) {
   );
 }
 
+/** A component's anti-affinity: two VMs or more are kept apart, so it waits for a count that may give them. */
+function AntiAffinity({ at }: { at: PropsCtx }) {
+  const { t } = useTranslation("admin-catalog");
+  const apart = at.data.anti_affinity === true;
+  const lone = edits.fewerThanTwo(at.data.count);
+  const error = at.errors.anti_affinity;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="vd-anti_affinity"
+          checked={apart}
+          disabled={lone && !apart}
+          aria-describedby={lone ? "vd-anti_affinity-note" : undefined}
+          onChange={(v) => at.commit("anti_affinity", () => edits.setField(at.text, at.id, "anti_affinity", v))}
+        />
+        <label htmlFor="vd-anti_affinity" className="text-body">
+          {t("vmDesign.field.antiAffinity")}
+        </label>
+      </div>
+      {lone && (
+        <p id="vd-anti_affinity-note" className="text-secondary text-muted">
+          {t("vmDesign.field.antiAffinityOne")}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="text-secondary text-bad">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Properties({
   node,
   ctx,
@@ -665,16 +729,7 @@ function Properties({
             placeholder={str(bp.naming)}
             mono
           />
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="vd-anti_affinity"
-              checked={data.anti_affinity === true}
-              onChange={(v) => commit("anti_affinity", () => edits.setField(text, id, "anti_affinity", v))}
-            />
-            <label htmlFor="vd-anti_affinity" className="text-body">
-              {t("vmDesign.field.antiAffinity")}
-            </label>
-          </div>
+          <AntiAffinity at={at} />
         </>
       );
       break;
@@ -776,11 +831,20 @@ function Connections({
 }) {
   const { t } = useTranslation("admin-catalog");
   const [refusal, setRefusal] = useState<string | null>(null);
-  const edges = graph.edges.filter((e) => e.source === node.id || e.target === node.id);
-  const remove = (e: CanvasEdge, i: number) => {
-    const next = edges[i + 1] ?? edges[i - 1];
+  const edges = edgesOf(graph, node.id).map((e) => ({ edge: e, why: edits.edgeRemovable(text, e.id) }));
+  const removable = edges.filter((e) => e.why === null).map((e) => e.edge);
+  // The focus goes to the Disconnect where this one was, else the one before, else Connect to.
+  const remove = (e: CanvasEdge) => {
+    const at = removable.indexOf(e);
     apply(() => edits.removeEdge(text, e.id), {
-      focus: next ? `vd-edge-${next.id}` : "vd-connect",
+      focus: (next) => {
+        const left = edgesOf(vmGraph(edits.blueprintOfText(next), edits.prefix, { designed: true }), node.id).filter(
+          (x) => edits.edgeRemovable(next, x.id) === null,
+        );
+        const to = left[at] ?? left[at - 1];
+        return to ? `vd-edge-${to.id}` : "vd-connect";
+      },
+      says: t("vmDesign.said.disconnected", { connection: e.description }),
       onError: setRefusal,
     });
   };
@@ -791,8 +855,7 @@ function Connections({
         <p className="text-muted">{t("vmDesign.panel.noConnections")}</p>
       ) : (
         <ul aria-label={t("vmDesign.panel.connections")} className="flex flex-col gap-1">
-          {edges.map((e, i) => {
-            const why = edits.edgeRemovable(text, e.id);
+          {edges.map(({ edge: e, why }) => {
             return (
               <li key={e.id} className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0">{e.description}</span>
@@ -803,7 +866,7 @@ function Connections({
                     variant="quiet"
                     className="ml-auto"
                     aria-label={t("vmDesign.panel.removeConnection", { connection: e.description })}
-                    onClick={() => remove(e, i)}
+                    onClick={() => remove(e)}
                   >
                     <Unlink aria-hidden />
                     {t("vmDesign.panel.disconnect")}
@@ -838,14 +901,29 @@ function ConnectTo({
 }) {
   const { t } = useTranslation("admin-catalog");
   const [to, setTo] = useState("");
+  const titles = new Map(graph.nodes.map((n) => [n.id, n.title]));
+  // A disk is told apart by the VMs it's attached to, in its name (an option's meta isn't): each component's first is "Disk 1".
+  const attachedTo = (id: string) =>
+    graph.edges
+      .filter((e) => e.kind === "disk" && e.source === id)
+      .map((e) => titles.get(e.target) ?? e.target)
+      .join(", ");
   const options = graph.nodes
     .filter((n) => n.id !== node.id)
-    .map((n) => ({
-      value: n.id,
-      label: n.title,
-      meta: n.subtitle,
-      group: t(`vmDesign.part.${groupOf(n.id)}`),
-    }));
+    .map((n) => {
+      const vms = edits.kindOf(n.id) === "disk" ? attachedTo(n.id) : undefined;
+      return {
+        value: n.id,
+        label:
+          vms === undefined
+            ? n.title
+            : vms
+              ? t("vmDesign.diskOf", { disk: n.title, vms })
+              : t("vmDesign.diskOption", { disk: n.title }),
+        meta: vms === undefined ? n.subtitle : undefined,
+        group: t(`vmDesign.part.${groupOf(n.id)}`),
+      };
+    });
   const preview = useMemo(() => {
     if (!to) return null;
     try {
@@ -855,7 +933,7 @@ function ConnectTo({
     }
   }, [text, node.id, to]);
   const connect = () => {
-    if (apply(() => edits.connect(text, node.id, to), { focus: "vd-connect" })) setTo("");
+    if (connectAndSay(apply, t, text, node.id, to, { focus: "vd-connect" })) setTo("");
   };
   return (
     <div className="flex flex-col gap-1.5">
@@ -867,6 +945,7 @@ function ConnectTo({
             options={options}
             placeholder={t("vmDesign.panel.chooseNode")}
             onChange={setTo}
+            listLabel={t("vmDesign.panel.connectTo")}
             aria-describedby="vd-connect-says"
           />
           <Button size="sm" disabled={!preview || "refused" in preview} onClick={connect}>

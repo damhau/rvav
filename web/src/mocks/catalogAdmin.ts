@@ -10,6 +10,7 @@ import { ownSources } from "@/forms/useFieldValues";
 import { eachStep, parseUrl, readComposite, secretInMessages, variablesRead } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
+import { vmBlueprintProblems } from "./vmBlueprint";
 import { constraintWarnings } from "./constraints";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { workflowRegistrations } from "./extensibility";
@@ -702,7 +703,7 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
         }
       });
     });
-  }
+  } else errors.push(...vmBlueprintProblems(def.blueprint, `${prefix}/blueprint`));
   return errors;
 }
 

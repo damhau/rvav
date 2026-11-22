@@ -131,4 +131,20 @@ test.describe("in French", () => {
       await scan(page, `/resources on a phone, in French, ${name}`);
     });
   }
+
+  test("a draft's buttons at 320 px stay inside its box", async ({ page }) => {
+    await page.goto("/admin/catalog-items");
+    await loaded(page);
+    await page.getByRole("link", { name: "Three-tier application" }).first().click();
+    await page.getByRole("button", { name: "Nouveau brouillon" }).click();
+    await page.getByRole("tab", { name: "Définition" }).click();
+    const draft = page.getByRole("region", { name: /^Brouillon [\d.]+$/ });
+    const save = draft.getByRole("button", { name: "Enregistrer le brouillon" });
+    await expect(save).toBeVisible();
+    const box = (await draft.boundingBox())!;
+    for (const name of ["Annuler les modifications", "Enregistrer le brouillon"]) {
+      const b = (await draft.getByRole("button", { name }).boundingBox())!;
+      expect(b.x + b.width, name).toBeLessThanOrEqual(box.x + box.width);
+    }
+  });
 });

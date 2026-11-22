@@ -624,13 +624,16 @@ describe("vmGraph", () => {
       pointer: "/definition/blueprint/components/1/disks/0",
       relations: ["Attached to db"],
     });
-    expect(node(g, "disk@0")).toMatchObject({ title: "Disk 1", pointer: "/definition/blueprint/disks/0" });
+    // Its badge says Disk: named "Disk 1", not "Disk Disk 1".
+    expect(node(g, "disk@0")).toMatchObject({ title: "1", badge: "Disk", pointer: "/definition/blueprint/disks/0" });
+    expect(node(g, "component:web").relations).toContain("Disk 1, 20 GB");
     expect(g.edges.filter((e) => e.kind === "disk").map((e) => e.id)).toEqual([
       "attach:disk@0>component:web",
       "attach:disk:db:0>component:db",
       "attach:disk@0>component:cache",
     ]);
     expect(edge(g, "attach:disk@0>component:web")?.description).toBe("Disk 1 attached to Web");
+    expect(edge(g, "attach:disk:db:0>component:db")?.description).toBe("Disk data attached to db");
     expect(node(g, "component:db").relations).toContain("Disk data, 100 GB");
     const single = vmGraph({ kind: "vm", disks: [{ size_gb: 50 }] }, "/definition/blueprint", { designed: true });
     expect(node(single, "disk:vm:0").pointer).toBe("/definition/blueprint/disks/0");

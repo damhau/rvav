@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { EditorView } from "@codemirror/view";
 import { useRef, useState } from "react";
 import { parse, stringify } from "yaml";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/render";
 import YamlEditor, { type EditorHistory, type YamlEditorHandle } from "../YamlEditor";
 import VmDesigner, { partType } from "./VmDesigner";
@@ -115,9 +115,9 @@ describe("the VM designer", longTests, () => {
     renderWithQuery(<Harness initial={starter} />);
     await user.click(within(palette()).getByRole("button", { name: "VM" }));
     const dialog = await screen.findByRole("dialog", { name: "Add a VM" });
-    expect(within(dialog).getByRole("textbox", { name: "Key of the VM there is" })).toHaveFocus();
+    expect(within(dialog).getByRole("textbox", { name: "Key of the existing VM" })).toHaveFocus();
     expect(within(dialog).getByRole("textbox", { name: "Key" })).toHaveValue("vm2");
-    await fill(user, dialog, { "Key of the VM there is": "web", Key: "db", Title: "Database" });
+    await fill(user, dialog, { "Key of the existing VM": "web", Key: "db", Title: "Database" });
 
     expect(blueprint().components).toEqual([{ key: "web" }, { key: "db", title: "Database" }]);
     expect(blueprint().template).toBe("tpl-rhel9");
@@ -208,6 +208,125 @@ describe("the VM designer", longTests, () => {
     expect(component("web").depends_on).toEqual(["db"]);
     await user.click(screen.getByRole("button", { name: "Redo" }));
     expect(component("web").depends_on).toBeUndefined();
+  });
+
+  it("says what each edit did in a live region: connect, disconnect, remove, undo and redo", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={twoVms} />);
+    const status = screen.getByRole("status");
+    fireEvent.click(vm("Database"));
+    const panel = screen.getByRole("region", { name: "Selected: Database" });
+    await pick(user, within(panel).getByRole("combobox", { name: "Connect to" }), /^Web servers/);
+    await user.click(within(panel).getByRole("button", { name: "Connect" }));
+    expect(status).toHaveTextContent(/^Connected\. Builds Web servers after Database\.$/);
+    await user.click(within(panel).getByRole("button", { name: "Disconnect: Web servers built after Database" }));
+    expect(status).toHaveTextContent(/^Disconnected: Web servers built after Database\.$/);
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(status).toHaveTextContent(/^Change undone\.$/);
+    expect(component("web").depends_on).toEqual(["db"]);
+    await user.click(screen.getByRole("button", { name: "Redo" }));
+    expect(status).toHaveTextContent(/^Change redone\.$/);
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    const once = status.textContent;
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    // The same words again are said again: they differ by a no-break space.
+    expect(status).toHaveTextContent(/^Change undone\.$/);
+    expect(status.textContent).not.toBe(once);
+    expect(component("web").depends_on).toBeUndefined();
+    await user.click(screen.getByRole("button", { name: "Redo" }));
+    fireEvent.click(vm("Database"));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect(status).toHaveTextContent(/^Removed: Database\.$/);
+  });
+
+  it("gives the focus to the next Disconnect, or to Connect to when the others have none", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(
+      <Harness
+        initial={definition({
+          kind: "vm",
+          bindings: { network: "inputs.network" },
+          components: [{ key: "web", groups: ["websg"], depends_on: ["db"] }, { key: "db" }],
+          security_groups: [{ key: "websg" }],
+        })}
+      />,
+    );
+    fireEvent.click(vm("web"));
+    const panel = screen.getByRole("region", { name: "Selected: web" });
+    const items = () => within(within(panel).getByRole("list", { name: "Connections" })).getAllByRole("listitem");
+    // The blueprint's network comes first, and can't be disconnected here.
+    expect(items()[0]).toHaveTextContent(/inputs\.network.*change it in the YAML/);
+    expect(within(items()[0]!).queryByRole("button")).not.toBeInTheDocument();
+    const [first, second] = within(panel).getAllByRole("button", { name: /^Disconnect: / });
+    const next = second!.getAttribute("aria-label");
+    await user.click(first!);
+    expect(within(panel).getByRole("button", { name: next! })).toHaveFocus();
+    await user.click(within(panel).getByRole("button", { name: next! }));
+    expect(within(panel).getByRole("combobox", { name: "Connect to" })).toHaveFocus();
+    expect(component("web")).toEqual({ key: "web" });
+  });
+
+  it("keeps VMs apart only when the count can give two or more, saying so", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={twoVms} />);
+    fireEvent.click(vm("Database"));
+    const apart = screen.getByRole("checkbox", { name: "Keep its VMs on different hosts" });
+    expect(apart).toBeDisabled();
+    expect(apart).toHaveAccessibleDescription(
+      "Takes two VMs or more: give the component a count of two or more, or CEL over the inputs.",
+    );
+    const count = screen.getByRole("textbox", { name: "Count" });
+    await user.type(count, "inputs.db_nodes{Enter}");
+    expect(screen.getByRole("checkbox", { name: "Keep its VMs on different hosts" })).toBeEnabled();
+    await user.click(screen.getByRole("checkbox", { name: "Keep its VMs on different hosts" }));
+    expect(component("db")).toMatchObject({ count: "inputs.db_nodes", anti_affinity: true });
+    await user.clear(screen.getByRole("textbox", { name: "Count" }));
+    await user.type(screen.getByRole("textbox", { name: "Count" }), "1{Enter}");
+    expect(screen.getByText(/which takes two or more: turn that off first/)).toBeInTheDocument();
+    expect(component("db").count).toBe("inputs.db_nodes");
+  });
+
+  it("names each disk in Connect to by the VMs it is attached to, in a list named for the field", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(
+      <Harness
+        initial={definition({
+          kind: "vm",
+          components: [
+            { key: "web", title: "Web servers", disks: [{ size_gb: 20 }] },
+            { key: "db", title: "Database", disks: [{ size_gb: 100 }] },
+            { key: "cache" },
+          ],
+        })}
+      />,
+    );
+    expect(node(/^Disk 1\. Size: 20 GB/)).toBeDefined();
+    fireEvent.click(vm("cache"));
+    await user.click(screen.getByRole("combobox", { name: "Connect to" }));
+    const list = await screen.findByRole("listbox", { name: "Connect to" });
+    expect(
+      within(list)
+        .getAllByRole("option")
+        .map((o) => o.textContent)
+        .filter((n) => n?.startsWith("Disk")),
+    ).toEqual(["Disk 1 of Web servers", "Disk 1 of Database"]);
+  });
+
+  it("draws a read-only YAML's repeated key without React's duplicate key errors", () => {
+    const error = vi.spyOn(console, "error");
+    renderWithQuery(
+      <Harness
+        initial={definition({
+          kind: "vm",
+          bindings: { network: "inputs.network" },
+          disks: [{ size_gb: 10 }],
+          components: [{ key: "web" }, { key: "web", count: 2 }],
+        })}
+      />,
+    );
+    expect(screen.getByRole("note")).toHaveTextContent("Two entries of components have the key web.");
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it("refuses to remove the item's last VM, saying why", async () => {

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 // An item's topology on the canvas (D1.2, ADR-0032): beside its YAML in
 // catalog administration, following the text as it is typed, and on its
@@ -35,8 +35,8 @@ test("a three-tier item's topology beside its YAML, as it is edited", async ({ p
   const node = (name: RegExp) => topology.getByRole("button", { name });
   await expect(node(/^VMs Web\. web\. Count: inputs\.web_nodes\..*On separate hosts\..*In Web$/)).toBeVisible();
   await expect(node(/^1 VM Application\. app\./)).toBeVisible();
-  await expect(node(/^1 VM Database\. db\..*Disk Disk 1, 200 GB\..*In grp-backup-clients$/)).toBeVisible();
-  await expect(node(/^Disk Disk 1\. Size: 200 GB\. Policy: gold\. Attached to Database$/)).toBeVisible();
+  await expect(node(/^1 VM Database\. db\..*Disk 1, 200 GB\..*In grp-backup-clients$/)).toBeVisible();
+  await expect(node(/^Disk 1\. Size: 200 GB\. Policy: gold\. Attached to Database$/)).toBeVisible();
   await expect(node(/^Segment Application\. app\. Made for each deployment\./)).toBeVisible();
   await expect(
     node(/^Group Database\..*Allows PostgreSQL from Application\. Drops any service from Any/),
@@ -66,6 +66,63 @@ test("a three-tier item's topology beside its YAML, as it is edited", async ({ p
   await expect(page.getByText(/doesn't parse/)).toHaveCount(0);
   await expect(node(/^1 VM Application\. app\./)).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+/** Every node of the canvas inside its frame: none cut by its edge. */
+async function nodesInside(canvas: Locator) {
+  const frame = (await canvas.locator(".react-flow").boundingBox())!;
+  const boxes = await canvas.locator(".react-flow__node").evaluateAll((els) =>
+    els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { id: (e as HTMLElement).dataset.id, left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    }),
+  );
+  return boxes.filter(
+    (b) =>
+      b.left < frame.x - 1 ||
+      b.top < frame.y - 1 ||
+      b.right > frame.x + frame.width + 1 ||
+      b.bottom > frame.y + frame.height + 1,
+  );
+}
+
+const scale = (canvas: Locator) =>
+  canvas.locator(".react-flow__viewport").evaluate((e) => new DOMMatrix(getComputedStyle(e).transform).a);
+
+test("the canvas fits its graph again when the window is resized or a connection moves it", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/admin/catalog-items");
+  await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "Three-tier application" }).click();
+  await page.getByRole("button", { name: "New draft" }).click();
+  await page.getByRole("tab", { name: "Definition" }).click();
+  const topology = page.getByRole("region", { name: "Topology of Three-tier application" });
+  await expect(topology.getByRole("button", { name: /^1 VM Database\./ })).toBeVisible();
+  await expect.poll(() => nodesInside(topology)).toEqual([]);
+
+  // Narrower: drawn smaller, all of it still in sight.
+  await page.setViewportSize({ width: 1300, height: 900 });
+  await expect.poll(() => nodesInside(topology)).toEqual([]);
+
+  // Built one after the other: three ranks, not one, fitted again.
+  await topology.getByRole("button", { name: /^1 VM Database\./ }).click();
+  const panel = page.getByRole("region", { name: "Selected: Database" });
+  for (const tier of [/^Application/, /^Web/]) {
+    await panel.getByRole("combobox", { name: "Connect to" }).click();
+    await page.getByRole("group", { name: "VM" }).getByRole("option", { name: tier }).click();
+    await panel.getByRole("button", { name: "Connect", exact: true }).click();
+  }
+  await expect(topology.getByRole("button", { name: /^VMs Web\..*Built after Database$/ })).toBeVisible();
+  await expect.poll(() => nodesInside(topology)).toEqual([]);
+
+  // Zoomed in, the view is the person's: a resize keeps it.
+  await topology.getByRole("button", { name: "Zoom in" }).click();
+  await page.waitForTimeout(400);
+  const zoomed = await scale(topology);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.waitForTimeout(400);
+  expect(await scale(topology)).toBeCloseTo(zoomed, 3);
+  await topology.getByRole("button", { name: "Fit to view" }).click();
+  await expect.poll(() => nodesInside(topology)).toEqual([]);
 });
 
 test("what a three-tier item builds, on its request form", async ({ page }) => {

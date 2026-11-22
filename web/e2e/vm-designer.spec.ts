@@ -117,7 +117,7 @@ const english: Words = {
   addVm: "Add a VM",
   addNetwork: "Add a network",
   addDisk: "Add a disk",
-  firstKey: "Key of the VM there is",
+  firstKey: "Key of the existing VM",
   key: "Key",
   title: "Title",
   size: "Size in GB",

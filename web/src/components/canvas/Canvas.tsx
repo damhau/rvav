@@ -347,6 +347,8 @@ function connectDot(direction: CanvasDirection, w: number, h: number) {
   };
 }
 
+const fitOptions = { padding: 0.12, maxZoom: 1 };
+
 function Graph({
   graph,
   label,
@@ -409,16 +411,35 @@ function Graph({
     if (outside) void rf.setCenter(b.x + b.width / 2, b.y + b.height / 2, { zoom });
   });
 
-  // A changed graph (an edit in the designer) is fitted again.
-  const shape = order.join("|");
+  // A changed layout is fitted again: a new node, or a connection that moves
+  // the others (built after another, a VM drawn a rank down).
+  const shape = [...layout.boxes]
+    .map(([id, b]) => `${id}@${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.width)}`)
+    .join("|");
   const first = useRef(true);
   useEffect(() => {
     if (first.current) {
       first.current = false;
       return;
     }
-    void rf.fitView({ padding: 0.12, maxZoom: 1 });
+    void rf.fitView(fitOptions);
   }, [shape, rf]);
+
+  // A resized window fits the graph again, unless the view was zoomed or
+  // panned: that one is the person's.
+  const chosen = useRef(false);
+  useEffect(() => {
+    const el = wrapper.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let width = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return;
+      width = el.clientWidth;
+      if (!chosen.current) void rf.fitView(fitOptions);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [rf]);
 
   const moveTo = (id: string | undefined) => {
     if (!id) return;
@@ -515,7 +536,10 @@ function Graph({
         minZoom={0.25}
         maxZoom={1.5}
         fitView
-        fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
+        fitViewOptions={fitOptions}
+        onMoveEnd={(e) => {
+          if (e) chosen.current = true;
+        }}
         ariaLabelConfig={ariaLabels}
       >
         <Background gap={18} size={1} />
@@ -523,13 +547,31 @@ function Graph({
           position="bottom-left"
           className="flex flex-col overflow-hidden rounded-md border border-line bg-surface shadow-sm"
         >
-          <ZoomButton label={t("zoomIn")} onClick={() => void rf.zoomIn()}>
+          <ZoomButton
+            label={t("zoomIn")}
+            onClick={() => {
+              chosen.current = true;
+              void rf.zoomIn();
+            }}
+          >
             <Plus />
           </ZoomButton>
-          <ZoomButton label={t("zoomOut")} onClick={() => void rf.zoomOut()}>
+          <ZoomButton
+            label={t("zoomOut")}
+            onClick={() => {
+              chosen.current = true;
+              void rf.zoomOut();
+            }}
+          >
             <Minus />
           </ZoomButton>
-          <ZoomButton label={t("fit")} onClick={() => void rf.fitView({ padding: 0.12, maxZoom: 1 })}>
+          <ZoomButton
+            label={t("fit")}
+            onClick={() => {
+              chosen.current = false;
+              void rf.fitView(fitOptions);
+            }}
+          >
             <Maximize />
           </ZoomButton>
         </Panel>

@@ -28,6 +28,7 @@ export function Select({
   disabled,
   className,
   onCloseAutoFocus,
+  listLabel,
   ...aria
 }: {
   "aria-invalid"?: boolean;
@@ -43,6 +44,8 @@ export function Select({
   className?: string;
   /** When the list closes and gives the focus back to the select: prevent it to put the focus elsewhere. */
   onCloseAutoFocus?: (e: Event) => void;
+  /** The open list's name, such as the field's label. */
+  listLabel?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -75,6 +78,7 @@ export function Select({
           position="popper"
           sideOffset={4}
           onCloseAutoFocus={onCloseAutoFocus}
+          aria-label={listLabel}
           className="z-50 max-h-72 max-w-[var(--radix-select-content-available-width)] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-line bg-surface shadow-pop"
         >
           <S.Viewport className="p-1">

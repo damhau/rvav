@@ -3,9 +3,10 @@
 // from the editor's text to a new text, written into the editor as one step
 // of its history, so Undo and Redo (the buttons, Ctrl+Z, and Ctrl+Shift+Z or
 // Ctrl+Y outside the text fields) go back through typed and designed changes
-// alike. The selected node's details are its editor, under the canvas.
+// alike. The selected node's details are its editor, under the canvas. What
+// an edit did is said in a live region, for who doesn't see the canvas.
 import { Redo2, Undo2 } from "lucide-react";
-import { type ReactNode, type RefObject, useEffect, useRef } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,10 +30,15 @@ export interface Design {
   serverProblems?: { text: string; errors: FieldError[] };
 }
 
-/** Where an edit leaves the designer: the node to select, the element of its details to focus, and what to do with a refusal instead of a toast. */
+/**
+ * Where an edit leaves the designer: the node to select, the element of its
+ * details to focus (or the one to focus in the text it made), what to say
+ * it did, and what to do with a refusal instead of a toast.
+ */
 export interface Then {
   select?: string | null;
-  focus?: string;
+  focus?: string | ((next: string) => string);
+  says?: string | (() => string);
   onError?: (message: string) => void;
 }
 
@@ -50,16 +56,23 @@ export function PanelHeading({ badge, children }: { badge?: string; children: Re
   );
 }
 
-/** Focuses what an edit asked for, once its details are drawn. */
-export function useFocusNext(ref: RefObject<string | null>) {
+/**
+ * Focuses what an edit asked for, once its details are drawn. Given the
+ * editor's text, it tries once in the details that text draws: an element
+ * that isn't there then is dropped, so it can't take the focus later.
+ */
+export function useFocusNext(ref: RefObject<string | null>, text?: string) {
+  const drawn = useRef(text);
   useEffect(() => {
+    const changed = drawn.current !== text;
+    drawn.current = text;
     const id = ref.current;
     if (!id) return;
     const el = document.getElementById(id);
     if (el) {
       ref.current = null;
       el.focus();
-    }
+    } else if (changed) ref.current = null;
   });
 }
 
@@ -73,9 +86,25 @@ export function useFocusNext(ref: RefObject<string | null>) {
  * text a moment later).
  */
 export function useDesigner(design: Design, setSelected: (id: string | null) => void) {
+  const { t } = useTranslation("canvas");
   const box = useRef<HTMLDivElement>(null);
   const focusNext = useRef<string | null>(null);
-  const { undo, redo, onEdit } = design;
+  // A said text again changes by a no-break space, so it's said again.
+  const [said, setSaid] = useState({ text: "", n: 0 });
+  const say = (text: string) => setSaid((s) => ({ text, n: s.n + 1 }));
+  const { onEdit, history } = design;
+  const undo = () => {
+    if (!history.canUndo) return;
+    design.undo();
+    say(t("designer.undone"));
+  };
+  const redo = () => {
+    if (!history.canRedo) return;
+    design.redo();
+    say(t("designer.redone"));
+  };
+  const keys = useRef({ undo, redo });
+  keys.current = { undo, redo };
 
   useEffect(() => {
     const el = box.current;
@@ -86,15 +115,15 @@ export function useDesigner(design: Design, setSelected: (id: string | null) => 
       const k = e.key.toLowerCase();
       if (k === "z" && !e.shiftKey) {
         e.preventDefault();
-        undo();
+        keys.current.undo();
       } else if ((k === "z" && e.shiftKey) || k === "y") {
         e.preventDefault();
-        redo();
+        keys.current.redo();
       }
     };
     el.addEventListener("keydown", onKey);
     return () => el.removeEventListener("keydown", onKey);
-  }, [undo, redo]);
+  }, []);
 
   useEffect(() => {
     const el = box.current;
@@ -124,8 +153,10 @@ export function useDesigner(design: Design, setSelected: (id: string | null) => 
 
   /** Makes an edit; false when it was refused (said in a toast, or to then.onError). */
   const apply = (make: () => string, then?: Then): boolean => {
+    let next: string;
     try {
-      onEdit(make());
+      next = make();
+      onEdit(next);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (then?.onError) then.onError(message);
@@ -133,11 +164,19 @@ export function useDesigner(design: Design, setSelected: (id: string | null) => 
       return false;
     }
     if (then?.select !== undefined) setSelected(then.select);
-    if (then?.focus) focusNext.current = then.focus;
+    if (then?.focus) focusNext.current = typeof then.focus === "function" ? then.focus(next) : then.focus;
+    if (then?.says) say(typeof then.says === "function" ? then.says() : then.says);
     return true;
   };
 
-  return { box, focusNext, apply };
+  const status = (
+    <p role="status" className="sr-only">
+      {said.text}
+      {said.n % 2 ? "\u00a0" : ""}
+    </p>
+  );
+
+  return { box, focusNext, apply, history: { ...design, undo, redo }, status };
 }
 
 /** Undo and Redo, over the canvas: they go back through the editor's history. */

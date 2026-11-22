@@ -305,7 +305,7 @@ export default function CompositeDesigner({
     [targetsQuery.data, server, entitlements, variables.data],
   );
 
-  const { box, focusNext, apply } = useDesigner(design, setSelected);
+  const { box, focusNext, apply, history, status } = useDesigner(design, setSelected);
 
   const ctx: PanelContext = { text, def: def ?? {}, targets, targetsQuery, apply, focusNext, setSelected, addInto };
   const renderDetails = (node: CanvasNode): ReactNode => {
@@ -338,7 +338,7 @@ export default function CompositeDesigner({
         <Plus aria-hidden />
         {t("composite.addStep")}
       </Button>
-      <HistoryButtons design={design} />
+      <HistoryButtons design={history} />
     </>
   );
 
@@ -351,6 +351,7 @@ export default function CompositeDesigner({
         problemsFor={problemsFor}
         canvas={{ selected, onSelect: setSelected, actions, renderDetails }}
       />
+      {status}
       {def && (
         <AddStepDialog
           open={adding}

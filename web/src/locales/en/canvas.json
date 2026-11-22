@@ -182,8 +182,7 @@
         "from": "Rule into {{to}}: {{action}} {{services}}"
       }
     },
-    "diskNumber": "Disk {{number}}",
-    "diskEdge": "{{disk}} attached to {{title}}",
+    "diskEdge": "Disk {{disk}} attached to {{title}}",
     "hasDisk": "Disk {{disk}}, {{size}}",
     "diskOf": "Attached to {{title}}"
   },
@@ -193,6 +192,8 @@
   },
   "designer": {
     "undo": "Undo",
-    "redo": "Redo"
+    "redo": "Redo",
+    "undone": "Change undone.",
+    "redone": "Change redone."
   }
 }

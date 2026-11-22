@@ -188,8 +188,7 @@
         "from": "Règle vers {{to}}\u00a0: {{action}} {{services}}"
       }
     },
-    "diskNumber": "Disque {{number}}",
-    "diskEdge": "{{disk}} attaché à {{title}}",
+    "diskEdge": "Disque {{disk}} attaché à {{title}}",
     "hasDisk": "Disque {{disk}}, {{size}}",
     "diskOf": "Attaché à {{title}}"
   },
@@ -199,6 +198,8 @@
   },
   "designer": {
     "undo": "Défaire",
-    "redo": "Refaire"
+    "redo": "Refaire",
+    "undone": "Modification annulée.",
+    "redone": "Modification rétablie."
   }
 }

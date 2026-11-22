@@ -539,14 +539,14 @@ function DefinitionTab({
       title={editable ? t("items.draft", { number: shown.number }) : t("item.readOnly", { number: shown.number })}
       actions={
         editable && (
-          <div className="flex gap-2">
+          <>
             <Button size="sm" variant="quiet" disabled={text === original} onClick={() => setText(original)}>
               {t("item.undo")}
             </Button>
             <Button size="sm" variant="primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
               {save.isPending ? t("item.saving") : t("item.saveDraft")}
             </Button>
-          </div>
+          </>
         )
       }
     >

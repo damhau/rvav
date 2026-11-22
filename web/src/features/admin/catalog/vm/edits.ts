@@ -17,6 +17,7 @@
 // an edit the definition can't hold is refused with why (EditError) before
 // anything is written.
 import { type Document, isMap, isScalar, isSeq, type YAMLMap, type YAMLSeq } from "yaml";
+import { undeclared } from "@/lib/celReads";
 import { dependsOn } from "@/lib/dependsOn";
 import { i18n } from "@/lib/i18n";
 import { parseText } from "../definitionYaml";
@@ -370,6 +371,10 @@ function takenKeys(data: Raw): Set<string> {
   ]);
 }
 
+/** Whether a component's count is a number under two (none is one): anti-affinity keeps two or more apart. */
+export const fewerThanTwo = (count: unknown) =>
+  count === undefined || count === "" || (typeof count === "number" && count < 2);
+
 /** A value written in a field: a whole number as a number, other text as CEL; "" leaves it out. */
 export function numberOrCel(text: string): number | string | undefined {
   const s = text.trim();
@@ -430,7 +435,7 @@ export function addNetwork(text: string, network: string, to: string): string {
   const doc = load(text);
   const bp = blueprintOf(doc);
   const expr = network.trim();
-  if (!expr) throw new EditError(tr("vmDesign.edit.noNetwork"));
+  checkNetwork(expr);
   adapter(doc, bp, componentOf(doc, bp, to), expr);
   return save(doc);
 }
@@ -529,6 +534,18 @@ function titled(k: NewKeyed): Raw {
   return k.title?.trim() ? { key: k.key, title: k.title.trim() } : { key: k.key };
 }
 
+/**
+ * A network is CEL over the request (policy.Check): a name CEL would read
+ * as a variable, as dvpg-web, goes in quotes.
+ */
+function checkNetwork(expr: string) {
+  if (!expr) throw new EditError(tr("vmDesign.edit.noNetwork"));
+  const unknown = undeclared(expr);
+  if (unknown === undefined) return;
+  if (/^[\w.-]+$/.test(expr)) throw new EditError(tr("vmDesign.edit.quoteNetwork", { quoted: JSON.stringify(expr) }));
+  throw new EditError(tr("vmDesign.edit.networkReads", { name: unknown }));
+}
+
 function checkSize(size: number | string) {
   if (typeof size === "number") {
     if (!Number.isInteger(size) || size < 1 || size > 65536) throw new EditError(tr("vmDesign.edit.sizeRange"));
@@ -559,10 +576,11 @@ function member(doc: Document, bp: YAMLMap, c: Comp, ref: string): string {
   const data = dataOf(doc, bp);
   const r = resolved(data, c.key) ?? {};
   const name = nameOf(data, componentId(c.key));
-  if (strings(r.groups).includes(ref)) throw new EditError(tr("vmDesign.edit.alreadyIn", { name, group: ref }));
+  const group = nameOf(data, ref.startsWith("nsx:") ? ref : `sg:${ref}`);
+  if (strings(r.groups).includes(ref)) throw new EditError(tr("vmDesign.edit.alreadyIn", { name, group }));
   const list = ownList(doc, bp, c, "groups");
   list.items.push(doc.createNode(ref));
-  return tr("vmDesign.says.member", { name, group: ref });
+  return tr("vmDesign.says.member", { name, group });
 }
 
 /** Whether `key` is built after `other`, by depends_on or what its tags or user data read, as far down as it goes. */
@@ -1068,6 +1086,13 @@ export function setField(
       order = c.single ? bpOrder : componentOrder;
       if (field === "count" && typeof value === "number" && (!Number.isInteger(value) || value < 0 || value > maxVMs))
         throw new EditError(tr("vmDesign.edit.countRange", { max: maxVMs }));
+      if (!c.single && (field === "count" || field === "anti_affinity")) {
+        const now = obj(c.map.toJS(doc));
+        const count = field === "count" ? value : now.count;
+        const apart = field === "anti_affinity" ? value === true : now.anti_affinity === true;
+        if (apart && fewerThanTwo(count))
+          throw new EditError(tr(field === "count" ? "vmDesign.edit.apartCount" : "vmDesign.edit.apartOne"));
+      }
       break;
     }
     case "disk":
@@ -1114,7 +1139,7 @@ export function setNetwork(text: string, id: string, next: string): string {
   const bp = blueprintOf(doc);
   const old = rest(id);
   const expr = next.trim();
-  if (!expr) throw new EditError(tr("vmDesign.edit.noNetwork"));
+  checkNetwork(expr);
   for (const h of holders(doc, bp)) {
     const bindings = h.get("bindings", true);
     if (isMap(bindings) && scalarIs(bindings.get("network", true), old))

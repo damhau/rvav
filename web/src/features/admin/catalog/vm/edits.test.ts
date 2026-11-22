@@ -81,6 +81,24 @@ describe("adding", () => {
     refused(() => addNetwork(two, "inputs.network", "component:vm"), /has an adapter on inputs.network already/);
   });
 
+  it("refuses a network CEL would read as a variable, saying to quote a name (policy.Check)", () => {
+    refused(() => addNetwork(starter, "dvpg-web", "component:vm"), /^Put the network's name in quotes: "dvpg-web"\.$/);
+    refused(() => addNetwork(starter, "dvpg.web", "component:vm"), /in quotes: "dvpg\.web"/);
+    refused(
+      () => addNetwork(starter, "inputs.network + suffix", "component:vm"),
+      /The network reads suffix, which CEL/,
+    );
+    for (const ok of [
+      '"dvpg-web"',
+      "inputs.networks.filter(n, n.ok)[0]",
+      "segments.app",
+      "environment == 'prd' ? \"dvpg-prd\" : inputs.network",
+    ])
+      expect(blueprint(addNetwork(starter, ok, "component:vm")).bindings).toEqual({ network: ok });
+    const text = addNetwork(twoVms, "inputs.network", "component:web");
+    refused(() => setNetwork(text, "network:inputs.network", "dvpg-web"), /in quotes: "dvpg-web"/);
+  });
+
   it("gives a component its own adapters, copying those it took from the blueprint", () => {
     const shared = addNetwork(twoVms, "inputs.network", "component:web");
     expect(component(shared, "web").bindings).toEqual({ network: "inputs.network" });
@@ -168,6 +186,12 @@ describe("connecting", () => {
     expect(component(text, "web")).toMatchObject({ bindings: { network: "segments.app" }, groups: ["websg"] });
     expect(component(text, "db").bindings).toEqual({ network: "inputs.network" });
     expect(connection(seg, "component:web", "sg:websg").says).toBe("Puts web's VMs in websg.");
+    const titled = addSecurityGroup(twoVms, { key: "websg", title: "Web tier" });
+    expect(connection(titled, "component:web", "sg:websg").says).toBe("Puts web's VMs in Web tier.");
+    refused(
+      () => connect(connect(titled, "component:web", "sg:websg"), "component:web", "sg:websg"),
+      /^web's VMs are in Web tier already\.$/,
+    );
   });
 
   it("moves a disk from one component to another, and copies the blueprint's", () => {
@@ -183,7 +207,7 @@ describe("connecting", () => {
     });
     expect(nodeIds(shared)).toContain("disk@0");
     const copied = connection(shared, "component:b", "disk@0");
-    expect(copied.says).toBe("Gives b a copy of Disk 1, as its own disks.");
+    expect(copied.says).toBe("Gives b its own copy of Disk 1.");
     expect(component(copied.text, "b").disks).toEqual([{ size_gb: 20 }]);
     refused(() => connect(shared, "disk@0", "component:a"), /a has Disk 1 already/);
   });
@@ -317,6 +341,19 @@ describe("properties", () => {
     const single = setField(starter, "component:vm", "guest.os_family", "windows");
     expect(blueprint(single).guest).toEqual({ os_family: "windows", domain: "" });
     refused(() => setField(text, "component:web", "count", 21), /A count from 0 to 20/);
+  });
+
+  it("keeps VMs apart only for a count that can give two or more, as the server does", () => {
+    const one = /Anti-affinity keeps several VMs apart: give the component a count of two or more first\./;
+    refused(() => setField(twoVms, "component:web", "anti_affinity", true), one);
+    refused(() => setField(setField(twoVms, "component:web", "count", 1), "component:web", "anti_affinity", true), one);
+    const apart = setField(twoVms, "component:cache", "anti_affinity", true);
+    expect(component(apart, "cache")).toMatchObject({ count: 2, anti_affinity: true });
+    refused(() => setField(apart, "component:cache", "count", 1), /turn that off first/);
+    refused(() => setField(apart, "component:cache", "count", undefined), /turn that off first/);
+    const cel = setField(apart, "component:cache", "count", "inputs.nodes");
+    expect(component(cel, "cache")).toMatchObject({ count: "inputs.nodes", anti_affinity: true });
+    expect(component(setField(cel, "component:cache", "title", "Cache"), "cache").title).toBe("Cache");
   });
 
   it("points every adapter on a network at another", () => {

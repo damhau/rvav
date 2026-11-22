@@ -600,7 +600,8 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint", options: Grap
           {
             id: own ? `disk:${key}:${i}` : `disk@${i}`,
             kind: "disk",
-            title: str(d.key) || t("vm.diskNumber", { number: i + 1 }),
+            // The badge says Disk: "Disk 1", or "Disk data" for a disk with a key.
+            title: str(d.key) || String(i + 1),
             badge: t("badge.disk"),
             lines: [
               { label: t("lines.size"), text: sizeText(d.size_gb) },
@@ -793,5 +794,7 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint", options: Grap
   });
 
   const nodes = bucketOrder.flatMap((k) => [...buckets.get(k)!.values()]);
-  return { kind: "vm", direction: "LR", nodes, edges, groups: [], problems };
+  // Two components with one key (refused, but typed) are one node: their edges are drawn once.
+  const unique = [...new Map(edges.map((e) => [e.id, e])).values()];
+  return { kind: "vm", direction: "LR", nodes, edges: unique, groups: [], problems };
 }
