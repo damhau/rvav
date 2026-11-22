@@ -76,6 +76,18 @@ function mockFresh(): boolean {
   }
 }
 
+/** The language the mock user chose (rvav.mock.locale), kept across reloads as the server keeps it. */
+export const MOCK_LOCALE = "rvav.mock.locale";
+
+function mockLocale(): Me["locale"] {
+  try {
+    const v = localStorage.getItem(MOCK_LOCALE);
+    return v === "en" || v === "fr" ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const iso = (ms: number) => new Date(ms).toISOString();
 
 export function createDb(now = Date.now()): Db {
@@ -146,9 +158,11 @@ export function createDb(now = Date.now()): Db {
       : as === "auditor" || as === "compliance-auditor"
         ? ["user", as]
         : ["user", "admin"];
+  const locale = mockLocale();
   const me: Me = {
     user: lea,
     title: "Platform engineer",
+    ...(locale ? { locale } : {}),
     permissions: heldIn(roles, rvav, []),
     roles: roleRefs(roles, rvav),
     projects:

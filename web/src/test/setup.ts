@@ -4,6 +4,7 @@ import { cleanup, configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 import { i18n, initI18n, LOCALE_KEY } from "@/lib/i18n";
 import { resetMocks, server } from "@/mocks/node";
+import { MOCK_LOCALE } from "@/mocks/seed";
 
 // The whole suite runs its files in parallel, and under that load a page can
 // take longer than Testing Library's default second to render.
@@ -53,6 +54,7 @@ afterEach(async () => {
   cleanup();
   server.resetHandlers();
   localStorage.removeItem(LOCALE_KEY);
+  localStorage.removeItem(MOCK_LOCALE);
   if (i18n.language !== "en") await i18n.changeLanguage("en");
 });
 afterAll(() => server.close());

@@ -17,7 +17,10 @@ import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { q } from "@/lib/query";
+import type { Me } from "@/lib/api/types";
+import { currentLocale, isLocale, localeNames, locales, type Locale } from "@/lib/i18n";
+import { useCurrentProject } from "@/lib/project";
+import { keys, q } from "@/lib/query";
 import { failed } from "../admin/governance/common";
 import { channelLabel, defaultChannels, kindLabel } from "./kinds";
 import { NotificationLine, useMarkRead } from "./NotificationBell";
@@ -106,12 +109,13 @@ function List() {
 
 function Preferences() {
   const qc = useQueryClient();
+  const { me } = useCurrentProject();
   const prefs = useQuery(q.notificationPreferences());
-  const [locale, setLocale] = useState<"en" | "fr">("en");
+  // The language shown until one is chosen: saving keeps what the person sees.
+  const [locale, setLocale] = useState<Locale>(me.locale ?? currentLocale());
   const [rules, setRules] = useState<Record<string, Channel[]>>({});
   useEffect(() => {
     if (!prefs.data) return;
-    setLocale(prefs.data.locale);
     setRules(
       Object.fromEntries(prefs.data.rules.map((r) => [r.kind, r.channels.filter((c) => c !== "in_app") as Channel[]])),
     );
@@ -131,6 +135,7 @@ function Preferences() {
       ),
     onSuccess: (saved) => {
       qc.setQueryData(q.notificationPreferences().queryKey, saved);
+      qc.setQueryData<Me>(keys.me, (m) => m && { ...m, locale: saved.locale });
       toast.success("Notification preferences saved");
     },
     onError: (e) => failed(e, "Not saved"),
@@ -185,15 +190,17 @@ function Preferences() {
             save.mutate();
           }}
         >
-          <Field label="Language of what is sent" htmlFor="notif-locale" className="max-w-xs">
+          <Field
+            label="Language"
+            hint="Of rvav's pages and of what it sends you."
+            htmlFor="notif-locale"
+            className="max-w-xs"
+          >
             <Select
               id="notif-locale"
               value={locale}
-              onChange={(v) => setLocale(v as "en" | "fr")}
-              options={[
-                { value: "en", label: "English" },
-                { value: "fr", label: "Français" },
-              ]}
+              onChange={(v) => isLocale(v) && setLocale(v)}
+              options={locales.map((l) => ({ value: l, label: localeNames[l] }))}
             />
           </Field>
           <div className="overflow-x-auto">

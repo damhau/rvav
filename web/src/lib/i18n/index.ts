@@ -7,6 +7,9 @@ import { initReactI18next } from "react-i18next";
 export const locales = ["en", "fr"] as const;
 export type Locale = (typeof locales)[number];
 
+/** Each language in its own words, the same whatever the language shown. */
+export const localeNames: Record<Locale, string> = { en: "English", fr: "Français" };
+
 /** Each area's texts; a folder's texts are all in its own namespace (docs/frontend.md#translating-a-folder). */
 export const namespaces = [
   "common",

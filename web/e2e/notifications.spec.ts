@@ -43,8 +43,6 @@ test("preferences: channels per kind, what can reach you, a test", async ({ page
 
   await submitted.click();
   await page.getByRole("checkbox", { name: "Request done by Email" }).click();
-  await page.getByRole("combobox", { name: "Language of what is sent" }).click();
-  await page.getByRole("option", { name: "Français" }).click();
   await page.getByRole("button", { name: "Save preferences" }).click();
   await expect(page.getByText("Notification preferences saved")).toBeVisible();
   // The mock keeps them in the page: away and back shows what the server saved.
@@ -52,9 +50,16 @@ test("preferences: channels per kind, what can reach you, a test", async ({ page
   await page.getByRole("tab", { name: "Preferences" }).click();
   await expect(page.getByRole("checkbox", { name: "Request submitted by Email" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Request done by Email" })).not.toBeChecked();
-  await expect(page.getByRole("combobox", { name: "Language of what is sent" })).toContainText("Français");
 
   await page.getByRole("button", { name: "Send me a test on Email" }).click();
   await expect(page.getByText(/Sent to .*@corp\.example/)).toBeVisible();
+
+  // One language for what is sent and the app (ADR-0061): saved, the app shows in it.
+  await expect(page.getByRole("combobox", { name: "Language" })).toContainText("English");
+  await page.getByRole("combobox", { name: "Language" }).click();
+  await page.getByRole("option", { name: "Français" }).click();
+  await page.getByRole("button", { name: "Save preferences" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+  await expect(page.getByText("Rechercher des VM, des IP, des demandes…")).toBeVisible();
   expect(errors).toEqual([]);
 });

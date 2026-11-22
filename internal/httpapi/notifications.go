@@ -49,6 +49,15 @@ func (s *Server) SetNotificationPreferences(w http.ResponseWriter, r *http.Reque
 	s.reply(w, r, http.StatusOK, prefs, err)
 }
 
+func (s *Server) SetMyLocale(w http.ResponseWriter, r *http.Request) {
+	var b api.MyLocale
+	if !s.decodeStrict(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SetMyLocale(r.Context(), principal(r), b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
 func (s *Server) TestNotificationChannel(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Channel api.NotificationChannel `json:"channel"`

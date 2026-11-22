@@ -468,7 +468,7 @@ func (o a1Op) String() string { return o.method + " " + o.template }
 // sent as a POST. Each answers the two auditors the same.
 var (
 	a1Own = map[string]bool{
-		"markNotificationsRead": true, "setNotificationPreferences": true, "testNotificationChannel": true,
+		"markNotificationsRead": true, "setNotificationPreferences": true, "testNotificationChannel": true, "setMyLocale": true,
 		"addFavourite": true, "removeFavourite": true, "createApiToken": true, "changePassword": true, "signOut": true,
 		"createSavedView": true,
 	}
@@ -711,6 +711,8 @@ func (w a1Walk) body(o a1Op) any {
 		return api.NotificationsRead{All: new(true)}
 	case "setNotificationPreferences":
 		return api.NotificationPreferencesWrite{Locale: "en", Rules: []api.NotificationRule{}}
+	case "setMyLocale":
+		return api.MyLocale{Locale: "en"}
 	case "testNotificationChannel":
 		return map[string]any{"channel": "email"}
 	case "createApiToken":

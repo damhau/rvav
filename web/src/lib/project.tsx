@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import type { Me, ProjectRef } from "./api/types";
+import { useAppliedLocale } from "./i18n/choose";
 import { q } from "./query";
 
 const KEY = "rvav.project";
@@ -32,6 +33,7 @@ export function ProjectProvider({
   fallback: (state: "loading" | Error) => ReactNode;
 }) {
   const me = useQuery(q.me());
+  const localeShown = useAppliedLocale(me.data);
   const [chosen, setChosen] = useState<string | null>(stored);
 
   const setProjectId = useCallback((id: string) => {
@@ -64,7 +66,7 @@ export function ProjectProvider({
   }, [me.data, chosen, setProjectId]);
 
   if (me.isError) return <>{fallback(me.error)}</>;
-  if (!value) return <>{fallback("loading")}</>;
+  if (!value || !localeShown) return <>{fallback("loading")}</>;
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

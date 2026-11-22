@@ -1,1 +1,27 @@
-{}
+{
+  "topBar": {
+    "openNavigation": "Open navigation",
+    "search": "Search VMs, IPs, requests…",
+    "project": "Project",
+    "yourProjects": "Your projects",
+    "theme": "Theme",
+    "themeIs": {
+      "system": "Theme: system",
+      "light": "Theme: light",
+      "dark": "Theme: dark"
+    },
+    "themes": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "account": "Account: ",
+    "localAccount": "Signed in with the local account",
+    "whatIMayDo": "What I may do",
+    "apiTokens": "API tokens",
+    "changePassword": "Change password",
+    "language": "Language",
+    "mockMode": "Mock mode: signed in with a development identity.",
+    "signOut": "Sign out"
+  }
+}

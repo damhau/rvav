@@ -62,6 +62,14 @@ func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
 			Roles: roleRefs(p, p.RolesIn(pr.ID)), Permissions: p.PermissionsIn(pr.ID)})
 	}
 	sort.SliceStable(out.Projects, func(i, j int) bool { return out.Projects[i].Project.Name < out.Projects[j].Project.Name })
+	locale, chosen, err := s.Store.UserLocale(r.Context(), p.User.ID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if chosen {
+		out.Locale = present.Ptr(api.MeLocale(locale))
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 

@@ -4,7 +4,7 @@
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { seesDeployment } from "./listing";
-import type { Db } from "./seed";
+import { MOCK_LOCALE, type Db } from "./seed";
 
 type S = components["schemas"];
 type Kind = S["NotificationKind"];
@@ -82,8 +82,19 @@ function state(db: Db): NotifState {
       read_at: ago(60 * 26),
     },
   ];
-  d.notifications = { items, locale: "en", rules: {}, seq: 4 };
+  d.notifications = { items, locale: db.me.locale ?? "en", rules: {}, seq: 4 };
   return d.notifications;
+}
+
+/** One language for the app and what is sent, as on the server (ADR-0061). */
+function choose(db: Db, locale: "en" | "fr") {
+  db.me.locale = locale;
+  state(db).locale = locale;
+  try {
+    localStorage.setItem(MOCK_LOCALE, locale);
+  } catch {
+    // Kept until the page reloads.
+  }
 }
 
 function problem(status: number, title: string, errors?: S["FieldError"][]) {
@@ -172,9 +183,19 @@ export function notificationHandlers(db: Db, base: string, wait: () => Promise<v
       await wait();
       const b = (await request.json()) as S["NotificationPreferencesWrite"];
       const st = state(db);
-      st.locale = b.locale;
+      choose(db, b.locale);
       st.rules = Object.fromEntries(b.rules.map((r) => [r.kind, r.channels as Channel[]]));
       return HttpResponse.json(preferences(db));
+    }),
+    http.put(`${base}/me/locale`, async ({ request }) => {
+      await wait();
+      const b = (await request.json()) as S["MyLocale"];
+      if (b.locale !== "en" && b.locale !== "fr")
+        return problem(422, "Some inputs need attention", [
+          { field: "/locale", code: "invalid", message: "en or fr." },
+        ]);
+      choose(db, b.locale);
+      return HttpResponse.json<S["MyLocale"]>({ locale: b.locale });
     }),
     http.post(`${base}/me/notification-preferences/test`, async ({ request }) => {
       await wait();

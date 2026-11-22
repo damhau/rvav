@@ -1,1 +1,27 @@
-{}
+{
+  "topBar": {
+    "openNavigation": "Ouvrir la navigation",
+    "search": "Rechercher des VM, des IP, des demandes…",
+    "project": "Projet",
+    "yourProjects": "Vos projets",
+    "theme": "Thème",
+    "themeIs": {
+      "system": "Thème\u00a0: système",
+      "light": "Thème\u00a0: clair",
+      "dark": "Thème\u00a0: sombre"
+    },
+    "themes": {
+      "system": "Système",
+      "light": "Clair",
+      "dark": "Sombre"
+    },
+    "account": "Compte\u00a0: ",
+    "localAccount": "Session ouverte avec le compte local",
+    "whatIMayDo": "Ce que je peux faire",
+    "apiTokens": "Jetons d'API",
+    "changePassword": "Changer le mot de passe",
+    "language": "Langue",
+    "mockMode": "Mode simulé\u00a0: session ouverte avec une identité de développement.",
+    "signOut": "Se déconnecter"
+  }
+}

@@ -48,6 +48,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/locale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Choose the language of the web app and of what rvav sends
+         * @description One setting for both (ADR-0061): it is the `locale` of the
+         *     notification preferences too, and the other preferences stay as
+         *     they are. Until someone chooses, the web app follows their
+         *     browser and messages are sent in English.
+         */
+        put: operations["setMyLocale"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/sign-in": {
         parameters: {
             query?: never;
@@ -5541,6 +5564,13 @@ export interface components {
              *     anything else (first sign-in, or after a reset).
              */
             password_change_required?: boolean;
+            /**
+             * @description The language the caller chose for the web app and what rvav
+             *     sends (`setMyLocale`, or the notification preferences). Absent
+             *     until they choose: the web app then follows the browser.
+             * @enum {string}
+             */
+            locale?: "en" | "fr";
             /** @description The permissions held for all of rvav, by any role. */
             permissions: components["schemas"]["Permission"][];
             /** @description The roles held for all of rvav, built-in and custom. */
@@ -5551,6 +5581,10 @@ export interface components {
              *     approves.
              */
             projects: components["schemas"]["MeProject"][];
+        };
+        MyLocale: {
+            /** @enum {string} */
+            locale: "en" | "fr";
         };
         MeProject: {
             project: components["schemas"]["ProjectRef"];
@@ -9827,7 +9861,7 @@ export interface components {
         };
         NotificationPreferencesWrite: {
             /**
-             * @description The language of what is sent.
+             * @description The language of what is sent, and of the web app (ADR-0061).
              * @enum {string}
              */
             locale: "en" | "fr";
@@ -10893,6 +10927,32 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    setMyLocale: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyLocale"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyLocale"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     signIn: {

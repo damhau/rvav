@@ -1347,6 +1347,42 @@ func (e LogoVariant) Valid() bool {
 	}
 }
 
+// Defines values for MeLocale.
+const (
+	MeLocaleEn MeLocale = "en"
+	MeLocaleFr MeLocale = "fr"
+)
+
+// Valid indicates whether the value is a known member of the MeLocale enum.
+func (e MeLocale) Valid() bool {
+	switch e {
+	case MeLocaleEn:
+		return true
+	case MeLocaleFr:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MyLocaleLocale.
+const (
+	MyLocaleLocaleEn MyLocaleLocale = "en"
+	MyLocaleLocaleFr MyLocaleLocale = "fr"
+)
+
+// Valid indicates whether the value is a known member of the MyLocaleLocale enum.
+func (e MyLocaleLocale) Valid() bool {
+	switch e {
+	case MyLocaleLocaleEn:
+		return true
+	case MyLocaleLocaleFr:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NamingPolicyCounter.
 const (
 	NamingPolicyCounterPolicy NamingPolicyCounter = "policy"
@@ -7064,6 +7100,11 @@ type Me struct {
 	// Local Signed in with the local administrator's account (ADR-0030), not through the identity provider.
 	Local *bool `json:"local,omitempty"`
 
+	// Locale The language the caller chose for the web app and what rvav
+	// sends (`setMyLocale`, or the notification preferences). Absent
+	// until they choose: the web app then follows the browser.
+	Locale *MeLocale `json:"locale,omitempty"`
+
 	// PasswordChangeRequired The local administrator must change the password before doing
 	// anything else (first sign-in, or after a reset).
 	PasswordChangeRequired *bool `json:"password_change_required,omitempty"`
@@ -7084,6 +7125,11 @@ type Me struct {
 	User  UserRef `json:"user"`
 }
 
+// MeLocale The language the caller chose for the web app and what rvav
+// sends (`setMyLocale`, or the notification preferences). Absent
+// until they choose: the web app then follows the browser.
+type MeLocale string
+
 // MeProject defines model for MeProject.
 type MeProject struct {
 	// Permissions The permissions held here, those held for all of rvav included.
@@ -7093,6 +7139,14 @@ type MeProject struct {
 	// Roles The roles given in this project, directly or through a group.
 	Roles []RoleRef `json:"roles"`
 }
+
+// MyLocale defines model for MyLocale.
+type MyLocale struct {
+	Locale MyLocaleLocale `json:"locale"`
+}
+
+// MyLocaleLocale defines model for MyLocale.Locale.
+type MyLocaleLocale string
 
 // NamingPolicy defines model for NamingPolicy.
 type NamingPolicy struct {
@@ -7323,14 +7377,14 @@ type NotificationPreferencesLocale string
 
 // NotificationPreferencesWrite defines model for NotificationPreferencesWrite.
 type NotificationPreferencesWrite struct {
-	// Locale The language of what is sent.
+	// Locale The language of what is sent, and of the web app (ADR-0061).
 	Locale NotificationPreferencesWriteLocale `json:"locale"`
 
 	// Rules One per kind; a kind left out keeps the defaults.
 	Rules []NotificationRule `json:"rules"`
 }
 
-// NotificationPreferencesWriteLocale The language of what is sent.
+// NotificationPreferencesWriteLocale The language of what is sent, and of the web app (ADR-0061).
 type NotificationPreferencesWriteLocale string
 
 // NotificationRule defines model for NotificationRule.
@@ -12284,6 +12338,9 @@ type CreateRequestDraftJSONRequestBody = SavedDraftWrite
 // UpdateRequestDraftJSONRequestBody defines body for UpdateRequestDraft for application/json ContentType.
 type UpdateRequestDraftJSONRequestBody = SavedDraftWrite
 
+// SetMyLocaleJSONRequestBody defines body for SetMyLocale for application/json ContentType.
+type SetMyLocaleJSONRequestBody = MyLocale
+
 // SetNotificationPreferencesJSONRequestBody defines body for SetNotificationPreferences for application/json ContentType.
 type SetNotificationPreferencesJSONRequestBody = NotificationPreferencesWrite
 
@@ -16439,6 +16496,30 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /me/drafts/{id} (the `UpdateRequestDraft` operationId).
 	UpdateRequestDraft(ctx context.Context, id IdPath, body UpdateRequestDraftJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetMyLocaleWithBody Choose the language of the web app and of what rvav sends
+	//
+	// One setting for both (ADR-0061): it is the `locale` of the
+	// notification preferences too, and the other preferences stay as
+	// they are. Until someone chooses, the web app follows their
+	// browser and messages are sent in English.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /me/locale (the `SetMyLocale` operationId).
+	SetMyLocaleWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetMyLocale Choose the language of the web app and of what rvav sends
+	//
+	// One setting for both (ADR-0061): it is the `locale` of the
+	// notification preferences too, and the other preferences stay as
+	// they are. Until someone chooses, the web app follows their
+	// browser and messages are sent in English.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /me/locale (the `SetMyLocale` operationId).
+	SetMyLocale(ctx context.Context, body SetMyLocaleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetNotificationPreferences The channels the caller chose per kind, and which can reach them
 	//
@@ -23510,6 +23591,50 @@ func (c *Client) UpdateRequestDraftWithBody(ctx context.Context, id IdPath, cont
 // Corresponds with PUT /me/drafts/{id} (the `UpdateRequestDraft` operationId).
 func (c *Client) UpdateRequestDraft(ctx context.Context, id IdPath, body UpdateRequestDraftJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateRequestDraftRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetMyLocaleWithBody Choose the language of the web app and of what rvav sends
+//
+// One setting for both (ADR-0061): it is the `locale` of the
+// notification preferences too, and the other preferences stay as
+// they are. Until someone chooses, the web app follows their
+// browser and messages are sent in English.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /me/locale (the `SetMyLocale` operationId).
+func (c *Client) SetMyLocaleWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetMyLocaleRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetMyLocale Choose the language of the web app and of what rvav sends
+//
+// One setting for both (ADR-0061): it is the `locale` of the
+// notification preferences too, and the other preferences stay as
+// they are. Until someone chooses, the web app follows their
+// browser and messages are sent in English.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /me/locale (the `SetMyLocale` operationId).
+func (c *Client) SetMyLocale(ctx context.Context, body SetMyLocaleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetMyLocaleRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -35010,6 +35135,46 @@ func NewUpdateRequestDraftRequestWithBody(server string, id IdPath, contentType 
 	return req, nil
 }
 
+// NewSetMyLocaleRequest calls the generic SetMyLocale builder with application/json body
+func NewSetMyLocaleRequest(server string, body SetMyLocaleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetMyLocaleRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSetMyLocaleRequestWithBody constructs an http.Request for the SetMyLocale method, with any body, and a specified content type
+func NewSetMyLocaleRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/me/locale")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetNotificationPreferencesRequest constructs an http.Request for the GetNotificationPreferences method
 func NewGetNotificationPreferencesRequest(server string) (*http.Request, error) {
 	var err error
@@ -40765,6 +40930,30 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /me/drafts/{id} (the `UpdateRequestDraft` operationId).
 	UpdateRequestDraftWithResponse(ctx context.Context, id IdPath, body UpdateRequestDraftJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateRequestDraftResponse, error)
+
+	// SetMyLocaleWithBodyWithResponse Choose the language of the web app and of what rvav sends
+	//
+	// One setting for both (ADR-0061): it is the `locale` of the
+	// notification preferences too, and the other preferences stay as
+	// they are. Until someone chooses, the web app follows their
+	// browser and messages are sent in English.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /me/locale (the `SetMyLocale` operationId).
+	SetMyLocaleWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetMyLocaleResponse, error)
+
+	// SetMyLocaleWithResponse Choose the language of the web app and of what rvav sends
+	//
+	// One setting for both (ADR-0061): it is the `locale` of the
+	// notification preferences too, and the other preferences stay as
+	// they are. Until someone chooses, the web app follows their
+	// browser and messages are sent in English.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /me/locale (the `SetMyLocale` operationId).
+	SetMyLocaleWithResponse(ctx context.Context, body SetMyLocaleJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMyLocaleResponse, error)
 
 	// GetNotificationPreferencesWithResponse The channels the caller chose per kind, and which can reach them
 	//
@@ -56703,6 +56892,61 @@ func (r UpdateRequestDraftResponse) ContentType() string {
 	return ""
 }
 
+type SetMyLocaleResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MyLocale
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetMyLocaleResponse) GetJSON200() *MyLocale {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetMyLocaleResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetMyLocaleResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SetMyLocaleResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetMyLocaleResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetMyLocaleResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetMyLocaleResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetNotificationPreferencesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -64833,6 +65077,42 @@ func (c *ClientWithResponses) UpdateRequestDraftWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseUpdateRequestDraftResponse(rsp)
+}
+
+// SetMyLocaleWithBodyWithResponse Choose the language of the web app and of what rvav sends
+//
+// One setting for both (ADR-0061): it is the `locale` of the
+// notification preferences too, and the other preferences stay as
+// they are. Until someone chooses, the web app follows their
+// browser and messages are sent in English.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /me/locale (the `SetMyLocale` operationId).
+func (c *ClientWithResponses) SetMyLocaleWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetMyLocaleResponse, error) {
+	rsp, err := c.SetMyLocaleWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetMyLocaleResponse(rsp)
+}
+
+// SetMyLocaleWithResponse Choose the language of the web app and of what rvav sends
+//
+// One setting for both (ADR-0061): it is the `locale` of the
+// notification preferences too, and the other preferences stay as
+// they are. Until someone chooses, the web app follows their
+// browser and messages are sent in English.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /me/locale (the `SetMyLocale` operationId).
+func (c *ClientWithResponses) SetMyLocaleWithResponse(ctx context.Context, body SetMyLocaleJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMyLocaleResponse, error) {
+	rsp, err := c.SetMyLocale(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetMyLocaleResponse(rsp)
 }
 
 // GetNotificationPreferencesWithResponse The channels the caller chose per kind, and which can reach them
@@ -77585,6 +77865,46 @@ func ParseUpdateRequestDraftResponse(rsp *http.Response) (*UpdateRequestDraftRes
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetMyLocaleResponse parses an HTTP response from a SetMyLocaleWithResponse call
+func ParseSetMyLocaleResponse(rsp *http.Response) (*SetMyLocaleResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetMyLocaleResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MyLocale
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationFailed

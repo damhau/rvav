@@ -246,6 +246,18 @@ func (s *Service) SetNotificationPreferences(ctx context.Context, p *auth.Princi
 	return s.NotificationPreferences(ctx, p)
 }
 
+// SetMyLocale chooses the caller's language for the web app and what is
+// sent to them.
+func (s *Service) SetMyLocale(ctx context.Context, p *auth.Principal, w api.MyLocale) (api.MyLocale, error) {
+	if !w.Locale.Valid() {
+		return api.MyLocale{}, &ValidationError{Errors: []api.FieldError{fieldErr("/locale", "invalid", "en or fr.")}}
+	}
+	if err := s.Store.SetUserLocale(ctx, p.User.ID, string(w.Locale)); err != nil {
+		return api.MyLocale{}, err
+	}
+	return w, nil
+}
+
 // TestNotificationChannel sends the caller a test message on a channel,
 // now, and says how it went.
 func (s *Service) TestNotificationChannel(ctx context.Context, p *auth.Principal, channel api.NotificationChannel) (api.IntegrationCheck, error) {

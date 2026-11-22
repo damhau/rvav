@@ -81,6 +81,30 @@ paths:
               schema: { $ref: "#/components/schemas/Me" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /me/locale:
+    put:
+      tags: [identity]
+      operationId: setMyLocale
+      summary: Choose the language of the web app and of what rvav sends
+      description: |
+        One setting for both (ADR-0061): it is the `locale` of the
+        notification preferences too, and the other preferences stay as
+        they are. Until someone chooses, the web app follows their
+        browser and messages are sent in English.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MyLocale" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyLocale" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /auth/sign-in:
     post:
       tags: [identity]
@@ -7471,6 +7495,13 @@ components:
           description: |
             The local administrator must change the password before doing
             anything else (first sign-in, or after a reset).
+        locale:
+          type: string
+          enum: [en, fr]
+          description: |
+            The language the caller chose for the web app and what rvav
+            sends (`setMyLocale`, or the notification preferences). Absent
+            until they choose: the web app then follows the browser.
         permissions:
           type: array
           description: The permissions held for all of rvav, by any role.
@@ -7486,6 +7517,13 @@ components:
             200, when it is held for all of rvav. Empty for someone who only
             approves.
           items: { $ref: "#/components/schemas/MeProject" }
+
+    MyLocale:
+      type: object
+      required: [locale]
+      additionalProperties: false
+      properties:
+        locale: { type: string, enum: [en, fr] }
 
     MeProject:
       type: object
@@ -12855,7 +12893,7 @@ components:
       required: [locale, rules]
       additionalProperties: false
       properties:
-        locale: { type: string, enum: [en, fr], description: The language of what is sent. }
+        locale: { type: string, enum: [en, fr], description: "The language of what is sent, and of the web app (ADR-0061)." }
         rules:
           type: array
           description: One per kind; a kind left out keeps the defaults.

@@ -85,6 +85,24 @@ func (s *Store) GetNotificationPreferences(ctx context.Context, db DB, userID st
 	return p, nil
 }
 
+// UserLocale is the language a user chose for the web app and their
+// messages (ADR-0061), and false when they haven't chosen.
+func (s *Store) UserLocale(ctx context.Context, userID string) (string, bool, error) {
+	var locale string
+	err := s.Pool.QueryRow(ctx, `select locale from notification_preferences where user_id = $1`, userID).Scan(&locale)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	return locale, err == nil, err
+}
+
+// SetUserLocale chooses a user's language, keeping their other preferences.
+func (s *Store) SetUserLocale(ctx context.Context, userID, locale string) error {
+	_, err := s.Pool.Exec(ctx, `insert into notification_preferences (user_id, locale) values ($1, $2)
+		on conflict (user_id) do update set locale = excluded.locale, updated_at = now()`, userID, locale)
+	return err
+}
+
 func (s *Store) SetNotificationPreferences(ctx context.Context, userID string, p NotificationPreferences) error {
 	rules, err := json.Marshal(p.Rules)
 	if err != nil {
