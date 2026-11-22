@@ -1,10 +1,12 @@
 import { ArrowDown, ArrowUp, CircleAlert } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { UiWidget } from "@/lib/api/types";
+import { i18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
   addField,
@@ -13,10 +15,9 @@ import {
   layoutOf,
   moveField,
   moveSection,
-  partWord,
   setLayout,
   widgetChoices,
-  widgetLabels,
+  widgetLabel,
   type Def,
   type FormScope,
   type LayoutKind,
@@ -36,11 +37,19 @@ export function focusLater(...ids: string[]) {
   });
 }
 
+const tr = i18n.getFixedT(null, "admin-catalog");
+
 /** Where a field is, said for a screen reader. */
 function position(def: Def, name: string): string {
   const sections = def.ui_schema.layout.sections;
   const s = sections.find((x) => x.fields.includes(name));
-  return s ? `position ${s.fields.indexOf(name) + 1} of ${s.fields.length} in ${s.title || s.key}` : "no section";
+  return s
+    ? tr("designer.fields.position", {
+        index: s.fields.indexOf(name) + 1,
+        total: s.fields.length,
+        section: s.title || s.key,
+      })
+    : tr("designer.fields.noSection");
 }
 
 function ProblemMark({ label }: { label: string }) {
@@ -62,10 +71,10 @@ export function FieldList({
   problems: Problems;
   scope?: FormScope;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const layouts = layoutChoices(scope);
   const sections = def.ui_schema.layout.sections;
   const layout = layoutOf(def);
-  const { one, One } = partWord(def);
   const placed = new Set(sections.flatMap((s) => s.fields));
   const unplaced = Object.keys(def.ui_schema.fields).filter((n) => !placed.has(n));
   const validations = def.ui_schema.validations ?? [];
@@ -78,7 +87,7 @@ export function FieldList({
   const move = (name: string, label: string, delta: -1 | 1) => {
     const next = moveField(def, name, delta);
     onChange(next);
-    setAnnouncement(`${label} moved to ${position(next, name)}.`);
+    setAnnouncement(t("designer.fields.moved", { label, position: position(next, name) }));
     const [ahead, back] = delta < 0 ? ["up", "down"] : ["down", "up"];
     focusLater(`designer-${ahead}-${name}`, `designer-${back}-${name}`, `designer-field-${name}`);
   };
@@ -86,7 +95,9 @@ export function FieldList({
     const next = moveSection(def, key, delta);
     onChange(next);
     const i = next.ui_schema.layout.sections.findIndex((x) => x.key === key);
-    setAnnouncement(`${One} ${title} moved to position ${i + 1} of ${next.ui_schema.layout.sections.length}.`);
+    setAnnouncement(
+      t(`designer.part.${layout}.moved`, { title, position: i + 1, total: next.ui_schema.layout.sections.length }),
+    );
     const [ahead, back] = delta < 0 ? ["up", "down"] : ["down", "up"];
     focusLater(`designer-section-${ahead}-${key}`, `designer-section-${back}-${key}`, `designer-section-${key}`);
   };
@@ -109,10 +120,10 @@ export function FieldList({
           <span className="min-w-0 flex-1">
             <span className="block truncate">{label}</span>
             <span className="block truncate font-mono text-caption text-faint">
-              {name} · {ui ? widgetLabels[ui.widget] : "no UI field"}
+              {name} · {ui ? widgetLabel(ui.widget) : t("designer.fields.noUi")}
             </span>
           </span>
-          {problems.fields[name] && <ProblemMark label={`${label} has problems`} />}
+          {problems.fields[name] && <ProblemMark label={t("designer.fields.hasProblems", { label })} />}
         </button>
         {at && (
           <>
@@ -120,7 +131,7 @@ export function FieldList({
               id={`designer-up-${name}`}
               size="icon"
               variant="quiet"
-              aria-label={`Move ${label} up`}
+              aria-label={t("designer.fields.moveUp", { label })}
               disabled={isFirst(at.si, at.i)}
               onClick={() => move(name, label, -1)}
             >
@@ -130,7 +141,7 @@ export function FieldList({
               id={`designer-down-${name}`}
               size="icon"
               variant="quiet"
-              aria-label={`Move ${label} down`}
+              aria-label={t("designer.fields.moveDown", { label })}
               disabled={isLast(at.si, at.i)}
               onClick={() => move(name, label, 1)}
             >
@@ -143,13 +154,17 @@ export function FieldList({
   };
 
   return (
-    <Panel title="Fields" flush>
+    <Panel title={t("designer.fields.title")} flush>
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
       <div className="flex flex-col">
         <div className="border-b border-line p-3">
-          <Field label="Layout" htmlFor="designer-layout" hint={layouts.find((l) => l.value === layout)?.hint}>
+          <Field
+            label={t("designer.fields.layout")}
+            htmlFor="designer-layout"
+            hint={layouts.find((l) => l.value === layout)?.hint}
+          >
             <Select
               id="designer-layout"
               value={layout}
@@ -161,7 +176,12 @@ export function FieldList({
         {sections.map((s, si) => {
           const selected = selection?.kind === "section" && selection.key === s.key;
           return (
-            <div key={s.key} role="group" aria-label={`${One} ${s.title}`} className="border-b border-line">
+            <div
+              key={s.key}
+              role="group"
+              aria-label={t(`designer.part.${layout}.group`, { title: s.title })}
+              className="border-b border-line"
+            >
               <div className={cn("flex items-center gap-0.5 pr-1", selected ? "bg-accent-soft" : "bg-sunken")}>
                 <button
                   id={`designer-section-${s.key}`}
@@ -171,13 +191,15 @@ export function FieldList({
                   className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-1.5 text-left text-secondary font-semibold focus-visible:outline-2 focus-visible:outline-accent"
                 >
                   <span className="truncate">{s.title || s.key}</span>
-                  {problems.sections[si] && <ProblemMark label={`${One} ${s.title} has problems`} />}
+                  {problems.sections[si] && (
+                    <ProblemMark label={t(`designer.part.${layout}.hasProblems`, { title: s.title })} />
+                  )}
                 </button>
                 <Button
                   id={`designer-section-up-${s.key}`}
                   size="icon"
                   variant="quiet"
-                  aria-label={`Move ${one} ${s.title} up`}
+                  aria-label={t(`designer.part.${layout}.moveUp`, { title: s.title })}
                   disabled={si === 0}
                   onClick={() => shift(s.key, s.title, -1)}
                 >
@@ -187,7 +209,7 @@ export function FieldList({
                   id={`designer-section-down-${s.key}`}
                   size="icon"
                   variant="quiet"
-                  aria-label={`Move ${one} ${s.title} down`}
+                  aria-label={t(`designer.part.${layout}.moveDown`, { title: s.title })}
                   disabled={si === sections.length - 1}
                   onClick={() => shift(s.key, s.title, 1)}
                 >
@@ -195,7 +217,7 @@ export function FieldList({
                 </Button>
               </div>
               {s.fields.length === 0 ? (
-                <p className="px-3 py-2 text-secondary text-faint">No field yet.</p>
+                <p className="px-3 py-2 text-secondary text-faint">{t("designer.fields.empty")}</p>
               ) : (
                 <ul>{s.fields.map((name, i) => fieldRow(name, { si, i }))}</ul>
               )}
@@ -203,8 +225,10 @@ export function FieldList({
           );
         })}
         {unplaced.length > 0 && (
-          <div role="group" aria-label={`Not in a ${one}`} className="border-b border-line">
-            <p className="bg-sunken px-3 py-1.5 text-secondary font-semibold text-bad">Not in a {one}</p>
+          <div role="group" aria-label={t(`designer.part.${layout}.notIn`)} className="border-b border-line">
+            <p className="bg-sunken px-3 py-1.5 text-secondary font-semibold text-bad">
+              {t(`designer.part.${layout}.notIn`)}
+            </p>
             <ul>{unplaced.map((name) => fieldRow(name))}</ul>
           </div>
         )}
@@ -216,17 +240,21 @@ export function FieldList({
             onClick={() => onSelect({ kind: "validations" })}
             className="flex w-full min-w-0 items-center gap-1.5 px-3 py-1.5 text-left text-secondary font-semibold focus-visible:outline-2 focus-visible:outline-accent"
           >
-            <span className="min-w-0 flex-1 truncate">Form validations</span>
-            <span className="text-caption font-normal text-muted">{validations.length || "None"}</span>
-            {Object.keys(problems.validations).length > 0 && <ProblemMark label="Form validations have problems" />}
+            <span className="min-w-0 flex-1 truncate">{t("designer.fields.validations")}</span>
+            <span className="text-caption font-normal text-muted">
+              {validations.length || t("designer.fields.noValidation")}
+            </span>
+            {Object.keys(problems.validations).length > 0 && (
+              <ProblemMark label={t("designer.fields.validationsProblems")} />
+            )}
           </button>
         </div>
         <div className="flex flex-col gap-2 p-3">
-          <Field label="Add a field" htmlFor="designer-add-field">
+          <Field label={t("designer.fields.add")} htmlFor="designer-add-field">
             <Select
               id="designer-add-field"
               value=""
-              placeholder="Choose its widget…"
+              placeholder={t("designer.fields.choose")}
               onChange={(w) => {
                 const added = addField(def, w as UiWidget, currentSection);
                 onChange(added.def);
@@ -244,7 +272,7 @@ export function FieldList({
               onSelect({ kind: "section", key: added.key });
             }}
           >
-            Add {one}
+            {t(`designer.part.${layout}.add`)}
           </Button>
         </div>
       </div>

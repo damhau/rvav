@@ -4,6 +4,7 @@
 // each save (rules, sources) and the preview shows its results.
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
@@ -80,6 +81,7 @@ function Preview({
   /** The section of the designer's selection, whose page or tab the preview shows. */
   showing?: string;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const projects = item.entitlements.projects ?? [];
   const environments = useQuery(q.environments());
@@ -144,15 +146,15 @@ function Preview({
   };
   return (
     <Panel
-      title="Preview"
+      title={t("designer.preview.title")}
       actions={
         <Button size="sm" variant="quiet" onClick={() => setCtx((c) => ({ ...c, values: { ...initialValues } }))}>
-          Reset inputs
+          {t("designer.preview.reset")}
         </Button>
       }
     >
       <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <Field label="Project" htmlFor="preview-project">
+        <Field label={t("designer.preview.project")} htmlFor="preview-project">
           <Select
             id="preview-project"
             value={ctx.projectId}
@@ -160,21 +162,24 @@ function Preview({
             options={projects.map((p) => ({ value: p.id, label: p.name }))}
           />
         </Field>
-        <Field label="Preview as" htmlFor="preview-user">
+        <Field label={t("designer.preview.as")} htmlFor="preview-user">
           <Select
             id="preview-user"
             value={asUser}
-            placeholder="Nobody"
+            placeholder={t("designer.preview.nobody")}
             loading={users.isPending && Boolean(ctx.projectId)}
             onChange={(v) => setCtx((c) => ({ ...c, asUserId: v }))}
             options={list.map((u) => ({
               value: u.id,
-              label: `${u.name} (${u.role})${u.id === me ? " · you" : ""}`,
+              label: t(u.id === me ? "designer.preview.userMe" : "designer.preview.user", {
+                name: u.name,
+                role: u.role,
+              }),
               ...(u.email ? { meta: u.email } : {}),
             }))}
           />
         </Field>
-        <Field label="Environment" htmlFor="preview-environment">
+        <Field label={t("designer.preview.environment")} htmlFor="preview-environment">
           <Select
             id="preview-environment"
             value={ctx.environment}
@@ -184,7 +189,7 @@ function Preview({
         </Field>
       </div>
       {users.data && list.length === 0 && (
-        <p className="text-secondary text-muted">This project has no members to preview as: choose another project.</p>
+        <p className="text-secondary text-muted">{t("designer.preview.noMembers")}</p>
       )}
       {preview.isPending && asUser !== "" && <Skeleton className="h-64" />}
       {preview.isError && <ErrorState error={preview.error} onRetry={() => void preview.refetch()} />}
@@ -210,12 +215,12 @@ function Preview({
           <div className="mt-3 flex items-center justify-between gap-2 text-secondary text-muted" role="status">
             <span>
               {problemCount === 0
-                ? "A request with these inputs would pass."
-                : `A request with these inputs would have ${problemCount} problem${problemCount === 1 ? "" : "s"}.`}
+                ? t("designer.preview.passes")
+                : t("designer.preview.problems", { count: problemCount })}
             </span>
             {problemCount > 0 && !checkAll && (
               <Button size="sm" variant="quiet" onClick={() => setCheckAll(true)}>
-                Show them
+                {t("designer.preview.show")}
               </Button>
             )}
           </div>
@@ -227,6 +232,7 @@ function Preview({
 
 /** What the designer says about saving, and the choices a conflict needs. */
 function SaveStatus({ item, draft, copy }: { item: AdminCatalogItem; draft: CatalogItemVersion; copy: DraftCopy }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const total = copy.problems.length;
   const reload = useMutation({
@@ -260,34 +266,39 @@ function SaveStatus({ item, draft, copy }: { item: AdminCatalogItem; draft: Cata
         className="flex flex-wrap items-center gap-2 rounded-md border border-warn bg-warn-soft px-3 py-2 text-secondary"
       >
         <span className="min-w-0 flex-1">
-          Draft {draft.number} changed elsewhere since you opened it ({copy.error ?? "saved, published or discarded"}).
-          Your last changes are not saved.
+          {t("designer.save.conflict", {
+            number: draft.number,
+            reason: copy.error ?? t("designer.save.elsewhere"),
+          })}
         </span>
         <Button size="sm" onClick={() => reload.mutate(false)} disabled={reload.isPending}>
-          Load theirs
+          {t("designer.save.loadTheirs")}
         </Button>
         <Button size="sm" variant="danger" onClick={() => reload.mutate(true)} disabled={reload.isPending}>
-          Save mine over theirs
+          {t("designer.save.overwrite")}
         </Button>
       </div>
     );
   }
   return (
     <p role="status" className="text-secondary text-muted">
-      Draft {draft.number}:{" "}
-      {
-        {
-          saved: "saved",
-          saving: "saving…",
-          invalid: `not saved, ${total} problem${total === 1 ? "" : "s"} to fix`,
-          failed: `not saved (${copy.error ?? "the server didn't answer"}); the next change tries again`,
-        }[copy.state]
-      }
+      {copy.state === "invalid"
+        ? t("designer.save.invalid", { number: draft.number, count: total })
+        : copy.state === "failed"
+          ? t("designer.save.failed", {
+              number: draft.number,
+              reason: copy.error ?? t("designer.save.noAnswer"),
+            })
+          : t(`designer.save.${copy.state}`, { number: draft.number })}
     </p>
   );
 }
 
+/** A path in the definition, which stays as written. */
+const At = ({ text }: { text: string }) => <span className="font-mono">{text}</span>;
+
 function Designer({ item, draft, copy }: { item: AdminCatalogItem; draft: CatalogItemVersion; copy: DraftCopy }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const { me, projectId } = useCurrentProject();
   const projects = item.entitlements.projects ?? [];
@@ -345,14 +356,19 @@ function Designer({ item, draft, copy }: { item: AdminCatalogItem; draft: Catalo
       <SaveStatus item={item} draft={draft} copy={copy} />
       {problems.other.length > 0 && (
         <div className="text-secondary text-bad">
-          <ul aria-label="Problems outside the form" className="flex flex-col gap-0.5">
+          <ul aria-label={t("designer.save.outside")} className="flex flex-col gap-0.5">
             {problems.other.map((e, i) => (
               <li key={i}>
-                <span className="font-mono">{e.field.replace(/^\/definition/, "")}</span>: {e.message}
+                <Trans
+                  t={t}
+                  i18nKey="designer.save.outsideLine"
+                  values={{ message: e.message }}
+                  components={{ at: <At text={e.field.replace(/^\/definition/, "")} /> }}
+                />
               </li>
             ))}
           </ul>
-          <p className="mt-1 text-muted">The Definition tab shows these on their lines, with your unsaved changes.</p>
+          <p className="mt-1 text-muted">{t("designer.save.outsideNote")}</p>
         </div>
       )}
       <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[230px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,1fr)_320px]">
@@ -405,13 +421,11 @@ function DraftDesigner({ item, draft }: { item: AdminCatalogItem; draft: Catalog
 }
 
 export function FormDesigner({ item }: { item: AdminCatalogItem }) {
+  const { t } = useTranslation("admin-catalog");
   if (!item.draft_version) {
     return (
-      <Panel title="Form designer">
-        <EmptyState
-          title="No draft to change"
-          body="The designer changes a draft. Make one with New draft, at the top of the page: nobody sees it until you publish it."
-        />
+      <Panel title={t("designer.title")}>
+        <EmptyState title={t("designer.noDraft")} body={t("designer.noDraftBody")} />
       </Panel>
     );
   }

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { UiWidget } from "@/lib/api/types";
 import { fromYaml, toYaml } from "../definitionYaml";
 import {
   addColumn,
@@ -11,7 +10,6 @@ import {
   moveField,
   moveSection,
   newValidationKey,
-  partWord,
   removeColumn,
   removeField,
   renameField,
@@ -26,7 +24,7 @@ import {
   updateColumn,
   updateProp,
   updateUi,
-  widgetLabels,
+  widgets,
   type Def,
 } from "./model";
 
@@ -43,15 +41,13 @@ describe("form designer model", () => {
   it("sets the layout, which names the sections pages or tabs", () => {
     let def = addSection(addSection(empty).def).def;
     expect(layoutOf(def)).toBe("page");
-    expect(partWord(def)).toEqual({ one: "section", One: "Section" });
     def = setLayout(def, "wizard");
     expect(def.ui_schema.layout.kind).toBe("wizard");
-    expect(partWord(def).one).toBe("page");
+    expect(layoutOf(def)).toBe("wizard");
     def = addSection(def).def;
     expect(def.ui_schema.layout.sections.map((s) => s.title)).toEqual(["New section", "New section", "New page"]);
     def = moveSection(def, "section_3", -1);
     expect(def.ui_schema.layout.sections.map((s) => s.key)).toEqual(["section_1", "section_3", "section_2"]);
-    expect(partWord(setLayout(def, "tabs"))).toEqual({ one: "tab", One: "Tab" });
     expect(
       layoutOf({ ...def, ui_schema: { ...def.ui_schema, layout: { ...def.ui_schema.layout, kind: "" as never } } }),
     ).toBe("page");
@@ -224,7 +220,7 @@ describe("form designer model", () => {
 
   it("round-trips every field type through the YAML view", () => {
     let def = empty;
-    for (const w of Object.keys(widgetLabels) as UiWidget[]) def = addField(def, w).def;
+    for (const w of widgets) def = addField(def, w).def;
     def = updateProp(def, "number", { minimum: 0.5, multipleOf: 0.25 });
     def = setDecimal(def, "number", true);
     def = updateProp(def, "datetime", { formatMinimum: "2026-12-01T00:00:00+01:00" });

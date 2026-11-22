@@ -59,6 +59,7 @@ const translated = [
   "src/features/admin/catalog/YamlEditor.tsx",
   "src/features/admin/catalog/PropertyGroupsPage.tsx",
   "src/features/admin/catalog/FormLibraryPage.tsx",
+  "src/features/admin/catalog/designer/**",
 ];
 
 // The props of rvav's building blocks and the attributes a person reads or

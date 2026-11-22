@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { LoaderCircle, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,6 +20,7 @@ import type {
   UiWidget,
   ValueSource,
 } from "@/lib/api/types";
+import { i18n } from "@/lib/i18n";
 import { q } from "@/lib/query";
 import { cn, localInput, toText, withOffset, zoneLabel } from "@/lib/utils";
 import { focusLater, type Selection } from "./FieldList";
@@ -30,11 +32,11 @@ import {
   isColumnRequired,
   isDecimal,
   isRequired,
+  layoutOf,
   moveToSection,
   namePattern,
   newValidationKey,
   ownSources,
-  partWord,
   props,
   removeColumn,
   removeField,
@@ -52,12 +54,31 @@ import {
   updateSection,
   updateUi,
   widgetChoices,
+  widgetLabel,
   type Def,
   type FormScope,
   type Problem,
   type Problems,
 } from "./model";
 const mono = "font-mono text-secondary";
+const tr = i18n.getFixedT(null, "admin-catalog");
+
+/** Code inside a sentence: Trans leaves its text alone. */
+const Mono = ({ text, className = mono }: { text: string; className?: string }) => (
+  <span className={className}>{text}</span>
+);
+const inputsExample = "inputs.environment";
+
+/** The first options a source gave, as its test shows them. */
+const firstLabels = (options: { label: string }[]) =>
+  options
+    .slice(0, 5)
+    .map((o) => o.label)
+    .join(", ") + (options.length > 5 ? ", …" : "");
+
+const paramId = (id: string, name: string) => `${id}-prm-${name}`;
+const paramAt = (name: string) => `params/${name}`;
+const ruleAt = (key: string) => `rules/${key}`;
 
 /** A problem the server found, under the control it is about. */
 function ProblemList({ id, list }: { id: string; list: Problem[] }) {
@@ -153,6 +174,7 @@ export interface SourceTest {
 }
 
 function TestSource({ name, dependsOn, test }: { name: string; dependsOn: string[]; test: SourceTest }) {
+  const { t } = useTranslation("admin-catalog");
   const [result, setResult] = useState<{ ok?: FieldValues; error?: string; with?: string } | null>(null);
   const [running, setRunning] = useState(false);
   const id = useId();
@@ -173,31 +195,34 @@ function TestSource({ name, dependsOn, test }: { name: string; dependsOn: string
         size="sm"
         onClick={() => void run()}
         disabled={!test.saved || running}
-        title={test.saved ? undefined : "Wait until the draft is saved"}
+        title={test.saved ? undefined : t("designer.props.waitSaved")}
         aria-describedby={result ? id : undefined}
       >
-        {running ? "Testing…" : "Test the source"}
+        {running ? t("designer.props.testing") : t("designer.props.test")}
       </Button>
       {result && (
         <div id={id} role="status" className="rounded-md border border-line bg-sunken p-2 text-secondary">
-          {result.with && <p className="mb-1 text-faint">With {result.with}, as the preview's user</p>}
+          {result.with && <p className="mb-1 text-faint">{t("designer.props.with", { values: result.with })}</p>}
           {result.error && <p className="text-bad">{result.error}</p>}
           {result.ok && (
             <>
               {result.ok.value !== undefined && (
                 <p>
-                  Value: <span className={mono}>{JSON.stringify(result.ok.value)}</span>
+                  <Trans
+                    t={t}
+                    i18nKey="designer.props.value"
+                    components={{ value: <Mono text={JSON.stringify(result.ok.value)} /> }}
+                  />
                 </p>
               )}
               {result.ok.options && (
                 <p>
-                  {result.ok.options.length} option{result.ok.options.length === 1 ? "" : "s"}
-                  {result.ok.options.length > 0 && ": "}
-                  {result.ok.options
-                    .slice(0, 5)
-                    .map((o) => o.label)
-                    .join(", ")}
-                  {result.ok.options.length > 5 && ", …"}
+                  {result.ok.options.length > 0
+                    ? t("designer.props.optionsWith", {
+                        count: result.ok.options.length,
+                        labels: firstLabels(result.ok.options),
+                      })
+                    : t("designer.props.optionsFound", { count: 0 })}
                 </p>
               )}
             </>
@@ -251,6 +276,7 @@ function LibraryRef({
   /** The problems at a place in the reference: `name`, `version`, `params/x`. */
   problems: (at: string) => Problem[];
 }) {
+  const { t } = useTranslation("admin-catalog");
   const catalogue = useQuery(q.formLibrary());
   const entries = (catalogue.data?.items ?? []).filter((e) => e.use === use);
   const latest = entries.find((e) => e.key === value.name);
@@ -259,7 +285,6 @@ function LibraryRef({
   const entry = older ? pinned.data : latest;
   const params = value.params ?? {};
   const known = new Set(entry?.parameters.map((p) => p.name));
-  const what = use === "source" ? "value source" : "validation";
   const named =
     value.name && !latest ? [{ value: value.name, label: value.name }] : ([] as { value: string; label: string }[]);
   const setParam = (k: string, v: string) => {
@@ -271,21 +296,23 @@ function LibraryRef({
   if (catalogue.isSuccess && entries.length === 0 && !value.name)
     return (
       <p className="text-secondary text-muted">
-        The form library has no {what} yet: add one under{" "}
-        <Link to="/admin/form-library" className="text-accent underline-offset-2 hover:underline">
-          Administration › Form library
-        </Link>
-        .
+        <Trans
+          t={t}
+          i18nKey={use === "source" ? "designer.props.noLibrarySource" : "designer.props.noLibraryValidation"}
+          components={{
+            link: <Link to="/admin/form-library" className="text-accent underline-offset-2 hover:underline" />,
+          }}
+        />
       </p>
     );
   return (
     <>
-      <Field label="Entry" htmlFor={`${id}-name`}>
+      <Field label={t("designer.props.entry")} htmlFor={`${id}-name`}>
         <Select
           id={`${id}-name`}
           value={value.name ?? ""}
           loading={catalogue.isPending}
-          placeholder={`Choose a ${what}…`}
+          placeholder={t(use === "source" ? "designer.props.chooseSource" : "designer.props.chooseValidation")}
           onChange={(key) => {
             const e = entries.find((x) => x.key === key);
             onChange({ name: key, version: e?.version, params: boundByName(e, inputs, params) });
@@ -298,13 +325,9 @@ function LibraryRef({
       <ProblemList id={`${id}-name-problems`} list={problems("name")} />
       {latest && (
         <Field
-          label="Version"
+          label={t("designer.props.version")}
           htmlFor={`${id}-version`}
-          hint={
-            older
-              ? `Version ${latest.version} is the latest: a new version gives the items naming the entry a draft.`
-              : undefined
-          }
+          hint={older ? t("designer.props.olderHint", { version: latest.version }) : undefined}
         >
           <Select
             id={`${id}-version`}
@@ -312,7 +335,7 @@ function LibraryRef({
             onChange={(v) => onChange({ ...value, version: Number(v) })}
             options={[...latest.versions].reverse().map((v) => ({
               value: String(v),
-              label: v === latest.version ? `${v} (latest)` : String(v),
+              label: v === latest.version ? t("designer.props.versionLatest", { version: v }) : String(v),
             }))}
           />
         </Field>
@@ -321,17 +344,21 @@ function LibraryRef({
       {entry?.description && <p className="text-secondary text-muted">{entry.description}</p>}
       {entry && entry.parameters.length > 0 && (
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1 text-secondary font-medium">Parameters</legend>
+          <legend className="mb-1 text-secondary font-medium">{t("designer.props.parameters")}</legend>
           <p className="text-caption text-faint">
-            A CEL expression each, over what form rules read: <span className="font-mono">inputs.environment</span>.
+            <Trans
+              t={t}
+              i18nKey="designer.props.parametersLead"
+              components={{ expr: <Mono text={inputsExample} className="font-mono" /> }}
+            />
           </p>
           {entry.parameters.map((p) => {
-            const pid = `${id}-prm-${p.name}`;
-            const found = problems(`params/${p.name}`);
+            const pid = paramId(id, p.name);
+            const found = problems(paramAt(p.name));
             return (
               <Field
                 key={p.name}
-                label={`${p.label || p.name}${p.required ? "" : " (optional)"}`}
+                label={p.required ? p.label || p.name : t("designer.props.optional", { label: p.label || p.name })}
                 htmlFor={pid}
                 hint={p.description}
               >
@@ -360,6 +387,25 @@ function LibraryRef({
   );
 }
 
+/** The parameters of a value source the designer sets. */
+type SourceParam =
+  | "url"
+  | "body"
+  | "secret"
+  | "items"
+  | "value"
+  | "label"
+  | "meta"
+  | "parent"
+  | "options"
+  | "item"
+  | "deployment"
+  | "cluster"
+  | "network";
+
+/** The parameters of a validation the designer sets. */
+type CheckParam = "check" | "url" | "body" | "secret" | "valid" | "message" | "errors";
+
 function SourceEditor({
   name,
   def,
@@ -373,6 +419,7 @@ function SourceEditor({
   problems: Problem[];
   test: SourceTest;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const ui = def.ui_schema.fields[name]!;
   const own = ownSources[ui.widget];
   const src: ValueSource | undefined = ui.value_source ?? (own ? { kind: "builtin", name: own } : undefined);
@@ -386,7 +433,7 @@ function SourceEditor({
     else delete next[k];
     setSource({ ...src!, params: next });
   };
-  const param = (k: string, label: string, hint?: string, code = true) => {
+  const param = (k: SourceParam, label: string, hint?: string, code = true) => {
     const id = `prop-src-${k}`;
     const list = at(`params/${k}`);
     return (
@@ -411,12 +458,11 @@ function SourceEditor({
   const gives = ui.widget === "computed" ? "value" : "default";
   return (
     <fieldset className="flex flex-col gap-2.5 border-t border-line pt-3">
-      <legend className="sr-only">Value source</legend>
+      <legend className="sr-only">{t("designer.props.valueSource")}</legend>
       {own ? (
         <>
           <p className="text-secondary text-muted">
-            Its choices come from <span className={mono}>{own}</span>: only what the requester may see, which the server
-            checks on submit.
+            <Trans t={t} i18nKey="designer.props.ownLead" components={{ source: <Mono text={own} /> }} />
           </p>
           <ProblemList
             id="prop-src-problems"
@@ -424,14 +470,14 @@ function SourceEditor({
           />
           {(src?.kind !== "builtin" || src.name !== own) && (
             <Button size="sm" variant="secondary" onClick={() => setSource({ kind: "builtin", name: own })}>
-              Take them from {own}
+              {t("designer.props.takeFrom", { source: own })}
             </Button>
           )}
           <BuiltinParams source={own} param={param} />
         </>
       ) : (
         <>
-          <Field label="Value source" htmlFor="prop-src-kind">
+          <Field label={t("designer.props.valueSource")} htmlFor="prop-src-kind">
             <Select
               id="prop-src-kind"
               value={src?.kind ?? "none"}
@@ -453,13 +499,7 @@ function SourceEditor({
                           : { kind: "cel", params: one ? { value: '""' } : { options: '["a", "b"]' } },
                 )
               }
-              options={[
-                { value: "none", label: "None (static options or free input)" },
-                { value: "builtin", label: "Built in" },
-                { value: "rest", label: "REST service" },
-                { value: "cel", label: "CEL expression" },
-                { value: "library", label: "Form library" },
-              ]}
+              options={sourceKinds.map((k) => ({ value: k, label: t(`designer.props.kind.${k}`) }))}
             />
           </Field>
           <ProblemList
@@ -473,7 +513,7 @@ function SourceEditor({
           />
           {src?.kind === "builtin" && (
             <>
-              <Field label="Source" htmlFor="prop-src-name">
+              <Field label={t("designer.props.source")} htmlFor="prop-src-name">
                 <Select
                   id="prop-src-name"
                   value={src.name ?? ""}
@@ -499,15 +539,13 @@ function SourceEditor({
       )}
       {one && (src?.kind === "rest" || src?.kind === "cel" || src?.kind === "library") && (
         <p className="text-secondary text-muted">
-          {gives === "value"
-            ? "The source gives the field its value, which the server works out again on submit."
-            : "The source gives the field its default, which the requester can change."}
+          {gives === "value" ? t("designer.props.givesValue") : t("designer.props.givesDefault")}
         </p>
       )}
       {src?.kind === "rest" && (
         <>
-          {param("url", "URL", "A host of RVAV_REST_SOURCE_HOSTS; ${inputs.x} is escaped.")}
-          <Field label="Method" htmlFor="prop-src-method">
+          {param("url", t("designer.props.url"), t("designer.props.urlHint"))}
+          <Field label={t("designer.props.method")} htmlFor="prop-src-method">
             <Select
               id="prop-src-method"
               value={typeof params.method === "string" ? params.method : "GET"}
@@ -518,40 +556,45 @@ function SourceEditor({
               ]}
             />
           </Field>
-          {params.method === "POST" && param("body", "Body (JSON)")}
-          {param("secret", "Secret", "A stored secret's name, sent as bearer, basic or header.", false)}
+          {params.method === "POST" && param("body", t("designer.props.body"))}
+          {param("secret", t("designer.props.secret"), t("designer.props.secretHint"), false)}
           {one ? (
             <>
+              {param("items", t("designer.props.item"), t("designer.props.itemHint"))}
               {param(
-                "items",
-                "Item (JSONPath)",
-                "Its first match holds the value. Empty: the answer, or its first item.",
+                "value",
+                t("designer.props.valueInItem"),
+                gives === "value"
+                  ? t("designer.props.valueInItemHintValue")
+                  : t("designer.props.valueInItemHintDefault"),
               )}
-              {param("value", "Value (JSONPath in the item)", `The field's ${gives}. Empty: the item itself.`)}
             </>
           ) : (
             <>
-              {param("items", "Items (JSONPath)")}
-              {param("value", "Value (JSONPath in an item)")}
-              {param("label", "Label (JSONPath in an item)")}
-              {param("meta", "Detail (JSONPath in an item)")}
+              {param("items", t("designer.props.items"))}
+              {param("value", t("designer.props.valueIn"))}
+              {param("label", t("designer.props.labelIn"))}
+              {param("meta", t("designer.props.metaIn"))}
             </>
           )}
-          {ui.widget === "tree" &&
-            param("parent", "Parent (JSONPath in an item)", "The value of the item it sits under.")}
+          {ui.widget === "tree" && param("parent", t("designer.props.parentIn"), t("designer.props.parentHint"))}
         </>
       )}
-      {src?.kind === "cel" && one && param("value", "Value", `The field's ${gives}, from the other inputs.`)}
+      {src?.kind === "cel" &&
+        one &&
+        param(
+          "value",
+          t("designer.props.celValue"),
+          gives === "value" ? t("designer.props.celValueHintValue") : t("designer.props.celValueHintDefault"),
+        )}
       {src?.kind === "cel" && !one && (
         <>
           {param(
             "options",
-            "Options",
-            ui.widget === "tree"
-              ? "A list of {value, label, meta, parent}: parent is the value of the option it sits under."
-              : "A list of strings or of {value, label, meta}.",
+            t("designer.props.options"),
+            ui.widget === "tree" ? t("designer.props.optionsTreeCel") : t("designer.props.optionsCel"),
           )}
-          {param("value", "Value", "A computed value instead of options.")}
+          {param("value", t("designer.props.celValue"), t("designer.props.valueInstead"))}
         </>
       )}
       {ui.widget === "search" && (src?.kind === "rest" || src?.kind === "cel") && (
@@ -566,20 +609,18 @@ function SourceEditor({
               }}
               aria-describedby="prop-src-search-hint"
             />
-            The source searches by the typed text
+            {t("designer.props.searches")}
           </label>
           <p id="prop-src-search-hint" className="text-caption text-faint">
-            {src.kind === "rest"
-              ? "Its URL or body reads ${search}. Otherwise rvav keeps the options that contain the text."
-              : "Its options expression reads search. Otherwise rvav keeps the options that contain the text."}
+            {src.kind === "rest" ? t("designer.props.searchRest") : t("designer.props.searchCel")}
           </p>
           <ProblemList id="prop-src-search-problems" list={at("search")} />
         </div>
       )}
       {src && others.length > 0 && (
         <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1 text-secondary font-medium">Depends on</legend>
-          <p className="text-caption text-faint">A change to these inputs fetches the values again.</p>
+          <legend className="mb-1 text-secondary font-medium">{t("designer.props.dependsOn")}</legend>
+          <p className="text-caption text-faint">{t("designer.props.dependsLead")}</p>
           {others.map((o) => (
             <label key={o} htmlFor={`prop-dep-${o}`} className="flex min-h-6 items-center gap-2 text-secondary">
               <Checkbox
@@ -599,11 +640,8 @@ function SourceEditor({
   );
 }
 
-const checkKinds = [
-  { value: "cel", label: "CEL expression" },
-  { value: "rest", label: "REST service" },
-  { value: "library", label: "Form library" },
-];
+const sourceKinds = ["none", "builtin", "rest", "cel", "library"] as const;
+const checkKinds = ["cel", "rest", "library"] as const;
 
 function ValidationEditor({
   index,
@@ -620,6 +658,7 @@ function ValidationEditor({
   onRemove: () => void;
   problems: Problem[];
 }) {
+  const { t } = useTranslation("admin-catalog");
   const id = `val-${index}`;
   const entries = useQuery(q.formLibrary());
   const params = (v.params ?? {}) as Record<string, unknown>;
@@ -651,7 +690,7 @@ function ValidationEditor({
     else delete next[k];
     onChange({ ...v, params: next });
   };
-  const param = (k: string, label: string, hint?: string, code = true) => {
+  const param = (k: CheckParam, label: string, hint?: string, code = true) => {
     const pid = `${id}-params-${k}`;
     const found = at(`params/${k}`);
     return (
@@ -680,27 +719,27 @@ function ValidationEditor({
       });
   };
   const on = v.fields ?? [];
-  const title = v.title || v.key || `Validation ${index + 1}`;
+  const title = v.title || v.key || t("designer.props.validationN", { number: index + 1 });
   return (
     <fieldset className="flex flex-col gap-2.5 rounded-md border border-line p-3">
       <legend className="px-1 text-secondary font-semibold">{title}</legend>
       <ProblemList id={`${id}-problems`} list={problems.filter((p) => p.at === "")} />
-      {own("key", "Key", "Names it in messages and in the audit log.", true)}
-      {own("title", "Title", "What it checks, in a few words.")}
-      <Field label="Kind" htmlFor={`${id}-kind`}>
-        <Select id={`${id}-kind`} value={v.kind} onChange={setKind} options={checkKinds} />
+      {own("key", t("designer.props.key"), t("designer.props.keyHint"), true)}
+      {own("title", t("designer.props.title"), t("designer.props.titleHint"))}
+      <Field label={t("designer.props.kindLabel")} htmlFor={`${id}-kind`}>
+        <Select
+          id={`${id}-kind`}
+          value={v.kind}
+          onChange={setKind}
+          options={checkKinds.map((k) => ({ value: k, label: t(`designer.props.kind.${k}`) }))}
+        />
       </Field>
       <ProblemList id={`${id}-kind-problems`} list={at("kind").concat(at("name").filter(() => v.kind !== "library"))} />
-      {v.kind === "cel" &&
-        param(
-          "check",
-          "Check",
-          'Over what form rules read. true, "" or {} passes; false refuses with the refusal message; text refuses with that text; a map {"input": "message"} refuses on those inputs.',
-        )}
+      {v.kind === "cel" && param("check", t("designer.props.check"), t("designer.props.checkHint"))}
       {v.kind === "rest" && (
         <>
-          {param("url", "URL", "A host REST value sources may call; ${inputs.x} is escaped.")}
-          <Field label="Method" htmlFor={`${id}-params-method`}>
+          {param("url", t("designer.props.url"), t("designer.props.restUrlHint"))}
+          <Field label={t("designer.props.method")} htmlFor={`${id}-params-method`}>
             <Select
               id={`${id}-params-method`}
               value={typeof params.method === "string" ? params.method : "GET"}
@@ -711,18 +750,12 @@ function ValidationEditor({
               ]}
             />
           </Field>
-          {params.method === "POST" && param("body", "Body (JSON)")}
-          {param("secret", "Secret", "A stored secret's name, sent as bearer, basic or header.", false)}
-          {param("valid", "Valid (JSONPath)", "A boolean in the answer: $.valid unless given.")}
-          {param("message", "Message (JSONPath)", "The answer's message: $.message unless given.")}
-          {param(
-            "errors",
-            "Errors (JSONPath)",
-            "A map of input to message, or a list of {field, message}: $.errors unless given.",
-          )}
-          <p className="text-secondary text-muted">
-            An answer other than 2xx refuses the request, saying the check couldn't run: it never passes unchecked.
-          </p>
+          {params.method === "POST" && param("body", t("designer.props.body"))}
+          {param("secret", t("designer.props.secret"), t("designer.props.secretHint"), false)}
+          {param("valid", t("designer.props.valid"), t("designer.props.validHint"))}
+          {param("message", t("designer.props.message"), t("designer.props.messageHint"))}
+          {param("errors", t("designer.props.errors"), t("designer.props.errorsHint"))}
+          <p className="text-secondary text-muted">{t("designer.props.non2xx")}</p>
         </>
       )}
       {v.kind === "library" && (
@@ -735,11 +768,11 @@ function ValidationEditor({
           problems={at}
         />
       )}
-      {own("message", "Refusal message", "What a refusal without its own message says.")}
+      {own("message", t("designer.props.refusal"), t("designer.props.refusalHint"))}
       {inputs.length > 0 && (
         <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1 text-secondary font-medium">A message for no input shows on</legend>
-          <p className="text-caption text-faint">None ticked: on the form, above the submit button.</p>
+          <legend className="mb-1 text-secondary font-medium">{t("designer.props.showsOn")}</legend>
+          <p className="text-caption text-faint">{t("designer.props.showsOnLead")}</p>
           {inputs.map((f) => (
             <label key={f} htmlFor={`${id}-on-${f}`} className="flex min-h-6 items-center gap-2 text-secondary">
               <Checkbox
@@ -758,7 +791,7 @@ function ValidationEditor({
         </fieldset>
       )}
       <Button id={`${id}-remove`} size="sm" variant="quiet" className="self-start" onClick={onRemove}>
-        Remove {title}
+        {t("designer.props.remove", { title })}
       </Button>
     </fieldset>
   );
@@ -774,17 +807,15 @@ function ValidationsProperties({
   onChange: (d: Def) => void;
   problems: Record<number, Problem[]>;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const list = def.ui_schema.validations ?? [];
   const inputs = Object.keys(props(def));
   const entries = useQuery(q.formLibrary());
   const put = (next: FormValidation[]) => onChange(setValidations(def, next));
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-secondary text-muted">
-        Checks of the whole form, run on a wizard&apos;s review step and on submit, after the form&apos;s own checks and
-        before approval. Day-2 actions&apos; forms don&apos;t run them.
-      </p>
-      {list.length === 0 && <p className="text-secondary text-faint">No validation yet.</p>}
+      <p className="text-secondary text-muted">{t("designer.props.validationsLead")}</p>
+      {list.length === 0 && <p className="text-secondary text-faint">{t("designer.props.noValidation")}</p>}
       {list.map((v, i) => (
         <ValidationEditor
           key={i}
@@ -808,7 +839,7 @@ function ValidationsProperties({
             focusLater(`val-${list.length}-key`);
           }}
         >
-          Add a validation
+          {t("designer.props.addValidation")}
         </Button>
         {entries.data?.items.some((e) => e.use === "validation") && (
           <Button
@@ -826,7 +857,7 @@ function ValidationsProperties({
               focusLater(`val-${list.length}-lib-name`);
             }}
           >
-            Add one from the form library
+            {t("designer.props.addFromLibrary")}
           </Button>
         )}
       </div>
@@ -840,45 +871,44 @@ function BuiltinParams({
   param,
 }: {
   source?: string;
-  param: (k: string, label: string, hint?: string) => React.ReactNode;
+  param: (k: SourceParam, label: string, hint?: string) => React.ReactNode;
 }) {
+  const { t } = useTranslation("admin-catalog");
   switch (source) {
     case "rvav.projects":
     case "rvav.users":
       return null;
     case "rvav.deployments":
-      return param("item", "Catalog item", "Only this item's deployments: its slug.");
+      return param("item", t("designer.props.catalogItem"), t("designer.props.catalogItemHint"));
     case "rvav.vms":
-      return param("deployment", "Deployment", "Only this deployment's VMs: ${inputs.deployment}");
+      return param("deployment", t("designer.props.deployment"), t("designer.props.deploymentHint"));
     default:
       return (
         <>
-          {param("cluster", "Cluster", "For datastores: ${inputs.cluster}")}
-          {param("network", "Network", "For subnets and addresses: ${inputs.network}")}
+          {param("cluster", t("designer.props.cluster"), t("designer.props.clusterHint"))}
+          {param("network", t("designer.props.network"), t("designer.props.networkHint"))}
         </>
       );
   }
 }
 
-const rules = [
-  { key: "visible", label: "Shown when", hint: 'For example environment == "prd". Empty: always.' },
-  { key: "required", label: "Required when", hint: "Empty: as the Required box says." },
-  { key: "read_only", label: "Read only when", hint: "" },
-  {
-    key: "default",
-    label: "Default",
-    hint: "Fills the field from other inputs until the requester changes it. It stays editable.",
-  },
-  { key: "value", label: "Computed value", hint: "The field shows this and can't be changed." },
-] as const;
+const rules = () =>
+  [
+    { key: "visible", label: tr("designer.props.rule.visible"), hint: tr("designer.props.ruleHint.visible") },
+    { key: "required", label: tr("designer.props.rule.required"), hint: tr("designer.props.ruleHint.required") },
+    { key: "read_only", label: tr("designer.props.rule.read_only"), hint: "" },
+    { key: "default", label: tr("designer.props.rule.default"), hint: tr("designer.props.ruleHint.default") },
+    { key: "value", label: tr("designer.props.rule.value"), hint: tr("designer.props.ruleHint.value") },
+  ] as const;
 
 /** What the preview's error for a field says failed, and what the field was left with. */
-function failedRule(error: string, gives: string): string {
-  if (error.startsWith("default: "))
-    return `In the preview, the default rule failed, so the field has no default: ${error.slice(9)}`;
+function failedRule(error: string, gives: "value" | "default"): string {
+  if (error.startsWith("default: ")) return tr("designer.props.failedDefault", { error: error.slice(9) });
   if (error.startsWith("value source: "))
-    return `In the preview, the value source failed, so the field has no ${gives}: ${error.slice(14)}`;
-  return `In the preview, a rule failed and its default was used: ${error}`;
+    return tr(gives === "value" ? "designer.props.failedSourceValue" : "designer.props.failedSourceDefault", {
+      error: error.slice(14),
+    });
+  return tr("designer.props.failedRule", { error });
 }
 
 function FieldProperties({
@@ -901,10 +931,11 @@ function FieldProperties({
   test: SourceTest;
   scope: FormScope;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const ui = def.ui_schema.fields[name];
   const prop = props(def)[name];
   const [nameError, setNameError] = useState("");
-  if (!ui) return <p className="text-secondary text-muted">This input has no UI field: add it in the YAML.</p>;
+  if (!ui) return <p className="text-secondary text-muted">{t("designer.props.noUi")}</p>;
   const at = (p: string) => problems.filter((x) => x.at === p);
   const section = def.ui_schema.layout.sections.find((s) => s.fields.includes(name));
   const textual = ["text", "textarea", "secret"].includes(ui.widget);
@@ -912,17 +943,14 @@ function FieldProperties({
   const numeric = prop?.type === "integer" || prop?.type === "number";
   const initial = def.initial_values[name];
   const general = problems.filter((p) => p.at === "" || p.at.startsWith("schema"));
+  const counted = isCounted(ui.widget) ? ui.widget : undefined;
   return (
     <div className="flex flex-col gap-3">
       <ProblemList id="prop-problems" list={general} />
       <Field
-        label="Name"
+        label={t("designer.props.name")}
         htmlFor="prop-name"
-        hint={
-          scope === "action"
-            ? "The input's key: inputs." + name + " in rules, and the variable the job or the workflow gets."
-            : "The input's key: inputs." + name + " in rules and the blueprint, which a rename doesn't change."
-        }
+        hint={t(scope === "action" ? "designer.props.nameHintAction" : "designer.props.nameHintItem", { name })}
         error={nameError || undefined}
       >
         <CommitInput
@@ -930,8 +958,9 @@ function FieldProperties({
           value={name}
           className={mono}
           onCommit={(to) => {
-            if (!namePattern.test(to)) return setNameError("A lower-case letter, then letters, digits and _.");
-            if (to in def.ui_schema.fields || to in props(def)) return setNameError(`"${to}" is taken.`);
+            if (!namePattern.test(to)) return setNameError(t("designer.props.namePattern"));
+            if (to in def.ui_schema.fields || to in props(def))
+              return setNameError(t("designer.props.taken", { name: to }));
             setNameError("");
             onChange(renameField(def, name, to));
             onSelect({ kind: "field", name: to });
@@ -939,7 +968,7 @@ function FieldProperties({
           }}
         />
       </Field>
-      <Field label="Label" htmlFor="prop-label">
+      <Field label={t("designer.props.label")} htmlFor="prop-label">
         <Input
           id="prop-label"
           value={ui.label}
@@ -950,7 +979,7 @@ function FieldProperties({
         <ProblemList id="prop-label-problems" list={at("label")} />
       </Field>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Widget" htmlFor="prop-widget">
+        <Field label={t("designer.props.widget")} htmlFor="prop-widget">
           <Select
             id="prop-widget"
             value={ui.widget}
@@ -958,11 +987,11 @@ function FieldProperties({
             options={widgetChoices(scope)}
           />
         </Field>
-        <Field label={partWord(def).One} htmlFor="prop-section">
+        <Field label={t(`designer.part.${layoutOf(def)}.one`)} htmlFor="prop-section">
           <Select
             id="prop-section"
             value={section?.key ?? ""}
-            placeholder="None"
+            placeholder={t(`designer.part.${layoutOf(def)}.none`)}
             onChange={(k) => onChange(moveToSection(def, name, k))}
             options={def.ui_schema.layout.sections.map((s) => ({ value: s.key, label: s.title || s.key }))}
           />
@@ -975,18 +1004,14 @@ function FieldProperties({
             checked={isRequired(def, name)}
             onChange={(on) => onChange(setRequired(def, name, on))}
           />
-          Required
+          {t("designer.props.required")}
         </label>
       )}
       {(ui.widget === "image" || ui.widget === "link") && (
         <Field
-          label="Address"
+          label={t("designer.props.address")}
           htmlFor="prop-url"
-          hint={
-            ui.widget === "image"
-              ? "The picture's address: https://…, a path on this site, or upload:<id> for one you upload."
-              : "Where the link goes: https://…, or a path on this site. It opens in a new tab."
-          }
+          hint={ui.widget === "image" ? t("designer.props.addressImageHint") : t("designer.props.addressLinkHint")}
         >
           <CommitInput
             id="prop-url"
@@ -1001,11 +1026,7 @@ function FieldProperties({
       )}
       {ui.widget === "image" && <ImageUpload key={name} onUploaded={(url) => onChange(updateUi(def, name, { url }))} />}
       {ui.widget === "image" && (
-        <Field
-          label="Text alternative"
-          htmlFor="prop-alt"
-          hint="What the image shows, read out in its place to those who can't see it."
-        >
+        <Field label={t("designer.props.alt")} htmlFor="prop-alt" hint={t("designer.props.altHint")}>
           <Input
             id="prop-alt"
             value={ui.alt ?? ""}
@@ -1017,7 +1038,7 @@ function FieldProperties({
         </Field>
       )}
       {ui.widget === "file" && <FileLimits def={def} name={name} onChange={onChange} problems={problems} />}
-      <Field label={helpLabels[ui.widget] ?? "Help"} htmlFor="prop-help">
+      <Field label={helpLabel(ui.widget)} htmlFor="prop-help">
         <Textarea
           id="prop-help"
           value={ui.help ?? ""}
@@ -1026,7 +1047,7 @@ function FieldProperties({
         />
       </Field>
       {placeholder && (
-        <Field label="Placeholder" htmlFor="prop-placeholder">
+        <Field label={t("designer.props.placeholder")} htmlFor="prop-placeholder">
           <Input
             id="prop-placeholder"
             value={ui.placeholder ?? ""}
@@ -1036,7 +1057,7 @@ function FieldProperties({
       )}
       {textual && prop && (
         <div className="grid grid-cols-2 gap-2">
-          <Field label="At most (characters)" htmlFor="prop-maxlength">
+          <Field label={t("designer.props.maxLength")} htmlFor="prop-maxlength">
             <Input
               id="prop-maxlength"
               type="number"
@@ -1047,7 +1068,7 @@ function FieldProperties({
               }
             />
           </Field>
-          <Field label="Pattern" htmlFor="prop-pattern">
+          <Field label={t("designer.props.pattern")} htmlFor="prop-pattern">
             <CommitInput
               id="prop-pattern"
               className={mono}
@@ -1065,17 +1086,11 @@ function FieldProperties({
               checked={isDecimal(def, name)}
               onChange={(on) => onChange(setDecimal(def, name, on))}
             />
-            Allow decimals
+            {t("designer.props.decimals")}
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {(
-              [
-                ["minimum", "Minimum"],
-                ["maximum", "Maximum"],
-                ["multipleOf", "Step"],
-              ] as const
-            ).map(([k, label]) => (
-              <Field key={k} label={label} htmlFor={`prop-${k}`}>
+            {numberBounds.map((k) => (
+              <Field key={k} label={t(`designer.props.bound.${k}`)} htmlFor={`prop-${k}`}>
                 <Input
                   id={`prop-${k}`}
                   type="number"
@@ -1094,15 +1109,10 @@ function FieldProperties({
       {(ui.widget === "date" || ui.widget === "datetime") && prop && (
         <DateBounds def={def} name={name} time={ui.widget === "datetime"} onChange={onChange} />
       )}
-      {ui.widget in countNouns && prop && (
+      {counted && prop && (
         <div className="grid grid-cols-2 gap-2">
-          {(
-            [
-              ["minItems", `Fewest ${countNouns[ui.widget]}`],
-              ["maxItems", `Most ${countNouns[ui.widget]}`],
-            ] as const
-          ).map(([k, label]) => (
-            <Field key={k} label={label} htmlFor={`prop-${k}`}>
+          {itemBounds.map((k) => (
+            <Field key={k} label={t(`designer.props.${k}.${counted}`)} htmlFor={`prop-${k}`}>
               <Input
                 id={`prop-${k}`}
                 type="number"
@@ -1122,9 +1132,9 @@ function FieldProperties({
       )}
       {ui.widget === "tags" && !ui.value_source && (
         <Field
-          label="Suggestions"
+          label={t("designer.props.suggestions")}
           htmlFor="prop-options"
-          hint="One per line: value | label. Requesters can type others too."
+          hint={t("designer.props.suggestionsHint")}
         >
           <OptionsInput
             value={optionsText(ui.options)}
@@ -1134,9 +1144,9 @@ function FieldProperties({
       )}
       {choiceWidgets.includes(ui.widget) && !ui.value_source && (
         <Field
-          label="Options"
+          label={t("designer.props.options")}
           htmlFor="prop-options"
-          hint={ui.widget === "tree" ? "One per line: value | label | parent's value." : "One per line: value | label."}
+          hint={ui.widget === "tree" ? t("designer.props.optionsTreeHint") : t("designer.props.optionsHint")}
         >
           <OptionsInput
             value={optionsText(ui.options)}
@@ -1145,7 +1155,7 @@ function FieldProperties({
         </Field>
       )}
       {prop && ui.widget !== "computed" && ui.widget !== "file" && (
-        <Field label="Initial value" htmlFor="prop-initial">
+        <Field label={t("designer.props.initial")} htmlFor="prop-initial">
           {prop.type === "boolean" ? (
             <Checkbox
               id="prop-initial"
@@ -1160,7 +1170,7 @@ function FieldProperties({
               onCommit={(v) => onChange(setInitial(def, name, v === "" ? undefined : numeric ? Number(v) : v))}
             />
           ) : (
-            <p className="text-secondary text-faint">Set lists and objects in the YAML.</p>
+            <p className="text-secondary text-faint">{t("designer.props.initialYaml")}</p>
           )}
           <ProblemList id="prop-initial-problems" list={at("initial")} />
         </Field>
@@ -1169,16 +1179,20 @@ function FieldProperties({
         <SourceEditor name={name} def={def} onChange={onChange} problems={problems} test={test} />
       )}
       <fieldset className="flex flex-col gap-2.5 border-t border-line pt-3">
-        <legend className="sr-only">Rules</legend>
+        <legend className="sr-only">{t("designer.props.rules")}</legend>
         <p className="text-secondary font-medium">
-          Rules <span className="font-normal text-faint">(CEL over inputs, environment, project and user)</span>
+          <Trans
+            t={t}
+            i18nKey="designer.props.rulesTitle"
+            components={{ muted: <span className="font-normal text-faint" /> }}
+          />
         </p>
         {ruleError && (
           <p role="note" className="text-secondary text-warn">
             {failedRule(ruleError, ui.widget === "computed" ? "value" : "default")}
           </p>
         )}
-        {rules
+        {rules()
           .filter(
             (r) =>
               r.key !== "default" ||
@@ -1186,7 +1200,7 @@ function FieldProperties({
           )
           .map((r) => {
             const id = `prop-rule-${r.key}`;
-            const list = at(`rules/${r.key}`);
+            const list = at(ruleAt(r.key));
             return (
               <Field key={r.key} label={r.label} htmlFor={id} hint={r.hint || undefined}>
                 <CommitInput
@@ -1204,23 +1218,17 @@ function FieldProperties({
       </fieldset>
       {prop && scope === "item" && (
         <fieldset className="flex flex-col gap-1.5 border-t border-line pt-3 text-secondary">
-          <legend className="sr-only">Handling</legend>
-          {(
-            [
-              ["secret", "Secret: stored encrypted, never shown again, passed to AWX only at launch"],
-              ["expose_to_inventory", "A host variable in the AWX inventory"],
-              ["approver_editable", "Approvers may change it"],
-            ] as const
-          )
-            .filter(([k]) => ui.widget !== "file" || k === "expose_to_inventory")
-            .map(([k, label]) => (
+          <legend className="sr-only">{t("designer.props.handling")}</legend>
+          {handlingFlags
+            .filter((k) => ui.widget !== "file" || k === "expose_to_inventory")
+            .map((k) => (
               <label key={k} htmlFor={`prop-${k}`} className="flex items-start gap-2">
                 <Checkbox
                   id={`prop-${k}`}
                   checked={Boolean(ui[k])}
                   onChange={(on) => onChange(updateUi(def, name, { [k]: on || undefined }))}
                 />
-                {label}
+                {t(`designer.props.flag.${k}`)}
               </label>
             ))}
         </fieldset>
@@ -1239,7 +1247,7 @@ function FieldProperties({
             focusLater(neighbour ? `designer-field-${neighbour}` : "designer-add-field");
           }}
         >
-          Remove {ui.label || name}
+          {t("designer.props.removeField", { label: ui.label || name })}
         </Button>
       </div>
     </div>
@@ -1248,6 +1256,7 @@ function FieldProperties({
 
 /** Uploads a picture for an image field, which then shows it as upload:<id>. */
 function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
+  const { t } = useTranslation("admin-catalog");
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
   const upload = useMutation({
@@ -1256,7 +1265,10 @@ function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
       setError(undefined);
       onUploaded(img.url);
     },
-    onError: (e, f) => setError(isApiError(e) ? (e.problem.detail ?? e.problem.title) : `Couldn't upload ${f.name}.`),
+    onError: (e, f) =>
+      setError(
+        isApiError(e) ? (e.problem.detail ?? e.problem.title) : t("designer.props.uploadFailed", { name: f.name }),
+      ),
   });
   return (
     <div className="flex flex-col gap-1">
@@ -1270,7 +1282,7 @@ function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
           const f = e.target.files?.[0];
           e.target.value = "";
           if (!f) return;
-          if (f.size > 2 * 1024 * 1024) setError(`${f.name} is larger than 2 MB, the most an image field shows.`);
+          if (f.size > 2 * 1024 * 1024) setError(t("designer.props.tooLarge", { name: f.name }));
           else upload.mutate(f);
         }}
       />
@@ -1282,7 +1294,7 @@ function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
         onClick={() => input.current?.click()}
       >
         {upload.isPending ? <LoaderCircle className="animate-spin" /> : <Upload />}
-        Upload a picture
+        {t("designer.props.upload")}
       </Button>
       {error ? (
         <p id="prop-image-upload-error" className="text-secondary text-bad">
@@ -1290,7 +1302,7 @@ function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
         </p>
       ) : (
         <p id="prop-image-upload-hint" className="text-secondary text-muted">
-          PNG, JPEG, GIF or WebP, 2 MB at most.
+          {t("designer.props.uploadHint")}
         </p>
       )}
     </div>
@@ -1309,17 +1321,14 @@ function FileLimits({
   onChange: (d: Def) => void;
   problems: Problem[];
 }) {
+  const { t } = useTranslation("admin-catalog");
   const ui = def.ui_schema.fields[name];
   if (!ui) return null;
   const types = problems.filter((p) => p.at === "accept" || p.at.startsWith("accept/"));
   const size = problems.filter((p) => p.at === "max_size_mb");
   return (
     <>
-      <Field
-        label="Accepted types"
-        htmlFor="prop-accept"
-        hint="Extensions or MIME types, comma-separated: .csv, .pdf, image/*. Needed to publish."
-      >
+      <Field label={t("designer.props.accept")} htmlFor="prop-accept" hint={t("designer.props.acceptHint")}>
         <CommitInput
           id="prop-accept"
           className={mono}
@@ -1336,7 +1345,7 @@ function FileLimits({
         />
         <ProblemList id="prop-accept-problems" list={types} />
       </Field>
-      <Field label="Largest file (MB)" htmlFor="prop-max-size" hint="From 1 to 25 MB; 10 if left empty.">
+      <Field label={t("designer.props.maxSize")} htmlFor="prop-max-size" hint={t("designer.props.maxSizeHint")}>
         <Input
           id="prop-max-size"
           type="number"
@@ -1386,17 +1395,19 @@ function OptionsInput({
 }
 
 /** What a field's help is, where it isn't help under the field. */
-const helpLabels: Partial<Record<UiWidget, string>> = { info: "Text", image: "Caption" };
+const helpLabel = (w: UiWidget) =>
+  tr(w === "info" || w === "image" ? `designer.props.help.${w}` : "designer.props.help.default");
 
-/** What a list field counts, for its fewest and most. */
-const countNouns: Partial<Record<UiWidget, string>> = { datagrid: "rows", tags: "tags", dual_list: "picks" };
+/** The list fields whose fewest and most items the designer sets. */
+const countedWidgets = ["datagrid", "tags", "dual_list"] as const;
+const isCounted = (w: UiWidget): w is (typeof countedWidgets)[number] =>
+  (countedWidgets as readonly UiWidget[]).includes(w);
+const itemBounds = ["minItems", "maxItems"] as const;
+const numberBounds = ["minimum", "maximum", "multipleOf"] as const;
+const dateBounds = ["formatMinimum", "formatMaximum"] as const;
+const handlingFlags = ["secret", "expose_to_inventory", "approver_editable"] as const;
 
-const cellWidgets = [
-  { value: "text", label: "Text" },
-  { value: "number", label: "Number" },
-  { value: "toggle", label: "Toggle" },
-  { value: "select", label: "Dropdown" },
-];
+const cellWidgets = ["text", "number", "toggle", "select"] as const;
 
 /** A table's columns, or an object's sub-fields: each one's key, label, widget, choices and whether it's required. */
 function ColumnsEditor({
@@ -1410,13 +1421,15 @@ function ColumnsEditor({
   onChange: (d: Def) => void;
   problems: Problem[];
 }) {
+  const { t } = useTranslation("admin-catalog");
   const columns = def.ui_schema.fields[name]?.columns ?? [];
   const [keyError, setKeyError] = useState<{ index: number; message: string }>();
   const object = def.ui_schema.fields[name]?.widget === "object";
-  const noun = object ? "sub-field" : "column";
   return (
     <fieldset className="flex flex-col gap-2 border-t border-line pt-3">
-      <legend className="text-secondary font-medium">{object ? "Sub-fields" : "Columns"}</legend>
+      <legend className="text-secondary font-medium">
+        {object ? t("designer.props.subFields") : t("designer.props.columns")}
+      </legend>
       <ProblemList id="prop-columns-problems" list={problems.filter((p) => p.at.startsWith("columns"))} />
       {columns.map((c, i) => {
         const at = `prop-column-${i}`;
@@ -1424,7 +1437,7 @@ function ColumnsEditor({
         return (
           <div key={i} className="flex flex-col gap-2 rounded-md border border-line p-2">
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Key" htmlFor={`${at}-key`} error={error}>
+              <Field label={t("designer.props.key")} htmlFor={`${at}-key`} error={error}>
                 <CommitInput
                   id={`${at}-key`}
                   value={c.key}
@@ -1432,15 +1445,15 @@ function ColumnsEditor({
                   onCommit={(to) => {
                     if (to === c.key) return;
                     if (!namePattern.test(to))
-                      return setKeyError({ index: i, message: "A lower-case letter, then letters, digits and _." });
+                      return setKeyError({ index: i, message: t("designer.props.namePattern") });
                     if (columns.some((x) => x.key === to))
-                      return setKeyError({ index: i, message: `"${to}" is taken.` });
+                      return setKeyError({ index: i, message: t("designer.props.taken", { name: to }) });
                     setKeyError(undefined);
                     onChange(updateColumn(def, name, i, { key: to }));
                   }}
                 />
               </Field>
-              <Field label="Label" htmlFor={`${at}-label`}>
+              <Field label={t("designer.props.label")} htmlFor={`${at}-label`}>
                 <Input
                   id={`${at}-label`}
                   value={c.label}
@@ -1449,12 +1462,12 @@ function ColumnsEditor({
               </Field>
             </div>
             <div className="grid grid-cols-2 items-end gap-2">
-              <Field label="Widget" htmlFor={`${at}-widget`}>
+              <Field label={t("designer.props.widget")} htmlFor={`${at}-widget`}>
                 <Select
                   id={`${at}-widget`}
                   value={c.widget}
                   onChange={(w) => onChange(updateColumn(def, name, i, { widget: w as UiColumn["widget"] }))}
-                  options={cellWidgets}
+                  options={cellWidgets.map((w) => ({ value: w, label: widgetLabel(w) }))}
                 />
               </Field>
               <label htmlFor={`${at}-required`} className="flex h-8 items-center gap-2 text-body">
@@ -1463,11 +1476,15 @@ function ColumnsEditor({
                   checked={isColumnRequired(def, name, c.key)}
                   onChange={(on) => onChange(updateColumn(def, name, i, { required: on }))}
                 />
-                Required
+                {t("designer.props.required")}
               </label>
             </div>
             {c.widget === "select" && (
-              <Field label="Choices" htmlFor={`${at}-options`} hint="One per line: value | label.">
+              <Field
+                label={t("designer.props.choices")}
+                htmlFor={`${at}-options`}
+                hint={t("designer.props.optionsHint")}
+              >
                 <ColumnOptions
                   id={`${at}-options`}
                   value={optionsText(c.options)}
@@ -1477,7 +1494,9 @@ function ColumnsEditor({
             )}
             <div>
               <Button size="sm" variant="quiet" onClick={() => onChange(removeColumn(def, name, i))}>
-                Remove {noun} {c.label || c.key}
+                {t(object ? "designer.props.removeSubField" : "designer.props.removeColumn", {
+                  name: c.label || c.key,
+                })}
               </Button>
             </div>
           </div>
@@ -1491,7 +1510,7 @@ function ColumnsEditor({
             focusLater(`prop-column-${columns.length}-key`);
           }}
         >
-          Add a {noun}
+          {object ? t("designer.props.addSubField") : t("designer.props.addColumn")}
         </Button>
       </div>
     </fieldset>
@@ -1528,18 +1547,14 @@ function DateBounds({
   time: boolean;
   onChange: (d: Def) => void;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const prop = props(def)[name] ?? {};
   return (
     <div className="grid grid-cols-2 gap-2">
-      {(
-        [
-          ["formatMinimum", "Earliest"],
-          ["formatMaximum", "Latest"],
-        ] as const
-      ).map(([k, label]) => {
+      {dateBounds.map((k) => {
         const v = typeof prop[k] === "string" ? prop[k] : "";
         return (
-          <Field key={k} label={label} htmlFor={`prop-${k}`} hint={time ? zoneLabel() : undefined}>
+          <Field key={k} label={t(`designer.props.${k}`)} htmlFor={`prop-${k}`} hint={time ? zoneLabel() : undefined}>
             <Input
               id={`prop-${k}`}
               type={time ? "datetime-local" : "date"}
@@ -1571,27 +1586,28 @@ function SectionProperties({
 }) {
   const [keyError, setKeyError] = useState("");
   const s = def.ui_schema.layout.sections.find((x) => x.key === sectionKey);
-  const { one } = partWord(def);
+  const { t } = useTranslation("admin-catalog");
+  const part = layoutOf(def);
   if (!s) return null;
   return (
     <div className="flex flex-col gap-3">
       <ProblemList id="section-problems" list={problems} />
-      <Field label="Title" htmlFor="section-title">
+      <Field label={t("designer.props.title")} htmlFor="section-title">
         <Input
           id="section-title"
           value={s.title}
           onChange={(e) => onChange(updateSection(def, s.key, { title: e.target.value }))}
         />
       </Field>
-      <Field label="Key" htmlFor="section-key" error={keyError || undefined}>
+      <Field label={t("designer.props.key")} htmlFor="section-key" error={keyError || undefined}>
         <CommitInput
           id="section-key"
           className={mono}
           value={s.key}
           onCommit={(k) => {
-            if (!k.trim()) return setKeyError(`Give the ${one} a key.`);
+            if (!k.trim()) return setKeyError(t(`designer.part.${part}.giveKey`));
             if (def.ui_schema.layout.sections.some((x) => x.key === k))
-              return setKeyError(`Another ${one} has the key "${k}".`);
+              return setKeyError(t(`designer.part.${part}.keyTaken`, { key: k }));
             setKeyError("");
             onChange(updateSection(def, s.key, { key: k }));
             onSelect({ kind: "section", key: k });
@@ -1599,14 +1615,14 @@ function SectionProperties({
           }}
         />
       </Field>
-      <Field label="Description" htmlFor="section-description">
+      <Field label={t("designer.props.description")} htmlFor="section-description">
         <Input
           id="section-description"
           value={s.description ?? ""}
           onChange={(e) => onChange(updateSection(def, s.key, { description: e.target.value }))}
         />
       </Field>
-      <Field label="Columns" htmlFor="section-columns">
+      <Field label={t("designer.props.columns")} htmlFor="section-columns">
         <Select
           id="section-columns"
           value={String(s.columns ?? 2)}
@@ -1619,14 +1635,14 @@ function SectionProperties({
           size="sm"
           variant="danger"
           disabled={s.fields.length > 0}
-          title={s.fields.length > 0 ? "Move or remove its fields first" : undefined}
+          title={s.fields.length > 0 ? t("designer.props.moveFieldsFirst") : undefined}
           onClick={() => {
             onChange(removeSection(def, s.key));
             onSelect(null);
             focusLater("designer-add-section");
           }}
         >
-          Remove {one}
+          {t(`designer.part.${part}.remove`)}
         </Button>
       </div>
     </div>
@@ -1655,12 +1671,17 @@ export function Properties({
 }) {
   const sectionIndex =
     selection?.kind === "section" ? def.ui_schema.layout.sections.findIndex((s) => s.key === selection.key) : -1;
-  const word = partWord(def);
+  const { t } = useTranslation("admin-catalog");
+  const part = layoutOf(def);
   const title =
-    selection?.kind === "section" ? word.One : selection?.kind === "validations" ? "Form validations" : "Properties";
+    selection?.kind === "section"
+      ? t(`designer.part.${part}.one`)
+      : selection?.kind === "validations"
+        ? t("designer.fields.validations")
+        : t("designer.props.properties");
   return (
     <Panel title={title}>
-      {!selection && <p className="text-secondary text-muted">Choose a field or a {word.one} to change it.</p>}
+      {!selection && <p className="text-secondary text-muted">{t(`designer.part.${part}.choose`)}</p>}
       {selection?.kind === "field" && (
         <FieldProperties
           key={selection.name}

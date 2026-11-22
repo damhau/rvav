@@ -11,6 +11,7 @@ import type {
   UiSchema,
   UiWidget,
 } from "@/lib/api/types";
+import { i18n } from "@/lib/i18n";
 
 export { ownSources };
 
@@ -18,18 +19,10 @@ export type Def = CatalogVersionDefinition;
 export type Prop = Record<string, unknown>;
 export type LayoutKind = UiSchema["layout"]["kind"];
 
-/** How a form's sections show. */
-export const layouts: { value: LayoutKind; label: string; hint: string }[] = [
-  { value: "page", label: "One page", hint: "Every section on one page." },
-  { value: "wizard", label: "Wizard", hint: "A page per section, with Back and Next, then a review before submit." },
-  { value: "tabs", label: "Tabs", hint: "A tab per section." },
-];
+const tr = i18n.getFixedT(null, "admin-catalog");
 
-/** What a section is in the form's layout: a section, a wizard's page or a tab. */
-export function partWord(def: Def): { one: string; One: string } {
-  const one = { page: "section", wizard: "page", tabs: "tab" }[layoutOf(def)];
-  return { one, One: one.charAt(0).toUpperCase() + one.slice(1) };
-}
+/** How a form's sections show. */
+const layouts: LayoutKind[] = ["page", "wizard", "tabs"];
 
 /** The form's layout; none said is one page. */
 export function layoutOf(def: Def): LayoutKind {
@@ -42,47 +35,52 @@ export function setLayout(def: Def, kind: LayoutKind): Def {
   });
 }
 
-export const widgetLabels: Record<UiWidget, string> = {
-  text: "Text",
-  textarea: "Long text",
-  number: "Number",
-  slider: "Slider",
-  toggle: "Toggle",
-  select: "Dropdown",
-  multiselect: "Multiple choice dropdown",
-  segmented: "Segmented choice",
-  radio_cards: "Cards",
-  checklist: "Checklist",
-  search: "Search",
-  tree: "Tree",
-  file: "File upload",
-  date: "Date",
-  datetime: "Date and time",
-  tags: "Tags",
-  key_value: "Key and value pairs",
-  datagrid: "Table",
-  dual_list: "Dual list",
-  object: "Group of fields",
-  secret: "Secret",
-  info: "Information text",
-  image: "Image",
-  link: "Link",
-  computed: "Computed value",
-  vsphere_cluster: "vSphere cluster",
-  vsphere_datastore: "vSphere datastore",
-  vsphere_network: "vSphere network",
-  vsphere_template: "vSphere template",
-  vsphere_folder: "vSphere folder",
-  vsphere_vm: "vSphere VM",
-  ipam_subnet: "IPAM subnet",
-  ipam_address: "IP address",
-  dns_zone: "DNS zone",
-  awx_inventory: "AWX inventory",
-  awx_credential: "AWX credential",
-  project: "Project",
-  user: "User",
-  deployment: "Deployment",
+// A record, not a list, so that a new widget can't be left out of the choices.
+const widgetSet: Record<UiWidget, true> = {
+  text: true,
+  textarea: true,
+  number: true,
+  slider: true,
+  toggle: true,
+  select: true,
+  multiselect: true,
+  segmented: true,
+  radio_cards: true,
+  checklist: true,
+  search: true,
+  tree: true,
+  file: true,
+  date: true,
+  datetime: true,
+  tags: true,
+  key_value: true,
+  datagrid: true,
+  dual_list: true,
+  object: true,
+  secret: true,
+  info: true,
+  image: true,
+  link: true,
+  computed: true,
+  vsphere_cluster: true,
+  vsphere_datastore: true,
+  vsphere_network: true,
+  vsphere_template: true,
+  vsphere_folder: true,
+  vsphere_vm: true,
+  ipam_subnet: true,
+  ipam_address: true,
+  dns_zone: true,
+  awx_inventory: true,
+  awx_credential: true,
+  project: true,
+  user: true,
+  deployment: true,
 };
+
+export const widgets = Object.keys(widgetSet) as UiWidget[];
+
+export const widgetLabel = (w: UiWidget) => tr(`designer.widget.${w}`);
 
 /**
  * Where the form shows: a catalog item's request, or a day-2 action's
@@ -93,13 +91,15 @@ export type FormScope = "item" | "action";
 const notInActions: UiWidget[] = ["file", "secret"];
 
 export function layoutChoices(scope: FormScope) {
-  return layouts.filter((l) => scope === "item" || l.value !== "wizard");
+  return layouts
+    .filter((l) => scope === "item" || l !== "wizard")
+    .map((value) => ({ value, label: tr(`designer.layout.${value}`), hint: tr(`designer.layout.${value}Hint`) }));
 }
 
 export function widgetChoices(scope: FormScope) {
-  return Object.entries(widgetLabels)
-    .filter(([w]) => scope === "item" || !notInActions.includes(w as UiWidget))
-    .map(([value, label]) => ({ value, label }));
+  return widgets
+    .filter((w) => scope === "item" || !notInActions.includes(w))
+    .map((value) => ({ value, label: widgetLabel(value) }));
 }
 
 export const builtinSources = [
@@ -231,13 +231,14 @@ export function addField(def: Def, widget: UiWidget, sectionKey?: string): { def
   const next = edit(def, (d, p) => {
     const schema = schemaFor(widget);
     if (schema) p[name] = schema;
-    const ui: UiField = { widget, label: widgetLabels[widget] };
+    const ui: UiField = { widget, label: widgetLabel(widget) };
     const source = widgetSource[widget];
     if (source) ui.value_source = { kind: "builtin", name: source };
-    if (columnWidgets.includes(widget)) ui.columns = [...firstColumns];
+    if (columnWidgets.includes(widget)) ui.columns = firstColumns();
     d.ui_schema.fields[name] = ui;
     const sections = d.ui_schema.layout.sections;
-    if (sections.length === 0) sections.push({ key: "main", title: "Details", columns: 2, fields: [] });
+    if (sections.length === 0)
+      sections.push({ key: "main", title: tr("designer.defaults.details"), columns: 2, fields: [] });
     const section = sections.find((s) => s.key === sectionKey) ?? sections.at(-1)!;
     section.fields.push(name);
   });
@@ -251,7 +252,12 @@ export function addSection(def: Def): { def: Def; key: string } {
   const key = `section_${n}`;
   return {
     def: edit(def, (d) => {
-      d.ui_schema.layout.sections.push({ key, title: `New ${partWord(def).one}`, columns: 2, fields: [] });
+      d.ui_schema.layout.sections.push({
+        key,
+        title: tr(`designer.part.${layoutOf(def)}.new`),
+        columns: 2,
+        fields: [],
+      });
     }),
     key,
   };
@@ -388,7 +394,7 @@ export function setWidget(def: Def, name: string, widget: UiWidget): Def {
       p[name] = schema;
       delete d.initial_values[name];
     }
-    if (columnsChange) ui.columns = [...firstColumns];
+    if (columnsChange) ui.columns = firstColumns();
     else if (!columnWidgets.includes(widget)) delete ui.columns;
     if (widget !== "image" && widget !== "link") delete ui.url;
     if (widget !== "image") delete ui.alt;
@@ -436,7 +442,7 @@ export function setDecimal(def: Def, name: string, decimal: boolean): Def {
   });
 }
 
-const firstColumns: UiColumn[] = [{ key: "value", label: "Value", widget: "text" }];
+const firstColumns = (): UiColumn[] => [{ key: "value", label: tr("designer.defaults.value"), widget: "text" }];
 
 /** The JSON Schema of a table column's cells. */
 function cellFor(column: UiColumn, current?: Prop): Prop {
@@ -479,7 +485,11 @@ export function addColumn(def: Def, name: string): Def {
     const columns = (ui.columns ??= []);
     let n = columns.length + 1;
     while (columns.some((c) => c.key === `column_${n}`) || `column_${n}` in rows.properties) n++;
-    const column: UiColumn = { key: `column_${n}`, label: `Column ${n}`, widget: "text" };
+    const column: UiColumn = {
+      key: `column_${n}`,
+      label: tr("designer.defaults.column", { number: n }),
+      widget: "text",
+    };
     columns.push(column);
     rows.properties[column.key] = cellFor(column);
   });

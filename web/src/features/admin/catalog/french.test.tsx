@@ -168,3 +168,47 @@ describe("property groups and the form library, in French", () => {
     expect(sheet).toHaveTextContent("utilise la version 1");
   });
 });
+
+describe("the form designer, in French", () => {
+  async function openDesigner() {
+    const user = userEvent.setup();
+    renderApp("/admin/catalog-items/itm_rhel9");
+    await user.click(await screen.findByRole("button", { name: "Nouveau brouillon" }));
+    await user.click(await screen.findByRole("tab", { name: "Concepteur de formulaire" }));
+    const fields = await screen.findByRole("region", { name: "Champs" }, { timeout: 5000 });
+    const preview = screen.getByRole("region", { name: "Aperçu" });
+    await within(preview).findByRole("group", { name: "Basics" }, { timeout: 5000 });
+    return { user, fields, preview };
+  }
+
+  it("names a layout's sections, pages or tabs, each with its gender", { timeout: 20_000 }, async () => {
+    const { user, fields, preview } = await openDesigner();
+    expect(screen.getByText(/^Brouillon [\d.]+ : enregistré$/)).toBeInTheDocument();
+    expect(
+      await within(preview).findByText(/^Une demande avec ces entrées (passerait|aurait \d+ problèmes?)\.$/),
+    ).toBeInTheDocument();
+    expect(within(fields).getByRole("button", { name: "Ajouter une section" })).toBeInTheDocument();
+    await user.click(within(fields).getByRole("combobox", { name: "Disposition" }));
+    await user.click(screen.getByRole("option", { name: "Onglets" }));
+    expect(within(fields).getByRole("combobox", { name: "Disposition" })).toHaveAccessibleDescription(
+      "Un onglet par section.",
+    );
+    expect(within(fields).getByRole("group", { name: "Onglet Basics" })).toBeInTheDocument();
+    expect(within(fields).getByRole("button", { name: "Ajouter un onglet" })).toBeInTheDocument();
+    await user.click(within(fields).getByRole("button", { name: "Monter l'onglet Size" }));
+    expect(await screen.findByText("Onglet Size déplacé en position 1 sur 4.")).toBeInTheDocument();
+  });
+
+  it("labels a new field in French, and names its properties", { timeout: 20_000 }, async () => {
+    const { user, fields } = await openDesigner();
+    await user.click(within(fields).getByRole("combobox", { name: "Ajouter un champ" }));
+    await user.click(screen.getByRole("option", { name: "Interrupteur" }));
+    const properties = await screen.findByRole("region", { name: "Propriétés" });
+    expect(within(properties).getByLabelText("Libellé")).toHaveValue("Interrupteur");
+    expect(within(properties).getByRole("combobox", { name: "Type de champ" })).toBeInTheDocument();
+    expect(within(properties).getByRole("group", { name: "Règles" })).toHaveTextContent(
+      "Règles (CEL sur inputs, environment, project et user)",
+    );
+    expect(within(properties).getByRole("button", { name: "Retirer Interrupteur" })).toBeInTheDocument();
+  });
+});
