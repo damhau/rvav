@@ -121,6 +121,51 @@ describe("a project's placement and quotas", () => {
     expect(row).toHaveTextContent("Binpack");
   });
 
+  it("gives the project an OU in Active Directory for an environment, with groups (ADR-0064)", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=placement");
+    const directory = await screen.findByRole("region", { name: "Active Directory" });
+    const table = await within(directory).findByRole("table", { name: "Active Directory OUs of Web Platform" });
+    expect(await within(table).findByRole("row", { name: /^Any environment/ })).toHaveTextContent(
+      "OU=Web,OU=Servers,DC=corp,DC=example",
+    );
+    // Every project's, shown and changed elsewhere.
+    const shared = within(table).getByRole("row", { name: /^Every project in prd/ });
+    expect(shared).toHaveTextContent("Set in Projects › Environments");
+
+    await user.click(within(directory).getByRole("button", { name: "New OU" }));
+    const sheet = await screen.findByRole("dialog", { name: "New Active Directory OU for Web Platform" });
+    await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
+    await user.click(await screen.findByRole("option", { name: "dev" }));
+    await user.type(within(sheet).getByLabelText("OU"), "Servers");
+    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    expect(await within(sheet).findByText(/"Servers" is not a DN/)).toBeInTheDocument();
+
+    await user.clear(within(sheet).getByLabelText("OU"));
+    await user.type(within(sheet).getByLabelText("OU"), "OU=Dev,OU=Web");
+    await user.type(within(sheet).getByLabelText("Groups"), "CN=Web servers,OU=Groups{Enter}CN=Dev,OU=Groups");
+    await user.click(within(sheet).getByLabelText(/Blueprints may choose their OU/));
+    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    expect(await screen.findByText("OU saved")).toBeInTheDocument();
+    const saved = adminState(db).adPlacements.find((r) => r.project_id === "prj_web" && r.environment === "dev")!;
+    expect(saved).toMatchObject({
+      ou_dn: "OU=Dev,OU=Web,DC=corp,DC=example",
+      groups: ["CN=Web servers,OU=Groups", "CN=Dev,OU=Groups"],
+      allow_blueprint_ou: true,
+    });
+    const row = await within(table).findByRole("row", { name: /^In dev/ });
+    expect(row).toHaveTextContent("May choose their OU");
+
+    await user.click(within(row).getByRole("button", { name: /^Actions for the OU/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    const confirm = await screen.findByRole("alertdialog", {
+      name: "Stop making computer objects in OU=Dev,OU=Web,DC=corp,DC=example?",
+    });
+    expect(confirm).toHaveTextContent("Objects already made stay");
+    await user.click(within(confirm).getByRole("button", { name: "Remove OU" }));
+    expect(await screen.findByText("OU removed")).toBeInTheDocument();
+  });
+
   it("adds a limit in a sheet, refuses a second one on the same resource and place, and shows what is taken", async () => {
     const user = userEvent.setup();
     renderApp("/admin/projects/prj_web?tab=quotas");

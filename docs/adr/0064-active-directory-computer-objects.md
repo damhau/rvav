@@ -54,24 +54,29 @@ needs it.
 ### Where an object goes
 `ad_placements` rows hold an OU, groups and whether a blueprint may
 choose its own OU, for a project and an environment, a project in any
-environment, or an environment in any project. One row applies to a VM,
-the first of:
+environment, an environment in any project, or every VM. One row for
+each; one row applies to a VM, the first of:
 
 1. the row for its project and environment;
 2. the row for its project, any environment;
-3. the row for its environment, any project.
+3. the row for its environment, any project;
+4. the row for any project in any environment.
 
 None means no computer object: placement is opt-in, so a site that turns
 the integration on changes nothing until it says where. The row that
 applies gives everything: its OU, its groups, its override. An OU or
 group is a DN, or a DN relative to the base DN (`OU=Servers`, as vRA's
-relative DNs are), and must be under the base DN; both are checked when
-the row is saved and again when a request is evaluated, as the base DN
-may have changed.
+relative DNs are: one with no `DC=` part), and must be under the base
+DN. Saving a row checks this and, once the integration is set, that the
+directory has the OU and the groups; a directory that can't be reached
+refuses the row. A request's evaluation checks the DNs again, as the base
+DN may have changed.
 
-A project's rows are on its page, an environment's on its settings.
-Those who manage placement (`placement.manage`) manage them: in the
-project for its rows, for all of rvav for an environment's. The API is
+A project's rows are on its Placement tab, with those of every project
+that may apply to it; every project's rows are under Projects ›
+Environments. Those who manage placement (`placement.manage`) manage
+them: in the project for its rows, for all of rvav for every project's.
+Removing a row leaves the objects made: they go with their VMs. The API is
 `/admin/ad-placements`. There is no Terraform resource yet.
 
 A blueprint's guest may set `active_directory: { ou, skip }`. The row's

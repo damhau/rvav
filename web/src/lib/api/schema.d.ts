@@ -2982,6 +2982,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/ad-placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where VMs' computer objects go in Active Directory
+         * @description With project_id, the rows that may apply to the project: its own and
+         *     those of an environment in any project. Without it, every row
+         *     (ADR-0064).
+         */
+        get: operations["listAdPlacements"];
+        put?: never;
+        /** Give a project, an environment or both an OU for computer objects */
+        post: operations["createAdPlacement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/ad-placements/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Change an OU, its groups, or whether blueprints may choose theirs */
+        put: operations["updateAdPlacement"];
+        post?: never;
+        /**
+         * Stop making computer objects there
+         * @description Objects already made stay, and are deleted with their VMs.
+         */
+        delete: operations["deleteAdPlacement"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/placement-preview": {
         parameters: {
             query?: never;
@@ -9199,6 +9245,53 @@ export interface components {
         };
         PlacementRuleList: {
             items: components["schemas"]["PlacementRule"][];
+        };
+        /**
+         * @description Where a VM's computer object goes (ADR-0064). The row for its
+         *     project and environment applies, else its project's in any
+         *     environment, else its environment's in any project, else the row
+         *     for any project in any environment; none, and no object is made.
+         */
+        AdPlacementWrite: {
+            /** @description The project; none for every project. */
+            project_id?: string | null;
+            /** @description The environment; none for every environment. */
+            environment?: components["schemas"]["EnvironmentKey"] | null;
+            /**
+             * @description The OU's DN, or a DN relative to the integration's base DN.
+             * @example OU=Servers,OU=Web
+             * @example OU=Servers,DC=corp,DC=example
+             */
+            ou: string;
+            /**
+             * @description The groups the objects join, by DN or relative to the base DN.
+             * @example [
+             *       "CN=Web servers,OU=Groups"
+             *     ]
+             */
+            groups?: string[];
+            /**
+             * @description A blueprint's active_directory (an OU of its own, or none) counts; otherwise it is ignored.
+             * @default false
+             */
+            allow_blueprint_ou: boolean;
+        };
+        AdPlacement: {
+            id: string;
+            project_id: string | null;
+            project_name?: string;
+            environment: components["schemas"]["EnvironmentKey"] | null;
+            /** @description As given. */
+            ou: string;
+            /** @description The OU's DN under the base DN; the OU as given while the integration has no base DN. */
+            ou_dn: string;
+            groups: string[];
+            allow_blueprint_ou: boolean;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AdPlacementList: {
+            items: components["schemas"]["AdPlacement"][];
         };
         PlacementPreview: {
             clusters: components["schemas"]["PreviewCluster"][];
@@ -15936,6 +16029,113 @@ export interface operations {
         };
     };
     deletePlacementRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAdPlacements: {
+        parameters: {
+            query?: {
+                project_id?: components["parameters"]["ProjectIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdPlacementList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createAdPlacement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdPlacementWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdPlacement"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    updateAdPlacement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdPlacementWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdPlacement"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteAdPlacement: {
         parameters: {
             query?: never;
             header?: never;

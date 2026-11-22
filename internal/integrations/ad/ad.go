@@ -313,6 +313,24 @@ func CheckDN(dn, base string) string {
 	return ""
 }
 
+// Resolve is a DN given relative to the base DN, as vRA's relative DNs
+// are, made whole: one with no DC part is under the base DN.
+func Resolve(dn, base string) string {
+	dn = strings.TrimSpace(dn)
+	d, err := ldap.ParseDN(dn)
+	if err != nil || base == "" || dn == "" {
+		return dn
+	}
+	for _, r := range d.RDNs {
+		for _, a := range r.Attributes {
+			if strings.EqualFold(a.Type, "DC") {
+				return dn
+			}
+		}
+	}
+	return dn + "," + base
+}
+
 func cmpOr(a, b string) string {
 	if a != "" {
 		return a

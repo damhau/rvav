@@ -29,6 +29,7 @@ import { useCurrentProject } from "@/lib/project";
 import { cn } from "@/lib/utils";
 import { Refusal, refused } from "../access/refusal";
 import { errorAt, failed, fieldErrors, keyProblems, UserPicker } from "./common";
+import { DirectoryPlacements } from "./DirectoryPlacements";
 import { MemberQuotas } from "./MemberQuotas";
 import { ArchiveDialog, quotaTone, takenText } from "./ProjectsPage";
 import { enforcements, quotaResources as resources, resourceName } from "./QuotaLines";
@@ -1272,8 +1273,9 @@ export function ProjectPage({ projectId, tab = "members" }: { projectId: string;
           <DeploymentSharing project={p} canManage={can(me, "project.members.manage", p.id)} />
           <Members project={p} canManage={can(me, "project.members.manage", p.id)} />
         </TabsContent>
-        <TabsContent value="placement" className="pt-4">
+        <TabsContent value="placement" className="flex flex-col gap-4 pt-4">
           <Placement project={p} isAdmin={can(me, "placement.manage", p.id)} />
+          <DirectoryPlacements project={p} canManage={can(me, "placement.manage", p.id)} />
         </TabsContent>
         <TabsContent value="quotas" className="flex flex-col gap-4 pt-4">
           <Quotas project={p} isAdmin={can(me, "project.quotas.manage", p.id)} />

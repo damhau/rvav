@@ -3788,6 +3788,53 @@ type ActionForm struct {
 	UiSchema UiSchema               `json:"ui_schema"`
 }
 
+// AdPlacement defines model for AdPlacement.
+type AdPlacement struct {
+	AllowBlueprintOu bool            `json:"allow_blueprint_ou"`
+	Environment      *EnvironmentKey `json:"environment"`
+	Groups           []string        `json:"groups"`
+	Id               string          `json:"id"`
+
+	// Ou As given.
+	Ou string `json:"ou"`
+
+	// OuDn The OU's DN under the base DN; the OU as given while the integration has no base DN.
+	OuDn        string    `json:"ou_dn"`
+	ProjectId   *string   `json:"project_id"`
+	ProjectName *string   `json:"project_name,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// AdPlacementList defines model for AdPlacementList.
+type AdPlacementList struct {
+	Items []AdPlacement `json:"items"`
+}
+
+// AdPlacementWrite Where a VM's computer object goes (ADR-0064). The row for its
+// project and environment applies, else its project's in any
+// environment, else its environment's in any project, else the row
+// for any project in any environment; none, and no object is made.
+type AdPlacementWrite struct {
+	// AllowBlueprintOu A blueprint's active_directory (an OU of its own, or none) counts; otherwise it is ignored.
+	AllowBlueprintOu *bool `json:"allow_blueprint_ou,omitempty"`
+
+	// Environment The environment; none for every environment.
+	Environment *EnvironmentKey `json:"environment,omitempty"`
+
+	// Groups The groups the objects join, by DN or relative to the base DN.
+	//
+	// Examples: ["CN=Web servers,OU=Groups"]
+	Groups *[]string `json:"groups,omitempty"`
+
+	// Ou The OU's DN, or a DN relative to the integration's base DN.
+	//
+	// Examples: OU=Servers,OU=Web, OU=Servers,DC=corp,DC=example
+	Ou string `json:"ou"`
+
+	// ProjectId The project; none for every project.
+	ProjectId *string `json:"project_id,omitempty"`
+}
+
 // AdminCatalogCategory defines model for AdminCatalogCategory.
 type AdminCatalogCategory struct {
 	// Items Items in the category.
@@ -11794,6 +11841,11 @@ type ExplainAccessParams struct {
 	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
+// ListAdPlacementsParams defines parameters for ListAdPlacements.
+type ListAdPlacementsParams struct {
+	ProjectId *ProjectIdQuery `form:"project_id,omitempty" json:"project_id,omitempty"`
+}
+
 // UploadFormImageParams defines parameters for UploadFormImage.
 type UploadFormImageParams struct {
 	// Name The picture's file name.
@@ -12310,6 +12362,12 @@ type SearchUsersParams struct {
 	Q     *Search `form:"q,omitempty" json:"q,omitempty"`
 	Limit *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// CreateAdPlacementJSONRequestBody defines body for CreateAdPlacement for application/json ContentType.
+type CreateAdPlacementJSONRequestBody = AdPlacementWrite
+
+// UpdateAdPlacementJSONRequestBody defines body for UpdateAdPlacement for application/json ContentType.
+type UpdateAdPlacementJSONRequestBody = AdPlacementWrite
 
 // CreateApprovalPolicyJSONRequestBody defines body for CreateApprovalPolicy for application/json ContentType.
 type CreateApprovalPolicyJSONRequestBody = ApprovalPolicyWrite
@@ -13692,6 +13750,50 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /admin/access/explain (the `ExplainAccess` operationId).
 	ExplainAccess(ctx context.Context, params *ExplainAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAdPlacements Where VMs' computer objects go in Active Directory
+	//
+	// With project_id, the rows that may apply to the project: its own and
+	// those of an environment in any project. Without it, every row
+	// (ADR-0064).
+	//
+	// Corresponds with GET /admin/ad-placements (the `ListAdPlacements` operationId).
+	ListAdPlacements(ctx context.Context, params *ListAdPlacementsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAdPlacementWithBody Give a project, an environment or both an OU for computer objects
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
+	CreateAdPlacementWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAdPlacement Give a project, an environment or both an OU for computer objects
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
+	CreateAdPlacement(ctx context.Context, body CreateAdPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteAdPlacement Stop making computer objects there
+	//
+	// Objects already made stay, and are deleted with their VMs.
+	//
+	// Corresponds with DELETE /admin/ad-placements/{id} (the `DeleteAdPlacement` operationId).
+	DeleteAdPlacement(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAdPlacementWithBody Change an OU, its groups, or whether blueprints may choose theirs
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
+	UpdateAdPlacementWithBody(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAdPlacement Change an OU, its groups, or whether blueprints may choose theirs
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
+	UpdateAdPlacement(ctx context.Context, id IdPath, body UpdateAdPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListApprovalPolicies Approval policies, in the order they are tried
 	//
@@ -17532,6 +17634,110 @@ type ClientInterface interface {
 // Corresponds with GET /admin/access/explain (the `ExplainAccess` operationId).
 func (c *Client) ExplainAccess(ctx context.Context, params *ExplainAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExplainAccessRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAdPlacements Where VMs' computer objects go in Active Directory
+//
+// With project_id, the rows that may apply to the project: its own and
+// those of an environment in any project. Without it, every row
+// (ADR-0064).
+//
+// Corresponds with GET /admin/ad-placements (the `ListAdPlacements` operationId).
+func (c *Client) ListAdPlacements(ctx context.Context, params *ListAdPlacementsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAdPlacementsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAdPlacementWithBody Give a project, an environment or both an OU for computer objects
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
+func (c *Client) CreateAdPlacementWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAdPlacementRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAdPlacement Give a project, an environment or both an OU for computer objects
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
+func (c *Client) CreateAdPlacement(ctx context.Context, body CreateAdPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAdPlacementRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteAdPlacement Stop making computer objects there
+//
+// Objects already made stay, and are deleted with their VMs.
+//
+// Corresponds with DELETE /admin/ad-placements/{id} (the `DeleteAdPlacement` operationId).
+func (c *Client) DeleteAdPlacement(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAdPlacementRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAdPlacementWithBody Change an OU, its groups, or whether blueprints may choose theirs
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
+func (c *Client) UpdateAdPlacementWithBody(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAdPlacementRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAdPlacement Change an OU, its groups, or whether blueprints may choose theirs
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
+func (c *Client) UpdateAdPlacement(ctx context.Context, id IdPath, body UpdateAdPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAdPlacementRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -25664,6 +25870,181 @@ func NewExplainAccessRequest(server string, params *ExplainAccessParams) (*http.
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListAdPlacementsRequest constructs an http.Request for the ListAdPlacements method
+func NewListAdPlacementsRequest(server string, params *ListAdPlacementsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ad-placements")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.ProjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project_id", *params.ProjectId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAdPlacementRequest calls the generic CreateAdPlacement builder with application/json body
+func NewCreateAdPlacementRequest(server string, body CreateAdPlacementJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAdPlacementRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateAdPlacementRequestWithBody constructs an http.Request for the CreateAdPlacement method, with any body, and a specified content type
+func NewCreateAdPlacementRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ad-placements")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteAdPlacementRequest constructs an http.Request for the DeleteAdPlacement method
+func NewDeleteAdPlacementRequest(server string, id IdPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ad-placements/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAdPlacementRequest calls the generic UpdateAdPlacement builder with application/json body
+func NewUpdateAdPlacementRequest(server string, id IdPath, body UpdateAdPlacementJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAdPlacementRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewUpdateAdPlacementRequestWithBody constructs an http.Request for the UpdateAdPlacement method, with any body, and a specified content type
+func NewUpdateAdPlacementRequestWithBody(server string, id IdPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ad-placements/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -38906,6 +39287,54 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /admin/access/explain (the `ExplainAccess` operationId).
 	ExplainAccessWithResponse(ctx context.Context, params *ExplainAccessParams, reqEditors ...RequestEditorFn) (*ExplainAccessResponse, error)
 
+	// ListAdPlacementsWithResponse Where VMs' computer objects go in Active Directory
+	//
+	// With project_id, the rows that may apply to the project: its own and
+	// those of an environment in any project. Without it, every row
+	// (ADR-0064).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/ad-placements (the `ListAdPlacements` operationId).
+	ListAdPlacementsWithResponse(ctx context.Context, params *ListAdPlacementsParams, reqEditors ...RequestEditorFn) (*ListAdPlacementsResponse, error)
+
+	// CreateAdPlacementWithBodyWithResponse Give a project, an environment or both an OU for computer objects
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
+	CreateAdPlacementWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAdPlacementResponse, error)
+
+	// CreateAdPlacementWithResponse Give a project, an environment or both an OU for computer objects
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
+	CreateAdPlacementWithResponse(ctx context.Context, body CreateAdPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAdPlacementResponse, error)
+
+	// DeleteAdPlacementWithResponse Stop making computer objects there
+	//
+	// Objects already made stay, and are deleted with their VMs.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /admin/ad-placements/{id} (the `DeleteAdPlacement` operationId).
+	DeleteAdPlacementWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*DeleteAdPlacementResponse, error)
+
+	// UpdateAdPlacementWithBodyWithResponse Change an OU, its groups, or whether blueprints may choose theirs
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
+	UpdateAdPlacementWithBodyWithResponse(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAdPlacementResponse, error)
+
+	// UpdateAdPlacementWithResponse Change an OU, its groups, or whether blueprints may choose theirs
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
+	UpdateAdPlacementWithResponse(ctx context.Context, id IdPath, body UpdateAdPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAdPlacementResponse, error)
+
 	// ListApprovalPoliciesWithResponse Approval policies, in the order they are tried
 	//
 	// With `policies.read`, every policy. With `project.policies.manage`
@@ -43147,6 +43576,268 @@ func (r ExplainAccessResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ExplainAccessResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAdPlacementsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdPlacementList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAdPlacementsResponse) GetJSON200() *AdPlacementList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListAdPlacementsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListAdPlacementsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ListAdPlacementsResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAdPlacementsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAdPlacementsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAdPlacementsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAdPlacementsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateAdPlacementResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *AdPlacement
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateAdPlacementResponse) GetJSON201() *AdPlacement {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateAdPlacementResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateAdPlacementResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateAdPlacementResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateAdPlacementResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateAdPlacementResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAdPlacementResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAdPlacementResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateAdPlacementResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteAdPlacementResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteAdPlacementResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteAdPlacementResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteAdPlacementResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteAdPlacementResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteAdPlacementResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteAdPlacementResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteAdPlacementResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateAdPlacementResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdPlacement
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateAdPlacementResponse) GetJSON200() *AdPlacement {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateAdPlacementResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateAdPlacementResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateAdPlacementResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UpdateAdPlacementResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateAdPlacementResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateAdPlacementResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAdPlacementResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAdPlacementResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateAdPlacementResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -62051,6 +62742,90 @@ func (c *ClientWithResponses) ExplainAccessWithResponse(ctx context.Context, par
 	return ParseExplainAccessResponse(rsp)
 }
 
+// ListAdPlacementsWithResponse Where VMs' computer objects go in Active Directory
+//
+// With project_id, the rows that may apply to the project: its own and
+// those of an environment in any project. Without it, every row
+// (ADR-0064).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/ad-placements (the `ListAdPlacements` operationId).
+func (c *ClientWithResponses) ListAdPlacementsWithResponse(ctx context.Context, params *ListAdPlacementsParams, reqEditors ...RequestEditorFn) (*ListAdPlacementsResponse, error) {
+	rsp, err := c.ListAdPlacements(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAdPlacementsResponse(rsp)
+}
+
+// CreateAdPlacementWithBodyWithResponse Give a project, an environment or both an OU for computer objects
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
+func (c *ClientWithResponses) CreateAdPlacementWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAdPlacementResponse, error) {
+	rsp, err := c.CreateAdPlacementWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAdPlacementResponse(rsp)
+}
+
+// CreateAdPlacementWithResponse Give a project, an environment or both an OU for computer objects
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
+func (c *ClientWithResponses) CreateAdPlacementWithResponse(ctx context.Context, body CreateAdPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAdPlacementResponse, error) {
+	rsp, err := c.CreateAdPlacement(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAdPlacementResponse(rsp)
+}
+
+// DeleteAdPlacementWithResponse Stop making computer objects there
+//
+// Objects already made stay, and are deleted with their VMs.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /admin/ad-placements/{id} (the `DeleteAdPlacement` operationId).
+func (c *ClientWithResponses) DeleteAdPlacementWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*DeleteAdPlacementResponse, error) {
+	rsp, err := c.DeleteAdPlacement(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAdPlacementResponse(rsp)
+}
+
+// UpdateAdPlacementWithBodyWithResponse Change an OU, its groups, or whether blueprints may choose theirs
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
+func (c *ClientWithResponses) UpdateAdPlacementWithBodyWithResponse(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAdPlacementResponse, error) {
+	rsp, err := c.UpdateAdPlacementWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAdPlacementResponse(rsp)
+}
+
+// UpdateAdPlacementWithResponse Change an OU, its groups, or whether blueprints may choose theirs
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
+func (c *ClientWithResponses) UpdateAdPlacementWithResponse(ctx context.Context, id IdPath, body UpdateAdPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAdPlacementResponse, error) {
+	rsp, err := c.UpdateAdPlacement(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAdPlacementResponse(rsp)
+}
+
 // ListApprovalPoliciesWithResponse Approval policies, in the order they are tried
 //
 // With `policies.read`, every policy. With `project.policies.manage`
@@ -68820,6 +69595,211 @@ func ParseExplainAccessResponse(rsp *http.Response) (*ExplainAccessResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAdPlacementsResponse parses an HTTP response from a ListAdPlacementsWithResponse call
+func ParseListAdPlacementsResponse(rsp *http.Response) (*ListAdPlacementsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAdPlacementsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdPlacementList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAdPlacementResponse parses an HTTP response from a CreateAdPlacementWithResponse call
+func ParseCreateAdPlacementResponse(rsp *http.Response) (*CreateAdPlacementResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAdPlacementResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AdPlacement
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteAdPlacementResponse parses an HTTP response from a DeleteAdPlacementWithResponse call
+func ParseDeleteAdPlacementResponse(rsp *http.Response) (*DeleteAdPlacementResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteAdPlacementResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAdPlacementResponse parses an HTTP response from a UpdateAdPlacementWithResponse call
+func ParseUpdateAdPlacementResponse(rsp *http.Response) (*UpdateAdPlacementResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAdPlacementResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdPlacement
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	}
 

@@ -107,4 +107,18 @@ func TestNames(t *testing.T) {
 			t.Errorf("CheckDN(%q) = %q, want %q", dn, got, want)
 		}
 	}
+	for dn, want := range map[string]string{
+		"OU=Servers,OU=Web":             "OU=Servers,OU=Web,DC=corp,DC=example",
+		" OU=Servers ":                  "OU=Servers,DC=corp,DC=example",
+		"OU=Servers,dc=other,dc=com":    "OU=Servers,dc=other,dc=com",
+		"OU=Servers,DC=corp,DC=example": "OU=Servers,DC=corp,DC=example",
+		"Servers":                       "Servers",
+	} {
+		if got := ad.Resolve(dn, "DC=corp,DC=example"); got != want {
+			t.Errorf("Resolve(%q) = %q, want %q", dn, got, want)
+		}
+	}
+	if got := ad.Resolve("OU=Servers", ""); got != "OU=Servers" {
+		t.Errorf("Resolve without a base DN = %q", got)
+	}
 }

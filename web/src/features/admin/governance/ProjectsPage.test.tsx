@@ -84,6 +84,38 @@ describe("the projects list", () => {
 });
 
 describe("environments", () => {
+  it("gives every project an OU in Active Directory for an environment, one only (ADR-0064)", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects?tab=environments");
+    const directory = await screen.findByRole("region", { name: "Active Directory" });
+    const table = await within(directory).findByRole("table", { name: "Active Directory OUs of every project" });
+    expect(await within(table).findByRole("row", { name: /^Every project in prd/ })).toHaveTextContent(
+      "OU=Production,OU=Servers,DC=corp,DC=example",
+    );
+    expect(within(table).queryByText(/OU=Web/)).toBeNull();
+
+    await user.click(within(directory).getByRole("button", { name: "New OU" }));
+    let sheet = await screen.findByRole("dialog", { name: "New Active Directory OU" });
+    await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
+    await user.click(await screen.findByRole("option", { name: "prd" }));
+    await user.type(within(sheet).getByLabelText("OU"), "OU=Prod");
+    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    expect(await screen.findByText("There is already an OU for every project in prd.")).toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
+
+    await user.click(within(directory).getByRole("button", { name: "New OU" }));
+    sheet = await screen.findByRole("dialog", { name: "New Active Directory OU" });
+    await user.type(within(sheet).getByLabelText("OU"), "OU=Servers,DC=other,DC=example");
+    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    expect(await within(sheet).findByText(/is not under the directory's base DN/)).toBeInTheDocument();
+    await user.clear(within(sheet).getByLabelText("OU"));
+    await user.type(within(sheet).getByLabelText("OU"), "OU=Servers");
+    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    expect(await within(table).findByRole("row", { name: /^Every project, any environment/ })).toHaveTextContent(
+      "OU=Servers,DC=corp,DC=example",
+    );
+  });
+
   it("are added in a sheet, and one nothing uses is removed after asking", async () => {
     const user = userEvent.setup();
     renderApp("/admin/projects?tab=environments");

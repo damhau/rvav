@@ -29,6 +29,7 @@ import { useCurrentProject } from "@/lib/project";
 import { cn } from "@/lib/utils";
 import { AdminWarning, Refusal, refused } from "../access/refusal";
 import { failed, fieldErrors, UserPicker } from "./common";
+import { DirectoryPlacements } from "./DirectoryPlacements";
 
 type S = components["schemas"];
 
@@ -943,8 +944,9 @@ export function ProjectsPage({ tab }: { tab?: ProjectsTab }) {
             <ProjectsPanel />
           </TabsContent>
           {can(me, "environments.read") && (
-            <TabsContent value="environments" className="pt-4">
+            <TabsContent value="environments" className="flex flex-col gap-4 pt-4">
               <EnvironmentsPanel canEdit={can(me, "environments.manage")} />
+              {can(me, "project.settings.read") && <DirectoryPlacements canManage={can(me, "placement.manage")} />}
             </TabsContent>
           )}
           {can(me, "access.read") && (

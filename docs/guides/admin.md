@@ -628,6 +628,34 @@ ticking it asks for the password again.
 Saving the connection changes nothing yet: rvav makes computer objects
 only for the projects and environments you give an OU.
 
+### Give projects and environments an OU
+
+An OU applies to a project in one environment, a project in any
+environment, an environment in every project, or every VM. For a VM,
+rvav takes the first that exists, in that order. With none, the VM gets
+no computer object.
+
+To give a project an OU:
+
+1. In **Projects**, open the project, then the **Placement** tab.
+2. Under **Active Directory**, click **New OU**.
+3. Select an environment, or **Any environment**.
+4. Enter the OU's DN. A DN without `DC=` parts, such as
+   `OU=Servers,OU=Web`, is relative to the base DN.
+5. Optional: enter the groups the computer objects join, one DN a line.
+6. Optional: select **Blueprints may choose their OU**, to let a
+   blueprint's `active_directory` name another OU, or none. Otherwise
+   rvav ignores it.
+7. Click **Save OU**. rvav checks that the directory has the OU and the
+   groups.
+
+To give an environment an OU in every project, or every VM one, do the
+same under **Projects › Environments › Active Directory**. A project's
+**Placement** tab shows these too, for reference.
+
+Removing an OU stops rvav making objects there. The objects already made
+stay, and rvav deletes them with their VMs.
+
 ## Projects
 
 **Projects** has three tabs:

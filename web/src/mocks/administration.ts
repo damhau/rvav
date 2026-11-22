@@ -45,6 +45,8 @@ interface AdminState {
   roleAssignments: S["RoleAssignment"][];
   envs: Record<string, { snapshot_max_count: number; snapshot_max_age_days: number | null; tag_categories: string[] }>;
   rules: S["PlacementRule"][];
+  /** Where computer objects go in Active Directory (ADR-0064). */
+  adPlacements: S["AdPlacement"][];
   mappings: S["NetworkMapping"][];
   templates: S["VmTemplate"][];
   sizes: S["SizePreset"][];
@@ -255,6 +257,34 @@ export function adminState(db: Db): AdminState {
       });
     }
   }
+  const web = db.projects.find((p) => p.code === "web");
+  const adPlacements: S["AdPlacement"][] = [
+    ...(web
+      ? [
+          {
+            id: "adp_web",
+            project_id: web.id,
+            project_name: web.name,
+            environment: null,
+            ou: "OU=Web,OU=Servers",
+            ou_dn: "OU=Web,OU=Servers,DC=corp,DC=example",
+            groups: ["CN=Web servers,OU=Groups"],
+            allow_blueprint_ou: false,
+            updated_at: ago(20),
+          },
+        ]
+      : []),
+    {
+      id: "adp_prd",
+      project_id: null,
+      environment: "prd",
+      ou: "OU=Production,OU=Servers",
+      ou_dn: "OU=Production,OU=Servers,DC=corp,DC=example",
+      groups: [],
+      allow_blueprint_ou: false,
+      updated_at: ago(60),
+    },
+  ];
   const level = (name: string, group: string): S["ApprovalLevel"] => ({ name, group, mode: "any" });
   d.administration = {
     seq: 1000,
@@ -307,6 +337,7 @@ export function adminState(db: Db): AdminState {
       ]),
     ),
     rules,
+    adPlacements,
     mappings: networks.map((n) => ({
       network: n.name,
       subnet: n.subnet,
@@ -1529,6 +1560,79 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (i < 0) return problem(404, "Not found");
       rules.splice(i, 1);
       audited(db, "placement.rule.delete", "placement_rule", String(params.id));
+      return new HttpResponse(null, { status: 204 });
+    }),
+    // Active Directory OUs (ADR-0064): DNs, maybe relative to the base DN.
+    http.get(`${base}/admin/ad-placements`, async ({ request }) => {
+      await wait();
+      const id = new URL(request.url).searchParams.get("project_id");
+      const p = id ? project(id) : undefined;
+      if (id && !p) return problem(404, "Not found");
+      const rows = st().adPlacements.filter((r) => !p || r.project_id === p.id || r.project_id === null);
+      return HttpResponse.json({
+        items: [...rows].sort((a, b) => Number(a.project_id === null) - Number(b.project_id === null)),
+      });
+    }),
+    ...(["post", "put"] as const).map((method) =>
+      http[method](`${base}/admin/ad-placements${method === "put" ? "/:id" : ""}`, async ({ params, request }) => {
+        await wait();
+        const w = (await request.json()) as S["AdPlacementWrite"];
+        const rows = st().adPlacements;
+        const id = method === "put" ? String(params.id) : next("adp");
+        if (method === "put" && !rows.some((r) => r.id === id)) return problem(404, "Not found");
+        const p = w.project_id ? project(w.project_id) : undefined;
+        const env = w.environment ?? null;
+        const errors: S["FieldError"][] = [];
+        if (w.project_id && !p) errors.push(err("/project_id", "There is no such project."));
+        else if (p && env && !p.environments.includes(env))
+          errors.push(err("/environment", `${p.name} doesn't deploy to ${env}.`));
+        const given = st().integrations.ad?.settings.base_dn;
+        const baseDN = typeof given === "string" ? given : "";
+        const resolve = (dn: string) => (/(^|,)\s*dc=/i.test(dn) || !baseDN ? dn : `${dn},${baseDN}`);
+        const check = (dn: string, ptr: string) => {
+          if (!/^\s*[A-Za-z]+=[^,=]+(,\s*[A-Za-z]+=[^,=]+)*\s*$/.test(dn))
+            errors.push(err(ptr, `"${dn}" is not a DN: for example OU=Servers,${baseDN || "DC=corp,DC=example"}.`));
+          else if (baseDN && !resolve(dn).toLowerCase().endsWith(baseDN.toLowerCase()))
+            errors.push(err(ptr, `${dn} is not under the directory's base DN, ${baseDN}.`));
+        };
+        const ou = w.ou.trim();
+        if (!ou) errors.push(err("/ou", "Name the OU, for example OU=Servers,OU=Web."));
+        else check(ou, "/ou");
+        const groups = (w.groups ?? []).map((g) => g.trim());
+        groups.forEach((g, i) => check(g, `/groups/${i}`));
+        if (errors.length) return invalid(errors);
+        if (rows.some((r) => r.id !== id && r.project_id === (p?.id ?? null) && r.environment === env))
+          return problem(
+            409,
+            "Conflict",
+            undefined,
+            `There is already an OU for ${p?.name ?? "every project"}${env ? ` in ${env}` : p ? "" : " and environment"}.`,
+          );
+        const row: S["AdPlacement"] = {
+          id,
+          project_id: p?.id ?? null,
+          ...(p ? { project_name: p.name } : {}),
+          environment: env,
+          ou,
+          ou_dn: resolve(ou),
+          groups,
+          allow_blueprint_ou: w.allow_blueprint_ou ?? false,
+          updated_at: now(),
+        };
+        const i = rows.findIndex((r) => r.id === id);
+        if (i >= 0) rows[i] = row;
+        else rows.push(row);
+        audited(db, `ad.placement.${method === "put" ? "update" : "create"}`, "ad_placement", id);
+        return HttpResponse.json(row, { status: method === "put" ? 200 : 201 });
+      }),
+    ),
+    http.delete(`${base}/admin/ad-placements/:id`, async ({ params }) => {
+      await wait();
+      const rows = st().adPlacements;
+      const i = rows.findIndex((r) => r.id === params.id);
+      if (i < 0) return problem(404, "Not found");
+      rows.splice(i, 1);
+      audited(db, "ad.placement.delete", "ad_placement", String(params.id));
       return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/admin/placement-preview`, async ({ request }) => {

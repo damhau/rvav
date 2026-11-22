@@ -203,6 +203,11 @@ export const adm = {
     get(["admin", "placement-rules", projectId], (signal) =>
       call(api.GET("/admin/placement-rules", { params: { query: { project_id: projectId } }, signal })),
     ),
+  /** A project's Active Directory OUs and those of every project, or every one (ADR-0064). */
+  adPlacements: (projectId?: string) =>
+    get(["admin", "ad-placements", projectId ?? ""], (signal) =>
+      call(api.GET("/admin/ad-placements", { params: { query: projectId ? { project_id: projectId } : {} }, signal })),
+    ),
   placementPreview: (projectId: string, environment: string) =>
     get(["admin", "placement-preview", projectId, environment], (signal) =>
       call(api.GET("/admin/placement-preview", { params: { query: { project_id: projectId, environment } }, signal })),

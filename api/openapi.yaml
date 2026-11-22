@@ -3847,6 +3847,80 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/ad-placements:
+    get:
+      tags: [admin]
+      operationId: listAdPlacements
+      summary: Where VMs' computer objects go in Active Directory
+      description: |
+        With project_id, the rows that may apply to the project: its own and
+        those of an environment in any project. Without it, every row
+        (ADR-0064).
+      parameters:
+        - { $ref: "#/components/parameters/ProjectIdQuery" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdPlacementList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [admin]
+      operationId: createAdPlacement
+      summary: Give a project, an environment or both an OU for computer objects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdPlacementWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdPlacement" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/ad-placements/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    put:
+      tags: [admin]
+      operationId: updateAdPlacement
+      summary: Change an OU, its groups, or whether blueprints may choose theirs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdPlacementWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdPlacement" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteAdPlacement
+      summary: Stop making computer objects there
+      description: Objects already made stay, and are deleted with their VMs.
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /admin/placement-preview:
     get:
       tags: [admin]
@@ -12126,6 +12200,62 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/PlacementRule" }
+    AdPlacementWrite:
+      type: object
+      required: [ou]
+      additionalProperties: false
+      description: |
+        Where a VM's computer object goes (ADR-0064). The row for its
+        project and environment applies, else its project's in any
+        environment, else its environment's in any project, else the row
+        for any project in any environment; none, and no object is made.
+      properties:
+        project_id:
+          type: [string, "null"]
+          description: The project; none for every project.
+        environment:
+          description: The environment; none for every environment.
+          oneOf:
+            - $ref: "#/components/schemas/EnvironmentKey"
+            - type: "null"
+        ou:
+          type: string
+          description: The OU's DN, or a DN relative to the integration's base DN.
+          examples: ["OU=Servers,OU=Web", "OU=Servers,DC=corp,DC=example"]
+        groups:
+          type: array
+          items: { type: string }
+          description: The groups the objects join, by DN or relative to the base DN.
+          examples: [["CN=Web servers,OU=Groups"]]
+        allow_blueprint_ou:
+          type: boolean
+          default: false
+          description: A blueprint's active_directory (an OU of its own, or none) counts; otherwise it is ignored.
+    AdPlacement:
+      type: object
+      required: [id, project_id, environment, ou, ou_dn, groups, allow_blueprint_ou, updated_at]
+      properties:
+        id: { type: string }
+        project_id: { type: [string, "null"] }
+        project_name: { type: string }
+        environment:
+          oneOf:
+            - $ref: "#/components/schemas/EnvironmentKey"
+            - type: "null"
+        ou: { type: string, description: As given. }
+        ou_dn:
+          type: string
+          description: The OU's DN under the base DN; the OU as given while the integration has no base DN.
+        groups: { type: array, items: { type: string } }
+        allow_blueprint_ou: { type: boolean }
+        updated_at: { type: string, format: date-time }
+    AdPlacementList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AdPlacement" }
     PlacementPreview:
       type: object
       required: [clusters, datastores, networks, folder, problems]
