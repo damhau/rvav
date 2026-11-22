@@ -62,6 +62,8 @@ func certificateOf(kind string, cfg config.Config, settings map[string]any) (str
 		u, o = cfg.NSX.URL, cfg.NSX.TLS()
 	case "vra":
 		u, o = cfg.VRA.URL, cfg.VRA.TLS()
+	case "servicenow":
+		u, o = cfg.ServiceNow.URL, cfg.ServiceNow.TLS()
 	case "ad":
 		// Plain LDAP has no certificate.
 		if p, err := url.Parse(cfg.AD.URL); err == nil && (p.Scheme == "ldaps" || p.Scheme == "ldap" && !cfg.AD.PlainLDAP) && p.Host != "" {

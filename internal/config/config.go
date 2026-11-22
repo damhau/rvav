@@ -33,6 +33,9 @@ type Config struct {
 	VRA VRAConfig
 	// AD is the Active Directory computer objects are made in (ADR-0064).
 	AD ADConfig
+	// ServiceNow is the instance rvav keeps CIs in and takes requests
+	// from (ADR-0065).
+	ServiceNow ServiceNowConfig
 	// NSX is the NSX Manager rvav makes networks and security groups in
 	// (ADR-0028).
 	NSX NSXConfig
@@ -169,6 +172,22 @@ type ADConfig struct {
 
 // Configured says whether rvav has a directory.
 func (c ADConfig) Configured() bool { return c.URL != "" && c.BaseDN != "" }
+
+// ServiceNowConfig is the ServiceNow instance (ADR-0065): https only, as
+// a user with its password or an OAuth client with its secret.
+type ServiceNowConfig struct {
+	URL string
+	// Auth is basic or oauth (the client credentials grant).
+	Auth       string
+	Username   string
+	ClientID   string
+	Secret     string
+	Insecure   bool
+	CertSHA256 string
+}
+
+// Configured says whether rvav has a ServiceNow instance.
+func (c ServiceNowConfig) Configured() bool { return c.URL != "" }
 
 // NSXConfig: where the NSX Manager is, and rvav's account there, a user
 // and password or a client certificate (a principal identity).
@@ -409,6 +428,15 @@ func Load() (Config, error) {
 			PlainLDAP:  boolean("RVAV_AD_PLAIN_LDAP"),
 			CertSHA256: env("RVAV_AD_CERT_SHA256", ""),
 		},
+		ServiceNow: ServiceNowConfig{
+			URL:        env("RVAV_SERVICENOW_URL", ""),
+			Auth:       env("RVAV_SERVICENOW_AUTH", "basic"),
+			Username:   env("RVAV_SERVICENOW_USERNAME", ""),
+			ClientID:   env("RVAV_SERVICENOW_CLIENT_ID", ""),
+			Secret:     env("RVAV_SERVICENOW_SECRET", ""),
+			Insecure:   boolean("RVAV_SERVICENOW_INSECURE"),
+			CertSHA256: env("RVAV_SERVICENOW_CERT_SHA256", ""),
+		},
 		AWX: AWXConfig{
 			Fake:          boolean("RVAV_FAKE_AWX"),
 			URL:           env("RVAV_AWX_URL", ""),
@@ -465,6 +493,10 @@ func Load() (Config, error) {
 
 	if c.TrustedProxies, err = prefixes("RVAV_TRUSTED_PROXIES"); err != nil {
 		return c, err
+	}
+
+	if a := c.ServiceNow.Auth; a != "basic" && a != "oauth" {
+		return c, fmt.Errorf("RVAV_SERVICENOW_AUTH must be basic or oauth, got %q", a)
 	}
 
 	// Without an identity provider, only the local administrator and API

@@ -32,8 +32,8 @@ import (
 // as each process drains and starts again (app.Run); test connection tries
 // the settings given, saved or not.
 
-var integrationKinds = []string{"oidc", "vcenter", "console", "awx", "efficientip", "nsx", "git", "vra", "ad", "smtp", "teams", "slack",
-	"hosts", "trust"}
+var integrationKinds = []string{"oidc", "vcenter", "console", "awx", "efficientip", "nsx", "git", "vra", "ad", "servicenow", "smtp",
+	"teams", "slack", "hosts", "trust"}
 
 // storedSlack opens Slack's sealed secrets, both kept as one.
 func (s *Service) storedSlack(row *store.IntegrationSettings) config.SlackSecrets {
@@ -394,6 +394,8 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		testVRA(ctx, cfg.VRA, roots, check)
 	case "ad":
 		testAD(ctx, cfg.AD, roots, check)
+	case "servicenow":
+		testServiceNow(ctx, cfg.ServiceNow, roots, check)
 	case "trust":
 		testTrust(cfg.CABundle, check)
 	case "hosts":

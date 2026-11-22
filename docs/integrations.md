@@ -461,6 +461,19 @@ be allowed to reuse it: the service account itself, or an account the
 policy "Domain controller: Allow computer account re-use during domain
 join" names (KB5020276).
 
+## ServiceNow (REST; ADR-0065)
+
+- **Client** (`internal/integrations/servicenow`): `net/http` against the
+  Table API (`/api/now/table/{table}`) and the Identification and
+  Reconciliation API (`/api/now/identifyreconcile`), over HTTPS only. It
+  signs in as a user (basic) or as an OAuth client by the client
+  credentials grant (`/oauth_token.do`), set with `RVAV_SERVICENOW_*` or in
+  Administration › Integrations › ServiceNow, whose test shows the
+  certificate, signs in and reads one requested item (`sc_req_item`).
+- **Fake** (`servicenow.Fake`): an in-process instance for the tests,
+  with the Table API's encoded queries, OAuth, and an IRE that identifies
+  a VM by its instance UUID, then by its moref and vCenter.
+
 ## Identity (OIDC)
 
 - Any OIDC provider (Keycloak, Entra ID, Okta). Authorization code flow with

@@ -35,6 +35,7 @@ export const integrationKinds = [
   "git",
   "vra",
   "ad",
+  "servicenow",
   "smtp",
   "teams",
   "slack",
@@ -50,6 +51,7 @@ const onNextUse: Partial<Record<Kind, string>> = {
   console: "They apply from the next console opened.",
   vra: "They apply from the next read of vRA.",
   ad: "They apply from the next computer object made or deleted.",
+  servicenow: "They apply from the next call to ServiceNow.",
   hosts: "They apply from the next call to a host.",
 };
 
@@ -346,6 +348,44 @@ const fields: Record<
         type: "bool",
         warn: "With ldap://, the service account's password and every object go over the network in the clear. For a lab only.",
       },
+    ],
+  },
+  // ADR-0065.
+  servicenow: {
+    title: "ServiceNow",
+    about: "The instance rvav keeps VMs' CIs in, and takes requests from its catalog.",
+    secret: {
+      name: "secret",
+      label: "Password or client secret",
+      env: "RVAV_SERVICENOW_SECRET",
+      type: "string",
+      hint: "The user's password, or the OAuth client's secret",
+    },
+    settings: [
+      {
+        name: "url",
+        label: "Instance URL",
+        env: "RVAV_SERVICENOW_URL",
+        type: "string",
+        hint: "https only, for example https://corp.service-now.com",
+      },
+      {
+        name: "auth",
+        label: "Sign-in",
+        env: "RVAV_SERVICENOW_AUTH",
+        type: "string",
+        hint: "basic (a user and its password) or oauth (an OAuth client, by the client credentials grant)",
+      },
+      {
+        name: "username",
+        label: "User",
+        env: "RVAV_SERVICENOW_USERNAME",
+        type: "string",
+        hint: "With basic: an integration user that may only call web services",
+      },
+      { name: "client_id", label: "OAuth client ID", env: "RVAV_SERVICENOW_CLIENT_ID", type: "string" },
+      pin("RVAV_SERVICENOW_CERT_SHA256"),
+      { name: "insecure", label: "Skip TLS verification", env: "RVAV_SERVICENOW_INSECURE", type: "bool" },
     ],
   },
   // Notification channels (S11, ADR-0023).

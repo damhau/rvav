@@ -111,7 +111,7 @@ const PROJECT_PICKERS = [
 ];
 
 /** The integrations read on next use (ADR-0030). */
-const LIVE_KINDS = ["oidc", "smtp", "teams", "slack", "hosts", "console", "vra", "ad"];
+const LIVE_KINDS = ["oidc", "smtp", "teams", "slack", "hosts", "console", "vra", "ad", "servicenow"];
 
 /** The integrations, in the order the server lists them. */
 const KINDS = [
@@ -124,6 +124,7 @@ const KINDS = [
   "git",
   "vra",
   "ad",
+  "servicenow",
   "smtp",
   "teams",
   "slack",
@@ -474,6 +475,7 @@ export function adminState(db: Db): AdminState {
       git: { settings: { url: "", branch: "main", dir: "catalog", username: "", known_hosts: "", insecure: false, committer: "rvav@corp.example", sync_interval: "5m" }, secret: false },
       vra: { settings: { url: "", username: "", domain: "", insecure: false, cert_sha256: "" }, secret: false },
       ad: { settings: { url: "ldaps://dc01.corp.example", username: "svc-rvav@corp.example", base_dn: "DC=corp,DC=example", insecure: false, plain_ldap: false, cert_sha256: "" }, secret: true },
+      servicenow: { settings: { url: "https://corp.service-now.com", auth: "oauth", username: "", client_id: "3f1c0b7e9a2d4c58b6e1f0a9d7c3b5e2", insecure: false, cert_sha256: "" }, secret: true },
       smtp: { settings: { host: "smtp.corp.example", port: 587, tls: "starttls", from: "rvav <rvav@corp.example>", username: "" }, secret: false },
       teams: { settings: { app_id: "", tenant_id: "", service_url: "https://smba.trafficmanager.net/emea", login_url: "https://login.microsoftonline.com", graph_url: "https://graph.microsoft.com", openid_url: "https://login.botframework.com/v1/.well-known/openidconfiguration" }, secret: false },
       slack: { settings: { api_url: "https://slack.com/api" }, secret: false, signing: false },
@@ -2600,7 +2602,11 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           err("/settings/url", "The URL holds a password or token: give it as the token, not in the URL."),
         ]);
       const urlPattern =
-        { git: /^(https?:\/\/|ssh:\/\/|[\w.-]+@[\w.-]+:)/, ad: /^ldaps?:\/\/[^/]+\/?$/ }[kind] ?? /^https?:\/\//;
+        {
+          git: /^(https?:\/\/|ssh:\/\/|[\w.-]+@[\w.-]+:)/,
+          ad: /^ldaps?:\/\/[^/]+\/?$/,
+          servicenow: /^https:\/\/[^/]+/,
+        }[kind] ?? /^https?:\/\//;
       if (typeof url === "string" && url && !urlPattern.test(url))
         return invalid([
           err(
@@ -2608,6 +2614,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             {
               git: "An https:// or ssh:// URL, or git@host:path.",
               ad: "ldaps://dc01.corp.example (LDAPS), or ldap://dc01.corp.example for StartTLS.",
+              servicenow: "The instance's https URL, for example https://corp.service-now.com.",
             }[kind] ?? "An http or https URL.",
           ),
         ]);
@@ -2679,7 +2686,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             : [{ name: "CA bundle", ok: true, message: "Empty: only the system's CAs are trusted." }],
         });
       }
-      const tls = ["vcenter", "awx", "efficientip", "nsx", "vra", "git", "ad"].includes(kind)
+      const tls = ["vcenter", "awx", "efficientip", "nsx", "vra", "git", "ad", "servicenow"].includes(kind)
         ? certificateCheck(bundle, text(ps.url), ps, kind !== "git")
         : { goOn: true };
       if (!tls.goOn)
@@ -2736,11 +2743,19 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
                 ? `Bound to ${url} as ${text(ps.username)} and read ${text(ps.base_dn)}.`
                 : `dial tcp: lookup ${url}: no such host`,
             }
-          : {
-              name: "Sign in",
-              ok: reachable,
-              message: reachable ? `Signed in to ${url}.` : `dial tcp: lookup ${url}: no such host`,
-            },
+          : kind === "servicenow"
+            ? {
+                name: "Requested items",
+                ok: reachable,
+                message: reachable
+                  ? `Signed in to ${url} as ${ps.auth === "oauth" ? `the OAuth client ${text(ps.client_id)}` : text(ps.username)} and read sc_req_item.`
+                  : `dial tcp: lookup ${url}: no such host`,
+              }
+            : {
+                name: "Sign in",
+                ok: reachable,
+                message: reachable ? `Signed in to ${url}.` : `dial tcp: lookup ${url}: no such host`,
+              },
       ];
       if (reachable && kind === "git")
         checks.push({ name: "Branch main", ok: true, message: "At 3f9c2a1b7d40; items are files in catalog/." });

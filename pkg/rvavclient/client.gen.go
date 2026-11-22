@@ -1192,6 +1192,7 @@ const (
 	IntegrationKindHosts       IntegrationKind = "hosts"
 	IntegrationKindNsx         IntegrationKind = "nsx"
 	IntegrationKindOidc        IntegrationKind = "oidc"
+	IntegrationKindServicenow  IntegrationKind = "servicenow"
 	IntegrationKindSlack       IntegrationKind = "slack"
 	IntegrationKindSmtp        IntegrationKind = "smtp"
 	IntegrationKindTeams       IntegrationKind = "teams"
@@ -1218,6 +1219,8 @@ func (e IntegrationKind) Valid() bool {
 	case IntegrationKindNsx:
 		return true
 	case IntegrationKindOidc:
+		return true
+	case IntegrationKindServicenow:
 		return true
 	case IntegrationKindSlack:
 		return true
@@ -6700,6 +6703,10 @@ type Integration struct {
 	// insecure, plain_ldap (ldap:// without StartTLS: everything in
 	// the clear), cert_sha256 (the secret: the service account's
 	// password).
+	// servicenow (ADR-0065): url (https only), auth (basic or oauth,
+	// the client credentials grant), username, client_id, insecure,
+	// cert_sha256 (the secret: the user's password, or the OAuth
+	// client's secret).
 	// smtp: host, port, tls (starttls, tls, none), from, username.
 	// teams: app_id, tenant_id, service_url, login_url, graph_url,
 	// openid_url. slack: api_url.

@@ -289,6 +289,24 @@ apply from the next computer object rvav makes or deletes.
 | `RVAV_AD_PLAIN_LDAP` | off | | Integrations › Active Directory | With `ldap://`, doesn't start TLS: the password and every object go over the network in the clear. For labs only. Turning it on needs the password again. |
 | `RVAV_AD_CERT_SHA256` | none | | Integrations › Active Directory | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it): a self-signed one. A new one needs the password again. |
 
+## ServiceNow
+
+The ServiceNow instance where rvav keeps VMs' configuration items and
+takes requests from ([ADR-0065](../adr/0065-servicenow.md)). rvav calls
+its REST APIs over HTTPS only, as a user with its password or as an
+OAuth client with its secret. Saved in Administration › Integrations ›
+ServiceNow, the settings apply from the next call to ServiceNow.
+
+| Setting | Default | Secret | Set in | What |
+|---|---|---|---|---|
+| `RVAV_SERVICENOW_URL` | none | | Integrations › ServiceNow | The instance's URL, `https://` only (`https://corp.service-now.com`). |
+| `RVAV_SERVICENOW_AUTH` | `basic` | | Integrations › ServiceNow | How rvav signs in: `basic`, as `RVAV_SERVICENOW_USERNAME`; or `oauth`, as the OAuth client `RVAV_SERVICENOW_CLIENT_ID` by the client credentials grant (ServiceNow Washington DC and later). |
+| `RVAV_SERVICENOW_USERNAME` | none | | Integrations › ServiceNow | With `basic`, the integration user (Web service access only). |
+| `RVAV_SERVICENOW_CLIENT_ID` | none | | Integrations › ServiceNow | With `oauth`, the OAuth client's ID. |
+| `RVAV_SERVICENOW_SECRET` | none | yes | Integrations › ServiceNow | The user's password, or the OAuth client's secret. |
+| `RVAV_SERVICENOW_INSECURE` | off | | Integrations › ServiceNow | Doesn't check the certificate. For labs only. Turning it on needs the secret again. |
+| `RVAV_SERVICENOW_CERT_SHA256` | none | | Integrations › ServiceNow | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it). A new one needs the secret again. |
+
 ## Secrets, value sources and webhooks
 
 | Setting | Default | Secret | Set in | What |

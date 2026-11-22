@@ -149,6 +149,17 @@ var Fields = map[string][]Field{
 		{"plain_ldap", "RVAV_AD_PLAIN_LDAP", "bool", false},
 		{"cert_sha256", "RVAV_AD_CERT_SHA256", "string", false},
 	},
+	// The ServiceNow instance (ADR-0065), read on next use; the secret is
+	// the user's password or the OAuth client's.
+	"servicenow": {
+		{"url", "RVAV_SERVICENOW_URL", "string", false},
+		{"auth", "RVAV_SERVICENOW_AUTH", "string", false},
+		{"username", "RVAV_SERVICENOW_USERNAME", "string", false},
+		{"client_id", "RVAV_SERVICENOW_CLIENT_ID", "string", false},
+		{"secret", "RVAV_SERVICENOW_SECRET", "string", true},
+		{"insecure", "RVAV_SERVICENOW_INSECURE", "bool", false},
+		{"cert_sha256", "RVAV_SERVICENOW_CERT_SHA256", "string", false},
+	},
 	"smtp": {
 		{"host", "RVAV_SMTP_HOST", "string", false},
 		{"port", "RVAV_SMTP_PORT", "int", false},
@@ -231,6 +242,10 @@ func (c NSXConfig) TLS() trust.Options { return trust.Options{Insecure: c.Insecu
 func (c VRAConfig) TLS() trust.Options { return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256} }
 
 func (c ADConfig) TLS() trust.Options { return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256} }
+
+func (c ServiceNowConfig) TLS() trust.Options {
+	return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256}
+}
 
 // Locked lists the settings of an integration an environment variable sets.
 func Locked(kind string) []string {
@@ -405,6 +420,14 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 		flag("insecure", &c.AD.Insecure)
 		flag("plain_ldap", &c.AD.PlainLDAP)
 		pin("cert_sha256", &c.AD.CertSHA256)
+	case "servicenow":
+		str("url", &c.ServiceNow.URL)
+		str("auth", &c.ServiceNow.Auth)
+		str("username", &c.ServiceNow.Username)
+		str("client_id", &c.ServiceNow.ClientID)
+		secret("secret", &c.ServiceNow.Secret)
+		flag("insecure", &c.ServiceNow.Insecure)
+		pin("cert_sha256", &c.ServiceNow.CertSHA256)
 	case "smtp":
 		str("host", &c.SMTP.Host)
 		if v, ok := s.Settings["port"].(float64); ok && v > 0 && !locked["port"] {
@@ -495,6 +518,9 @@ func (c Config) Settings(kind string) map[string]any {
 	case "ad":
 		return map[string]any{"url": c.AD.URL, "username": c.AD.Username, "base_dn": c.AD.BaseDN, "insecure": c.AD.Insecure,
 			"plain_ldap": c.AD.PlainLDAP, "cert_sha256": c.AD.CertSHA256}
+	case "servicenow":
+		return map[string]any{"url": c.ServiceNow.URL, "auth": c.ServiceNow.Auth, "username": c.ServiceNow.Username,
+			"client_id": c.ServiceNow.ClientID, "insecure": c.ServiceNow.Insecure, "cert_sha256": c.ServiceNow.CertSHA256}
 	case "trust":
 		return map[string]any{"ca_bundle": c.CABundle}
 	case "hosts":
@@ -530,6 +556,8 @@ func (c Config) SecretSet(kind string) bool {
 		return c.Git.Credential != ""
 	case "ad":
 		return c.AD.Password != ""
+	case "servicenow":
+		return c.ServiceNow.Secret != ""
 	case "smtp":
 		return c.SMTP.Password != ""
 	case "teams":
@@ -635,6 +663,16 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 		}
 		if dn, ok := settings["base_dn"].(string); ok && dn != "" && !strings.Contains(strings.ToLower(dn), "dc=") {
 			errs["base_dn"] = "The domain's DN, for example DC=corp,DC=example."
+		}
+	}
+	if kind == "servicenow" {
+		if u, ok := settings["url"].(string); ok && u != "" {
+			if p, err := url.Parse(u); err != nil || p.Scheme != "https" || p.Hostname() == "" {
+				errs["url"] = "The instance's https URL, for example https://corp.service-now.com."
+			}
+		}
+		if a, ok := settings["auth"].(string); ok && a != "" && a != "basic" && a != "oauth" {
+			errs["auth"] = "basic or oauth."
 		}
 	}
 	if kind == "smtp" {

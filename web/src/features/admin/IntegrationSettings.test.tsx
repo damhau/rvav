@@ -117,4 +117,21 @@ describe("integration settings", () => {
     await user.click(within(ad).getByRole("button", { name: "Save settings" }));
     expect(await within(ad).findByText(/needs the password or token again/)).toBeInTheDocument();
   }, 20_000);
+
+  it("signs in to ServiceNow over https as an OAuth client", async () => {
+    const user = open("servicenow");
+    const snow = await screen.findByRole("region", { name: "ServiceNow connection" });
+    expect(within(snow).getByRole("textbox", { name: "Sign-in" })).toHaveValue("oauth");
+    await user.click(within(snow).getByRole("button", { name: "Test connection" }));
+    expect(
+      await within(snow).findByText(
+        "Signed in to https://corp.service-now.com as the OAuth client 3f1c0b7e9a2d4c58b6e1f0a9d7c3b5e2 and read sc_req_item.",
+      ),
+    ).toBeInTheDocument();
+    const url = within(snow).getByRole("textbox", { name: "Instance URL" });
+    await user.clear(url);
+    await user.type(url, "http://corp.service-now.com");
+    await user.click(within(snow).getByRole("button", { name: "Save settings" }));
+    expect(await within(snow).findByText(/The instance's https URL/)).toBeInTheDocument();
+  }, 20_000);
 });
