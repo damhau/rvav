@@ -194,7 +194,12 @@ resources by topic, and a type by condition
 
 They don't block: a subscription that must hold a request does so on
 the request's `provisioning.pre`, `day2.pre` or `delete.pre`. `update`
-and `read` have no topic.
+and `read` have no topic. They run in a day-2 request or a deployment's
+update, whose `day2.pre` and `day2.post` events a subscriber already
+gets, with the deployment and the resource a day-2 action is on; a
+resource's properties after are read from the API. E1.6 left it so: `custom.update.*` and `custom.read.post`
+would be new topics of the catalogue (ADR-0049), its enum and the
+designer's lists, for what no subscriber has asked for yet.
 
 ### Day-2 actions
 The actions a type lists are offered on each of its resources:
