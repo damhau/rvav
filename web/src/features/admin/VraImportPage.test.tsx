@@ -186,6 +186,21 @@ describe("vRA import", () => {
     expect(await vm("vra-api-001")).toHaveTextContent(/^vra-api-001 Kept from deletion$/);
   });
 
+  it("keeps a VM from deletion when rvav can't read its template's flag, and says why", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=deployments");
+    const table = await screen.findByRole("table", { name: "vRA deployments" });
+    const row = (await within(table).findAllByRole("row", { name: /vra-db-001/ }))[0]!;
+    expect(within(row).getByRole("listitem")).toHaveTextContent(/^vra-db-001 Kept from deletion$/);
+    await user.click(within(row).getByRole("button", { name: "Notes on vra-db-001: 1 to check · 1 left out" }));
+    const notes = await screen.findByRole("dialog", { name: "Notes on vra-db-001" });
+    const doubt = within(notes).getByText(/the safer side/);
+    expect(doubt).toHaveTextContent(
+      "vRA no longer lists version 0.9 of its cloud template Database server, so rvav can't read its preventDelete: kept from deletion, the safer side. An administrator can allow its deletion.",
+    );
+    expect(doubt.closest("li")).toHaveTextContent(/^Check\s*vms\.vra-db-001/);
+  });
+
   it("marks a project moved from a side panel, and not moved once confirmed", async () => {
     const user = userEvent.setup();
     renderApp("/admin/vra-import?tab=cutover");

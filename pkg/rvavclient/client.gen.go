@@ -14220,8 +14220,8 @@ type ClientInterface interface {
 	// ListAdPlacements Where VMs' computer objects go in Active Directory
 	//
 	// With project_id, the rows that may apply to the project: its own and
-	// those of an environment in any project. Without it, every row
-	// (ADR-0064).
+	// those for every project, by environment or in any. Without it, every
+	// row (ADR-0064).
 	//
 	// Corresponds with GET /admin/ad-placements (the `ListAdPlacements` operationId).
 	ListAdPlacements(ctx context.Context, params *ListAdPlacementsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -18288,8 +18288,8 @@ func (c *Client) ExplainAccess(ctx context.Context, params *ExplainAccessParams,
 // ListAdPlacements Where VMs' computer objects go in Active Directory
 //
 // With project_id, the rows that may apply to the project: its own and
-// those of an environment in any project. Without it, every row
-// (ADR-0064).
+// those for every project, by environment or in any. Without it, every
+// row (ADR-0064).
 //
 // Corresponds with GET /admin/ad-placements (the `ListAdPlacements` operationId).
 func (c *Client) ListAdPlacements(ctx context.Context, params *ListAdPlacementsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -40507,8 +40507,8 @@ type ClientWithResponsesInterface interface {
 	// ListAdPlacementsWithResponse Where VMs' computer objects go in Active Directory
 	//
 	// With project_id, the rows that may apply to the project: its own and
-	// those of an environment in any project. Without it, every row
-	// (ADR-0064).
+	// those for every project, by environment or in any. Without it, every
+	// row (ADR-0064).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -45057,6 +45057,8 @@ type CreateAdPlacementResponse struct {
 	HTTPResponse *http.Response
 	// JSON201 the response for an HTTP 201 `application/json` response
 	JSON201 *AdPlacement
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -45072,6 +45074,11 @@ type CreateAdPlacementResponse struct {
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
 func (r CreateAdPlacementResponse) GetJSON201() *AdPlacement {
 	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateAdPlacementResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -45188,6 +45195,8 @@ type UpdateAdPlacementResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *AdPlacement
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -45205,6 +45214,11 @@ type UpdateAdPlacementResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r UpdateAdPlacementResponse) GetJSON200() *AdPlacement {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UpdateAdPlacementResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -52714,6 +52728,8 @@ type CreateNsxManagerResponse struct {
 	HTTPResponse *http.Response
 	// JSON201 the response for an HTTP 201 `application/json` response
 	JSON201 *NsxManager
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -52727,6 +52743,11 @@ type CreateNsxManagerResponse struct {
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
 func (r CreateNsxManagerResponse) GetJSON201() *NsxManager {
 	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateNsxManagerResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -52845,6 +52866,8 @@ type UpdateNsxManagerResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NsxManager
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -52860,6 +52883,11 @@ type UpdateNsxManagerResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r UpdateNsxManagerResponse) GetJSON200() *NsxManager {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UpdateNsxManagerResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -64893,8 +64921,8 @@ func (c *ClientWithResponses) ExplainAccessWithResponse(ctx context.Context, par
 // ListAdPlacementsWithResponse Where VMs' computer objects go in Active Directory
 //
 // With project_id, the rows that may apply to the project: its own and
-// those of an environment in any project. Without it, every row
-// (ADR-0064).
+// those for every project, by environment or in any. Without it, every
+// row (ADR-0064).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -72068,6 +72096,13 @@ func ParseCreateAdPlacementResponse(rsp *http.Response) (*CreateAdPlacementRespo
 		}
 		response.JSON201 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -72171,6 +72206,13 @@ func ParseUpdateAdPlacementResponse(rsp *http.Response) (*UpdateAdPlacementRespo
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -77968,6 +78010,13 @@ func ParseCreateNsxManagerResponse(rsp *http.Response) (*CreateNsxManagerRespons
 		}
 		response.JSON201 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -78071,6 +78120,13 @@ func ParseUpdateNsxManagerResponse(rsp *http.Response) (*UpdateNsxManagerRespons
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized

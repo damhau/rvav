@@ -101,7 +101,10 @@ function Notes({ notes }: { notes: S["VraNote"][] }) {
         <li key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-secondary">
           <Badge tone={levelTones[n.level]}>{t(`vra.level.${n.level}`)}</Badge>
           <code className="font-mono text-caption text-faint">{n.where}</code>
-          <span className="min-w-0 basis-full">{n.text}</span>
+          {/* The plan's notes are the server's, in English. */}
+          <span lang="en" className="min-w-0 basis-full">
+            {n.text}
+          </span>
         </li>
       ))}
     </ul>
@@ -779,7 +782,11 @@ function DeploymentsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => 
         return (
           <>
             <Badge tone={adoptionTones[d.status]}>{t(`vra.adoption.${d.status}`)}</Badge>
-            {why && <div className="mt-1 max-w-72 text-secondary text-muted">{why.text}</div>}
+            {why && (
+              <div lang="en" className="mt-1 max-w-72 text-secondary text-muted">
+                {why.text}
+              </div>
+            )}
           </>
         );
       },

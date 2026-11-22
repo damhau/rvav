@@ -59,7 +59,9 @@ describe("a request's page against the mock API", () => {
     );
     expect(within(header).getByRole("link", { name: "Request again" })).toBeVisible();
     expect(within(header).queryByRole("button", { name: "Cancel request" })).not.toBeInTheDocument();
-    expect(within(header).getByText(/^From ServiceNow,/)).toBeVisible();
+    expect(within(header).getByText(/^From ServiceNow,/)).toHaveTextContent(
+      "From ServiceNow, RITM0010032 (opens in a new tab), ordered by Claire Dubois for Léa Martin",
+    );
     expect(within(header).getByRole("link", { name: "RITM0010032 (opens in a new tab)" })).toHaveAttribute(
       "href",
       "https://corp.service-now.com/sc_req_item.do?sys_id=9d385017c611228701d22104cc95c371",

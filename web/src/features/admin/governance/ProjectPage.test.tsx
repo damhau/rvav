@@ -188,6 +188,49 @@ describe("a project's placement and quotas", () => {
     expect(await screen.findByText("OU removed")).toBeInTheDocument();
   });
 
+  it("keeps a role placing VMs in this project only to what every project's OU delegates, by the field", async () => {
+    asProjectAdmin();
+    db.me.projects = db.me.projects.map((p) =>
+      p.project.id === "prj_web" ? { ...p, permissions: [...p.permissions, "placement.manage"] } : p,
+    );
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=placement");
+    const directory = await screen.findByRole("region", { name: "Active Directory" });
+    await user.click(await within(directory).findByRole("button", { name: "New OU" }));
+    const sheet = await screen.findByRole("dialog", { name: "New Active Directory OU for Web Platform" });
+    await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
+    await user.click(await screen.findByRole("option", { name: "prd" }));
+    await user.type(within(sheet).getByLabelText("OU"), "OU=Web,OU=Servers");
+    await user.type(within(sheet).getByLabelText("Groups"), "CN=Admins,OU=Groups");
+    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    expect(
+      await within(sheet).findByText(/its OU goes under OU=Production,OU=Servers, the one set/),
+    ).toBeInTheDocument();
+    expect(within(sheet).getByLabelText("Groups")).toHaveAccessibleDescription(/a group goes under the project's OU\./);
+
+    await user.clear(within(sheet).getByLabelText("OU"));
+    await user.type(within(sheet).getByLabelText("OU"), "OU=Web,OU=Production,OU=Servers");
+    await user.clear(within(sheet).getByLabelText("Groups"));
+    await user.type(within(sheet).getByLabelText("Groups"), "CN=Web,OU=Web,OU=Production,OU=Servers");
+    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    expect(await screen.findByText("OU saved")).toBeInTheDocument();
+  });
+
+  it("says in a toast, not by a field, that Active Directory didn't answer", async () => {
+    adminState(db).integrations.ad!.settings.url = "ldaps://unreachable.corp.example";
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=placement");
+    const directory = await screen.findByRole("region", { name: "Active Directory" });
+    await user.click(await within(directory).findByRole("button", { name: "New OU" }));
+    const sheet = await screen.findByRole("dialog", { name: "New Active Directory OU for Web Platform" });
+    await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
+    await user.click(await screen.findByRole("option", { name: "dev" }));
+    await user.type(within(sheet).getByLabelText("OU"), "OU=Dev,OU=Web");
+    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    expect(await screen.findByText("Active Directory did not answer")).toBeInTheDocument();
+    expect(within(sheet).getByLabelText("OU")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
   it("adds a limit in a sheet, refuses a second one on the same resource and place, and shows what is taken", async () => {
     const user = userEvent.setup();
     renderApp("/admin/projects/prj_web?tab=quotas");

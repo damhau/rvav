@@ -130,6 +130,9 @@ describe("the requests' pages, in French", () => {
       "href",
       "https://corp.service-now.com/sc_req_item.do?sys_id=9d385017c611228701d22104cc95c371",
     );
+    expect(within(header).getByText(/^Depuis ServiceNow,/)).toHaveTextContent(
+      /, commandée par Claire Dubois pour Léa Martin$/,
+    );
     expect(screen.getByRole("region", { name: "Ce qui a été demandé" })).toBeVisible();
   });
 

@@ -579,7 +579,7 @@ func (s *Server) ListNsxManagers(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) CreateNsxManager(w http.ResponseWriter, r *http.Request) {
 	var b api.NsxManagerWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SaveNSXManager(r.Context(), principal(r), "", b)
@@ -588,7 +588,7 @@ func (s *Server) CreateNsxManager(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) UpdateNsxManager(w http.ResponseWriter, r *http.Request, name string) {
 	var b api.NsxManagerWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SaveNSXManager(r.Context(), principal(r), name, b)

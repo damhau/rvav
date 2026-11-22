@@ -94,6 +94,13 @@ const power = (state: VmResource["vm"]["power_state"]) => (_d: DeploymentDetail,
 };
 const snapshots = (vm?: VmResource) => vm?.vm.snapshots ?? [];
 
+/** The VMs kept from deletion, by deployment (ADR-0038): adopted so, until Allow deletion. */
+export function keptFromDeletion(db: Db): Record<string, string[]> {
+  const d = db as Db & { keptFromDeletion?: Record<string, string[]> };
+  return (d.keptFromDeletion ??= {});
+}
+const kept = (db: Db, d: DeploymentDetail) => keptFromDeletion(db)[d.id] ?? [];
+
 const invalid = (name: string, code: string, message: string): FieldError => ({
   field: `/inputs/${name}`,
   code,
@@ -861,6 +868,27 @@ export const catalogue: MockAction[] = [
     ],
   },
   {
+    key: "allow_delete",
+    name: "Allow deletion",
+    group: "lifecycle",
+    deployment: true,
+    admin: true,
+    onFailed: true,
+    confirm:
+      "Delete protection keeps these VMs from being deleted: their blueprint's, or vRA's for VMs adopted from vRA. Once allowed, those who may delete the deployment can.",
+    unavailable: (_vm, d, db) => (kept(db, d).length ? null : "Nothing keeps its VMs from being deleted."),
+    ops: (_vm, _i, d, db) => [
+      {
+        key: "rvav.allow_delete",
+        title: `Allow deleting ${kept(db, d).join(", ")}`,
+        system: "rvav",
+        apply: (dep) => {
+          delete keptFromDeletion(db)[dep.id];
+        },
+      },
+    ],
+  },
+  {
     key: "delete",
     name: "Delete",
     group: "lifecycle",
@@ -868,6 +896,10 @@ export const catalogue: MockAction[] = [
     destructive: true,
     typeName: true,
     confirm: "Deletes the VMs and releases their IP addresses and DNS records. This can't be undone.",
+    unavailable: (_vm, d, db) =>
+      kept(db, d).length
+        ? `Delete protection keeps ${kept(db, d).join(", ")} from being deleted: an administrator allows it first (Allow deletion).`
+        : null,
     form: () =>
       form("If a step fails", [
         [

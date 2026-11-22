@@ -191,8 +191,12 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 <span>
                   <Trans
                     t={t}
-                    i18nKey="detail.fromServiceNow"
-                    values={{ number: r.servicenow.number }}
+                    i18nKey={r.servicenow.ordered_by ? "detail.fromServiceNowFor" : "detail.fromServiceNow"}
+                    values={{
+                      number: r.servicenow.number,
+                      orderer: r.servicenow.ordered_by?.name,
+                      name: r.requester.name,
+                    }}
                     components={{
                       ritm: <NewTabLink href={r.servicenow.url} />,
                       newTab: <span className="sr-only" />,

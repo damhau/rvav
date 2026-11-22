@@ -1276,12 +1276,14 @@ export function createDb(now = Date.now()): Db {
   requests.find((r) => r.request.number === "REQ-10461")!.request.deployment_ids = [
     deployments.find((d) => d.name === "web-tst-search")!.id,
   ];
-  // Ordered in ServiceNow (ADR-0065): the request and its deployment name the requested item.
+  // Ordered in ServiceNow (ADR-0065) by Claire for Léa: the request and its
+  // deployment name the requested item.
   const ritm = {
     sys_id: "9d385017c611228701d22104cc95c371",
     number: "RITM0010032",
     url: "https://corp.service-now.com/sc_req_item.do?sys_id=9d385017c611228701d22104cc95c371",
     user: "lea.martin@corp.example",
+    ordered_by: { id: "usr_cdubois", name: "Claire Dubois", email: "claire.dubois@corp.example" },
   };
   requests.find((r) => r.request.number === "REQ-10461")!.request.servicenow = ritm;
   deployments.find((d) => d.name === "web-tst-search")!.servicenow = ritm;

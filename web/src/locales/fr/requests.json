@@ -275,6 +275,7 @@
     "bySchedule": "Lancée par la planification {{schedule}}, au nom de {{name}}",
     "requestedBy": "Demandée par {{name}}",
     "fromServiceNow": "Depuis ServiceNow, <ritm>{{number}}<newTab> (s'ouvre dans un nouvel onglet)</newTab></ritm>",
+    "fromServiceNowFor": "Depuis ServiceNow, <ritm>{{number}}<newTab> (s'ouvre dans un nouvel onglet)</newTab></ritm>, commandée par {{orderer}} pour {{name}}",
     "updateTo": "Vers {{item}} {{version}} sur <target>{{deployment}}</target>",
     "actionOn": "{{action}} sur <target>{{resource}}</target>",
     "theDeployment": "le déploiement",

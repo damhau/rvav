@@ -83,7 +83,7 @@ var Catalogue = []PermissionInfo{
 	{CatalogManage, false, "Catalog", "Build, publish and open catalog items, with their categories, secrets, shared variables, Git repository and AWX templates; read what their steps were given and gave."},
 	{InfrastructureRead, false, "Infrastructure", "See templates, sizes, network mappings, IP ranges and the vCenters rvav reaches."},
 	{InfrastructureManage, false, "Infrastructure", "Change templates, sizes, network mappings and IP ranges, and reconcile IPAM."},
-	{IntegrationsManage, false, "Integrations", "See, set and test the identity provider and every connection, and make the inventory token."},
+	{IntegrationsManage, false, "Integrations", "See, set and test the identity provider and every connection, and make the inventory token and ServiceNow's."},
 	{PoliciesRead, false, "Policies", "See the approval, day-2, lease and naming policies, every project's included."},
 	{PoliciesManage, false, "Policies", "Change the approval, day-2, lease and naming policies."},
 	{ExtensibilityRead, false, "Extensibility", "See event subscriptions, their runs, the custom workflows and the custom resource types; read the shared variables and what composite steps were given and gave."},

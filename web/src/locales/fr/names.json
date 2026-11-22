@@ -47,7 +47,7 @@
     "catalog_manage": "Construire, publier et ouvrir des éléments du catalogue, avec leurs catégories, secrets, variables partagées, dépôt Git et modèles AWX\u00a0; lire ce que leurs étapes ont reçu et rendu.",
     "infrastructure_read": "Voir les modèles, les tailles, les correspondances de réseaux, les plages IP et les vCenter que rvav atteint.",
     "infrastructure_manage": "Modifier les modèles, les tailles, les correspondances de réseaux et les plages IP, et réconcilier l'IPAM.",
-    "integrations_manage": "Voir, définir et tester le fournisseur d'identité et chaque connexion, et créer le jeton d'inventaire.",
+    "integrations_manage": "Voir, définir et tester le fournisseur d'identité et chaque connexion, et créer le jeton d'inventaire et celui de ServiceNow.",
     "policies_read": "Voir les politiques d'approbation, de jour 2, de bail et de nommage, celles de chaque projet comprises.",
     "policies_manage": "Modifier les politiques d'approbation, de jour 2, de bail et de nommage.",
     "extensibility_read": "Voir les abonnements aux événements, leurs exécutions, les workflows personnalisés et les types de ressources personnalisés\u00a0; lire les variables partagées et ce que les étapes des composites ont reçu et rendu.",

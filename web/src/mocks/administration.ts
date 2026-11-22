@@ -30,6 +30,7 @@ import { explainLimits } from "./limits";
 import { explainQuotaLines } from "./quotas";
 import { serviceNowSettingsErrors } from "./servicenow";
 import { localAdminPasswordChanged } from "./signIn";
+import { unknownField } from "./strict";
 
 type S = components["schemas"];
 
@@ -74,6 +75,8 @@ interface AdminState {
   nsxManagers: Omit<S["NsxManager"], "vcenters">[];
   /** The NSX Manager serving each vCenter: "" the integration's, for both. */
   nsxLinks: Record<string, string>;
+  /** The deployments with NSX segments or groups on an NSX Manager, by its name: they keep it from deletion. */
+  nsxObjects: Record<string, string[]>;
   /** rvav's processes (ADR-0030), and the settings revision. */
   processes: MockProcess[];
   revision: number;
@@ -465,6 +468,7 @@ export function adminState(db: Db): AdminState {
     vcenters: [],
     nsxManagers: [],
     nsxLinks: { "": "" },
+    nsxObjects: {},
     inventory: {},
     revision: 1,
     processes: [
@@ -643,7 +647,18 @@ function problem(status: number, title: string, errors?: S["FieldError"][], deta
   );
 }
 const invalid = (errors: S["FieldError"][]) => problem(422, "Some inputs need attention", errors);
-const err = (field: string, message: string): S["FieldError"] => ({ field, code: "invalid", message });
+const nsxManagerFields = [
+  "name",
+  "url",
+  "username",
+  "password",
+  "cert_file",
+  "key_file",
+  "insecure",
+  "cert_sha256",
+  "vcenters",
+] as const;
+const err = (field: string, message: string, code = "invalid"): S["FieldError"] => ({ field, code, message });
 
 const glob = (pattern: string, name: string) =>
   new RegExp(
@@ -949,6 +964,45 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         ? []
         : [err(`/vcenters/${i}`, `rvav manages no vCenter ${n}.`)],
     );
+  /** What the server's checkNSXManager refuses in a write, the one saved being current. */
+  const nsxManagerErrors = (w: S["NsxManagerWrite"], name: string, current?: Omit<S["NsxManager"], "vcenters">) => {
+    const errors: S["FieldError"][] = [];
+    if (!/^[a-z0-9][a-z0-9.-]{1,62}$/.test(name))
+      errors.push(err("/name", "Its host name in lower case, for example nsx02.corp.example.", "pattern"));
+    else if (name === primaryNSX())
+      errors.push(err("/name", `${name} is the NSX integration's: change it in Integrations.`, "duplicate"));
+    if (!/^https:\/\/[^/]+/.test(w.url))
+      errors.push(err("/url", "Its address over HTTPS, for example https://nsx02.corp.example."));
+    const pin = normalFingerprint(w.cert_sha256 ?? "");
+    if ((w.cert_sha256 ?? "").trim() && !pin)
+      errors.push(err("/cert_sha256", "A certificate's SHA-256: 32 bytes in hex, with or without colons."));
+    const certFile = (w.cert_file ?? "").trim();
+    const keyFile = (w.key_file ?? "").trim();
+    if (certFile && !keyFile) errors.push(err("/key_file", "Give the certificate's private key too.", "required"));
+    else if (keyFile && !certFile)
+      errors.push(err("/cert_file", "Give the certificate this private key goes with.", "required"));
+    else if (!certFile) {
+      if (!(w.username ?? "").trim())
+        errors.push(
+          err("/username", "Give the account rvav signs in with, or a principal-identity certificate.", "required"),
+        );
+      if ((!current || !current.password_set) && !w.password)
+        errors.push(err("/password", "Give the account's password.", "required"));
+      else if (
+        current &&
+        !w.password &&
+        (w.url !== current.url || (w.insecure && !current.insecure) || (pin && pin !== (current.cert_sha256 ?? "")))
+      )
+        errors.push(
+          err(
+            "/password",
+            "A new address, a certificate pinned, or the certificate not checked, needs the password again: the saved one only goes where it was given for.",
+            "required",
+          ),
+        );
+    }
+    return { errors, pin, certFile, keyFile };
+  };
   // A vCenter linked moves from the NSX Manager that served it.
   const linkNSX = (manager: string, names: string[]) => {
     const keys = names.map(vcenterKey);
@@ -1614,30 +1668,107 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     ...(["post", "put"] as const).map((method) =>
       http[method](`${base}/admin/ad-placements${method === "put" ? "/:id" : ""}`, async ({ params, request }) => {
         await wait();
-        const w = (await request.json()) as S["AdPlacementWrite"];
+        const body = await request.json();
+        const strict = unknownField(body, ["project_id", "environment", "ou", "groups", "allow_blueprint_ou"]);
+        if (strict) return strict;
+        const w = body as S["AdPlacementWrite"];
         const rows = st().adPlacements;
         const id = method === "put" ? String(params.id) : next("adp");
-        if (method === "put" && !rows.some((r) => r.id === id)) return problem(404, "Not found");
+        const mayPlaceIn = (projectId?: string | null) => holdsIn(db, projectId ?? "", "placement.manage");
+        if (!mayPlaceIn(w.project_id))
+          return problem(403, "Not allowed", undefined, "You do not have permission to do this.");
+        const was = rows.find((r) => r.id === id);
+        if (method === "put" && !was) return problem(404, "Not found");
+        if (was && !mayPlaceIn(was.project_id))
+          return problem(403, "Not allowed", undefined, "You do not have permission to do this.");
         const p = w.project_id ? project(w.project_id) : undefined;
-        const env = w.environment ?? null;
+        const env = w.environment || null;
         const errors: S["FieldError"][] = [];
-        if (w.project_id && !p) errors.push(err("/project_id", "There is no such project."));
+        if (w.project_id && !p) errors.push(err("/project_id", "There is no such project.", "unknown"));
         else if (p && env && !p.environments.includes(env))
-          errors.push(err("/environment", `${p.name} doesn't deploy to ${env}.`));
-        const given = st().integrations.ad?.settings.base_dn;
-        const baseDN = typeof given === "string" ? given : "";
-        const resolve = (dn: string) => (/(^|,)\s*dc=/i.test(dn) || !baseDN ? dn : `${dn},${baseDN}`);
+          errors.push(err("/environment", `${p.name} doesn't deploy to ${env}.`, "not_allowed"));
+        if (env && !db.environments.some((e) => e.key === env))
+          errors.push(err("/environment", `There is no environment ${env}.`, "unknown"));
+        const ad = st().integrations.ad?.settings;
+        const baseDN = typeof ad?.base_dn === "string" ? ad.base_dn : "";
+        const resolve = (dn: string) => (/(^|,)\s*dc=/i.test(dn) || !baseDN ? dn.trim() : `${dn.trim()},${baseDN}`);
+        const isDN = (dn: string) => /^\s*[A-Za-z]+=[^,=]+(,\s*[A-Za-z]+=[^,=]+)*\s*$/.test(dn);
+        const norm = (dn: string) =>
+          resolve(dn)
+            .toLowerCase()
+            .replace(/\s*,\s*/g, ",");
+        const same = (a: string, b: string) => norm(a) === norm(b);
+        const under = (dn: string, parent: string) =>
+          isDN(dn) && (same(dn, parent) || norm(dn).endsWith(`,${norm(parent)}`));
+        const dns: Record<string, string> = {};
         const check = (dn: string, ptr: string) => {
-          if (!/^\s*[A-Za-z]+=[^,=]+(,\s*[A-Za-z]+=[^,=]+)*\s*$/.test(dn))
-            errors.push(err(ptr, `"${dn}" is not a DN: for example OU=Servers,${baseDN || "DC=corp,DC=example"}.`));
-          else if (baseDN && !resolve(dn).toLowerCase().endsWith(baseDN.toLowerCase()))
-            errors.push(err(ptr, `${dn} is not under the directory's base DN, ${baseDN}.`));
+          if (!isDN(dn))
+            errors.push(
+              err(ptr, `"${dn}" is not a DN: for example OU=Servers,${baseDN || "DC=corp,DC=example"}.`, "pattern"),
+            );
+          else if (baseDN && !under(dn, baseDN))
+            errors.push(err(ptr, `${dn} is not under the directory's base DN, ${baseDN}.`, "pattern"));
+          else dns[ptr] = resolve(dn);
         };
         const ou = w.ou.trim();
-        if (!ou) errors.push(err("/ou", "Name the OU, for example OU=Servers,OU=Web."));
+        if (!ou) errors.push(err("/ou", "Name the OU, for example OU=Servers,OU=Web.", "required"));
         else check(ou, "/ou");
         const groups = (w.groups ?? []).map((g) => g.trim());
         groups.forEach((g, i) => check(g, `/groups/${i}`));
+        // A role that places VMs in its projects only keeps to what the row
+        // for every project delegates (ADR-0064), as the server's projectPlacement.
+        if (errors.length === 0 && !mayPlaceIn(null)) {
+          const delegated =
+            rows.find((r) => r.project_id === null && r.environment === env) ??
+            rows.find((r) => r.project_id === null && r.environment === null);
+          if (!delegated)
+            errors.push(
+              err(
+                "/ou",
+                "Your role manages this project's placement only, and its OU goes under the one set for every project, which there isn't. Ask an administrator for all of rvav to set one.",
+                "not_allowed",
+              ),
+            );
+          else {
+            if (!under(ou, delegated.ou) && !(was && same(was.ou, ou)))
+              errors.push(
+                err(
+                  "/ou",
+                  `Your role manages this project's placement only: its OU goes under ${delegated.ou}, the one set for every project.`,
+                  "not_allowed",
+                ),
+              );
+            groups.forEach((g, i) => {
+              const had = (of: string[]) => of.some((x) => same(x, g));
+              if (under(g, ou) || had(delegated.groups) || (was && had(was.groups))) return;
+              const among = delegated.groups.length
+                ? `, or is one of those set for every project: ${delegated.groups.join("; ")}`
+                : "";
+              errors.push(
+                err(
+                  `/groups/${i}`,
+                  `Your role manages this project's placement only: a group goes under the project's OU${among}.`,
+                  "not_allowed",
+                ),
+              );
+            });
+          }
+        }
+        // The directory is asked for the OU and groups once it is set: a
+        // host named "unreachable" answers nothing, and entries named
+        // Missing aren't in it.
+        if (errors.length === 0 && typeof ad?.url === "string" && ad.url && baseDN) {
+          if (ad.url.includes("unreachable"))
+            return problem(
+              502,
+              "Active Directory did not answer",
+              undefined,
+              "Try again in a moment. If it keeps failing, tell the platform team.",
+            );
+          for (const [ptr, dn] of Object.entries(dns).sort(([a], [b]) => a.localeCompare(b)))
+            if (/(^|,)\s*(OU|CN)=Missing\b/i.test(dn))
+              errors.push(err(ptr, `Active Directory has no ${dn}.`, "unknown"));
+        }
         if (errors.length) return invalid(errors);
         if (rows.some((r) => r.id !== id && r.project_id === (p?.id ?? null) && r.environment === env))
           return problem(
@@ -1669,6 +1800,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const rows = st().adPlacements;
       const i = rows.findIndex((r) => r.id === params.id);
       if (i < 0) return problem(404, "Not found");
+      if (!holdsIn(db, rows[i]!.project_id ?? "", "placement.manage"))
+        return problem(403, "Not allowed", undefined, "You do not have permission to do this.");
       rows.splice(i, 1);
       audited(db, "ad.placement.delete", "ad_placement", String(params.id));
       return new HttpResponse(null, { status: 204 });
@@ -1709,7 +1842,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         }
         for (const n of networks.filter((x) => x.env === c.env && r.networks.some((pat) => glob(pat, x.name)))) {
           if (out.networks.some((x) => x.name === n.name)) continue;
-          const m = st().mappings.find((x) => x.network === n.name);
+          // A network's IP ranges come before the subnet linked to it (ADR-0063).
+          const m =
+            rangeMappings(db).find((x) => x.network === n.name && x.vcenter === VCENTER) ??
+            st().mappings.find((x) => x.network === n.name);
           out.networks.push({
             name: n.name,
             clusters: [c.name],
@@ -2405,44 +2541,16 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     ...(["post", "put"] as const).map((method) =>
       http[method](`${base}/admin/nsx-managers${method === "put" ? "/:name" : ""}`, async ({ params, request }) => {
         await wait();
-        const w = (await request.json()) as S["NsxManagerWrite"];
+        const body = await request.json();
+        const strict = unknownField(body, nsxManagerFields);
+        if (strict) return strict;
+        const w = body as S["NsxManagerWrite"];
         const name = method === "put" ? String(params.name) : w.name;
         if (method === "put" && name === primaryNSX())
           return problem(409, "Conflict", undefined, `${name} is the NSX integration's: change it in Integrations.`);
         const current = st().nsxManagers.find((m) => m.name === name);
         if (method === "put" && !current) return problem(404, "Not found");
-        const errors: S["FieldError"][] = [];
-        if (!/^[a-z0-9][a-z0-9.-]{1,62}$/.test(name))
-          errors.push(err("/name", "Its host name in lower case, for example nsx02.corp.example."));
-        else if (name === primaryNSX())
-          errors.push(err("/name", `${name} is the NSX integration's: change it in Integrations.`));
-        if (!/^https:\/\/[^/]+/.test(w.url))
-          errors.push(err("/url", "Its address over HTTPS, for example https://nsx02.corp.example."));
-        const pin = normalFingerprint(w.cert_sha256 ?? "");
-        if ((w.cert_sha256 ?? "").trim() && !pin)
-          errors.push(err("/cert_sha256", "A certificate's SHA-256: 32 bytes in hex, with or without colons."));
-        const certFile = (w.cert_file ?? "").trim();
-        const keyFile = (w.key_file ?? "").trim();
-        if (certFile && !keyFile) errors.push(err("/key_file", "Give the certificate's private key too."));
-        else if (keyFile && !certFile)
-          errors.push(err("/cert_file", "Give the certificate this private key goes with."));
-        else if (!certFile) {
-          if (!(w.username ?? "").trim())
-            errors.push(err("/username", "Give the account rvav signs in with, or a principal-identity certificate."));
-          if ((!current || !current.password_set) && !w.password)
-            errors.push(err("/password", "Give the account's password."));
-          else if (
-            current &&
-            !w.password &&
-            (w.url !== current.url || (w.insecure && !current.insecure) || (pin && pin !== (current.cert_sha256 ?? "")))
-          )
-            errors.push(
-              err(
-                "/password",
-                "A new address, a certificate pinned, or the certificate not checked, needs the password again: the saved one only goes where it was given for.",
-              ),
-            );
-        }
+        const { errors, pin, certFile, keyFile } = nsxManagerErrors(w, name, current);
         errors.push(...unknownVCenters(w.vcenters ?? []));
         if (errors.length) return invalid(errors);
         if (method === "post" && current)
@@ -2485,6 +2593,14 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         return problem(409, "Conflict", undefined, `${name} is the NSX integration's: clear it in Integrations.`);
       const i = st().nsxManagers.findIndex((m) => m.name === name);
       if (i < 0) return problem(404, "Not found");
+      const live = (id: string) => db.deployments.some((d) => d.id === id && d.status !== "deleted");
+      if ((st().nsxObjects[name] ?? []).some(live))
+        return problem(
+          409,
+          "Conflict",
+          undefined,
+          `Deployments have NSX segments or security groups on ${name}: delete them, or keep the NSX Manager.`,
+        );
       st().nsxManagers.splice(i, 1);
       for (const [vc, m] of Object.entries(st().nsxLinks)) if (m === name) delete st().nsxLinks[vc];
       audited(db, "nsx_manager.delete", "nsx_manager", name);
@@ -2497,8 +2613,15 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (name === primaryNSX() && raw)
         return problem(409, "Conflict", undefined, `${name} is the NSX integration's: test what you change there.`);
       const saved = st().nsxManagers.find((m) => m.name === name);
-      const w = raw ? (JSON.parse(raw) as S["NsxManagerWrite"]) : saved;
+      const given = raw
+        ? ({ ...(JSON.parse(raw) as S["NsxManagerWrite"]), name } satisfies S["NsxManagerWrite"])
+        : undefined;
+      const w = given ?? saved;
       if (!w) return problem(404, "Not found");
+      if (given) {
+        const { errors } = nsxManagerErrors(given, name, saved);
+        if (errors.length) return invalid(errors);
+      }
       const ok = /^https:\/\/[^/]+/.test(w.url);
       const tls = certificateCheck(text(st().integrations.trust!.settings.ca_bundle), w.url, { ...w }, true);
       const cert = tls.certificate ? { certificate: tls.certificate } : {};
@@ -2644,11 +2767,22 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             }[kind] ?? "An http or https URL.",
           ),
         ]);
+      const baseDN = w.settings.base_dn;
+      if (kind === "ad" && typeof baseDN === "string" && baseDN && !baseDN.toLowerCase().includes("dc="))
+        return invalid([err("/settings/base_dn", "The domain's DN, for example DC=corp,DC=example.")]);
       if (kind === "servicenow") {
         const bad = [];
         const cls = w.settings.cmdb_class;
         if (typeof cls === "string" && cls && !/^cmdb_ci[a-z0-9_]*$/.test(cls))
           bad.push(err("/settings/cmdb_class", "A CMDB class's table name, for example cmdb_ci_vmware_instance."));
+        const source = w.settings.data_source;
+        if (typeof source === "string" && source && !/^[A-Za-z0-9_][A-Za-z0-9 _-]{0,39}$/.test(source))
+          bad.push(
+            err(
+              "/settings/data_source",
+              "A discovery source's value: letters, digits, spaces, - and _, for example rvav.",
+            ),
+          );
         const auth = w.settings.auth;
         if (typeof auth === "string" && auth && auth !== "basic" && auth !== "oauth")
           bad.push(err("/settings/auth", "basic or oauth."));

@@ -6,6 +6,7 @@ import type { components } from "@/lib/api/schema";
 import type { DeploymentDetail, DnsRecordResource, IpAddressResource, Project, VmResource } from "@/lib/api/types";
 import { leasePolicyOf, rolesGiven } from "./administration";
 import { seededBlueprint } from "./blueprints";
+import { keptFromDeletion } from "./day2";
 import { freeDeploymentName } from "./deploymentNames";
 import { clusters, datastores, networks } from "./inventory";
 import { heldIn } from "./roles";
@@ -254,6 +255,14 @@ function resourcesOf(group: Unmanaged[], component: string) {
 
 type Adopted = S["OnboardingResult"]["deployments"][number];
 
+/** The VMs of group that refs keep from deletion join the deployment's kept ones. */
+function keep(db: Db, refs: S["OnboardingVmRef"][], group: Unmanaged[], deploymentId: string) {
+  const protect = new Set(refs.filter((r) => r.prevent_delete).map((r) => `${r.vcenter}/${r.moref}`));
+  const names = group.filter(({ vm }) => protect.has(`${vm.vcenter}/${vm.moref}`)).map(({ vm }) => vm.name);
+  const kept = keptFromDeletion(db);
+  if (names.length) kept[deploymentId] = [...(kept[deploymentId] ?? []), ...names];
+}
+
 /** The adopted VMs leave the unmanaged ones. */
 function take(db: Db, group: Unmanaged[], dep: DeploymentDetail) {
   const s = state(db);
@@ -473,7 +482,11 @@ export function onboardingHandlers(db: Db, base: string, wait: () => Promise<voi
       if (errors.length || !dest) return invalid(errors);
       const groups = b.deployment_name ? [picked] : picked.map((x) => [x]);
       const out: S["OnboardingResult"] = { deployments: [] };
-      for (const group of groups) out.deployments.push(newDeployment(db, dest, b.deployment_name || group[0]!.vm.name, group)); // prettier-ignore
+      for (const group of groups) {
+        const made = newDeployment(db, dest, b.deployment_name || group[0]!.vm.name, group);
+        keep(db, b.vms, group, made.id);
+        out.deployments.push(made);
+      }
       return HttpResponse.json(out);
     }),
 
@@ -489,6 +502,7 @@ export function onboardingHandlers(db: Db, base: string, wait: () => Promise<voi
       const m = misfit(into.dep, into.item, into.component, picked);
       if (m) return invalid([err(`/vms/${m[0]}`, "no_fit", m[1])]);
       const out = joinDeployment(into.dep, into.component, picked);
+      keep(db, b.vms, picked, into.dep.id);
       take(db, picked, into.dep);
       return HttpResponse.json({ deployments: [out] } satisfies S["OnboardingResult"]);
     }),

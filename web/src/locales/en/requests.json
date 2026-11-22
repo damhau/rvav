@@ -266,6 +266,7 @@
     "bySchedule": "Started by the schedule {{schedule}}, as {{name}}",
     "requestedBy": "Requested by {{name}}",
     "fromServiceNow": "From ServiceNow, <ritm>{{number}}<newTab> (opens in a new tab)</newTab></ritm>",
+    "fromServiceNowFor": "From ServiceNow, <ritm>{{number}}<newTab> (opens in a new tab)</newTab></ritm>, ordered by {{orderer}} for {{name}}",
     "updateTo": "To {{item}} {{version}} on <target>{{deployment}}</target>",
     "actionOn": "{{action}} on <target>{{resource}}</target>",
     "theDeployment": "the deployment",

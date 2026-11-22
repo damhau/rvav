@@ -336,6 +336,24 @@ describe("the vRA import, in French", () => {
     expect(result).toHaveTextContent(/Projets qui reçoivent les propriétés personnalisées de vRA\s: Web Platform/);
   });
 
+  it("says in English, marked so, why rvav keeps a VM from deletion", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=deployments");
+    const table = await screen.findByRole("table", { name: "Déploiements vRA" });
+    const row = (await within(table).findAllByRole("row", { name: /vra-db-001/ }))[0]!;
+    expect(within(row).getByRole("listitem")).toHaveTextContent(/^vra-db-001 Protégée de la suppression$/);
+    await user.click(
+      within(row).getByRole("button", { name: /^Notes sur vra-db-001\s: 1 à vérifier · 1 non repris$/ }),
+    );
+    const notes = await screen.findByRole("dialog", { name: "Notes sur vra-db-001" });
+    const doubt = within(notes).getByText(/the safer side/);
+    expect(doubt).toHaveTextContent(
+      "vRA no longer lists version 0.9 of its cloud template Database server, so rvav can't read its preventDelete: kept from deletion, the safer side. An administrator can allow its deletion.",
+    );
+    expect(doubt).toHaveAttribute("lang", "en");
+    expect(doubt.closest("li")).toHaveTextContent(/^À vérifier\s*vms\.vra-db-001/);
+  });
+
   it("adopts a project's deployments and marks it moved", { timeout: 20_000 }, async () => {
     const user = userEvent.setup();
     renderApp("/admin/vra-import?tab=cutover");

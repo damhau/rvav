@@ -100,15 +100,16 @@ const vraProjects: {
 ];
 
 /**
- * vRA's deployments: their project, template, owner and VMs, those vRA keeps from deletion; a reason when they can't be
- * adopted whatever rvav has.
+ * vRA's deployments: their project, template, owner and VMs, those vRA keeps from deletion; why rvav can't read the
+ * template's preventDelete, which keeps its VMs from deletion; a reason when they can't be adopted whatever rvav has.
  */
 const vraDeployments: { id: string; name: string; project: string; template: string; owner: string; vms: string[]; kept?: string[];
-  why?: string }[] = [
+  doubt?: string; why?: string }[] = [
   { id: "dep-vra-1", name: "vra-web-001", project: "vra-prj-web", template: "bp-rhel9", owner: "thomas.nguyen@corp.example", vms: ["vra-web-001"] },
   { id: "dep-vra-2", name: "VRA Web Pair", project: "vra-prj-web", template: "bp-rhel9", owner: "lea.martin@corp.example", vms: ["vra-api-001", "vra-api-002"],
     kept: ["vra-api-001"] },
-  { id: "dep-vra-3", name: "vra-db-001", project: "vra-prj-data", template: "bp-db", owner: "lea.martin@corp.example", vms: ["vra-db-001"] },
+  { id: "dep-vra-3", name: "vra-db-001", project: "vra-prj-data", template: "bp-db", owner: "lea.martin@corp.example", vms: ["vra-db-001"],
+    kept: ["vra-db-001"], doubt: "vRA no longer lists version 0.9 of its cloud template Database server" },
   { id: "dep-vra-4", name: "vra-gone", project: "vra-prj-web", template: "bp-rhel9", owner: "thomas.nguyen@corp.example", vms: [],
     why: "Its VMs (vra-gone-001) aren't in the vCenters rvav reads: deleted, or in a vCenter rvav doesn't have." },
 ]; // prettier-ignore
@@ -188,15 +189,21 @@ function plan(db: Db, st: State): S["VraPlan"] {
     const base = { vra_id: d.id, name: d.name, rvav_name: rvavName(d.name), vra_project: p.name, owner: d.owner, notes: [] as S["VraNote"][],
       vms: d.vms.map((n, i) => ({ vcenter: "vc01.corp.example", moref: `vm-${7100 + i}`, name: n, prevent_delete: d.kept?.includes(n) || undefined })) }; // prettier-ignore
     const kept = d.kept?.join(", ");
-    const skip = (where: string, text: string): S["VraDeploymentPlan"] => ({
+    // As the server's protectionNotes: a VM whose flag rvav can't read first, then those kept.
+    const protection = (adopted: boolean): S["VraNote"][] => [
+      ...(d.doubt ? d.vms.map((n) => ({ level: "warning" as const, where: `vms.${n}`, text: `${d.doubt}, so rvav can't read its preventDelete: kept from deletion, the safer side. An administrator can allow its deletion.` })) : []),
+      ...(!kept ? [] : adopted
+        ? [{ level: "info" as const, where: "vms", text: `Kept from deletion, as in vRA: ${kept}. An administrator runs the deployment's Allow deletion first.` }]
+        : [{ level: "info" as const, where: "vms", text: `vRA keeps ${kept} from deletion (preventDelete): rvav does too once adopted, until an administrator runs the deployment's Allow deletion.` }]),
+    ]; // prettier-ignore
+    const skip = (where: string, text: string, noted: S["VraNote"][] = protection(false)): S["VraDeploymentPlan"] => ({
       ...base,
       status: "skipped",
-      notes: [{ level: "unmapped", where, text }],
+      notes: [...noted, { level: "unmapped", where, text }],
     });
     if (st.adopted.has(d.id))
-      return { ...base, status: "adopted", deployments: [`dep_${rvavName(d.name)}`],
-        notes: kept ? [{ level: "info", where: "vms", text: `Kept from deletion, as in vRA: ${kept}. An administrator runs the deployment's Allow deletion first.` }] : [] }; // prettier-ignore
-    if (d.why) return skip("vms", d.why);
+      return { ...base, status: "adopted", deployments: [`dep_${rvavName(d.name)}`], notes: protection(true) };
+    if (d.why) return skip("vms", d.why, []);
     if (p.how === "stays") return skip("project", `vRA project ${p.name} stays in vRA, as chosen.`);
     if (!p.rvav_project_id)
       return skip("project", `vRA project ${p.name} has no rvav project: map it to one, or create it.`);
@@ -207,7 +214,7 @@ function plan(db: Db, st: State): S["VraPlan"] {
       return skip("item", `${t.slug} isn't offered to ${p.rvav_project_name} in rvav: share it there.`);
     return { ...base, status: "adopt", project_id: p.rvav_project_id, environment: "dev", catalog_item_id: `itm_${t.slug}`,
       notes: [
-        ...(kept ? [{ level: "info" as const, where: "vms", text: `vRA keeps ${kept} from deletion (preventDelete): rvav does too once adopted, until an administrator runs the deployment's Allow deletion.` }] : []),
+        ...protection(false),
         ...(base.name === base.rvav_name ? [] : [{ level: "info" as const, where: "name", text: `Named ${base.rvav_name} in rvav: lower-case letters, digits, dots and dashes.` }]),
       ] }; // prettier-ignore
   });

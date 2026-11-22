@@ -7,6 +7,7 @@ import type { components } from "@/lib/api/schema";
 import { audited } from "./governance";
 import { networks, VCENTER } from "./inventory";
 import type { Db } from "./seed";
+import { unknownField } from "./strict";
 
 type S = components["schemas"];
 
@@ -215,6 +216,9 @@ function problem(status: number, title: string, errors?: S["FieldError"][], deta
 const err = (field: string, code: string, message: string): S["FieldError"] => ({ field, code, message });
 
 const trimAll = (list?: string[]) => (list ?? []).map((s) => s.trim()).filter(Boolean);
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+// As the server's domainName.
+const domainName = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 
 /** The server's checks of a range, those the form shows next to a field. */
 function check(st: RangeState, w: S["IpRangeWrite"], id?: string): S["FieldError"][] {
@@ -224,7 +228,9 @@ function check(st: RangeState, w: S["IpRangeWrite"], id?: string): S["FieldError
   if (!w.network.trim()) out.push(err("/network", "required", "Name the port group or NSX segment."));
   else if (w.vcenter !== VCENTER || !networks.some((n) => n.name === w.network))
     out.push(err("/network", "unknown", `The inventory of ${w.vcenter} has no network ${w.network}.`));
-  const p = prefixOf(w.cidr);
+  const parsed = prefixOf(w.cidr);
+  // A subnet with host bits set, such as 10.31.0.7/24, is refused, not made 10.31.0.0/24.
+  const p = parsed && toInt(w.cidr.trim().split("/")[0]!) === parsed.base ? parsed : undefined;
   if (!p) out.push(err("/cidr", "invalid", "An IPv4 subnet such as 10.51.0.0/24."));
   const subnet = p ? `${toAddr(p.base)}/${p.bits}` : "";
   const addr = (field: string, value: string, what: string) => {
@@ -236,15 +242,23 @@ function check(st: RangeState, w: S["IpRangeWrite"], id?: string): S["FieldError
   };
   const start = addr("/start_address", w.start_address, "start");
   const end = addr("/end_address", w.end_address, "end");
-  addr("/gateway", w.gateway, "gateway");
+  const gateway = addr("/gateway", w.gateway, "gateway");
   if (start !== undefined && end !== undefined && end < start)
     out.push(err("/end_address", "before_start", `The end comes before the start, ${w.start_address}.`));
+  if (p && p.bits <= 30 && (gateway === p.base || gateway === p.last))
+    out.push(err("/gateway", "invalid", "The gateway can't be the subnet's network or broadcast address."));
   trimAll(w.dns_servers).forEach((d, i) => {
     if (toInt(d) === undefined && !d.includes(":")) out.push(err(`/dns_servers/${i}`, "invalid", "An IP address."));
   });
+  trimAll(w.dns_search_domains).forEach((d, i) => {
+    if (!domainName.test(d.replace(/\.$/, "")))
+      out.push(err(`/dns_search_domains/${i}`, "invalid", "A domain such as lab.corp.example."));
+  });
   const domain = (w.dns_domain ?? "").trim();
-  if (domain.endsWith(".") && domain.length > 1)
-    out.push(err("/dns_domain", "not_canonical", `Without the final dot: ${domain.slice(0, -1)}.`));
+  const bare = domain.replace(/\.$/, "");
+  if (domain && (!bare || !domainName.test(bare)))
+    out.push(err("/dns_domain", "invalid", "A domain such as lab.corp.example, or empty for the blueprint's."));
+  else if (bare !== domain) out.push(err("/dns_domain", "not_canonical", `Without the final dot: ${bare}.`));
   trimAll(w.excluded).forEach((e, i) => {
     const s = spanOf(e);
     const canonical = s && (s[0] === s[1] ? toAddr(s[0]) : `${toAddr(s[0])}-${toAddr(s[1])}`);
@@ -273,14 +287,23 @@ function check(st: RangeState, w: S["IpRangeWrite"], id?: string): S["FieldError
     if (o.id === id || o.vcenter !== w.vcenter) continue;
     const os = toInt(o.start_address)!;
     const oe = toInt(o.end_address)!;
-    if (o.network === w.network && (o.cidr !== subnet || o.gateway !== w.gateway.trim()))
-      out.push(
-        err(
-          "/cidr",
-          "differs",
-          `The range ${o.name} of ${w.network} says otherwise: ranges of one network share its subnet.`,
-        ),
-      );
+    if (o.network === w.network) {
+      const differs = (field: string, what: string, same: boolean) => {
+        if (!same)
+          out.push(
+            err(
+              field,
+              "differs",
+              `The range ${o.name} of ${w.network} says otherwise: ranges of one network share its ${what}.`,
+            ),
+          );
+      };
+      differs("/cidr", "subnet", o.cidr === subnet);
+      differs("/gateway", "gateway", o.gateway === w.gateway.trim());
+      differs("/dns_servers", "DNS servers", sameList(o.dns_servers, trimAll(w.dns_servers)));
+      differs("/dns_search_domains", "search domains", sameList(o.dns_search_domains, trimAll(w.dns_search_domains)));
+      differs("/dns_domain", "DNS domain", o.dns_domain === domain);
+    }
     if (start! <= oe && os <= end!)
       out.push(
         err(
@@ -324,19 +347,45 @@ function check(st: RangeState, w: S["IpRangeWrite"], id?: string): S["FieldError
         ),
       );
     const ok = usable({ ...r, cidr: subnet });
-    for (const g of given)
-      if (!ok(toInt(g.address)!))
-        out.push(err("/excluded", "in_use", `A VM holds ${g.address}: the range must keep it.`));
+    for (const g of given) {
+      const n = toInt(g.address)!;
+      if (ok(n)) continue;
+      const field = n < start! ? "/start_address" : n > end! ? "/end_address" : "/excluded";
+      out.push(err(field, "in_use", `A VM holds ${g.address}: the range must keep it.`));
+    }
   }
   return out;
 }
 
+const rangeFields = [
+  "name",
+  "description",
+  "vcenter",
+  "network",
+  "cidr",
+  "start_address",
+  "end_address",
+  "gateway",
+  "dns_servers",
+  "dns_search_domains",
+  "dns_domain",
+  "excluded",
+] as const;
+
 export function ipRangeHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const st = () => rangeState(db);
   const find = (id: unknown) => st().ranges.find((r) => r.id === id);
+  const forbidden = () =>
+    db.me.permissions.includes("infrastructure.manage")
+      ? undefined
+      : problem(403, "Not allowed", undefined, "You do not have permission to do this.");
   const save = async (request: Request, id?: string) => {
     await wait();
+    const refused = forbidden();
+    if (refused) return refused;
     const w = (await request.json()) as S["IpRangeWrite"];
+    const strict = unknownField(w, rangeFields);
+    if (strict) return strict;
     const errors = check(st(), w, id);
     if (errors.length > 0) return problem(422, "Some inputs need attention", errors);
     const p = prefixOf(w.cidr)!;
@@ -380,6 +429,8 @@ export function ipRangeHandlers(db: Db, base: string, wait: () => Promise<void>)
     ),
     http.delete(`${base}/admin/ip-ranges/:id`, async ({ params }) => {
       await wait();
+      const refused = forbidden();
+      if (refused) return refused;
       const r = find(params.id);
       if (!r) return problem(404, "Not found");
       if (st().allocations.some((a) => a.rangeId === r.id))

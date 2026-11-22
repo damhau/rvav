@@ -3001,8 +3001,8 @@ export interface paths {
         /**
          * Where VMs' computer objects go in Active Directory
          * @description With project_id, the rows that may apply to the project: its own and
-         *     those of an environment in any project. Without it, every row
-         *     (ADR-0064).
+         *     those for every project, by environment or in any. Without it, every
+         *     row (ADR-0064).
          */
         get: operations["listAdPlacements"];
         put?: never;
@@ -16646,6 +16646,7 @@ export interface operations {
                     "application/json": components["schemas"]["AdPlacement"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
@@ -16677,6 +16678,7 @@ export interface operations {
                     "application/json": components["schemas"]["AdPlacement"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -19415,6 +19417,7 @@ export interface operations {
                     "application/json": components["schemas"]["NsxManager"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
@@ -19445,6 +19448,7 @@ export interface operations {
                     "application/json": components["schemas"]["NsxManager"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

@@ -72,6 +72,7 @@ async function serviceNowFlow(page: Page, check: (where: string) => Promise<void
   await page.goto("/requests/REQ-10461");
   const header = page.getByRole("heading", { level: 1, name: /web-tst-search002/ }).locator("xpath=ancestor::header");
   await expect(header.getByRole("link", { name: "RITM0010032 (opens in a new tab)" })).toHaveAttribute("href", RITM);
+  await expect(header).toContainText("ordered by Claire Dubois for Léa Martin");
   await check("a request ordered in ServiceNow");
 
   await header.getByRole("link", { name: "Open deployment" }).click();

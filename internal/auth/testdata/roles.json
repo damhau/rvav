@@ -136,7 +136,7 @@
       "id": "integrations.manage",
       "scope": "rvav",
       "area": "Integrations",
-      "summary": "See, set and test the identity provider and every connection, and make the inventory token."
+      "summary": "See, set and test the identity provider and every connection, and make the inventory token and ServiceNow's."
     },
     {
       "id": "policies.read",

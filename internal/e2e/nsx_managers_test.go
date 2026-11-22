@@ -63,6 +63,16 @@ func TestNSXManagers(t *testing.T) {
 			t.Fatalf("added = %+v", added)
 		}
 		h.json("POST", "/api/v1/admin/nsx-managers", admin, write, 409, nil)
+		// A write replaces what it writes: a misspelt field is refused, not
+		// read as leaving the one meant empty.
+		misspelt := map[string]any{"name": nsx02, "url": second.URL, "username": nsx.FakeUser, "insecur": true}
+		for method, path := range map[string]string{"POST": "/api/v1/admin/nsx-managers", "PUT": "/api/v1/admin/nsx-managers/" + nsx02} {
+			var bad api.Problem
+			h.json(method, path, admin, misspelt, 400, &bad)
+			if bad.Title != "The request body has a field this operation doesn't take" {
+				t.Fatalf("%s with a misspelt field: %+v", method, bad)
+			}
+		}
 		h.json("POST", "/api/v1/admin/nsx-managers/"+nsx02+"/test", admin, nil, 200, &test)
 		if !test.Ok {
 			t.Fatalf("saved settings' test = %+v", test.Checks)

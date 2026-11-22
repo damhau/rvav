@@ -3883,8 +3883,8 @@ paths:
       summary: Where VMs' computer objects go in Active Directory
       description: |
         With project_id, the rows that may apply to the project: its own and
-        those of an environment in any project. Without it, every row
-        (ADR-0064).
+        those for every project, by environment or in any. Without it, every
+        row (ADR-0064).
       parameters:
         - { $ref: "#/components/parameters/ProjectIdQuery" }
       responses:
@@ -3919,6 +3919,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdPlacement" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
@@ -3944,6 +3945,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdPlacement" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -6062,6 +6064,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NsxManager" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
@@ -6085,6 +6088,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NsxManager" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }

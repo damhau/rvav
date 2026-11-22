@@ -82,10 +82,17 @@ export function serviceNowSettingsErrors(settings: Record<string, unknown>): S["
   return out;
 }
 
+/** A Go duration such as 30m or 1h30m, in milliseconds; 30 minutes when unset. */
+function durationMs(d: unknown): number {
+  const unit: Record<string, number> = { h: 3_600_000, m: 60_000, s: 1000, ms: 1 };
+  const parts = typeof d === "string" ? [...d.matchAll(/(\d+(?:\.\d+)?)(ms|h|m|s)/g)] : [];
+  return parts.length ? parts.reduce((n, [, v, u]) => n + Number(v) * unit[u!]!, 0) : 30 * 60_000;
+}
+
 function report(db: Db): S["ServiceNowCmdb"] {
   const it = adminState(db).integrations.servicenow!;
   const s = it.settings;
-  const enabled = Boolean(s.url) && it.secret && s.cmdb === true;
+  const enabled = Boolean(s.url) && s.cmdb === true;
   const chosen = Array.isArray(s.projects) ? (s.projects as unknown[]).map(String) : [];
   const projects = db.projects
     .filter((p) => chosen.includes(p.id) || chosen.includes(p.code))
@@ -139,7 +146,7 @@ function report(db: Db): S["ServiceNowCmdb"] {
     ...(st.reconciledAt
       ? {
           reconciled_at: st.reconciledAt,
-          next_reconcile_at: new Date(Date.parse(st.reconciledAt) + 30 * 60_000).toISOString(),
+          next_reconcile_at: new Date(Date.parse(st.reconciledAt) + durationMs(s.sync_interval)).toISOString(),
           servicenow: kept + orphans.length,
           orphans,
           orphans_total: orphans.length,
@@ -150,13 +157,19 @@ function report(db: Db): S["ServiceNowCmdb"] {
 
 export function serviceNowHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const settings = () => adminState(db).integrations.servicenow!.settings;
+  const forbidden = () =>
+    db.me.permissions.includes("integrations.manage")
+      ? undefined
+      : problem(403, "Not allowed", undefined, "You do not have permission to do this.");
   return [
     http.get(`${base}/admin/integrations/servicenow/cmdb`, async () => {
       await wait();
-      return HttpResponse.json(report(db));
+      return forbidden() ?? HttpResponse.json(report(db));
     }),
     http.post(`${base}/admin/integrations/servicenow/cmdb/reconcile`, async () => {
       await wait();
+      const refused = forbidden();
+      if (refused) return refused;
       if (!report(db).enabled)
         return problem(409, "Conflict", undefined, "Set ServiceNow's connection and turn its CMDB on first.");
       snowState(db).reconciledAt = new Date().toISOString();
@@ -165,6 +178,8 @@ export function serviceNowHandlers(db: Db, base: string, wait: () => Promise<voi
     }),
     http.get(`${base}/admin/integrations/servicenow/token`, async () => {
       await wait();
+      const refused = forbidden();
+      if (refused) return refused;
       const st = snowState(db);
       const s = settings();
       return HttpResponse.json({
@@ -175,6 +190,8 @@ export function serviceNowHandlers(db: Db, base: string, wait: () => Promise<voi
     }),
     http.post(`${base}/admin/integrations/servicenow/token`, async () => {
       await wait();
+      const refused = forbidden();
+      if (refused) return refused;
       const st = snowState(db);
       const revoked = st.token ? 1 : 0;
       const id = `tok_snow${++st.seq + 1}`;
@@ -186,7 +203,7 @@ export function serviceNowHandlers(db: Db, base: string, wait: () => Promise<voi
         created_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + 365 * 86_400_000).toISOString(),
       };
-      audited(db, "servicenow.token", "api_token", id, { revoked });
+      audited(db, "servicenow.token", "api_token", id, { revoked, expires_at: st.token.expires_at });
       return HttpResponse.json(
         {
           token: st.token,
@@ -198,8 +215,10 @@ export function serviceNowHandlers(db: Db, base: string, wait: () => Promise<voi
     }),
     http.delete(`${base}/admin/integrations/servicenow/token`, async () => {
       await wait();
+      const refused = forbidden();
+      if (refused) return refused;
       const st = snowState(db);
-      if (st.token) audited(db, "servicenow.token_revoked", "api_token", st.token.id, { revoked: 1 });
+      if (st.token) audited(db, "servicenow.token_revoked", "integration", "servicenow", { revoked: 1 });
       st.token = undefined;
       return new HttpResponse(null, { status: 204 });
     }),

@@ -47,7 +47,7 @@
     "catalog_manage": "Build, publish and open catalog items, with their categories, secrets, shared variables, Git repository and AWX templates; read what their steps were given and gave.",
     "infrastructure_read": "See templates, sizes, network mappings, IP ranges and the vCenters rvav reaches.",
     "infrastructure_manage": "Change templates, sizes, network mappings and IP ranges, and reconcile IPAM.",
-    "integrations_manage": "See, set and test the identity provider and every connection, and make the inventory token.",
+    "integrations_manage": "See, set and test the identity provider and every connection, and make the inventory token and ServiceNow's.",
     "policies_read": "See the approval, day-2, lease and naming policies, every project's included.",
     "policies_manage": "Change the approval, day-2, lease and naming policies.",
     "extensibility_read": "See event subscriptions, their runs, the custom workflows and the custom resource types; read the shared variables and what composite steps were given and gave.",
