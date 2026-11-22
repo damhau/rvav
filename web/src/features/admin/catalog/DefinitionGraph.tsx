@@ -13,9 +13,13 @@
 // with its own problems and the canvas's selection, actions and details.
 import { TriangleAlert } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { addProblems, blueprintGraph, Canvas, type CanvasGraph, type CanvasProps } from "@/components/canvas";
 import type { FieldError } from "@/lib/api/types";
+import { i18n } from "@/lib/i18n";
 import { parseText, problemsOnLines } from "./definitionYaml";
+
+const tr = i18n.getFixedT(null, "admin-catalog");
 
 export interface Drawn {
   graph: CanvasGraph | null;
@@ -28,13 +32,13 @@ export function drawDefinition(text: string): Drawn {
   const { value: def, error } = parseText(text);
   if (error) return { graph: null, reason: error };
   const blueprint = def && typeof def === "object" ? (def as Record<string, unknown>).blueprint : undefined;
-  if (!blueprint || typeof blueprint !== "object") return { graph: null, reason: "The definition has no blueprint" };
+  if (!blueprint || typeof blueprint !== "object") return { graph: null, reason: tr("graph.noBlueprint") };
   const graph = blueprintGraph(blueprint);
   if (!graph) {
     const kind = (blueprint as Record<string, unknown>).kind;
     return {
       graph: null,
-      reason: kind ? `A blueprint of kind ${JSON.stringify(kind)} isn't drawn` : "The blueprint has no kind",
+      reason: kind ? tr("graph.notDrawn", { kind: JSON.stringify(kind) }) : tr("graph.noKind"),
     };
   }
   return { graph };
@@ -53,12 +57,14 @@ export interface DefinitionGraphProps {
 }
 
 export default function DefinitionGraph({ text, name, composite, problemsFor, canvas }: DefinitionGraphProps) {
+  const { t } = useTranslation("admin-catalog");
   // Typing stays quick: the graph is drawn again once React has time.
   const current = useDeferredValue(text);
   const drawn = useMemo(() => {
     const d = drawDefinition(current);
     return d.graph && problemsFor ? { ...d, graph: addProblems(d.graph, problemsFor(current)) } : d;
-  }, [current, problemsFor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the reason is told in the language shown
+  }, [current, problemsFor, i18n.language]);
   // The last graph drawn, for the moments the text has none, and kept while
   // what it draws is the same: a keystroke outside the blueprint (the form,
   // a comment) doesn't lay the graph out again.
@@ -70,26 +76,31 @@ export default function DefinitionGraph({ text, name, composite, problemsFor, ca
     () => (drawn.graph ? problemsOnLines(current, drawn.graph.problems) : []),
     [drawn.graph, current],
   );
-  const what = composite ? "steps" : "topology";
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      <h3 className="text-secondary font-medium">{composite ? "Steps, in the order they run" : "Topology"}</h3>
+      <h3 className="text-secondary font-medium">{composite ? t("graph.steps") : t("graph.topology")}</h3>
       {drawn.reason && (
         <p className="flex items-start gap-1.5 text-secondary text-warn">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>
-            {drawn.reason}
-            {graph ? ": the graph shows the definition as it last parsed." : "."}
+            {graph ? t("graph.lastParsed", { reason: drawn.reason }) : t("graph.reason", { reason: drawn.reason })}
           </span>
         </p>
       )}
-      {graph && <Canvas graph={graph} label={`${composite ? "Steps" : "Topology"} of ${name}`} {...canvas} />}
+      {graph && (
+        <Canvas
+          graph={graph}
+          label={composite ? t("graph.stepsOf", { name }) : t("graph.topologyOf", { name })}
+          {...canvas}
+        />
+      )}
       {lines.length > 0 && (
-        <ul aria-label={`Problems in the ${what}`} className="flex flex-col gap-0.5 text-secondary text-warn">
+        <ul
+          aria-label={composite ? t("graph.stepProblems") : t("graph.topologyProblems")}
+          className="flex flex-col gap-0.5 text-secondary text-warn"
+        >
           {lines.map((p, i) => (
-            <li key={i}>
-              Line {p.line}: {p.message}
-            </li>
+            <li key={i}>{t("item.line", { line: p.line, message: p.message })}</li>
           ))}
         </ul>
       )}

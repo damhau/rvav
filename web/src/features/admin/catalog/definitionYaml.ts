@@ -1,7 +1,10 @@
 // A version's definition as YAML, and server problems mapped to its lines.
 import { type Document, isMap, isSeq, LineCounter, parseDocument, stringify, type Node } from "yaml";
 import type { CatalogVersionDefinition, FieldError } from "@/lib/api/types";
+import { i18n } from "@/lib/i18n";
 import type { LineProblem } from "./YamlEditor";
+
+const tr = i18n.getFixedT(null, "admin-catalog");
 
 export function toYaml(def: CatalogVersionDefinition): string {
   return stringify(def, { indent: 2, lineWidth: 0 });
@@ -17,7 +20,7 @@ export function fromYaml(text: string): { def?: CatalogVersionDefinition; proble
   const def = doc.toJS() as Partial<CatalogVersionDefinition> | null;
   const missing = (["form_schema", "ui_schema", "blueprint"] as const).filter((k) => !def?.[k]);
   if (!def || missing.length > 0) {
-    return { problems: [{ line: 1, message: `The definition needs ${missing.join(", ")}.` }] };
+    return { problems: [{ line: 1, message: tr("graph.needs", { parts: missing.join(", ") }) }] };
   }
   // The definition's own order, as the server and toYaml have it.
   const { form_schema, ui_schema, initial_values, blueprint, ...rest } = def as CatalogVersionDefinition;
@@ -37,25 +40,26 @@ export interface ParsedText {
 // The texts parsed last. On a keystroke the graph, the designer, the step
 // selected and their problems all read the same text (and the graph a
 // deferred one): it is parsed once.
-const recent: { text: string; parsed: ParsedText }[] = [];
+// Its reasons are in the language they were told in.
+const recent: { text: string; lang: string; parsed: ParsedText }[] = [];
 
 /** A text parsed, once for as long as it is among the last few read. */
 export function parseText(text: string): ParsedText {
-  const hit = recent.find((r) => r.text === text);
+  const hit = recent.find((r) => r.text === text && r.lang === i18n.language);
   if (hit) return hit.parsed;
   const lines = new LineCounter();
   const doc = parseDocument(text, { lineCounter: lines });
   const parsed: ParsedText = { doc, lines };
   const broken = doc.errors[0];
-  if (broken) parsed.error = `The YAML doesn't parse at line ${lines.linePos(broken.pos[0]).line}`;
+  if (broken) parsed.error = tr("graph.yamlLine", { line: lines.linePos(broken.pos[0]).line });
   else
     try {
       parsed.value = doc.toJS();
     } catch (e) {
       // An alias with no anchor before it.
-      parsed.error = `The YAML doesn't parse: ${e instanceof Error ? e.message : String(e)}`;
+      parsed.error = tr("graph.yamlBroken", { reason: e instanceof Error ? e.message : String(e) });
     }
-  recent.unshift({ text, parsed });
+  recent.unshift({ text, lang: i18n.language, parsed });
   recent.length = Math.min(recent.length, 4);
   return parsed;
 }

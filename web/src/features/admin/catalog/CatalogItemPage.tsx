@@ -5,6 +5,7 @@ import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Ellipsis } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { icons, ItemIcon, itemTypeLabel } from "@/components/common/misc";
@@ -27,7 +28,8 @@ import type { AdminCatalogItem, CatalogItemVersion, CatalogItemVersionDetail, Fi
 import { useCurrentProject } from "@/lib/project";
 import { adm, keys, q } from "@/lib/query";
 import { cn } from "@/lib/utils";
-import { relative } from "@/lib/format";
+import { formatList, relative } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { GitBadge, ItemGitTab } from "./GitPanels";
 import { SharingTab } from "./SharingTab";
 import { ItemChangeDialog, requestableIn } from "./ItemsPanel";
@@ -41,6 +43,8 @@ const YamlEditor = lazy(() => import("./YamlEditor"));
 const DefinitionGraph = lazy(() => import("./DefinitionGraph"));
 const CompositeDesigner = lazy(() => import("./composite/CompositeDesigner"));
 
+const tr = i18n.getFixedT(null, "admin-catalog");
+
 /** The editor's text doesn't parse: what is wrong, and where. */
 class YamlProblems extends Error {
   constructor(readonly problems: LineProblem[]) {
@@ -49,7 +53,7 @@ class YamlProblems extends Error {
 }
 
 const stateTone = { draft: "accent", published: "ok", deprecated: "neutral" } as const;
-const stateLabel = { draft: "Draft", published: "Published", deprecated: "Deprecated" } as const;
+const stateLabel = (state: CatalogItemVersion["state"]) => tr(`item.state.${state}`);
 
 export const itemTabs = ["versions", "designer", "definition", "details", "entitlements", "git"] as const;
 export type ItemTab = (typeof itemTabs)[number];
@@ -96,34 +100,45 @@ function download(name: string, text: string) {
 }
 
 function CompareDialog({ item, onClose }: { item: AdminCatalogItem; onClose: () => void }) {
+  const { t } = useTranslation("admin-catalog");
   const versions = item.versions;
   const [from, setFrom] = useState(versions[1]?.id ?? versions[0]!.id);
   const [to, setTo] = useState(versions[0]!.id);
   const diff = useQuery({ ...q.catalogCompare(item.id, from, to), enabled: from !== to });
-  const options = versions.map((v) => ({ value: v.id, label: `${v.number} · ${v.state}` }));
+  const options = versions.map((v) => ({
+    value: v.id,
+    label: t("item.compare.option", { number: v.number, state: stateLabel(v.state).toLowerCase() }),
+  }));
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title="Compare versions" className="w-[min(760px,calc(100vw-32px))]">
+      <DialogContent title={t("item.compare.title")} className="w-[min(760px,calc(100vw-32px))]">
         <div className="flex flex-col gap-3 p-4">
           <div className="flex flex-wrap items-end gap-3">
-            <Field label="From" htmlFor="compare-from">
+            <Field label={t("item.compare.from")} htmlFor="compare-from">
               <Select id="compare-from" value={from} onChange={setFrom} options={options} className="w-48" />
             </Field>
-            <Field label="To" htmlFor="compare-to">
+            <Field label={t("item.compare.to")} htmlFor="compare-to">
               <Select id="compare-to" value={to} onChange={setTo} options={options} className="w-48" />
             </Field>
           </div>
-          {from === to && <p className="text-secondary text-muted">Choose two different versions.</p>}
+          {from === to && <p className="text-secondary text-muted">{t("item.compare.same")}</p>}
           {diff.isPending && from !== to && <Skeleton className="h-24" />}
-          {diff.data && diff.data.changes.length === 0 && <p className="text-secondary text-muted">No difference.</p>}
+          {diff.data && diff.data.changes.length === 0 && (
+            <p className="text-secondary text-muted">{t("item.compare.none")}</p>
+          )}
           {diff.data && diff.data.changes.length > 0 && (
-            <ul aria-label="Changes" className="flex max-h-[50vh] flex-col overflow-auto rounded-md border border-line">
+            <ul
+              aria-label={t("item.compare.changes")}
+              className="flex max-h-[50vh] flex-col overflow-auto rounded-md border border-line"
+            >
               {diff.data.changes.map((c, i) => (
                 <li
                   key={i}
                   className="flex items-baseline gap-2 border-b border-line px-3 py-1.5 text-secondary last:border-b-0"
                 >
-                  <Badge tone={c.change === "added" ? "ok" : c.change === "removed" ? "bad" : "warn"}>{c.change}</Badge>
+                  <Badge tone={c.change === "added" ? "ok" : c.change === "removed" ? "bad" : "warn"}>
+                    {t(`item.compare.change.${c.change}`)}
+                  </Badge>
                   <span className="text-faint">{c.area}</span>
                   <span className="min-w-0 font-mono break-all">{c.summary}</span>
                 </li>
@@ -138,12 +153,10 @@ function CompareDialog({ item, onClose }: { item: AdminCatalogItem; onClose: () 
 
 /** Why publishing the draft waits: the designer's copy isn't saved, or YAML is typed and not saved. */
 function usePublishWait(item: AdminCatalogItem | undefined, yamlDirty: boolean): string | undefined {
+  const { t } = useTranslation("admin-catalog");
   const copy = useDraftCopy(item?.draft_version?.id);
-  if (copy?.dirty)
-    return copy.state === "saving"
-      ? "The designer is still saving the draft."
-      : "The designer has changes the server refused or couldn't save: see the Form designer tab.";
-  if (yamlDirty) return "Save or undo your changes to the YAML first.";
+  if (copy?.dirty) return copy.state === "saving" ? t("item.wait.saving") : t("item.wait.refused");
+  if (yamlDirty) return t("item.wait.yaml");
   return undefined;
 }
 
@@ -199,11 +212,16 @@ function useVersionAction(item: AdminCatalogItem, onRefused?: (r: Refusal) => vo
       if (action === "export") return;
       if (v.state === "draft") closeDraft(v.id); // published or discarded: no draft to edit any more
       refresh();
+      const number = v.number;
       const done = {
-        publish: v.state === "deprecated" ? `Rolled back to ${v.number}` : `${v.number} published`,
-        keep: v.state === "deprecated" ? `${v.number} offered again` : `${v.number} published beside the others`,
-        retire: `${v.number} retired`,
-        discard: `Draft ${v.number} discarded`,
+        publish:
+          v.state === "deprecated" ? tr("item.done.rolledBack", { number }) : tr("item.done.published", { number }),
+        keep:
+          v.state === "deprecated"
+            ? tr("item.done.offeredAgain", { number })
+            : tr("item.done.publishedBeside", { number }),
+        retire: tr("item.done.retired", { number }),
+        discard: tr("item.done.discarded", { number }),
       }[action];
       toast.success(done);
     },
@@ -211,11 +229,11 @@ function useVersionAction(item: AdminCatalogItem, onRefused?: (r: Refusal) => vo
       const errors = isApiError(e) && e.status === 422 ? e.fieldErrors : [];
       const publishing = action === "publish" || action === "keep";
       if (!onRefused || !publishing || v.state !== "draft" || !errors.some((x) => x.field.startsWith("/definition")))
-        return toastError(e, "That didn't work");
-      toast.error(`${v.number} not published`, {
-        description: `${errors.length === 1 ? "A problem" : `${errors.length} problems`} in its definition, shown on ${
-          item.type === "composite" ? "their lines and steps" : "their lines"
-        }.`,
+        return toastError(e, tr("item.failed"));
+      toast.error(tr("item.notPublished", { number: v.number }), {
+        description: tr(item.type === "composite" ? "item.refusedSteps" : "item.refusedLines", {
+          count: errors.length,
+        }),
       });
       onRefused({ versionId: v.id, errors });
     },
@@ -229,9 +247,9 @@ function useNewDraft(item: AdminCatalogItem) {
       call(api.POST("/admin/catalog/items/{itemId}/versions", { params: { path: { itemId: item.id } }, body: {} })),
     onSuccess: (v) => {
       refresh();
-      toast.success(`Draft ${v.number} made from the published version`);
+      toast.success(tr("item.draftMade", { number: v.number }));
     },
-    onError: (e) => toastError(e, "No draft was made"),
+    onError: (e) => toastError(e, tr("item.noDraft")),
   });
 }
 
@@ -247,105 +265,111 @@ function VersionsTab({
   onWithdraw: () => void;
   onRefused: (r: Refusal) => void;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const act = useVersionAction(item, onRefused);
   const busy = useVersionBusy(item);
   const [comparing, setComparing] = useState(false);
   const [discarding, setDiscarding] = useState<CatalogItemVersion | null>(null);
   const offered = requestable(item);
   // What publishing beside them keeps: "3.2", or "3.2 and 3.1".
-  const kept = (v: CatalogItemVersion) => {
-    const others = offered.filter((x) => x.id !== v.id).map((x) => x.number);
-    return others.length > 1 ? `${others.slice(0, -1).join(", ")} and ${others.at(-1)}` : (others[0] ?? "");
-  };
-  const waiting = (label: string) => (busy ? `${label}: waits for the change running` : label);
+  const kept = (v: CatalogItemVersion) => formatList(offered.filter((x) => x.id !== v.id).map((x) => x.number));
+  const waiting = (label: string) => (busy ? t("item.waiting", { label }) : label);
   const columns: Column<CatalogItemVersion>[] = [
     {
       id: "version",
-      header: "Version",
+      header: t("item.col.version"),
       cell: (v) => (
         <div className="flex items-center gap-2">
           <span className="font-mono font-medium">{v.number}</span>
-          <Badge tone={stateTone[v.state]}>{stateLabel[v.state]}</Badge>
-          {offered.length > 1 && v.id === item.published_version?.id && <Badge tone="neutral">Default</Badge>}
+          <Badge tone={stateTone[v.state]}>{stateLabel(v.state)}</Badge>
+          {offered.length > 1 && v.id === item.published_version?.id && (
+            <Badge tone="neutral">{t("item.default")}</Badge>
+          )}
         </div>
       ),
     },
     {
       id: "changelog",
-      header: "Changelog",
-      cell: (v) => <span className="text-secondary text-muted">{v.changelog || "None"}</span>,
+      header: t("item.col.changelog"),
+      cell: (v) => <span className="text-secondary text-muted">{v.changelog || t("item.noChangelog")}</span>,
     },
     {
       id: "made",
-      header: "Made",
+      header: t("item.col.made"),
       cell: (v) => (
         <span className="text-secondary text-muted">
-          {v.created_by ? `${v.created_by.name}, ` : ""}
+          {v.created_by ? t("item.madeBy", { name: v.created_by.name }) : ""}
           {relative(v.published_at ?? v.created_at)}
         </span>
       ),
     },
     {
       id: "deployments",
-      header: "Deployments",
+      header: t("item.col.deployments"),
       align: "end",
       cell: (v) => <span className="tabular-nums">{v.deployments}</span>,
     },
   ];
   return (
     <Panel
-      title="Versions"
-      description="People request a published version: the newest, unless they pick another kept published. Requests and deployments keep the version they were made with."
+      title={t("item.versions")}
+      description={t("item.versionsLead")}
       flush
       actions={
         <Button size="sm" disabled={item.versions.length < 2} onClick={() => setComparing(true)}>
-          Compare
+          {t("item.compareButton")}
         </Button>
       }
     >
       <DataTable
-        label="Versions"
+        label={t("item.versions")}
         columns={columns}
         rows={item.versions}
         rowKey={(v) => v.id}
         minWidth={640}
-        rowMenuLabel={(v) => `Actions for version ${v.number}`}
+        rowMenuLabel={(v) => t("item.versionActions", { number: v.number })}
         rowMenu={(v) => (
           <>
             {v.state === "draft" && (
               <MenuItem disabled={Boolean(wait) || busy} onSelect={() => act.mutate({ v, action: "publish" })}>
-                {wait ? `Publish ${v.number}: save the draft's changes first` : waiting(`Publish ${v.number}`)}
+                {wait
+                  ? t("item.publishSaveFirst", { number: v.number })
+                  : waiting(t("items.publish", { number: v.number }))}
               </MenuItem>
             )}
             {v.state === "draft" && offered.length > 0 && (
               <MenuItem disabled={Boolean(wait) || busy} onSelect={() => act.mutate({ v, action: "keep" })}>
                 {wait
-                  ? `Publish ${v.number} beside ${kept(v)}: save the draft's changes first`
-                  : waiting(`Publish ${v.number}, keeping ${kept(v)} requestable`)}
+                  ? t("item.publishBesideSaveFirst", { number: v.number, kept: kept(v) })
+                  : waiting(t("item.publishKeeping", { number: v.number, kept: kept(v) }))}
               </MenuItem>
             )}
             {v.state === "deprecated" && (
               <MenuItem disabled={busy} onSelect={() => act.mutate({ v, action: "publish" })}>
-                {waiting(`Roll back to ${v.number}`)}
+                {waiting(t("item.rollBack", { number: v.number }))}
               </MenuItem>
             )}
             {v.state === "deprecated" && offered.length > 0 && (
               <MenuItem disabled={busy} onSelect={() => act.mutate({ v, action: "keep" })}>
-                {waiting(`Offer ${v.number} again, beside ${kept(v)}`)}
+                {waiting(t("item.offerAgain", { number: v.number, kept: kept(v) }))}
               </MenuItem>
             )}
             {v.state === "published" && offered.length > 1 && (
               <MenuItem disabled={busy} onSelect={() => act.mutate({ v, action: "retire" })}>
-                {waiting(`Retire ${v.number}`)}
+                {waiting(t("item.retire", { number: v.number }))}
               </MenuItem>
             )}
-            {v.state === "published" && offered.length === 1 && <MenuItem onSelect={onWithdraw}>Withdraw</MenuItem>}
-            <MenuItem onSelect={() => act.mutate({ v, action: "export" })}>Export {v.number} as YAML</MenuItem>
+            {v.state === "published" && offered.length === 1 && (
+              <MenuItem onSelect={onWithdraw}>{t("items.withdraw")}</MenuItem>
+            )}
+            <MenuItem onSelect={() => act.mutate({ v, action: "export" })}>
+              {t("item.exportVersion", { number: v.number })}
+            </MenuItem>
             {v.state === "draft" && (
               <>
                 <MenuSeparator />
                 <MenuItem danger onSelect={() => setDiscarding(v)}>
-                  Discard
+                  {t("item.discard")}
                 </MenuItem>
               </>
             )}
@@ -357,16 +381,16 @@ function VersionsTab({
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setDiscarding(null)}
-          title={`Discard draft ${discarding.number}?`}
-          description="Its changes are lost, in the form designer and the YAML alike."
+          title={t("item.discardTitle", { number: discarding.number })}
+          description={t("item.discardBody")}
           consequences={
             item.git?.state === "draft"
-              ? "The draft came from the repository: rvav commits its own file there again."
+              ? t("item.discardFromGit")
               : item.published_version
-                ? `People keep getting ${item.published_version.number}.`
-                : "The item has no published version: nobody can request it."
+                ? t("item.discardKeeps", { number: item.published_version.number })
+                : t("item.discardNone")
           }
-          confirmLabel="Discard draft"
+          confirmLabel={t("item.discardConfirm")}
           pending={act.isPending}
           onConfirm={() => act.mutate({ v: discarding, action: "discard" }, { onSuccess: () => setDiscarding(null) })}
         />
@@ -386,6 +410,7 @@ function DefinitionTab({
   refusal?: Refusal;
   onRefusalShown: () => void;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const shown = item.draft_version ?? item.published_version ?? item.versions[0];
   const version = useQuery({
@@ -479,7 +504,7 @@ function DefinitionTab({
       setProblems([]);
       setRefused(undefined);
       refresh();
-      toast.success(`Draft ${shown!.number} saved`);
+      toast.success(t("item.draftSaved", { number: shown!.number }));
     },
     onError: (e) => {
       if (e instanceof YamlProblems) setProblems(e.problems);
@@ -487,7 +512,7 @@ function DefinitionTab({
         setProblems(problemsOnLines(text, e.fieldErrors));
         setRefused({ text, errors: e.fieldErrors });
       } else if (isApiError(e) && e.status === 409) {
-        toastError(e, "Saving failed");
+        toastError(e, t("item.savingFailed"));
         // The draft as it now is, in place of the text refused.
         void version.refetch().then((r) => {
           if (pending || !r.data) return;
@@ -495,7 +520,7 @@ function DefinitionTab({
           setProblems([]);
           setRefused(undefined);
         });
-      } else toastError(e, "Saving failed");
+      } else toastError(e, t("item.savingFailed"));
     },
   });
   if (!shown) return null;
@@ -503,28 +528,24 @@ function DefinitionTab({
   const designed = item.type === "composite" && editable;
   return (
     <Panel
-      title={editable ? `Draft ${shown.number}` : `Version ${shown.number} (read only)`}
+      title={editable ? t("items.draft", { number: shown.number }) : t("item.readOnly", { number: shown.number })}
       actions={
         editable && (
           <div className="flex gap-2">
             <Button size="sm" variant="quiet" disabled={text === original} onClick={() => setText(original)}>
-              Undo changes
+              {t("item.undo")}
             </Button>
             <Button size="sm" variant="primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
-              {save.isPending ? "Saving…" : "Save draft"}
+              {save.isPending ? t("item.saving") : t("item.saveDraft")}
             </Button>
           </div>
         )
       }
     >
-      {!editable && (
-        <p className="mb-2 text-secondary text-muted">
-          Published and earlier versions never change: make a draft to edit.
-        </p>
-      )}
+      {!editable && <p className="mb-2 text-secondary text-muted">{t("item.frozen")}</p>}
       {pending && (
         <p role="note" className="mb-2 text-secondary text-warn">
-          This shows the designer's changes, which the server hasn't saved yet; fix them here and save.
+          {t("item.designerPending")}
         </p>
       )}
       {version.isPending && <Skeleton className="h-64" />}
@@ -543,7 +564,7 @@ function DefinitionTab({
                 onChange={setText}
                 readOnly={!editable}
                 problems={problems}
-                label={`Definition of ${item.name} ${shown.number}`}
+                label={t("item.editorLabel", { name: item.name, number: shown.number })}
               />
             </Suspense>
           )}
@@ -551,22 +572,18 @@ function DefinitionTab({
             <ul
               ref={problemList}
               tabIndex={-1}
-              aria-label="Problems in the definition"
+              aria-label={t("item.problems")}
               className="mt-2 flex flex-col gap-0.5 text-secondary text-bad"
             >
               {problems.map((p, i) => (
-                <li key={i}>
-                  Line {p.line}: {p.message}
-                </li>
+                <li key={i}>{t("item.line", { line: p.line, message: p.message })}</li>
               ))}
             </ul>
           )}
           {warnings.length > 0 && (
-            <ul aria-label="Warnings" className="mt-2 flex flex-col gap-0.5 text-secondary text-warn">
+            <ul aria-label={t("item.warnings")} className="mt-2 flex flex-col gap-0.5 text-secondary text-warn">
               {warnings.map((p, i) => (
-                <li key={i}>
-                  Line {p.line}: {p.message}
-                </li>
+                <li key={i}>{t("item.line", { line: p.line, message: p.message })}</li>
               ))}
             </ul>
           )}
@@ -597,6 +614,7 @@ function DefinitionTab({
 }
 
 function DetailsTab({ item }: { item: AdminCatalogItem }) {
+  const { t } = useTranslation("admin-catalog");
   const refresh = useRefresh(item.id);
   const categories = useQuery(q.adminCatalogCategories());
   const [d, setD] = useState({
@@ -617,25 +635,25 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
             ...d,
             tags: d.tags
               .split(",")
-              .map((t) => t.trim())
+              .map((tag) => tag.trim())
               .filter(Boolean),
           },
         }),
       ),
     onSuccess: () => {
       refresh();
-      toast.success(`${d.name} saved`);
+      toast.success(t("item.saved", { name: d.name }));
     },
-    onError: (e) => toastError(e, "Saving failed"),
+    onError: (e) => toastError(e, t("item.savingFailed")),
   });
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD((x) => ({ ...x, [k]: v }));
   return (
     <Panel
-      title="Details"
-      description="How the item shows in the catalog. Saved at once, in every version."
+      title={t("item.details.title")}
+      description={t("item.details.lead")}
       footer={
         <Button type="submit" form="item-details" variant="primary" disabled={save.isPending}>
-          {save.isPending ? "Saving…" : "Save details"}
+          {save.isPending ? t("item.saving") : t("item.details.save")}
         </Button>
       }
     >
@@ -647,10 +665,10 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
           save.mutate();
         }}
       >
-        <Field label="Name" htmlFor="item-name">
+        <Field label={t("item.details.name")} htmlFor="item-name">
           <Input id="item-name" value={d.name} onChange={(e) => set("name", e.target.value)} maxLength={80} />
         </Field>
-        <Field label="Category" htmlFor="item-category">
+        <Field label={t("item.details.category")} htmlFor="item-category">
           <Select
             id="item-category"
             value={d.category}
@@ -658,30 +676,26 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
             options={(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name }))}
           />
         </Field>
-        <Field label="Summary" htmlFor="item-summary" className="md:col-span-2">
+        <Field label={t("item.details.summary")} htmlFor="item-summary" className="md:col-span-2">
           <Input id="item-summary" value={d.summary} onChange={(e) => set("summary", e.target.value)} maxLength={200} />
         </Field>
-        <Field label="Description (Markdown)" htmlFor="item-description" className="md:col-span-2">
+        <Field label={t("item.details.description")} htmlFor="item-description" className="md:col-span-2">
           <Textarea
             id="item-description"
             value={d.description_md}
             onChange={(e) => set("description_md", e.target.value)}
           />
         </Field>
-        <Field
-          label="Tags"
-          htmlFor="item-tags"
-          hint="Separated by commas. They also group the item's VMs in the AWX inventory."
-        >
+        <Field label={t("item.details.tags")} htmlFor="item-tags" hint={t("item.details.tagsHint")}>
           <Input id="item-tags" value={d.tags} onChange={(e) => set("tags", e.target.value)} />
         </Field>
         <div className="flex items-center gap-2 self-end pb-1 text-body">
           <Checkbox id="item-featured" checked={d.featured} onChange={(v) => set("featured", v)} />
-          <label htmlFor="item-featured">Featured in the catalog</label>
+          <label htmlFor="item-featured">{t("item.details.featured")}</label>
         </div>
         <fieldset className="md:col-span-2">
-          <legend className="mb-1.5 text-secondary font-medium">Icon</legend>
-          <div role="radiogroup" aria-label="Icon" className="flex flex-wrap gap-1.5">
+          <legend className="mb-1.5 text-secondary font-medium">{t("item.details.icon")}</legend>
+          <div role="radiogroup" aria-label={t("item.details.icon")} className="flex flex-wrap gap-1.5">
             {Object.keys(icons).map((name, i, names) => (
               <button
                 key={name}
@@ -715,6 +729,7 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
 
 /** What concerns the whole item: its request form, its YAML, withdrawing and deleting it. */
 function ItemMenu({ item, onAsk }: { item: AdminCatalogItem; onAsk: (action: "withdraw" | "delete") => void }) {
+  const { t } = useTranslation("admin-catalog");
   const navigate = useNavigate();
   const { projectId } = useCurrentProject();
   const exportAll = useMutation({
@@ -724,28 +739,28 @@ function ItemMenu({ item, onAsk }: { item: AdminCatalogItem; onAsk: (action: "wi
       );
       download(`${item.slug}.yaml`, String(text));
     },
-    onError: (e) => toastError(e, "The export failed"),
+    onError: (e) => toastError(e, t("item.exportFailed")),
   });
   return (
     <Menu>
       <MenuTrigger asChild>
-        <IconButton label={`More actions for ${item.name}`} variant="secondary" className="size-8">
+        <IconButton label={t("item.moreActions", { name: item.name })} variant="secondary" className="size-8">
           <Ellipsis />
         </IconButton>
       </MenuTrigger>
       <MenuContent>
         {requestableIn(item, projectId) && (
           <MenuItem onSelect={() => void navigate({ to: "/catalog/$itemId/request", params: { itemId: item.slug } })}>
-            Open the request form
+            {t("items.openForm")}
           </MenuItem>
         )}
-        <MenuItem onSelect={() => exportAll.mutate()}>Export every version as YAML</MenuItem>
-        {item.published_version && <MenuItem onSelect={() => onAsk("withdraw")}>Withdraw</MenuItem>}
+        <MenuItem onSelect={() => exportAll.mutate()}>{t("item.exportAll")}</MenuItem>
+        {item.published_version && <MenuItem onSelect={() => onAsk("withdraw")}>{t("items.withdraw")}</MenuItem>}
         {!item.requested && (
           <>
             <MenuSeparator />
             <MenuItem danger onSelect={() => onAsk("delete")}>
-              Delete item
+              {t("items.deleteItem")}
             </MenuItem>
           </>
         )}
@@ -764,6 +779,7 @@ function PrimaryAction({
   wait?: string;
   onRefused: (r: Refusal) => void;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const act = useVersionAction(item, onRefused);
   const busy = useVersionBusy(item);
   const newDraft = useNewDraft(item);
@@ -771,7 +787,7 @@ function PrimaryAction({
   if (!draft)
     return (
       <Button variant="primary" disabled={newDraft.isPending} onClick={() => newDraft.mutate()}>
-        New draft
+        {t("item.newDraft")}
       </Button>
     );
   return (
@@ -787,13 +803,14 @@ function PrimaryAction({
         aria-describedby={wait ? "publish-wait" : undefined}
         onClick={() => act.mutate({ v: draft, action: "publish" })}
       >
-        {act.isPending ? "Publishing…" : `Publish ${draft.number}`}
+        {act.isPending ? t("item.publishing") : t("items.publish", { number: draft.number })}
       </Button>
     </>
   );
 }
 
 export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; tab?: ItemTab }) {
+  const { t } = useTranslation("admin-catalog");
   const navigate = useNavigate();
   const item = useQuery(q.adminCatalogItem(itemId));
   const [yamlDirty, setYamlDirty] = useState(false);
@@ -833,7 +850,7 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
       <PageHeader
         breadcrumbs={
           <Breadcrumbs>
-            <Link to="/admin/catalog-items">Catalog items</Link>
+            <Link to="/admin/catalog-items">{t("item.breadcrumb")}</Link>
           </Breadcrumbs>
         }
         title={
@@ -848,15 +865,17 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
             <span>{itemTypeLabel(it.type)}</span>
             {it.published_version ? (
               <Badge tone="ok">
-                Published{" "}
-                {requestable(it)
-                  .map((v) => v.number)
-                  .join(", ")}
+                {t("item.publishedNumbers", {
+                  count: requestable(it).length,
+                  numbers: requestable(it)
+                    .map((v) => v.number)
+                    .join(", "),
+                })}
               </Badge>
             ) : (
-              <Badge tone="neutral">Not published</Badge>
+              <Badge tone="neutral">{t("items.notPublished")}</Badge>
             )}
-            {it.draft_version && <Badge tone="accent">Draft {it.draft_version.number}</Badge>}
+            {it.draft_version && <Badge tone="accent">{t("items.draft", { number: it.draft_version.number })}</Badge>}
             {it.git && it.git.state !== "synced" && <GitBadge git={it.git} />}
           </>
         }
@@ -876,13 +895,14 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
           else openTab(next as ItemTab);
         }}
       >
-        <TabsList aria-label="Item sections">
-          <TabsTrigger value="versions">Versions</TabsTrigger>
-          <TabsTrigger value="designer">Form designer</TabsTrigger>
-          <TabsTrigger value="definition">Definition</TabsTrigger>
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="entitlements">Sharing</TabsTrigger>
-          {it.git && <TabsTrigger value="git">Git</TabsTrigger>}
+        <TabsList aria-label={t("item.sections")}>
+          {itemTabs
+            .filter((name) => name !== "git" || it.git)
+            .map((name) => (
+              <TabsTrigger key={name} value={name}>
+                {t(`item.tab.${name}`)}
+              </TabsTrigger>
+            ))}
         </TabsList>
         <TabsContent value="versions" className="pt-4">
           <VersionsTab item={it} wait={wait} onWithdraw={() => setAsking("withdraw")} onRefused={refused} />
@@ -915,9 +935,9 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
       <ConfirmDialog
         open={leavingFor !== null}
         onOpenChange={(o) => !o && setLeavingFor(null)}
-        title="Leave the YAML without saving?"
-        description="Your changes to the definition are lost; the draft keeps what was last saved."
-        confirmLabel="Leave without saving"
+        title={t("item.leaveTitle")}
+        description={t("item.leaveBody")}
+        confirmLabel={t("item.leaveConfirm")}
         onConfirm={() => {
           if (leavingFor) openTab(leavingFor);
           setLeavingFor(null);

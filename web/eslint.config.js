@@ -47,6 +47,12 @@ const translated = [
   "src/features/admin/catalog/SharingTab.tsx",
   "src/features/admin/catalog/VariablesPage.tsx",
   "src/features/admin/extensibility/**",
+  "src/features/admin/catalog/CatalogItemPage.tsx",
+  "src/features/admin/catalog/DefinitionGraph.tsx",
+  "src/features/admin/catalog/definitionYaml.ts",
+  "src/features/admin/catalog/YamlEditor.tsx",
+  "src/features/admin/catalog/PropertyGroupsPage.tsx",
+  "src/features/admin/catalog/FormLibraryPage.tsx",
 ];
 
 // The props of rvav's building blocks and the attributes a person reads or

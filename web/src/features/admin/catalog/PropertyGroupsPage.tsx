@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Boxes, Plus, X } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -22,18 +23,26 @@ import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { keys } from "@/lib/query";
 import { relative } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 
 type Group = components["schemas"]["PropertyGroup"];
 type GroupInput = components["schemas"]["PropertyGroupInput"];
 type InputType = GroupInput["type"];
 
+const tr = i18n.getFixedT(null, "admin-catalog");
+
 const groupsKey = [...keys.catalogAdmin.all, "property-groups"] as const;
-const typeLabel: Record<InputType, string> = {
-  string: "Text",
-  integer: "Whole number",
-  number: "Number",
-  boolean: "Yes or no",
-};
+const inputTypes = ["string", "integer", "number", "boolean"] as const satisfies readonly InputType[];
+const typeLabel = (type: InputType) => tr(`groups.type.${type}`);
+const inputFields = ["name", "label", "type", "default", "options", "secret", "expose_to_inventory", "help"] as const;
+
+// Code placeholders and examples, the same in every language.
+const keySlot = "<key>";
+const nameSlot = "<name>";
+const blueprintExample = "property_groups: [{key: network, version: 2}]";
+
+/** Code inside a sentence: Trans leaves its text alone. */
+const Expr = ({ text }: { text: string }) => <code className="font-mono">{text}</code>;
 // Radix's select has no empty value: "no default" stands as this.
 const none = "*";
 
@@ -59,11 +68,8 @@ interface ConstantRow {
   value: string;
 }
 
-const constantTypes: { value: ConstantType; label: string }[] = [
-  { value: "string", label: "Text" },
-  { value: "number", label: "Number" },
-  { value: "boolean", label: "Yes or no" },
-];
+const constantTypes = (): { value: ConstantType; label: string }[] =>
+  (["string", "number", "boolean"] as const).map((value) => ({ value, label: typeLabel(value) }));
 
 function asText(v: unknown): string {
   if (typeof v === "string") return v;
@@ -120,10 +126,10 @@ function constantValue(c: ConstantRow): string | number | boolean {
 /** What is wrong with the constants before they are sent, by `<row>/key` and `<row>/value`. */
 function constantProblems(rows: ConstantRow[]): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [i, why] of Object.entries(keyProblems(rows, (c) => c.value === "", "Give the constant a name.")))
+  for (const [i, why] of Object.entries(keyProblems(rows, (c) => c.value === "", tr("groups.constantName"))))
     out[`${i}/key`] = why;
   rows.forEach((c, i) => {
-    if (c.type === "number" && c.key.trim() && !isNumber(c.value)) out[`${i}/value`] = "Enter a number, such as 300.";
+    if (c.type === "number" && c.key.trim() && !isNumber(c.value)) out[`${i}/value`] = tr("groups.enterNumber");
   });
   return out;
 }
@@ -153,13 +159,16 @@ function InputEditor({
   onChange: (r: InputRow) => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const id = (f: string) => `pg-input-${index}-${f}`;
-  const err = (f: string) => errors[`/inputs/${index}/${f}`];
+  const err = Object.fromEntries(inputFields.map((f) => [f, errors[`/inputs/${index}/${f}`]])) as Partial<
+    Record<(typeof inputFields)[number], string>
+  >;
   const text = row.type === "string";
   return (
     <div className="border-border flex flex-col gap-3 rounded-md border p-3">
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Name" htmlFor={id("name")} error={err("name")}>
+        <Field label={t("groups.name")} htmlFor={id("name")} error={err.name}>
           <Input
             id={id("name")}
             className="font-mono"
@@ -167,10 +176,10 @@ function InputEditor({
             onChange={(e) => onChange({ ...row, name: e.target.value })}
           />
         </Field>
-        <Field label="Label" htmlFor={id("label")} error={err("label")}>
+        <Field label={t("groups.label")} htmlFor={id("label")} error={err.label}>
           <Input id={id("label")} value={row.label} onChange={(e) => onChange({ ...row, label: e.target.value })} />
         </Field>
-        <Field label="Type" htmlFor={id("type")} error={err("type")}>
+        <Field label={t("groups.typeLabel")} htmlFor={id("type")} error={err.type}>
           <Select
             id={id("type")}
             value={row.type}
@@ -181,20 +190,20 @@ function InputEditor({
                   : { ...row, type: v as InputType, default: "", secret: false, options: "" },
               )
             }
-            options={Object.entries(typeLabel).map(([value, label]) => ({ value, label }))}
+            options={inputTypes.map((value) => ({ value, label: typeLabel(value) }))}
           />
         </Field>
         {!row.secret && (
-          <Field label="Default" htmlFor={id("default")} error={err("default")}>
+          <Field label={t("groups.default")} htmlFor={id("default")} error={err.default}>
             {row.type === "boolean" ? (
               <Select
                 id={id("default")}
                 value={row.default || none}
                 onChange={(v) => onChange({ ...row, default: v === none ? "" : v })}
                 options={[
-                  { value: none, label: "None" },
-                  { value: "true", label: "Yes" },
-                  { value: "false", label: "No" },
+                  { value: none, label: t("groups.none") },
+                  { value: "true", label: t("groups.yes") },
+                  { value: "false", label: t("groups.no") },
                 ]}
               />
             ) : (
@@ -209,12 +218,7 @@ function InputEditor({
         )}
       </div>
       {text && !row.secret && (
-        <Field
-          label="Options"
-          htmlFor={id("options")}
-          hint="Separated by commas. Requesters choose one; none lets them type."
-          error={err("options")}
-        >
+        <Field label={t("groups.options")} htmlFor={id("options")} hint={t("groups.optionsHint")} error={err.options}>
           <Input
             id={id("options")}
             value={row.options}
@@ -222,13 +226,13 @@ function InputEditor({
           />
         </Field>
       )}
-      <Field label="Help" htmlFor={id("help")} hint="Shown under the field on the request form." error={err("help")}>
+      <Field label={t("groups.help")} htmlFor={id("help")} hint={t("groups.helpHint")} error={err.help}>
         <Input id={id("help")} value={row.help} onChange={(e) => onChange({ ...row, help: e.target.value })} />
       </Field>
       <div className="flex flex-wrap items-center gap-4">
         <label htmlFor={id("required")} className="flex items-center gap-2 text-body">
           <Checkbox id={id("required")} checked={row.required} onChange={(v) => onChange({ ...row, required: v })} />
-          Required
+          {t("groups.required")}
         </label>
         {text && (
           <label htmlFor={id("secret")} className="flex items-center gap-2 text-body">
@@ -245,7 +249,7 @@ function InputEditor({
                 })
               }
             />
-            Secret
+            {t("groups.secret")}
           </label>
         )}
         {!row.secret && (
@@ -255,20 +259,20 @@ function InputEditor({
               checked={row.inventory}
               onChange={(v) => onChange({ ...row, inventory: v })}
             />
-            A host variable in the AWX inventory
+            {t("groups.inventory")}
           </label>
         )}
-        {err("secret") && <span className="text-secondary text-bad">{err("secret")}</span>}
-        {err("expose_to_inventory") && <span className="text-secondary text-bad">{err("expose_to_inventory")}</span>}
+        {err.secret && <span className="text-secondary text-bad">{err.secret}</span>}
+        {err.expose_to_inventory && <span className="text-secondary text-bad">{err.expose_to_inventory}</span>}
         <Button
           type="button"
           size="sm"
           variant="quiet"
           className="ml-auto"
-          aria-label={`Remove input ${row.name || index + 1}`}
+          aria-label={t("groups.removeInput", { name: row.name || index + 1 })}
           onClick={onRemove}
         >
-          <X className="size-3.5" /> Remove
+          <X className="size-3.5" /> {t("groups.remove")}
         </Button>
       </div>
     </div>
@@ -276,6 +280,7 @@ function InputEditor({
 }
 
 function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => void }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const [key, setKey] = useState(existing?.key ?? "");
   const [name, setName] = useState(existing?.name ?? "");
@@ -300,12 +305,12 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
     },
     onSuccess: (g) => {
       void qc.invalidateQueries({ queryKey: groupsKey });
-      toast.success(`${g.name} saved as version ${g.version}`);
+      toast.success(t("groups.saved", { name: g.name, version: g.version }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The property group wasn't saved");
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, t("groups.notSaved"));
     },
   });
   const setInput = (i: number, r: InputRow) => setInputs((xs) => xs.map((x, j) => (j === i ? r : x)));
@@ -316,13 +321,11 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={existing ? `Change ${existing.name}` : "New property group"}
+      title={existing ? t("groups.change", { name: existing.name }) : t("groups.new")}
       description={
-        existing
-          ? `Saving makes version ${Math.max(...existing.versions) + 1}. Items keep the version they name until their blueprint names this one.`
-          : "Inputs and constants several items share. An item's blueprint names a version of the group."
+        existing ? t("groups.changeLead", { version: Math.max(...existing.versions) + 1 }) : t("groups.newLead")
       }
-      submitLabel={save.isPending ? "Saving…" : existing ? "Save as a new version" : "Add"}
+      submitLabel={save.isPending ? t("groups.saving") : existing ? t("groups.saveVersion") : t("groups.add")}
       submitDisabled={!name.trim() || (!existing && !key)}
       onSubmit={() => {
         setErrors({});
@@ -339,13 +342,14 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
         </div>
       )}
       <Field
-        label="Key"
+        label={t("groups.key")}
         htmlFor="pg-key"
         hint={
-          <>
-            Blueprints name it, and bindings read its constants as{" "}
-            <code className="font-mono">propgroup.{key || "<key>"}.&lt;name&gt;</code>.
-          </>
+          <Trans
+            t={t}
+            i18nKey="groups.keyHint"
+            components={{ expr: <Expr text={`propgroup.${key || keySlot}.${nameSlot}`} /> }}
+          />
         }
         error={errors["/key"]}
       >
@@ -357,10 +361,10 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
           onChange={(e) => setKey(e.target.value)}
         />
       </Field>
-      <Field label="Name" htmlFor="pg-name" error={errors["/name"]}>
+      <Field label={t("groups.name")} htmlFor="pg-name" error={errors["/name"]}>
         <Input id="pg-name" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <Field label="Description" htmlFor="pg-description" error={errors["/description"]}>
+      <Field label={t("groups.description")} htmlFor="pg-description" error={errors["/description"]}>
         <Input
           id="pg-description"
           value={description}
@@ -369,11 +373,8 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
         />
       </Field>
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-secondary font-medium">Inputs</legend>
-        <p className="text-secondary text-muted">
-          Each joins the request form of the items naming the group, in a section of its own, as if the item declared
-          it.
-        </p>
+        <legend className="mb-1 text-secondary font-medium">{t("groups.inputs")}</legend>
+        <p className="text-secondary text-muted">{t("groups.inputsLead")}</p>
         {inputs.map((r, i) => (
           <InputEditor
             key={i}
@@ -405,17 +406,17 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
               ])
             }
           >
-            <Plus className="size-3.5" /> Add input
+            <Plus className="size-3.5" /> {t("groups.addInput")}
           </Button>
         </div>
       </fieldset>
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-secondary font-medium">Constants</legend>
-        <p className="text-secondary text-muted">Values the items' bindings read; requesters don't see them.</p>
+        <legend className="mb-1 text-secondary font-medium">{t("groups.constants")}</legend>
+        <p className="text-secondary text-muted">{t("groups.constantsLead")}</p>
         {constants.map((c, i) => (
           <div key={i} className="grid grid-cols-[1fr_8rem_1.4fr_auto] items-start gap-2">
             <Field
-              label="Name"
+              label={t("groups.name")}
               htmlFor={`pg-const-${i}-key`}
               error={local[`${i}/key`] ?? errors[`/constants/${c.key.trim()}`]}
             >
@@ -426,7 +427,7 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
                 onChange={(e) => setConstant(i, { ...c, key: e.target.value })}
               />
             </Field>
-            <Field label="Type" htmlFor={`pg-const-${i}-type`}>
+            <Field label={t("groups.typeLabel")} htmlFor={`pg-const-${i}-type`}>
               <Select
                 id={`pg-const-${i}-type`}
                 value={c.type}
@@ -437,18 +438,18 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
                     value: v === "boolean" ? String(c.value === "true") : c.value,
                   })
                 }
-                options={constantTypes}
+                options={constantTypes()}
               />
             </Field>
-            <Field label="Value" htmlFor={`pg-const-${i}-value`} error={local[`${i}/value`]}>
+            <Field label={t("groups.value")} htmlFor={`pg-const-${i}-value`} error={local[`${i}/value`]}>
               {c.type === "boolean" ? (
                 <Select
                   id={`pg-const-${i}-value`}
                   value={c.value}
                   onChange={(v) => setConstant(i, { ...c, value: v })}
                   options={[
-                    { value: "true", label: "Yes" },
-                    { value: "false", label: "No" },
+                    { value: "true", label: t("groups.yes") },
+                    { value: "false", label: t("groups.no") },
                   ]}
                 />
               ) : (
@@ -465,7 +466,7 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
               size="icon"
               variant="quiet"
               className="mt-6"
-              aria-label={`Remove constant ${c.key || i + 1}`}
+              aria-label={t("groups.removeConstant", { name: c.key || i + 1 })}
               onClick={() => {
                 setLocal({});
                 setConstants((xs) => xs.filter((_, j) => j !== i));
@@ -481,7 +482,7 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
             variant="secondary"
             onClick={() => setConstants((xs) => [...xs, { key: "", type: "string", value: "" }])}
           >
-            <Plus className="size-3.5" /> Add constant
+            <Plus className="size-3.5" /> {t("groups.addConstant")}
           </Button>
         </div>
       </fieldset>
@@ -489,12 +490,12 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
   );
 }
 
-const names = (xs: string[]) => (xs.length ? xs.join(", ") : "None");
+const names = (xs: string[]) => (xs.length ? xs.join(", ") : tr("groups.none"));
 
-const columns: Column<Group>[] = [
+const columns = (): Column<Group>[] => [
   {
     id: "name",
-    header: "Name",
+    header: tr("groups.col.name"),
     sortValue: (g) => g.name,
     cell: (g) => (
       <>
@@ -505,37 +506,40 @@ const columns: Column<Group>[] = [
   },
   {
     id: "version",
-    header: "Latest version",
+    header: tr("groups.col.version"),
     sortValue: (g) => g.version,
     cell: (g) => <span className="text-secondary text-muted">{g.version}</span>,
   },
   {
     id: "inputs",
-    header: "Inputs",
+    header: tr("groups.col.inputs"),
     cell: (g) => <span className="font-mono text-caption">{names(g.inputs.map((i) => i.name))}</span>,
   },
   {
     id: "constants",
-    header: "Constants",
+    header: tr("groups.col.constants"),
     cell: (g) => <span className="font-mono text-caption">{names(Object.keys(g.constants))}</span>,
   },
   {
     id: "used",
-    header: "Used by",
+    header: tr("groups.col.used"),
     sortValue: (g) => g.used_by.length,
     cell: (g) => (
-      <span className="text-secondary text-muted">{g.used_by.length ? g.used_by.join(", ") : "Nothing"}</span>
+      <span className="text-secondary text-muted">
+        {g.used_by.length ? g.used_by.join(", ") : tr("groups.nothing")}
+      </span>
     ),
   },
   {
     id: "changed",
-    header: "Changed",
+    header: tr("groups.col.changed"),
     sortValue: (g) => g.updated_at,
     cell: (g) => <span className="text-secondary text-muted">{relative(g.updated_at)}</span>,
   },
 ];
 
 export function PropertyGroupsPage() {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const groups = useQuery({
     queryKey: groupsKey,
@@ -547,54 +551,49 @@ export function PropertyGroupsPage() {
     mutationFn: (g: Group) => call(api.DELETE("/admin/property-groups/{key}", { params: { path: { key: g.key } } })),
     onSuccess: (_, g) => {
       void qc.invalidateQueries({ queryKey: groupsKey });
-      toast.success(`${g.name} deleted`);
+      toast.success(t("groups.deleted", { name: g.name }));
       setRemoving(null);
     },
-    onError: (e) => failed(e, "The property group wasn't deleted"),
+    onError: (e) => failed(e, t("groups.notDeleted")),
   });
   const list = groups.data?.items;
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New property group
+      {t("groups.new")}
     </Button>
   );
   return (
     <Page>
       <PageHeader
-        title="Property groups"
+        title={t("groups.title")}
         description={
-          <>
-            Inputs and constants several catalog items share. An item names a version of a group in its blueprint, as{" "}
-            <code className="font-mono">property_groups: [{"{key: network, version: 2}"}]</code>; the group's inputs
-            join its request form, and its bindings read the constants as{" "}
-            <code className="font-mono">propgroup.network.&lt;name&gt;</code>.
-          </>
+          <Trans
+            t={t}
+            i18nKey="groups.lead"
+            components={{
+              blueprint: <Expr text={blueprintExample} />,
+              expr: <Expr text={`propgroup.network.${nameSlot}`} />,
+            }}
+          />
         }
       />
-      <Panel title="Groups" flush actions={list?.length ? add : undefined}>
+      <Panel title={t("groups.panel")} flush actions={list?.length ? add : undefined}>
         <DataTable
-          label="Property groups"
-          columns={columns}
+          label={t("groups.title")}
+          columns={columns()}
           rows={list}
           rowKey={(g) => g.key}
           minWidth={820}
           loading={groups.isPending}
           error={groups.isError && <ErrorState error={groups.error} onRetry={() => void groups.refetch()} />}
-          empty={
-            <EmptyState
-              icon={Boxes}
-              title="No property groups yet"
-              body="Gather the inputs and values several items ask for or use, such as a cost centre or a DNS domain, once."
-              action={add}
-            />
-          }
-          rowMenuLabel={(g) => `Actions for ${g.name}`}
+          empty={<EmptyState icon={Boxes} title={t("groups.empty")} body={t("groups.emptyBody")} action={add} />}
+          rowMenuLabel={(g) => t("groups.actionsFor", { name: g.name })}
           rowMenu={(g) => (
             <>
-              <MenuItem onSelect={() => setEditing(g)}>Change</MenuItem>
+              <MenuItem onSelect={() => setEditing(g)}>{t("groups.changeAction")}</MenuItem>
               <MenuSeparator />
               <MenuItem danger disabled={g.used_by.length > 0} onSelect={() => setRemoving(g)}>
-                {g.used_by.length > 0 ? "Delete: in use" : "Delete"}
+                {g.used_by.length > 0 ? t("groups.deleteInUse") : t("groups.delete")}
               </MenuItem>
             </>
           )}
@@ -605,10 +604,10 @@ export function PropertyGroupsPage() {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Delete ${removing.name}?`}
-          description="Every version of the group is deleted."
-          consequences="No published item uses it. A draft that names it is refused when next saved."
-          confirmLabel="Delete property group"
+          title={t("groups.deleteTitle", { name: removing.name })}
+          description={t("groups.deleteBody")}
+          consequences={t("groups.deleteConsequences")}
+          confirmLabel={t("groups.deleteConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing)}
         />

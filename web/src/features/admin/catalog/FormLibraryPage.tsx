@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Library, Plus, X } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -25,6 +26,7 @@ import type { components } from "@/lib/api/schema";
 import { adm, keys, q } from "@/lib/query";
 import { toText } from "@/lib/utils";
 import { relative } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 
 type Entry = components["schemas"]["FormLibraryEntry"];
 type EntryWrite = components["schemas"]["FormLibraryEntryWrite"];
@@ -34,8 +36,28 @@ type Kind = "rest" | "cel";
 
 const libraryKey = keys.catalogAdmin.formLibrary;
 
-const purposeLabel: Record<Purpose, string> = { source: "Value source", validation: "Validation" };
-const kindLabel: Record<Kind, string> = { rest: "REST call", cel: "CEL expression" };
+const tr = i18n.getFixedT(null, "admin-catalog");
+
+const purposes = ["source", "validation"] as const satisfies readonly Purpose[];
+const kinds = ["rest", "cel"] as const satisfies readonly Kind[];
+const purposeLabel = (use: Purpose) => tr(`library.purpose.${use}`);
+const versionState = (state: string) =>
+  state === "draft" || state === "published" || state === "deprecated"
+    ? tr(`item.state.${state}`).toLowerCase()
+    : state;
+const kindLabel = (kind: string) => (kind === "rest" || kind === "cel" ? tr(`library.kind.${kind}`) : kind);
+
+// Code inside sentences, the same in every language.
+const paramsExpr = "${params.<name>}";
+const paramsRef = "params.<name>";
+const searchExpr = "${search}";
+const searchRef = "search";
+const refusalShape = '{"<parameter>": "message"}';
+const inputsExample = "inputs.environment";
+const valueSourceExample = "value_source: {kind: library, name: cmdbServices, version: 2}";
+
+/** Code inside a sentence: Trans leaves its text alone. */
+const Expr = ({ text }: { text: string }) => <code className="font-mono">{text}</code>;
 
 /** The parameters an entry's kind and purpose take, in the order the sheet shows them. */
 const paramFields: Record<Purpose, Record<Kind, string[]>> = {
@@ -46,46 +68,37 @@ const paramFields: Record<Purpose, Record<Kind, string[]>> = {
   validation: { rest: ["url", "method", "body", "secret", "valid", "message", "errors"], cel: ["check"] },
 };
 
-const paramLabel: Record<string, { label: string; hint?: string; code?: boolean; long?: boolean }> = {
-  url: {
-    label: "URL",
-    hint: "On a host REST value sources may call. Read the parameters as ${params.<name>}.",
+const paramLabel = (): Record<string, { label: string; hint?: string; code?: boolean; long?: boolean }> => ({
+  url: { label: tr("library.param.url"), hint: tr("library.param.urlHint", { expr: paramsExpr }), code: true },
+  method: { label: tr("library.param.method") },
+  body: {
+    label: tr("library.param.body"),
+    hint: tr("library.param.bodyHint", { expr: paramsExpr }),
     code: true,
+    long: true,
   },
-  method: { label: "Method" },
-  body: { label: "Body", hint: "Sent with POST. Read the parameters as ${params.<name>}.", code: true, long: true },
-  secret: { label: "Secret", hint: "A stored secret's name: rvav sends it as a bearer token." },
-  items: { label: "Items", hint: "JSONPath to the list in the answer, such as $.items[*].", code: true },
-  value: { label: "Value", hint: "JSONPath in each item to its value, such as $.id.", code: true },
-  label: { label: "Label", hint: "JSONPath in each item to what requesters see.", code: true },
-  meta: { label: "Detail", hint: "JSONPath in each item to a detail shown under it.", code: true },
-  parent: {
-    label: "Parent",
-    hint: "JSONPath in each item to its parent's value, for a tree. Empty for a flat list.",
-    code: true,
-  },
-  valid: { label: "Valid at", hint: "JSONPath to true or false in the answer. $.valid when empty.", code: true },
-  message: { label: "Message at", hint: "JSONPath to the refusal's message. $.message when empty.", code: true },
-  errors: {
-    label: "Errors at",
-    hint: "JSONPath to messages by input, or a list of {field, message}. $.errors when empty.",
-    code: true,
-  },
+  secret: { label: tr("library.param.secret"), hint: tr("library.param.secretHint") },
+  items: { label: tr("library.param.items"), hint: tr("library.param.itemsHint"), code: true },
+  value: { label: tr("library.param.value"), hint: tr("library.param.valueHint"), code: true },
+  label: { label: tr("library.param.label"), hint: tr("library.param.labelHint"), code: true },
+  meta: { label: tr("library.param.meta"), hint: tr("library.param.metaHint"), code: true },
+  parent: { label: tr("library.param.parent"), hint: tr("library.param.parentHint"), code: true },
+  valid: { label: tr("library.param.valid"), hint: tr("library.param.validHint"), code: true },
+  message: { label: tr("library.param.message"), hint: tr("library.param.messageHint"), code: true },
+  errors: { label: tr("library.param.errors"), hint: tr("library.param.errorsHint"), code: true },
   options: {
-    label: "Options",
-    hint: "A list of strings or of {value, label, meta}, from params.<name>, environment, project and user.",
+    label: tr("library.param.options"),
+    hint: tr("library.param.optionsHint", { expr: paramsRef }),
     code: true,
     long: true,
   },
   check: {
-    label: "Check",
-    hint: 'True, "" or {} when the form passes; false, a message, or {"<parameter>": "message"} when it doesn\'t.',
+    label: tr("library.param.check"),
+    hint: tr("library.param.checkHint", { shape: refusalShape }),
     code: true,
     long: true,
   },
-};
-
-const celValueHint = "One value, for a field that takes one rather than a choice.";
+});
 
 interface ParamRow {
   name: string;
@@ -134,16 +147,19 @@ function unplaced(errors: Record<string, string>, shown: string[], parameters: n
 }
 
 function UsedBy({ entry }: { entry: Entry }) {
-  if (entry.used_by.length === 0) return <p className="text-secondary text-muted">No item's form names it yet.</p>;
+  const { t } = useTranslation("admin-catalog");
+  if (entry.used_by.length === 0) return <p className="text-secondary text-muted">{t("library.noUse")}</p>;
   return (
     <ul className="flex flex-col gap-1 text-secondary">
       {entry.used_by.map((u) => (
         <li key={`${u.version_id}-${u.entry_version}`} className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{u.name}</span>
           <span className="text-muted">
-            version {u.number}, {u.state}
+            {t("library.usedVersion", { number: u.number, state: versionState(u.state) })}
           </span>
-          <Badge tone={u.entry_version === entry.version ? "ok" : "neutral"}>uses version {u.entry_version}</Badge>
+          <Badge tone={u.entry_version === entry.version ? "ok" : "neutral"}>
+            {t("library.usesVersion", { version: u.entry_version })}
+          </Badge>
         </li>
       ))}
     </ul>
@@ -151,16 +167,17 @@ function UsedBy({ entry }: { entry: Entry }) {
 }
 
 function TestResult({ result, use }: { result: Result; use: Purpose }) {
+  const { t } = useTranslation("admin-catalog");
   if (use === "validation")
     return result.valid ? (
-      <p className="text-secondary text-ok">It passes.</p>
+      <p className="text-secondary text-ok">{t("library.passes")}</p>
     ) : (
       <div className="text-secondary">
-        <p className="text-bad">It refuses:</p>
+        <p className="text-bad">{t("library.refuses")}</p>
         <ul className="list-disc pl-5">
           {(result.messages ?? []).map((m, i) => (
             <li key={i}>
-              {m.field && <span className="font-mono">{m.field}: </span>}
+              {m.field && <span className="font-mono">{t("library.fieldIs", { field: m.field })}</span>}
               {m.message}
             </li>
           ))}
@@ -172,12 +189,12 @@ function TestResult({ result, use }: { result: Result; use: Purpose }) {
     <div className="flex flex-col gap-1 text-secondary">
       {result.value !== undefined && (
         <p>
-          Value: <span className="font-mono">{JSON.stringify(result.value)}</span>
+          {t("library.valueIs")} <span className="font-mono">{JSON.stringify(result.value)}</span>
         </p>
       )}
       {result.options !== undefined && (
         <>
-          <p>{options.length === 1 ? "1 option" : `${options.length} options`}</p>
+          <p>{t("library.options", { count: options.length })}</p>
           {options.length > 0 && (
             <ul className="list-disc pl-5">
               {options.slice(0, 10).map((o) => (
@@ -194,6 +211,7 @@ function TestResult({ result, use }: { result: Result; use: Purpose }) {
 }
 
 function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => void }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const [key, setKey] = useState(existing?.key ?? "");
   const [name, setName] = useState(existing?.name ?? "");
@@ -257,13 +275,17 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
       const drafts = e.drafts ?? [];
       const made = drafts.filter((d) => !d.problem);
       const stuck = drafts.filter((d) => d.problem);
-      toast.success(`${e.name} saved as version ${e.version}`, {
+      toast.success(t("library.saved", { name: e.name, version: e.version }), {
         description:
           [
             made.length
-              ? `Drafts naming it: ${made.map((d) => `${d.name} ${d.number}${d.created ? " (new)" : ""}`).join(", ")}.`
+              ? t("library.draftsNaming", {
+                  drafts: made
+                    .map((d) => t(d.created ? "library.draftNew" : "library.draft", { name: d.name, number: d.number }))
+                    .join(", "),
+                })
               : "",
-            ...stuck.map((d) => `${d.name}: ${d.problem}`),
+            ...stuck.map((d) => t("library.draftProblem", { name: d.name, problem: d.problem })),
           ]
             .filter(Boolean)
             .join(" ") || undefined,
@@ -272,7 +294,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
     },
     onError: (e, rows) => {
       setErrors(onScreen(fieldErrors(e), rows));
-      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The entry wasn't saved");
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, t("library.notSaved"));
     },
   });
   const named = new Set(parameters.map((r) => r.name.trim()).filter(Boolean));
@@ -298,7 +320,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
   });
   const testFailure =
     test.error &&
-    (isApiError(test.error) ? (test.error.problem.detail ?? test.error.problem.title) : "The test failed.");
+    (isApiError(test.error) ? (test.error.problem.detail ?? test.error.problem.title) : t("library.testFailed"));
   const setParam = (k: string, v: string) => setParams((p) => ({ ...p, [k]: v }));
   const setRow = (i: number, r: ParamRow) => setParameters((xs) => xs.map((x, j) => (j === i ? r : x)));
   const err = (at: string) => errors[at] ?? errors[`/entry${at}`];
@@ -308,18 +330,15 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
     parameters.length,
   );
   const next = existing ? Math.max(...existing.versions) + 1 : 1;
+  const specs = paramLabel();
   return (
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={existing ? `Change ${existing.name}` : "New form library entry"}
-      description={
-        existing
-          ? `Saving makes version ${next}, and gives each item that uses an earlier version a draft naming it, to review and publish.`
-          : "A value source or a validation any item's form can name, giving its parameters from its inputs."
-      }
-      submitLabel={save.isPending ? "Saving…" : existing ? "Save as a new version" : "Add"}
+      title={existing ? t("library.change", { name: existing.name }) : t("library.new")}
+      description={existing ? t("library.changeLead", { version: next }) : t("library.newLead")}
+      submitLabel={save.isPending ? t("library.saving") : existing ? t("library.saveVersion") : t("library.add")}
       submitDisabled={!name.trim() || (!existing && !key)}
       onSubmit={() => {
         setErrors({});
@@ -333,12 +352,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
           ))}
         </div>
       )}
-      <Field
-        label="Key"
-        htmlFor="fl-key"
-        hint="Forms name the entry by its key, which doesn't change."
-        error={err("/key")}
-      >
+      <Field label={t("library.key")} htmlFor="fl-key" hint={t("library.keyHint")} error={err("/key")}>
         <Input
           id="fl-key"
           className="font-mono"
@@ -347,10 +361,10 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
           onChange={(e) => setKey(e.target.value)}
         />
       </Field>
-      <Field label="Name" htmlFor="fl-name" error={err("/name")}>
+      <Field label={t("library.name")} htmlFor="fl-name" error={err("/name")}>
         <Input id="fl-name" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <Field label="Description" htmlFor="fl-description" error={err("/description")}>
+      <Field label={t("library.description")} htmlFor="fl-description" error={err("/description")}>
         <Input
           id="fl-description"
           value={description}
@@ -360,9 +374,9 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field
-          label="Purpose"
+          label={t("library.purposeLabel")}
           htmlFor="fl-use"
-          hint={existing ? "Forms use it as one: it doesn't change." : undefined}
+          hint={existing ? t("library.purposeHint") : undefined}
           error={err("/use")}
         >
           <Select
@@ -370,24 +384,26 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
             value={use}
             disabled={Boolean(existing)}
             onChange={(v) => setUse(v as Purpose)}
-            options={Object.entries(purposeLabel).map(([value, label]) => ({ value, label }))}
+            options={purposes.map((value) => ({ value, label: purposeLabel(value) }))}
           />
         </Field>
-        <Field label="Kind" htmlFor="fl-kind" error={err("/kind")}>
+        <Field label={t("library.kindLabel")} htmlFor="fl-kind" error={err("/kind")}>
           <Select
             id="fl-kind"
             value={kind}
             onChange={(v) => setKind(v as Kind)}
-            options={Object.entries(kindLabel).map(([value, label]) => ({ value, label }))}
+            options={kinds.map((value) => ({ value, label: kindLabel(value) }))}
           />
         </Field>
       </div>
       <fieldset className="flex flex-col gap-3">
-        <legend className="mb-1 text-secondary font-medium">{kind === "rest" ? "The call" : "The expression"}</legend>
+        <legend className="mb-1 text-secondary font-medium">
+          {kind === "rest" ? t("library.theCall") : t("library.theExpression")}
+        </legend>
         {shown.map((k) => {
-          const spec = paramLabel[k]!;
+          const spec = specs[k]!;
           const id = `fl-param-${k}`;
-          const hint = kind === "cel" && k === "value" ? celValueHint : spec.hint;
+          const hint = kind === "cel" && k === "value" ? t("library.param.celValueHint") : spec.hint;
           if (k === "method")
             return (
               <Field key={k} label={spec.label} htmlFor={id} error={err(`/params/${k}`)}>
@@ -428,15 +444,15 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
         {use === "source" && (
           <label htmlFor="fl-search" className="flex items-center gap-2 text-body">
             <Checkbox id="fl-search" checked={search} onChange={setSearch} />
-            Searches by what the requester types (reads {kind === "rest" ? "${search}" : "search"})
+            {t("library.searches", { expr: kind === "rest" ? searchExpr : searchRef })}
           </label>
         )}
         {err("/search") && <p className="text-secondary text-bad">{err("/search")}</p>}
         {use === "validation" && (
           <Field
-            label="Message"
+            label={t("library.message")}
             htmlFor="fl-message"
-            hint="Shown when it refuses without saying why. A form's own message comes first."
+            hint={t("library.messageHint")}
             error={err("/message")}
           >
             <Input id="fl-message" value={message} maxLength={500} onChange={(e) => setMessage(e.target.value)} />
@@ -444,15 +460,14 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
         )}
       </fieldset>
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-secondary font-medium">Parameters</legend>
+        <legend className="mb-1 text-secondary font-medium">{t("library.parameters")}</legend>
         <p className="text-secondary text-muted">
-          What a form gives the entry, each as a CEL expression over its inputs, such as{" "}
-          <code className="font-mono">inputs.environment</code>.
+          <Trans t={t} i18nKey="library.parametersLead" components={{ expr: <Expr text={inputsExample} /> }} />
         </p>
         {parameters.map((r, i) => (
           <div key={i} className="border-border flex flex-col gap-3 rounded-md border p-3">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Name" htmlFor={`fl-prm-${i}-name`} error={err(`/parameters/${i}/name`)}>
+              <Field label={t("library.name")} htmlFor={`fl-prm-${i}-name`} error={err(`/parameters/${i}/name`)}>
                 <Input
                   id={`fl-prm-${i}-name`}
                   className="font-mono"
@@ -460,7 +475,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
                   onChange={(e) => setRow(i, { ...r, name: e.target.value })}
                 />
               </Field>
-              <Field label="Label" htmlFor={`fl-prm-${i}-label`} error={err(`/parameters/${i}/label`)}>
+              <Field label={t("library.label")} htmlFor={`fl-prm-${i}-label`} error={err(`/parameters/${i}/label`)}>
                 <Input
                   id={`fl-prm-${i}-label`}
                   value={r.label}
@@ -468,7 +483,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
                 />
               </Field>
             </div>
-            <Field label="Description" htmlFor={`fl-prm-${i}-description`}>
+            <Field label={t("library.description")} htmlFor={`fl-prm-${i}-description`}>
               <Input
                 id={`fl-prm-${i}-description`}
                 value={r.description}
@@ -482,17 +497,17 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
                   checked={r.required}
                   onChange={(v) => setRow(i, { ...r, required: v })}
                 />
-                Required: without it, the entry doesn't run
+                {t("library.required")}
               </label>
               <Button
                 type="button"
                 size="sm"
                 variant="quiet"
                 className="ml-auto"
-                aria-label={`Remove parameter ${r.name || i + 1}`}
+                aria-label={t("library.removeParameter", { name: r.name || i + 1 })}
                 onClick={() => setParameters((xs) => xs.filter((_, j) => j !== i))}
               >
-                <X className="size-3.5" /> Remove
+                <X className="size-3.5" /> {t("library.remove")}
               </Button>
             </div>
           </div>
@@ -503,21 +518,18 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
             variant="secondary"
             onClick={() => setParameters((xs) => [...xs, { name: "", label: "", required: false, description: "" }])}
           >
-            <Plus className="size-3.5" /> Add parameter
+            <Plus className="size-3.5" /> {t("library.addParameter")}
           </Button>
         </div>
       </fieldset>
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-secondary font-medium">Test</legend>
-        <p className="text-secondary text-muted">
-          Runs the entry as written, unsaved changes included, with these parameter values, as a form of this project
-          and environment would.
-        </p>
+        <legend className="mb-1 text-secondary font-medium">{t("library.test")}</legend>
+        <p className="text-secondary text-muted">{t("library.testLead")}</p>
         <div className="grid grid-cols-2 gap-3">
           <Field
-            label="Project"
+            label={t("library.project")}
             htmlFor="fl-try-project"
-            hint="For project, and a REST call's secret of the project."
+            hint={t("library.projectHint")}
             error={err("/project_id")}
           >
             <Select
@@ -526,19 +538,19 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
               loading={projects.isPending}
               onChange={setTryProject}
               options={[
-                { value: none, label: "None" },
+                { value: none, label: t("library.none") },
                 ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
               ]}
             />
           </Field>
-          <Field label="Environment" htmlFor="fl-try-environment" error={err("/environment")}>
+          <Field label={t("library.environment")} htmlFor="fl-try-environment" error={err("/environment")}>
             <Select
               id="fl-try-environment"
               value={tryEnvironment}
               loading={environments.isPending}
               onChange={setTryEnvironment}
               options={[
-                { value: none, label: "None" },
+                { value: none, label: t("library.none") },
                 ...(environments.data?.items ?? []).map((e) => ({ value: e.key, label: e.name })),
               ]}
             />
@@ -551,7 +563,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
               <Input
                 id={`fl-try-${n}`}
                 value={tryWith[n] ?? ""}
-                onChange={(e) => setTryWith((t) => ({ ...t, [n]: e.target.value }))}
+                onChange={(e) => setTryWith((w) => ({ ...w, [n]: e.target.value }))}
               />
             </Field>
           );
@@ -563,7 +575,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
             disabled={test.isPending}
             onClick={() => test.mutate(sentRows(parameters))}
           >
-            {test.isPending ? "Testing…" : "Run test"}
+            {test.isPending ? t("library.testing") : t("library.runTest")}
           </Button>
         </div>
         <div aria-live="polite">
@@ -576,7 +588,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
       {existing && (
         <section aria-labelledby="fl-used-by" className="flex flex-col gap-2">
           <h3 id="fl-used-by" className="text-secondary font-medium">
-            Used by
+            {t("library.usedBy")}
           </h3>
           <UsedBy entry={existing} />
         </section>
@@ -588,10 +600,10 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
 /** The items whose published or deprecated versions name the entry: deleting it would break them. */
 const holders = (e: Entry) => [...new Set(e.used_by.filter((u) => u.state !== "draft").map((u) => u.name))];
 
-const columns: Column<Entry>[] = [
+const columns = (): Column<Entry>[] => [
   {
     id: "name",
-    header: "Name",
+    header: tr("library.col.name"),
     sortValue: (e) => e.name,
     cell: (e) => (
       <>
@@ -602,40 +614,43 @@ const columns: Column<Entry>[] = [
   },
   {
     id: "use",
-    header: "Purpose",
+    header: tr("library.col.purpose"),
     sortValue: (e) => e.use,
-    cell: (e) => <Badge tone={e.use === "validation" ? "warn" : "accent"}>{purposeLabel[e.use]}</Badge>,
+    cell: (e) => <Badge tone={e.use === "validation" ? "warn" : "accent"}>{purposeLabel(e.use)}</Badge>,
   },
   {
     id: "kind",
-    header: "Kind",
+    header: tr("library.col.kind"),
     sortValue: (e) => e.kind,
-    cell: (e) => <span className="text-secondary text-muted">{kindLabel[e.kind as Kind] ?? e.kind}</span>,
+    cell: (e) => <span className="text-secondary text-muted">{kindLabel(e.kind)}</span>,
   },
   {
     id: "version",
-    header: "Latest version",
+    header: tr("library.col.version"),
     sortValue: (e) => e.version,
     cell: (e) => <span className="text-secondary text-muted">{e.version}</span>,
   },
   {
     id: "used",
-    header: "Used by",
+    header: tr("library.col.used"),
     sortValue: (e) => new Set(e.used_by.map((u) => u.item_id)).size,
     cell: (e) => {
       const items = [...new Set(e.used_by.map((u) => u.name))];
-      return <span className="text-secondary text-muted">{items.length ? items.join(", ") : "Nothing"}</span>;
+      return (
+        <span className="text-secondary text-muted">{items.length ? items.join(", ") : tr("library.nothing")}</span>
+      );
     },
   },
   {
     id: "changed",
-    header: "Changed",
+    header: tr("library.col.changed"),
     sortValue: (e) => e.updated_at,
     cell: (e) => <span className="text-secondary text-muted">{relative(e.updated_at)}</span>,
   },
 ];
 
 export function FormLibraryPage() {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const entries = useQuery(q.formLibrary());
   const [editing, setEditing] = useState<{ entry?: Entry } | null>(null);
@@ -644,58 +659,45 @@ export function FormLibraryPage() {
     mutationFn: (e: Entry) => call(api.DELETE("/admin/form-library/{key}", { params: { path: { key: e.key } } })),
     onSuccess: (_, e) => {
       void qc.invalidateQueries({ queryKey: libraryKey });
-      toast.success(`${e.name} deleted`);
+      toast.success(t("library.deleted", { name: e.name }));
     },
-    onError: (e) => failed(e, "The entry wasn't deleted"),
+    onError: (e) => failed(e, t("library.notDeleted")),
   });
   const list = entries.data?.items;
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing({})}>
-      New entry
+      {t("library.newEntry")}
     </Button>
   );
   return (
     <Page>
       <PageHeader
-        title="Form library"
-        description={
-          <>
-            Value sources and validations any item's form names by key and version, as a field's{" "}
-            <code className="font-mono">value_source: {"{kind: library, name: cmdbServices, version: 2}"}</code> or one
-            of its validations. A form gives an entry's parameters as CEL over its inputs.
-          </>
-        }
+        title={t("library.title")}
+        description={<Trans t={t} i18nKey="library.lead" components={{ expr: <Expr text={valueSourceExample} /> }} />}
       />
-      <Panel title="Entries" flush actions={list?.length ? add : undefined}>
+      <Panel title={t("library.entries")} flush actions={list?.length ? add : undefined}>
         <DataTable
-          label="Form library entries"
-          columns={columns}
+          label={t("library.tableLabel")}
+          columns={columns()}
           rows={list}
           rowKey={(e) => e.key}
           minWidth={820}
           loading={entries.isPending}
           error={entries.isError && <ErrorState error={entries.error} onRetry={() => void entries.refetch()} />}
-          empty={
-            <EmptyState
-              icon={Library}
-              title="No entries yet"
-              body="Write once what several forms ask a service, such as the CMDB's applications, or check before approval, such as an open cost centre."
-              action={add}
-            />
-          }
-          rowMenuLabel={(e) => `Actions for ${e.name}`}
+          empty={<EmptyState icon={Library} title={t("library.empty")} body={t("library.emptyBody")} action={add} />}
+          rowMenuLabel={(e) => t("library.actionsFor", { name: e.name })}
           rowMenu={(e) => (
             <>
-              <MenuItem onSelect={() => setEditing({ entry: e })}>Change or test</MenuItem>
+              <MenuItem onSelect={() => setEditing({ entry: e })}>{t("library.changeOrTest")}</MenuItem>
               <MenuSeparator />
               <MenuItem danger disabled={holders(e).length > 0} onSelect={() => setRemoving(e)}>
                 {holders(e).length > 0 ? (
                   <>
-                    <span>Delete:</span>{" "}
-                    <span>{holders(e).length === 1 ? "1 item uses it" : `${holders(e).length} items use it`}</span>
+                    <span>{t("library.deleteHeld")}</span>{" "}
+                    <span>{t("library.holders", { count: holders(e).length })}</span>
                   </>
                 ) : (
-                  "Delete"
+                  t("library.delete")
                 )}
               </MenuItem>
             </>
@@ -707,10 +709,10 @@ export function FormLibraryPage() {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Delete ${removing.name}?`}
-          description="Every version of the entry is deleted."
-          consequences="No published item uses it. A draft that names it is refused when next saved."
-          confirmLabel="Delete entry"
+          title={t("library.deleteTitle", { name: removing.name })}
+          description={t("library.deleteBody")}
+          consequences={t("library.deleteConsequences")}
+          confirmLabel={t("library.deleteConfirm")}
           pending={remove.isPending}
           onConfirm={() => {
             const e = removing;
