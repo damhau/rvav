@@ -1,9 +1,11 @@
 // One onboarding plan (X1.5): what it matches, where the VMs go, and its
 // runs, each with what it adopted, skipped and why, and what failed.
+import type { TFunction } from "i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Ellipsis, History } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Mono, Time } from "@/components/common/misc";
 import { KeyValues, Page } from "@/components/common/page";
@@ -37,12 +39,11 @@ type Run = S["OnboardingRun"];
 type RunVm = S["OnboardingRunVm"];
 
 const outcomeTone = { adopted: "ok", skipped: "neutral", failed: "bad" } as const;
-const outcomeLabel = { adopted: "Adopted", skipped: "Skipped", failed: "Failed" } as const;
 
-const vmColumns: Column<RunVm>[] = [
+const vmColumns = (t: TFunction<"admin-onboarding">): Column<RunVm>[] => [
   {
     id: "vm",
-    header: "VM",
+    header: t("run.columns.vm"),
     sortValue: (v) => v.name,
     cell: (v) => (
       <span className="flex flex-col">
@@ -53,18 +54,18 @@ const vmColumns: Column<RunVm>[] = [
   },
   {
     id: "outcome",
-    header: "Outcome",
+    header: t("run.columns.outcome"),
     sortValue: (v) => v.outcome,
-    cell: (v) => <Badge tone={outcomeTone[v.outcome]}>{outcomeLabel[v.outcome]}</Badge>,
+    cell: (v) => <Badge tone={outcomeTone[v.outcome]}>{t(`run.outcome.${v.outcome}`)}</Badge>,
   },
   {
     id: "why",
-    header: "Why",
+    header: t("run.columns.why"),
     cell: (v) => <span className="text-secondary text-muted">{v.reason}</span>,
   },
   {
     id: "deployment",
-    header: "Deployment",
+    header: t("run.columns.deployment"),
     cell: (v) =>
       v.deployment ? (
         <Link
@@ -79,6 +80,7 @@ const vmColumns: Column<RunVm>[] = [
 ];
 
 function RunSheet({ runId, onClose }: { runId: string; onClose: () => void }) {
+  const { t } = useTranslation("admin-onboarding");
   const run = useQuery({
     ...adm.onboardingRun(runId),
     refetchInterval: (q) => (q.state.data?.status === "running" ? 1500 : false),
@@ -88,7 +90,7 @@ function RunSheet({ runId, onClose }: { runId: string; onClose: () => void }) {
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
-      title={r ? `Run of ${fullDate(r.started_at)}` : "Run"}
+      title={r ? t("run.of", { date: fullDate(r.started_at) }) : t("run.title")}
       description={r ? countsText(r) : undefined}
       className="w-[min(820px,100vw)]"
     >
@@ -98,27 +100,26 @@ function RunSheet({ runId, onClose }: { runId: string; onClose: () => void }) {
         <>
           <KeyValues
             items={[
-              { label: "Status", value: <RunStatus status={r.status} /> },
-              { label: "Started", value: r.started_by ? `By ${r.started_by.name}` : "On its schedule" },
-              ...(r.finished_at ? [{ label: "Finished", value: <Time iso={r.finished_at} /> }] : []),
-              ...(r.error ? [{ label: "Why it failed", value: <span className="text-bad">{r.error}</span> }] : []),
+              { label: t("run.status.label"), value: <RunStatus status={r.status} /> },
+              {
+                label: t("run.started"),
+                value: r.started_by ? t("run.startedBy", { name: r.started_by.name }) : t("run.onSchedule"),
+              },
+              ...(r.finished_at ? [{ label: t("run.finished"), value: <Time iso={r.finished_at} /> }] : []),
+              ...(r.error ? [{ label: t("run.whyFailed"), value: <span className="text-bad">{r.error}</span> }] : []),
             ]}
           />
           <DataTable
-            label="VMs of the run"
-            columns={vmColumns}
+            label={t("run.vms")}
+            columns={vmColumns(t)}
             rows={r.vms ?? []}
             rowKey={(v) => `${v.vcenter}/${v.moref}`}
             minWidth={640}
             empty={
               <EmptyState
                 icon={History}
-                title={r.status === "running" ? "Nothing yet" : "No VM matched"}
-                body={
-                  r.status === "running"
-                    ? "The VMs show as the run takes them."
-                    : "The plan's filter matched no VM in the inventory then."
-                }
+                title={r.status === "running" ? t("run.nothingYet") : t("run.noVm")}
+                body={r.status === "running" ? t("run.nothingYetBody") : t("run.noVmBody")}
               />
             }
           />
@@ -129,17 +130,18 @@ function RunSheet({ runId, onClose }: { runId: string; onClose: () => void }) {
 }
 
 function Runs({ plan }: { plan: Plan }) {
+  const { t } = useTranslation("admin-onboarding");
   const runs = useQuery({ ...adm.onboardingRuns(plan.id), refetchInterval: plan.running ? 1500 : false });
   const [open, setOpen] = useState<string | null>(null);
   const columns: Column<Run>[] = [
     {
       id: "when",
-      header: "Started",
+      header: t("run.started"),
       sortValue: (r) => r.started_at,
       cell: (r) => (
         <>
           <button type="button" className="font-medium text-fg hover:text-accent" onClick={() => setOpen(r.id)}>
-            <span className="sr-only">Open the run from </span>
+            <span className="sr-only">{t("run.open")} </span>
             {relative(r.started_at)}
           </button>
           <div className="text-secondary text-faint">{fullDate(r.started_at)}</div>
@@ -148,13 +150,18 @@ function Runs({ plan }: { plan: Plan }) {
     },
     {
       id: "by",
-      header: "By",
-      cell: (r) => <span className="text-secondary">{r.started_by?.name ?? "Its schedule"}</span>,
+      header: t("run.columns.by"),
+      cell: (r) => <span className="text-secondary">{r.started_by?.name ?? t("run.schedule")}</span>,
     },
-    { id: "status", header: "Status", sortValue: (r) => r.status, cell: (r) => <RunStatus status={r.status} /> },
+    {
+      id: "status",
+      header: t("run.status.label"),
+      sortValue: (r) => r.status,
+      cell: (r) => <RunStatus status={r.status} />,
+    },
     {
       id: "vms",
-      header: "VMs",
+      header: t("run.columns.vms"),
       cell: (r) => (
         <span className="text-secondary">
           {countsText(r)}
@@ -164,9 +171,9 @@ function Runs({ plan }: { plan: Plan }) {
     },
   ];
   return (
-    <Panel title="Runs" description="The last 20, latest first." flush>
+    <Panel title={t("runs.title")} description={t("runs.lead")} flush>
       <DataTable
-        label="Runs"
+        label={t("runs.title")}
         columns={columns}
         rows={runs.data?.items}
         rowKey={(r) => r.id}
@@ -176,10 +183,8 @@ function Runs({ plan }: { plan: Plan }) {
         empty={
           <EmptyState
             icon={History}
-            title="Never run"
-            body={
-              plan.every_hours ? "It runs on its schedule, or now with Run now." : "It runs when you select Run now."
-            }
+            title={t("plans.neverRun")}
+            body={plan.every_hours ? t("runs.neverScheduled") : t("runs.neverByHand")}
           />
         }
       />
@@ -189,6 +194,7 @@ function Runs({ plan }: { plan: Plan }) {
 }
 
 export function PlanPage({ planId }: { planId: string }) {
+  const { t } = useTranslation(["admin-onboarding", "shell"]);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const plan = useQuery({
@@ -216,27 +222,28 @@ export function PlanPage({ planId }: { planId: string }) {
         breadcrumbs={
           <Breadcrumbs>
             <Link to="/admin/onboarding" search={{ tab: "plans" }}>
-              Onboarding
+              {t("shell:nav.admin.onboarding")}
             </Link>
           </Breadcrumbs>
         }
-        title={p?.name ?? "Plan"}
+        title={p?.name ?? t("plan.title")}
         description={p?.description || undefined}
-        meta={p?.running && <Badge tone="run">Running</Badge>}
+        meta={p?.running && <Badge tone="run">{t("run.status.running")}</Badge>}
         actions={
           p && (
             <>
               <Menu>
                 <MenuTrigger asChild>
-                  <IconButton label={`More actions for ${p.name}`} variant="secondary" className="size-8">
+                  <IconButton label={t("plan.moreActions", { name: p.name })} variant="secondary" className="size-8">
                     <Ellipsis />
                   </IconButton>
                 </MenuTrigger>
                 <MenuContent>
-                  <MenuItem onSelect={() => setEditing(true)}>Change plan</MenuItem>
+                  <MenuItem onSelect={() => setEditing(true)}>{t("plan.change")}</MenuItem>
                   <MenuSeparator />
                   <MenuItem danger disabled={p.running} onSelect={() => setDeleting(true)}>
-                    <span>Delete plan</span> {p.running && <span className="text-faint">a run goes on</span>}
+                    <span>{t("delete.confirm")}</span>{" "}
+                    {p.running && <span className="text-faint">{t("plans.goesOn")}</span>}
                   </MenuItem>
                 </MenuContent>
               </Menu>
@@ -247,7 +254,7 @@ export function PlanPage({ planId }: { planId: string }) {
                 className="aria-disabled:opacity-50"
                 onClick={() => !p.running && !runNow.isPending && runNow.mutate(p)}
               >
-                {p.running ? "Running…" : "Run now"}
+                {p.running ? t("plan.running") : t("plans.runNow")}
               </Button>
             </>
           )
@@ -257,13 +264,13 @@ export function PlanPage({ planId }: { planId: string }) {
       {plan.isError && <ErrorState error={plan.error} onRetry={() => void plan.refetch()} />}
       {p && (
         <>
-          <Panel title="Settings">
+          <Panel title={t("plan.settings")}>
             <KeyValues
               items={[
-                { label: "VMs it adopts", value: filterText(p.filter) },
-                { label: "Now", value: `${p.matching} VM${p.matching === 1 ? "" : "s"} it matches no deployment has` },
+                { label: t("plans.columns.vms"), value: filterText(p.filter) },
+                { label: t("plan.now"), value: t("plan.matching", { count: p.matching }) },
                 {
-                  label: "Where they go",
+                  label: t("target.where"),
                   value: p.deployment ? (
                     <>
                       {targetText(p, projectName)}{" "}
@@ -272,7 +279,7 @@ export function PlanPage({ planId }: { planId: string }) {
                         params={{ deploymentId: p.deployment.id }}
                         className="text-accent underline underline-offset-2"
                       >
-                        Open {p.deployment.name}
+                        {t("plan.open", { name: p.deployment.name })}
                       </Link>
                     </>
                   ) : (
@@ -282,7 +289,7 @@ export function PlanPage({ planId }: { planId: string }) {
                 ...(p.target.inputs && Object.keys(p.target.inputs).length > 0
                   ? [
                       {
-                        label: "Inputs",
+                        label: t("target.inputs"),
                         value: (
                           <Mono>
                             {Object.entries(p.target.inputs)
@@ -293,14 +300,18 @@ export function PlanPage({ planId }: { planId: string }) {
                       },
                     ]
                   : []),
-                { label: "Runs", value: scheduleText(p) },
+                { label: t("plans.columns.runs"), value: scheduleText(p) },
                 {
-                  label: "Changed",
-                  value: (
-                    <>
-                      <Time iso={p.updated_at} />
-                      {p.updated_by ? ` by ${p.updated_by.name}` : ""}
-                    </>
+                  label: t("plan.changed"),
+                  value: p.updated_by ? (
+                    <Trans
+                      t={t}
+                      i18nKey="plan.changedBy"
+                      values={{ name: p.updated_by.name }}
+                      components={{ time: <Time iso={p.updated_at} /> }}
+                    />
+                  ) : (
+                    <Time iso={p.updated_at} />
                   ),
                 },
               ]}

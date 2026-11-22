@@ -4,10 +4,12 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { components } from "@/lib/api/schema";
+import { i18n } from "@/lib/i18n";
 import { adm, q } from "@/lib/query";
 import { keyProblems } from "../governance/common";
 
@@ -78,7 +80,8 @@ export function inputsOf(t: Target): Record<string, unknown> | undefined {
 }
 
 /** Problems with the inputs' keys, by row, before anything is sent. */
-export const inputProblems = (t: Target) => keyProblems(t.inputs, (r) => r.value === "", "Give the input a name.");
+export const inputProblems = (target: Target) =>
+  keyProblems(target.inputs, (r) => r.value === "", i18n.t("admin-onboarding:target.nameInput"));
 
 const given = (v: string) => (v.trim() === "" ? undefined : v.trim());
 
@@ -113,11 +116,8 @@ export function targetOf(t: S["OnboardingTarget"]): Target {
   };
 }
 
-const intoOptions: { value: Into; label: string }[] = [
-  { value: "each", label: "Each into a deployment of its own" },
-  { value: "one", label: "All into one new deployment" },
-  { value: "existing", label: "Into an existing deployment" },
-];
+const intos: Into[] = ["each", "one", "existing"];
+const nameExample = "erp-prd";
 
 /**
  * The fields of a target. `at` is where the server's errors about it are
@@ -142,6 +142,7 @@ export function TargetFields({
   local: Record<number, string>;
   current?: S["DeploymentRef"];
 }) {
+  const { t: tr } = useTranslation("admin-onboarding");
   const set = (patch: Partial<Target>) => onChange({ ...t, ...patch });
   const projects = useQuery(adm.projectNames());
   const project = useQuery({ ...q.project(t.project), enabled: t.project !== "" });
@@ -168,11 +169,11 @@ export function TargetFields({
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
   const ready = slugs.length > 0 ? (deployments.data?.pages.flatMap((p) => p.items) ?? []) : [];
   const offered = current && !ready.some((d) => d.id === current.id) ? [current, ...ready] : ready;
-  const e = (field: string) => errors[`${at}/${field}`];
+  const e = (pointer: string) => errors[`${at}${pointer}`];
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Project" htmlFor={`${id}-project`} error={e("project_id")}>
+        <Field label={tr("target.project")} htmlFor={`${id}-project`} error={e("/project_id")}>
           <Select
             id={`${id}-project`}
             value={t.project}
@@ -181,15 +182,20 @@ export function TargetFields({
             options={(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name }))}
           />
         </Field>
-        <Field label="Where they go" htmlFor={`${id}-into`}>
-          <Select id={`${id}-into`} value={t.into} onChange={(v) => set({ into: v as Into })} options={intoOptions} />
+        <Field label={tr("target.where")} htmlFor={`${id}-into`}>
+          <Select
+            id={`${id}-into`}
+            value={t.into}
+            onChange={(v) => set({ into: v as Into })}
+            options={intos.map((value) => ({ value, label: tr(`target.into.${value}`) }))}
+          />
         </Field>
         {t.into === "existing" ? (
           <Field
-            label="Deployment"
+            label={tr("target.deployment")}
             htmlFor={`${id}-deployment`}
-            hint="A ready deployment of a VM item: its owner, lease and inputs stay"
-            error={e("deployment_id")}
+            hint={tr("target.deploymentHint")}
+            error={e("/deployment_id")}
             className="sm:col-span-2"
           >
             <Select
@@ -203,7 +209,7 @@ export function TargetFields({
           </Field>
         ) : (
           <>
-            <Field label="Environment" htmlFor={`${id}-env`} error={e("environment")}>
+            <Field label={tr("target.environment")} htmlFor={`${id}-env`} error={e("/environment")}>
               <Select
                 id={`${id}-env`}
                 value={t.environment}
@@ -213,7 +219,12 @@ export function TargetFields({
                 options={(project.data?.environments ?? []).map((env) => ({ value: env, label: env }))}
               />
             </Field>
-            <Field label="Owner" htmlFor={`${id}-owner`} hint="A member of the project" error={e("owner_id")}>
+            <Field
+              label={tr("target.owner")}
+              htmlFor={`${id}-owner`}
+              hint={tr("target.ownerHint")}
+              error={e("/owner_id")}
+            >
               <Select
                 id={`${id}-owner`}
                 value={t.owner}
@@ -226,10 +237,10 @@ export function TargetFields({
               />
             </Field>
             <Field
-              label="Catalog item"
+              label={tr("target.item")}
               htmlFor={`${id}-item`}
-              hint="Their OS family and day-2 actions"
-              error={e("catalog_item_id")}
+              hint={tr("target.itemHint")}
+              error={e("/catalog_item_id")}
             >
               <Select
                 id={`${id}-item`}
@@ -241,10 +252,10 @@ export function TargetFields({
               />
             </Field>
             <Field
-              label="Lease (days)"
+              label={tr("target.lease")}
               htmlFor={`${id}-lease`}
-              hint="Empty: the lease policy's default"
-              error={e("lease_days")}
+              hint={tr("target.leaseHint")}
+              error={e("/lease_days")}
             >
               <Input
                 id={`${id}-lease`}
@@ -255,11 +266,15 @@ export function TargetFields({
               />
             </Field>
             {t.into === "one" && (
-              <Field label="Deployment name" htmlFor={`${id}-deployment-name`} error={e("deployment_name")}>
+              <Field
+                label={tr("target.deploymentName")}
+                htmlFor={`${id}-deployment-name`}
+                error={e("/deployment_name")}
+              >
                 <Input
                   id={`${id}-deployment-name`}
                   className="font-mono text-secondary"
-                  placeholder="erp-prd"
+                  placeholder={nameExample}
                   value={t.name}
                   onChange={(ev) => set({ name: ev.target.value })}
                 />
@@ -268,10 +283,10 @@ export function TargetFields({
           </>
         )}
         <Field
-          label="Component"
+          label={tr("target.component")}
           htmlFor={`${id}-component`}
-          hint="The blueprint component they are VMs of, such as web: needed when it has several"
-          error={e("component")}
+          hint={tr("target.componentHint")}
+          error={e("/component")}
         >
           <Input
             id={`${id}-component`}
@@ -301,19 +316,17 @@ function InputsEditor({
   id: string;
   local: Record<number, string>;
 }) {
+  const { t: tr } = useTranslation("admin-onboarding");
   const row = (i: number, r: Target["inputs"][number]) => set({ inputs: t.inputs.map((x, j) => (j === i ? r : x)) });
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="mb-1 text-secondary font-medium">Inputs</legend>
-      <p className="text-secondary text-muted">
-        The request form's values the deployments record, as if they had been asked for: a later update starts from
-        them. Numbers, true, false and JSON lists are read as such.
-      </p>
+      <legend className="mb-1 text-secondary font-medium">{tr("target.inputs")}</legend>
+      <p className="text-secondary text-muted">{tr("target.inputsLead")}</p>
       {errors[`${at}/inputs`] && <p className="text-secondary text-bad">{errors[`${at}/inputs`]}</p>}
       {t.inputs.map((r, i) => (
         <div key={i} className="grid grid-cols-[1fr_2fr_auto] items-start gap-2">
           <Field
-            label="Input"
+            label={tr("target.input")}
             htmlFor={`${id}-input-${i}-key`}
             error={local[i] ?? errors[`${at}/inputs/${r.key.trim()}`]}
           >
@@ -324,7 +337,7 @@ function InputsEditor({
               onChange={(ev) => row(i, { ...r, key: ev.target.value })}
             />
           </Field>
-          <Field label="Value" htmlFor={`${id}-input-${i}-value`}>
+          <Field label={tr("target.value")} htmlFor={`${id}-input-${i}-value`}>
             <Input
               id={`${id}-input-${i}-value`}
               value={r.value}
@@ -336,7 +349,7 @@ function InputsEditor({
             size="icon"
             variant="quiet"
             className="mt-6"
-            aria-label={`Remove input ${r.key || i + 1}`}
+            aria-label={tr("target.removeInput", { name: r.key || String(i + 1) })}
             onClick={() => set({ inputs: t.inputs.filter((_, j) => j !== i) })}
           >
             <X className="size-3.5" />
@@ -349,7 +362,7 @@ function InputsEditor({
           variant="secondary"
           onClick={() => set({ inputs: [...t.inputs, { key: "", value: "" }] })}
         >
-          <Plus className="size-3.5" /> Add input
+          <Plus className="size-3.5" /> {tr("target.addInput")}
         </Button>
       </div>
     </fieldset>

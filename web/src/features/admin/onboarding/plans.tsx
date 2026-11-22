@@ -5,6 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ListFilter } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { useDebounced } from "@/lib/hooks";
+import { i18n } from "@/lib/i18n";
 import { adm } from "@/lib/query";
 import { fullDate, relative } from "@/lib/format";
 import { failed, fieldErrors } from "../governance/common";
@@ -29,39 +31,40 @@ type S = components["schemas"];
 export type Plan = S["OnboardingPlan"];
 type Run = S["OnboardingRun"];
 
-const vmsText = (n: number) => `${n} VM${n === 1 ? "" : "s"}`;
+const tx = i18n.getFixedT(null, "admin-onboarding");
+
 const filterGroup = { "/filter": "obp-q" };
+const tagExample = "app/erp";
 
 export function filterText(f: S["OnboardingFilter"]): string {
-  const power = { on: "powered on", off: "powered off", suspended: "suspended" } as const;
   return (
     [
-      f.q && `name or address ${f.q}`,
-      f.folder && `in ${f.folder}`,
-      f.tag && `tagged ${f.tag}`,
-      f.cluster && `on ${f.cluster}`,
-      f.vcenter && `in ${f.vcenter}`,
-      f.power_state && power[f.power_state],
+      f.q && tx("filter.q", { q: f.q }),
+      f.folder && tx("filter.folder", { folder: f.folder }),
+      f.tag && tx("filter.tag", { tag: f.tag }),
+      f.cluster && tx("filter.cluster", { cluster: f.cluster }),
+      f.vcenter && tx("filter.vcenter", { vcenter: f.vcenter }),
+      f.power_state && tx(`filter.power.${f.power_state}`),
     ]
       .filter(Boolean)
-      .join(", ") || "Every VM"
+      .join(", ") || tx("filter.every")
   );
 }
 
 export function targetText(p: Plan, projectName: (id: string) => string): string {
   const t = p.target;
-  const where = projectName(t.project_id);
-  const component = t.component ? `, as ${t.component} VMs` : "";
-  if (t.deployment_id) return `Into ${p.deployment?.name ?? "a deployment since deleted"}${component}`;
-  if (t.deployment_name)
-    return `Into ${t.deployment_name}, one deployment in ${where} ${t.environment ?? ""}${component}`;
-  return `Each into a deployment of its own in ${where} ${t.environment ?? ""}${component}`;
+  const values = { project: projectName(t.project_id), environment: t.environment ?? "", component: t.component };
+  const as = t.component ? "As" : "";
+  if (t.deployment_id)
+    return tx(`plans.target.into${as}`, { ...values, name: p.deployment?.name ?? tx("plans.target.deleted") });
+  if (t.deployment_name) return tx(`plans.target.one${as}`, { ...values, name: t.deployment_name });
+  return tx(`plans.target.each${as}`, values);
 }
 
 export function scheduleText(p: Plan): string {
-  if (!p.every_hours) return "When run by hand";
-  const every = p.every_hours === 1 ? "Every hour" : `Every ${p.every_hours} hours`;
-  return p.next_run_at ? `${every}, next run ${relative(p.next_run_at)}` : every;
+  if (!p.every_hours) return tx("plans.byHand");
+  const every = tx("plans.every", { count: p.every_hours });
+  return p.next_run_at ? tx("plans.everyNext", { every, when: relative(p.next_run_at) }) : every;
 }
 
 const statusTone: Record<Run["status"], "run" | "ok" | "warn" | "bad"> = {
@@ -70,18 +73,13 @@ const statusTone: Record<Run["status"], "run" | "ok" | "warn" | "bad"> = {
   partial: "warn",
   failed: "bad",
 };
-const statusLabel: Record<Run["status"], string> = {
-  running: "Running",
-  succeeded: "Succeeded",
-  partial: "Some failed",
-  failed: "Failed",
-};
 
 export function RunStatus({ status }: { status: Run["status"] }) {
-  return <Badge tone={statusTone[status]}>{statusLabel[status]}</Badge>;
+  const { t } = useTranslation("admin-onboarding");
+  return <Badge tone={statusTone[status]}>{t(`run.status.${status}`)}</Badge>;
 }
 
-export const countsText = (r: Run) => `${r.adopted} adopted, ${r.skipped} skipped, ${r.failed} failed`;
+export const countsText = (r: Run) => tx("run.counts", { adopted: r.adopted, skipped: r.skipped, failed: r.failed });
 
 export function useProjectName() {
   const projects = useQuery(adm.projectNames()).data?.items;
@@ -99,9 +97,9 @@ export function useRunNow() {
       call(api.POST("/admin/onboarding/plans/{planId}/runs", { params: { path: { planId: p.id } } })),
     onSuccess: (r) => {
       invalidateOnboarding(qc);
-      toast.success(`${r.plan_name} runs`);
+      toast.success(tx("plans.runs", { name: r.plan_name }));
     },
-    onError: (e) => failed(e, "Not run"),
+    onError: (e) => failed(e, tx("plans.notRun")),
   });
 }
 
@@ -116,6 +114,7 @@ function filterOf(f: Filter): S["OnboardingFilter"] {
 
 /** How many VMs the filter matches now, said as it changes. */
 function Matching({ filter }: { filter: S["OnboardingFilter"] }) {
+  const { t } = useTranslation("admin-onboarding");
   const key = useDebounced(JSON.stringify(filter), 300);
   const given = key !== "{}";
   const count = useQuery({
@@ -132,16 +131,13 @@ function Matching({ filter }: { filter: S["OnboardingFilter"] }) {
   });
   return (
     <p className="text-secondary text-muted" aria-live="polite">
-      {!given
-        ? "Give a criterion at least: a plan never adopts every VM rvav doesn't manage."
-        : count.data
-          ? `${vmsText(count.data.total)} rvav doesn't manage match now.`
-          : ""}
+      {!given ? t("sheet.noCriterion") : count.data ? t("sheet.matching", { count: count.data.total }) : ""}
     </p>
   );
 }
 
 export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void }) {
+  const { t } = useTranslation("admin-onboarding");
   const qc = useQueryClient();
   const navigate = useNavigate();
   const vcenters = useQuery(adm.vcenters());
@@ -170,13 +166,13 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
     },
     onSuccess: (p) => {
       invalidateOnboarding(qc);
-      toast.success(`${p.name} saved`);
+      toast.success(t("plans.saved", { name: p.name }));
       onClose();
       if (!plan) void navigate({ to: "/admin/onboarding/plans/$planId", params: { planId: p.id } });
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("plans.notSaved"));
     },
   });
   const set = (k: keyof Filter) => (v: string) => setFilter({ ...filter, [k]: v });
@@ -185,10 +181,10 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={plan ? `Change ${plan.name}` : "New plan"}
-      description="Which VMs it adopts, where they go, and when it runs. Each run adopts the VMs it matches that no deployment has."
+      title={plan ? t("sheet.change", { name: plan.name }) : t("plans.new")}
+      description={t("sheet.lead")}
       className="w-[min(720px,100vw)]"
-      submitLabel={save.isPending ? "Saving…" : "Save plan"}
+      submitLabel={save.isPending ? t("sheet.saving") : t("sheet.save")}
       onSubmit={() => {
         setErrors({});
         const problems = inputProblems(target);
@@ -196,10 +192,10 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
         if (Object.keys(problems).length === 0) save.mutate();
       }}
     >
-      <Field label="Name" htmlFor="obp-name" error={errors["/name"]}>
+      <Field label={t("sheet.name")} htmlFor="obp-name" error={errors["/name"]}>
         <Input id="obp-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
       </Field>
-      <Field label="Description" htmlFor="obp-description" error={errors["/description"]}>
+      <Field label={t("sheet.description")} htmlFor="obp-description" error={errors["/description"]}>
         <Textarea
           id="obp-description"
           rows={2}
@@ -207,17 +203,17 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
           onChange={(e) => setF({ ...f, description: e.target.value })}
         />
       </Field>
-      <Panel as="fieldset" title="Which VMs" describedBy={errors["/filter"] ? "obp-filter-error" : undefined}>
+      <Panel as="fieldset" title={t("sheet.which")} describedBy={errors["/filter"] ? "obp-filter-error" : undefined}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field
-            label="Name or address"
-            htmlFor="obp-q"
-            hint="Part of the name or host name, or the address's start"
-            error={errors["/filter/q"]}
-          >
+          <Field label={t("sheet.q")} htmlFor="obp-q" hint={t("sheet.qHint")} error={errors["/filter/q"]}>
             <Input id="obp-q" value={filter.q} onChange={(e) => set("q")(e.target.value)} />
           </Field>
-          <Field label="Folder" htmlFor="obp-folder" hint="And the folders under it" error={errors["/filter/folder"]}>
+          <Field
+            label={t("sheet.folder")}
+            htmlFor="obp-folder"
+            hint={t("sheet.folderHint")}
+            error={errors["/filter/folder"]}
+          >
             <Input
               id="obp-folder"
               className="font-mono text-secondary"
@@ -226,16 +222,16 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
               onChange={(e) => set("folder")(e.target.value)}
             />
           </Field>
-          <Field label="Tag" htmlFor="obp-tag" hint="A vSphere tag, as category/tag" error={errors["/filter/tag"]}>
+          <Field label={t("sheet.tag")} htmlFor="obp-tag" hint={t("sheet.tagHint")} error={errors["/filter/tag"]}>
             <Input
               id="obp-tag"
               className="font-mono text-secondary"
-              placeholder="app/erp"
+              placeholder={tagExample}
               value={filter.tag}
               onChange={(e) => set("tag")(e.target.value)}
             />
           </Field>
-          <Field label="Cluster" htmlFor="obp-cluster">
+          <Field label={t("sheet.cluster")} htmlFor="obp-cluster">
             <Input id="obp-cluster" value={filter.cluster} onChange={(e) => set("cluster")(e.target.value)} />
           </Field>
           <Field label="vCenter" htmlFor="obp-vcenter">
@@ -244,21 +240,21 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
               value={filter.vcenter || "any"}
               onChange={(v) => set("vcenter")(v === "any" ? "" : v)}
               options={[
-                { value: "any", label: "Any" },
+                { value: "any", label: t("sheet.any") },
                 ...(vcenters.data?.items ?? []).map((v) => ({ value: v.name, label: v.name })),
               ]}
             />
           </Field>
-          <Field label="Power" htmlFor="obp-power" error={errors["/filter/power_state"]}>
+          <Field label={t("sheet.power")} htmlFor="obp-power" error={errors["/filter/power_state"]}>
             <Select
               id="obp-power"
               value={filter.power_state || "any"}
               onChange={(v) => set("power_state")(v === "any" ? "" : v)}
               options={[
-                { value: "any", label: "Any" },
-                { value: "on", label: "On" },
-                { value: "off", label: "Off" },
-                { value: "suspended", label: "Suspended" },
+                { value: "any", label: t("sheet.any") },
+                { value: "on", label: t("sheet.on") },
+                { value: "off", label: t("sheet.off") },
+                { value: "suspended", label: t("sheet.suspended") },
               ]}
             />
           </Field>
@@ -270,7 +266,7 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
         )}
         <Matching filter={filterOf(filter)} />
       </Panel>
-      <Panel as="fieldset" title="Where they go">
+      <Panel as="fieldset" title={t("target.where")}>
         <TargetFields
           t={target}
           onChange={(next) => {
@@ -285,12 +281,7 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
           current={plan?.deployment}
         />
       </Panel>
-      <Field
-        label="Run every (hours)"
-        htmlFor="obp-every"
-        hint="From 1 to 168, a week. Empty: only when you run it."
-        error={errors["/every_hours"]}
-      >
+      <Field label={t("sheet.every")} htmlFor="obp-every" hint={t("sheet.everyHint")} error={errors["/every_hours"]}>
         <Input
           id="obp-every"
           type="number"
@@ -306,25 +297,26 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
 }
 
 export function DeletePlan({ plan, onClose, onDeleted }: { plan: Plan; onClose: () => void; onDeleted?: () => void }) {
+  const { t } = useTranslation("admin-onboarding");
   const qc = useQueryClient();
   const remove = useMutation({
     mutationFn: () => call(api.DELETE("/admin/onboarding/plans/{planId}", { params: { path: { planId: plan.id } } })),
     onSuccess: () => {
       invalidateOnboarding(qc);
-      toast.success(`${plan.name} deleted`);
+      toast.success(t("plans.deleted", { name: plan.name }));
       onClose();
       onDeleted?.();
     },
-    onError: (e) => failed(e, "Not deleted"),
+    onError: (e) => failed(e, t("plans.notDeleted")),
   });
   return (
     <ConfirmDialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Delete ${plan.name}?`}
-      description="Its runs and what they recorded go with it."
-      consequences="The deployments it adopted VMs into stay, with their VMs."
-      confirmLabel="Delete plan"
+      title={t("delete.title", { name: plan.name })}
+      description={t("delete.body")}
+      consequences={t("delete.consequences")}
+      confirmLabel={t("delete.confirm")}
       pending={remove.isPending}
       onConfirm={() => remove.mutate()}
     />
@@ -342,13 +334,14 @@ export function PlansTab({
     ...adm.onboardingPlans(),
     refetchInterval: (q) => (q.state.data?.items.some((p) => p.running) ? 1500 : false),
   });
+  const { t } = useTranslation("admin-onboarding");
   const [deleting, setDeleting] = useState<Plan | null>(null);
   const runNow = useRunNow();
   const projectName = useProjectName();
   const columns: Column<Plan>[] = [
     {
       id: "name",
-      header: "Plan",
+      header: t("plans.columns.plan"),
       sortValue: (p) => p.name,
       cell: (p) => (
         <>
@@ -365,22 +358,22 @@ export function PlansTab({
     },
     {
       id: "vms",
-      header: "VMs it adopts",
+      header: t("plans.columns.vms"),
       cell: (p) => (
         <div className="text-secondary">
           {filterText(p.filter)}
-          <div className="text-faint">{vmsText(p.matching)} to adopt now</div>
+          <div className="text-faint">{t("plans.toAdopt", { count: p.matching })}</div>
         </div>
       ),
     },
     {
       id: "target",
-      header: "Where they go",
+      header: t("target.where"),
       cell: (p) => <span className="text-secondary">{targetText(p, projectName)}</span>,
     },
     {
       id: "last",
-      header: "Last run",
+      header: t("plans.columns.last"),
       sortValue: (p) => p.last_run?.started_at,
       cell: (p) =>
         p.last_run ? (
@@ -394,16 +387,20 @@ export function PlansTab({
             <div className="text-faint">{countsText(p.last_run)}</div>
           </div>
         ) : (
-          <span className="text-secondary text-faint">Never run</span>
+          <span className="text-secondary text-faint">{t("plans.neverRun")}</span>
         ),
     },
-    { id: "when", header: "Runs", cell: (p) => <span className="text-secondary text-muted">{scheduleText(p)}</span> },
+    {
+      id: "when",
+      header: t("plans.columns.runs"),
+      cell: (p) => <span className="text-secondary text-muted">{scheduleText(p)}</span>,
+    },
   ];
   return (
     <>
-      <Panel title="Plans" flush>
+      <Panel title={t("plans.title")} flush>
         <DataTable
-          label="Onboarding plans"
+          label={t("plans.label")}
           columns={columns}
           rows={plans.data?.items}
           rowKey={(p) => p.id}
@@ -414,25 +411,25 @@ export function PlansTab({
           empty={
             <EmptyState
               icon={ListFilter}
-              title="No plan yet"
-              body="A plan adopts the VMs its filter matches, now and as they appear in vCenter: when you run it, or every few hours."
+              title={t("plans.none")}
+              body={t("plans.noneBody")}
               action={
                 <Button variant="primary" onClick={() => setEditing("new")}>
-                  New plan
+                  {t("plans.new")}
                 </Button>
               }
             />
           }
-          rowMenuLabel={(p) => `Actions for ${p.name}`}
+          rowMenuLabel={(p) => t("plans.actionsFor", { name: p.name })}
           rowMenu={(p) => (
             <>
               <MenuItem disabled={p.running || runNow.isPending} onSelect={() => runNow.mutate(p)}>
-                <span>Run now</span> {p.running && <span className="text-faint">a run goes on</span>}
+                <span>{t("plans.runNow")}</span> {p.running && <span className="text-faint">{t("plans.goesOn")}</span>}
               </MenuItem>
-              <MenuItem onSelect={() => setEditing(p)}>Change</MenuItem>
+              <MenuItem onSelect={() => setEditing(p)}>{t("plans.change")}</MenuItem>
               <MenuSeparator />
               <MenuItem danger disabled={p.running} onSelect={() => setDeleting(p)}>
-                <span>Delete</span> {p.running && <span className="text-faint">a run goes on</span>}
+                <span>{t("plans.delete")}</span> {p.running && <span className="text-faint">{t("plans.goesOn")}</span>}
               </MenuItem>
             </>
           )}

@@ -1,1 +1,175 @@
-{}
+{
+  "target": {
+    "project": "Projet",
+    "where": "Où elles vont",
+    "into": {
+      "each": "Chacune dans son propre déploiement",
+      "one": "Toutes dans un nouveau déploiement",
+      "existing": "Dans un déploiement existant"
+    },
+    "deployment": "Déploiement",
+    "deploymentHint": "Un déploiement prêt d'un élément de VM\u00a0: son propriétaire, son bail et ses champs restent",
+    "environment": "Environnement",
+    "owner": "Propriétaire",
+    "ownerHint": "Un membre du projet",
+    "item": "Élément de catalogue",
+    "itemHint": "Leur famille d'OS et leurs actions de jour 2",
+    "lease": "Bail (jours)",
+    "leaseHint": "Vide\u00a0: la valeur par défaut de la politique de bail",
+    "deploymentName": "Nom du déploiement",
+    "component": "Composant",
+    "componentHint": "Le composant du blueprint dont elles sont les VM, comme web\u00a0: nécessaire quand il en a plusieurs",
+    "inputs": "Champs",
+    "inputsLead": "Les valeurs du formulaire de demande que les déploiements enregistrent, comme si elles avaient été demandées\u00a0: une mise à jour ultérieure part d'elles. Les nombres, true, false et les listes JSON sont lus comme tels.",
+    "input": "Champ",
+    "value": "Valeur",
+    "removeInput": "Retirer le champ {{name}}",
+    "addInput": "Ajouter un champ",
+    "nameInput": "Donnez un nom au champ."
+  },
+  "filter": {
+    "q": "nom ou adresse {{q}}",
+    "folder": "dans {{folder}}",
+    "tag": "avec le tag {{tag}}",
+    "cluster": "sur {{cluster}}",
+    "vcenter": "dans {{vcenter}}",
+    "power": {
+      "on": "allumées",
+      "off": "éteintes",
+      "suspended": "suspendues"
+    },
+    "every": "Toutes les VM"
+  },
+  "plans": {
+    "target": {
+      "into": "Dans {{name}}",
+      "intoAs": "Dans {{name}}, comme VM {{component}}",
+      "one": "Dans {{name}}, un seul déploiement, dans {{project}} {{environment}}",
+      "oneAs": "Dans {{name}}, un seul déploiement, dans {{project}} {{environment}}, comme VM {{component}}",
+      "each": "Chacune dans son propre déploiement, dans {{project}} {{environment}}",
+      "eachAs": "Chacune dans son propre déploiement, dans {{project}} {{environment}}, comme VM {{component}}",
+      "deleted": "un déploiement supprimé depuis"
+    },
+    "byHand": "Quand on le lance à la main",
+    "every_one": "Toutes les heures",
+    "every_many": "Toutes les {{count}} heures",
+    "every_other": "Toutes les {{count}} heures",
+    "everyNext": "{{every}}, prochaine exécution {{when}}",
+    "runs": "{{name}} est lancé",
+    "notRun": "Non lancé",
+    "saved": "{{name}} enregistré",
+    "notSaved": "Non enregistré",
+    "deleted": "{{name}} supprimé",
+    "notDeleted": "Non supprimé",
+    "new": "Nouveau plan",
+    "columns": {
+      "plan": "Plan",
+      "vms": "VM qu'il intègre",
+      "last": "Dernière exécution",
+      "runs": "Exécutions"
+    },
+    "toAdopt_one": "{{count}} VM à intégrer maintenant",
+    "toAdopt_many": "{{count}} VM à intégrer maintenant",
+    "toAdopt_other": "{{count}} VM à intégrer maintenant",
+    "neverRun": "Jamais lancé",
+    "title": "Plans",
+    "label": "Plans d'intégration",
+    "none": "Aucun plan pour l'instant",
+    "noneBody": "Un plan intègre les VM que son filtre trouve, maintenant et à mesure qu'elles apparaissent dans vCenter\u00a0: quand vous le lancez, ou toutes les quelques heures.",
+    "actionsFor": "Actions pour {{name}}",
+    "runNow": "Lancer maintenant",
+    "goesOn": "une exécution est en cours",
+    "change": "Modifier",
+    "delete": "Supprimer"
+  },
+  "sheet": {
+    "noCriterion": "Donnez au moins un critère\u00a0: un plan n'intègre jamais toutes les VM que rvav ne gère pas.",
+    "matching_one": "{{count}} VM que rvav ne gère pas correspond maintenant.",
+    "matching_many": "{{count}} VM que rvav ne gère pas correspondent maintenant.",
+    "matching_other": "{{count}} VM que rvav ne gère pas correspondent maintenant.",
+    "change": "Modifier {{name}}",
+    "lead": "Les VM qu'il intègre, où elles vont et quand il s'exécute. Chaque exécution intègre les VM qu'il trouve et qu'aucun déploiement n'a.",
+    "saving": "Enregistrement…",
+    "save": "Enregistrer le plan",
+    "name": "Nom",
+    "description": "Description",
+    "which": "Quelles VM",
+    "q": "Nom ou adresse",
+    "qHint": "Une partie du nom ou du nom d'hôte, ou le début de l'adresse",
+    "folder": "Dossier",
+    "folderHint": "Et les dossiers en dessous",
+    "tag": "Tag",
+    "tagHint": "Un tag vSphere, sous la forme catégorie/tag",
+    "cluster": "Cluster",
+    "any": "Tous",
+    "power": "Alimentation",
+    "on": "Allumée",
+    "off": "Éteinte",
+    "suspended": "Suspendue",
+    "every": "Intervalle d'exécution (heures)",
+    "everyHint": "De 1 à 168, une semaine. Vide\u00a0: seulement quand vous le lancez."
+  },
+  "delete": {
+    "title": "Supprimer {{name}}\u00a0?",
+    "body": "Ses exécutions et ce qu'elles ont enregistré disparaissent avec lui.",
+    "consequences": "Les déploiements dans lesquels il a intégré des VM restent, avec leurs VM.",
+    "confirm": "Supprimer le plan"
+  },
+  "plan": {
+    "title": "Plan",
+    "moreActions": "Plus d'actions pour {{name}}",
+    "change": "Modifier le plan",
+    "running": "En cours…",
+    "settings": "Paramètres",
+    "now": "Maintenant",
+    "matching_one": "{{count}} VM qu'il trouve et qu'aucun déploiement n'a",
+    "matching_many": "{{count}} VM qu'il trouve et qu'aucun déploiement n'a",
+    "matching_other": "{{count}} VM qu'il trouve et qu'aucun déploiement n'a",
+    "open": "Ouvrir {{name}}",
+    "changed": "Modifié",
+    "changedBy": "<time/> par {{name}}"
+  },
+  "run": {
+    "status": {
+      "label": "Statut",
+      "running": "En cours",
+      "succeeded": "Réussie",
+      "partial": "Échecs partiels",
+      "failed": "Échouée"
+    },
+    "counts": "Intégrées\u00a0: {{adopted}}, ignorées\u00a0: {{skipped}}, en échec\u00a0: {{failed}}",
+    "outcome": {
+      "adopted": "Intégrée",
+      "skipped": "Ignorée",
+      "failed": "En échec"
+    },
+    "columns": {
+      "vm": "VM",
+      "outcome": "Résultat",
+      "why": "Pourquoi",
+      "deployment": "Déploiement",
+      "by": "Par",
+      "vms": "VM"
+    },
+    "of": "Exécution du {{date}}",
+    "title": "Exécution",
+    "started": "Lancée",
+    "startedBy": "Par {{name}}",
+    "onSchedule": "Selon sa planification",
+    "finished": "Terminée",
+    "whyFailed": "Pourquoi elle a échoué",
+    "vms": "VM de l'exécution",
+    "nothingYet": "Rien pour l'instant",
+    "nothingYetBody": "Les VM s'affichent à mesure que l'exécution les prend en charge.",
+    "noVm": "Aucune VM ne correspondait",
+    "noVmBody": "Le filtre du plan ne correspondait alors à aucune VM de l'inventaire.",
+    "open": "Ouvrir l'exécution lancée",
+    "schedule": "Sa planification"
+  },
+  "runs": {
+    "title": "Exécutions",
+    "lead": "Les 20 dernières, la plus récente en premier.",
+    "neverScheduled": "Il s'exécute selon sa planification, ou tout de suite avec Lancer maintenant.",
+    "neverByHand": "Il s'exécute quand vous sélectionnez Lancer maintenant."
+  }
+}

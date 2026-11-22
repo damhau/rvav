@@ -1,1 +1,171 @@
-{}
+{
+  "target": {
+    "project": "Project",
+    "where": "Where they go",
+    "into": {
+      "each": "Each into a deployment of its own",
+      "one": "All into one new deployment",
+      "existing": "Into an existing deployment"
+    },
+    "deployment": "Deployment",
+    "deploymentHint": "A ready deployment of a VM item: its owner, lease and inputs stay",
+    "environment": "Environment",
+    "owner": "Owner",
+    "ownerHint": "A member of the project",
+    "item": "Catalog item",
+    "itemHint": "Their OS family and day-2 actions",
+    "lease": "Lease (days)",
+    "leaseHint": "Empty: the lease policy's default",
+    "deploymentName": "Deployment name",
+    "component": "Component",
+    "componentHint": "The blueprint component they are VMs of, such as web: needed when it has several",
+    "inputs": "Inputs",
+    "inputsLead": "The request form's values the deployments record, as if they had been asked for: a later update starts from them. Numbers, true, false and JSON lists are read as such.",
+    "input": "Input",
+    "value": "Value",
+    "removeInput": "Remove input {{name}}",
+    "addInput": "Add input",
+    "nameInput": "Give the input a name."
+  },
+  "filter": {
+    "q": "name or address {{q}}",
+    "folder": "in {{folder}}",
+    "tag": "tagged {{tag}}",
+    "cluster": "on {{cluster}}",
+    "vcenter": "in {{vcenter}}",
+    "power": {
+      "on": "powered on",
+      "off": "powered off",
+      "suspended": "suspended"
+    },
+    "every": "Every VM"
+  },
+  "plans": {
+    "target": {
+      "into": "Into {{name}}",
+      "intoAs": "Into {{name}}, as {{component}} VMs",
+      "one": "Into {{name}}, one deployment in {{project}} {{environment}}",
+      "oneAs": "Into {{name}}, one deployment in {{project}} {{environment}}, as {{component}} VMs",
+      "each": "Each into a deployment of its own in {{project}} {{environment}}",
+      "eachAs": "Each into a deployment of its own in {{project}} {{environment}}, as {{component}} VMs",
+      "deleted": "a deployment since deleted"
+    },
+    "byHand": "When run by hand",
+    "every_one": "Every hour",
+    "every_other": "Every {{count}} hours",
+    "everyNext": "{{every}}, next run {{when}}",
+    "runs": "{{name}} runs",
+    "notRun": "Not run",
+    "saved": "{{name}} saved",
+    "notSaved": "Not saved",
+    "deleted": "{{name}} deleted",
+    "notDeleted": "Not deleted",
+    "new": "New plan",
+    "columns": {
+      "plan": "Plan",
+      "vms": "VMs it adopts",
+      "last": "Last run",
+      "runs": "Runs"
+    },
+    "toAdopt_one": "{{count}} VM to adopt now",
+    "toAdopt_other": "{{count}} VMs to adopt now",
+    "neverRun": "Never run",
+    "title": "Plans",
+    "label": "Onboarding plans",
+    "none": "No plan yet",
+    "noneBody": "A plan adopts the VMs its filter matches, now and as they appear in vCenter: when you run it, or every few hours.",
+    "actionsFor": "Actions for {{name}}",
+    "runNow": "Run now",
+    "goesOn": "a run goes on",
+    "change": "Change",
+    "delete": "Delete"
+  },
+  "sheet": {
+    "noCriterion": "Give a criterion at least: a plan never adopts every VM rvav doesn't manage.",
+    "matching_one": "{{count}} VM rvav doesn't manage matches now.",
+    "matching_other": "{{count}} VMs rvav doesn't manage match now.",
+    "change": "Change {{name}}",
+    "lead": "Which VMs it adopts, where they go, and when it runs. Each run adopts the VMs it matches that no deployment has.",
+    "saving": "Saving…",
+    "save": "Save plan",
+    "name": "Name",
+    "description": "Description",
+    "which": "Which VMs",
+    "q": "Name or address",
+    "qHint": "Part of the name or host name, or the address's start",
+    "folder": "Folder",
+    "folderHint": "And the folders under it",
+    "tag": "Tag",
+    "tagHint": "A vSphere tag, as category/tag",
+    "cluster": "Cluster",
+    "any": "Any",
+    "power": "Power",
+    "on": "On",
+    "off": "Off",
+    "suspended": "Suspended",
+    "every": "Run every (hours)",
+    "everyHint": "From 1 to 168, a week. Empty: only when you run it."
+  },
+  "delete": {
+    "title": "Delete {{name}}?",
+    "body": "Its runs and what they recorded go with it.",
+    "consequences": "The deployments it adopted VMs into stay, with their VMs.",
+    "confirm": "Delete plan"
+  },
+  "plan": {
+    "title": "Plan",
+    "moreActions": "More actions for {{name}}",
+    "change": "Change plan",
+    "running": "Running…",
+    "settings": "Settings",
+    "now": "Now",
+    "matching_one": "{{count}} VM it matches no deployment has",
+    "matching_other": "{{count}} VMs it matches no deployment has",
+    "open": "Open {{name}}",
+    "changed": "Changed",
+    "changedBy": "<time/> by {{name}}"
+  },
+  "run": {
+    "status": {
+      "label": "Status",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "partial": "Some failed",
+      "failed": "Failed"
+    },
+    "counts": "{{adopted}} adopted, {{skipped}} skipped, {{failed}} failed",
+    "outcome": {
+      "adopted": "Adopted",
+      "skipped": "Skipped",
+      "failed": "Failed"
+    },
+    "columns": {
+      "vm": "VM",
+      "outcome": "Outcome",
+      "why": "Why",
+      "deployment": "Deployment",
+      "by": "By",
+      "vms": "VMs"
+    },
+    "of": "Run of {{date}}",
+    "title": "Run",
+    "started": "Started",
+    "startedBy": "By {{name}}",
+    "onSchedule": "On its schedule",
+    "finished": "Finished",
+    "whyFailed": "Why it failed",
+    "vms": "VMs of the run",
+    "nothingYet": "Nothing yet",
+    "nothingYetBody": "The VMs show as the run takes them.",
+    "noVm": "No VM matched",
+    "noVmBody": "The plan's filter matched no VM in the inventory then.",
+    "open": "Open the run from",
+    "schedule": "Its schedule"
+  },
+  "runs": {
+    "title": "Runs",
+    "lead": "The last 20, latest first.",
+    "neverScheduled": "It runs on its schedule, or now with Run now.",
+    "neverByHand": "It runs when you select Run now."
+  }
+}
