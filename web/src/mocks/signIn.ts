@@ -3,6 +3,7 @@
 // failure in a row, attempts wait (429 with Retry-After).
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
+import { unknownField } from "./strict";
 
 type S = components["schemas"];
 
@@ -87,6 +88,21 @@ export function signInHandlers(base: string, wait: () => Promise<void>) {
       return new HttpResponse(null, { status: 204 });
     }),
     http.post(`${base}/auth/sign-out`, () => new HttpResponse(null, { status: 204 })),
-    http.post(`${base}/auth/sign-ins`, () => new HttpResponse(null, { status: 204 })),
+    http.post(`${base}/auth/sign-ins`, async ({ request }) => {
+      // As the server: JSON only, which a form on another site can't post without a preflight.
+      if (request.headers.get("Content-Type")?.split(";")[0]?.trim() !== "application/json")
+        return problem(415, "unsupported-type", "Send the report as JSON", "The body is sent as application/json.");
+      const body: unknown = await request.json();
+      const strict = unknownField(body, ["client", "method", "failure"]) ?? unknownField((body as S["SignInReport"])?.failure, ["stage", "error", "description"]); // prettier-ignore
+      if (strict) return strict;
+      const r = body as S["SignInReport"];
+      const errors: S["FieldError"][] = [];
+      if (!["web", "rvavctl"].includes(r.client)) errors.push({ field: "/client", code: "enum", message: "web or rvavctl." }); // prettier-ignore
+      if (!["oidc", "device", "dev", "token"].includes(r.method)) errors.push({ field: "/method", code: "enum", message: "oidc, device, dev or token." }); // prettier-ignore
+      if (r.failure && !["state", "provider", "token"].includes(r.failure.stage)) errors.push({ field: "/failure/stage", code: "enum", message: "state, provider or token." }); // prettier-ignore
+      if (errors.length)
+        return problem(422, "validation", "Some inputs need attention", errors[0]!.message, { errors });
+      return new HttpResponse(null, { status: 204 });
+    }),
   ];
 }

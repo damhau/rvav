@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { screen, within } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +15,14 @@ afterEach(() => {
 });
 
 describe("System page", () => {
+  it("lists the install settings the server does, in its order", async () => {
+    // Vitest runs in web/, where its configuration is.
+    const go = readFileSync(resolve(process.cwd(), "../internal/config/install.go"), "utf8");
+    const names = [...go.matchAll(/^\t\{"(RVAV_[A-Z0-9_]+)"/gm)].map((m) => m[1]);
+    const system = await call(api.GET("/admin/system"));
+    expect(system.install.map((s) => s.name)).toEqual(names);
+  });
+
   it("shows the version, the processes, the settings saved and the install settings, secrets hidden", async () => {
     renderApp("/admin/system");
     expect(await screen.findByRole("heading", { name: "System", level: 1 })).toBeInTheDocument();

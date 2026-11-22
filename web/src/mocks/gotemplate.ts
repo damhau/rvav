@@ -281,6 +281,7 @@ export function checkFields(nodes: Node[], vars: string[], lists: string[]) {
     for (const d of p.decl ?? []) scope.at(-1)![d] = out;
     return out;
   };
+  let ranges = 0;
   const walk = (dot: Seen, list: Node[]) => {
     scope.push({});
     for (const n of list) {
@@ -299,11 +300,15 @@ export function checkFields(nodes: Node[], vars: string[], lists: string[]) {
         const over = pipe(dot, { ...n.pipe, decl: undefined });
         if (over === "any" || !("path" in over) || !lists.includes(over.path))
           fail(n.line, "range goes over a list variable of this kind, such as .Approval.Reasons of approvals");
+        // A list in a list writes its length squared.
+        if (ranges > 0) fail(n.line, "a range can't be inside another");
         const item: Seen = { item: (over as { path: string }).path };
         const decl = n.pipe.decl ?? [];
         if (decl.length) scope.at(-1)![decl.at(-1)!] = item;
         if (decl.length === 2) scope.at(-1)![decl[0]!] = "any";
+        ranges++;
         walk(item, n.body);
+        ranges--;
         scope.pop();
         walk(dot, n.otherwise);
       }
@@ -334,6 +339,33 @@ const escapeHtml = (s: string) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&#34;")
     .replaceAll("'", "&#39;");
+
+const MaxWidth = 100;
+
+/** Refuses a width or precision past MaxWidth, or one taken from the data, as the server's printf. */
+function checkPrintf(format: string, line: number) {
+  for (let i = 0; i < format.length; i++) {
+    if (format[i] !== "%") continue;
+    for (i++; i < format.length && "+-# 0123456789.*[]".includes(format[i]!); i++) {
+      const c = format[i]!;
+      if (c === "*")
+        fail(
+          line,
+          "error calling printf: printf takes its width and precision from the template, not from * and the data",
+        );
+      else if (c === "[") {
+        const j = format.indexOf("]", i);
+        if (j > i) i = j;
+      } else if (c >= "1" && c <= "9") {
+        let j = i;
+        while (j < format.length && format[j]! >= "0" && format[j]! <= "9") j++;
+        if (Number(format.slice(i, j)) > MaxWidth)
+          fail(line, `error calling printf: printf pads to ${MaxWidth} characters at most`);
+        i = j - 1;
+      }
+    }
+  }
+}
 
 function printf(format: string, args: unknown[]): string {
   let i = 0;
@@ -372,6 +404,7 @@ function call(name: string, args: unknown[], line: number): unknown {
     case "println":
       return args.map(text).join(" ") + "\n";
     case "printf":
+      checkPrintf(String(a), line);
       return printf(String(a), args.slice(1));
     case "html":
       return escapeHtml(args.map(text).join(""));

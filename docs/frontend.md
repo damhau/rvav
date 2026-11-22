@@ -634,7 +634,9 @@ it.
   error, what waits, the next try), refreshed every 15 s
   ([ADR-0058](adr/0058-audit-forwarding-and-sign-ins.md)). A `Sheet`
   adds or changes one (TLS fields only for TLS; client key and signing
-  secret from the stored secrets); the row menu sends a test event,
+  secret from the stored secrets; a webhook's optional authentication
+  header, its value kept when left empty and never shown); a webhook's
+  URL shows its query values as `REDACTED`; the row menu sends a test event,
   shown in a dialog, turns one off and removes one. Auditors see it
   without the row menu.
 - A **project's page**, in tabs: **Members** (each person's roles, several

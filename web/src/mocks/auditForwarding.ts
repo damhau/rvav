@@ -6,6 +6,7 @@ import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
 import { audited } from "./governance";
 import type { Db } from "./seed";
+import { unknownField } from "./strict";
 
 type S = components["schemas"];
 type Destination = S["AuditDestination"];
@@ -38,7 +39,11 @@ function state(db: Db): Destination[] {
       enabled: true,
       kind: "webhook",
       categories: ["sign_in", "token"],
-      webhook: { url: "https://hooks.corp.example/soc/rvav", secret: "webhook-signing" },
+      webhook: {
+        url: "https://hooks.corp.example/soc/rvav?index=rvav-audit",
+        secret: "webhook-signing",
+        auth_header: "Authorization",
+      },
       state: {
         backlog: 37,
         set_aside: 0,
@@ -70,6 +75,70 @@ function problem(status: number, title: string, errors?: S["FieldError"][], deta
   );
 }
 
+const hostName = /^[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*$/;
+const isIPv6 = (host: string) => {
+  if (!host.includes(":") || host.includes("%")) return false;
+  try {
+    return new URL(`http://[${host}]/`).hostname !== "";
+  } catch {
+    return false;
+  }
+};
+const transports = ["tls", "tcp", "udp"];
+const headerName = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}$/;
+// The headers rvav sets on a webhook's calls itself, or that HTTP owns.
+const ownHeaders = ["content-type", "content-length", "host", "user-agent", "transfer-encoding", "connection"];
+const REDACTED = "REDACTED";
+
+/** A URL as auditors see it: its password and each query value REDACTED, without a fragment (auditlog.RedactURL). */
+export function redactURL(raw: string): string {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return raw;
+  }
+  if (!u.password && !u.search && !u.hash) return raw;
+  if (u.password) u.password = REDACTED;
+  u.hash = "";
+  const q = u.search.slice(1);
+  if (q)
+    u.search = q
+      .split("&")
+      .map((pair) => {
+        const i = pair.indexOf("=");
+        return i >= 0 && i < pair.length - 1 ? pair.slice(0, i + 1) + REDACTED : pair;
+      })
+      .join("&");
+  return u.toString();
+}
+
+/** The value each webhook's authentication header is sent with, sealed on the server and never shown. */
+function sealed(db: Db): Map<string, string> {
+  const d = db as Db & { auditAuthValues?: Map<string, string> };
+  d.auditAuthValues ??= new Map([["adt_soc", "Splunk 6f1c-mock-token"]]);
+  return d.auditAuthValues;
+}
+
+/** A destination as the API shows it. */
+function present(d: Destination): Destination {
+  if (!d.webhook) return d;
+  const { auth_value: _, ...webhook } = d.webhook;
+  return { ...d, webhook: { ...webhook, url: redactURL(webhook.url) } };
+}
+
+const writeFields = ["name", "enabled", "categories", "syslog", "webhook"];
+const syslogFields = ["host", "port", "transport", "facility", "app_name", "ca_certificate", "client_certificate", "client_key_secret"]; // prettier-ignore
+const webhookFields = ["url", "secret", "auth_header", "auth_value"];
+
+/** A field the server's strict decoding refuses, at any depth. */
+function strictly(body: unknown) {
+  const w = body as S["AuditDestinationWrite"] | null;
+  return (
+    unknownField(body, writeFields) ?? unknownField(w?.syslog, syslogFields) ?? unknownField(w?.webhook, webhookFields)
+  );
+}
+
 const storedSecrets = (db: Db) =>
   ((db as Db & { catalogAdmin?: { secrets: S["Secret"][] } }).catalogAdmin?.secrets ?? []).filter((s) => !s.project_id);
 
@@ -77,11 +146,16 @@ const storedSecrets = (db: Db) =>
 function check(
   db: Db,
   w: S["AuditDestinationWrite"],
-): { errors: S["FieldError"][]; saved: Omit<Destination, "id" | "state" | "created_at" | "updated_at"> } {
+  before?: Destination,
+): {
+  errors: S["FieldError"][];
+  saved: Omit<Destination, "id" | "state" | "created_at" | "updated_at">;
+  value?: string;
+} {
   const errors: S["FieldError"][] = [];
   const err = (field: string, code: string, message: string) => errors.push({ field, code, message });
   const name = (w.name ?? "").trim();
-  if (!name || name.length > 80) err("/name", "required", "Give the destination a name of at most 80 characters.");
+  if (!name || [...name].length > 80) err("/name", "required", "Give the destination a name of at most 80 characters.");
   const cats: S["AuditCategory"][] = [];
   (w.categories ?? []).forEach((c, i) => {
     if (!categories.includes(c)) err(`/categories/${i}`, "enum", `Not a category: ${c}.`);
@@ -97,10 +171,14 @@ function check(
   }
   if (w.syslog) {
     const s = w.syslog;
-    const host = s.host.trim();
-    const transport = s.transport ?? "tls";
-    if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(host) || host.length > 253)
+    const host = (s.host ?? "").trim();
+    if (!host || host.length > 253 || !(hostName.test(host) || isIPv6(host)))
       err("/syslog/host", "invalid", "A host name or an IP address, such as siem.corp.example.");
+    let transport = s.transport ?? "tls";
+    if (!transports.includes(transport)) {
+      err("/syslog/transport", "enum", "tls, tcp or udp.");
+      transport = "tls";
+    }
     if (s.port !== undefined && (!Number.isInteger(s.port) || s.port < 1 || s.port > 65535))
       err("/syslog/port", "range", "A port from 1 to 65535.");
     if (s.facility && !facilities.has(s.facility))
@@ -140,21 +218,55 @@ function check(
       },
     };
   }
-  const url = w.webhook!.url.trim();
-  const secret = w.webhook!.secret.trim();
-  let host = "";
+  const stored = before?.webhook;
+  let url = (w.webhook!.url ?? "").trim();
+  if (stored && url === redactURL(stored.url)) url = stored.url;
+  const secret = (w.webhook!.secret ?? "").trim();
+  let u: URL | undefined;
   try {
-    const u = new URL(url);
-    host = u.protocol === "https:" || u.protocol === "http:" ? u.hostname : "";
+    u = new URL(url);
+    if ((u.protocol !== "https:" && u.protocol !== "http:") || !u.host) u = undefined;
   } catch {
-    host = "";
+    u = undefined;
   }
-  if (!host) err("/webhook/url", "invalid", "A URL such as https://siem.corp.example/rvav.");
-  else if (!webhookHosts.includes(host))
-    err("/webhook/url", "host", `${host} is not one of the hosts webhooks may call (Administration › Integrations › Allowed hosts).`); // prettier-ignore
+  if (!u) err("/webhook/url", "invalid", "A URL such as https://siem.corp.example/rvav.");
+  else if (u.username || u.password)
+    err("/webhook/url", "credentials", "Leave the user name and password out of the URL: auditors would see them. Send the credential in an authentication header."); // prettier-ignore
+  else if (u.search.includes("=" + REDACTED))
+    err("/webhook/url", "redacted", "Type the query's values again: they are kept only when the URL is sent back as it is shown."); // prettier-ignore
+  else if (!webhookHosts.includes(u.hostname))
+    err("/webhook/url", "host", `${u.host} is not one of the hosts webhooks may call (Administration › Integrations › Allowed hosts).`); // prettier-ignore
+  const header = (w.webhook!.auth_header ?? "").trim();
+  const given = w.webhook!.auth_value ?? "";
+  let value: string | undefined;
+  if (!header) {
+    if (given) err("/webhook/auth_header", "required", "Name the header the value goes in, such as Authorization.");
+  } else if (!headerName.test(header)) {
+    err("/webhook/auth_header", "invalid", "A header's name: letters, digits and - at most 64.");
+  } else if (ownHeaders.includes(header.toLowerCase()) || header.toLowerCase().startsWith("x-rvav-")) {
+    err("/webhook/auth_header", "reserved", `rvav sets ${header} itself: name another header.`);
+  } else if (!given) {
+    const was = before && sealed(db).get(before.id);
+    const sameOrigin = (() => {
+      try {
+        return Boolean(stored && u && new URL(stored.url).origin === u.origin);
+      } catch {
+        return false;
+      }
+    })();
+    if (was && sameOrigin) value = was;
+    else
+      err("/webhook/auth_value", "required", "Give the header's value: a new URL's server doesn't get the one kept.");
+  } else if (given.length > 4096 || [...given].some((c) => (c < " " && c !== "\t") || c === "\u007f")) {
+    err("/webhook/auth_value", "invalid", "At most 4,096 characters, on one line.");
+  } else value = given;
   if (!secret) err("/webhook/secret", "required", "Its calls are signed: give the stored secret to sign them with.");
   else if (!known(secret)) err("/webhook/secret", "unknown", `There is no stored secret ${secret}.`);
-  return { errors, saved: { ...base, kind: "webhook", webhook: { url, secret } } };
+  return {
+    errors,
+    saved: { ...base, kind: "webhook", webhook: { url, secret, ...(header ? { auth_header: header } : {}) } },
+    value,
+  };
 }
 
 const hostOf = (d: Destination) => {
@@ -173,12 +285,13 @@ export function auditForwardingHandlers(db: Db, base: string, wait: () => Promis
     http.get(`${base}/admin/audit-destinations`, async () => {
       await wait();
       if (!read()) return problem(403, "Forbidden");
-      return HttpResponse.json({ items: [...state(db)].sort((a, b) => a.name.localeCompare(b.name)) });
+      return HttpResponse.json({ items: [...state(db)].sort((a, b) => a.name.localeCompare(b.name)).map(present) });
     }),
     http.get(`${base}/admin/audit-destinations/:id`, async ({ params }) => {
       await wait();
+      if (!read()) return problem(403, "Forbidden");
       const d = state(db).find((x) => x.id === params.id);
-      return d ? HttpResponse.json(d) : problem(404, "Not found");
+      return d ? HttpResponse.json(present(d)) : problem(404, "Not found");
     }),
     ...(["post", "put"] as const).map((method) =>
       http[method](`${base}/admin/audit-destinations${method === "put" ? "/:id" : ""}`, async ({ params, request }) => {
@@ -187,7 +300,10 @@ export function auditForwardingHandlers(db: Db, base: string, wait: () => Promis
         const list = state(db);
         const current = method === "put" ? list.find((x) => x.id === params.id) : undefined;
         if (method === "put" && !current) return problem(404, "Not found");
-        const { errors, saved } = check(db, (await request.json()) as S["AuditDestinationWrite"]);
+        const body: unknown = await request.json();
+        const strict = strictly(body);
+        if (strict) return strict;
+        const { errors, saved, value } = check(db, body as S["AuditDestinationWrite"], current);
         if (!errors.length && list.some((x) => x.name === saved.name && x.id !== current?.id))
           errors.push({ field: "/name", code: "taken", message: `Another destination is called ${saved.name}.` });
         if (errors.length) return problem(422, "Some inputs need attention", errors);
@@ -212,13 +328,17 @@ export function auditForwardingHandlers(db: Db, base: string, wait: () => Promis
         }
         if (current) list[list.indexOf(current)] = d;
         else list.push(d);
+        if (value) sealed(db).set(d.id, value);
+        else sealed(db).delete(d.id);
+        const shown = present(d);
         audited(db, `settings.audit_destination.${current ? "update" : "create"}`, "audit_destination", d.id, {
           name: d.name,
           kind: d.kind,
           enabled: d.enabled,
           categories: d.categories,
+          settings: shown.webhook ?? shown.syslog,
         });
-        return HttpResponse.json(d, { status: current ? 200 : 201 });
+        return HttpResponse.json(shown, { status: current ? 200 : 201 });
       }),
     ),
     http.delete(`${base}/admin/audit-destinations/:id`, async ({ params }) => {
@@ -228,6 +348,7 @@ export function auditForwardingHandlers(db: Db, base: string, wait: () => Promis
       const i = list.findIndex((x) => x.id === params.id);
       if (i < 0) return problem(404, "Not found");
       const [d] = list.splice(i, 1);
+      sealed(db).delete(d!.id);
       audited(db, "settings.audit_destination.delete", "audit_destination", d!.id, { name: d!.name });
       return new HttpResponse(null, { status: 204 });
     }),

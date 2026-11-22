@@ -76,5 +76,26 @@ describe("the mocks' notification templates", () => {
     expect(problemOf("{{nope .Request.Number}}")).toBe('line 1: function "nope" not defined');
     expect(problemOf('{{define "x"}}{{end}}')).toMatch(/can't define others/);
     expect(problemOf("{{$.Request.Number}} {{$n := .Request.Title}}{{$n}}")).toBe("");
+    expect(problemOf("{{range .Approval.Reasons}}{{range $.Approval.Reasons}}x{{end}}{{end}}")).toBe(
+      "line 1: a range can't be inside another",
+    );
+    expect(problemOf("{{range .Approval.Reasons}}x{{else}}{{range .Approval.Reasons}}y{{end}}{{end}}")).toBe("");
+  });
+
+  it("pad as far as the server's printf does", () => {
+    const written = (src: string) => {
+      try {
+        return execute(parse(src), approval.sample.fr);
+      } catch (e) {
+        if (e instanceof TemplateError) return e.message;
+        throw e;
+      }
+    };
+    expect(written('{{printf "%100s|" "x"}}')).toHaveLength(101);
+    expect(written('{{printf "%101s" "x"}}')).toBe(
+      "line 1: error calling printf: printf pads to 100 characters at most",
+    );
+    expect(written('{{printf "%.200s" "x"}}')).toMatch(/pads to 100 characters at most$/);
+    expect(written('{{printf "%*s" 3 "x"}}')).toMatch(/not from \* and the data$/);
   });
 });

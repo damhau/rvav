@@ -55,6 +55,7 @@ const facilities: Facility[] = ["kern", "user", "mail", "daemon", "auth", "syslo
 
 const hostExample = "siem.corp.example";
 const urlExample = "https://siem.corp.example/rvav";
+const headerExample = "Authorization";
 const pemExample = "-----BEGIN CERTIFICATE-----";
 
 /** No stored secret: Radix's Select can't take an empty value, and no secret's name has brackets. */
@@ -78,6 +79,8 @@ interface Draft {
   keySecret: string;
   url: string;
   secret: string;
+  authHeader: string;
+  authValue: string;
 }
 
 const draftOf = (d?: Destination): Draft => ({
@@ -95,11 +98,24 @@ const draftOf = (d?: Destination): Draft => ({
   keySecret: d?.syslog?.client_key_secret ?? none,
   url: d?.webhook?.url ?? "",
   secret: d?.webhook?.secret ?? "",
+  authHeader: d?.webhook?.auth_header ?? "",
+  authValue: "",
 });
 
 function bodyOf(d: Draft): S["AuditDestinationWrite"] {
   const head = { name: d.name, enabled: d.enabled, categories: d.categories };
-  if (d.kind === "webhook") return { ...head, webhook: { url: d.url, secret: d.secret } };
+  if (d.kind === "webhook") {
+    const header = d.authHeader.trim();
+    return {
+      ...head,
+      webhook: {
+        url: d.url,
+        secret: d.secret,
+        ...(header ? { auth_header: header } : {}),
+        ...(d.authValue ? { auth_value: d.authValue } : {}),
+      },
+    };
+  }
   const tls = d.transport === "tls";
   return {
     ...head,
@@ -142,6 +158,7 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
     },
   });
   const tls = d.transport === "tls";
+  const kept = Boolean(dest?.webhook?.auth_header) && d.authHeader.trim() !== "";
   return (
     <Sheet
       open
@@ -312,6 +329,35 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
               options={stored}
             />
           </Field>
+          <Field
+            label={t("auditForwarding.authHeader")}
+            htmlFor="adt-auth-header"
+            error={errors["/webhook/auth_header"]}
+            hint={t("auditForwarding.authHeaderHint")}
+          >
+            <Input
+              id="adt-auth-header"
+              className="font-mono text-secondary"
+              placeholder={headerExample}
+              value={d.authHeader}
+              onChange={(e) => set({ authHeader: e.target.value })}
+            />
+          </Field>
+          <Field
+            label={t("auditForwarding.authValue")}
+            htmlFor="adt-auth-value"
+            error={errors["/webhook/auth_value"]}
+            hint={t(kept ? "auditForwarding.authValueKept" : "auditForwarding.authValueHint")}
+          >
+            <Input
+              id="adt-auth-value"
+              type="password"
+              autoComplete="new-password"
+              placeholder={kept ? "••••••••" : undefined}
+              value={d.authValue}
+              onChange={(e) => set({ authValue: e.target.value })}
+            />
+          </Field>
         </>
       )}
       <fieldset className="flex flex-col gap-2" aria-describedby="adt-events-note">
@@ -381,7 +427,10 @@ const where = (t: TFunction<"admin">, d: Destination) =>
   ) : (
     <>
       <div className="font-mono text-secondary break-all">{d.webhook?.url}</div>
-      <div className="text-secondary text-muted">{t("auditForwarding.signedWith", { secret: d.webhook?.secret })}</div>
+      <div className="text-secondary text-muted">
+        {t("auditForwarding.signedWith", { secret: d.webhook?.secret })}
+        {d.webhook?.auth_header ? t("auditForwarding.sendsHeader", { header: d.webhook.auth_header }) : ""}
+      </div>
     </>
   );
 

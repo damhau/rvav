@@ -142,6 +142,49 @@ describe("Audit forwarding", () => {
     await waitFor(() => expect(within(region).queryByRole("row", { name: /SOC sign-ins/ })).toBeNull());
   });
 
+  it(
+    "sends a webhook's credential in a header whose value is kept, never in its URL",
+    { timeout: 20_000 },
+    async () => {
+      const user = userEvent.setup();
+      renderApp("/admin/audit-forwarding");
+      const region = await screen.findByRole("region", { name: "Destinations" });
+      const soc = await within(region).findByRole("row", { name: /SOC sign-ins/ });
+      expect(soc).toHaveTextContent("https://hooks.corp.example/soc/rvav?index=REDACTED");
+      expect(soc).toHaveTextContent("Signed with webhook-signing · sends Authorization");
+
+      await user.click(within(region).getByRole("button", { name: "Actions for SOC sign-ins" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+      const sheet = await screen.findByRole("dialog", { name: "Change SOC sign-ins" });
+      expect(within(sheet).getByRole("textbox", { name: "Authentication header" })).toHaveValue("Authorization");
+      const value = within(sheet).getByLabelText("Header's value");
+      expect(value).toHaveValue("");
+      expect(value).toHaveAccessibleDescription(/^Kept: type a new one to replace it/);
+
+      const url = within(sheet).getByRole("textbox", { name: "URL" });
+      await user.clear(url);
+      await user.type(url, "https://soc:pw@hooks.corp.example/soc/rvav");
+      await user.click(within(sheet).getByRole("button", { name: "Save destination" }));
+      expect(await within(sheet).findByText(/^Leave the user name and password out of the URL/)).toBeInTheDocument();
+      expect(url).toHaveFocus();
+
+      await user.clear(url);
+      await user.type(url, "https://cmdb.corp.example/soc");
+      await user.click(within(sheet).getByRole("button", { name: "Save destination" }));
+      expect(
+        await within(sheet).findByText("Give the header's value: a new URL's server doesn't get the one kept."),
+      ).toBeInTheDocument();
+      expect(value).toHaveFocus();
+
+      await user.type(value, "Splunk new-token");
+      await user.click(within(sheet).getByRole("button", { name: "Save destination" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(await within(region).findByRole("row", { name: /SOC sign-ins/ })).toHaveTextContent(
+        "https://cmdb.corp.example/soc",
+      );
+    },
+  );
+
   it("shows an auditor the destinations without letting them change any", async () => {
     localStorage.setItem("rvav.mock.as", "auditor");
     resetDb();

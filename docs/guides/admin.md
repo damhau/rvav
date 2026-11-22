@@ -2611,7 +2611,8 @@ their delivery without changing them.
    - **Webhook:** its **URL** and the **Signing secret**. If the SIEM
      takes a credential in a header, such as Splunk's
      `Authorization: Splunk <token>` or Datadog's `DD-API-KEY`, give the
-     header's name and its value. rvav keeps the value sealed and never
+     header's name in **Authentication header** and its value in
+     **Header's value**. rvav keeps the value sealed and never
      shows it again; to keep it when you change the destination, leave
      the value empty. A value isn't kept for a URL with another host.
 5. Under **Events**, tick the categories to send, such as **Sign-ins and

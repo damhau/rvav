@@ -30,7 +30,10 @@ export const templateFixture = fixture as unknown as { functions: S["TemplateVar
 
 const channels: Channel[] = ["email", "teams", "slack"];
 const locales: Locale[] = ["en", "fr"];
+// In bytes of UTF-8, as the server counts: what a part is, and what it writes.
 const limits = { subject: 1 << 10, text: 20 << 10, html: 200 << 10 };
+const writes = { subject: 64 << 10, text: 64 << 10, html: 512 << 10 };
+const bytes = (s: string) => new TextEncoder().encode(s).length;
 
 interface Edit extends Parts {
   updated_at: string;
@@ -46,9 +49,16 @@ function edits(db: Db): Map<string, Edit> {
 const keyOf = (kind: string, channel: string, locale: string) => `${kind}/${channel}/${locale}`;
 const kindOf = (kind: unknown) => templateFixture.kinds.find((k) => k.kind === kind);
 
-function problem(status: number, title: string, errors?: S["FieldError"][]) {
+function problem(status: number, title: string, errors?: S["FieldError"][], detail?: string) {
   return HttpResponse.json(
-    { type: "https://rvav.dev/problems/x", title, status, request_id: "req_mock", ...(errors ? { errors } : {}) },
+    {
+      type: "https://rvav.dev/problems/x",
+      title,
+      status,
+      request_id: "req_mock",
+      ...(errors ? { errors } : {}),
+      ...(detail ? { detail } : {}),
+    },
     { status, headers: { "Content-Type": "application/problem+json" } },
   );
 }
@@ -73,7 +83,7 @@ function compile(k: FixtureKind, channel: Channel, p: Parts): [Compiled, Problem
   const problems: Problem[] = [];
   const one = (part: Part, src: string | undefined) => {
     if (!src?.trim()) return problems.push({ part, message: "it is empty" });
-    if (src.length > limits[part])
+    if (bytes(src) > limits[part])
       return problems.push({ part, message: `it is longer than ${limits[part] >> 10} KB` });
     try {
       const nodes = parse(src);
@@ -117,7 +127,9 @@ function write(c: Compiled, channel: Channel, values: Values): [Written, Problem
   const problems: Problem[] = [];
   const run = (part: Part, v: Values, esc?: (s: string) => string) => {
     try {
-      return execute(c[part]!, v, esc);
+      const out = execute(c[part]!, v, esc);
+      if (bytes(out) > writes[part]) throw new TemplateError(`it writes more than ${writes[part] >> 10} KB`);
+      return out;
     } catch (e) {
       if (!(e instanceof TemplateError)) throw e;
       problems.push({ part, message: e.message.replace(/^line \d+: /, "") });
@@ -297,6 +309,16 @@ function served(db: Db, k: FixtureKind, channel: Channel, locale: Locale): S["No
 const isChannel = (c: unknown): c is Channel => channels.includes(c as Channel);
 const isLocale = (l: unknown): l is Locale => locales.includes(l as Locale);
 
+/** As the server's templateTarget: a channel or locale that isn't one is a 400 in the query, a 422 in the body. */
+function badTarget(channel: unknown, locale: unknown, inQuery: boolean) {
+  const errors: S["FieldError"][] = [];
+  if (!isChannel(channel)) errors.push({ field: "/channel", code: "invalid", message: "The channel is email, teams or slack." }); // prettier-ignore
+  if (!isLocale(locale)) errors.push({ field: "/locale", code: "invalid", message: "The locale is en or fr." });
+  if (!errors.length) return undefined;
+  if (inQuery) return problem(400, "The request is not valid", undefined, errors.map((e) => e.message).join(" "));
+  return problem(422, "Some inputs need attention", errors);
+}
+
 export function notificationTemplateHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const manage = () => can(db.me, "system.manage");
   const query = (request: Request) => {
@@ -332,16 +354,20 @@ export function notificationTemplateHandlers(db: Db, base: string, wait: () => P
       await wait();
       if (!manage()) return problem(403, "Forbidden");
       const k = kindOf(params.kind);
+      if (!k) return problem(404, "Not found");
       const { channel, locale } = query(request);
-      if (!k || !isChannel(channel) || !isLocale(locale)) return problem(404, "Not found");
+      const bad = badTarget(channel, locale, true);
+      if (bad || !isChannel(channel) || !isLocale(locale)) return bad;
       return HttpResponse.json(served(db, k, channel, locale));
     }),
     http.put(`${base}/admin/notification-templates/:kind`, async ({ request, params }) => {
       await wait();
       if (!manage()) return problem(403, "Forbidden");
       const k = kindOf(params.kind);
+      if (!k) return problem(404, "Not found");
       const w = (await request.json()) as S["NotificationTemplateWrite"];
-      if (!k || !isChannel(w.channel) || !isLocale(w.locale)) return problem(404, "Not found");
+      const bad = badTarget(w.channel, w.locale, false);
+      if (bad) return bad;
       const [, problems] = check(k, w.channel, w.locale, w);
       if (problems.length) return refusal(problems);
       const key = keyOf(k.kind, w.channel, w.locale);
@@ -363,8 +389,10 @@ export function notificationTemplateHandlers(db: Db, base: string, wait: () => P
       await wait();
       if (!manage()) return problem(403, "Forbidden");
       const k = kindOf(params.kind);
+      if (!k) return problem(404, "Not found");
       const { channel, locale } = query(request);
-      if (!k || !isChannel(channel) || !isLocale(locale)) return problem(404, "Not found");
+      const bad = badTarget(channel, locale, true);
+      if (bad || !isChannel(channel) || !isLocale(locale)) return bad;
       const key = keyOf(k.kind, channel, locale);
       if (edits(db).delete(key)) audited(db, "settings.notification_template.reset", "notification_template", key);
       return HttpResponse.json(served(db, k, channel, locale));
@@ -373,12 +401,15 @@ export function notificationTemplateHandlers(db: Db, base: string, wait: () => P
       await wait();
       if (!manage()) return problem(403, "Forbidden");
       const k = kindOf(params.kind);
+      if (!k) return problem(404, "Not found");
       const w = (await request.json()) as S["NotificationTemplateWrite"];
-      if (!k || !isChannel(w.channel) || !isLocale(w.locale)) return problem(404, "Not found");
+      const bad = badTarget(w.channel, w.locale, false);
+      if (bad) return bad;
       const [c, problems] = check(k, w.channel, w.locale, w);
-      if (problems.length) return refusal(problems.slice(0, 1));
+      if (problems.length) return refusal(problems);
+      // Written with the portal's branding, the first problem only, as the server says it.
       const [written, failed] = write(c, w.channel, sample(db, k, w.locale));
-      if (failed.length) return refusal(failed);
+      if (failed.length) return refusal(failed.slice(0, 1));
       return HttpResponse.json(preview(db, k, w.channel, w.locale, written));
     }),
   ];
