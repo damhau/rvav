@@ -111,8 +111,9 @@ wrote is kept as markup:
 
 - **Portal name:** 40 characters at most, no control characters; empty
   is rvav. It shows in the menu, the sign-in page, the browser's title,
-  emails (sender line, logo's alternative text, footer) and the chat
-  buttons (**Open in Corp Cloud**).
+  emails (the logo's alternative text, the footer, and the sender's name
+  when `RVAV_SMTP_FROM` is an address alone) and the chat buttons
+  (**Open in Corp Cloud**).
 - **Accent colour** (`#rrggbb`): the colour of links, buttons and the
   selection, in both themes. rvav computes each theme's palette (the
   accent, the text on it, a tinted background) and checks WCAG 2.2's
@@ -128,11 +129,21 @@ wrote is kept as markup:
   text, paint, filters, embedded raster pictures) and their attributes:
   no scripts, event handlers, links, animations, `foreignObject`,
   DOCTYPE or entities, no style that imports or fetches, and no reference
-  outside the file. Drawing tools' metadata (Inkscape, Illustrator) is
-  accepted. It is refused rather than cleaned, so what is saved is what
-  the administrator checked. A logo is served with its own type,
-  `nosniff` and a sandboxing `Content-Security-Policy`. The dark theme
-  shows the light logo when there is no dark one.
+  outside the file. A style is read as the browser reads it: its text
+  joined across the comments that split it, no element inside it, and
+  no CSS escape (`\`), there or in an attribute, since one could spell
+  `url(` unseen; `image-set()`, `image()`, `cross-fade()`, `src()` and
+  `element()` fetch without `url(`. Drawing tools' metadata (Inkscape,
+  Illustrator) is accepted. It is refused rather than cleaned, so what
+  is saved is what the administrator checked. A logo is served with its
+  own type, `nosniff` and a sandboxing `Content-Security-Policy`. The
+  dark theme shows the light logo when there is no dark one.
+
+The check is a filter, which a new CSS feature could pass. What holds
+then is how a logo is shown: the web app shows it only through `<img>`,
+where browsers run no script and fetch nothing an SVG refers to; emails
+carry PNG and JPEG logos only; and the logo's own URL, opened directly,
+answers with `default-src 'none'` and `sandbox`.
 
 Emails carry the light logo inline (`cid:`) when it is a PNG or JPEG;
 mail clients that block SVG get the portal's name instead. The email

@@ -212,30 +212,31 @@ func (s *Server) dialConsole(r *http.Request, mks vsphere.WebMKS) (net.Conn, *bu
 	return conn, br, resp, nil
 }
 
-// checkThumbprint accepts the host's certificate when its SHA-1 or SHA-256
-// fingerprint is one vCenter gave with the ticket; its SHA-256 one only
-// in FIPS 140-only mode, which refuses SHA-1 (ADR-0060).
+// checkThumbprint accepts the host's certificate when its fingerprint is
+// one vCenter gave with the ticket: its SHA-256 one when vCenter gave one,
+// its SHA-1 one otherwise, but not in FIPS 140-only mode, which refuses
+// SHA-1 (ADR-0060).
 func checkThumbprint(raw [][]byte, thumbprints []string) error {
 	if len(raw) == 0 {
 		return errors.New("the ESXi host sent no certificate")
 	}
 	norm := func(s string) string { return strings.ToUpper(strings.ReplaceAll(s, ":", "")) }
-	s256 := sha256.Sum256(raw[0])
-	have := []string{norm(hex.EncodeToString(s256[:]))}
-	if fips.Current() != fips.Only {
-		s1 := sha1.Sum(raw[0])
-		have = append(have, norm(hex.EncodeToString(s1[:])))
-	}
-	for _, t := range thumbprints {
-		if slices.Contains(have, norm(t)) {
-			return nil
-		}
-	}
-	if fips.Current() == fips.Only && !slices.ContainsFunc(thumbprints, func(t string) bool { return len(norm(t)) == 2*sha256.Size }) {
+	var have string
+	switch {
+	case slices.ContainsFunc(thumbprints, func(t string) bool { return len(norm(t)) == 2*sha256.Size }):
+		sum := sha256.Sum256(raw[0])
+		have = hex.EncodeToString(sum[:])
+	case fips.Current() == fips.Only:
 		return &fips.NotAllowedError{What: "Checking the ESXi host's certificate", Algorithm: "SHA-1",
 			Instead: "vCenter gave its SHA-1 thumbprint only"}
+	default:
+		sum := sha1.Sum(raw[0])
+		have = hex.EncodeToString(sum[:])
 	}
-	return errors.New("the ESXi host's certificate is not the one vCenter vouched for")
+	if !slices.ContainsFunc(thumbprints, func(t string) bool { return norm(t) == norm(have) }) {
+		return errors.New("the ESXi host's certificate is not the one vCenter vouched for")
+	}
+	return nil
 }
 
 // sameOrigin refuses WebSockets opened by pages of other sites.

@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/mail"
 	"slices"
 	"strings"
 	"testing"
@@ -328,7 +329,7 @@ func TestNotificationTemplates(t *testing.T) {
 		n := &notify.Notifier{Store: h.store, Log: h.svc.Log, PublicURL: "https://rvav.corp.example",
 			Senders: map[string]notify.Sender{"slack": &notify.Slack{Config: cfg, Store: h.store},
 				"email": &notify.Email{Config: config.SMTPConfig{Host: "127.0.0.1", Port: srv.addr.Port, TLS: "none",
-					From: "rvav <rvav@corp.example>"}}}}
+					From: "rvav@corp.example"}}}}
 		if err := h.store.SetNotificationPreferences(ctx, seed.UserID("mkeller"), store.NotificationPreferences{Locale: "en",
 			Rules: map[string][]string{"request_failed": {"email", "slack"}}}); err != nil {
 			t.Fatal(err)
@@ -361,6 +362,11 @@ func TestNotificationTemplates(t *testing.T) {
 		}
 		if l, ok := m.Inline["logo@rvav"]; !ok || string(l.Content) != logo || l.ContentType != "image/png" {
 			t.Fatalf("the email's logo = %+v", m.Inline)
+		}
+		// RVAV_SMTP_FROM is an address alone: the portal's name is the sender's.
+		if from, err := mail.ParseAddress(m.Header.Get("From")); err != nil || from.Name != "Corp Cloud" ||
+			from.Address != "rvav@corp.example" {
+			t.Fatalf("the email's sender = %q, %v", m.Header.Get("From"), err)
 		}
 		fr := srv.to("thomas.nguyen@corp.example")
 		if len(fr) != 1 || strings.HasPrefix(fr[0].Subject, "Broken") || !strings.Contains(fr[0].Text, "Bonjour Thomas Nguyen") ||

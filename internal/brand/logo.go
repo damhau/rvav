@@ -114,9 +114,11 @@ func init() {
 var (
 	rasterData = regexp.MustCompile(`^data:image/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=\s]*$`)
 	// CSS that fetches or runs something; url(#id) names a paint in the
-	// drawing itself.
-	cssFetch = regexp.MustCompile(`(?i)@import|expression\s*\(|behavior\s*:|-moz-binding|javascript:|url\s*\(\s*['"]?\s*[^#'"\s)]`)
-	scheme   = regexp.MustCompile(`(?i)(java|vb)script:|data:text/html`)
+	// drawing itself. image-set() and src() fetch from a string, without
+	// url().
+	cssFetch = regexp.MustCompile(`(?i)@import|expression\s*\(|behavior\s*:|-moz-binding|javascript:|url\s*\(\s*['"]?\s*[^#'"\s)]|` +
+		`image-set\s*\(|\bimage\s*\(|cross-fade\s*\(|\bsrc\s*\(|\belement\s*\(`)
+	scheme = regexp.MustCompile(`(?i)(java|vb)script:|data:text/html`)
 )
 
 // CheckSVG refuses an SVG drawing that could run or fetch anything when
@@ -129,6 +131,9 @@ func CheckSVG(content []byte) error {
 	d := xml.NewDecoder(bytes.NewReader(content))
 	d.Strict = true
 	depth, root, inStyle := 0, false, false
+	// A style's CSS as the browser reads it: its text joined across the
+	// comments that split it, so @imp<!---->ort is @import.
+	var css []byte
 	for {
 		tok, err := d.Token()
 		if errors.Is(err, io.EOF) {
@@ -145,6 +150,9 @@ func CheckSVG(content []byte) error {
 				return refuse("has a <?%s?> instruction", t.Target)
 			}
 		case xml.StartElement:
+			if inStyle {
+				return refuse("has a <%s> element inside its <style>", t.Name.Local)
+			}
 			if depth == 0 {
 				if root {
 					return refuse("has more than one root element")
@@ -158,13 +166,21 @@ func CheckSVG(content []byte) error {
 			if err := checkElement(t, refuse); err != nil {
 				return err
 			}
-			inStyle = t.Name.Local == "style"
+			inStyle, css = t.Name.Local == "style", css[:0]
 		case xml.EndElement:
 			depth--
+			if inStyle {
+				switch {
+				case bytes.IndexByte(css, '\\') >= 0:
+					return refuse("has a CSS escape in its style, which could spell what it fetches")
+				case cssFetch.Match(css):
+					return refuse("has a style that fetches or runs something")
+				}
+			}
 			inStyle = false
 		case xml.CharData:
-			if inStyle && cssFetch.Match(t) {
-				return refuse("has a style that fetches or runs something")
+			if inStyle {
+				css = append(css, t...)
 			}
 		}
 	}
@@ -206,6 +222,8 @@ func checkElement(t xml.StartElement, refuse func(string, ...any) error) error {
 			return refuse("has an xlink:%s attribute", a.Name.Local)
 		case scheme.MatchString(strings.Join(strings.Fields(a.Value), "")):
 			return refuse("has a script in its %s attribute", a.Name.Local)
+		case strings.ContainsRune(a.Value, '\\'):
+			return refuse("has a CSS escape in its %s attribute, which could spell what it fetches", a.Name.Local)
 		case cssFetch.MatchString(a.Value):
 			return refuse("has a %s attribute that fetches or runs something", a.Name.Local)
 		}

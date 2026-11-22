@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
@@ -29,5 +30,23 @@ func TestConsoleThumbprintInFIPSOnlyMode(t *testing.T) {
 	other := sha256.Sum256([]byte("another certificate"))
 	if err := checkThumbprint(cert, []string{hex.EncodeToString(other[:])}); err == nil || !strings.Contains(err.Error(), "vouched for") {
 		t.Fatalf("another certificate: %v", err)
+	}
+}
+
+// The SHA-256 thumbprint, when vCenter gives one, is the one checked: a
+// certificate whose SHA-1 thumbprint alone matches isn't accepted.
+func TestConsoleThumbprintPrefersSHA256(t *testing.T) {
+	cert := [][]byte{[]byte("the host's certificate")}
+	s1, s256 := sha1.Sum(cert[0]), sha256.Sum256(cert[0])
+	other := sha256.Sum256([]byte("another certificate"))
+	if err := checkThumbprint(cert, []string{hex.EncodeToString(s1[:]), hex.EncodeToString(other[:])}); err == nil ||
+		!strings.Contains(err.Error(), "vouched for") {
+		t.Fatalf("its SHA-1 thumbprint with another's SHA-256 one: %v", err)
+	}
+	if err := checkThumbprint(cert, []string{"00:11", hex.EncodeToString(s256[:])}); err != nil {
+		t.Fatalf("its SHA-256 thumbprint: %v", err)
+	}
+	if err := checkThumbprint(cert, []string{hex.EncodeToString(s1[:])}); err != nil {
+		t.Fatalf("its SHA-1 thumbprint alone: %v", err)
 	}
 }

@@ -7,7 +7,7 @@
   [ADR-0012](0012-vm-console.md), the catalog in Git of
   [ADR-0029](0029-catalog-in-git.md) and the local administrator and
   System page of [ADR-0030](0030-settings-and-local-administrator.md).
-  O1.6 (#172), D21 of the parity programme.
+  O1.6 (#172), D21 of the parity programme; amended by O1.7 (#173).
 
 ## Context
 vRA's appliances have a FIPS mode, and agencies and regulated customers
@@ -65,14 +65,23 @@ settings show `RVAV_FIPS` as the mode in effect.
   rvav keeps it in its own column as before, so the format is the same,
   in every mode: secrets sealed before open, and a rollback reads those
   sealed after.
+- **SMTP sign-in** picks SCRAM-SHA-256, or PLAIN or LOGIN over TLS, and
+  says so when the server offers neither; go-mail would pick CRAM-MD5,
+  SCRAM-SHA-1 or NTLM, before PLAIN.
+- **The console** checks an ESXi host's certificate by the SHA-256
+  thumbprint vCenter gives with the ticket. When vCenter gives a SHA-1
+  one only, `on` checks that: the one non-approved algorithm rvav
+  still chooses in `on`, and only mode refuses it (below).
 
 ### What rvav refuses in only mode
 Where only mode would fail, rvav checks first and says what to change,
 with `RVAV_FIPS=only` in the message, rather than a panic:
 
 - **An argon2id hash**: a sign-in or password change is answered `409`,
-  audited as a failed sign-in without counting as an attempt; `rvav admin
-  reset-password` sets a PBKDF2 one, or a sign-in in `on` rehashes it.
+  audited as a failed sign-in and counted as a failed attempt, the
+  password unchecked, so that attempts wait from the third as wrong
+  passwords do; `rvav admin reset-password` sets a PBKDF2 one, or a
+  sign-in in `on` rehashes it.
   The other way, PBKDF2 hashes keep working when the mode is turned off.
 - **PostgreSQL's MD5 password authentication**: pgx is told to refuse it
   (`RequireAuth=!md5`), and the error says to use SCRAM-SHA-256, which
@@ -82,13 +91,13 @@ with `RVAV_FIPS=only` in the message, rather than a panic:
   so), `RVAV_GIT_WEBHOOK_SECRET` for GitHub and Gitea signatures (GitLab's
   token is compared, not used as a key), and Slack's signing secret.
 - **An ESXi host vCenter gives a SHA-1 thumbprint only**: the console
-  checks the host's certificate by its SHA-256 thumbprint only.
+  refuses it, rather than checking the host's certificate with SHA-1.
 - **SSH to the catalog's Git server** offers only ECDH on P-256, P-384
   and P-521, AES-CTR and HMAC-SHA-2 (x/crypto would offer X25519 and
   ML-KEM hybrids first and fail), and refuses hashed `known_hosts` lines.
-- **SMTP sign-in** picks SCRAM-SHA-256, or PLAIN or LOGIN over TLS, and
-  says so when the server offers neither; go-mail would pick CRAM-MD5,
-  SCRAM-SHA-1 or NTLM.
+- **SMTP sign-in** with nothing but CRAM-MD5, SCRAM-SHA-1, NTLM, or PLAIN
+  and LOGIN without TLS: refused, as in `on`, with what the server must
+  offer.
 
 An identity provider's keys lose their `x5c`, `x5t` and `x5u` before
 go-jose reads them, in `on` and `only`: rvav verifies tokens with the key

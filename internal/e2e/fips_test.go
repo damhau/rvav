@@ -95,8 +95,8 @@ func TestLocalAdminInFIPSMode(t *testing.T) {
 
 // TestLocalAdminInFIPSOnlyMode: in FIPS 140-only mode, the local
 // administrator's password kept as an argon2id hash is refused with what
-// to do, without counting as a failed attempt; once reset, it signs in
-// (ADR-0060). The System page says the mode.
+// to do, counted as a failed attempt so that attempts wait; once reset, it
+// signs in (ADR-0060). The System page says the mode.
 func TestLocalAdminInFIPSOnlyMode(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -109,7 +109,7 @@ func TestLocalAdminInFIPSOnlyMode(t *testing.T) {
 		const password = "kept since before FIPS 140 mode"
 		fipsAdmin(t, ctx, h, password)
 		b := newBrowser(t, ctx, h.srv.URL)
-		for range 4 {
+		for range 3 {
 			code, body, _ := b.do("POST", "/api/v1/auth/sign-in", api.SignInRequest{Username: "admin", Password: password}, false)
 			var p api.Problem
 			_ = json.Unmarshal(body, &p)
@@ -117,6 +117,9 @@ func TestLocalAdminInFIPSOnlyMode(t *testing.T) {
 				!strings.Contains(*p.Detail, "RVAV_FIPS=on") {
 				t.Fatalf("sign-in with an argon2id hash = %d %s", code, body)
 			}
+		}
+		if code, body, _ := b.do("POST", "/api/v1/auth/sign-in", api.SignInRequest{Username: "admin", Password: password}, false); code != http.StatusTooManyRequests {
+			t.Fatalf("a fourth sign-in at once = %d %s", code, body)
 		}
 		var reason string
 		if err := h.store.Pool.QueryRow(ctx, `select detail->>'reason' from audit_events where action = 'auth.sign_in_failed'

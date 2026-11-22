@@ -104,6 +104,7 @@ func TestCheckLogo(t *testing.T) {
 	if l, err := CheckLogo([]byte(inkscape)); err != nil || l.ContentType != "image/svg+xml" {
 		t.Fatalf("an Inkscape SVG: %+v %v", l, err)
 	}
+	const ns = `<svg xmlns="http://www.w3.org/2000/svg">`
 	refused := map[string]string{
 		"script":         `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`,
 		"event handler":  `<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>`,
@@ -123,6 +124,15 @@ func TestCheckLogo(t *testing.T) {
 		"stylesheet":     `<?xml-stylesheet href="https://evil.example/a.css"?><svg xmlns="http://www.w3.org/2000/svg"/>`,
 		"xml:base":       `<svg xmlns="http://www.w3.org/2000/svg" xml:base="https://evil.example/"/>`,
 		"two roots":      `<svg xmlns="http://www.w3.org/2000/svg"/><svg xmlns="http://www.w3.org/2000/svg"/>`,
+		// Ways around the style check that milestone O1's review found.
+		"comment splits @import": ns + `<style>@imp<!---->ort "https://evil.example/a.css";</style></svg>`,
+		"comment splits url(":    ns + `<style>svg{background:u<!---->rl(https://evil.example/p.png)}</style></svg>`,
+		"element inside style":   ns + `<style><g/>@import "https://evil.example/a.css";</style></svg>`,
+		"escape in url":          ns + `<style>svg{background:u\72l(https://evil.example/p.png)}</style></svg>`,
+		"escape in @import":      ns + `<style>@\69mport "https://evil.example/a.css";</style></svg>`,
+		"image-set":              ns + `<style>svg{background-image:image-set("https://evil.example/p.png" 1x)}</style></svg>`,
+		"escape in attribute":    ns + `<rect style="fill:u\72l(https://evil.example/p#a)"/></svg>`,
+		"src()":                  ns + `<style>@font-face{font-family:x;src:src("https://evil.example/f.woff")}</style></svg>`,
 	}
 	for name, svg := range refused {
 		var le *LogoError

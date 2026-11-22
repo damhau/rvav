@@ -10,8 +10,14 @@ with `RVAV_FIPS`; the same image runs either way. The design is in
 | `RVAV_FIPS` | What rvav's processes do |
 |---|---|
 | `off` (the default) | Go's cryptography as usual, from the module's code, without its self-tests or restrictions. |
-| `on` | The module checks its integrity and runs its self-tests at start. Random numbers come from its DRBG. TLS uses approved versions, cipher suites, key exchanges and certificate keys only. Where rvav chooses an algorithm, it chooses an approved one: the local administrator's password is hashed with PBKDF2-HMAC-SHA-512 instead of argon2id. |
-| `only` | As `on`, and every algorithm the module doesn't approve fails. rvav refuses the features that would need one, with an error that says what to change instead ([what only mode refuses](#what-only-mode-refuses)). |
+| `on` | The module checks its integrity and runs its self-tests at start. Random numbers come from its DRBG. TLS uses approved versions, cipher suites, key exchanges and certificate keys only. Where rvav chooses an algorithm, it chooses an approved one: the local administrator's password is hashed with PBKDF2-HMAC-SHA-512 instead of argon2id, the SMTP sign-in is SCRAM-SHA-256, or PLAIN or LOGIN over TLS, and the console checks an ESXi host by its SHA-256 thumbprint. There's one exception, described after this table. |
+| `only` | As `on`, and every algorithm the module doesn't approve fails. rvav refuses the features that would need one, with an error that says what to change instead ([features refused in `only` mode](#features-refused-in-only-mode)). |
+
+The exception in `on`: when vCenter gives only the ESXi host's SHA-1
+thumbprint with a console ticket, the console checks the host's
+certificate with it. vCenter API version 7.0.3.1 and later (7.0 Update 3)
+also give the SHA-256 thumbprint, which the console then uses. `only`
+refuses the console instead.
 
 Use `on` to meet a FIPS 140-3 requirement. Use `only` to show that
 nothing rvav does needs a non-approved algorithm: Go describes it as best
@@ -70,19 +76,24 @@ binary you build yourself. To check that a binary carries the module, run
 - **The local administrator:** its password is kept as an argon2id hash
   until it is hashed again. Sign in once with `RVAV_FIPS=on`, which hashes
   it again with PBKDF2, before you move to `only`.
+- **The SMTP server:** in `on` and `only`, rvav signs in with
+  SCRAM-SHA-256, or with PLAIN or LOGIN over TLS. If the server offers
+  only CRAM-MD5, SCRAM-SHA-1 or NTLM, or PLAIN and LOGIN without TLS,
+  emails fail and the connection's test says why. Offer SCRAM-SHA-256,
+  or PLAIN or LOGIN with STARTTLS or TLS.
 
-## What only mode refuses
+## Features refused in `only` mode
 
 | Feature | Refused when | Do instead |
 |---|---|---|
-| Local administrator sign-in | Its password is still kept as an argon2id hash. The sign-in page shows the error (`409`), and the audit log records a failed sign-in. | Run `rvav admin reset-password`, or sign in once with `RVAV_FIPS=on`. |
+| Local administrator sign-in | Its password is still kept as an argon2id hash. The sign-in page shows the error (`409`), and the audit log records a failed sign-in. It counts as a failed attempt: from the third in a row, sign-ins wait, as after a wrong password. | Run `rvav admin reset-password`, or sign in once with `RVAV_FIPS=on`. |
 | The database | PostgreSQL asks for MD5 password authentication. The process doesn't start. | Use SCRAM-SHA-256, as described in [before you turn it on](#before-you-turn-it-on). |
 | Webhooks | A subscription's signing secret, or an audit webhook's, is shorter than 14 bytes. Its deliveries fail, saying why. | Give a stored secret of 14 bytes or more (32 random bytes is better). |
 | The catalog's Git webhook | `RVAV_GIT_WEBHOOK_SECRET` is shorter than 14 bytes and GitHub or Gitea signs with it. GitLab's token isn't affected. | Give a secret of 14 bytes or more, in rvav and in the Git server. |
 | Slack interactions | Slack's signing secret is shorter than 14 bytes. Slack's own are 32 characters. | Give the app's signing secret as Slack shows it. |
 | The VM console | vCenter gives only a SHA-1 thumbprint for the ESXi host. | Upgrade vCenter to API version 7.0.3.1 or later (7.0 Update 3), whose console tickets also list the host's SHA-256 thumbprint. |
 | The catalog's Git repository over SSH | The server offers no ECDH key exchange on P-256, P-384 or P-521, no AES-CTR cipher or no HMAC-SHA-2 MAC; or a `known_hosts` line is hashed (`|1|…`). | Enable those algorithms on the Git server; give `known_hosts` lines unhashed, as `ssh-keyscan` prints them without `-H`. HTTPS needs nothing. |
-| Email | The SMTP server offers no SCRAM-SHA-256, and no PLAIN or LOGIN over TLS (CRAM-MD5, SCRAM-SHA-1 and NTLM need SHA-1 or MD5). The connection's test says so. | Offer SCRAM-SHA-256, or PLAIN or LOGIN with STARTTLS or TLS. |
+| Email | The SMTP server offers no SCRAM-SHA-256, and no PLAIN or LOGIN over TLS (CRAM-MD5, SCRAM-SHA-1 and NTLM need SHA-1 or MD5). `on` refuses it too. The connection's test says so. | Offer SCRAM-SHA-256, or PLAIN or LOGIN with STARTTLS or TLS. |
 
 The identity provider's keys need nothing: rvav reads its signing keys
 without the certificates (`x5c`) some providers add to them, whose SHA-1

@@ -82,7 +82,7 @@ func (s *Service) SignIn(ctx context.Context, username, password string, now tim
 	if err != nil {
 		return "", false, err
 	}
-	if err := s.hashAllowed(ctx, acc); err != nil {
+	if err := s.hashAllowed(ctx, acc, now); err != nil {
 		return "", false, err
 	}
 	acc, right, err := s.attempt(ctx, acc.UserID, password, now)
@@ -108,16 +108,32 @@ func (s *Service) SignIn(ctx context.Context, username, password string, now tim
 	return id, acc.MustChange, nil
 }
 
-// hashAllowed refuses, before it counts as an attempt, a password this
-// process may not check: an argon2id hash in FIPS 140-only mode (ADR-0060).
-func (s *Service) hashAllowed(ctx context.Context, acc store.LocalAccount) error {
-	err := auth.CheckHash(acc.PasswordHash)
-	if err == nil {
+// hashAllowed refuses a password this process may not check: an argon2id
+// hash in FIPS 140-only mode (ADR-0060). The refusal counts as a failed
+// attempt, unchecked, so that attempts wait as wrong passwords do.
+func (s *Service) hashAllowed(ctx context.Context, acc store.LocalAccount, now time.Time) error {
+	refused := auth.CheckHash(acc.PasswordHash)
+	if refused == nil {
 		return nil
 	}
-	s.auditSignIn(ctx, &acc.UserID, "auth.sign_in_failed", acc.UserID,
-		map[string]any{"reason": "password hash refused in FIPS 140-only mode", "method": "local"})
-	return &ConflictError{Msg: err.Error()}
+	acc, ok, err := s.Store.LocalAttempt(ctx, acc.UserID, now)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return waitError(acc, now)
+	}
+	s.auditSignIn(ctx, &acc.UserID, "auth.sign_in_failed", acc.UserID, map[string]any{
+		"reason": "password hash refused in FIPS 140-only mode", "failures_in_a_row": acc.FailedAttempts, "method": "local"})
+	return &ConflictError{Msg: refused.Error()}
+}
+
+func waitError(acc store.LocalAccount, now time.Time) error {
+	wait := time.Second
+	if acc.LockedUntil != nil && acc.LockedUntil.After(now) {
+		wait = acc.LockedUntil.Sub(now)
+	}
+	return &TooManyAttemptsError{RetryAfter: wait}
 }
 
 // rehash keeps a password that was right as the hash this process makes:
@@ -143,11 +159,7 @@ func (s *Service) attempt(ctx context.Context, userID, password string, now time
 		return acc, false, err
 	}
 	if !ok {
-		wait := time.Second
-		if acc.LockedUntil != nil && acc.LockedUntil.After(now) {
-			wait = acc.LockedUntil.Sub(now)
-		}
-		return acc, false, &TooManyAttemptsError{RetryAfter: wait}
+		return acc, false, waitError(acc, now)
 	}
 	right, err := auth.CheckPassword(ctx, password, acc.PasswordHash)
 	if err != nil || !right {
@@ -172,7 +184,7 @@ func (s *Service) ChangePassword(ctx context.Context, p *auth.Principal, current
 	if errs := checkNewPassword(acc.Username, current, next); len(errs) > 0 {
 		return &ValidationError{Errors: errs}
 	}
-	if err := s.hashAllowed(ctx, acc); err != nil {
+	if err := s.hashAllowed(ctx, acc, now); err != nil {
 		return err
 	}
 	acc, right, err := s.attempt(ctx, acc.UserID, current, now)

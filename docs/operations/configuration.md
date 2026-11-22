@@ -44,7 +44,7 @@ never in the ConfigMap or a file in Git. Durations are Go durations (`90s`,
 | `RVAV_TRUSTED_PROXIES` | none | | install | The reverse proxies in front of the API, as addresses or networks (`10.0.0.0/8, 192.168.1.10`): the web container, the ingress controller, a load balancer. The audit log records the address a request came from as the one they add to `X-Forwarded-For`; from any other peer, as the peer's address. |
 | `RVAV_INSTANCE_ID` | `rvav` | | Integrations › EfficientIP | Tells this rvav's objects in EfficientIP from another's on a shared SOLIDserver. |
 | `RVAV_DRAIN_TIMEOUT` | `5m` | | install | How long a process applying newer connection settings lets its running work finish before it exits; a worker's activity still running then is retried by the next worker. Also how long a worker stopped by Kubernetes or Compose waits for its activities, within their grace period. |
-| `RVAV_FIPS` | `off` | | install | FIPS 140-3 mode: `off`, `on` (the Go Cryptographic Module's approved algorithms where rvav and Go choose) or `only` (also refuses every algorithm the module doesn't approve). Give every process, `rvav migrate` included, the same mode. See [FIPS 140-3 mode](fips.md). |
+| `RVAV_FIPS` | none | | install | FIPS 140-3 mode: `off`, `on` (the Go Cryptographic Module's approved algorithms where rvav and Go choose) or `only` (also refuses every algorithm the module doesn't approve). Unset, a process keeps the mode `GODEBUG`'s `fips140` gives it: `off` unless `GODEBUG` gives one. Give every process, `rvav migrate` included, the same mode. See [FIPS 140-3 mode](fips.md). |
 
 **Database connections:** each process keeps a pool of at most
 `pool_max_conns` connections, a parameter of `RVAV_DATABASE_URL`
@@ -330,7 +330,7 @@ ServiceNow, the settings apply from the next call to ServiceNow.
 | `RVAV_SMTP_HOST` | none (no email) | | Integrations › Email | The mail server. |
 | `RVAV_SMTP_PORT` | `587` | | Integrations › Email | Its port. |
 | `RVAV_SMTP_TLS` | `starttls` | | Integrations › Email | `starttls`, `tls` or `none`. |
-| `RVAV_SMTP_FROM` | `rvav <rvav@localhost>` | | Integrations › Email | The sender. |
+| `RVAV_SMTP_FROM` | `rvav <rvav@localhost>` | | Integrations › Email | The sender. Given as an address alone (`rvav@corp.example`), emails come from the portal's name at that address. |
 | `RVAV_SMTP_USERNAME` | none | | Integrations › Email | Its account, when it asks for one. |
 | `RVAV_SMTP_PASSWORD` | none | yes | Integrations › Email | Its password. |
 | `RVAV_TEAMS_APP_ID` | none (no Teams) | | Integrations › Microsoft Teams | The bot's Microsoft app ID. |

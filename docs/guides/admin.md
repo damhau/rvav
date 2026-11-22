@@ -2481,8 +2481,8 @@ sign-in page, in the browser's title and in emails.
 
 A logo is a PNG, JPEG or SVG of 256 KB and 2048 pixels a side at most.
 rvav refuses an SVG, rather than cleaning it, if it has scripts, event
-handlers, links, animations, `foreignObject`, a DOCTYPE or entities, or
-refers to anything outside itself. Export it again as plain SVG, or as a
+handlers, links, animations, `foreignObject`, a DOCTYPE or entities, a
+CSS escape (`\`), or refers to anything outside itself. Export it again as plain SVG, or as a
 PNG. Emails carry the light theme's logo only when it is a PNG or a JPEG,
 since many mail clients block SVG; they show the portal's name otherwise.
 

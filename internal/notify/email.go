@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
+	netmail "net/mail"
 	"slices"
 	"strings"
 	"time"
@@ -41,24 +43,26 @@ func (e *Email) client() (*mail.Client, error) {
 	if e.Config.Username != "" {
 		// The mechanism the server offers (Microsoft 365 has LOGIN, not PLAIN).
 		auth := mail.WithSMTPAuth(mail.SMTPAuthAutoDiscover)
-		if fips.Current() == fips.Only {
-			auth = mail.WithSMTPAuthCustom(&fipsOnlyAuth{user: e.Config.Username, pass: e.Config.Password, host: e.Config.Host})
+		if mode := fips.Current(); mode != fips.Off {
+			auth = mail.WithSMTPAuthCustom(&fipsAuth{user: e.Config.Username, pass: e.Config.Password, host: e.Config.Host,
+				mode: mode})
 		}
 		opts = append(opts, auth, mail.WithUsername(e.Config.Username), mail.WithPassword(e.Config.Password))
 	}
 	return mail.NewClient(e.Config.Host, opts...)
 }
 
-// fipsOnlyAuth signs in to the SMTP server with SCRAM-SHA-256, or PLAIN or
-// LOGIN over TLS: go-mail would otherwise choose SCRAM-SHA-1, NTLM or
-// CRAM-MD5 when offered, whose SHA-1 or MD5 panics in FIPS 140-only mode
-// (ADR-0060).
-type fipsOnlyAuth struct {
+// fipsAuth signs in to the SMTP server with SCRAM-SHA-256, or PLAIN or
+// LOGIN over TLS, in FIPS 140 mode: go-mail would otherwise choose
+// SCRAM-SHA-1, NTLM or CRAM-MD5 when offered, which aren't approved, and
+// whose SHA-1 or MD5 panics in only mode (ADR-0060).
+type fipsAuth struct {
 	user, pass, host string
+	mode             fips.Mode
 	chosen           smtp.Auth
 }
 
-func (a *fipsOnlyAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+func (a *fipsAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 	switch {
 	case slices.Contains(server.Auth, "SCRAM-SHA-256"):
 		a.chosen = smtp.ScramSHA256Auth(a.user, a.pass)
@@ -66,14 +70,18 @@ func (a *fipsOnlyAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 		a.chosen = smtp.PlainAuth("", a.user, a.pass, a.host, false)
 	case server.TLS && slices.Contains(server.Auth, "LOGIN"):
 		a.chosen = smtp.LoginAuth(a.user, a.pass, a.host, false)
-	default:
+	case a.mode == fips.Only:
 		return "", nil, &fips.NotAllowedError{What: "Every way to sign in that the SMTP server offers (" + strings.Join(server.Auth, ", ") + ")",
 			Algorithm: "SHA-1, MD5 or a password sent without TLS", Instead: "offer SCRAM-SHA-256, or PLAIN or LOGIN over TLS"}
+	default:
+		return "", nil, fmt.Errorf("every way to sign in that the SMTP server offers (%s) uses SHA-1, MD5 or a password sent "+
+			"without TLS, which rvav doesn't choose in FIPS 140 mode (%s=%s): offer SCRAM-SHA-256, or PLAIN or LOGIN over TLS",
+			strings.Join(server.Auth, ", "), fips.Env, a.mode)
 	}
 	return a.chosen.Start(server)
 }
 
-func (a *fipsOnlyAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+func (a *fipsAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 	return a.chosen.Next(fromServer, more)
 }
 
@@ -84,7 +92,7 @@ func (e *Email) Send(ctx context.Context, m Message) (string, string, error) {
 		return "", "", Permanent(errors.New("the user has no email address"))
 	}
 	msg := mail.NewMsg()
-	if err := msg.From(e.Config.From); err != nil {
+	if err := from(msg, e.Config.From, m.Data.Portal); err != nil {
 		return "", "", Permanent(err)
 	}
 	if err := msg.AddToFormat(m.Delivery.UserName, to); err != nil {
@@ -113,6 +121,15 @@ func (e *Email) Send(ctx context.Context, m Message) (string, string, error) {
 		return to, "", err
 	}
 	return to, id, nil
+}
+
+// from is the sender: the portal's name at RVAV_SMTP_FROM's address when
+// that is an address alone (ADR-0059).
+func from(msg *mail.Msg, configured, portal string) error {
+	if a, err := netmail.ParseAddress(configured); err == nil && a.Name == "" && portal != "" {
+		return msg.FromFormat(portal, a.Address)
+	}
+	return msg.From(configured)
 }
 
 // Test connects and signs in, without sending.
