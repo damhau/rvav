@@ -513,9 +513,9 @@ test("an auditor reads the administration pages without changing them", async ({
   await expect(page.getByRole("region", { name: "Step data", exact: true })).toContainText(
     "The database's owner · pg-create-role",
   );
-  // Its failure, without the Retry only its requester, its owner or a project admin may use.
-  await expect(page.getByText("It was rolled back")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^Retry/ })).toHaveCount(0);
+  // The mock's auditor is Léa, who requested it: a requester may retry whatever their role, as
+  // core.failedRequest decides. FailureActions.test.tsx covers an auditor who didn't request it.
+  await expect(page.getByRole("button", { name: /^Retry/ })).toBeVisible();
 });
 
 test("several vCenters: added, tested and removed (S12.6)", async ({ page }) => {
