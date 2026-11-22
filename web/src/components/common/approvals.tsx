@@ -146,10 +146,18 @@ export function ApprovalHistory({ levels, label }: { levels: Approval[]; label?:
             </span>
             <ApprovalStatusBadge status={a.status} label={stepLabel(a)} />
           </div>
-          {a.reasons.length > 0 && <span className="text-secondary text-muted">{a.reasons.join(" · ")}</span>}
+          {a.reasons.length > 0 && (
+            <span lang="en" className="text-secondary text-muted">
+              {a.reasons.join(" · ")}
+            </span>
+          )}
           {askedOf(a) && <span className="text-secondary text-muted">{askedOf(a)}</span>}
           <StepQuestion a={a} />
-          {a.outcome && <span className="text-secondary">{a.outcome}</span>}
+          {a.outcome && (
+            <span lang="en" className="text-secondary">
+              {a.outcome}
+            </span>
+          )}
           {a.status === "pending" && (
             <span className="text-secondary text-muted">
               {a.approvers.length > 0

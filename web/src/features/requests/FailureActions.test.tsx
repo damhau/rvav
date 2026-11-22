@@ -14,6 +14,7 @@ describe("a failed request's actions", () => {
     expect(rollbackOf(steps)).toBeUndefined();
     renderWithQuery(<FailureActions request={request} rolledBack={rollbackOf(steps)} />);
     const box = screen.getByRole("alert");
+    expect(within(box).getByText(request.error!.message)).toHaveAttribute("lang", "en");
     expect(box).toHaveTextContent("What was created is kept so you can look at it.");
     expect(within(box).getByRole("button", { name: "Retry from the failed step" })).toBeInTheDocument();
     expect(within(box).getByRole("button", { name: "Roll back" })).toBeInTheDocument();

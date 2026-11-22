@@ -2,12 +2,13 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import type { Approval } from "@/lib/api/types";
+import type { Approval, Step } from "@/lib/api/types";
 import { i18n } from "@/lib/i18n";
 import { ApprovalHistory, dueText } from "./approvals";
 import { ErrorState } from "./feedback";
 import { Meter } from "./meter";
 import { RequestStatusBadge } from "./status";
+import { Timeline } from "./timeline";
 
 beforeEach(async () => {
   await i18n.changeLanguage("fr");
@@ -72,6 +73,46 @@ describe("the shared components, in French", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getAllByText("En attente")).toHaveLength(2);
+  });
+
+  it("mark what the server wrote in English, in a run and an approval", () => {
+    const step = (o: Partial<Step>) =>
+      ({
+        id: "stp_1",
+        key: "step:cmdb",
+        title: "Inscrire dans la CMDB",
+        system: "rest",
+        status: "done",
+        children: [],
+        ...o,
+      }) as Step;
+    render(
+      <TooltipProvider>
+        <Timeline
+          steps={[
+            step({ detail: "Took: otherwise" }),
+            step({ id: "stp_2", status: "failed", error: "POST rvav-cmdb answered 404 Not Found." }),
+          ]}
+        />
+        <ApprovalHistory
+          levels={[
+            level({
+              status: "approved",
+              reasons: ["Production VMs need the infrastructure leads' approval"],
+              outcome: "Answered by Léa Martin",
+            }),
+          ]}
+        />
+      </TooltipProvider>,
+    );
+    for (const text of [
+      "Took: otherwise",
+      "POST rvav-cmdb answered 404 Not Found.",
+      "Production VMs need the infrastructure leads' approval",
+      "Answered by Léa Martin",
+    ])
+      expect(screen.getByText(text)).toHaveAttribute("lang", "en");
+    expect(screen.getAllByText("Inscrire dans la CMDB")[0]).not.toHaveAttribute("lang");
   });
 
   it("say what a timeout does", () => {

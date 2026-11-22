@@ -121,7 +121,7 @@ or detail says more, that shows as the server wrote it.
 ### What stays English
 - **The server's messages.** Problem titles (but a generic 403's or 404's), field errors, policy
   reasons, a test message's result, a template's check errors, a
-  decided approval step's outcome, every other step's title and error,
+  decided approval step's outcome, every other step's title, detail and error,
   the vRA import's notes, and what a notification template's variables
   and functions hold are written by the server in English, and the app
   shows them as they come. They are the API's answer to every client
@@ -129,7 +129,8 @@ or detail says more, that shows as the server wrote it.
   server builds from data, which the web app could only word again by
   parsing them. Where one fills a whole element on a French page (a
   variable's description, an accent refused for a reason other than its
-  contrast), the element says `lang="en"`. The web app's own framing
+  contrast, a run step's detail or error, a failed request's message, an
+  approval level's reasons and outcome), the element says `lang="en"`. The web app's own framing
   around them is translated. The follow-up is for the API to read
   `Accept-Language`, or the person's language, and answer in it.
 - **The mock backend**, whose messages stand in for the server's.

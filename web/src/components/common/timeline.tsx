@@ -125,12 +125,20 @@ export function Timeline({
                   )}
                 </span>
               </div>
-              {s.detail && <span className="text-secondary text-muted">{s.detail}</span>}
+              {s.detail && (
+                <span lang="en" className="text-secondary text-muted">
+                  {s.detail}
+                </span>
+              )}
               {/* A wait for a time, or a poll's deadline: in the viewer's own time. */}
               {s.due_at && (s.status === "running" || s.status === "done") && (
                 <span className="text-secondary text-muted">{t("step.until", { date: fullDate(s.due_at) })}</span>
               )}
-              {s.error && <span className="text-secondary text-bad">{s.error}</span>}
+              {s.error && (
+                <span lang="en" className="text-secondary text-bad">
+                  {s.error}
+                </span>
+              )}
               {onOpenData && s.has_data && (
                 <button
                   type="button"

@@ -67,7 +67,9 @@ export function FailureActions({
       aria-label={alert ? undefined : t("failure.failed", { number: request.number })}
       className="mt-1 flex flex-col gap-2 rounded-lg border border-bad bg-bad-soft px-3.5 py-3"
     >
-      <span className="font-semibold text-bad">{request.error?.message}</span>
+      <span lang="en" className="font-semibold text-bad">
+        {request.error?.message}
+      </span>
       {mayAct && (
         <>
           <span className="text-secondary">
