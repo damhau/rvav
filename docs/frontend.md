@@ -26,7 +26,7 @@ typed end to end, tested, fast, accessible, and consistent.
 | API client | Generated from `api/openapi.yaml` with `openapi-typescript` + `openapi-fetch` |
 | Realtime | SSE (`EventSource`), bridged into the TanStack Query cache |
 | Dates | date-fns |
-| i18n | None yet: the UI is in English, and its strings are in the components. Translation, starting with French, comes in [O1.3](https://github.com/damhau/rvav/issues/169) |
+| Languages | i18next, react-i18next and the browser language detector: English and French, a namespace per area ([ADR-0061](adr/0061-web-app-languages.md), [Languages](#languages)) |
 | Lint and format | ESLint (typescript-eslint, react-hooks, jsx-a11y, tanstack-query plugin), Prettier with the Tailwind plugin |
 | Testing | Vitest + Testing Library, MSW for API mocks, Playwright for end-to-end and visual tests, Storybook for components |
 
@@ -73,10 +73,12 @@ web/
 │  │  ├─ api/                  # generated types, fetch client, error handling
 │  │  ├─ query/                # queryClient, key factories, SSE bridge
 │  │  ├─ auth/                 # OIDC (oidc-client-ts), route guards
+│  │  ├─ i18n/                 # i18next, the language shown, typed keys
+│  │  ├─ format.ts             # dates, numbers, sizes and lists in the language shown
 │  │  └─ utils/
 │  ├─ hooks/
 │  ├─ styles/                  # globals.css, tokens
-│  └─ i18n/
+│  └─ locales/                # en/ and fr/: a JSON file per namespace
 ├─ e2e/                        # Playwright
 └─ .storybook/
 ```
@@ -1213,6 +1215,121 @@ the file.
   transitions under 100 ms when prefetched.
 - Lists of 10,000+ rows are virtualised.
 - Bundle size is checked in CI (`size-limit` or `rollup-plugin-visualizer` report).
+
+## Languages
+
+The web app speaks English and French
+([ADR-0061](adr/0061-web-app-languages.md)). `lib/i18n/` sets up i18next,
+and each area's texts are in `locales/<language>/<namespace>.json`.
+
+- **The language shown** is the person's choice (`Me.locale`), else the
+  first of the browser's languages that rvav speaks, else English. The
+  account menu and the notification preferences choose it
+  (`useChooseLocale`, `PUT /me/locale`). It shows at once and sets
+  `<html lang>`; the browser keeps it under `rvav.locale` for the pages
+  shown before `/me` answers.
+- **Namespaces:** `common` (status names, units, time, errors), `shell`,
+  `account`, `forms`, `canvas`, `catalog`, `requests`, `deployments`,
+  `approvals`, `resources`, `reports`, `overview`, `notifications`,
+  `admin`, and `admin-<folder>` for each folder of `features/admin/`.
+- **Keys are typed** from the English files (`lib/i18n/i18next.d.ts`):
+  a key English doesn't have fails the typecheck.
+- **Formatting:** `lib/format.ts` has `formatDate`, `formatNumber`,
+  `formatPercent`, `formatList`, `formatSize`, `relative`, `fullDate`,
+  `longDay`, `clock`, `duration` and `leaseLabel`, all in the language
+  shown. ESLint refuses `toLocaleString`
+  and `new Intl.*Format` elsewhere.
+- **What stays English:** the server's messages (problem titles, field
+  errors, policy reasons), the mock backend's, identifiers and names.
+- **Checks:** `lib/i18n/resources.test.ts` compares the two languages;
+  ESLint's `i18next/no-literal-string` refuses literal text in the
+  folders listed in `translated` in `web/eslint.config.js`; the unit
+  tests run in English (`lng: "en"`), Playwright in `en-GB`, and
+  `e2e/french.spec.ts` in French.
+
+### Translating a folder
+
+To convert a folder:
+
+1. Add the folder to `translated` in `web/eslint.config.js`, and run
+   `pnpm lint` to list its literal texts.
+2. Add each text to the folder's namespace, in English first (the types
+   come from it), then in French. Name keys by what the text is for:
+   `tokens.revokeTitle`, not `revokeToken2`.
+3. Replace each literal:
+   - In a component, `const { t } = useTranslation("<namespace>")`. To
+     read another namespace too, pass both and prefix its keys:
+     `useTranslation(["overview", "shell"])`, then
+     `t("shell:nav.main.catalog")`.
+   - Outside a component, `i18n.t("<namespace>:key")` from `@/lib/i18n`,
+     or `const t = i18n.getFixedT(null, "<namespace>")` at the top of the
+     module. Both read the language when called.
+   - A module-level constant that holds text is read once, in the
+     language shown at import: make it a function, or build it in the
+     component.
+4. Write whole sentences:
+   - Values are interpolated: `"Revoke {{name}}?"`, never
+     `` `Revoke ${name}?` `` or pieces joined.
+   - A number that changes the words is `count`: English needs `_one`
+     and `_other`, French `_one`, `_many` and `_other`. Give any other
+     number another name (`total`, `n`).
+   - Markup inside a sentence is a named tag, rendered by `<Trans>`:
+     `"{{number}} failed: <message>{{message}}</message>"`.
+   - Lists go through `formatList`, sizes through `formatSize`, dates
+     and numbers through `lib/format.ts`.
+5. Keep switching live:
+   - A component that shows text from a helper, but doesn't call `t`
+     itself, calls `useTranslation()` so it renders again on a switch.
+   - A `useMemo` whose result holds text lists `i18n.language` in its
+     dependencies.
+   - Code never compares translated text: compare the value it names
+     (a status, a kind), as `NodeIcon` reads `node.stepKind`.
+6. Run `pnpm typecheck`, `pnpm lint`, `lib/i18n/resources.test.ts`, the
+   folder's unit tests, the end-to-end specs that read its pages, and
+   `e2e/french.spec.ts`. Keep the English texts as they were, so the
+   tests that read them don't change; add a test in French for anything
+   that depends on the language, such as a plural or a format.
+
+The lint rule allows names that read the same in every language (the
+`untranslated` list), text with no letters, all-caps words, and the
+pieces of an ID or an address (`"f-"`, `"/deployments/"`). Text inside a
+`.map()` in JSX is checked too: move a list of values out of the JSX
+into a constant.
+
+### French
+
+- **Vous**, never tu. Sentence case, as in English.
+- **Typography:** a no-break space (` `) before `: ; ! ?` and `»`,
+  and between a number and its unit (`2 Go`). The straight
+  apostrophe (`'`). `resources.test.ts` checks the punctuation.
+- **Words:** vRA's French where it has one, and the same word for the
+  same thing everywhere:
+
+| English | French |
+|---|---|
+| request | demande |
+| deployment | déploiement |
+| catalog, catalog item | catalogue, élément de catalogue |
+| approval, approver | approbation, approbateur |
+| lease | bail (plural baux) |
+| policy | politique |
+| day-2 action | action de jour 2 |
+| blueprint | blueprint |
+| template (vCenter, AWX job) | modèle |
+| project, quota | projet, quota |
+| step, run | étape, exécution |
+| input (of a form) | champ |
+| subscription | abonnement |
+| onboarding | intégration de l'existant |
+| setup | mise en route |
+| API token | jeton d'API |
+| owner | propriétaire |
+| sign in | se connecter |
+| email | e-mail |
+| retry | réessayer |
+| rolled back | revenue en arrière |
+| VM | VM (invariable: 2 VM) |
+| job, workflow | job, workflow |
 
 ## Accessibility
 

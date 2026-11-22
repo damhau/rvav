@@ -48,7 +48,7 @@ function List() {
       title={count > 0 ? t("unread", { count }) : t("allRead")}
       flush
       actions={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <label htmlFor="unread-only" className="flex items-center gap-1.5 text-secondary">
             <Checkbox id="unread-only" checked={unread} onChange={setUnread} />
             {t("unreadOnly")}

@@ -30,6 +30,14 @@ describe("the language shown", () => {
     expect(localStorage.getItem(LOCALE_KEY)).toBeNull();
   });
 
+  it("is a regional language's own, as the app starts: fr-CH shows fr, and says so in <html lang>", async () => {
+    localStorage.removeItem(LOCALE_KEY);
+    browserSpeaks("de-CH", "fr-CH", "en");
+    await i18n.changeLanguage();
+    expect(i18n.language).toBe("fr");
+    expect(document.documentElement.lang).toBe("fr");
+  });
+
   it("is English when rvav speaks none of the browser's languages", async () => {
     await i18n.changeLanguage("fr");
     browserSpeaks("de-DE", "it");

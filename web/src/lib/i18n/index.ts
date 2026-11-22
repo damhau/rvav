@@ -89,7 +89,13 @@ export async function initI18n(options: InitOptions = {}) {
       defaultNS: "common",
       interpolation: { escapeValue: false },
       returnEmptyString: false,
-      detection: { order: ["localStorage", "navigator"], lookupLocalStorage: LOCALE_KEY, caches: [] },
+      detection: {
+        order: ["localStorage", "navigator"],
+        lookupLocalStorage: LOCALE_KEY,
+        caches: [],
+        // "fr-CH" shows the French texts, and <html lang> says "fr" like the language chosen would.
+        convertDetectedLanguage: (lng: string) => lng.split("-")[0] ?? lng,
+      },
       // Every namespace is loaded before the app renders, and before a new language shows.
       react: { useSuspense: false },
       ...options,

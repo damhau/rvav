@@ -208,3 +208,24 @@ sentence case.
   says so and offers **Try again**.
 - **Nothing that comes later.** A feature that doesn't work yet isn't shown,
   not even as a disabled button.
+
+### Text
+
+Every text a person reads is in English and in French
+([frontend.md](frontend.md#languages) has the conventions and the glossary).
+
+- **Whole sentences.** A text is a sentence with its values in it, so a
+  translation can reorder them: "Revoke GitLab pipeline?", not "Revoke" and
+  a name. Counts choose their words: "1 VM", "3 VMs".
+- **French says vous**, and uses vRA's French words: demande, déploiement,
+  bail, approbation. A no-break space goes before `: ; ! ?` and between a
+  number and its unit.
+- **Dates, numbers and lists in the language shown:** "12 mars 2027",
+  "1 234,5", "a, b et c".
+- **Left as they are:** names (rvav, vCenter, AWX), identifiers (REQ-12, a
+  VM's name), what people typed, and the server's messages, which are in
+  English until the API speaks the person's language (ADR-0061).
+- **Room to grow.** French is up to a third longer: labels wrap rather than
+  truncate, and every page still reflows at 320 px.
+- **Each language in its own words:** the language menu lists English and
+  Français, whatever the language shown.

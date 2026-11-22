@@ -25,6 +25,21 @@ not, with the roles that grant it and where each comes from (given to you,
 through a group, or set by rvav). A permission no role of yours grants is
 one to ask your project admin or administrator for.
 
+## Choosing your language
+
+rvav speaks English and French. To choose, open your menu (your name at
+the top right) and pick **English** or **Français** under **Language**. The
+page changes at once, and rvav remembers your choice wherever you sign in.
+rvav also writes to you in it: emails, Teams and Slack messages. You can
+also choose it on the **Preferences** tab of **Notifications**.
+
+Until you choose, rvav shows the language of your browser if it speaks it,
+and English otherwise.
+
+Some text stays as it is in every language: names of products, items and
+projects, request numbers, what people typed, and messages that come from
+rvav's server, such as why a request was refused, which are in English.
+
 ## Requesting a VM
 
 1. **Catalog:** search by name or summary, or choose a category or kind in
