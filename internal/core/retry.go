@@ -360,6 +360,13 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 		if err := s.Store.FailSteps(ctx, tx, r.ID, lost); err != nil {
 			return err
 		}
+		// Everything runs again: a signal or an event a step read is the run
+		// before's, as a person's answer is (ADR-0057).
+		if rolledBack {
+			if err := s.Store.ForgetReadSignals(ctx, tx, r.ID); err != nil {
+				return err
+			}
+		}
 		// A composite VM step runs again with its own steps: those done stay
 		// done, the others are planned again.
 		var children []store.ChildStep

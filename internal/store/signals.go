@@ -52,6 +52,15 @@ func (s *Store) OpenSignalWait(ctx context.Context, w SignalWait) (SignalWait, e
 	return got, err
 }
 
+// ForgetReadSignals drops the waits whose step read what came, before a
+// Retry runs everything again: those steps wait again. A signal received
+// but not read yet stays for the step that runs again.
+func (s *Store) ForgetReadSignals(ctx context.Context, tx pgx.Tx, requestID string) error {
+	_, err := tx.Exec(ctx, `delete from signal_waits w using request_steps st
+		where w.request_id = $1 and st.request_id = w.request_id and st.key = w.step_key and st.status = 'done'`, requestID)
+	return err
+}
+
 // SignalWaitFor is a step's wait.
 func (s *Store) SignalWaitFor(ctx context.Context, requestID, stepKey string) (SignalWait, error) {
 	rows, _ := s.Pool.Query(ctx, `select `+signalCols+` from signal_waits where request_id = $1 and step_key = $2`, requestID, stepKey)

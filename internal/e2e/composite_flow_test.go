@@ -213,3 +213,45 @@ func TestCompositeFlow(t *testing.T) {
 		}
 	})
 }
+
+// TestSignalRetryAfterRollback: a Retry after a rollback runs everything
+// again, a wait for a signal too: the signal the run before read is its
+// own, so the step waits for another (E1.6, ADR-0057).
+func TestSignalRetryAfterRollback(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, requester = "mkeller", "tnguyen"
+		rig := askRig{t: t, h: h, ctx: ctx, admin: admin}
+		change := newChangeAPI(t)
+		h.svc.REST.Hosts = []string{change.URL}
+
+		d := withVM(rig, "signal-retry", signalOf("cab", map[string]any{"name": "cab-approved", "timeout": "72h"}),
+			checking(change, "deploy"))
+		change.script(changeAnswer{404, map[string]any{}})
+		req := rig.submit(requester, d)
+		rig.run(req.Id, moment{time.Minute, func(env *testsuite.TestWorkflowEnvironment) {
+			h.json("POST", "/api/v1/requests/"+req.Id+"/signal/cab-approved", admin, map[string]any{"change": "CHG-1"}, 202, nil)
+			rig.deliver(env)
+		}})
+		steps := rig.steps(req.Id, requester)
+		if r := rig.get(req.Id, requester); r.Status != api.RequestStatusFailed || steps["step:cab"].Status != api.StepStatusDone ||
+			steps["rollback"].Status != api.StepStatusDone {
+			t.Fatalf("the first run: %s, cab %s, rollback %s", r.Status, steps["step:cab"].Status, steps["rollback"].Status)
+		}
+
+		change.script(state("new"))
+		h.json("POST", "/api/v1/requests/"+req.Id+"/retry", requester, nil, 202, nil)
+		var waited bool
+		rig.run(req.Id, moment{time.Minute, func(env *testsuite.TestWorkflowEnvironment) {
+			waited = rig.steps(req.Id, requester)["step:cab"].Status == api.StepStatusRunning
+			h.json("POST", "/api/v1/requests/"+req.Id+"/signal/cab-approved", admin, map[string]any{"change": "CHG-2"}, 202, nil)
+			rig.deliver(env)
+		}})
+		if r := rig.get(req.Id, requester); !waited || r.Status != api.RequestStatusSucceeded || rig.outputs(req.Id, "step:cab")["change"] != "CHG-2" {
+			t.Fatalf("the retry: waited %v, %s, cab outputs %v", waited, r.Status, rig.outputs(req.Id, "step:cab"))
+		}
+	})
+}

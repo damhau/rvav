@@ -1220,6 +1220,9 @@ paths:
         `request.manage` in the request's project send it; the requester
         can't, so a wait the item puts in their way stays there. The body
         goes into the request's history: send no secret (ADR-0057).
+
+        A signal sent before the step waits, or after it took one, is
+        refused with 409 and not kept: send it again once the step waits.
       requestBody:
         content:
           application/json:
@@ -1230,11 +1233,22 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SignalReceipt" }
+        "400":
+          description: The body isn't a JSON object.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "422":
+          description: |
+            The body is over 64 KiB of JSON: `too_large`, its `field` the
+            empty pointer, which names the whole body.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 
   /requests/{requestId}/retry:
     parameters:

@@ -16874,6 +16874,9 @@ type ClientInterface interface {
 	// can't, so a wait the item puts in their way stays there. The body
 	// goes into the request's history: send no secret (ADR-0057).
 	//
+	// A signal sent before the step waits, or after it took one, is
+	// refused with 409 and not kept: send it again once the step waits.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
@@ -16886,6 +16889,9 @@ type ClientInterface interface {
 	// `request.manage` in the request's project send it; the requester
 	// can't, so a wait the item puts in their way stays there. The body
 	// goes into the request's history: send no secret (ADR-0057).
+	//
+	// A signal sent before the step waits, or after it took one, is
+	// refused with 409 and not kept: send it again once the step waits.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -24378,6 +24384,9 @@ func (c *Client) RollbackRequest(ctx context.Context, requestId RequestIdPath, r
 // can't, so a wait the item puts in their way stays there. The body
 // goes into the request's history: send no secret (ADR-0057).
 //
+// A signal sent before the step waits, or after it took one, is
+// refused with 409 and not kept: send it again once the step waits.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
@@ -24400,6 +24409,9 @@ func (c *Client) SignalRequestWithBody(ctx context.Context, requestId RequestIdP
 // `request.manage` in the request's project send it; the requester
 // can't, so a wait the item puts in their way stays there. The body
 // goes into the request's history: send no secret (ADR-0057).
+//
+// A signal sent before the step waits, or after it took one, is
+// refused with 409 and not kept: send it again once the step waits.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -41348,6 +41360,9 @@ type ClientWithResponsesInterface interface {
 	// can't, so a wait the item puts in their way stays there. The body
 	// goes into the request's history: send no secret (ADR-0057).
 	//
+	// A signal sent before the step waits, or after it took one, is
+	// refused with 409 and not kept: send it again once the step waits.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
@@ -41360,6 +41375,9 @@ type ClientWithResponsesInterface interface {
 	// `request.manage` in the request's project send it; the requester
 	// can't, so a wait the item puts in their way stays there. The body
 	// goes into the request's history: send no secret (ADR-0057).
+	//
+	// A signal sent before the step waits, or after it took one, is
+	// refused with 409 and not kept: send it again once the step waits.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -58646,6 +58664,8 @@ type SignalRequestResponse struct {
 	HTTPResponse *http.Response
 	// JSON202 the response for an HTTP 202 `application/json` response
 	JSON202 *SignalReceipt
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -58655,12 +58675,17 @@ type SignalRequestResponse struct {
 	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationFailed
+	ApplicationproblemJSON422 *Problem
 }
 
 // GetJSON202 returns the response for an HTTP 202 `application/json` response
 func (r SignalRequestResponse) GetJSON202() *SignalReceipt {
 	return r.JSON202
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SignalRequestResponse) GetApplicationproblemJSON400() *Problem {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -58684,7 +58709,7 @@ func (r SignalRequestResponse) GetApplicationproblemJSON409() *Conflict {
 }
 
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r SignalRequestResponse) GetApplicationproblemJSON422() *ValidationFailed {
+func (r SignalRequestResponse) GetApplicationproblemJSON422() *Problem {
 	return r.ApplicationproblemJSON422
 }
 
@@ -65736,6 +65761,9 @@ func (c *ClientWithResponses) RollbackRequestWithResponse(ctx context.Context, r
 // can't, so a wait the item puts in their way stays there. The body
 // goes into the request's history: send no secret (ADR-0057).
 //
+// A signal sent before the step waits, or after it took one, is
+// refused with 409 and not kept: send it again once the step waits.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /requests/{requestId}/signal/{name} (the `SignalRequest` operationId).
@@ -65754,6 +65782,9 @@ func (c *ClientWithResponses) SignalRequestWithBodyWithResponse(ctx context.Cont
 // `request.manage` in the request's project send it; the requester
 // can't, so a wait the item puts in their way stays there. The body
 // goes into the request's history: send no secret (ADR-0057).
+//
+// A signal sent before the step waits, or after it took one, is
+// refused with 409 and not kept: send it again once the step waits.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -79208,6 +79239,13 @@ func ParseSignalRequestResponse(rsp *http.Response) (*SignalRequestResponse, err
 		}
 		response.JSON202 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -79237,7 +79275,7 @@ func ParseSignalRequestResponse(rsp *http.Response) (*SignalRequestResponse, err
 		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationFailed
+		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

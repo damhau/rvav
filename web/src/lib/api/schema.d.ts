@@ -997,6 +997,9 @@ export interface paths {
          *     `request.manage` in the request's project send it; the requester
          *     can't, so a wait the item puts in their way stays there. The body
          *     goes into the request's history: send no secret (ADR-0057).
+         *
+         *     A signal sent before the step waits, or after it took one, is
+         *     refused with 409 and not kept: send it again once the step waits.
          */
         post: operations["signalRequest"];
         delete?: never;
@@ -12323,11 +12326,31 @@ export interface operations {
                     "application/json": components["schemas"]["SignalReceipt"];
                 };
             };
+            /** @description The body isn't a JSON object. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-            422: components["responses"]["ValidationFailed"];
+            /**
+             * @description The body is over 64 KiB of JSON: `too_large`, its `field` the
+             *     empty pointer, which names the whole body.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     retryRequest: {

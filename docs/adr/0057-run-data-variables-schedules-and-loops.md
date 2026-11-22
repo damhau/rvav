@@ -214,6 +214,11 @@ narrowly.
   (`rvav.signal.<key>`), reads the row on a signal and each hour, and
   continues as new on a long wait. A signal lost (the API down between
   storing it and telling the workflow) is read at the next recheck.
+- A Retry that resumes keeps a wait that took its signal or event, as it
+  keeps the step done. A Retry after a rollback runs everything again:
+  the waits whose step read what came are dropped, so those steps wait
+  again, as an ask asks again (E1.6). A signal received that no step read
+  yet (the request failed elsewhere in between) stays for the step.
 - `POST /requests/{id}/signal/{name}` stores the body, a JSON object of at
   most 64 KiB, in the open wait and signals the workflow; it answers 202
   with the step's key. It needs `request.manage` in the request's project,
@@ -228,6 +233,14 @@ narrowly.
   hands events to subscriptions, in the same transaction, and signals the
   workflows once that commits. The project bound keeps another project's
   data, which becomes the step's outputs, from its requester.
+- `after_seq` is the outbox's highest `seq` when the wait opens. An event
+  whose transaction took a lower `seq` but commits after the wait opened
+  is not given to it: it began before the wait. A subscription saved at
+  that moment draws the same line (its own `after_seq`). Telling those
+  apart would need each event's commit order, which the outbox doesn't
+  keep; a wait is for what happens after it opens, and an event racing
+  its opening may go either way. A wait that must not miss one has a
+  timeout and its `on_timeout`.
 - The canvas draws a loop as lines on its step, a signal as a wait, a
   catch path as the steps after what it catches, joined by a dashed "if it
   fails" edge, and the handler after Done; the designer edits each, with
