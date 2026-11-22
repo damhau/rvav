@@ -65,9 +65,46 @@ func TestProtected(t *testing.T) {
 	if p := Protected(&e, web, machine); p.On {
 		t.Fatalf("its resource's own flag first = %+v", p)
 	}
-	web.BlueprintID, machine = "bp-nope", vra.Resource{Name: "Cloud_vSphere_Machine_1"}
-	if p := Protected(&e, web, machine); p.On {
-		t.Fatalf("a template the estate hasn't = %+v", p)
+}
+
+// TestProtectedUnreadable: a template rvav can't read keeps the machine
+// from deletion, with the doubt, since the flag is nowhere else; a
+// deployment made from no template has none.
+func TestProtectedUnreadable(t *testing.T) {
+	machine := vra.Resource{Name: "Cloud_vSphere_Machine_1", Type: vra.MachineType}
+	e := vra.SampleEstate(time.Now())
+	if p := Protected(&e, e.Deployments[0], machine); p.On || p.Doubt != "" {
+		t.Fatalf("its version, without the flag = %+v", p)
+	}
+	const cant = ", so rvav can't read its preventDelete"
+	for name, c := range map[string]struct {
+		change func(d *vra.Deployment, e *vra.Estate)
+		doubt  string
+	}{
+		"template gone": {func(d *vra.Deployment, _ *vra.Estate) { d.BlueprintID = "bp-nope" },
+			"vRA no longer has its cloud template, bp-nope" + cant},
+		"version gone": {func(d *vra.Deployment, _ *vra.Estate) { d.BlueprintVersion = "99" },
+			"vRA no longer lists version 99 of its cloud template RHEL 9 Server" + cant},
+		"not YAML": {func(_ *vra.Deployment, e *vra.Estate) { e.Blueprints[0].Versions[1].Content = "resources: [unparsable" },
+			"Version 2 of its cloud template RHEL 9 Server isn't YAML rvav can read" + cant},
+		"no such resource": {
+			change: func(d *vra.Deployment, e *vra.Estate) {
+				d.BlueprintVersion, e.Blueprints[0].Content = "", "resources: {}\n"
+			},
+			doubt: "Its cloud template RHEL 9 Server has no resource Cloud_vSphere_Machine_1" + cant,
+		},
+	} {
+		e := vra.SampleEstate(time.Now())
+		d := e.Deployments[0]
+		c.change(&d, &e)
+		if p := Protected(&e, d, machine); !p.On || p.Doubt != c.doubt {
+			t.Errorf("%s = %+v", name, p)
+		}
+	}
+	d := e.Deployments[0]
+	d.BlueprintID, d.BlueprintVersion = "", ""
+	if p := Protected(&e, d, machine); p.On || p.Doubt != "" {
+		t.Fatalf("no template = %+v", p)
 	}
 }
 
@@ -118,6 +155,13 @@ func TestPlanProtection(t *testing.T) {
 	e.Deployments[1].Resources[0].Properties["preventDelete"] = "${input.size == 'medium'}"
 	if p := pair(); !p.VMs[0].PreventDelete || !hasNote(p.Notes, "vms.vra-api-001", "kept from deletion, the safer side") {
 		t.Fatalf("an expression: %+v", p)
+	}
+
+	e.Deployments[1].BlueprintID = "bp-gone"
+	if p := pair(); !p.VMs[1].PreventDelete || !hasNote(p.Notes, "vms.vra-api-002", "vRA no longer has its cloud template, bp-gone, "+
+		"so rvav can't read its preventDelete: kept from deletion, the safer side. An administrator can allow its deletion.") ||
+		!hasNote(p.Notes, "vms", "vRA keeps vra-api-001, vra-api-002 from deletion (preventDelete)") {
+		t.Fatalf("its template gone: %+v", p)
 	}
 }
 

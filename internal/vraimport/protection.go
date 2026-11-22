@@ -39,7 +39,10 @@ var (
 //     template's current content when vRA names no version.
 //
 // A flag that reads an input takes the deployment's input. Any other
-// expression keeps the machine from deletion, the safer side, with a doubt.
+// expression keeps the machine from deletion, the safer side, with a doubt;
+// so does a template rvav can't read: since vRA's API gives the flag
+// nowhere else, reading it as unprotected would lose vRA's protection
+// unseen. A deployment made from no template has no flag.
 func Protected(e *vra.Estate, d vra.Deployment, res vra.Resource) Protection {
 	if res.PreventDelete != nil {
 		return Protection{On: *res.PreventDelete}
@@ -47,35 +50,46 @@ func Protected(e *vra.Estate, d vra.Deployment, res vra.Resource) Protection {
 	if v, ok := res.Properties["preventDelete"]; ok {
 		return flagValue(v, d.Inputs)
 	}
-	content := templateOf(e, d)
-	if content == "" {
+	if d.BlueprintID == "" {
 		return Protection{}
+	}
+	content, which, doubt := templateOf(e, d)
+	if doubt != "" {
+		return unreadable(doubt)
 	}
 	var t tmpl
-	if yaml.Unmarshal([]byte(content), &t) != nil {
-		return Protection{}
+	if err := yaml.Unmarshal([]byte(content), &t); err != nil {
+		return unreadable(which + " isn't YAML rvav can read")
 	}
-	r, ok := t.Resources[instanceIndex.ReplaceAllString(res.Name, "")]
+	name := instanceIndex.ReplaceAllString(res.Name, "")
+	r, ok := t.Resources[name]
 	if !ok {
-		return Protection{}
+		return unreadable(which + " has no resource " + name)
 	}
 	return flagValue(r.Flags["preventDelete"], d.Inputs)
 }
 
+func unreadable(why string) Protection {
+	return Protection{On: true, Doubt: why + ", so rvav can't read its preventDelete"}
+}
+
 // templateOf is the content of the template version a deployment was made
-// from, else the template's own; "" when the estate hasn't the template.
-func templateOf(e *vra.Estate, d vra.Deployment) string {
+// from, else the template's own when vRA names no version, and which it is;
+// or why rvav can't read it.
+func templateOf(e *vra.Estate, d vra.Deployment) (content, which, doubt string) {
 	i := slices.IndexFunc(e.Blueprints, func(b vra.Blueprint) bool { return b.ID == d.BlueprintID })
 	if i < 0 {
-		return ""
+		return "", "", "vRA no longer has its cloud template, " + d.BlueprintID
 	}
 	bp := e.Blueprints[i]
-	if d.BlueprintVersion != "" {
-		if j := slices.IndexFunc(bp.Versions, func(v vra.BlueprintVersion) bool { return v.Version == d.BlueprintVersion }); j >= 0 {
-			return bp.Versions[j].Content
-		}
+	if d.BlueprintVersion == "" {
+		return bp.Content, "Its cloud template " + bp.Name, ""
 	}
-	return bp.Content
+	j := slices.IndexFunc(bp.Versions, func(v vra.BlueprintVersion) bool { return v.Version == d.BlueprintVersion })
+	if j < 0 {
+		return "", "", "vRA no longer lists version " + d.BlueprintVersion + " of its cloud template " + bp.Name
+	}
+	return bp.Versions[j].Content, "Version " + d.BlueprintVersion + " of its cloud template " + bp.Name, ""
 }
 
 func flagValue(v any, inputs map[string]any) Protection {

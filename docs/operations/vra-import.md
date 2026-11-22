@@ -482,6 +482,14 @@ or on the IaaS API's machines, so rvav reads, for each machine:
 input the deployment hasn't, keeps the VM from deletion, with a warning
 on that VM.
 
+When rvav can't read the template, it keeps the VM from deletion too,
+with a warning on that VM that says why: vRA no longer has the template
+or the version the deployment names, its content isn't YAML that rvav
+can read, or it has no resource of the machine's name. vRA gives the flag
+nowhere else, so rvav doesn't assume the VM is unprotected. If you know
+that vRA doesn't protect it, run the deployment's **Allow deletion** once
+it's adopted. A deployment that vRA made from no template has no flag.
+
 In vRA, `preventDelete` keeps a machine from being deleted by an update,
 but deleting the deployment deletes it. In rvav, it holds against
 deleting the deployment too, as a blueprint's `prevent_delete` does.
