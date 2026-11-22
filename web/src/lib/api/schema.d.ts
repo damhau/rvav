@@ -10197,7 +10197,7 @@ export interface components {
             [key: string]: unknown;
         };
         /** @enum {string} */
-        IntegrationKind: "oidc" | "vcenter" | "console" | "awx" | "efficientip" | "nsx" | "git" | "vra" | "smtp" | "teams" | "slack" | "hosts" | "trust";
+        IntegrationKind: "oidc" | "vcenter" | "console" | "awx" | "efficientip" | "nsx" | "git" | "vra" | "ad" | "smtp" | "teams" | "slack" | "hosts" | "trust";
         Integration: {
             kind: components["schemas"]["IntegrationKind"];
             configured: boolean;
@@ -10220,6 +10220,11 @@ export interface components {
              *     vra (the importer's, ADR-0027): url, username, domain, insecure
              *     (the secret: the user's password, or without a user a refresh
              *     token).
+             *     ad (Active Directory, ADR-0064): url (ldaps://, or ldap:// for
+             *     StartTLS), username (the service account's DN or UPN), base_dn,
+             *     insecure, plain_ldap (ldap:// without StartTLS: everything in
+             *     the clear), cert_sha256 (the secret: the service account's
+             *     password).
              *     smtp: host, port, tls (starttls, tls, none), from, username.
              *     teams: app_id, tenant_id, service_url, login_url, graph_url,
              *     openid_url. slack: api_url.

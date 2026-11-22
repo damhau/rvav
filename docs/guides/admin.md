@@ -143,7 +143,8 @@ certificates**). A connection's test shows its server's certificate
 first: who it was issued to and by, until when, its SHA-256, and whether
 rvav trusts it. When it doesn't, the test stops there and offers:
 - **Trust this certificate** (vCenter, the vCenters added, AWX,
-  EfficientIP, NSX, the NSX Managers added, vRA): its SHA-256 goes in the
+  EfficientIP, NSX, the NSX Managers added, vRA,
+  Active Directory): its SHA-256 goes in the
   connection's **Trusted certificate** field, and TLS verification on.
   Save, with the password or token again (a new pin needs it, as a new
   address does), then test.
@@ -597,6 +598,35 @@ With several NSX Managers:
   update can't add VMs to groups on the NSX Manager the vCenter left.
 - You can't remove an NSX Manager while a deployment has a segment, a
   group, a policy or VM tags on it.
+
+## Active Directory
+
+rvav can make each VM's computer object in an OU before the VM is built,
+add it to groups, and delete it with the VM
+([ADR-0064](../adr/0064-active-directory-computer-objects.md)).
+
+To connect rvav to your domain:
+
+1. Give a service account the rights in
+   [integrations.md](../integrations.md#active-directory-permissions-service-account),
+   on the OUs rvav will use only.
+2. In **Integrations › Active Directory**, enter a domain controller's
+   address: `ldaps://dc01.corp.example` for LDAPS, or
+   `ldap://dc01.corp.example` for LDAP with StartTLS.
+3. Enter the service account (its UPN, `svc-rvav@corp.example`, or its
+   DN), its password, and the domain's base DN (`DC=corp,DC=example`).
+4. Click **Test connection**. The test shows the domain controller's
+   certificate. If rvav doesn't trust it, trust it or add its CA to the
+   CA bundle (see [Trusted certificates](#trusted-certificates)), then
+   test again: rvav binds and reads the base DN.
+5. Click **Save settings**.
+
+**Allow plain LDAP, without StartTLS** sends the password and every
+object in the clear. Use it for a lab only: the form warns you, and
+ticking it asks for the password again.
+
+Saving the connection changes nothing yet: rvav makes computer objects
+only for the projects and environments you give an OU.
 
 ## Projects
 

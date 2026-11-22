@@ -392,6 +392,43 @@ Nothing is created or changed in EfficientIP.
   the same calls, with an organisation's sample infrastructure, and makes
   a segment's port group in the stack's vcsim as NSX does in vCenter.
 
+## Active Directory (LDAP; ADR-0064)
+
+- **Client** (`internal/integrations/ad`): LDAP v3 with
+  `github.com/go-ldap/ldap/v3`, LDAPS (`ldaps://`) or StartTLS
+  (`ldap://`), plain LDAP only when an administrator ticks it. It binds
+  as a service account (`RVAV_AD_*`, or Administration › Integrations ›
+  Active Directory, whose test shows the certificate, binds and reads the
+  base DN). One domain.
+- **Makes, for each VM placed in an OU:** its computer object before it
+  is cloned, `CN=<NAME>` with `sAMAccountName` `<NAME>$`,
+  `userAccountControl` 4096, `dNSHostName` and a description naming the
+  request and the deployment; then adds it to the placement's groups.
+- **Deletes** the objects it made, found by their DN and description,
+  with their VM: deleted, rolled back or scaled in. Renames them with
+  their VM.
+- **Reads** the base DN for computer objects whose name a new VM would
+  take.
+
+### Active Directory permissions (service account)
+Delegate on each OU the placements name, to the service account only:
+
+- **Create Computer objects** and **Delete Computer objects** (this
+  object and all descendant objects);
+- on descendant Computer objects: **Write** `cn`, `name`,
+  `sAMAccountName`, `dNSHostName`, `description` and
+  `userAccountControl`, and **Reset password** is not needed;
+- on each group listed: **Write Members** (`member`).
+
+Read access to the domain, which every authenticated user has, finds
+names taken anywhere under the base DN. The account needs no domain-wide
+right, and should not be a member of Domain Admins or Account Operators.
+
+For a Windows VM to join onto its pre-made object, its join account must
+be allowed to reuse it: the service account itself, or an account the
+policy "Domain controller: Allow computer account re-use during domain
+join" names (KB5020276).
+
 ## Identity (OIDC)
 
 - Any OIDC provider (Keycloak, Entra ID, Okta). Authorization code flow with

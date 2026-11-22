@@ -10,6 +10,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/config"
+	"github.com/damhau/rvav/internal/integrations/ad"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/trust"
 )
@@ -39,8 +40,8 @@ func rootsOf(bundle string) *x509.CertPool {
 	return p
 }
 
-// certificateOf is the HTTPS address whose certificate a test of the
-// integration shows, how the connection checks it, and whether it takes a
+// certificateOf is the HTTPS (or LDAP over TLS) address whose certificate
+// a test of the integration shows, how the connection checks it, and whether it takes a
 // pin; "" when there is none (a fake, plain HTTP, or no server of its own).
 func certificateOf(kind string, cfg config.Config, settings map[string]any) (string, trust.Options, bool) {
 	var u string
@@ -61,6 +62,12 @@ func certificateOf(kind string, cfg config.Config, settings map[string]any) (str
 		u, o = cfg.NSX.URL, cfg.NSX.TLS()
 	case "vra":
 		u, o = cfg.VRA.URL, cfg.VRA.TLS()
+	case "ad":
+		// Plain LDAP has no certificate.
+		if p, err := url.Parse(cfg.AD.URL); err == nil && (p.Scheme == "ldaps" || p.Scheme == "ldap" && !cfg.AD.PlainLDAP) && p.Host != "" {
+			return cfg.AD.URL, cfg.AD.TLS(), true
+		}
+		return "", o, false
 	case "oidc":
 		ps := providerFrom(settings)
 		u, pinnable = ps.DiscoveryURL, false
@@ -85,7 +92,13 @@ func (s *Service) checkCertificate(ctx context.Context, rawURL string, o trust.O
 	if u.Port() == "" {
 		addr = net.JoinHostPort(u.Hostname(), "443")
 	}
-	c, err := trust.Inspect(ctx, rawURL, o)
+	var c trust.Certificate
+	var err error
+	if u.Scheme == "ldaps" || u.Scheme == "ldap" {
+		c, addr, err = ad.Inspect(ctx, rawURL, o)
+	} else {
+		c, err = trust.Inspect(ctx, rawURL, o)
+	}
 	if err != nil {
 		check("Certificate", fmt.Errorf("%s gave none: %v", addr, err), "")
 		return nil, false

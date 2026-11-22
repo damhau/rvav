@@ -262,7 +262,13 @@ func Inspect(ctx context.Context, rawURL string, o Options) (Certificate, error)
 		return Certificate{}, err
 	}
 	defer conn.Close()
-	chain := conn.(*tls.Conn).ConnectionState().PeerCertificates
+	return Describe(conn.(*tls.Conn).ConnectionState().PeerCertificates, host, o)
+}
+
+// Describe is the certificate chain a server presented, checked for host as
+// a connection with these options would: for the connections that start
+// TLS themselves (LDAP's StartTLS).
+func Describe(chain []*x509.Certificate, host string, o Options) (Certificate, error) {
 	if len(chain) == 0 {
 		return Certificate{}, errors.New("the server gave no certificate")
 	}

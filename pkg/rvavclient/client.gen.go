@@ -1184,6 +1184,7 @@ func (e GlobalQuotaEnforcement) Valid() bool {
 
 // Defines values for IntegrationKind.
 const (
+	IntegrationKindAd          IntegrationKind = "ad"
 	IntegrationKindAwx         IntegrationKind = "awx"
 	IntegrationKindConsole     IntegrationKind = "console"
 	IntegrationKindEfficientip IntegrationKind = "efficientip"
@@ -1202,6 +1203,8 @@ const (
 // Valid indicates whether the value is a known member of the IntegrationKind enum.
 func (e IntegrationKind) Valid() bool {
 	switch e {
+	case IntegrationKindAd:
+		return true
 	case IntegrationKindAwx:
 		return true
 	case IntegrationKindConsole:
@@ -6614,6 +6617,11 @@ type Integration struct {
 	// vra (the importer's, ADR-0027): url, username, domain, insecure
 	// (the secret: the user's password, or without a user a refresh
 	// token).
+	// ad (Active Directory, ADR-0064): url (ldaps://, or ldap:// for
+	// StartTLS), username (the service account's DN or UPN), base_dn,
+	// insecure, plain_ldap (ldap:// without StartTLS: everything in
+	// the clear), cert_sha256 (the secret: the service account's
+	// password).
 	// smtp: host, port, tls (starttls, tls, none), from, username.
 	// teams: app_id, tenant_id, service_url, login_url, graph_url,
 	// openid_url. slack: api_url.

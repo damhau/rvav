@@ -16,11 +16,12 @@ import (
 
 // LiveKinds are the integrations whose saved settings apply on next use
 // (ADR-0030): the identity provider, the notification channels, the hosts
-// rvav may call, the console (its session is made again) and vRA (the
-// importer signs in for each read). The others, connections, apply when
+// rvav may call, the console (its session is made again), vRA (the
+// importer signs in for each read) and Active Directory (bound for each
+// computer object). The others, connections, apply when
 // each process that holds them has drained and started again; their sync
 // intervals are read on next use.
-var LiveKinds = []string{"oidc", "smtp", "teams", "slack", "hosts", "console", "vra"}
+var LiveKinds = []string{"oidc", "smtp", "teams", "slack", "hosts", "console", "vra", "ad"}
 
 // LiveSettings are the saved settings as they are now (ADR-0030): what is
 // read on next use follows a change without a restart. The settings

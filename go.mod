@@ -10,11 +10,14 @@ require (
 	github.com/emersion/go-smtp v0.25.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
 	github.com/getkin/kin-openapi v0.152.0
+	github.com/go-asn1-ber/asn1-ber v1.5.8
 	github.com/go-git/go-billy/v5 v5.9.2
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/go-jose/go-jose/v4 v4.1.6
+	github.com/go-ldap/ldap/v3 v3.4.15
 	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
+	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/hc-install v0.9.4
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-framework-jsontypes v0.2.0
@@ -22,6 +25,7 @@ require (
 	github.com/hashicorp/terraform-plugin-log v0.10.0
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jimlambrt/gldap v0.1.14
 	github.com/oapi-codegen/oapi-codegen/v2 v2.8.1
 	github.com/oapi-codegen/runtime v1.8.0
 	github.com/ohler55/ojg v1.28.7
@@ -53,6 +57,7 @@ require (
 require (
 	cel.dev/expr v0.25.2 // indirect
 	dario.cat/mergo v1.0.0 // indirect
+	github.com/Azure/go-ntlmssp v0.1.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
@@ -87,7 +92,6 @@ require (
 	github.com/hashicorp/go-checkpoint v0.5.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-cty v1.5.0 // indirect
-	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-plugin v1.7.0 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect

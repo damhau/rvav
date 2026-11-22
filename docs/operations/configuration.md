@@ -252,6 +252,24 @@ token. Saved there, it is used from the next read.
 | `RVAV_VRA_INSECURE` | off | | Integrations › vRA | Doesn't check the certificate. For labs only. |
 | `RVAV_VRA_CERT_SHA256` | none | | Integrations › vRA | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it): a self-signed one. A new one needs the password or token again. |
 
+## Active Directory
+
+The directory where rvav makes VMs' computer objects
+([ADR-0064](../adr/0064-active-directory-computer-objects.md)). rvav binds as
+a service account over LDAPS (`ldaps://`) or LDAP with StartTLS (`ldap://`).
+Saved in Administration › Integrations › Active Directory, the settings
+apply from the next computer object rvav makes or deletes.
+
+| Setting | Default | Secret | Set in | What |
+|---|---|---|---|---|
+| `RVAV_AD_URL` | none | | Integrations › Active Directory | A domain controller: `ldaps://dc01.corp.example` for LDAPS (port 636), or `ldap://dc01.corp.example` for StartTLS (port 389). |
+| `RVAV_AD_USERNAME` | none | | Integrations › Active Directory | The service account's DN or UPN (`svc-rvav@corp.example`). |
+| `RVAV_AD_PASSWORD` | none | yes | Integrations › Active Directory | Its password. |
+| `RVAV_AD_BASE_DN` | none | | Integrations › Active Directory | The domain's DN (`DC=corp,DC=example`). The OUs that projects and environments name are under it, and rvav looks for computer names taken under it. |
+| `RVAV_AD_INSECURE` | off | | Integrations › Active Directory | Doesn't check the certificate. For labs only. |
+| `RVAV_AD_PLAIN_LDAP` | off | | Integrations › Active Directory | With `ldap://`, doesn't start TLS: the password and every object go over the network in the clear. For labs only. Turning it on needs the password again. |
+| `RVAV_AD_CERT_SHA256` | none | | Integrations › Active Directory | A certificate trusted besides those the CAs vouch for, by its SHA-256 (`AB:CD:…`, as the connection's test shows it): a self-signed one. A new one needs the password again. |
+
 ## Secrets, value sources and webhooks
 
 | Setting | Default | Secret | Set in | What |

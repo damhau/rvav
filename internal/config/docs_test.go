@@ -73,7 +73,7 @@ func TestEverySettingIsDocumented(t *testing.T) {
 // install only.
 func TestWhereEachSettingIsSet(t *testing.T) {
 	panel := map[string]string{"oidc": "Identity provider", "vcenter": "vCenter", "console": "vCenter › Console", "awx": "AWX",
-		"efficientip": "EfficientIP", "nsx": "NSX", "git": "Git", "vra": "vRA", "smtp": "Email",
+		"efficientip": "EfficientIP", "nsx": "NSX", "git": "Git", "vra": "vRA", "ad": "Active Directory", "smtp": "Email",
 		"teams": "Microsoft Teams", "slack": "Slack", "hosts": "Allowed hosts",
 		"trust": "Trusted certificates"}
 	// Variables that lock what a tab does rather than a field: the token

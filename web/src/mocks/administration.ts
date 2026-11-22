@@ -108,7 +108,7 @@ const PROJECT_PICKERS = [
 ];
 
 /** The integrations read on next use (ADR-0030). */
-const LIVE_KINDS = ["oidc", "smtp", "teams", "slack", "hosts", "console", "vra"];
+const LIVE_KINDS = ["oidc", "smtp", "teams", "slack", "hosts", "console", "vra", "ad"];
 
 /** The integrations, in the order the server lists them. */
 const KINDS = [
@@ -120,6 +120,7 @@ const KINDS = [
   "nsx",
   "git",
   "vra",
+  "ad",
   "smtp",
   "teams",
   "slack",
@@ -423,6 +424,7 @@ export function adminState(db: Db): AdminState {
       nsx: { settings: { url: "https://nsx.corp.example", username: "svc-rvav", cert_file: "", key_file: "", insecure: false, cert_sha256: "" }, secret: true },
       git: { settings: { url: "", branch: "main", dir: "catalog", username: "", known_hosts: "", insecure: false, committer: "rvav@corp.example", sync_interval: "5m" }, secret: false },
       vra: { settings: { url: "", username: "", domain: "", insecure: false, cert_sha256: "" }, secret: false },
+      ad: { settings: { url: "ldaps://dc01.corp.example", username: "svc-rvav@corp.example", base_dn: "DC=corp,DC=example", insecure: false, plain_ldap: false, cert_sha256: "" }, secret: true },
       smtp: { settings: { host: "smtp.corp.example", port: 587, tls: "starttls", from: "rvav <rvav@corp.example>", username: "" }, secret: false },
       teams: { settings: { app_id: "", tenant_id: "", service_url: "https://smba.trafficmanager.net/emea", login_url: "https://login.microsoftonline.com", graph_url: "https://graph.microsoft.com", openid_url: "https://login.botframework.com/v1/.well-known/openidconfiguration" }, secret: false },
       slack: { settings: { api_url: "https://slack.com/api" }, secret: false, signing: false },
@@ -655,6 +657,7 @@ function secretMoves(current: Record<string, unknown>, given: Record<string, unk
   const moved =
     (typeof url === "string" && url !== "" && url !== current.url) ||
     (given.insecure === true && current.insecure !== true) ||
+    (given.plain_ldap === true && current.plain_ldap !== true) ||
     (pin !== "" && pin !== normalFingerprint(text(current.cert_sha256)));
   return moved && !secret
     ? invalid([
@@ -738,9 +741,11 @@ function certificateCheck(
   } catch {
     return { goOn: true };
   }
-  if (u.protocol !== "https:") return { goOn: true };
+  // LDAPS, or LDAP with StartTLS unless plain LDAP is allowed.
+  const ldap = u.protocol === "ldaps:" || (u.protocol === "ldap:" && settings.plain_ldap !== true);
+  if (u.protocol !== "https:" && !ldap) return { goOn: true };
   const host = u.hostname;
-  const address = `${host}:${u.port || "443"}`;
+  const address = `${host}:${u.port || { "https:": "443", "ldaps:": "636" }[u.protocol] || "389"}`;
   if (host.includes("unreachable"))
     return {
       check: {
@@ -2469,15 +2474,16 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         return invalid([
           err("/settings/url", "The URL holds a password or token: give it as the token, not in the URL."),
         ]);
-      if (
-        typeof url === "string" &&
-        url &&
-        !(kind === "git" ? /^(https?:\/\/|ssh:\/\/|[\w.-]+@[\w.-]+:)/ : /^https?:\/\//).test(url)
-      )
+      const urlPattern =
+        { git: /^(https?:\/\/|ssh:\/\/|[\w.-]+@[\w.-]+:)/, ad: /^ldaps?:\/\/[^/]+\/?$/ }[kind] ?? /^https?:\/\//;
+      if (typeof url === "string" && url && !urlPattern.test(url))
         return invalid([
           err(
             "/settings/url",
-            kind === "git" ? "An https:// or ssh:// URL, or git@host:path." : "An http or https URL.",
+            {
+              git: "An https:// or ssh:// URL, or git@host:path.",
+              ad: "ldaps://dc01.corp.example (LDAPS), or ldap://dc01.corp.example for StartTLS.",
+            }[kind] ?? "An http or https URL.",
           ),
         ]);
       const every = w.settings.sync_interval;
@@ -2548,7 +2554,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             : [{ name: "CA bundle", ok: true, message: "Empty: only the system's CAs are trusted." }],
         });
       }
-      const tls = ["vcenter", "awx", "efficientip", "nsx", "vra", "git"].includes(kind)
+      const tls = ["vcenter", "awx", "efficientip", "nsx", "vra", "git", "ad"].includes(kind)
         ? certificateCheck(bundle, text(ps.url), ps, kind !== "git")
         : { goOn: true };
       if (!tls.goOn)
@@ -2597,11 +2603,19 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const reachable = !url.includes("unreachable");
       const checks: S["IntegrationCheck"][] = [
         ...(tls.check ? [tls.check] : []),
-        {
-          name: "Sign in",
-          ok: reachable,
-          message: reachable ? `Signed in to ${url}.` : `dial tcp: lookup ${url}: no such host`,
-        },
+        kind === "ad"
+          ? {
+              name: "Bind",
+              ok: reachable,
+              message: reachable
+                ? `Bound to ${url} as ${text(ps.username)} and read ${text(ps.base_dn)}.`
+                : `dial tcp: lookup ${url}: no such host`,
+            }
+          : {
+              name: "Sign in",
+              ok: reachable,
+              message: reachable ? `Signed in to ${url}.` : `dial tcp: lookup ${url}: no such host`,
+            },
       ];
       if (reachable && kind === "git")
         checks.push({ name: "Branch main", ok: true, message: "At 3f9c2a1b7d40; items are files in catalog/." });

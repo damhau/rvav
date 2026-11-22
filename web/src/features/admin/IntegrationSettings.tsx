@@ -34,6 +34,7 @@ export const integrationKinds = [
   "nsx",
   "git",
   "vra",
+  "ad",
   "smtp",
   "teams",
   "slack",
@@ -48,6 +49,7 @@ const onNextUse: Partial<Record<Kind, string>> = {
   slack: "They apply from the next notification.",
   console: "They apply from the next console opened.",
   vra: "They apply from the next read of vRA.",
+  ad: "They apply from the next computer object made or deleted.",
   hosts: "They apply from the next call to a host.",
 };
 
@@ -79,6 +81,8 @@ interface Setting {
   rows?: number;
   // Across the form's two columns.
   wide?: boolean;
+  // A checkbox's warning, shown while it is ticked.
+  warn?: string;
 }
 
 // The settings of each integration, as the server's config.Fields; Slack
@@ -304,6 +308,44 @@ const fields: Record<
       },
       pin("RVAV_VRA_CERT_SHA256"),
       { name: "insecure", label: "Skip TLS verification", env: "RVAV_VRA_INSECURE", type: "bool" },
+    ],
+  },
+  // The Active Directory computer objects are made in (ADR-0064).
+  ad: {
+    title: "Active Directory",
+    about: "Where VMs' computer objects are made before they are built, and deleted with them.",
+    secret: { name: "password", label: "Service account password", env: "RVAV_AD_PASSWORD", type: "string" },
+    settings: [
+      {
+        name: "url",
+        label: "URL",
+        env: "RVAV_AD_URL",
+        type: "string",
+        hint: "ldaps://dc01.corp.example for LDAPS, or ldap://dc01.corp.example for StartTLS",
+      },
+      {
+        name: "username",
+        label: "Service account",
+        env: "RVAV_AD_USERNAME",
+        type: "string",
+        hint: "Its DN or UPN, for example svc-rvav@corp.example",
+      },
+      {
+        name: "base_dn",
+        label: "Base DN",
+        env: "RVAV_AD_BASE_DN",
+        type: "string",
+        hint: "The domain's, for example DC=corp,DC=example: OUs are under it",
+      },
+      pin("RVAV_AD_CERT_SHA256"),
+      { name: "insecure", label: "Skip TLS verification", env: "RVAV_AD_INSECURE", type: "bool" },
+      {
+        name: "plain_ldap",
+        label: "Allow plain LDAP, without StartTLS",
+        env: "RVAV_AD_PLAIN_LDAP",
+        type: "bool",
+        warn: "With ldap://, the service account's password and every object go over the network in the clear. For a lab only.",
+      },
     ],
   },
   // Notification channels (S11, ADR-0023).
@@ -557,6 +599,11 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
                     {f.label}
                   </label>
                   {locked && <span className="text-secondary text-faint">{lockedHint(f)}</span>}
+                  {f.warn && values[f.name] === true && (
+                    <span role="status" className="text-secondary text-warn">
+                      {f.warn}
+                    </span>
+                  )}
                 </div>
               );
             if (f.multiline)

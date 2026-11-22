@@ -138,6 +138,17 @@ var Fields = map[string][]Field{
 		{"insecure", "RVAV_VRA_INSECURE", "bool", false},
 		{"cert_sha256", "RVAV_VRA_CERT_SHA256", "string", false},
 	},
+	// The Active Directory computer objects are made in (ADR-0064), read
+	// on next use.
+	"ad": {
+		{"url", "RVAV_AD_URL", "string", false},
+		{"username", "RVAV_AD_USERNAME", "string", false},
+		{"password", "RVAV_AD_PASSWORD", "string", true},
+		{"base_dn", "RVAV_AD_BASE_DN", "string", false},
+		{"insecure", "RVAV_AD_INSECURE", "bool", false},
+		{"plain_ldap", "RVAV_AD_PLAIN_LDAP", "bool", false},
+		{"cert_sha256", "RVAV_AD_CERT_SHA256", "string", false},
+	},
 	"smtp": {
 		{"host", "RVAV_SMTP_HOST", "string", false},
 		{"port", "RVAV_SMTP_PORT", "int", false},
@@ -218,6 +229,8 @@ func (c EfficientIPConfig) TLS() trust.Options {
 func (c NSXConfig) TLS() trust.Options { return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256} }
 
 func (c VRAConfig) TLS() trust.Options { return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256} }
+
+func (c ADConfig) TLS() trust.Options { return trust.Options{Insecure: c.Insecure, Pin: c.CertSHA256} }
 
 // Locked lists the settings of an integration an environment variable sets.
 func Locked(kind string) []string {
@@ -384,6 +397,14 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 				c.VRA.Token, c.VRA.Password = s.Secret, ""
 			}
 		}
+	case "ad":
+		str("url", &c.AD.URL)
+		str("username", &c.AD.Username)
+		secret("password", &c.AD.Password)
+		str("base_dn", &c.AD.BaseDN)
+		flag("insecure", &c.AD.Insecure)
+		flag("plain_ldap", &c.AD.PlainLDAP)
+		pin("cert_sha256", &c.AD.CertSHA256)
 	case "smtp":
 		str("host", &c.SMTP.Host)
 		if v, ok := s.Settings["port"].(float64); ok && v > 0 && !locked["port"] {
@@ -471,6 +492,9 @@ func (c Config) Settings(kind string) map[string]any {
 	case "vra":
 		return map[string]any{"url": c.VRA.URL, "username": c.VRA.Username, "domain": c.VRA.Domain, "insecure": c.VRA.Insecure,
 			"cert_sha256": c.VRA.CertSHA256}
+	case "ad":
+		return map[string]any{"url": c.AD.URL, "username": c.AD.Username, "base_dn": c.AD.BaseDN, "insecure": c.AD.Insecure,
+			"plain_ldap": c.AD.PlainLDAP, "cert_sha256": c.AD.CertSHA256}
 	case "trust":
 		return map[string]any{"ca_bundle": c.CABundle}
 	case "hosts":
@@ -504,6 +528,8 @@ func (c Config) SecretSet(kind string) bool {
 		return c.NSX.Password != ""
 	case "git":
 		return c.Git.Credential != ""
+	case "ad":
+		return c.AD.Password != ""
 	case "smtp":
 		return c.SMTP.Password != ""
 	case "teams":
@@ -552,8 +578,8 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 		}
 	}
 	for _, key := range []string{"url", "service_url", "issuer", "discovery_url", "login_url", "graph_url", "openid_url", "api_url"} {
-		if kind == "git" {
-			break // an SSH URL too: gitrepo.CheckURL
+		if kind == "git" || kind == "ad" {
+			break // an SSH URL too (gitrepo.CheckURL); an LDAP one, below
 		}
 		if u, ok := settings[key].(string); ok && u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 			errs[key] = "An http or https URL."
@@ -598,6 +624,17 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 		}
 		if sc, ok := settings["scopes"].(string); ok && sc != "" && !slices.Contains(strings.Fields(sc), "openid") {
 			errs["scopes"] = "Include openid, for example openid profile email."
+		}
+	}
+	if kind == "ad" {
+		if u, ok := settings["url"].(string); ok && u != "" {
+			p, err := url.Parse(u)
+			if err != nil || (p.Scheme != "ldaps" && p.Scheme != "ldap") || p.Hostname() == "" || strings.Trim(p.Path, "/") != "" {
+				errs["url"] = "ldaps://dc01.corp.example (LDAPS), or ldap://dc01.corp.example for StartTLS."
+			}
+		}
+		if dn, ok := settings["base_dn"].(string); ok && dn != "" && !strings.Contains(strings.ToLower(dn), "dc=") {
+			errs["base_dn"] = "The domain's DN, for example DC=corp,DC=example."
 		}
 	}
 	if kind == "smtp" {

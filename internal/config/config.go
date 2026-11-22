@@ -31,6 +31,8 @@ type Config struct {
 	AWX      AWXConfig
 	// VRA is the vRA the importer reads (P2, ADR-0027).
 	VRA VRAConfig
+	// AD is the Active Directory computer objects are made in (ADR-0064).
+	AD ADConfig
 	// NSX is the NSX Manager rvav makes networks and security groups in
 	// (ADR-0028).
 	NSX NSXConfig
@@ -150,6 +152,23 @@ type VRAConfig struct {
 	// those the CAs vouch for: pinned by its SHA-256 (package trust).
 	CertSHA256 string
 }
+
+// ADConfig is the Active Directory rvav makes VMs' computer objects in
+// (ADR-0064): ldaps://, or ldap:// with StartTLS, bound as a service
+// account.
+type ADConfig struct {
+	URL      string
+	Username string
+	Password string
+	BaseDN   string
+	Insecure bool
+	// PlainLDAP: ldap:// in the clear, without StartTLS, the password too.
+	PlainLDAP  bool
+	CertSHA256 string
+}
+
+// Configured says whether rvav has a directory.
+func (c ADConfig) Configured() bool { return c.URL != "" && c.BaseDN != "" }
 
 // NSXConfig: where the NSX Manager is, and rvav's account there, a user
 // and password or a client certificate (a principal identity).
@@ -380,6 +399,15 @@ func Load() (Config, error) {
 			Domain:     env("RVAV_VRA_DOMAIN", ""),
 			Insecure:   boolean("RVAV_VRA_INSECURE"),
 			CertSHA256: env("RVAV_VRA_CERT_SHA256", ""),
+		},
+		AD: ADConfig{
+			URL:        env("RVAV_AD_URL", ""),
+			Username:   env("RVAV_AD_USERNAME", ""),
+			Password:   env("RVAV_AD_PASSWORD", ""),
+			BaseDN:     env("RVAV_AD_BASE_DN", ""),
+			Insecure:   boolean("RVAV_AD_INSECURE"),
+			PlainLDAP:  boolean("RVAV_AD_PLAIN_LDAP"),
+			CertSHA256: env("RVAV_AD_CERT_SHA256", ""),
 		},
 		AWX: AWXConfig{
 			Fake:          boolean("RVAV_FAKE_AWX"),

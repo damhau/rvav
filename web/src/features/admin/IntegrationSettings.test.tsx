@@ -95,4 +95,26 @@ describe("integration settings", () => {
     await user.click(within(vra).getByRole("button", { name: "Save settings" }));
     expect(await screen.findByText("They apply from the next read of vRA.")).toBeInTheDocument();
   });
+
+  it("binds to Active Directory over TLS, warning of plain LDAP", async () => {
+    const user = open("ad");
+    const ad = await screen.findByRole("region", { name: "Active Directory connection" });
+    expect(within(ad).getByRole("textbox", { name: "Base DN" })).toHaveValue("DC=corp,DC=example");
+    await user.click(within(ad).getByRole("button", { name: "Test connection" }));
+    expect(
+      await within(ad).findByText(
+        "Bound to ldaps://dc01.corp.example as svc-rvav@corp.example and read DC=corp,DC=example.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(ad).getByText(/dc01\.corp\.example:636/)).toBeInTheDocument();
+    const plain = within(ad).getByRole("checkbox", { name: "Allow plain LDAP, without StartTLS" });
+    expect(within(ad).queryByText(/in the clear/)).not.toBeInTheDocument();
+    await user.click(plain);
+    expect(within(ad).getByRole("status")).toHaveTextContent(
+      /password and every object go over the network in the clear/,
+    );
+    // Plain LDAP sends the saved password elsewhere: it is asked for again.
+    await user.click(within(ad).getByRole("button", { name: "Save settings" }));
+    expect(await within(ad).findByText(/needs the password or token again/)).toBeInTheDocument();
+  }, 20_000);
 });

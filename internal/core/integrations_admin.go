@@ -32,8 +32,8 @@ import (
 // as each process drains and starts again (app.Run); test connection tries
 // the settings given, saved or not.
 
-var integrationKinds = []string{"oidc", "vcenter", "console", "awx", "efficientip", "nsx", "git", "vra", "smtp", "teams", "slack", "hosts",
-	"trust"}
+var integrationKinds = []string{"oidc", "vcenter", "console", "awx", "efficientip", "nsx", "git", "vra", "ad", "smtp", "teams", "slack",
+	"hosts", "trust"}
 
 // storedSlack opens Slack's sealed secrets, both kept as one.
 func (s *Service) storedSlack(row *store.IntegrationSettings) config.SlackSecrets {
@@ -392,6 +392,8 @@ func (s *Service) TestIntegration(ctx context.Context, p *auth.Principal, kind s
 		testConsole(ctx, cfg, roots, check)
 	case "vra":
 		testVRA(ctx, cfg.VRA, roots, check)
+	case "ad":
+		testAD(ctx, cfg.AD, roots, check)
 	case "trust":
 		testTrust(cfg.CABundle, check)
 	case "hosts":
@@ -472,6 +474,10 @@ func secretGoesWhereGiven(kind string, current, given map[string]any, newSecret 
 	}
 	moved := address(kind, merged) != address(kind, current)
 	if v, ok := given["insecure"].(bool); ok && v && current["insecure"] != true {
+		moved = true
+	}
+	// Plain LDAP sends the password in the clear.
+	if v, ok := given["plain_ldap"].(bool); ok && v && current["plain_ldap"] != true {
 		moved = true
 	}
 	// A certificate pinned: a server the CAs don't vouch for is trusted.
