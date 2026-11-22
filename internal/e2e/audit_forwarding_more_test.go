@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -367,6 +368,174 @@ func TestAuditForwardingSetAside(t *testing.T) {
 		}
 		if n := depth(); n != 1 {
 			t.Fatalf("queue depth with the syslog server disabled = %v", n)
+		}
+	})
+}
+
+// TestAuditForwardingDestinationRemoved: an action audited while a
+// destination is removed is audited, its delivery to the destination gone
+// swept away; a lease taken over after it ran out isn't ended by the
+// replica that had it; and a forwarder told to stop stops after the batch
+// it is sending.
+func TestAuditForwardingDestinationRemoved(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		rcv := newTCPSyslog(t)
+		w := rcv.destination("Going")
+		w.Enabled = new(false)
+		var dest api.AuditDestination
+		h.json("POST", "/api/v1/admin/audit-destinations", admin, w, 201, &dest)
+		w.Enabled = new(true)
+		h.json("PUT", "/api/v1/admin/audit-destinations/"+dest.Id, admin, w, 200, &dest)
+
+		tx, err := h.store.Pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if _, err := tx.Exec(ctx, `delete from audit_destinations where id = $1`, dest.Id); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan error, 1)
+		go func() {
+			done <- h.store.Audit(ctx, h.store.Pool, store.AuditEvent{Action: "token.create", TargetType: "api_token",
+				TargetID: "while-removed"})
+		}()
+		time.Sleep(300 * time.Millisecond)
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; err != nil {
+			t.Fatalf("audited while a destination is removed: %v", err)
+		}
+		var events, deliveries int
+		count := func() {
+			t.Helper()
+			if err := h.store.Pool.QueryRow(ctx, `select (select count(*) from audit_events where target_id = 'while-removed'),
+				(select count(*) from audit_deliveries where destination_id = $1)`, dest.Id).Scan(&events, &deliveries); err != nil {
+				t.Fatal(err)
+			}
+		}
+		count()
+		if events != 1 {
+			t.Fatalf("%d events audited", events)
+		}
+		if err := h.svc.AuditLog.Once(ctx); err != nil {
+			t.Fatal(err)
+		}
+		count()
+		if deliveries != 0 {
+			t.Fatalf("%d deliveries left to a destination removed", deliveries)
+		}
+	})
+}
+
+// hookWithBacklog is a webhook destination of API tokens' events that
+// calls handle, with 300 events waiting for it.
+func hookWithBacklog(t *testing.T, ctx context.Context, h *harness, handle http.HandlerFunc) api.AuditDestination {
+	t.Helper()
+	const admin = "mkeller"
+	siem := httptest.NewServer(handle)
+	t.Cleanup(siem.Close)
+	h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "siem-hmac", Kind: api.SecretWriteKindToken,
+		Value: new("siem-signing-secret")}, 201, nil)
+	h.allowWebhooks(siem.URL)
+	var dest api.AuditDestination
+	h.json("POST", "/api/v1/admin/audit-destinations", admin, api.AuditDestinationWrite{Name: "SIEM",
+		Categories: &[]api.AuditCategory{api.AuditCategoryToken},
+		Webhook:    &api.AuditWebhook{Url: siem.URL + "/in", Secret: "siem-hmac"}}, 201, &dest)
+	for i := range 3 * auditlog.Batch {
+		if err := h.store.Audit(ctx, h.store.Pool, store.AuditEvent{Action: "token.create", TargetType: "api_token",
+			TargetID: "tok-" + strconv.Itoa(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dest
+}
+
+func leaseOf(t *testing.T, ctx context.Context, h *harness, id string) *time.Time {
+	t.Helper()
+	var lease *time.Time
+	if err := h.store.Pool.QueryRow(ctx, `select lease_until from audit_destinations where id = $1`, id).Scan(&lease); err != nil {
+		t.Fatal(err)
+	}
+	return lease
+}
+
+// TestAuditForwardingLease: a lease taken over after it ran out isn't
+// ended by the worker that had it.
+func TestAuditForwardingLease(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		dest := hookWithBacklog(t, ctx, h, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+		now := time.Now()
+		first, err := h.store.ClaimAuditDestinations(ctx, now, time.Minute)
+		if err != nil || len(first) != 1 || first[0].LeaseUntil == nil {
+			t.Fatalf("claimed %+v, %v", first, err)
+		}
+		if again, err := h.store.ClaimAuditDestinations(ctx, now, time.Minute); err != nil || len(again) != 0 {
+			t.Fatalf("claimed while leased: %+v, %v", again, err)
+		}
+		second, err := h.store.ClaimAuditDestinations(ctx, now.Add(2*time.Minute), time.Minute)
+		if err != nil || len(second) != 1 || second[0].LeaseUntil == nil {
+			t.Fatalf("claimed after the lease ran out: %+v, %v", second, err)
+		}
+		if err := h.store.ReleaseAuditDestination(ctx, first[0].ID, *first[0].LeaseUntil); err != nil {
+			t.Fatal(err)
+		}
+		if lease := leaseOf(t, ctx, h, dest.Id); lease == nil || !lease.Equal(*second[0].LeaseUntil) {
+			t.Fatalf("the lease taken over is %v, want %v", lease, second[0].LeaseUntil)
+		}
+		if err := h.store.ReleaseAuditDestination(ctx, second[0].ID, *second[0].LeaseUntil); err != nil {
+			t.Fatal(err)
+		}
+		if lease := leaseOf(t, ctx, h, dest.Id); lease != nil {
+			t.Fatalf("released, the lease is %v", lease)
+		}
+	})
+}
+
+// TestAuditForwardingStops: a forwarder told to stop stops after the batch
+// it is sending, records it and ends its lease, rather than sending until
+// its round would end.
+func TestAuditForwardingStops(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		run, stop := context.WithCancel(ctx)
+		defer stop()
+		var calls atomic.Int32
+		dest := hookWithBacklog(t, ctx, h, func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			stop()
+			w.WriteHeader(http.StatusOK)
+		})
+		ran := make(chan struct{})
+		go func() {
+			defer close(ran)
+			h.svc.AuditLog.Run(run)
+		}()
+		select {
+		case <-ran:
+		case <-time.After(30 * time.Second):
+			t.Fatal("the forwarder didn't stop")
+		}
+		var backlog int
+		_ = h.store.Pool.QueryRow(ctx, `select count(*) from audit_deliveries where destination_id = $1`, dest.Id).Scan(&backlog)
+		if n := calls.Load(); n != 1 || backlog != 2*auditlog.Batch {
+			t.Fatalf("stopped after %d calls, %d events left, want 1 and %d", n, backlog, 2*auditlog.Batch)
+		}
+		if lease := leaseOf(t, ctx, h, dest.Id); lease != nil {
+			t.Fatalf("a forwarder stopped keeps its lease until %v", lease)
 		}
 	})
 }

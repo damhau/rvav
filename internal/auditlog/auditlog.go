@@ -147,9 +147,13 @@ func (f *Forwarder) Once(ctx context.Context) error {
 	return err
 }
 
-// round leases the due destinations and sends to each in the background:
-// a destination that doesn't answer holds back none of the others.
+// round sweeps what waited for destinations removed, leases the due ones
+// and sends to each in the background: a destination that doesn't answer
+// holds back none of the others.
 func (f *Forwarder) round(ctx context.Context) error {
+	if _, err := f.Store.SweepAuditDeliveries(ctx); err != nil && ctx.Err() == nil {
+		f.Log.Warn("audit forwarding: sweep the destinations removed", "err", err)
+	}
 	due, err := f.Store.ClaimAuditDestinations(ctx, f.now(), lease)
 	if err != nil {
 		return err
@@ -165,11 +169,15 @@ func (f *Forwarder) round(ctx context.Context) error {
 }
 
 // drain sends a destination's backlog, a batch at a time, while its lease
-// lasts.
-func (f *Forwarder) drain(ctx context.Context, d store.AuditDestination) {
-	ctx = context.WithoutCancel(ctx)
+// lasts and until the forwarder stops: a batch begun is sent, and what
+// came of it recorded.
+func (f *Forwarder) drain(parent context.Context, d store.AuditDestination) {
+	ctx := context.WithoutCancel(parent)
 	defer func() {
-		if err := f.Store.ReleaseAuditDestination(ctx, d.ID); err != nil {
+		if d.LeaseUntil == nil {
+			return
+		}
+		if err := f.Store.ReleaseAuditDestination(ctx, d.ID, *d.LeaseUntil); err != nil {
 			f.Log.Warn("audit forwarding: release", "destination", d.Name, "err", err)
 		}
 	}()
@@ -180,7 +188,7 @@ func (f *Forwarder) drain(ctx context.Context, d store.AuditDestination) {
 			_ = s.close()
 		}
 	}()
-	for f.now().Before(until) {
+	for f.now().Before(until) && parent.Err() == nil {
 		rows, err := f.Store.AuditBacklog(ctx, d.ID, Batch)
 		if err != nil {
 			f.Log.Warn("audit forwarding: backlog", "destination", d.Name, "err", err)

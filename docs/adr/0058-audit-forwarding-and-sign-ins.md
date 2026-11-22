@@ -80,6 +80,20 @@ destination is removed. Changing a destination tries it again at once.
 A batch delivered just before a crash is sent again: receivers drop an
 event `id` they already have.
 
+The lease is taken with `FOR NO KEY UPDATE SKIP LOCKED`, after a look at
+which destinations have events waiting, so that nothing an audited
+action does waits on it. A worker ends only its own lease: one that ran
+out and was taken by another worker stays theirs. A worker that stops
+finishes the batch it is sending, records it and ends its leases before
+it exits.
+
+`audit_deliveries` has no foreign key to its destination: an action
+audited while a destination was removed waited on the removal's lock,
+then failed on the key, and the action with it. Removing a destination
+removes only the destination; each round of the forwarder sweeps what
+waited for destinations gone, those of the removal and of actions
+audited while it ran, 10,000 rows at most.
+
 An event a destination refuses for good is set aside, with why, and the
 events after it go: a webhook's 413 for the event alone (a batch answered
 413 is sent again one event at a time), or an event longer than 64 KiB

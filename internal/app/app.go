@@ -582,7 +582,13 @@ func (a *App) RunWorker(ctx context.Context) error {
 	// channels (ADR-0023): every worker replica takes part.
 	go a.Dispatcher().Run(ctx)
 	go a.Notifier().Run(ctx)
-	go a.AuditLog().Run(ctx)
+	// Waited for at the end: a batch being sent is recorded, so it isn't
+	// sent again by the next worker.
+	forwarded := make(chan struct{})
+	go func() {
+		defer close(forwarded)
+		a.AuditLog().Run(ctx)
+	}()
 	// Custom workflows' approval decisions whose signal failed (#81).
 	go func() {
 		t := time.NewTicker(30 * time.Second)
@@ -600,6 +606,7 @@ func (a *App) RunWorker(ctx context.Context) error {
 	}()
 	<-ctx.Done()
 	w.Stop()
+	<-forwarded
 	return nil
 }
 
