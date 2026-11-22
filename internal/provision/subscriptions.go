@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"go.temporal.io/sdk/activity"
+
 	"github.com/damhau/rvav/internal/dispatch"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/outbox"
@@ -155,20 +157,40 @@ type taken struct {
 type asked struct {
 	stop   bool
 	reason string
+	// again: the run was finished by this delivery's earlier attempt, and
+	// changes are what its answer changed then.
+	again   bool
+	changes json.RawMessage
+}
+
+// delivery names the workflow activity asking: a Temporal retry of it
+// keeps the name, a new run of the request's workflow doesn't.
+func delivery(ctx context.Context) string {
+	if !activity.IsActivity(ctx) {
+		return ""
+	}
+	info := activity.GetInfo(ctx)
+	return info.WorkflowExecution.RunID + "/" + info.ActivityID
 }
 
 // ask delivers the event to a blocking subscription, once more within its
 // timeout when the first try fails fast, and records its run: a request
 // retried keeps one run per event. A failure, a timeout or an answer rvav
 // refuses tells its recovery target, and its answer or the subscription's
-// on_failure decides (ADR-0054).
+// on_failure decides (ADR-0054). An error is rvav's own, which Temporal
+// tries again: the run this delivery finished stands, one it didn't is
+// delivered again.
 func (a *Activities) ask(ctx context.Context, q asking) (asked, error) {
 	requestID := q.in.RequestID
 	step, _ := a.Store.GetStepByKey(ctx, requestID, q.key)
-	runID, err := a.Store.StartBlockingRun(ctx, store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: q.sub.ID,
-		EventID: q.eventID, RequestID: &requestID, StepID: &step.ID})
+	run, err := a.Store.StartBlockingRun(ctx, store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: q.sub.ID,
+		EventID: q.eventID, RequestID: &requestID, StepID: &step.ID}, delivery(ctx))
 	if err != nil {
 		return asked{}, err
+	}
+	runID := run.ID
+	if run.FinishedAt != nil {
+		return a.settled(ctx, q, run)
 	}
 	start, res := a.deliverBlocking(ctx, dispatch.Delivery{RunID: runID, Sub: q.sub, Event: q.payload, Blocking: true, StepKey: q.key})
 	var took taken
@@ -203,6 +225,24 @@ func (a *Activities) ask(ctx context.Context, q asking) (asked, error) {
 		a.childDetail(ctx, q.in, q.key, "done", cmp.Or(took.detail, "Went on."))
 	}
 	return out, a.Store.RecordAttempt(ctx, runID, dispatch.AttemptRow(start, time.Now(), res), u)
+}
+
+// settled is what a run this delivery finished came to, before Temporal
+// tried it again: its answer stands, nobody is asked again, and only what
+// the answer or the failure decided takes the recovery and on_failure path.
+func (a *Activities) settled(ctx context.Context, q asking, run store.SubscriptionRun) (asked, error) {
+	reason := deref(run.Reason)
+	switch run.Status {
+	case "blocked":
+		out := asked{stop: true, reason: q.sub.Name + " stopped the request: " + reason, again: true}
+		a.child(ctx, q.in, q.key, "", "failed", &out.reason)
+		return out, nil
+	case "failed":
+		out, err := a.failed(ctx, q, run.ID, reason, q.sub.Name+" couldn't check the request: "+reason)
+		out.again = true
+		return out, err
+	}
+	return asked{again: true, changes: run.Changes}, nil
 }
 
 // failed settles a blocking subscription that failed: its recovery
@@ -243,11 +283,15 @@ func (a *Activities) recover(ctx context.Context, q asking, runID, why string) (
 	key := q.key + "/recovery"
 	a.child(ctx, in, key, "Recovery", "running", nil)
 	step, _ := a.Store.GetStepByKey(ctx, requestID, key)
-	id, err := a.Store.StartBlockingRun(ctx, store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: q.sub.ID,
-		EventID: q.eventID, Recovery: true, RequestID: &requestID, StepID: &step.ID})
+	run, err := a.Store.StartBlockingRun(ctx, store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: q.sub.ID,
+		EventID: q.eventID, Recovery: true, RequestID: &requestID, StepID: &step.ID}, delivery(ctx))
 	if err != nil {
 		return dispatch.Result{}, err
 	}
+	if run.FinishedAt != nil {
+		return recorded(run), nil
+	}
+	id := run.ID
 	sub := q.sub
 	sub.Target = q.sub.Recovery
 	start, res := a.deliverBlocking(ctx, dispatch.Delivery{RunID: id, Sub: sub, Event: withRecovery(q.payload, why, runID),
@@ -261,15 +305,28 @@ func (a *Activities) recover(ctx context.Context, q asking, runID, why string) (
 		u.Status, u.Outcome, u.Reason = "blocked", &res.Outcome, &res.Reason
 		a.childDetail(ctx, in, key, "done", "Stopped the request: "+res.Reason)
 	default:
-		cont := "continue"
-		u.Status, u.Outcome = "delivered", &cont
+		u.Status = "delivered"
 		detail := "Let the request go on."
-		if !res.Decided {
+		if res.Decided {
+			cont := "continue"
+			u.Outcome = &cont
+		} else {
 			detail = "Answered without an outcome: the subscription's setting decides."
 		}
 		a.childDetail(ctx, in, key, "done", detail)
 	}
 	return res, a.Store.RecordAttempt(ctx, id, dispatch.AttemptRow(start, time.Now(), res), u)
+}
+
+// recorded is the answer a recovery run this delivery finished kept.
+func recorded(run store.SubscriptionRun) dispatch.Result {
+	switch run.Status {
+	case "blocked":
+		return dispatch.Result{OK: true, Decided: true, Outcome: "stop", Reason: deref(run.Reason)}
+	case "failed":
+		return dispatch.Result{Err: deref(run.Reason)}
+	}
+	return dispatch.Result{OK: true, Decided: run.Outcome != nil, Outcome: "continue"}
 }
 
 // withRecovery is the event a recovery target gets: the subscription's,

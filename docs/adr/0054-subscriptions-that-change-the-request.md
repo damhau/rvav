@@ -92,7 +92,9 @@ request:
   other VM of the request, no deployment rvav reserved it for, nothing in
   EfficientIP. rvav reserves it when it reserves the others, with
   `ReserveAddress` instead of the next free one. One taken in between
-  fails the request: a retry would ask for it again.
+  fails the build, outside the subscription's recovery, which is past;
+  the address stays in the plan, so a Retry fails the same way, and a
+  new request asks again.
 
 Approval policies and quotas aren't asked again: they decided on the
 item, its inputs, its size and its environment, which don't change.
@@ -143,6 +145,28 @@ A request retried after a failure asks again only what wasn't answered:
   when the request ran before: what they changed is kept."
 - Workflows that started before this don't ask (`workflow.GetVersion`,
   `machine-checks`).
+
+### rvav's own failures
+A failure of rvav's while it asks (a worker restarted during a deploy,
+the database out of reach, a lock timeout while it applies a change) is
+not the subscription's (E1.6): Temporal tries the check again, with the
+activities' retry policy, and neither the recovery target nor
+`on_failure` decides.
+
+- The run's `delivery` names the workflow activity asking. A try again
+  of the same activity gets the run it finished as it was: a stop, a
+  failure (then its recovery, picked up the same way) or an answer taken.
+  The target isn't asked again.
+- A run the activity hadn't finished is delivered again under its
+  `run_id`: targets are asked at least once, and give the same answer to
+  the same run.
+- A VM's change rvav applied before the worker stopped leaves the plan
+  changed and the workflow's VM not: the check fails, and a Retry of the
+  request builds the VM as changed.
+- An undecided recovery run keeps no `outcome`: "continue" was what
+  rvav did, not what it answered.
+- Workflows that started before keep failing on one
+  (`workflow.GetVersion`, `check-retries`).
 
 ## Consequences
 - A CMDB, an IPAM or a capacity tool outside rvav can name, address and

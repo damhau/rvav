@@ -9901,7 +9901,9 @@ type SubscriptionRun struct {
 	Id            string     `json:"id"`
 	NextAttemptAt *time.Time `json:"next_attempt_at,omitempty"`
 
-	// Outcome A blocking run's answer: continue or stop.
+	// Outcome A blocking run's answer: continue or stop. None for a recovery
+	// target that answered without one: the subscription's
+	// `on_failure` decided.
 	Outcome *string `json:"outcome,omitempty"`
 
 	// Reason Why it stopped the request, or why it failed.
@@ -9964,7 +9966,9 @@ type SubscriptionRunDetail struct {
 	Id            string                   `json:"id"`
 	NextAttemptAt *time.Time               `json:"next_attempt_at,omitempty"`
 
-	// Outcome A blocking run's answer: continue or stop.
+	// Outcome A blocking run's answer: continue or stop. None for a recovery
+	// target that answered without one: the subscription's
+	// `on_failure` decided.
 	Outcome *string `json:"outcome,omitempty"`
 
 	// Payload What subscribers receive (`rvav.event.v1`). Within v1, fields are only

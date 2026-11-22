@@ -132,13 +132,16 @@ func machineChecks(ctx workflow.Context, info Info, topic, parent string, vms []
 	if len(list) == 0 {
 		return "", nil
 	}
+	retries := checkRetries(ctx)
 	for _, c := range list {
 		// Its own timeout, and its recovery's, each tried once more after a
-		// fast failure; not retried by Temporal, which would ask again.
+		// fast failure.
 		o := activityOptions
 		o.StartToCloseTimeout = 4*time.Duration(c.Timeout)*time.Second + time.Minute
 		o.HeartbeatTimeout = 0
-		o.RetryPolicy = &temporal.RetryPolicy{MaximumAttempts: 1}
+		if !retries {
+			o.RetryPolicy = &temporal.RetryPolicy{MaximumAttempts: 1}
+		}
 		var out MachineCheckOutcome
 		run := MachineCheckInput{RequestID: info.RequestID, ProjectID: info.ProjectID, Topic: topic, Parent: parent, Check: c, VM: vms[c.VM]}
 		if err := workflow.ExecuteActivity(workflow.WithActivityOptions(ctx, o), a.RunMachineCheck, run).Get(ctx, &out); err != nil {
@@ -340,6 +343,11 @@ func (a *Activities) RunMachineCheck(ctx context.Context, in MachineCheckInput) 
 		}})
 	if err != nil {
 		return out, err
+	}
+	if res.again && len(res.changes) > 0 {
+		// The plan has the change, the VM this workflow builds doesn't.
+		return out, permanent("%s changed %s, and the worker stopped before it took the change: Retry the request, which builds the VM as changed",
+			sub.Name, in.VM.Name)
 	}
 	if res.stop {
 		out.Stop, out.Reason, out.VM = true, res.reason, nil

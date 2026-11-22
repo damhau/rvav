@@ -3,18 +3,23 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/provision"
+	"github.com/damhau/rvav/internal/store"
 )
 
 // changeHook answers blocking subscriptions by path, as a CMDB or an IPAM
@@ -347,6 +352,114 @@ func TestSubscriptionChanges(t *testing.T) {
 		h.json("GET", "/api/v1/deployments/"+(*named.DeploymentIds)[0], owner, nil, 200, &dep)
 		if named.Status != api.RequestStatusSucceeded || dep.Name != "web-dev-app750" || !vmExists(ctx, c, "web-dev-app750") {
 			t.Fatalf("named by AWX = %s %s, deployment %s", named.Status, errorOf(named), dep.Name)
+		}
+	})
+}
+
+// flakyChanger fails its first change, as a lock timeout would.
+type flakyChanger struct {
+	provision.MachineChanger
+	failed atomic.Bool
+}
+
+func (c *flakyChanger) ChangeMachine(ctx context.Context, ch provision.MachineChange) (provision.VMUnit, []string, error) {
+	if c.failed.CompareAndSwap(false, true) {
+		return ch.VM, nil, errors.New("canceling statement due to lock timeout")
+	}
+	return c.MachineChanger.ChangeMachine(ctx, ch)
+}
+
+// TestBlockingCheckRetries: rvav's own failure while a blocking check runs
+// is tried again, asking the target again with the same run, and isn't
+// the subscription's: neither its recovery nor its on_failure decides; a
+// run the same delivery finished stands (E1.6, ADR-0054).
+func TestBlockingCheckRetries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, owner = "mkeller", "tnguyen"
+		hook := &changeHook{answers: map[string]string{}, events: map[string]map[string]any{}}
+		srv := httptest.NewServer(hook)
+		defer srv.Close()
+		h.allowWebhooks(srv.URL)
+		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "cmdb-hook", Kind: api.SecretWriteKindToken,
+			Value: new("hook-signing-secret")}, 201, nil)
+		target := func(path string) api.SubscriptionTarget {
+			var t api.SubscriptionTarget
+			_ = json.Unmarshal([]byte(`{"webhook": {"url": "`+srv.URL+path+`", "secret": "cmdb-hook"}}`), &t)
+			return t
+		}
+		cont := api.ContinueRequest
+		var naming api.Subscription
+		h.json("POST", "/api/v1/admin/subscriptions", admin, api.SubscriptionWrite{Name: "CMDB naming", Topic: api.ComputeAllocationPre,
+			Blocking: new(true), TimeoutSeconds: new(5), OnFailure: &cont, Target: target("/alloc"), Recovery: new(target("/recover"))},
+			201, &naming)
+		hook.answer("/alloc", `{"machine": {"name": "web-dev-app760"}}`)
+		hook.answer("/recover", `{"outcome": "continue"}`)
+		h.acts.Changer = &flakyChanger{MachineChanger: h.svc}
+
+		var item api.CatalogItem
+		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id=prj_web", owner, nil, 200, &item)
+		var req api.Request
+		h.json("POST", "/api/v1/requests", owner, api.RequestDraft{CatalogItemId: item.Id, VersionId: item.Version.Id,
+			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01",
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}},
+			202, &req, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(req.Id, nil)
+		h.json("GET", "/api/v1/requests/"+req.Id, owner, nil, 200, &req)
+		var dep api.DeploymentDetail
+		if req.Status == api.RequestStatusSucceeded {
+			h.json("GET", "/api/v1/deployments/"+(*req.DeploymentIds)[0], owner, nil, 200, &dep)
+		}
+		if req.Status != api.RequestStatusSucceeded || dep.Name != "web-dev-app760" || !vmExists(ctx, c, "web-dev-app760") {
+			t.Fatalf("the request = %s %s, deployment %q", req.Status, errorOf(req), dep.Name)
+		}
+		if got := hook.took(); len(got) != 2 || got[0] != got[1] || !strings.HasPrefix(got[0], "/alloc web-dev-app") {
+			t.Fatalf("asked %v, want the CMDB twice and no recovery", got)
+		}
+		var list struct{ Items []api.SubscriptionRun }
+		h.json("GET", "/api/v1/admin/subscriptions/"+naming.Id+"/runs", admin, nil, 200, &list)
+		if len(list.Items) != 1 || list.Items[0].Status != api.SubscriptionRunStatusDelivered || list.Items[0].Recovery {
+			t.Fatalf("runs = %+v", list.Items)
+		}
+		var steps struct{ Items []api.Step }
+		h.json("GET", "/api/v1/requests/"+req.Id+"/steps", owner, nil, 200, &steps)
+		var check *api.Step
+		for i := range steps.Items {
+			if steps.Items[i].Key == "checks:compute.allocation.pre" && len(steps.Items[i].Children) == 1 {
+				check = &steps.Items[i].Children[0]
+			}
+		}
+		if check == nil || check.Status != api.StepStatusDone || !strings.HasPrefix(deref(check.Detail), "Went on, renaming it web-dev-app760") {
+			t.Fatalf("the check = %+v", check)
+		}
+
+		// The same delivery gets the run it finished; another starts it again.
+		run := list.Items[0]
+		again := func(delivery string) store.SubscriptionRun {
+			t.Helper()
+			got, err := h.store.StartBlockingRun(ctx, store.SubscriptionRun{ID: "run_unused", SubscriptionID: naming.Id,
+				EventID: run.EventId, RequestID: &req.Id}, delivery)
+			if err != nil || got.ID != run.Id {
+				t.Fatalf("started %+v (%v)", got, err)
+			}
+			return got
+		}
+		if got := again("wf-1/7"); got.Status != "delivering" || got.FinishedAt != nil {
+			t.Fatalf("another delivery's run = %+v", got)
+		}
+		stop := "stop"
+		if err := h.store.RecordAttempt(ctx, run.Id, store.Attempt{At: time.Now(), OK: true},
+			store.RunUpdate{Status: "blocked", Outcome: &stop, Reason: new("No."), Unclaimed: true}); err != nil {
+			t.Fatal(err)
+		}
+		if got := again("wf-1/7"); got.Status != "blocked" || deref(got.Reason) != "No." || got.FinishedAt == nil {
+			t.Fatalf("the same delivery's run = %+v", got)
+		}
+		if got := again("wf-2/7"); got.Status != "delivering" || got.Reason != nil {
+			t.Fatalf("a new delivery's run = %+v", got)
 		}
 	})
 }

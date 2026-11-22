@@ -441,10 +441,17 @@ The sample event of each topic shows its fields
     and it has room for the VM; the address is free in its subnet, and is
     reserved in EfficientIP. A change it refuses is a failure.
   - A failure, a timeout or a refused change stops or continues the
-    request as the subscription's `on_failure` says, after one more try
-    within the timeout. A **recovery target** first gets the event with
-    `"recovery": {"reason": "…", "run_id": "…"}`; its `outcome`, if it
-    answers with one, decides instead.
+    request as the subscription's `on_failure` says. A delivery that fails
+    within the first half of the timeout is tried once more, in what is
+    left of it; a timeout isn't. A **recovery target** first gets the
+    event with `"recovery": {"reason": "…", "run_id": "…"}`; its
+    `outcome`, if it answers with one, decides instead.
+  - A failure of rvav's own while it asks (a worker restarted, the
+    database out of reach) isn't the subscription's: rvav asks again,
+    under the same `run_id`, up to three more times, and neither the
+    recovery target nor `on_failure` decides. Make your target give the
+    same answer to a run it has answered. An answer rvav had recorded
+    stands, and the target isn't asked again.
   - An AWX job answers with the `rvav_answer` artifact
     (`set_stats: {data: {rvav_answer: {…}}}`), a custom workflow with its
     result.

@@ -450,15 +450,23 @@ func (s *Store) RequestProperties(ctx context.Context, requestID string) (map[st
 
 // StartBlockingRun adds a blocking run, delivering, or starts again the one
 // an earlier run of the request made for the same subscription and event,
-// and returns its ID: a request's workflow retried keeps one run per event.
-func (s *Store) StartBlockingRun(ctx context.Context, r SubscriptionRun) (string, error) {
-	var id string
-	err := s.Pool.QueryRow(ctx, `insert into subscription_runs (id, subscription_id, event_id, status, blocking, recovery,
-			request_id, step_id) values ($1,$2,$3,'delivering',true,$4,$5,$6)
+// and returns it: a request's workflow retried keeps one run per event.
+// delivery names the workflow activity delivering it: a run the same
+// delivery finished (Temporal tried it again after an infrastructure
+// failure) comes back finished, as it was.
+func (s *Store) StartBlockingRun(ctx context.Context, r SubscriptionRun, delivery string) (SubscriptionRun, error) {
+	if _, err := s.Pool.Exec(ctx, `insert into subscription_runs (id, subscription_id, event_id, status, blocking, recovery,
+			request_id, step_id, delivery) values ($1,$2,$3,'delivering',true,$4,$5,$6,nullif($7, ''))
 		on conflict (subscription_id, event_id, recovery) do update set status = 'delivering', step_id = excluded.step_id,
-			outcome = null, reason = null, finished_at = null
-		returning id`, r.ID, r.SubscriptionID, r.EventID, r.Recovery, r.RequestID, r.StepID).Scan(&id)
-	return id, err
+			outcome = null, reason = null, finished_at = null, delivery = excluded.delivery
+			where subscription_runs.finished_at is null or excluded.delivery is null
+				or subscription_runs.delivery is distinct from excluded.delivery`,
+		r.ID, r.SubscriptionID, r.EventID, r.Recovery, r.RequestID, r.StepID, delivery); err != nil {
+		return SubscriptionRun{}, err
+	}
+	rows, _ := s.Pool.Query(ctx, `select `+runCols+runFrom+` where r.subscription_id = $1 and r.event_id = $2 and r.recovery = $3`,
+		r.SubscriptionID, r.EventID, r.Recovery)
+	return pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[SubscriptionRun])
 }
 
 // AnsweredMachineCheck says whether a blocking subscription let one of a

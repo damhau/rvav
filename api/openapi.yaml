@@ -13954,7 +13954,12 @@ components:
             number: { type: string }
         attempts: { type: integer }
         next_attempt_at: { type: string, format: date-time }
-        outcome: { type: string, description: "A blocking run's answer: continue or stop." }
+        outcome:
+          type: string
+          description: |
+            A blocking run's answer: continue or stop. None for a recovery
+            target that answered without one: the subscription's
+            `on_failure` decided.
         reason: { type: string, description: "Why it stopped the request, or why it failed." }
         created_at: { type: string, format: date-time }
         finished_at: { type: string, format: date-time }

@@ -10741,7 +10741,11 @@ export interface components {
             attempts: number;
             /** Format: date-time */
             next_attempt_at?: string;
-            /** @description A blocking run's answer: continue or stop. */
+            /**
+             * @description A blocking run's answer: continue or stop. None for a recovery
+             *     target that answered without one: the subscription's
+             *     `on_failure` decided.
+             */
             outcome?: string;
             /** @description Why it stopped the request, or why it failed. */
             reason?: string;

@@ -319,6 +319,14 @@ func finishCancelledUntouched(ctx workflow.Context, info Info) error {
 		Outcome: "cancelled", Untouched: true}).Get(dctx, nil)
 }
 
+// checkRetries says whether Temporal tries a blocking check again after
+// rvav's own failure (a worker stopped, the database): the run it finished
+// stands and one it didn't is delivered again (ADR-0054). A workflow that
+// started before still fails on one.
+func checkRetries(ctx workflow.Context) bool {
+	return workflow.GetVersion(ctx, "check-retries", workflow.DefaultVersion, 1) != workflow.DefaultVersion
+}
+
 // runChecks asks the blocking subscriptions that apply, in priority order:
 // the first that stops the request ends the checks, with the step and why.
 func runChecks(ctx workflow.Context, info Info) (stepKey, reason string, err error) {
@@ -330,14 +338,16 @@ func runChecks(ctx workflow.Context, info Info) (stepKey, reason string, err err
 	if len(subs) == 0 {
 		return "", "", nil
 	}
+	retries := checkRetries(ctx)
 	for _, b := range subs {
-		// Its own timeout, twice (a fast failure is tried once more); not
-		// retried by Temporal, which would ask the target again.
+		// Its own timeout, twice (a fast failure is tried once more), and
+		// its recovery target's too (ADR-0054).
 		o := activityOptions
-		// Its recovery target's too (ADR-0054).
 		o.StartToCloseTimeout = 4*time.Duration(b.Timeout)*time.Second + time.Minute
 		o.HeartbeatTimeout = 0
-		o.RetryPolicy = &temporal.RetryPolicy{MaximumAttempts: 1}
+		if !retries {
+			o.RetryPolicy = &temporal.RetryPolicy{MaximumAttempts: 1}
+		}
 		var out CheckOutcome
 		if err := workflow.ExecuteActivity(workflow.WithActivityOptions(ctx, o), a.RunBlockingSubscription, info.RequestID, b).Get(ctx, &out); err != nil {
 			return checkKey(b.ID), "", err
