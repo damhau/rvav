@@ -85,14 +85,17 @@ least once. A syslog server answers nothing, and a write over TCP or TLS
 succeeds once the data is in the local socket's buffer, even to a server
 that has just closed the connection: counted as delivered then, the
 batch would be lost. So a batch written counts as delivered only once
-the connection is seen still open, by a read that returns at once before
-the next batch is written, or that waits 250 ms after the last. Closed in between, the
-batch goes again on a new connection, three times in a round at most,
-then the round counts as a failure. That covers a server that restarts
-or closes a connection while rvav sends, at the cost of events received
-twice. It can't cover a server that loses what it took, nor one that
-closes the connection more than 250 ms after the last write without
-having read it: only a protocol with acknowledgements, such as RELP,
+the connection is seen still open 250 ms after it was written, by a read
+that returns at once before each next batch is written, or that waits
+250 ms after the last. A server that stops reading and closes the
+connection a moment later, as syslog-ng killed while it shuts down does,
+read none of the batches written in between, though the connection was
+seen open after each. Closed, what isn't counted yet goes again on a new
+connection, three times in a round at most, then the round counts as a
+failure. That covers a server that restarts or closes a connection while
+rvav sends, at the cost of events received twice. It can't cover a server
+that loses what it took, nor one that closes the connection more than
+250 ms after a write without having read it: only a protocol with acknowledgements, such as RELP,
 would, and rvav doesn't speak one. Over UDP nothing is confirmed.
 
 The lease is taken with `FOR NO KEY UPDATE SKIP LOCKED`, after a look at

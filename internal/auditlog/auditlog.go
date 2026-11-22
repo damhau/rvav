@@ -95,9 +95,8 @@ const Batch = 100
 // well before it ends.
 const lease = 2 * time.Minute
 
-// settle is how long a syslog server has to close a connection, after it
-// was opened or the last batch written, before what it got counts as
-// received.
+// settle is how long a syslog server has to close a connection after a
+// batch was written to it, before the batch counts as received.
 const settle = 250 * time.Millisecond
 
 // reconnects is how many times a round opens a syslog connection again
@@ -197,11 +196,12 @@ func (f *Forwarder) drain(parent context.Context, d store.AuditDestination) {
 			_ = s.close()
 		}
 	}()
-	// A syslog server answers nothing: the batch last written to it counts
-	// as received once the connection is seen still open, before the next
-	// is written or a moment after the last. Closed, the batch goes again
-	// on a new connection.
-	var unconfirmed []int64
+	// A syslog server answers nothing: a batch written to it counts as
+	// received once the connection is seen still open settle after it was
+	// written. One that stops reading and closes a moment later, as one
+	// killed while it shuts down does, never read the batches written in
+	// between. Closed, what isn't counted goes again on a new connection.
+	var unconfirmed []written
 	var after int64
 	opened := 0
 	for {
@@ -226,14 +226,19 @@ func (f *Forwarder) drain(parent context.Context, d store.AuditDestination) {
 					f.failed(ctx, d, err)
 					return
 				}
-				f.Log.Info("audit forwarding: the server closed the connection; what it was last sent goes again",
+				f.Log.Info("audit forwarding: the server closed the connection; what it may have missed goes again",
 					"destination", d.Name, "err", err)
 				continue
 			}
-			if !f.delivered(ctx, d, unconfirmed) {
+			seen, n := time.Now(), 0
+			var ids []int64
+			for ; n < len(unconfirmed) && (wait > 0 || seen.Sub(unconfirmed[n].at) >= settle); n++ {
+				ids = append(ids, unconfirmed[n].ids...)
+			}
+			if len(ids) > 0 && !f.delivered(ctx, d, ids) {
 				return
 			}
-			unconfirmed = nil
+			unconfirmed = unconfirmed[n:]
 		}
 		if len(rows) == 0 {
 			return
@@ -259,13 +264,19 @@ func (f *Forwarder) drain(parent context.Context, d store.AuditDestination) {
 				f.failed(ctx, d, err)
 				return
 			}
-			unconfirmed = sent
+			unconfirmed = append(unconfirmed, written{ids: sent, at: time.Now()})
 			continue
 		}
 		if !f.sendBatch(ctx, d, s, events, sent) {
 			return
 		}
 	}
+}
+
+// written is a batch sent to a syslog server and when.
+type written struct {
+	ids []int64
+	at  time.Time
 }
 
 // prober is a sender whose server answers nothing, syslog's.

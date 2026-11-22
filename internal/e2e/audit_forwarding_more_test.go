@@ -28,7 +28,7 @@ import (
 
 // tcpSyslog is a plain-TCP syslog server, octet-counted. While closeAfter
 // is above zero, a connection reads that many frames and closes, as a
-// server restarting does.
+// server restarting does, linger later.
 type tcpSyslog struct {
 	t    *testing.T
 	ln   net.Listener
@@ -36,6 +36,7 @@ type tcpSyslog struct {
 	msgs []string
 	// closeAfter is how many more connections close early, after frames.
 	closeAfter, frames, conns int
+	linger                    time.Duration
 }
 
 func newTCPSyslog(t *testing.T) *tcpSyslog {
@@ -53,21 +54,22 @@ func newTCPSyslog(t *testing.T) *tcpSyslog {
 			}
 			r.mu.Lock()
 			r.conns++
-			limit := 0
+			limit, linger := 0, time.Duration(0)
 			if r.closeAfter > 0 {
 				r.closeAfter--
-				limit = r.frames
+				limit, linger = r.frames, r.linger
 			}
 			r.mu.Unlock()
-			go r.serve(c, limit)
+			go r.serve(c, limit, linger)
 		}
 	}()
 	return r
 }
 
-func (r *tcpSyslog) serve(c net.Conn, limit int) {
+func (r *tcpSyslog) serve(c net.Conn, limit int, linger time.Duration) {
 	defer c.Close()
 	in := bufio.NewReader(c)
+	defer time.Sleep(linger)
 	for n := 0; limit == 0 || n < limit; n++ {
 		l, err := in.ReadString(' ')
 		if err != nil {
@@ -610,5 +612,14 @@ func TestAuditForwardingSyslogReconnects(t *testing.T) {
 		rcv.mu.Unlock()
 		audit(50)
 		check("closed during the last batch", 4)
+
+		// Stops reading after the first batch and closes a moment later, as
+		// syslog-ng killed while it shuts down: the batches written in
+		// between, seen open, go again.
+		rcv.mu.Lock()
+		rcv.closeAfter, rcv.frames, rcv.linger = 1, auditlog.Batch, 150*time.Millisecond
+		rcv.mu.Unlock()
+		audit(3 * auditlog.Batch)
+		check("closed a moment after it stopped reading", 6)
 	})
 }

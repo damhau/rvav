@@ -2718,5 +2718,5 @@ An event can arrive twice, after a restart in the middle of a delivery,
 or after a syslog server closed the connection while rvav sent: drop an
 `id` you already have. A syslog server doesn't confirm what it receives.
 If it loses events it took, or closes the connection without reading
-them more than a quarter of a second after rvav's last write, those
+them more than a quarter of a second after rvav wrote them, those
 events are lost. To receive every event, use a webhook.
