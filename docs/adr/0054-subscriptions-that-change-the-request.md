@@ -163,7 +163,9 @@ activities' retry policy, and neither the recovery target nor
 - A run counts each call in `attempts` as the call begins, so a call whose
   answer was lost counts too (#196). Starting the run again keeps that
   call in its history as failed: "Interrupted before its answer was
-  recorded."
+  recorded." Housekeeping fails a run with that reason when it is still
+  delivering an hour after its current call began, however old the run
+  (#198).
 - A VM's change rvav applied before the worker stopped leaves the plan
   changed and the workflow's VM not: the check fails, and a Retry of the
   request builds the VM as changed.

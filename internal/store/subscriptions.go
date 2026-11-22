@@ -366,9 +366,11 @@ func (s *Store) RetryRun(ctx context.Context, id string) (bool, error) {
 // for any more.
 func (s *Store) PruneRuns(ctx context.Context, before time.Time) (int64, error) {
 	// A test or blocking run is attempted in place, without a lease: one
-	// still delivering after an hour was interrupted before its answer.
+	// still delivering an hour after its current call began was interrupted
+	// before its answer. That call began at next_attempt_at, not created_at:
+	// a Retry of the request starts the same run again, however old (#198).
 	if _, err := s.Pool.Exec(ctx, `update subscription_runs set status = 'failed', finished_at = now(), reason = $1
-		where status = 'delivering' and lease_until is null and created_at < now() - interval '1 hour'`, Interrupted); err != nil {
+		where status = 'delivering' and lease_until is null and next_attempt_at < now() - interval '1 hour'`, Interrupted); err != nil {
 		return 0, err
 	}
 	tag, err := s.Pool.Exec(ctx, `delete from subscription_runs where finished_at < $1`, before)

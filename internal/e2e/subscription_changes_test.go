@@ -19,6 +19,9 @@ import (
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/dispatch"
+	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -566,6 +569,104 @@ func TestBlockingCheckAfterRestart(t *testing.T) {
 		if hist := detail.History; len(hist) != 2 || hist[0].Ok || deref(hist[0].Error) != store.Interrupted || !hist[1].Ok ||
 			hist[1].StatusCode == nil || *hist[1].StatusCode != http.StatusOK {
 			t.Fatalf("the run's history = %+v", hist)
+		}
+	})
+}
+
+// TestHousekeepingBlockingRuns: housekeeping fails a blocking run whose
+// current call began more than an hour ago, its answer lost, and leaves
+// alone one a late Retry started again, however old the run is (#198). A run
+// the dispatcher claimed is left to its lease, however long it waited.
+func TestHousekeepingBlockingRuns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		target := json.RawMessage(`{"webhook": {"url": "https://cmdb.example/check"}}`)
+		check := store.Subscription{ID: ids.New(ids.Subscription), Name: "CMDB check", Topic: outbox.ProvisioningPre, Blocking: true,
+			OnFailure: "stop_request", Priority: 100, TimeoutSeconds: 30, Enabled: true, Target: target}
+		notice := store.Subscription{ID: ids.New(ids.Subscription), Name: "CMDB notice", Topic: outbox.ProvisioningPre,
+			OnFailure: "continue_request", Priority: 100, TimeoutSeconds: 30, Enabled: true, Target: target}
+		event := ids.New(ids.Event)
+		for _, sub := range []store.Subscription{check, notice} {
+			if err := h.store.SaveSubscription(ctx, sub); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := h.store.InsertTestEvent(ctx, event, outbox.ProvisioningPre, json.RawMessage(`{}`)); err != nil {
+			t.Fatal(err)
+		}
+		sql := func(q string, args ...any) {
+			t.Helper()
+			if _, err := h.store.Pool.Exec(ctx, q, args...); err != nil {
+				t.Fatal(err)
+			}
+		}
+		prune := func() {
+			t.Helper()
+			if _, err := h.store.PruneRuns(ctx, time.Now().Add(-dispatch.Retention)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		run := func(id string) api.SubscriptionRunDetail {
+			t.Helper()
+			var out api.SubscriptionRunDetail
+			h.json("GET", "/api/v1/admin/subscription-runs/"+id, admin, nil, 200, &out)
+			return out
+		}
+		start := func(delivery string) store.SubscriptionRun {
+			t.Helper()
+			r, err := h.store.StartBlockingRun(ctx, store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: check.ID, EventID: event},
+				delivery)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return r
+		}
+
+		// The request's first run: the check stopped it two hours ago.
+		first := start("wf-1/7")
+		stop := "stop"
+		if err := h.store.RecordAttempt(ctx, first.ID, store.Attempt{At: time.Now(), OK: true},
+			store.RunUpdate{Status: "blocked", Outcome: &stop, Reason: new("No room in the CMDB.")}); err != nil {
+			t.Fatal(err)
+		}
+		sql(`update subscription_runs set created_at = created_at - interval '2 hours',
+			next_attempt_at = next_attempt_at - interval '2 hours', finished_at = finished_at - interval '2 hours' where id = $1`, first.ID)
+
+		// A Retry now starts it again, with the call that begins.
+		if again := start("wf-2/7"); again.ID != first.ID || again.Status != "delivering" || time.Since(again.CreatedAt) < time.Hour {
+			t.Fatalf("started again: %+v", again)
+		}
+		prune()
+		if got := run(first.ID); got.Status != api.SubscriptionRunStatusDelivering || got.Reason != nil || got.FinishedAt != nil {
+			t.Fatalf("housekeeping took the run a Retry started: %s %q", got.Status, deref(got.Reason))
+		}
+
+		// Its answer is lost: an hour after that call began, the run failed.
+		sql(`update subscription_runs set next_attempt_at = now() - interval '61 minutes' where id = $1`, first.ID)
+		prune()
+		if got := run(first.ID); got.Status != api.SubscriptionRunStatusFailed || deref(got.Reason) != store.Interrupted ||
+			got.FinishedAt == nil {
+			t.Fatalf("housekeeping left a lost call's run %s %q", got.Status, deref(got.Reason))
+		}
+
+		// The dispatcher's run is due since its next_attempt_at, not
+		// delivered since: it is the lease's to take back.
+		queued := store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: notice.ID, EventID: event, Status: "queued",
+			NextAttemptAt: time.Now().Add(-2 * time.Hour)}
+		if err := h.store.InsertRun(ctx, h.store.Pool, queued); err != nil {
+			t.Fatal(err)
+		}
+		claimed, err := h.store.ClaimRuns(ctx, 10, time.Now())
+		if err != nil || !slices.ContainsFunc(claimed, func(r store.ClaimedRun) bool { return r.ID == queued.ID }) {
+			t.Fatalf("claimed %d runs (%v)", len(claimed), err)
+		}
+		prune()
+		if got := run(queued.ID); got.Status != api.SubscriptionRunStatusDelivering || got.Reason != nil {
+			t.Fatalf("housekeeping took a claimed run: %s %q", got.Status, deref(got.Reason))
 		}
 	})
 }
