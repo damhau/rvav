@@ -22,11 +22,13 @@ import { keys } from "@/lib/query";
 export function FailureActions({
   request,
   rolledBack,
+  rollbackFailed,
   announce = true,
   mayAct = true,
 }: {
   request: ServiceRequest;
   rolledBack?: Step;
+  rollbackFailed?: Step;
   announce?: boolean;
   mayAct?: boolean;
 }) {
@@ -73,7 +75,9 @@ export function FailureActions({
               ? t("failure.retryKeeps")
               : undone
                 ? t("failure.rolledBack", { detail: undone.detail || t("failure.createdDeleted") })
-                : t("failure.keptForLook")}
+                : rollbackFailed
+                  ? t("failure.rollbackFailed", { error: rollbackFailed.error ?? "" })
+                  : t("failure.keptForLook")}
           </span>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="primary" onClick={() => retry.mutate()} disabled={retry.isPending}>

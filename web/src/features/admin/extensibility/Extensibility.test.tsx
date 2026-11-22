@@ -127,13 +127,21 @@ describe("A blocking subscription on a VM's topic", () => {
     ).toBeInTheDocument();
 
     const runs = await screen.findByRole("table", { name: "Runs" });
-    expect(await within(runs).findByText("Recovery")).toBeInTheDocument();
+    expect((await within(runs).findAllByText("Recovery")).length).toBe(2);
     const opens = await within(runs).findAllByRole("button", { name: /Open the run from/ });
     await user.click(opens[0]!);
-    const dialog = await screen.findByRole("dialog", { name: "Run" });
+    let dialog = await screen.findByRole("dialog", { name: "Run" });
     expect(
       await within(dialog).findByText("renamed web-dev-app742; moved to datastore ds-gva-dev-02"),
     ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // The last run: a recovery that answered without an outcome.
+    await user.click(opens.at(-1)!);
+    dialog = await screen.findByRole("dialog", { name: "Run" });
+    expect(await within(dialog).findByText("Its recovery target, after the subscription failed")).toBeInTheDocument();
+    expect(within(dialog).getByText("None: the subscription's setting for when it fails decided")).toBeInTheDocument();
   }, 15_000);
 });
 

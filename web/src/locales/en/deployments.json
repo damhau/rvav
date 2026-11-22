@@ -376,7 +376,9 @@
   },
   "custom": {
     "title": "Custom resources",
-    "lead": "Made by their resource types"
+    "lead": "Made by their resource types",
+    "creating": "Being created",
+    "creatingBody": "Its create is running, or stopped part way: what it made isn't known yet. A rollback, or deleting the deployment, runs its type's delete."
   },
   "access": {
     "how": {

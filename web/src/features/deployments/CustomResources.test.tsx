@@ -37,6 +37,17 @@ describe("a deployment's custom resources", () => {
     );
   });
 
+  it("says one is being created, without the properties it doesn't have yet", async () => {
+    const edge = db.deployments.find((d) => d.name === "web-prd-edge")!;
+    const lb = edge.resources.find((r) => r.type === "custom")!;
+    Object.assign(lb, { creating: true, properties: {} });
+    renderApp(`/deployments/${edge.id}`);
+    const item = await screen.findByRole("listitem", { name: "web-prd-edge-lb" }, { timeout: 5000 });
+    expect(item).toHaveTextContent("Being created");
+    expect(item).toHaveTextContent("what it made isn't known yet");
+    expect(within(item).queryAllByRole("term")).toHaveLength(0);
+  });
+
   it("lists them apart from the VMs in the Actions menu", async () => {
     const user = userEvent.setup();
     renderApp(`/deployments/${edgeId()}`);

@@ -30,9 +30,11 @@ export function CustomResourcesPanel({
                     {r.name}
                   </span>
                   <Badge>{r.resource_type.title}</Badge>
+                  {r.creating && <Badge tone="warn">{t("custom.creating")}</Badge>}
                 </span>
                 <span className="font-mono text-caption text-faint">{r.key}</span>
               </div>
+              {r.creating && <p className="text-secondary text-muted">{t("custom.creatingBody")}</p>}
               {Object.keys(r.properties).length > 0 && (
                 <KeyValues
                   className="text-secondary"

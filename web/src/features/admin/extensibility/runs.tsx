@@ -129,7 +129,12 @@ export function RunDialog({
                         },
                       ]
                     : []),
-                  ...(r.outcome ? [{ label: "Answer", value: r.outcome }] : []),
+                  // A recovery that answered without an outcome left it to the subscription's setting (ADR-0054).
+                  ...(r.outcome
+                    ? [{ label: "Answer", value: r.outcome }]
+                    : r.recovery && r.status === "delivered"
+                      ? [{ label: "Answer", value: "None: the subscription's setting for when it fails decided" }]
+                      : []),
                   ...(r.reason ? [{ label: "Why", value: r.reason }] : []),
                   ...(r.next_attempt_at && r.status === "queued"
                     ? [{ label: "Next attempt", value: <Time iso={r.next_attempt_at} /> }]

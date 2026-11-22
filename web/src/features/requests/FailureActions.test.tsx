@@ -4,7 +4,7 @@ import type { Step } from "@/lib/api/types";
 import { db } from "@/mocks/seed";
 import { renderWithQuery } from "@/test/render";
 import { FailureActions, mayActOnFailure } from "./FailureActions";
-import { rollbackOf } from "./run";
+import { failedRollbackOf, rollbackOf } from "./run";
 
 const stored = (number: string) => db.requests.find((r) => r.request.number === number)!;
 
@@ -32,11 +32,26 @@ describe("a failed request's actions", () => {
     expect(within(box).queryByRole("button", { name: "Roll back" })).not.toBeInTheDocument();
   });
 
-  it("a rollback that failed rolled nothing back: Roll back stays", () => {
+  it("a rollback that failed says why and what stays: Roll back stays", () => {
     const { request, steps } = stored("REQ-10482");
-    const failed: Step = { ...steps[0]!, id: "stp_rb", key: "rollback", title: "Roll back failed", status: "failed" };
-    renderWithQuery(<FailureActions request={request} rolledBack={rollbackOf([...steps, failed])} />);
-    expect(screen.getByRole("button", { name: "Roll back" })).toBeInTheDocument();
+    const failed: Step = {
+      ...steps[0]!,
+      id: "stp_rb",
+      key: "rollback",
+      title: "Roll back failed",
+      status: "failed",
+      error: "Its custom resources weren't all deleted, so what they may use stays: web-lb: AWX job 812 failed.",
+    };
+    const all = [...steps, failed];
+    renderWithQuery(
+      <FailureActions request={request} rolledBack={rollbackOf(all)} rollbackFailed={failedRollbackOf(all)} />,
+    );
+    const box = screen.getByRole("alert");
+    expect(box).toHaveTextContent(
+      "Rolling it back didn't finish: Its custom resources weren't all deleted, so what they may use stays: web-lb: AWX job 812 failed. What it didn't delete is kept.",
+    );
+    expect(box).not.toHaveTextContent("What was created is kept so you can look at it.");
+    expect(within(box).getByRole("button", { name: "Roll back" })).toBeInTheDocument();
   });
 
   it("offers neither to one who may not use them, an auditor: it says what failed", () => {

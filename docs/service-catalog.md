@@ -406,7 +406,15 @@ The timeline shows each pass under the step. Later steps read
 `steps.<key>.items`, each pass's outputs in the list's order, and
 `steps.<key>.count`. A pass that fails fails the step: passes not begun are
 skipped, those running finish. **Retry** reads the list again and keeps the
-passes that were done, by their position.
+passes that were done, by their position. In a group of steps that run at
+the same time, another step's failure stops the loop too: its passes not
+begun are skipped, "Another step of its group failed.", and the step is
+cancelled.
+
+What the steps give later steps is bounded, as Temporal carries it: a
+loop's passes give 512 KiB of outputs at most, and all the steps 1.5 MiB.
+The step that goes over fails, saying so, without its outputs: keep less of
+what it answers, such as with a REST call's `keep`.
 
 #### A catch path and an error handler
 A catch path runs when its step fails, and the request goes on; the error

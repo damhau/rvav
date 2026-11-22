@@ -15,7 +15,7 @@ import { NodeIcon, StatusIcon } from "@/components/canvas/nodes";
 import { Timeline } from "@/components/common/timeline";
 import type { ServiceRequest, Step } from "@/lib/api/types";
 import { FailureActions } from "./FailureActions";
-import { branchTaken, failedNode, flatten, rollbackOf, runStatus, runSteps } from "./run";
+import { branchTaken, failedNode, failedRollbackOf, flatten, rollbackOf, runStatus, runSteps } from "./run";
 
 export interface RequestRunProps {
   request: ServiceRequest;
@@ -65,6 +65,7 @@ export default function RequestRun({
     <FailureActions
       request={request}
       rolledBack={rollbackOf(steps)}
+      rollbackFailed={failedRollbackOf(steps)}
       announce={announced.current !== failureKey}
       mayAct={mayAct}
     />

@@ -37,6 +37,9 @@ export function branchTaken(steps: Step[]): Record<string, number> {
 /** The step of a rollback that finished: what the request built is deleted. */
 export const rollbackOf = (steps: Step[]) => steps.find((s) => s.key === "rollback" && s.status === "done");
 
+/** The timeline's "Roll back failed": a rollback that didn't finish, so what it didn't delete stays. */
+export const failedRollbackOf = (steps: Step[]) => steps.find((s) => s.key === "rollback" && s.status === "failed");
+
 /**
  * A step's status on the graph. Undone, where the request said so: a step
  * whose undo ran (cancelled, with its `/undo` step done), or the VMs of a

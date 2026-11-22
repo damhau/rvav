@@ -33,7 +33,7 @@ import { AskPanel } from "./AskPanel";
 import { FailureActions, mayActOnFailure } from "./FailureActions";
 import { LogViewer } from "./LogViewer";
 import { StepDataView } from "./StepDataView";
-import { failedNode, flatten, pickLogStep, rollbackOf, runSteps } from "./run";
+import { failedNode, failedRollbackOf, flatten, pickLogStep, rollbackOf, runSteps } from "./run";
 
 // A composite's run on its graph: React Flow loads with it, on its pages only.
 const RequestRun = lazy(() => import("./RequestRun"));
@@ -309,7 +309,12 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 selectedDataStep={dataStep?.id ?? null}
               />
               {r?.status === "failed" && r.error && (
-                <FailureActions request={r} rolledBack={rollbackOf(steps.data.items)} mayAct={mayActOnFailure(me, r)} />
+                <FailureActions
+                  request={r}
+                  rolledBack={rollbackOf(steps.data.items)}
+                  rollbackFailed={failedRollbackOf(steps.data.items)}
+                  mayAct={mayActOnFailure(me, r)}
+                />
               )}
             </>
           )}
