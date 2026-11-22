@@ -178,6 +178,13 @@ project's placement rules:
 | `SPREAD_MEMORY` | **Most free memory**, the nearest: vRA takes the zone with the lowest memory use. |
 | `BINPACK` (a cloud zone's) | **Binpack**. |
 
+vRA's network profiles aren't imported, nor the IP ranges of its internal
+IPAM. For a network that EfficientIP doesn't manage, add its ranges in
+rvav before you adopt deployments on it
+([IP ranges without EfficientIP](../guides/admin.md#ip-ranges-without-efficientip)).
+Adopting a VM gives it no address from a range: exclude its address from
+the range, as the reconcile report says.
+
 A vRA project's custom properties go to its rvav project when you import
 the catalog ([ADR-0038](../adr/0038-names-groups-secrets-properties.md)):
 each VM of the project gets them as vSphere custom attributes. The

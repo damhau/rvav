@@ -1,6 +1,7 @@
 # TestPowerShell's script (O1.2): Lea Martin requests, runs a day-2 action
 # and deletes; Marc Keller approves one production request and rejects
-# another. The test runs each request's workflow in this order.
+# another, and reads an IP range (I1.2). The test runs each request's
+# workflow in this order.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $PSStyle.OutputRendering = 'PlainText'
@@ -84,4 +85,14 @@ Connect-Rvav | Out-Null
 $gone = Remove-RvavDeployment $d.id -Force -Wait
 Assert ($gone.status -eq 'succeeded') "the delete is $($gone.status)"
 Assert ((Get-RvavDeployment $d.id).status -eq 'deleted') 'the deployment is deleted'
+
+Connect-Approver | Out-Null
+$lab = @(Get-RvavIPRange -Name la*)
+Assert ($lab.Count -eq 1 -and $lab[0].name -eq 'Lab' -and $lab[0].free -eq 8) "the IP ranges: $($lab | ConvertTo-Json -Compress)"
+Assert ($lab[0].PSObject.TypeNames[0] -eq 'Rvav.IPRange') 'an IP range is typed'
+Assert (@(Get-RvavIPRange -Network dvpg-app-dev-vl310).Count -eq 0) 'another network has no range'
+$held = @($lab | Get-RvavIPAllocation)
+Assert ($held.Count -eq 1 -and $held[0].hostname -eq 'lab-db01' -and $held[0].RangeId -eq $lab[0].id) "the range's addresses: $($held | ConvertTo-Json -Compress)"
+Assert (@(Get-RvavIPAllocation $lab[0].id -Address 10.32.20.99).Count -eq 0) 'no VM holds 10.32.20.99'
+Assert ((Get-RvavIPRange $lab[0].id).name -eq 'Lab') 'a range by its ID'
 'PowerShell script done'

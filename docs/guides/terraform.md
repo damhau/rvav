@@ -1,7 +1,8 @@
 # Terraform: the rvav provider
 
 The rvav provider manages rvav's configuration from Terraform: projects,
-catalog items, policies, quotas, roles, secrets and event subscriptions.
+catalog items, policies, quotas, roles, secrets, event subscriptions and
+IP ranges.
 It also requests deployments and keeps them as your configuration says,
 through the same requests and approvals as the web app
 ([ADR-0053](../adr/0053-terraform-and-powershell.md)).
@@ -356,6 +357,42 @@ resource "rvav_subscription" "placement" {
 
 Without `recovery` in your configuration, the next apply removes a
 recovery target set in the web app; the plan shows it first.
+
+## Manage IP ranges
+
+On a network that EfficientIP doesn't manage, rvav can give VMs their
+addresses from its own IP ranges
+([ADR-0063](../adr/0063-ip-ranges.md)). A network with a range takes its
+new VMs' addresses from its ranges instead of EfficientIP. You need the
+right to manage the infrastructure for all of rvav.
+
+```hcl
+resource "rvav_ip_range" "lab" {
+  name               = "Lab apps"
+  vcenter            = "vc01.corp.example"
+  network            = "dvpg-lab-vl510"
+  cidr               = "10.51.0.0/24"
+  start_address      = "10.51.0.10"
+  end_address        = "10.51.0.200"
+  gateway            = "10.51.0.1"
+  dns_servers        = ["10.51.0.53"]
+  dns_search_domains = ["corp.example"]
+  dns_domain         = "lab.corp.example"
+  excluded           = ["10.51.0.50-10.51.0.59"]
+}
+```
+
+- rvav writes no DNS records for addresses from its ranges. `dns_domain`
+  is the domain that VMs are named in; without it, the blueprint's.
+- Every range of a network has the same `cidr`, `gateway` and DNS
+  settings, and ranges of a vCenter don't overlap.
+- Write an `excluded` span of one address as the address alone, such as
+  `10.51.0.7`: rvav stores it that way, and a plan would otherwise show a
+  difference.
+- While VMs hold addresses from a range, rvav refuses to destroy it, to
+  change its `vcenter`, `network`, `cidr` or `gateway`, and to leave out
+  an address that a VM holds. Delete the VMs, or move their adapters to
+  another network, first.
 
 ## Request deployments
 

@@ -186,6 +186,25 @@ For example, to approve a request by its number:
 Get-RvavApproval | Where-Object { $_.request.number -eq 'REQ-10042' } | Approve-RvavApproval -Comment 'OK for the release'
 ```
 
+## Look up an address of an IP range
+
+On networks without EfficientIP, rvav gives VMs addresses from its own IP
+ranges ([ADR-0063](../adr/0063-ip-ranges.md)). To read them, the token's
+user needs the right to see the infrastructure for all of rvav.
+Administrators set ranges up in the web app or with
+[Terraform](terraform.md#manage-ip-ranges).
+
+| Command | What it does |
+|---|---|
+| `Get-RvavIPRange` | The ranges, with their network and free addresses. `-Name Lab*` and `-Network dvpg-lab-vl510` filter them. `Get-RvavIPRange ipr_01J…` gets one by its ID. |
+| `Get-RvavIPAllocation -RangeId ipr_01J…` | Each address the range gave: the VM, its adapter and its deployment. `-Address 10.51.0.12` for one address. |
+
+For example, to find the VM that holds an address:
+
+```powershell
+Get-RvavIPRange -Network dvpg-lab-vl510 | Get-RvavIPAllocation -Address 10.51.0.12
+```
+
 ## Call the rest of the API
 
 `Invoke-RvavApi` calls any operation of rvav's API as the connected user,

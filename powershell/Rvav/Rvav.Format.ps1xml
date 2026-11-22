@@ -137,5 +137,55 @@
         </TableRowEntries>
       </TableControl>
     </View>
+    <View>
+      <Name>Rvav.IPRange</Name>
+      <ViewSelectedBy><TypeName>Rvav.IPRange</TypeName></ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Id</Label></TableColumnHeader>
+          <TableColumnHeader><Label>Name</Label></TableColumnHeader>
+          <TableColumnHeader><Label>VCenter</Label></TableColumnHeader>
+          <TableColumnHeader><Label>Network</Label></TableColumnHeader>
+          <TableColumnHeader><Label>Addresses</Label></TableColumnHeader>
+          <TableColumnHeader><Label>Free</Label></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem><PropertyName>id</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>name</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>vcenter</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>network</PropertyName></TableColumnItem>
+              <TableColumnItem><ScriptBlock>$_.start_address + '-' + $_.end_address</ScriptBlock></TableColumnItem>
+              <TableColumnItem><ScriptBlock>"$($_.free) of $($_.size)"</ScriptBlock></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+    <View>
+      <Name>Rvav.IPAllocation</Name>
+      <ViewSelectedBy><TypeName>Rvav.IPAllocation</TypeName></ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Address</Label></TableColumnHeader>
+          <TableColumnHeader><Label>VM</Label></TableColumnHeader>
+          <TableColumnHeader><Label>Adapter</Label></TableColumnHeader>
+          <TableColumnHeader><Label>Deployment</Label></TableColumnHeader>
+          <TableColumnHeader><Label>Given</Label></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem><PropertyName>address</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>hostname</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>adapter</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>deployment_name</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>allocated_at</PropertyName></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
   </ViewDefinitions>
 </Configuration>

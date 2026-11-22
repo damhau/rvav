@@ -256,13 +256,33 @@ the VM or the deployment.
 | `rvavctl approvals approve ID -m "OK"` | Approves at your level. `--input memory_gb=32` changes an input that approvers may change. |
 | `rvavctl approvals reject ID -m "Use the M size"` | Rejects. The comment is required: the requester gets it. |
 
+## Look up an address of an IP range
+
+On networks without EfficientIP, rvav gives VMs addresses from its own IP
+ranges ([ADR-0063](../adr/0063-ip-ranges.md)). To see the ranges and the
+VM that holds each address, you need the right to see the infrastructure
+for all of rvav. Administrators set ranges up in the web app or with
+[Terraform](terraform.md#manage-ip-ranges).
+
+| Command | What it does |
+|---|---|
+| `rvavctl ip-ranges list` | The ranges, with their network and free addresses. `--network dvpg-lab-vl510` for one network's. |
+| `rvavctl ip-ranges show Lab` | A range, by name or ID, and each address it gave: the VM, its adapter and its deployment. |
+| `rvavctl ip-ranges release Lab 10.51.0.12` | Gives back an address of a VM rvav no longer has, such as an unregistered VM's, so that the range can give it again. Needs the right to manage the infrastructure. |
+
+rvav refuses to give back an address that a deployment's VM holds:
+delete the VM, or move its adapter to another network, and rvav gives the
+address back itself. If the VM still runs on the address in vCenter,
+exclude the address from the range instead.
+
 ## Output and scripting
 
 - Tables go to standard output; progress and errors go to standard error.
 - `-o json` prints what the API returns. A list is a JSON array of its
   items, with every page read up to `--limit`. `catalog show` prints
-  `{"item": …, "form": …}`, and `requests show` prints
-  `{"request": …, "steps": […]}`.
+  `{"item": …, "form": …}`, `requests show` prints
+  `{"request": …, "steps": […]}`, and `ip-ranges show` prints
+  `{"range": …, "addresses": […]}`.
 - A command exits with `0` when it succeeds and `1` when it fails.
 
 For example, to wait for each of your running requests in turn:

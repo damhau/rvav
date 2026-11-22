@@ -47,6 +47,7 @@ func TestResourcesCoverWriteSchemas(t *testing.T) {
 		{newGroupMappingResource, []string{"createGroupMapping"}, nil},
 		{newSecretResource, []string{"createSecret", "updateSecret"}, nil},
 		{newSubscriptionResource, []string{"createSubscription", "updateSubscription"}, nil},
+		{newIPRangeResource, []string{"createIpRange", "updateIpRange"}, nil},
 	} {
 		var s resource.SchemaResponse
 		c.resource().Schema(context.Background(), resource.SchemaRequest{}, &s)

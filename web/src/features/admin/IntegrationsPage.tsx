@@ -88,6 +88,8 @@ function Connections() {
 
 const mono = "font-mono text-secondary";
 
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
 function Report({ report }: { report: IpamReconcile }) {
   const clean = report.orphan_addresses.length + report.orphan_records.length + report.missing.length === 0;
   return (
@@ -98,6 +100,19 @@ function Report({ report }: { report: IpamReconcile }) {
           : "EfficientIP is not set: it was not compared."}{" "}
         Checked {fullDate(report.checked_at)}.
       </p>
+      {report.orphan_allocations.length + report.unallocated.length > 0 && (
+        <p className="border-t border-line px-4 py-3 text-secondary">
+          rvav&apos;s IP ranges: {count(report.orphan_allocations.length, "address", "addresses")} of VMs rvav no longer
+          has, {count(report.unallocated.length, "VM", "VMs")} on an address their range didn&apos;t give.{" "}
+          <Link
+            to="/admin/infrastructure"
+            search={{ tab: "ip-ranges" }}
+            className="font-medium text-accent hover:underline"
+          >
+            Reconcile them on the IP ranges tab
+          </Link>
+        </p>
+      )}
       {clean && report.efficientip && (
         <EmptyState
           icon={CircleCheck}

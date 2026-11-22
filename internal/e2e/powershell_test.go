@@ -14,12 +14,13 @@ import (
 	"go.temporal.io/sdk/testsuite"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/store"
 )
 
 // TestPowerShell runs testdata/rvav-module.ps1 with the PowerShell module
 // (O1.2) when pwsh is on PATH: connecting with RVAV_URL and RVAV_TOKEN,
 // the catalog, a request and its wait, a deployment's day-2 action and
-// delete, and approvals decided with an API token.
+// delete, approvals decided with an API token, and an IP range (I1.2).
 func TestPowerShell(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -37,6 +38,11 @@ func TestPowerShell(t *testing.T) {
 		var lea, marc api.ApiTokenCreated
 		h.json("POST", "/api/v1/tokens", "lmartin", api.ApiTokenCreate{Name: "powershell"}, 201, &lea)
 		h.json("POST", "/api/v1/tokens", "mkeller", api.ApiTokenCreate{Name: "powershell"}, 201, &marc)
+		h.json("POST", "/api/v1/admin/ip-ranges", "mkeller", labRange("Lab", "10.32.20.10", "10.32.20.19", "10.32.20.11"), 201, nil)
+		if _, _, err := h.store.AllocateAddress(ctx, store.AllocationRequest{VCenter: rangeVCenter, Network: rangeNetwork,
+			RequestID: "req_lab", DeploymentID: "dep_lab", Hostname: "lab-db01"}); err != nil {
+			t.Fatal(err)
+		}
 		cmd := exec.CommandContext(ctx, pwsh, "-NoProfile", "-NonInteractive", "-File", "testdata/rvav-module.ps1")
 		cmd.Env = append(os.Environ(), "RVAV_URL="+h.srv.URL, "RVAV_TOKEN="+lea.Token, "RVAV_APPROVER_TOKEN="+marc.Token,
 			"RVAV_MODULE="+module)

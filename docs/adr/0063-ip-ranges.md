@@ -102,9 +102,20 @@ for an address a deployment's VM holds. rvav gives addresses back itself in
 every other case, so this is the only manual release. An unallocated VM is
 fixed by excluding its address, or by moving the VM.
 
+### Clients
+Ranges are configuration an administrator writes, not inventory rvav reads
+from vCenter, so they depart from ADR-0053's "infrastructure stays in the
+web app": Terraform's `rvav_ip_range` creates, changes and deletes them,
+and imports one by its ID. The user clients of ADR-0051 and ADR-0053 read
+them, to answer "who has this address": `rvavctl ip-ranges list|show`, and
+PowerShell's `Get-RvavIPRange` and `Get-RvavIPAllocation`.
+`rvavctl ip-ranges release` gives an orphan back, the one manual release;
+PowerShell does it with `Invoke-RvavApi`.
+
 ## Consequences
-- An administrator manages ranges in Infrastructure › IP ranges, from
-  `rvavctl ip-ranges`, Terraform's `rvav_ip_range` and PowerShell.
+- An administrator manages ranges in Infrastructure › IP ranges and with
+  Terraform's `rvav_ip_range`; `rvavctl ip-ranges` and PowerShell read
+  them, and `rvavctl` gives orphans back.
 - A network with ranges and an EfficientIP subnet uses the ranges; the
   EfficientIP subnet sync goes on, unused for that vCenter.
 - Moving a network from EfficientIP to ranges doesn't move the addresses

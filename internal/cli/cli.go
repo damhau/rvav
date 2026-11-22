@@ -87,7 +87,7 @@ scripts, set RVAV_URL and RVAV_TOKEN (an API token) instead.`,
 	f.StringVar(&a.server, "server", "", "rvav's address, for example https://rvav.corp.example (RVAV_URL)")
 	f.StringVarP(&a.output, "output", "o", "table", "table, or json for what the API returns")
 	root.AddCommand(a.loginCmd(), a.logoutCmd(), a.whoamiCmd(), a.catalogCmd(), a.requestsCmd(), a.deploymentsCmd(),
-		a.approvalsCmd())
+		a.approvalsCmd(), a.ipRangesCmd())
 	return root
 }
 

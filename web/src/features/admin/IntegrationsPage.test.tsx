@@ -48,6 +48,12 @@ describe("Integrations", () => {
     const orphans = await within(panel).findByRole("table", { name: "Addresses no deployment owns" });
     expect(orphans).toHaveTextContent("10.31.10.61");
     expect(within(panel).getByRole("button", { name: "Check again" })).toBeInTheDocument();
+    // rvav's IP ranges are reconciled where they are managed.
+    expect(panel).toHaveTextContent(
+      "rvav's IP ranges: 1 address of VMs rvav no longer has, 2 VMs on an address their range didn't give.",
+    );
+    await user.click(within(panel).getByRole("link", { name: "Reconcile them on the IP ranges tab" }));
+    expect(await screen.findByRole("region", { name: "Reconcile the IP ranges" })).toBeInTheDocument();
   });
 
   it("says when there is no such integration", async () => {

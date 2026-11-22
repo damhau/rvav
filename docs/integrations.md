@@ -74,8 +74,9 @@ How a blueprint is built is in
   per component kept apart, created before the VMs power on, removed with
   the deployment.
 - **Guest customization:** vCenter's Linux preparation or Sysprep, with
-  the host name, every adapter's address (EfficientIP's, or DHCP; only the
-  first has the gateway) and the DNS servers. A vCenter customization
+  the host name, every adapter's address (EfficientIP's, an IP range's,
+  or DHCP; only the first has the gateway), the DNS servers and, for an IP
+  range, its DNS search domains. A vCenter customization
   specification named by the template (Templates and networks) or the
   blueprint is the base. Windows can join a domain, in an OU (vCenter
   8.0.2 and later), with the account of a `basic` secret, and get its
@@ -351,6 +352,36 @@ EfficientIP:
   records of the names they give.
 
 Nothing is created or changed in EfficientIP.
+
+## rvav's IP ranges, without EfficientIP (ADR-0063)
+
+On a network that EfficientIP doesn't manage, rvav gives addresses from
+its own IP ranges, which administrators define per network and vCenter
+(**Templates and networks › IP ranges**, `/admin/ip-ranges`, or the
+Terraform resource `rvav_ip_range`). A network with a range takes its
+addresses from its ranges, and EfficientIP is never asked for it; the
+other networks keep EfficientIP. One VM can have adapters on both.
+
+- **No DNS:** rvav creates, renames and deletes no DNS records for an
+  address from a range, and doesn't check the VM's name in DNS. Create
+  the records another way, for example in an AWX job on
+  `compute.provision.post`. The VM gets the range's DNS servers and search
+  domains, and is named in its DNS domain, or the blueprint's.
+- **Allocation:** in PostgreSQL, with the network's ranges locked while
+  an address is chosen, so two requests never get the same one. The
+  first free address goes, in the order the ranges were made, leaving
+  out the gateway, the subnet's network and broadcast addresses, and the
+  range's exclusions. A retry gets the address it was given before. A
+  static address a blueprint asks for must be free in a range of the
+  network.
+- **Release:** when the VM is deleted, when a request fails before the
+  VM exists, on a rollback, and when a day-2 action moves the adapter to
+  another network. Unregistering a VM keeps its addresses: the reconcile
+  report lists them, and an administrator gives them back.
+- **Reconcile** (**Integrations › Checks**, and the **IP ranges** tab):
+  addresses given to VMs rvav no longer has, and vCenter VMs on a range's
+  address that the range didn't give them. The vRA import doesn't read
+  vRA's network profiles: define their ranges again in rvav.
 
 ## NSX (native, Policy API; ADR-0028)
 

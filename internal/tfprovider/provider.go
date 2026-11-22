@@ -186,6 +186,7 @@ func (p *rvavProvider) Resources(context.Context) []func() resource.Resource {
 		newGroupMappingResource,
 		newSubscriptionResource,
 		newSecretResource,
+		newIPRangeResource,
 		newDeploymentResource,
 	}
 }

@@ -599,6 +599,69 @@ With several NSX Managers:
 - You can't remove an NSX Manager while a deployment has a segment, a
   group, a policy or VM tags on it.
 
+## IP ranges without EfficientIP
+
+On a network that EfficientIP doesn't manage, rvav can give VMs their
+addresses from its own IP ranges
+([ADR-0063](../adr/0063-ip-ranges.md)). A network with a range takes its
+new VMs' addresses from its ranges; every other network keeps
+EfficientIP.
+
+rvav writes no DNS records for addresses from its ranges, and doesn't
+check a VM's name in DNS. Create the records another way, for example with
+an AWX job template on a `compute.provision.post` subscription.
+
+To add a range:
+
+1. In **Administration › Templates and networks**, open the **IP ranges**
+   tab.
+2. Click **New IP range**.
+3. Enter a name, then select the vCenter and the network: a port group,
+   or an NSX segment's.
+4. Enter the network's subnet, such as `10.51.0.0/24`, and its gateway.
+5. Enter the range's first and last addresses.
+6. Optional: under **Excluded addresses**, enter the addresses the range
+   never gives, one a line: an address, or a span such as
+   `10.51.0.50-10.51.0.59`.
+7. Optional: enter the DNS servers and search domains that VMs get, and
+   the DNS domain that they're named in. Without a domain, VMs take the
+   blueprint's.
+8. Click **Save range**.
+
+A network can have several ranges, all with the same subnet, gateway and
+DNS settings; ranges of a vCenter don't overlap. rvav gives the first free address of
+the network's ranges, in the order you made them. The **Networks** tab
+shows each network's source: **rvav IP ranges**, **EfficientIP** or **By
+hand**.
+
+To see who holds each address, open a range's **Actions** menu and select
+**Addresses given**. While VMs hold addresses from a range, you can't
+remove it, change its vCenter, network, subnet or gateway, or exclude an
+address that a VM holds.
+
+rvav gives an address back when its VM is deleted, when a request fails
+before the VM exists or is rolled back, and when a day-2 action moves the
+adapter to another network. Unregistering a VM keeps its addresses, as it
+does in EfficientIP.
+
+### Reconcile the IP ranges
+
+Under **Reconcile the IP ranges** on the **IP ranges** tab, or in
+**Integrations › Checks**, click **Run the check**. It lists:
+
+- **Addresses of VMs rvav no longer has**, such as an unregistered VM's.
+  If the VM is gone from vCenter, select **Give back** in the row's
+  **Actions** menu: the range can then give the address again. If it
+  still runs on the address, exclude the address from the range instead.
+- **VMs on an address their range didn't give**: vCenter VMs, such as
+  adopted ones, on an address of a range. Select **Exclude from** the
+  range in the row's **Actions** menu, so that the range never gives the
+  address to another VM, or move the VM. When another VM holds the
+  address, one of the two must move.
+
+The vRA import doesn't read vRA's network profiles: define their IP
+ranges again in rvav before you import deployments on those networks.
+
 ## Active Directory
 
 rvav can make each VM's computer object in an OU before the VM is built,
@@ -2126,7 +2189,10 @@ of the type or an item version names it.
 - **EfficientIP reconcile** (**Integrations › Checks**): addresses and records
   tagged as rvav's that no deployment owns, left by failures or restores,
   or by a deletion that went on past failed steps.
-  Delete them there, or adopt their VM.
+  Delete them there, or adopt their VM. The same check covers rvav's IP
+  ranges (see [Reconcile the IP ranges](#reconcile-the-ip-ranges)).
+  Adopting a VM on a network with ranges gives it no address from them:
+  exclude its address from the range.
 
 ## Branding and notification templates
 

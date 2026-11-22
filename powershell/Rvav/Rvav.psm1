@@ -760,6 +760,79 @@ function Deny-RvavApproval {
     }
 }
 
+function Get-RvavIPRange {
+    <#
+    .SYNOPSIS
+    Gets rvav's IP ranges, for networks without EfficientIP, with their free addresses.
+    .DESCRIPTION
+    Needs the right to see the infrastructure for all of rvav. rvav writes no DNS records for addresses from its ranges.
+    .EXAMPLE
+    Get-RvavIPRange
+    .EXAMPLE
+    Get-RvavIPRange -Network dvpg-lab-vl510
+    .EXAMPLE
+    Get-RvavIPRange -Name Lab* | Get-RvavIPAllocation
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'List')]
+    [OutputType('Rvav.IPRange')]
+    param(
+        [Parameter(Mandatory, Position = 0, ParameterSetName = 'One', ValueFromPipeline)]
+        [string[]] $Id,
+        # Ranges by name; wildcards work.
+        [Parameter(ParameterSetName = 'List')]
+        [string] $Name,
+        # Only the ranges of this port group or NSX segment.
+        [Parameter(ParameterSetName = 'List')]
+        [string] $Network
+    )
+    process {
+        try {
+            $ranges = if ($PSCmdlet.ParameterSetName -eq 'One') {
+                foreach ($i in $Id) {
+                    Invoke-RvavApi -Path ('admin/ip-ranges/' + (Get-PathSegment $i))
+                }
+            } else {
+                (Invoke-RvavApi -Path admin/ip-ranges).items | Where-Object {
+                    (-not $Name -or $_.name -like $Name) -and (-not $Network -or $_.network -eq $Network)
+                }
+            }
+            $ranges | Add-TypeName -Name IPRange
+        } catch {
+            $PSCmdlet.ThrowTerminatingError($_)
+        }
+    }
+}
+
+function Get-RvavIPAllocation {
+    <#
+    .SYNOPSIS
+    Gets the addresses an IP range gave, with the VM that holds each.
+    .EXAMPLE
+    Get-RvavIPRange -Name Lab | Get-RvavIPAllocation
+    .EXAMPLE
+    Get-RvavIPAllocation -RangeId ipr_01J9 -Address 10.51.0.12
+    #>
+    [CmdletBinding()]
+    [OutputType('Rvav.IPAllocation')]
+    param(
+        # The range, by ID: a range from Get-RvavIPRange gives it.
+        [Parameter(Mandatory, Position = 0, ValueFromPipelineByPropertyName)]
+        [Alias('Id')]
+        [string] $RangeId,
+        # Only this address.
+        [string] $Address
+    )
+    process {
+        try {
+            (Invoke-RvavApi -Path ('admin/ip-ranges/' + (Get-PathSegment $RangeId) + '/allocations')).items |
+                Where-Object { -not $Address -or $_.address -eq $Address } |
+                Add-TypeName -Name IPAllocation -Property @{ RangeId = $RangeId }
+        } catch {
+            $PSCmdlet.ThrowTerminatingError($_)
+        }
+    }
+}
+
 Export-ModuleMember -Function Connect-Rvav, Disconnect-Rvav, Invoke-RvavApi, Get-RvavCatalogItem, New-RvavRequest,
     Get-RvavRequest, Wait-RvavRequest, Get-RvavDeployment, Get-RvavDeploymentAction, Invoke-RvavDeploymentAction,
-    Remove-RvavDeployment, Get-RvavApproval, Approve-RvavApproval, Deny-RvavApproval
+    Remove-RvavDeployment, Get-RvavApproval, Approve-RvavApproval, Deny-RvavApproval, Get-RvavIPRange, Get-RvavIPAllocation
