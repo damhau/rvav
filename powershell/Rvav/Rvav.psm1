@@ -198,7 +198,7 @@ function Format-Preview($Preview) {
         $parts += 'VMs ' + (@($Preview.names) -join ', ')
     }
     if ($Preview.approval -and $Preview.approval.required) {
-        $parts += 'approval needed: ' + (@($Preview.approval.policies | ForEach-Object reason) -join '; ')
+        $parts += 'approval needed: ' + (@($Preview.approval.policies | ForEach-Object { $_.reason }) -join '; ')
     }
     if ($parts) {
         ' (' + ($parts -join '; ') + ')'
@@ -333,7 +333,7 @@ function New-RvavRequest {
             if ($Version -and $Version -ne $it.version.number) {
                 $offered = @($it.versions | Where-Object number -EQ $Version)
                 if (-not $offered) {
-                    $numbers = @($it.version.number) + @($it.versions | ForEach-Object number) | Select-Object -Unique
+                    $numbers = @($it.version.number) + @($it.versions | ForEach-Object { $_.number }) | Select-Object -Unique
                     throw "$($it.name) has no version $Version the project may request: it offers $($numbers -join ', ')."
                 }
                 $versionId = $offered[0].id

@@ -99,6 +99,15 @@ Remove-RvavDeployment $d.id -WhatIf
 Assert ((Get-RvavDeployment $d.id).status -eq 'ready') '-WhatIf deletes nothing'
 
 $prd = @{ role = 'front'; cluster = 'GVA-PRD-CL02'; datastore = 'vsan-gva-prd-cl02'; network = 'dvpg-web-prd-vl210' }
+
+# The What-if line goes to the host, which only a transcript records.
+$transcript = Join-Path ([IO.Path]::GetTempPath()) "rvav-whatif-$PID.txt"
+Start-Transcript -Path $transcript | Out-Null
+New-RvavRequest rhel9-server -ProjectId prj_web -Environment prd -Inputs $prd -WhatIf
+Stop-Transcript | Out-Null
+$said = Get-Content -Raw $transcript
+Remove-Item $transcript
+Assert ($said -match 'approval needed: \S' -and $said -notmatch 'Retrieve the value') "-WhatIf of a production request: $said"
 $approved = New-RvavRequest rhel9-server -ProjectId prj_web -Environment prd -Inputs $prd -Justification 'Fourth front node.'
 Assert ($approved.status -eq 'pending_approval') "the production request is $($approved.status)"
 $late = Wait-RvavRequest $approved.id -Timeout (New-TimeSpan -Milliseconds 200) -ErrorAction SilentlyContinue -ErrorVariable timedOut
