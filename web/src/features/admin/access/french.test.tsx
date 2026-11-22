@@ -49,7 +49,7 @@ describe("roles and access, in French", () => {
         .map((t) => t.textContent),
     ).toEqual(["Rôles", "Pour l'ensemble de rvav", "Ce que quelqu'un peut faire"]);
     const table = await screen.findByRole("table", { name: "Rôles" });
-    expect(await within(table).findAllByText("Intégré")).not.toHaveLength(0);
+    expect(await within(table).findAllByText("Prédéfini")).not.toHaveLength(0);
     expect(screen.getByRole("link", { name: "Nouveau rôle" })).toBeInTheDocument();
     expect(within(table).getByRole("link", { name: "Administrateur du catalogue" })).toHaveAttribute(
       "href",

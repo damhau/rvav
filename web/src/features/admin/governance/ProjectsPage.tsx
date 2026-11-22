@@ -33,6 +33,7 @@ import { AdminWarning, Refusal, refused } from "../access/refusal";
 import { failed, fieldErrors, UserPicker } from "./common";
 import { DirectoryPlacements } from "./DirectoryPlacements";
 import { roleName } from "@/lib/i18n/names";
+import { formatNumber } from "@/lib/format";
 
 type S = components["schemas"];
 type T = TFunction<"admin-governance">;
@@ -221,9 +222,12 @@ type QuotaLine = S["QuotaUsage"]["lines"][number];
 
 /** What deployments and running requests take, of the limit: "12 of 64 GB". */
 export function takenText(t: T, l: QuotaLine): string {
-  const taken = l.used + l.reserved;
-  if (l.limit == null) return inGb[l.resource] ? t("projects.quotaUse.gb", { taken }) : String(taken);
-  return t(inGb[l.resource] ? "projects.quotaUse.ofGb" : "projects.quotaUse.of", { taken, limit: l.limit });
+  const taken = formatNumber(l.used + l.reserved);
+  if (l.limit == null) return inGb[l.resource] ? t("projects.quotaUse.gb", { taken }) : taken;
+  return t(inGb[l.resource] ? "projects.quotaUse.ofGb" : "projects.quotaUse.of", {
+    taken,
+    limit: formatNumber(l.limit),
+  });
 }
 
 export function quotaTone(l: QuotaLine): string | undefined {

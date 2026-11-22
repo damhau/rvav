@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { isApiError } from "@/lib/api/client";
+import { problemText } from "@/lib/api/problem";
 import type { components } from "@/lib/api/schema";
 import type { UserRef } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
@@ -65,9 +66,9 @@ export function errorAt(errors: Record<string, string>, pointer: string): string
 
 /** A failed change, said in a toast (field problems go next to their field). */
 export function failed(e: unknown, fallback: string) {
-  toast.error(isApiError(e) ? e.problem.title : fallback, {
-    description: isApiError(e) ? (e.fieldErrors[0]?.message ?? e.problem.detail) : undefined,
-  });
+  if (!isApiError(e)) return void toast.error(fallback);
+  const words = problemText(e);
+  toast.error(words.title.text, { description: e.fieldErrors[0]?.message ?? words.detail?.text });
 }
 
 /** Finds people by name or email. */

@@ -37,7 +37,7 @@ function Fips({ status }: { status: S["FipsStatus"] }) {
         values={{ mode: t(`system.fips.mode.${status.mode}`), means: t(`system.fips.means.${status.mode}`) }}
         components={{ means: <span className="text-muted" /> }}
       />
-      <span className="ml-1.5 font-mono text-secondary text-faint">{fipsModule(status.module)}</span>
+      {status.module && <span className="ml-1.5 font-mono text-secondary text-faint">{fipsModule(status.module)}</span>}
     </>
   );
 }
@@ -103,7 +103,11 @@ function Processes({ system }: { system: S["System"] }) {
     {
       id: "fips",
       header: "FIPS 140-3",
-      cell: (p) => <span title={fipsModule(p.fips.module)}>{t(`system.fips.mode.${p.fips.mode}`)}</span>,
+      cell: (p) => (
+        <span title={p.fips.module ? fipsModule(p.fips.module) : undefined}>
+          {t(`system.fips.mode.${p.fips.mode}`)}
+        </span>
+      ),
     },
     { id: "state", header: t("system.processes.state"), cell: (p) => t(`system.state.${p.state}`) },
     { id: "started", header: t("system.processes.started"), cell: (p) => <When iso={p.started_at} /> },

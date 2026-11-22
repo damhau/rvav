@@ -57,6 +57,8 @@
     }
   },
   "error": {
+    "forbidden": { "title": "Not allowed", "detail": "You do not have permission to do this." },
+    "notFound": { "title": "Not found", "detail": "It does not exist, or you cannot see it." },
     "title": "Something went wrong",
     "requestId": "Request ID <id>{{id}}</id>",
     "retry": "Try again"

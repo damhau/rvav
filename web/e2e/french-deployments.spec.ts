@@ -89,8 +89,8 @@ test("the deployments pages speak French, and English again once chosen", async 
   await page.getByRole("tab", { name: "Historique" }).click();
   await expect(page.getByRole("region", { name: "Historique", exact: true })).toBeVisible();
   await bothThemes(page, "a deployment's history");
-  await page.getByRole("tab", { name: "Champs" }).click();
-  await expect(page.getByRole("tab", { name: "Champs" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Entrées" }).click();
+  await expect(page.getByRole("tab", { name: "Entrées" })).toHaveAttribute("aria-selected", "true");
   await bothThemes(page, "a deployment's inputs");
 
   await page

@@ -26,6 +26,23 @@
     "signOut": "Sign out"
   },
   "nav": {
+    "keywords": {
+      "propertyGroups": "inputs, constants",
+      "variables": "configuration elements, shared values",
+      "formLibrary": "value sources, validations, external sources",
+      "resourceTypes": "custom resources, load balancers",
+      "subscriptions": "events",
+      "projects": "environments, quotas, placement",
+      "roles": "permissions",
+      "policies": "approval, lease, naming",
+      "infrastructure": "sizes, subnets, ip ranges, tags",
+      "onboarding": "adopt",
+      "setup": "checklist",
+      "branding": "portal name, logo, accent colour, theme",
+      "notificationTemplates": "email, messages",
+      "auditForwarding": "audit log",
+      "system": "version, health"
+    },
     "label": "Main",
     "main": {
       "overview": "Overview",

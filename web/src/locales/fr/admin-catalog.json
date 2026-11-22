@@ -479,7 +479,7 @@
       "category": "Catégorie",
       "summary": "Résumé",
       "description": "Description (Markdown)",
-      "tags": "Étiquettes",
+      "tags": "Tags",
       "tagsHint": "Séparées par des virgules. Elles regroupent aussi les VM de l'élément dans l'inventaire AWX.",
       "featured": "Mis en avant dans le catalogue",
       "icon": "Icône"
@@ -740,7 +740,7 @@
       "file": "Envoi de fichier",
       "date": "Date",
       "datetime": "Date et heure",
-      "tags": "Étiquettes",
+      "tags": "Tags",
       "key_value": "Paires clé-valeur",
       "datagrid": "Tableau",
       "dual_list": "Double liste",
@@ -897,7 +897,7 @@
       "takeFrom": "Les prendre de {{source}}",
       "kind": {
         "none": "Aucune (options fixes ou saisie libre)",
-        "builtin": "Intégrée",
+        "builtin": "Prédéfinie",
         "rest": "Service REST",
         "cel": "Expression CEL",
         "library": "Bibliothèque de formulaires"
@@ -1014,12 +1014,12 @@
       },
       "minItems": {
         "datagrid": "Nombre minimal de lignes",
-        "tags": "Nombre minimal d'étiquettes",
+        "tags": "Nombre minimal de tags",
         "dual_list": "Nombre minimal de choix"
       },
       "maxItems": {
         "datagrid": "Nombre maximal de lignes",
-        "tags": "Nombre maximal d'étiquettes",
+        "tags": "Nombre maximal de tags",
         "dual_list": "Nombre maximal de choix"
       },
       "suggestions": "Suggestions",
@@ -1106,13 +1106,13 @@
       "first": "Elle s'exécute en premier.",
       "last": "Elle s'exécute en dernier.",
       "alreadyGroup": "Elle s'exécute déjà en même temps que d'autres.",
-      "noUndo": "L'étape n'a pas de retour arrière.",
+      "noUndo": "L'étape n'a pas de compensation.",
       "noRest": "Elle ne fait pas d'appel REST.",
       "noWait": "Elle n'attend pas de durée ou d'heure.",
       "noPoll": "Elle n'interroge rien.",
       "noResource": "Elle ne crée pas de ressource personnalisée.",
       "noSignal": "Elle n'attend pas de signal.",
-      "loopUndo": "Une boucle n'a pas de retour arrière\u00a0: chaque passage aurait besoin du sien. Retirez d'abord son retour arrière.",
+      "loopUndo": "Une boucle n'a pas de compensation\u00a0: chaque passage aurait besoin de la sienne. Retirez d'abord sa compensation.",
       "noAsk": "Elle n'attend pas de personne.",
       "noQuestion": "Cette question n'existe pas.",
       "notBranch": "Ce n'est pas une branche.",
@@ -1181,9 +1181,9 @@
     },
     "end": {
       "rollback": "Défaire ce qui a été construit quand une étape échoue",
-      "rollbackHint": "Les VM construites sont supprimées et chaque étape terminée est défaite par son retour arrière, si elle en a un, la dernière d'abord.",
+      "rollbackHint": "Les VM construites sont supprimées, et chaque étape terminée qui a une compensation est compensée, la dernière d'abord.",
       "handler": "Gestionnaire d'erreurs",
-      "handlerBody": "Ses étapes s'exécutent dans l'ordre quand un échec que rien ne rattrape fait échouer la demande, avant les retours arrière et le rollback\u00a0: un job AWX, un workflow personnalisé, un appel REST ou un message.",
+      "handlerBody": "Ses étapes s'exécutent dans l'ordre quand un échec que rien ne rattrape fait échouer la demande, avant les compensations et le retour en arrière\u00a0: un job AWX, un workflow personnalisé, un appel REST ou un message.",
       "handlerEmpty": "Aucune pour l'instant\u00a0: un échec fait simplement échouer la demande."
     },
     "resource": {
@@ -1193,7 +1193,7 @@
       "only": "La seule étape VM avant elle",
       "notBefore": "pas une étape VM avant elle",
       "deployment": "Déploiement",
-      "undo": "Si une étape suivante échoue, l'étape de suppression de son type la défait."
+      "undo": "Si une étape suivante échoue, l'étape de suppression de son type la compense."
     },
     "step": {
       "earlier": "Exécuter plus tôt",
@@ -1225,7 +1225,7 @@
       "open": "Un workflow personnalisé donne ce qu'il renvoie, une ressource personnalisée ses propriétés, une attente d'un signal ce qui est arrivé\u00a0: écrivez <reads/> comme expression CEL.",
       "addVariable": "Ajouter une variable",
       "addInput": "Ajouter une entrée",
-      "undo": "Retour arrière",
+      "undo": "Compensation",
       "catch": "Chemin de rattrapage",
       "groupCatch": "Chemin de rattrapage de son groupe",
       "catchBody": "Des étapes qui s'exécutent dans l'ordre si elle échoue\u00a0; la demande continue ensuite.",
@@ -1235,28 +1235,28 @@
     },
     "undoBy": {
       "nothing": "Rien",
-      "label": "Retour arrière par",
-      "hint": "Ce qui s'exécute quand une étape suivante échoue et que les changements de la demande sont défaits.",
-      "addVariable": "Ajouter une variable au retour arrière"
+      "label": "Compensée par",
+      "hint": "Ce qui s'exécute quand une étape suivante échoue et que les changements de la demande sont compensés.",
+      "addVariable": "Ajouter une variable à la compensation"
     },
     "rest": {
       "noSecret": "Aucun secret",
       "notStored": "non stocké",
       "method": "Méthode",
-      "undoMethod": "Méthode du retour arrière",
+      "undoMethod": "Méthode de la compensation",
       "url": "URL",
-      "undoUrl": "URL du retour arrière",
+      "undoUrl": "URL de la compensation",
       "urlHint": "L'hôte est fixe, et parmi les hôtes autorisés. ${...} remplit son chemin ou sa requête, échappé.",
       "body": "Corps",
-      "undoBody": "Corps du retour arrière",
+      "undoBody": "Corps de la compensation",
       "bodyGet": "Un GET n'a pas de corps.",
       "bodyHint": "Une expression CEL, envoyée en JSON. Vide\u00a0: pas de corps.",
       "secret": "Secret",
-      "undoSecret": "Secret du retour arrière",
+      "undoSecret": "Secret de la compensation",
       "secretsError": "Les secrets stockés n'ont pas pu être chargés.",
       "secretHint": "Envoyé comme jeton bearer, identifiants basic ou en-tête, selon son stockage.",
       "accept": "Statuts acceptés",
-      "undoAccept": "Statuts acceptés du retour arrière",
+      "undoAccept": "Statuts acceptés de la compensation",
       "acceptPoll": "Vide\u00a0: n'importe quel 2xx.",
       "acceptHint": "Les autres font échouer l'étape. Vide\u00a0: n'importe quel 2xx.",
       "statuses": "Des statuts HTTP, en nombres\u00a0: 200, 201.",
@@ -1321,13 +1321,13 @@
       "itemsHint": "Du CEL qui donne une liste d'au plus 100 éléments. Chaque passage lit <each/>, son élément, et <index/>, à partir de 0.",
       "atATime": "À la fois",
       "atATimeHint": "Jusqu'à 10. 1\u00a0: l'un après l'autre.",
-      "reads": "Les étapes suivantes lisent <items/>, les sorties de chaque passage dans l'ordre de la liste, et <count/>. Une boucle n'a pas de retour arrière.",
+      "reads": "Les étapes suivantes lisent <items/>, les sorties de chaque passage dans l'ordre de la liste, et <count/>. Une boucle n'a pas de compensation.",
       "once": "L'exécuter une fois",
       "runsOnce": "Elle s'exécute une fois.",
       "repeat": "La répéter pour chaque élément d'une liste"
     },
     "side": {
-      "empty": "Aucune étape pour l'instant\u00a0: elle passe à ce qui suit la branche.",
+      "empty": "Aucune étape pour l'instant\u00a0: l'exécution passe à ce qui suit la branche.",
       "stepsOf": {
         "side": "Étapes de {{label}}",
         "catch": "Étapes du chemin de rattrapage",
@@ -1398,7 +1398,7 @@
       "atEnd": "À la fin",
       "nameAwx": "Nommez le modèle AWX.",
       "chooseRuns": "Choisissez ce qu'elle exécute.",
-      "description": "Elle exécute un élément du catalogue, un modèle AWX ou un workflow personnalisé, appelle une API REST, attend une personne, une heure, une condition ou un signal, envoie un message, ou se divise en branches. Les entrées nommées comme celles du formulaire leur sont liées.",
+      "description": "Elle exécute un élément du catalogue, un modèle AWX ou un workflow personnalisé, appelle une API REST, attend une personne, une heure, une condition ou un signal, envoie un message, ou se divise en cas. Les entrées nommées comme celles du formulaire leur sont liées.",
       "whatRuns": "Ce qu'elle exécute",
       "keyHint": "Les étapes suivantes lisent ses sorties par steps.<key>.",
       "onSide": "Elle s'exécute dans le cas {{label}}, après les étapes qui s'y trouvent.",
@@ -1531,7 +1531,7 @@
       "osFamily": "Famille d'OS",
       "antiAffinity": "Garder ses VM sur des hôtes différents",
       "policy": "Stratégie de stockage",
-      "datastore": "Banque de données"
+      "datastore": "Datastore"
     },
     "panel": {
       "remove": "Retirer",

@@ -18,27 +18,40 @@ describe("notification templates, in French", () => {
       within(table)
         .getAllByRole("columnheader")
         .map((h) => h.textContent),
-    ).toEqual(["Notification", "Modifiés", "Changé"]);
-    expect(await within(table).findAllByText("Modèles intégrés")).not.toHaveLength(0);
+    ).toEqual(["Notification", "Modèles modifiés", "Dernière modification"]);
+    expect(await within(table).findAllByText("Modèles prédéfinis")).not.toHaveLength(0);
     expect(within(table).getByRole("link", { name: "Approbation requise" })).toBeInTheDocument();
     expect(within(table).getByText("Au demandeur, une fois que le dernier niveau a approuvé.")).toBeInTheDocument();
     expect(within(table).queryByText(/^To the /)).not.toBeInTheDocument();
   });
 
-  it("edits a template with French labels, and names languages inside a sentence", { timeout: 15_000 }, async () => {
-    renderApp("/admin/notification-templates/approval_needed");
-    expect(await screen.findByRole("button", { name: "E-mail" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Anglais" })).toHaveAttribute("aria-pressed", "true");
-    expect(await screen.findByLabelText("Objet")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Approbation requise" })).toBeInTheDocument();
-    expect((await screen.findByText(/^Ce que peut écrire un modèle/)).textContent).toBe(
-      "Ce que peut écrire un modèle de la notification «\u00a0Approbation requise\u00a0». Un modèle qui en nomme une autre est refusé.",
-    );
-    expect(screen.getByText("Le modèle intégré.")).toBeInTheDocument();
+  it(
+    "edits the French template first, with French labels, naming languages inside a sentence",
+    { timeout: 15_000 },
+    async () => {
+      renderApp("/admin/notification-templates/approval_needed");
+      expect(await screen.findByRole("button", { name: "E-mail" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "Français" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "Anglais" })).toHaveAttribute("aria-pressed", "false");
+      expect(await screen.findByLabelText("Objet")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 1, name: "Approbation requise" })).toBeInTheDocument();
+      expect((await screen.findByText(/^Ce que peut écrire un modèle/)).textContent).toBe(
+        "Ce que peut écrire un modèle de la notification «\u00a0Approbation requise\u00a0». Un modèle qui en nomme une autre est refusé.",
+      );
+      expect(screen.getByText("Le modèle prédéfini.")).toBeInTheDocument();
+      expect(
+        screen.getByText("Avec des données d'exemple, comme l'afficherait un e-mail en français."),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Enregistrer le modèle" })).toBeDisabled();
+      expect(await screen.findByTitle("L'e-mail en HTML")).toBeInTheDocument();
+    },
+  );
+
+  it("opens the English template when the address asks for it", { timeout: 15_000 }, async () => {
+    renderApp("/admin/notification-templates/approval_needed?locale=en");
+    expect(await screen.findByRole("button", { name: "Anglais" })).toHaveAttribute("aria-pressed", "true");
     expect(
-      screen.getByText("Avec des données d'exemple, comme l'afficherait un e-mail en anglais."),
+      await screen.findByText("Avec des données d'exemple, comme l'afficherait un e-mail en anglais."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Enregistrer le modèle" })).toBeDisabled();
-    expect(await screen.findByTitle("L'e-mail en HTML")).toBeInTheDocument();
   });
 });

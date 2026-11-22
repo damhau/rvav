@@ -66,7 +66,8 @@ describe("the sign-in page", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/^Too many failed attempts in a row. Wait before trying again.$/);
     expect(screen.getByText("1 second left.")).toHaveAttribute("aria-live", "off");
-    expect(submit).toBeDisabled();
+    expect(submit).toHaveFocus();
+    expect(submit).toHaveAttribute("aria-disabled", "true");
     expect(assign).not.toHaveBeenCalled();
 
     // Once the wait is over, the right password goes on to the change.

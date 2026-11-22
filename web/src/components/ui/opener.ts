@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 const focusable = [
   "input:not([type=hidden]):not([disabled])",
@@ -18,6 +18,45 @@ export function focusInvalid(root: ParentNode | null | undefined): boolean {
   const control = invalid?.matches(focusable) ? invalid : invalid?.querySelector<HTMLElement>(focusable);
   control?.focus();
   return Boolean(control);
+}
+
+/**
+ * Where the focus goes as a form's save ends. Its submit button, disabled
+ * while the save runs, drops the focus to the page: a refusal then moves it
+ * to the first field marked invalid in root, and any other end to `then` (the
+ * submit button, or what stands for it once the save leaves it disabled).
+ * Call `submitted` as the form submits, and `interacted` on the person's keys
+ * and clicks in it: a field that turns invalid as they type keeps their focus.
+ */
+export function useSaveFocus(
+  root: RefObject<HTMLElement | null>,
+  pending: boolean | undefined,
+  then: () => HTMLElement | null | undefined,
+) {
+  // From a submit to the render that shows how it went. A quick answer can come with no render
+  // while pending, so a field marked invalid ends the wait too.
+  const awaiting = useRef<"submitted" | "saving" | null>(null);
+  useEffect(() => {
+    if (!awaiting.current) return;
+    if (pending) {
+      awaiting.current = "saving";
+      return;
+    }
+    if (focusInvalid(root.current)) awaiting.current = null;
+    else if (awaiting.current === "saving") {
+      awaiting.current = null;
+      const active = document.activeElement;
+      if (!active || active === document.body || active === root.current?.closest('[role="dialog"]')) then()?.focus();
+    }
+  });
+  return {
+    submitted: () => {
+      awaiting.current = "submitted";
+    },
+    interacted: () => {
+      awaiting.current = null;
+    },
+  };
 }
 
 /**

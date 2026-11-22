@@ -54,9 +54,63 @@ function dayStart(day: string, after = false): string {
   return d.toISOString();
 }
 
+const targetTypes = [
+  "ad_placement",
+  "api_token",
+  "approval",
+  "approval_policy",
+  "audit_destination",
+  "awx_action",
+  "branding",
+  "catalog_git_file",
+  "catalog_item",
+  "deployment",
+  "deployment_limit_policy",
+  "environment",
+  "form_library",
+  "group_mapping",
+  "integration",
+  "ip_range",
+  "lease_policy",
+  "lease_rule",
+  "naming_policy",
+  "network",
+  "notification_template",
+  "nsx_manager",
+  "onboarding_plan",
+  "placement_rule",
+  "process",
+  "project",
+  "property_group",
+  "quota",
+  "request",
+  "resource",
+  "resource_type",
+  "role",
+  "role_assignment",
+  "schedule",
+  "servicenow_request",
+  "setup",
+  "size_preset",
+  "subscription",
+  "user",
+  "variable",
+  "vcenter",
+  "vm_template",
+  "vra_project",
+  "vra_snapshot",
+  "workflow",
+] as const;
+type TargetType = (typeof targetTypes)[number];
+const isTargetType = (type: string): type is TargetType => (targetTypes as readonly string[]).includes(type);
+
+/** What an event was on, in the language shown; a type newer than the page as the server names it. */
+export const targetTypeLabel = (type: string) =>
+  isTargetType(type) ? i18n.t(`admin:audit.target.${type}`) : type.replaceAll("_", " ");
+
 const target = (e: AuditEvent) => (
   <>
-    <span className="text-faint">{e.target_type.replace("_", " ")}</span>{" "}
+    <span className="text-faint">{targetTypeLabel(e.target_type)}</span>{" "}
     <span className="font-mono">{e.target_id}</span>
   </>
 );

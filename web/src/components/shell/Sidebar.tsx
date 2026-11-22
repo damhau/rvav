@@ -12,8 +12,8 @@ import { BrandMark } from "./BrandMark";
 import { adminLabel, adminMenu, groupLabel, mainLabel, mainPages } from "./nav";
 
 const row = "relative flex items-center rounded-md hover:bg-sunken hover:text-fg [&_svg]:shrink-0";
-const mainRow = "h-[30px] text-fg [&_svg]:size-4 [&_svg]:text-muted";
-const adminRow = "h-7 text-muted [&_svg]:size-[15px] [&_svg]:text-faint";
+const mainRow = "min-h-[30px] py-1 text-fg [&_svg]:size-4 [&_svg]:text-muted";
+const adminRow = "min-h-7 py-1 text-muted [&_svg]:size-[15px] [&_svg]:text-faint";
 const wide = "gap-2.5 px-2 text-body";
 const narrow = "w-full justify-center";
 const active = "bg-surface font-medium text-fg shadow-[0_0_0_1px_var(--line)] hover:bg-surface [&_svg]:text-accent!";
@@ -93,7 +93,7 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
   };
 
   const label = (text: string) =>
-    rail ? <span className="sr-only">{text}</span> : <span className="min-w-0 truncate">{text}</span>;
+    rail ? <span className="sr-only">{text}</span> : <span className="min-w-0 leading-tight break-words">{text}</span>;
   const withTip = (text: string, link: ReactNode) =>
     rail ? (
       <Tip content={text} side="right">

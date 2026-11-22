@@ -106,6 +106,21 @@ describe("System page", () => {
     );
   });
 
+  it("leaves out the module of a process too old to report it", async () => {
+    const system = await call(api.GET("/admin/system"));
+    const [first, ...others] = system.processes;
+    server.use(
+      http.get("*/api/v1/admin/system", () =>
+        HttpResponse.json({ ...system, processes: [{ ...first!, fips: { mode: "off", module: "" } }, ...others] }),
+      ),
+    );
+    renderApp("/admin/system");
+    const processes = await screen.findByRole("region", { name: "Processes" });
+    const row = await within(processes).findByRole("row", { name: new RegExp(first!.host) });
+    expect(within(row).getByText("Off")).not.toHaveAttribute("title");
+    expect(within(processes).getAllByTitle(/^Go Cryptographic Module /)).toHaveLength(others.length);
+  });
+
   it("on a new install, nothing is saved in Administration yet", async () => {
     localStorage.setItem("rvav.mock.fresh", "1");
     resetDb();

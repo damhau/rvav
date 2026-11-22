@@ -197,7 +197,7 @@ test("onboarding and AWX's templates, in French", async ({ page }) => {
 
   await open(page, "Intégration de l'existant");
   const vms = page.getByRole("table", { name: "VM à intégrer" });
-  await expect(vms.getByRole("columnheader", { name: /^Système invité/ })).toBeVisible();
+  await expect(vms.getByRole("columnheader", { name: /^OS invité/ })).toBeVisible();
   await bothThemes(page, "onboarding");
   await page.getByRole("textbox", { name: "Rechercher" }).fill("app-old");
   await expect(page.getByText("8 VM", { exact: true })).toBeVisible();
@@ -210,7 +210,7 @@ test("onboarding and AWX's templates, in French", async ({ page }) => {
   await sheet.getByRole("button", { name: "Annuler" }).click();
   await expect(sheet).toBeHidden();
 
-  await open(page, "Éléments de catalogue");
+  await open(page, "Éléments du catalogue");
   await tab(page, "Modèles AWX");
   const templates = page.getByRole("region", { name: "Importés d'AWX" });
   await expect(templates.getByRole("button", { name: "Synchroniser maintenant" })).toBeVisible();
@@ -279,7 +279,7 @@ test("the vRA import, in French", async ({ page }) => {
   );
   await bothThemes(page, "the vRA import's projects");
 
-  await page.getByRole("tab", { name: /^Éléments de catalogue/ }).click();
+  await page.getByRole("tab", { name: /^Éléments du catalogue/ }).click();
   const templates = page.getByRole("table", { name: "Modèles de cloud" });
   await expect(templates.getByRole("row", { name: /RHEL 9 Server/ }).getByText("Inchangé")).toBeVisible();
   await bothThemes(page, "the vRA import's catalog items");

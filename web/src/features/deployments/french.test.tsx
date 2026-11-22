@@ -43,7 +43,7 @@ describe("the deployments, in French", () => {
       expect(await screen.findByRole("heading", { level: 1, name: "web-dev-api" }, { timeout: 5000 })).toBeVisible();
       // Testing Library reads a no-break space as a space.
       expect(await screen.findByText("Propriétaire : Thomas Nguyen")).toBeInTheDocument();
-      for (const tab of ["Vue d'ensemble", "Topologie", "Historique", "Champs"])
+      for (const tab of ["Vue d'ensemble", "Topologie", "Historique", "Entrées"])
         expect(screen.getByRole("tab", { name: tab })).toBeInTheDocument();
       const lease = screen.getByRole("region", { name: "Bail" });
       expect(lease).toHaveTextContent("1 prolongation sur 2 utilisée ; jusqu'à 90 jours sans approbation.");

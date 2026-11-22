@@ -4,7 +4,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
-import { useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Field, Input, Textarea } from "@/components/ui/input";
+import { useSaveFocus } from "@/components/ui/opener";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
@@ -86,10 +87,13 @@ function Editor({
   kind,
   template,
   onChanged,
+  landed,
 }: {
   kind: NotificationKind;
   template: NotificationTemplate;
   onChanged: (t: NotificationTemplate) => void;
+  /** Set as a saved or reset template replaces this editor: the new one's status line takes the focus. */
+  landed: RefObject<boolean>;
 }) {
   const { t } = useTranslation("admin-notifications");
   const { channel, locale } = template;
@@ -127,6 +131,19 @@ function Editor({
       failed(e, t("editor.notReset"));
     },
   });
+  const form = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const resetButton = useRef<HTMLButtonElement>(null);
+  const statusLine = useRef<HTMLSpanElement>(null);
+  const saveFocus = useSaveFocus(form, save.isPending, () =>
+    submit.current?.disabled ? statusLine.current : submit.current,
+  );
+  const resetFocus = useSaveFocus(form, reset.isPending, () => resetButton.current ?? statusLine.current);
+  useEffect(() => {
+    if (!landed.current) return;
+    landed.current = false;
+    if (!document.activeElement || document.activeElement === document.body) statusLine.current?.focus();
+  }, [landed]);
   const shown = useDebounced(body, 400);
   const preview = useQuery({
     queryKey: ["admin", "notification-templates", kind, "preview", shown],
@@ -156,9 +173,12 @@ function Editor({
         }
         footer={
           <>
-            <span className="mr-auto">{dirty ? t("editor.notSavedYet") : status}</span>
+            <span ref={statusLine} tabIndex={-1} className="mr-auto outline-none">
+              {dirty ? t("editor.notSavedYet") : status}
+            </span>
             {(template.edited || !isDefault) && (
               <Button
+                ref={resetButton}
                 type="button"
                 variant="quiet"
                 onClick={() => (template.edited ? setResetting(true) : setDraft(partsOf(template.default, channel)))}
@@ -166,17 +186,28 @@ function Editor({
                 {t("editor.resetToBuiltIn")}
               </Button>
             )}
-            <Button type="submit" form="template-editor" variant="primary" disabled={save.isPending || !dirty}>
+            <Button
+              ref={submit}
+              type="submit"
+              form="template-editor"
+              variant="primary"
+              disabled={save.isPending || !dirty}
+            >
               {save.isPending ? t("editor.saving") : t("editor.save")}
             </Button>
           </>
         }
       >
         <form
+          ref={form}
           id="template-editor"
           className="flex flex-col gap-4"
+          onKeyDownCapture={saveFocus.interacted}
+          onPointerDownCapture={saveFocus.interacted}
           onSubmit={(e) => {
             e.preventDefault();
+            if (save.isPending || !dirty) return;
+            saveFocus.submitted();
             save.mutate();
           }}
         >
@@ -242,7 +273,10 @@ function Editor({
           consequences={t("editor.resetConsequences")}
           confirmLabel={t("editor.resetToBuiltIn")}
           pending={reset.isPending}
-          onConfirm={() => reset.mutate()}
+          onConfirm={() => {
+            resetFocus.submitted();
+            reset.mutate();
+          }}
         />
       )}
     </div>
@@ -284,13 +318,15 @@ function Variables({ kind, functions }: { kind: NotificationTemplateKind; functi
 export function NotificationTemplatePage({
   kind,
   channel = "email",
-  locale = "en",
+  locale: chosen,
 }: {
   kind: NotificationKind;
   channel?: TemplateChannel;
   locale?: TemplateLocale;
 }) {
-  const { t } = useTranslation(["admin-notifications", "shell"]);
+  const { t, i18n } = useTranslation(["admin-notifications", "shell"]);
+  const shown = locales.find((l) => l === i18n.resolvedLanguage);
+  const locale = chosen ?? shown ?? "en";
   const qc = useQueryClient();
   const navigate = useNavigate();
   const catalog = useQuery(adm.notificationTemplates());
@@ -298,7 +334,9 @@ export function NotificationTemplatePage({
   const info = catalog.data?.kinds.find((k) => k.kind === kind);
   const go = (search: { channel: TemplateChannel; locale: TemplateLocale }) =>
     void navigate({ to: "/admin/notification-templates/$kind", params: { kind }, search, replace: true });
+  const landed = useRef(false);
   const changed = (next: NotificationTemplate) => {
+    landed.current = true;
     qc.setQueryData(adm.notificationTemplate(kind, channel, locale).queryKey, next);
     void qc.invalidateQueries({ queryKey: adm.notificationTemplates().queryKey });
   };
@@ -345,6 +383,7 @@ export function NotificationTemplatePage({
             kind={kind}
             template={template.data}
             onChanged={changed}
+            landed={landed}
           />
           <Variables kind={info} functions={catalog.data!.functions} />
         </>

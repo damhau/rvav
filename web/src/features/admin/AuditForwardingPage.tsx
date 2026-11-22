@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Send } from "lucide-react";
 import type { TFunction } from "i18next";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
@@ -119,7 +119,6 @@ function bodyOf(d: Draft): S["AuditDestinationWrite"] {
 function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () => void }) {
   const { t } = useTranslation(["admin", "common"]);
   const qc = useQueryClient();
-  const formId = useId();
   const secrets = useQuery(adm.secrets());
   const [d, setD] = useState(() => draftOf(dest));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -150,212 +149,191 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
       pending={save.isPending}
       title={dest ? t("auditForwarding.change", { name: dest.name }) : t("auditForwarding.new")}
       description={t("auditForwarding.sheetDescription")}
-      footer={
-        <>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={save.isPending}>
-            {t("common:actions.cancel")}
-          </Button>
-          <Button type="submit" form={formId} variant="primary" disabled={save.isPending}>
-            {save.isPending ? t("integrations.saving") : t("auditForwarding.save")}
-          </Button>
-        </>
-      }
+      submitLabel={save.isPending ? t("integrations.saving") : t("auditForwarding.save")}
+      onSubmit={() => {
+        if (d.kind === "syslog" && d.port.trim() && !/^\d{1,5}$/.test(d.port.trim())) {
+          setErrors({ "/syslog/port": t("auditForwarding.portRange") });
+          return;
+        }
+        setErrors({});
+        save.mutate();
+      }}
     >
-      <form
-        id={formId}
-        className="flex flex-col gap-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (d.kind === "syslog" && d.port.trim() && !/^\d{1,5}$/.test(d.port.trim())) {
-            setErrors({ "/syslog/port": t("auditForwarding.portRange") });
-            return;
-          }
-          setErrors({});
-          save.mutate();
-        }}
-      >
-        <Field label={t("auditForwarding.name")} htmlFor="adt-name" error={errors["/name"]}>
-          <Input id="adt-name" value={d.name} onChange={(e) => set({ name: e.target.value })} />
-        </Field>
-        <Field label={t("auditForwarding.kind")} htmlFor="adt-kind" error={errors["/syslog"]}>
-          <Select
-            id="adt-kind"
-            value={d.kind}
-            onChange={(v) => set({ kind: v as Draft["kind"] })}
-            options={[
-              { value: "syslog", label: t("auditForwarding.syslog") },
-              { value: "webhook", label: t("auditForwarding.webhook") },
-            ]}
-          />
-        </Field>
-        {d.kind === "syslog" ? (
-          <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px]">
-              <Field label={t("auditForwarding.host")} htmlFor="adt-host" error={errors["/syslog/host"]}>
-                <Input
-                  id="adt-host"
-                  className="font-mono text-secondary"
-                  placeholder={hostExample}
-                  value={d.host}
-                  onChange={(e) => set({ host: e.target.value })}
-                />
-              </Field>
-              <Field label={t("auditForwarding.port")} htmlFor="adt-port" error={errors["/syslog/port"]}>
-                <Input
-                  id="adt-port"
-                  inputMode="numeric"
-                  className="font-mono text-secondary"
-                  placeholder={tls ? "6514" : "514"}
-                  value={d.port}
-                  onChange={(e) => set({ port: e.target.value })}
-                />
-              </Field>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field
-                label={t("auditForwarding.transportLabel")}
-                htmlFor="adt-transport"
-                error={errors["/syslog/transport"]}
-              >
-                <Select
-                  id="adt-transport"
-                  value={d.transport}
-                  onChange={(v) => set({ transport: v as Transport })}
-                  options={transports.map((value) => ({ value, label: t(`auditForwarding.transport.${value}`) }))}
-                />
-              </Field>
-              <Field label={t("auditForwarding.facility")} htmlFor="adt-facility" error={errors["/syslog/facility"]}>
-                <Select
-                  id="adt-facility"
-                  value={d.facility}
-                  onChange={(v) => set({ facility: v as Facility })}
-                  options={facilities.map((f) => ({ value: f, label: f }))}
-                />
-              </Field>
-            </div>
-            <Field
-              label={t("auditForwarding.appName")}
-              htmlFor="adt-app"
-              error={errors["/syslog/app_name"]}
-              hint={t("auditForwarding.appNameHint")}
-            >
+      <Field label={t("auditForwarding.name")} htmlFor="adt-name" error={errors["/name"]}>
+        <Input id="adt-name" value={d.name} onChange={(e) => set({ name: e.target.value })} />
+      </Field>
+      <Field label={t("auditForwarding.kind")} htmlFor="adt-kind" error={errors["/syslog"]}>
+        <Select
+          id="adt-kind"
+          value={d.kind}
+          onChange={(v) => set({ kind: v as Draft["kind"] })}
+          options={[
+            { value: "syslog", label: t("auditForwarding.syslog") },
+            { value: "webhook", label: t("auditForwarding.webhook") },
+          ]}
+        />
+      </Field>
+      {d.kind === "syslog" ? (
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px]">
+            <Field label={t("auditForwarding.host")} htmlFor="adt-host" error={errors["/syslog/host"]}>
               <Input
-                id="adt-app"
+                id="adt-host"
                 className="font-mono text-secondary"
-                placeholder="rvav"
-                value={d.appName}
-                onChange={(e) => set({ appName: e.target.value })}
+                placeholder={hostExample}
+                value={d.host}
+                onChange={(e) => set({ host: e.target.value })}
               />
             </Field>
-            {tls && (
-              <>
-                <Field
-                  label={t("auditForwarding.ca")}
-                  htmlFor="adt-ca"
-                  error={errors["/syslog/ca_certificate"]}
-                  hint={t("auditForwarding.caHint")}
-                >
-                  <Textarea
-                    id="adt-ca"
-                    rows={3}
-                    className="font-mono text-secondary"
-                    placeholder={pemExample}
-                    value={d.ca}
-                    onChange={(e) => set({ ca: e.target.value })}
-                  />
-                </Field>
-                <Field
-                  label={t("auditForwarding.cert")}
-                  htmlFor="adt-cert"
-                  error={errors["/syslog/client_certificate"]}
-                  hint={t("auditForwarding.certHint")}
-                >
-                  <Textarea
-                    id="adt-cert"
-                    rows={3}
-                    className="font-mono text-secondary"
-                    placeholder={pemExample}
-                    value={d.cert}
-                    onChange={(e) => set({ cert: e.target.value })}
-                  />
-                </Field>
-                <Field
-                  label={t("auditForwarding.key")}
-                  htmlFor="adt-key"
-                  error={errors["/syslog/client_key_secret"]}
-                  hint={t("auditForwarding.keyHint")}
-                >
-                  <Select
-                    id="adt-key"
-                    value={d.keySecret}
-                    loading={secrets.isPending}
-                    onChange={(keySecret) => set({ keySecret })}
-                    options={[{ value: none, label: t("auditForwarding.none") }, ...stored]}
-                  />
-                </Field>
-              </>
-            )}
-          </>
-        ) : (
-          <>
-            <Field
-              label={t("auditForwarding.url")}
-              htmlFor="adt-url"
-              error={errors["/webhook/url"]}
-              hint={t("auditForwarding.urlHint")}
-            >
+            <Field label={t("auditForwarding.port")} htmlFor="adt-port" error={errors["/syslog/port"]}>
               <Input
-                id="adt-url"
+                id="adt-port"
+                inputMode="numeric"
                 className="font-mono text-secondary"
-                placeholder={urlExample}
-                value={d.url}
-                onChange={(e) => set({ url: e.target.value })}
+                placeholder={tls ? "6514" : "514"}
+                value={d.port}
+                onChange={(e) => set({ port: e.target.value })}
               />
             </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field
-              label={t("auditForwarding.secret")}
-              htmlFor="adt-secret"
-              error={errors["/webhook/secret"]}
-              hint={t("auditForwarding.secretHint")}
+              label={t("auditForwarding.transportLabel")}
+              htmlFor="adt-transport"
+              error={errors["/syslog/transport"]}
             >
               <Select
-                id="adt-secret"
-                value={d.secret}
-                placeholder={t("auditForwarding.choose")}
-                loading={secrets.isPending}
-                onChange={(secret) => set({ secret })}
-                options={stored}
+                id="adt-transport"
+                value={d.transport}
+                onChange={(v) => set({ transport: v as Transport })}
+                options={transports.map((value) => ({ value, label: t(`auditForwarding.transport.${value}`) }))}
               />
             </Field>
-          </>
-        )}
-        <fieldset className="flex flex-col gap-2" aria-describedby="adt-events-note">
-          <legend className="mb-1 text-secondary font-medium">{t("auditForwarding.events")}</legend>
-          <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
-            {allCategories.map((c) => (
-              <label key={c} htmlFor={`adt-cat-${c}`} className="flex items-center gap-1.5 text-body">
-                <Checkbox
-                  id={`adt-cat-${c}`}
-                  checked={d.categories.includes(c)}
-                  onChange={(on) =>
-                    set({ categories: on ? [...d.categories, c] : d.categories.filter((x) => x !== c) })
-                  }
-                />
-                {categoryLabel(c)}
-              </label>
-            ))}
+            <Field label={t("auditForwarding.facility")} htmlFor="adt-facility" error={errors["/syslog/facility"]}>
+              <Select
+                id="adt-facility"
+                value={d.facility}
+                onChange={(v) => set({ facility: v as Facility })}
+                options={facilities.map((f) => ({ value: f, label: f }))}
+              />
+            </Field>
           </div>
-          <FieldNote
-            id="adt-events-note"
-            error={errorAt(errors, "/categories")}
-            hint={t("auditForwarding.eventsHint")}
-          />
-        </fieldset>
-        <label htmlFor="adt-enabled" className="flex items-center gap-1.5 text-body">
-          <Checkbox id="adt-enabled" checked={d.enabled} onChange={(enabled) => set({ enabled })} />
-          {t("auditForwarding.send")}
-        </label>
-      </form>
+          <Field
+            label={t("auditForwarding.appName")}
+            htmlFor="adt-app"
+            error={errors["/syslog/app_name"]}
+            hint={t("auditForwarding.appNameHint")}
+          >
+            <Input
+              id="adt-app"
+              className="font-mono text-secondary"
+              placeholder="rvav"
+              value={d.appName}
+              onChange={(e) => set({ appName: e.target.value })}
+            />
+          </Field>
+          {tls && (
+            <>
+              <Field
+                label={t("auditForwarding.ca")}
+                htmlFor="adt-ca"
+                error={errors["/syslog/ca_certificate"]}
+                hint={t("auditForwarding.caHint")}
+              >
+                <Textarea
+                  id="adt-ca"
+                  rows={3}
+                  className="font-mono text-secondary"
+                  placeholder={pemExample}
+                  value={d.ca}
+                  onChange={(e) => set({ ca: e.target.value })}
+                />
+              </Field>
+              <Field
+                label={t("auditForwarding.cert")}
+                htmlFor="adt-cert"
+                error={errors["/syslog/client_certificate"]}
+                hint={t("auditForwarding.certHint")}
+              >
+                <Textarea
+                  id="adt-cert"
+                  rows={3}
+                  className="font-mono text-secondary"
+                  placeholder={pemExample}
+                  value={d.cert}
+                  onChange={(e) => set({ cert: e.target.value })}
+                />
+              </Field>
+              <Field
+                label={t("auditForwarding.key")}
+                htmlFor="adt-key"
+                error={errors["/syslog/client_key_secret"]}
+                hint={t("auditForwarding.keyHint")}
+              >
+                <Select
+                  id="adt-key"
+                  value={d.keySecret}
+                  loading={secrets.isPending}
+                  onChange={(keySecret) => set({ keySecret })}
+                  options={[{ value: none, label: t("auditForwarding.none") }, ...stored]}
+                />
+              </Field>
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <Field
+            label={t("auditForwarding.url")}
+            htmlFor="adt-url"
+            error={errors["/webhook/url"]}
+            hint={t("auditForwarding.urlHint")}
+          >
+            <Input
+              id="adt-url"
+              className="font-mono text-secondary"
+              placeholder={urlExample}
+              value={d.url}
+              onChange={(e) => set({ url: e.target.value })}
+            />
+          </Field>
+          <Field
+            label={t("auditForwarding.secret")}
+            htmlFor="adt-secret"
+            error={errors["/webhook/secret"]}
+            hint={t("auditForwarding.secretHint")}
+          >
+            <Select
+              id="adt-secret"
+              value={d.secret}
+              placeholder={t("auditForwarding.choose")}
+              loading={secrets.isPending}
+              onChange={(secret) => set({ secret })}
+              options={stored}
+            />
+          </Field>
+        </>
+      )}
+      <fieldset className="flex flex-col gap-2" aria-describedby="adt-events-note">
+        <legend className="mb-1 text-secondary font-medium">{t("auditForwarding.events")}</legend>
+        <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
+          {allCategories.map((c) => (
+            <label key={c} htmlFor={`adt-cat-${c}`} className="flex items-center gap-1.5 text-body">
+              <Checkbox
+                id={`adt-cat-${c}`}
+                checked={d.categories.includes(c)}
+                onChange={(on) => set({ categories: on ? [...d.categories, c] : d.categories.filter((x) => x !== c) })}
+              />
+              {categoryLabel(c)}
+            </label>
+          ))}
+        </div>
+        <FieldNote id="adt-events-note" error={errorAt(errors, "/categories")} hint={t("auditForwarding.eventsHint")} />
+      </fieldset>
+      <label htmlFor="adt-enabled" className="flex items-center gap-1.5 text-body">
+        <Checkbox id="adt-enabled" checked={d.enabled} onChange={(enabled) => set({ enabled })} />
+        {t("auditForwarding.send")}
+      </label>
     </Sheet>
   );
 }

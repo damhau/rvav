@@ -191,7 +191,7 @@
     "claims": "Les claims du jeton"
   },
   "day2": {
-    "description": "Ce que l'on peut lancer sur un déploiement ou une VM en plus des actions intégrées. Qui peut lancer quoi est fixé par les <policies>politiques de jour 2</policies>.",
+    "description": "Ce que l'on peut lancer sur un déploiement ou une VM en plus des actions prédéfinies. Qui peut lancer quoi est fixé par les <policies>politiques de jour 2</policies>.",
     "target": {
       "vm": "VM",
       "deployment": "Déploiements"
@@ -607,7 +607,7 @@
     "none": "aucune",
     "size": "Taille",
     "shape": "{{cpu}} vCPU · {{memory}}",
-    "os": "Système invité",
+    "os": "OS invité",
     "where": "Emplacement",
     "selectedVms": "VM sélectionnées",
     "selected_one": "{{count}} VM sélectionnée",
@@ -883,7 +883,7 @@
       "catalog_item": {
         "title": "Publier un premier élément de catalogue",
         "what": "Ce que les utilisateurs demandent\u00a0: un blueprint de VM, un job AWX ou les deux. Puis les modèles, réseaux et placement qu'il exige, dans Modèles et réseaux.",
-        "go": "Éléments de catalogue"
+        "go": "Éléments du catalogue"
       }
     },
     "hidden": "La liste ne s'ouvrira plus à la connexion",
@@ -912,7 +912,7 @@
       "dark": "Thème sombre"
     },
     "sample": {
-      "submit": "Envoyer la demande",
+      "submit": "Soumettre la demande",
       "link": "Un lien",
       "current": "Page actuelle"
     },
@@ -968,6 +968,53 @@
     "logosDescription": "PNG, JPEG ou SVG, 256 Ko et 2048 pixels de côté au plus. Un SVG avec des scripts, des liens ou des images externes est refusé. Les e-mails affichent le logo du thème clair quand c'est un PNG ou un JPEG."
   },
   "audit": {
+    "target": {
+      "ad_placement": "placement AD",
+      "api_token": "jeton d'API",
+      "approval": "approbation",
+      "approval_policy": "politique d'approbation",
+      "audit_destination": "destination d'audit",
+      "awx_action": "action AWX",
+      "branding": "image de marque",
+      "catalog_git_file": "fichier Git du catalogue",
+      "catalog_item": "élément de catalogue",
+      "deployment": "déploiement",
+      "deployment_limit_policy": "politique de limite de déploiements",
+      "environment": "environnement",
+      "form_library": "bibliothèque de formulaires",
+      "group_mapping": "association de groupe",
+      "integration": "intégration",
+      "ip_range": "plage d'adresses IP",
+      "lease_policy": "politique de bail",
+      "lease_rule": "règle de bail",
+      "naming_policy": "politique de nommage",
+      "network": "réseau",
+      "notification_template": "modèle de notification",
+      "nsx_manager": "NSX Manager",
+      "onboarding_plan": "plan d'intégration",
+      "placement_rule": "règle de placement",
+      "process": "processus",
+      "project": "projet",
+      "property_group": "groupe de propriétés",
+      "quota": "quota",
+      "request": "demande",
+      "resource": "ressource",
+      "resource_type": "type de ressource",
+      "role": "rôle",
+      "role_assignment": "attribution de rôle",
+      "schedule": "planification",
+      "servicenow_request": "demande ServiceNow",
+      "setup": "mise en route",
+      "size_preset": "taille",
+      "subscription": "abonnement",
+      "user": "utilisateur",
+      "variable": "variable",
+      "vcenter": "vCenter",
+      "vm_template": "modèle de VM",
+      "vra_project": "projet vRA",
+      "vra_snapshot": "lecture de vRA",
+      "workflow": "workflow"
+    },
     "kind": {
       "any": "Tout",
       "catalog": "Catalogue",
@@ -1058,7 +1105,7 @@
     "cert": "Certificat client",
     "certHint": "PEM. Ce que rvav présente quand le serveur demande un certificat, avec sa clé ci-dessous",
     "key": "Clé client",
-    "keyHint": "Le secret enregistré qui contient la clé en PEM (Éléments de catalogue › Secrets)",
+    "keyHint": "Le secret enregistré qui contient la clé en PEM (Éléments du catalogue › Secrets)",
     "none": "Aucun",
     "url": "URL",
     "urlHint": "Sur un hôte que les webhooks peuvent appeler (Intégrations › Hôtes autorisés)",
@@ -1130,7 +1177,7 @@
     "thePlan": "Le plan",
     "tab": {
       "projects": "Projets",
-      "items": "Éléments de catalogue ({{n}})",
+      "items": "Éléments du catalogue ({{n}})",
       "deployments": "Déploiements ({{n}})",
       "policies": "Politiques ({{n}})",
       "vro": "vRO ({{n}})",
@@ -1372,7 +1419,8 @@
       "name": "Nom",
       "usedBy": "Utilisé par",
       "nothing": "Rien",
-      "disabled": "(hors service)",
+      "disabled": "(désactivé)",
+      "disabled_feminine": "(désactivée)",
       "lastRun": "Dernière exécution",
       "never": "jamais",
       "group": "Groupe",
@@ -1437,15 +1485,15 @@
       "stopped": "L'import s'est arrêté\u00a0; ce qui a été fait est gardé",
       "title": "Importer depuis vRA",
       "description": "Il peut être relancé\u00a0: seul ce qui a changé dans vRA, ou n'est pas encore dans rvav, est importé.",
-      "importing": "Import…",
+      "importing": "Importation…",
       "submit": "Importer",
-      "catalog": "Éléments de catalogue",
+      "catalog": "Éléments du catalogue",
       "templates": "{{templates}} à créer depuis les correspondances d'images de vRA\u00a0;",
       "groups": "{{groups}} à créer depuis ceux de vRA\u00a0;",
       "library": "{{entries}} à créer depuis les actions de vRO\u00a0;",
       "items": "{{items}} à créer et {{drafts}}, rien de publié\u00a0; {{shares}} à ajouter (un élément offert à un projet de plus).",
       "deployments": "Déploiements",
-      "deploymentsHint": "{{deployments}} à intégrer par l'intégration de l'existant, ceux de tous les projets, sans rien changer dans vCenter ni EfficientIP. Pour n'intégrer que ceux d'un projet, utilisez sa section Bascule.",
+      "deploymentsHint": "{{deployments}} à intégrer depuis Intégration de l'existant, ceux de tous les projets, sans rien changer dans vCenter ni EfficientIP. Pour n'intégrer que ceux d'un projet, utilisez sa section Bascule.",
       "choose": "Choisissez quoi importer."
     },
     "result": {

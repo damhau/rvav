@@ -60,7 +60,7 @@ test("a catalog item, its form designer and composite designer, in French, then 
   page.on("pageerror", (e) => errors.push(e.message));
   await inFrench(page);
 
-  await open(page, "Éléments de catalogue");
+  await open(page, "Éléments du catalogue");
   const items = page.getByRole("region", { name: "Éléments", exact: true });
   await expect(items.getByRole("columnheader", { name: "Ouvert à" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Nouvel élément" })).toBeVisible();
@@ -92,9 +92,9 @@ test("a catalog item, its form designer and composite designer, in French, then 
   await details.getByRole("combobox", { name: "Exécute" }).click();
   await page.getByRole("option", { name: "Un appel REST" }).click();
   await expect(details.getByRole("group", { name: "Appel REST" })).toBeVisible();
-  await details.getByRole("combobox", { name: "Retour arrière par" }).click();
+  await details.getByRole("combobox", { name: "Compensée par" }).click();
   await page.getByRole("option", { name: "Un appel REST" }).click();
-  await expect(details.getByRole("textbox", { name: "URL du retour arrière" })).toBeVisible();
+  await expect(details.getByRole("textbox", { name: "URL de la compensation" })).toBeVisible();
   await expect(details.getByRole("button", { name: "Retirer l'étape" })).toBeVisible();
   await bothThemes(page, "the composite designer, a REST call selected");
 
@@ -115,7 +115,7 @@ test("categories, secrets, variables, property groups and the form library, in F
   page.on("pageerror", (e) => errors.push(e.message));
   await inFrench(page);
 
-  await open(page, "Éléments de catalogue");
+  await open(page, "Éléments du catalogue");
   await tab(page, "Catégories");
   await expect(page.getByRole("button", { name: "Nouvelle catégorie" })).toBeVisible();
   await expect(page.getByRole("table", { name: "Catégories" })).toBeVisible();

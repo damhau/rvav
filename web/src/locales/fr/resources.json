@@ -16,7 +16,7 @@
     "deployment": "Déploiement",
     "project": "Projet",
     "environment": "Environnement",
-    "placement": "Emplacement",
+    "placement": "Placement",
     "memory": "Mémoire",
     "disks": "Disques",
     "networks": "Réseaux"
@@ -54,13 +54,13 @@
     "title": "Ressources",
     "leadAll": "Les VM que vos déploiements détiennent dans vos projets, lues en direct dans vCenter.",
     "leadProject": "Les VM que vos déploiements détiennent dans {{project}}, lues en direct dans vCenter.",
-    "loadMore": "Charger plus",
+    "loadMore": "Charger la suite",
     "table": "VM",
     "noMatch": "Aucune VM ne correspond",
     "noMatchBody": "Essayez d'autres mots, ou d'autres filtres.",
     "noneAll": "Aucune VM dans vos projets pour l'instant",
     "noneIn": "Aucune VM dans {{project}} pour l'instant",
-    "noneBody": "Les VM que vos demandes construisent s'affichent ici, avec leurs adresses, leur emplacement et leur taille.",
+    "noneBody": "Les VM que vos demandes construisent s'affichent ici, avec leurs adresses, leur placement et leur taille.",
     "fromCatalog": "Demander quelque chose au catalogue"
   }
 }

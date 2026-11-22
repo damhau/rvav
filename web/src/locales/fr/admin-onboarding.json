@@ -19,7 +19,7 @@
     "deploymentName": "Nom du déploiement",
     "component": "Composant",
     "componentHint": "Le composant du blueprint dont elles sont les VM, comme web\u00a0: nécessaire quand il en a plusieurs",
-    "inputs": "Champs",
+    "inputs": "Entrées",
     "inputsLead": "Les valeurs du formulaire de demande que les déploiements enregistrent, comme si elles avaient été demandées\u00a0: une mise à jour ultérieure part d'elles. Les nombres, true, false et les listes JSON sont lus comme tels.",
     "input": "Champ",
     "value": "Valeur",

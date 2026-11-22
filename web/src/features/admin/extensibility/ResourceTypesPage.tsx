@@ -156,12 +156,12 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
   const offeredActions = [
     ...registered
       .filter((w) => w.usages.includes("day2_action"))
-      .map((w) => ({ key: `wf.${w.key}`, label: w.day2?.name ?? w.title, what: "Custom workflow" })),
-    ...(awxActions.data?.items ?? []).filter((a) => !a.gone).map((a) => ({ key: a.key, label: a.name, what: "AWX" })),
+      .map((w) => ({ key: `wf.${w.key}`, label: w.day2?.name ?? w.title })),
+    ...(awxActions.data?.items ?? []).filter((a) => !a.gone).map((a) => ({ key: a.key, label: a.name })),
   ];
   const listedActions = [
     ...offeredActions,
-    ...actions.filter((k) => !offeredActions.some((a) => a.key === k)).map((k) => ({ key: k, label: k, what: "" })),
+    ...actions.filter((k) => !offeredActions.some((a) => a.key === k)).map((k) => ({ key: k, label: k })),
   ];
 
   const save = useMutation({

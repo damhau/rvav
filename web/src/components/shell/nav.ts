@@ -54,7 +54,7 @@ export interface AdminPage {
   key: AdminPageKey;
   to: NonNullable<LinkProps["to"]>;
   icon: LucideIcon;
-  /** More words the command palette finds the page by. */
+  /** Names the command palette finds the page by too, the same in every language: products, protocols. */
   keywords?: string[];
   show: (me: Me) => boolean;
 }
@@ -70,6 +70,17 @@ export const mainLabel = (key: MainPageKey) => i18n.t(`shell:nav.main.${key}`);
 /** An administration page's label, its title too. */
 export const adminLabel = (page: AdminPage) => i18n.t(`shell:nav.admin.${page.key}`);
 
+/**
+ * The words the command palette finds an administration page by: its names,
+ * and its words (`shell:nav.keywords`) in the language shown and in English.
+ */
+export function adminKeywords(page: AdminPage): string[] {
+  const key = `shell:nav.keywords.${page.key}`;
+  const words = (lng: string) =>
+    i18n.exists(key, { lng }) ? (i18n.getFixedT(lng) as unknown as (k: string) => string)(key).split(", ") : [];
+  return [...(page.keywords ?? []), ...words(i18n.resolvedLanguage ?? "en"), ...words("en")];
+}
+
 /** An administration group's heading. */
 export const groupLabel = (group: AdminGroup) => i18n.t(`shell:nav.groups.${group.key}`);
 
@@ -84,21 +95,21 @@ export const adminGroups: AdminGroup[] = [
         to: "/admin/property-groups",
         key: "propertyGroups",
         icon: Boxes,
-        keywords: ["inputs", "constants", "propgroup"],
+        keywords: ["propgroup"],
         show: (me) => can(me, "catalog.manage"),
       },
       {
         to: "/admin/variables",
         key: "variables",
         icon: Variable,
-        keywords: ["configuration elements", "shared values", "vars"],
+        keywords: ["vars"],
         show: (me) => can(me, "catalog.manage") || can(me, "extensibility.read"),
       },
       {
         to: "/admin/form-library",
         key: "formLibrary",
         icon: Library,
-        keywords: ["value sources", "validations", "vro actions", "external sources"],
+        keywords: ["vro actions"],
         show: (me) => can(me, "catalog.manage"),
       },
       {
@@ -117,14 +128,13 @@ export const adminGroups: AdminGroup[] = [
         to: "/admin/resource-types",
         key: "resourceTypes",
         icon: Shapes,
-        keywords: ["custom resources", "load balancers"],
         show: (me) => can(me, "extensibility.read"),
       },
       {
         to: "/admin/subscriptions",
         key: "subscriptions",
         icon: Webhook,
-        keywords: ["webhooks", "events"],
+        keywords: ["webhooks"],
         show: (me) => can(me, "extensibility.read"),
       },
     ],
@@ -136,21 +146,18 @@ export const adminGroups: AdminGroup[] = [
         to: "/admin/projects",
         key: "projects",
         icon: Folders,
-        keywords: ["environments", "quotas", "placement"],
         show: (me) => canAnywhere(me, "project.settings.read"),
       },
       {
         to: "/admin/roles",
         key: "roles",
         icon: ShieldUser,
-        keywords: ["permissions"],
         show: (me) => can(me, "access.read"),
       },
       {
         to: "/admin/policies",
         key: "policies",
         icon: Scale,
-        keywords: ["approval", "lease", "naming"],
         show: (me) => can(me, "policies.read") || canAnywhere(me, "project.policies.manage"),
       },
     ],
@@ -169,14 +176,12 @@ export const adminGroups: AdminGroup[] = [
         to: "/admin/infrastructure",
         key: "infrastructure",
         icon: Layers,
-        keywords: ["sizes", "subnets", "ip ranges", "tags"],
         show: (me) => can(me, "infrastructure.read"),
       },
       {
         to: "/admin/onboarding",
         key: "onboarding",
         icon: ScanSearch,
-        keywords: ["adopt"],
         show: (me) => can(me, "import.manage"),
       },
       { to: "/admin/vra-import", key: "vraImport", icon: Import, show: (me) => can(me, "import.manage") },
@@ -189,21 +194,19 @@ export const adminGroups: AdminGroup[] = [
         to: "/admin/setup",
         key: "setup",
         icon: ListChecks,
-        keywords: ["checklist"],
         show: (me) => can(me, "system.manage"),
       },
       {
         to: "/admin/branding",
         key: "branding",
         icon: Palette,
-        keywords: ["portal name", "logo", "accent colour", "theme"],
         show: (me) => can(me, "system.manage"),
       },
       {
         to: "/admin/notification-templates",
         key: "notificationTemplates",
         icon: Mail,
-        keywords: ["email", "teams", "slack", "messages"],
+        keywords: ["teams", "slack"],
         show: (me) => can(me, "system.manage"),
       },
       { to: "/admin/audit", key: "audit", icon: ScrollText, show: (me) => canAnywhere(me, "audit.read") },
@@ -218,7 +221,6 @@ export const adminGroups: AdminGroup[] = [
         to: "/admin/system",
         key: "system",
         icon: Activity,
-        keywords: ["version", "health"],
         show: (me) => can(me, "system.manage"),
       },
     ],

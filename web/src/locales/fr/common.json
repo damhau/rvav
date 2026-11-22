@@ -58,6 +58,8 @@
     }
   },
   "error": {
+    "forbidden": { "title": "Non autorisé", "detail": "Vous n'avez pas la permission de faire cela." },
+    "notFound": { "title": "Introuvable", "detail": "Cela n'existe pas, ou vous ne pouvez pas le voir." },
     "title": "Une erreur s'est produite",
     "requestId": "ID de la requête <id>{{id}}</id>",
     "retry": "Réessayer"
@@ -94,8 +96,8 @@
   },
   "power": {
     "unknown": "Inconnu",
-    "on": "Sous tension",
-    "off": "Hors tension"
+    "on": "Allumée",
+    "off": "Éteinte"
   },
   "approval": {
     "status": {

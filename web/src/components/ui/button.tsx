@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 // actions in rows, toolbars and menus' triggers; danger for what removes or
 // breaks something, and danger-solid to confirm it.
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -31,9 +31,46 @@ export interface ButtonProps extends React.ComponentProps<"button">, VariantProp
   asChild?: boolean;
 }
 
-export function Button({ className, variant, size, asChild, ...props }: ButtonProps) {
+/**
+ * A button. One that turns disabled while it has the focus, such as a submit
+ * button while its save runs, keeps the focus rather than dropping it to the
+ * page: it says it's unavailable and ignores presses until the focus leaves.
+ */
+export function Button({
+  className,
+  variant,
+  size,
+  asChild,
+  disabled,
+  "aria-disabled": ariaDisabled,
+  onFocus,
+  onBlur,
+  onClick,
+  ...props
+}: ButtonProps) {
   const Comp = asChild ? Slot.Root : "button";
-  return <Comp className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+  const [focused, setFocused] = React.useState(false);
+  const holding = Boolean(disabled) && focused;
+  return (
+    <Comp
+      {...props}
+      className={cn(buttonVariants({ variant, size }), className)}
+      disabled={holding ? undefined : disabled}
+      aria-disabled={holding || ariaDisabled}
+      onFocus={(e) => {
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        onBlur?.(e);
+      }}
+      onClick={(e) => {
+        if (holding) e.preventDefault();
+        else onClick?.(e);
+      }}
+    />
+  );
 }
 
 /** A button that shows only an icon: the label names it for screen readers and shows on hover. */

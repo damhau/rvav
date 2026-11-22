@@ -44,7 +44,14 @@ describe("templates and networks, in French", () => {
     await user.click(screen.getByRole("tab", { name: "Objets vCenter" }));
     const objects = await screen.findByRole("region", { name: "Objets vCenter" });
     const prd = await within(objects).findByRole("row", { name: /^GVA-PRD-CL01 Cluster/ });
-    expect(prd).toHaveTextContent(/\d+ hôtes, \d+ Go de mémoire libre, dont 32 Go réservés/);
+    // toHaveTextContent reads every space as one: a group separator too.
+    const grouped = "\\d{1,3}(?: \\d{3})*";
+    expect(prd).toHaveTextContent(new RegExp(`\\d+ hôtes, ${grouped} Go de mémoire libre, dont 32 Go réservés`));
+    // Sizes of a thousand and more are grouped as French groups them.
+    const datastore = within(objects)
+      .getAllByRole("row")
+      .find((r) => /Go libres sur/.test(r.textContent) && !/Storage DRS/.test(r.textContent));
+    expect(datastore).toHaveTextContent(new RegExp(`\\d \\d{3} Go libres sur ${grouped}`));
   });
 });
 

@@ -112,10 +112,13 @@ templates) and the mocks' day-2 catalogue.
 The setup checklist's details and the accent check are worded the same
 way from what the server sends: its fixed sentences by their English,
 its counts, colours and ratios as values. Sizes in a server's option
-meta, such as a size's `2 vCPU · 4 GB`, take the language's units.
+meta, such as a size's `2 vCPU · 4 GB`, take the language's units. An
+audit event's target type is worded by its key. A 403 or a 404 the
+server says nothing more about is worded by its status; where its title
+or detail says more, that shows as the server wrote it.
 
 ### What stays English
-- **The server's messages.** Problem titles, field errors, policy
+- **The server's messages.** Problem titles (but a generic 403's or 404's), field errors, policy
   reasons, a test message's result, a template's check errors, a
   decided approval step's outcome, every other step's title and error,
   the vRA import's notes, and what a notification template's variables
@@ -132,6 +135,12 @@ meta, such as a size's `2 vCPU · 4 GB`, take the language's units.
 - **Identifiers and names:** request numbers, keys, CEL, YAML, product
   names, and what people typed (items, projects, comments, a custom
   role's or action's name).
+- **The browser's date and time fields** follow the browser's language,
+  not the app's: an English browser writes a date mm/dd/yyyy on a French
+  page. The repository has no date picker of its own, and the native
+  fields are the accessible ones every browser and screen reader knows;
+  an accessible picker would be a component of its own, not a
+  translation.
 
 ## Consequences
 - A French speaker reads the portal and what rvav sends in French, from

@@ -478,9 +478,9 @@ test("the same build in French, with the keyboard only, and axe in both themes",
   await expect(page.locator("html")).toHaveAttribute("lang", "fr");
   await page
     .getByRole("navigation", { name: "Principale" })
-    .getByRole("link", { name: "Éléments de catalogue" })
+    .getByRole("link", { name: "Éléments du catalogue" })
     .click();
-  await expect(page.getByRole("heading", { name: "Éléments de catalogue", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Éléments du catalogue", level: 1 })).toBeVisible();
   await buildOnCanvas(page, french, "boutique");
   expect(await blueprintOf(page)).toEqual(built);
   await expect(page.getByRole("region", { name: french.selected("web") })).toContainText("Connexions");

@@ -575,12 +575,14 @@ describe("the composite designer beside the editor", longTests, () => {
     expect(steps()).toEqual(["nodes", ["owner", "backups"]]);
     await user.click(undo);
     expect(yaml()).toBe(pg);
-    expect(undo).toBeDisabled();
+    expect(undo).toHaveFocus();
+    expect(undo).toHaveAttribute("aria-disabled", "true");
 
     const redo = screen.getByRole("button", { name: "Redo" });
     for (let i = 0; i < 3; i++) await user.click(redo);
     expect(yaml()).toBe(after);
-    expect(redo).toBeDisabled();
+    expect(redo).toHaveAttribute("aria-disabled", "true");
+    expect(undo).toBeEnabled();
   });
 
   it("keeps the last graph while the text doesn't parse, and edits nothing from it", async () => {

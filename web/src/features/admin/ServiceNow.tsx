@@ -17,7 +17,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { Panel, Section } from "@/components/ui/panel";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { fullDate, relative } from "@/lib/format";
+import { formatNumber, fullDate, relative } from "@/lib/format";
 import { adm } from "@/lib/query";
 import { failed } from "./governance/common";
 
@@ -279,7 +279,10 @@ export function ServiceNowCmdb() {
               {c.orphans_total === 0
                 ? t("serviceNow.cmdb.orphansNone")
                 : c.orphans_total > c.orphans.length
-                  ? t("serviceNow.cmdb.orphansFirst", { shown: c.orphans.length, total: c.orphans_total })
+                  ? t("serviceNow.cmdb.orphansFirst", {
+                      shown: formatNumber(c.orphans.length),
+                      total: formatNumber(c.orphans_total),
+                    })
                   : t("serviceNow.cmdb.orphansAll")}
             </p>
             {c.orphans.length > 0 && (

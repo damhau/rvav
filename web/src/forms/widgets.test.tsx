@@ -315,7 +315,9 @@ describe("dual lists", () => {
     expect(values()).toEqual({ owners: ["lmartin", "jroux"] });
     await user.click(screen.getByRole("button", { name: "Add" }));
     expect(values()).toEqual({ owners: ["lmartin", "jroux", "tnguyen"] });
-    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
+    // Pressed, it keeps the focus as it turns unavailable.
+    expect(screen.getByRole("button", { name: "Add" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Add" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("All chosen")).toBeInTheDocument();
   });
 

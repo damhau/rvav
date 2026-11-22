@@ -10,7 +10,7 @@ import { useOpener } from "@/components/ui/opener";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { useTheme } from "@/lib/theme";
-import { adminLabel, adminMenu, groupLabel, mainLabel, mainPages } from "./nav";
+import { adminKeywords, adminLabel, adminMenu, groupLabel, mainLabel, mainPages } from "./nav";
 
 interface Entry {
   id: string;
@@ -81,7 +81,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     ? adminMenu(me).map((g) => ({
         heading: groupLabel(g),
         entries: g.pages
-          .filter((p) => match(adminLabel(p), groupLabel(g), ...(p.keywords ?? [])))
+          .filter((p) => match(adminLabel(p), groupLabel(g), ...adminKeywords(p)))
           .map((p): Entry => ({ id: `go-${p.to}`, label: adminLabel(p), icon: p.icon, run: go(p.to) })),
       }))
     : [];

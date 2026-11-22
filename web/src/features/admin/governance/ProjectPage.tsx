@@ -27,7 +27,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
 import { can } from "@/lib/can";
-import { formatList } from "@/lib/format";
+import { formatList, formatNumber } from "@/lib/format";
 import { useCurrentProject } from "@/lib/project";
 import { cn } from "@/lib/utils";
 import { Refusal, refused } from "../access/refusal";
@@ -945,7 +945,7 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
             <p>
               <span className="text-faint">{t("project.placement.datastores")}</span>{" "}
               {preview.data.datastores
-                .map((d) => t("project.placement.datastoreFree", { name: d.name, free: d.free_gb }))
+                .map((d) => t("project.placement.datastoreFree", { name: d.name, free: formatNumber(d.free_gb) }))
                 .join(", ") || t("project.placement.none")}
             </p>
             <p>

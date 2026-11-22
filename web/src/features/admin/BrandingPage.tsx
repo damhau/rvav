@@ -10,6 +10,7 @@ import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { Button } from "@/components/ui/button";
 import { Field, FieldNote, Input } from "@/components/ui/input";
+import { useSaveFocus } from "@/components/ui/opener";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { failed, fieldErrors } from "@/features/admin/governance/common";
@@ -165,6 +166,10 @@ function NameAndAccent({ branding }: { branding: Branding }) {
       if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, t("branding.notSaved"));
     },
   });
+  const form = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const accentInput = useRef<HTMLInputElement>(null);
+  const saveFocus = useSaveFocus(form, save.isPending, () => submit.current);
   const picked = hexColour.test(accent.trim()) ? accent.trim() : branding.light.accent;
   const full = (c: string) => (c.length === 4 ? "#" + [...c.slice(1)].map((x) => x + x).join("") : c.toLowerCase());
   return (
@@ -176,17 +181,22 @@ function NameAndAccent({ branding }: { branding: Branding }) {
           <Button type="button" variant="quiet" disabled={!accent} onClick={() => setAccent("")}>
             {t("branding.useRvav")}
           </Button>
-          <Button type="submit" form="branding-settings" variant="primary" disabled={save.isPending}>
+          <Button ref={submit} type="submit" form="branding-settings" variant="primary" disabled={save.isPending}>
             {save.isPending ? t("integrations.saving") : t("branding.save")}
           </Button>
         </>
       }
     >
       <form
+        ref={form}
         id="branding-settings"
         className="flex max-w-[72ch] flex-col gap-4"
+        onKeyDownCapture={saveFocus.interacted}
+        onPointerDownCapture={saveFocus.interacted}
         onSubmit={(e) => {
           e.preventDefault();
+          if (save.isPending) return;
+          saveFocus.submitted();
           save.mutate();
         }}
       >
@@ -211,6 +221,7 @@ function NameAndAccent({ branding }: { branding: Branding }) {
           </label>
           <div className="flex items-center gap-2">
             <Input
+              ref={accentInput}
               id="branding-accent"
               className="max-w-40 font-mono"
               value={accent}
@@ -231,7 +242,14 @@ function NameAndAccent({ branding }: { branding: Branding }) {
           </div>
           <FieldNote id="branding-accent-note" error={errors["/accent"]} hint={t("branding.accentHint")} />
         </div>
-        <AccentCheckNote accent={accent} onUse={setAccent} />
+        <AccentCheckNote
+          accent={accent}
+          onUse={(colour) => {
+            setAccent(colour);
+            // The button goes once the colour passes: the field it filled takes the focus.
+            accentInput.current?.focus();
+          }}
+        />
       </form>
     </Panel>
   );

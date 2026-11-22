@@ -1,9 +1,9 @@
 import { X } from "lucide-react";
 import { Dialog as D } from "radix-ui";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, IconButton } from "@/components/ui/button";
-import { focusInvalid, useOpener } from "@/components/ui/opener";
+import { useOpener, useSaveFocus } from "@/components/ui/opener";
 import { cn } from "@/lib/utils";
 
 const firstField = "input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])";
@@ -64,28 +64,7 @@ function SheetPanel({
   const giveFocusBack = useOpener(returnFocus);
   const bodyRef = useRef<HTMLDivElement>(null);
   const submitRef = useRef<HTMLButtonElement>(null);
-  // From a submit to the render that shows how it went. A quick answer can come with no render
-  // while pending, so a field marked invalid ends the wait too; the person's next key or click
-  // ends it as well, so a field that turns invalid as they type keeps their focus.
-  const awaiting = useRef<"submitted" | "saving" | null>(null);
-  useEffect(() => {
-    if (!awaiting.current) return;
-    if (pending) {
-      awaiting.current = "saving";
-      return;
-    }
-    if (focusInvalid(bodyRef.current)) awaiting.current = null;
-    else if (awaiting.current === "saving") {
-      awaiting.current = null;
-      // The submit button, disabled while saving, lost the focus.
-      const active = document.activeElement;
-      if (!active || active === document.body || active === bodyRef.current?.closest('[role="dialog"]'))
-        submitRef.current?.focus();
-    }
-  });
-  const interacted = () => {
-    awaiting.current = null;
-  };
+  const saveFocus = useSaveFocus(bodyRef, pending, () => submitRef.current);
   const body = (
     <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
       {children}
@@ -127,12 +106,12 @@ function SheetPanel({
       {onSubmit ? (
         <form
           className="flex min-h-0 flex-1 flex-col"
-          onKeyDownCapture={interacted}
-          onPointerDownCapture={interacted}
+          onKeyDownCapture={saveFocus.interacted}
+          onPointerDownCapture={saveFocus.interacted}
           onSubmit={(e) => {
             e.preventDefault();
             if (pending) return;
-            awaiting.current = "submitted";
+            saveFocus.submitted();
             onSubmit();
           }}
         >

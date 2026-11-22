@@ -61,7 +61,7 @@ test("roles and what someone may do, in French", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Nouveau rôle" })).toBeVisible();
   const roles = page.getByRole("table", { name: "Rôles" });
   await expect(roles.getByRole("columnheader", { name: "Donné à" })).toBeVisible();
-  await expect(roles.getByText("Intégré").first()).toBeVisible();
+  await expect(roles.getByText("Prédéfini").first()).toBeVisible();
   await bothThemes(page, "roles");
 
   await roles.getByRole("link").first().click();
@@ -103,7 +103,7 @@ test("notification templates, in French, and back to English without a reload", 
 
   await open(page, "Modèles de notification");
   const list = page.getByRole("table", { name: "Modèles de notification" });
-  await expect(list.getByText("Modèles intégrés").first()).toBeVisible();
+  await expect(list.getByText("Modèles prédéfinis").first()).toBeVisible();
   await bothThemes(page, "notification templates");
 
   await list.getByRole("link").first().click();

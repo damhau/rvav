@@ -51,13 +51,13 @@ export function Select({
         id={id}
         {...aria}
         className={cn(
-          "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line-strong bg-surface px-2.5 text-left text-body text-fg focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none disabled:opacity-60 data-[placeholder]:text-faint",
+          "flex min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line-strong bg-surface px-2.5 text-left text-body text-fg focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none disabled:opacity-60 data-[placeholder]:text-faint",
           className,
         )}
       >
-        {/* Radix drops the value's className: as a block, it is cut off at the
-            trigger's edge and reaches no further in a 320 px window. */}
-        <span className="truncate [&>span]:block [&>span]:truncate">
+        {/* Radix drops the value's className: as a block, a long value wraps at
+            the trigger's edge and reaches no further in a 320 px window. */}
+        <span className="min-w-0 py-1 leading-tight break-words [&>span]:block">
           {loading ? (
             <span className="text-faint">{t("loadingEllipsis")}</span>
           ) : (

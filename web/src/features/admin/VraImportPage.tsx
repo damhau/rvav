@@ -82,6 +82,8 @@ const kinds = [
   "day2_action",
   "form_field",
 ] as const;
+// The kinds whose French name is feminine, for the words that agree with it.
+const feminine = new Set(["action", "abx_action", "day2_action"]);
 const kindLabel = (t: TFunction<"admin">, k: string) =>
   (kinds as readonly string[]).includes(k) ? t(`vra.kind.${k as (typeof kinds)[number]}`) : k;
 /** The Select values of "no mapping" (by name, or none) and of "stays in vRA". */
@@ -855,7 +857,9 @@ const triageColumnsOf = (t: TFunction<"admin">): Column<TriageItem>[] => [
         {it.used_by.map((u, i) => (
           <div key={i} className={u.disabled ? "text-faint" : ""}>
             {kindLabel(t, u.kind)} {u.name}
-            {u.disabled ? ` ${t("vra.triage.disabled")}` : ""}
+            {u.disabled
+              ? ` ${t("vra.triage.disabled", { context: feminine.has(u.kind) ? "feminine" : undefined })}`
+              : ""}
           </div>
         ))}
       </span>

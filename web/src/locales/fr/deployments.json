@@ -32,7 +32,7 @@
       "ready": "Prêt",
       "provisioning": "Provisionnement",
       "failed": "Échec",
-      "expired": "Bail terminé"
+      "expired": "Bail échu"
     },
     "sort": {
       "nameAz": "Nom, de A à Z",
@@ -90,7 +90,7 @@
     "selected_many": "{{count}} déploiements sélectionnés",
     "selected_other": "{{count}} déploiements sélectionnés",
     "clearSelection": "Effacer",
-    "loadMore": "Charger plus",
+    "loadMore": "Charger la suite",
     "select": "Sélectionner {{name}}",
     "selectAllShown": "Sélectionner tous ceux affichés"
   },
@@ -220,10 +220,10 @@
       "overview": "Vue d'ensemble",
       "topology": "Topologie",
       "history": "Historique",
-      "inputs": "Champs"
+      "inputs": "Entrées"
     },
     "history": "Historique",
-    "inputs": "Champs",
+    "inputs": "Entrées",
     "inputsLead": "Ce avec quoi il a été demandé ou mis à jour la dernière fois, tel que transmis au blueprint et à AWX comme <code>extra_vars</code>.",
     "vms": "Machines virtuelles",
     "vmsLead": "En direct de vCenter",
@@ -231,7 +231,7 @@
     "security": "Groupes de sécurité",
     "details": "Détails",
     "lease": "Bail",
-    "placement": "Emplacement"
+    "placement": "Placement"
   },
   "vms": {
     "none": "Aucune VM pour l'instant. Elles apparaissent ici dès que vCenter les crée.",
@@ -284,7 +284,7 @@
     "tagsRemoved": "Ses tags pour {{groups}} ont été supprimés dans NSX\u00a0: les règles de pare-feu du groupe ne s'y appliquent plus. Utilisez «\u00a0Ajouter à un groupe de sécurité\u00a0» pour l'y remettre."
   },
   "placement": {
-    "notYet": "L'emplacement est décidé au clonage de la VM.",
+    "notYet": "Le placement est décidé au clonage de la VM.",
     "cluster": {
       "single": "Cluster",
       "several": "Clusters"
@@ -484,7 +484,7 @@
     "datastoreNotKnown": "Datastore inconnu",
     "snapshots": "Snapshots",
     "noSnapshots": "Aucun snapshot.",
-    "placement": "Emplacement",
+    "placement": "Placement",
     "tags": "Tags vSphere",
     "tagsNotRead": "Pas encore lus\u00a0: rvav les lit à sa prochaine synchronisation d'inventaire.",
     "noTags": "Aucun tag.",

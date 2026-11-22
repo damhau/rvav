@@ -77,7 +77,7 @@
       "hint": "Avec ce qui n'a pas fonctionné"
     },
     "request_rolled_back": {
-      "label": "Demande revenue en arrière",
+      "label": "Retour en arrière d'une demande",
       "hint": "Ce qu'une demande échouée avait construit a été supprimé"
     },
     "lease_expiring": {

@@ -288,10 +288,18 @@ routes.
   `useOpener` in its `onCloseAutoFocus`. A dialog that asks for a value
   focuses it on open (`onOpenAutoFocus`) rather than **Close**.
 - A refused save or action moves the focus to the first input it's about,
-  whose note then reads out the problem. `Sheet` and the day-2 action
-  dialog use `focusInvalid` (`components/ui/opener.ts`); the request and
-  Update forms move it themselves, Version included. A problem with no
-  input of its own shows in an alert at the end of the form.
+  whose note then reads out the problem. `Sheet` and the forms that save
+  in place (Branding, a notification template) use `useSaveFocus`, the
+  day-2 action dialog `focusInvalid` (`components/ui/opener.ts`); the
+  request and Update forms move it themselves, Version included. A
+  problem with no input of its own shows in an alert at the end of the
+  form.
+- The focus never falls to the page. A `Button` that turns disabled while
+  it has the focus, such as a submit button while its save runs, keeps
+  it: it says `aria-disabled` and ignores presses until the focus
+  leaves, then is disabled. What a save removes or replaces hands the
+  focus to what stands in for it: the field a suggestion filled, a
+  template's status line.
 - A failed load says so and offers **Try again**, in a menu too: never an
   empty list or a skeleton that stays.
 - Toasts for results, inline messages for validation, never `alert()`.
@@ -1346,7 +1354,7 @@ into a constant.
 |---|---|
 | request | demande |
 | deployment | déploiement |
-| catalog, catalog item | catalogue, élément de catalogue |
+| catalog, catalog item | catalogue, élément de catalogue (the page: Éléments du catalogue) |
 | approval, approver | approbation, approbateur |
 | lease | bail (plural baux) |
 | policy | politique |
@@ -1355,16 +1363,22 @@ into a constant.
 | template (vCenter, AWX job) | modèle |
 | project, quota | projet, quota |
 | step, run | étape, exécution |
-| input (of a form) | champ |
+| input (of a request or a step) | entrée |
+| field (of a form) | champ |
 | subscription | abonnement |
-| onboarding | intégration de l'existant |
+| onboarding, adopt | intégration de l'existant, intégrer |
+| built in | prédéfini |
 | setup | mise en route |
 | API token | jeton d'API |
 | owner | propriétaire |
 | sign in | se connecter |
 | email | e-mail |
 | retry | réessayer |
-| rolled back | revenue en arrière |
+| roll back (a request) | retour en arrière; the button: Revenir en arrière |
+| a step's undo, undone by, undone | compensation, Compensée par, Compensée |
+| branch (the step), its sides | branche, cas |
+| placement, datastore, tag | placement, datastore, tag |
+| powered on, powered off | allumée, éteinte |
 | VM | VM (invariable: 2 VM) |
 | job, workflow | job, workflow |
 

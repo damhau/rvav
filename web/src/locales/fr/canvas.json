@@ -48,7 +48,7 @@
     "failed": "Échouée",
     "skipped": "Ignorée",
     "cancelled": "Annulée",
-    "undone": "Revenue en arrière"
+    "undone": "Compensée"
   },
   "badge": {
     "item": "Élément",
@@ -91,7 +91,7 @@
     "says": "Dit",
     "when": "Quand",
     "uses": "Utilise",
-    "undo": "Défaire",
+    "undo": "Compensée par",
     "catches": "Rattrape",
     "onFailure": "En cas d'échec",
     "count": "Nombre",

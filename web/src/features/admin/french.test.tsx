@@ -269,7 +269,7 @@ describe("onboarding, AWX's templates and day-2 actions, in French", () => {
 
   it("lists AWX's templates with their catalog items", { timeout: 15_000 }, async () => {
     renderApp("/admin/catalog-items?tab=awx");
-    expect(await screen.findByRole("heading", { level: 1, name: "Éléments de catalogue" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Éléments du catalogue" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Modèles AWX" })).toHaveAttribute("aria-selected", "true");
     const table = await screen.findByRole("table", { name: "Modèles AWX" });
     expect(within(table).getByRole("columnheader", { name: /^Élément de catalogue/ })).toBeInTheDocument();

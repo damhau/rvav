@@ -26,6 +26,23 @@
     "signOut": "Se déconnecter"
   },
   "nav": {
+    "keywords": {
+      "propertyGroups": "entrées, constantes",
+      "variables": "éléments de configuration, valeurs partagées",
+      "formLibrary": "sources de valeurs, validations, sources externes",
+      "resourceTypes": "ressources personnalisées, répartiteurs de charge",
+      "subscriptions": "événements",
+      "projects": "environnements, quotas, placement",
+      "roles": "permissions, droits",
+      "policies": "approbation, bail, nommage",
+      "infrastructure": "tailles, sous-réseaux, plages ip, tags",
+      "onboarding": "intégrer, adopter",
+      "setup": "liste de vérification, démarrage",
+      "branding": "nom du portail, logo, couleur d'accent, thème",
+      "notificationTemplates": "e-mail, courriel, messages",
+      "auditForwarding": "journal d'audit, transfert",
+      "system": "version, santé, état"
+    },
     "label": "Principale",
     "main": {
       "overview": "Vue d'ensemble",
@@ -44,7 +61,7 @@
       "operations": "Exploitation"
     },
     "admin": {
-      "catalogItems": "Éléments de catalogue",
+      "catalogItems": "Éléments du catalogue",
       "propertyGroups": "Groupes de propriétés",
       "variables": "Variables",
       "formLibrary": "Bibliothèque de formulaires",

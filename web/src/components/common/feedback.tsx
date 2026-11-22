@@ -2,6 +2,7 @@ import { TriangleAlert } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { isApiError } from "@/lib/api/client";
+import { problemText } from "@/lib/api/problem";
 import { cn } from "@/lib/utils";
 
 export function Skeleton({ className }: { className?: string }) {
@@ -36,14 +37,21 @@ export function ErrorState({
 }) {
   const { t } = useTranslation();
   const api = isApiError(error) ? error : null;
-  const title = api?.problem.title ?? t("error.title");
-  const detail = api?.problem.detail ?? (error instanceof Error ? error.message : undefined);
+  const words = api && problemText(api);
+  const title = words?.title ?? { text: t("error.title") };
+  const detail = words ? words.detail : error instanceof Error ? { text: error.message, lang: "en" } : undefined;
   return (
     <div role="alert" className={cn("flex items-start gap-3 px-4 py-6", className)}>
       <TriangleAlert className="mt-0.5 size-4 shrink-0 text-bad" aria-hidden />
       <div className="flex min-w-0 flex-col gap-1">
-        <p className="text-body font-medium">{title}</p>
-        {detail && <p className="max-w-prose text-secondary text-muted">{detail}</p>}
+        <p lang={title.lang} className="text-body font-medium">
+          {title.text}
+        </p>
+        {detail && (
+          <p lang={detail.lang} className="max-w-prose text-secondary text-muted">
+            {detail.text}
+          </p>
+        )}
         {api && api.requestId !== "none" && (
           <p className="text-secondary text-faint">
             <Trans

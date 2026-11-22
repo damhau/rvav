@@ -130,7 +130,7 @@
     "recovery": "Reprise",
     "title": "Exécutions",
     "lead": "Une pour chaque événement dont il a été informé. Ouvrez-en une pour voir ce qui a été envoyé et ce qui est revenu.",
-    "loadMore": "Charger plus",
+    "loadMore": "Charger la suite",
     "none": "Aucune exécution pour l'instant",
     "noneBody": "Il s'exécute pour chaque événement qui correspond. Pour en voir une tout de suite, envoyez-lui un événement de test depuis le menu ci-dessus.",
     "noneWith": "Aucune exécution au statut {{status}}",

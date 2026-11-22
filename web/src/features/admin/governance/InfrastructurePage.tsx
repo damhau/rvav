@@ -28,7 +28,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { can } from "@/lib/can";
-import { formatList } from "@/lib/format";
+import { formatList, formatNumber } from "@/lib/format";
 import { useCurrentProject } from "@/lib/project";
 import { errorAt, failed, fieldErrors, OfferEditor, offersText, writable } from "./common";
 import { IPRanges } from "./IPRanges";
@@ -686,7 +686,11 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
       sortValue: (z) => z.vcpu * 1000 + z.memory_gb,
       cell: (z) => (
         <span className="tnum">
-          {t("infra.sizes.shapeValue", { vcpu: z.vcpu, memory: z.memory_gb, disk: z.disk_gb })}
+          {t("infra.sizes.shapeValue", {
+            vcpu: z.vcpu,
+            memory: formatNumber(z.memory_gb),
+            disk: formatNumber(z.disk_gb),
+          })}
         </span>
       ),
     },
@@ -1037,8 +1041,8 @@ type T = TFunction<"admin-governance">;
 
 function poolLimits(p: S["InventoryResourcePool"], t: T): string {
   const limits = [
-    p.memory_limit_gb != null ? t("infra.inventory.poolMemory", { gb: p.memory_limit_gb }) : undefined,
-    p.cpu_limit_mhz != null ? t("infra.inventory.poolCpu", { mhz: p.cpu_limit_mhz }) : undefined,
+    p.memory_limit_gb != null ? t("infra.inventory.poolMemory", { gb: formatNumber(p.memory_limit_gb) }) : undefined,
+    p.cpu_limit_mhz != null ? t("infra.inventory.poolCpu", { mhz: formatNumber(p.cpu_limit_mhz) }) : undefined,
   ].filter((l) => l !== undefined);
   return limits.length ? t("infra.inventory.limitedTo", { limits: formatList(limits) }) : t("infra.inventory.noLimits");
 }
@@ -1050,8 +1054,10 @@ function objectsOf(inv: S["VsphereInventory"], t: T): VsphereObject[] {
       vcenter: c.vcenter,
       name: c.name,
       detail:
-        t("infra.inventory.cluster", { count: c.hosts, free: c.memory_free_gb }) +
-        (c.memory_reserved_gb > 0 ? t("infra.inventory.clusterHeld", { reserved: c.memory_reserved_gb }) : ""),
+        t("infra.inventory.cluster", { count: c.hosts, free: formatNumber(c.memory_free_gb) }) +
+        (c.memory_reserved_gb > 0
+          ? t("infra.inventory.clusterHeld", { reserved: formatNumber(c.memory_reserved_gb) })
+          : ""),
       tags: c.tags,
     })),
     ...inv.hosts.map((h) => ({
@@ -1060,8 +1066,8 @@ function objectsOf(inv: S["VsphereInventory"], t: T): VsphereObject[] {
       name: h.name,
       detail: t(`infra.inventory.host.${h.state}`, {
         cluster: h.cluster,
-        free: h.memory_free_gb,
-        total: h.memory_total_gb,
+        free: formatNumber(h.memory_free_gb),
+        total: formatNumber(h.memory_total_gb),
       }),
       tags: h.tags,
     })),
@@ -1078,8 +1084,8 @@ function objectsOf(inv: S["VsphereInventory"], t: T): VsphereObject[] {
       vcenter: d.vcenter,
       name: d.name,
       detail: t(d.sdrs ? "infra.inventory.datastoreCluster.on" : "infra.inventory.datastoreCluster.off", {
-        free: d.free_gb,
-        capacity: d.capacity_gb,
+        free: formatNumber(d.free_gb),
+        capacity: formatNumber(d.capacity_gb),
         datastores: d.datastores.join(", ") || t("infra.inventory.noDatastore"),
       }),
       tags: d.tags,
@@ -1088,7 +1094,7 @@ function objectsOf(inv: S["VsphereInventory"], t: T): VsphereObject[] {
       kind: "datastore" as const,
       vcenter: d.vcenter,
       name: d.name,
-      detail: t("infra.inventory.datastore", { free: d.free_gb, capacity: d.capacity_gb }),
+      detail: t("infra.inventory.datastore", { free: formatNumber(d.free_gb), capacity: formatNumber(d.capacity_gb) }),
       tags: d.tags,
     })),
     ...inv.networks.map((n) => ({

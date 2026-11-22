@@ -1,6 +1,7 @@
 import { act, cleanup, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "@/lib/i18n";
 import { customRoles } from "@/mocks/roles";
 import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
@@ -195,5 +196,24 @@ describe("command palette", () => {
         .getAllByRole("option")
         .map((o) => o.textContent),
     ).toEqual(["Projects", "Roles", "Policies"]);
+  });
+
+  it("finds a page by its words in French, and in English too", async () => {
+    db.me.locale = "fr";
+    await i18n.changeLanguage("fr");
+    renderApp("/");
+    await screen.findByRole("navigation", { name: "Principale" });
+    const user = userEvent.setup();
+    await user.keyboard("{Control>}k{/Control}");
+    const input = await screen.findByRole("combobox");
+    for (const words of ["couleur", "accent colour"]) {
+      await user.clear(input);
+      await user.type(input, words);
+      const operations = await screen.findByRole("group", { name: "Exploitation" });
+      expect(within(operations).getByRole("option", { name: "Image de marque" })).toBeInTheDocument();
+    }
+    await user.clear(input);
+    await user.type(input, "courriel");
+    expect(await screen.findByRole("option", { name: "Modèles de notification" })).toBeInTheDocument();
   });
 });
