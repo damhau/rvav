@@ -137,10 +137,20 @@ func TestIPRanges(t *testing.T) {
 			"10.32.20.18", "10.32.20.19", "10.32.20.20"}) {
 			t.Fatalf("given %v, %d refused", given, full)
 		}
-		again, _, err := h.store.AllocateAddress(ctx, store.AllocationRequest{VCenter: rangeVCenter, Network: rangeNetwork,
-			RequestID: "req_lab", DeploymentID: "dep_lab", Hostname: "laba"})
-		if err != nil || again.Address != got[0] {
-			t.Errorf("asked again = %v %v, want %s", again.Address, err, got[0])
+		// Which adapter is refused is the race's: ask again as one given an
+		// address, and as the refused one.
+		holder := slices.IndexFunc(errs, func(err error) bool { return err == nil })
+		refusedOne := slices.IndexFunc(errs, func(err error) bool { return err != nil })
+		ask := func(i int) (store.IPAllocation, error) {
+			al, _, err := h.store.AllocateAddress(ctx, store.AllocationRequest{VCenter: rangeVCenter, Network: rangeNetwork,
+				RequestID: "req_lab", DeploymentID: "dep_lab", Hostname: "lab" + string(rune('a'+i))})
+			return al, err
+		}
+		if again, err := ask(holder); err != nil || again.Address != got[holder] {
+			t.Errorf("asked again = %v %v, want %s", again.Address, err, got[holder])
+		}
+		if _, err := ask(refusedOne); !errors.Is(err, store.ErrRangeFull) {
+			t.Errorf("the refused one asking again: %v, want %v", err, store.ErrRangeFull)
 		}
 
 		var allocs api.IpAllocationList
