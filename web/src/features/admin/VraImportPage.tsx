@@ -5,7 +5,9 @@
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Circle, CircleCheck, Download, FileUp, Hand, Lock, RefreshCw, TriangleAlert } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Time } from "@/components/common/misc";
@@ -21,7 +23,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { Field, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
-import { StepMark, stepNow } from "@/components/ui/step-mark";
+import { StepMark, type StepState, stepNow } from "@/components/ui/step-mark";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -36,72 +38,66 @@ type Tone = "neutral" | "accent" | "ok" | "warn" | "bad" | "run" | "outline";
 export const vraTabs = ["projects", "items", "deployments", "policies", "vro", "cutover"] as const;
 export type VraTab = (typeof vraTabs)[number];
 
-const actions: Record<S["VraItemPlan"]["action"], [string, Tone]> = {
-  create: ["Create", "accent"],
-  update: ["New draft", "run"],
-  unchanged: ["Unchanged", "neutral"],
-  conflict: ["Conflict", "bad"],
-  skip: ["Not imported", "outline"],
+const actionTones: Record<S["VraItemPlan"]["action"], Tone> = {
+  create: "accent",
+  update: "run",
+  unchanged: "neutral",
+  conflict: "bad",
+  skip: "outline",
 };
-const groupActions: Record<S["VraPropertyGroupPlan"]["action"], [string, Tone]> = {
-  create: ["Create", "accent"],
-  unchanged: ["Unchanged", "neutral"],
-  differs: ["Differs in rvav", "warn"],
+const groupActionTones: Record<S["VraPropertyGroupPlan"]["action"], Tone> = {
+  create: "accent",
+  unchanged: "neutral",
+  differs: "warn",
 };
-const templateActions: Record<S["VraTemplatePlan"]["action"], [string, Tone]> = {
-  ...groupActions,
-  skip: ["Not imported", "outline"],
+const templateActionTones: Record<S["VraTemplatePlan"]["action"], Tone> = {
+  ...groupActionTones,
+  skip: "outline",
 };
-const mapping: Record<S["VraItemPlan"]["status"], [string, Tone]> = {
-  complete: ["Complete", "ok"],
-  partial: ["Partial", "warn"],
-  skipped: ["Nothing maps", "outline"],
+const mappingTones: Record<S["VraItemPlan"]["status"], Tone> = {
+  complete: "ok",
+  partial: "warn",
+  skipped: "outline",
 };
-const strategyLabels: Record<S["PlacementStrategy"], string> = {
-  most_free_memory: "Most free memory",
-  binpack: "Binpack",
-  spread: "Spread",
+const adoptionTones: Record<S["VraDeploymentPlan"]["status"], Tone> = {
+  adopt: "accent",
+  adopted: "ok",
+  skipped: "outline",
+  failed: "bad",
 };
-const adoption: Record<S["VraDeploymentPlan"]["status"], [string, Tone]> = {
-  adopt: ["To adopt", "accent"],
-  adopted: ["Adopted", "ok"],
-  skipped: ["Left in vRA", "outline"],
-  failed: ["Refused", "bad"],
+const levelTones: Record<S["VraNote"]["level"], Tone> = {
+  info: "neutral",
+  warning: "warn",
+  unmapped: "bad",
 };
-const levels: Record<S["VraNote"]["level"], [string, Tone]> = {
-  info: ["Info", "neutral"],
-  warning: ["Check", "warn"],
-  unmapped: ["Left out", "bad"],
-};
-const groups: Record<string, [string, Tone]> = {
-  A: ["A · Native", "ok"],
-  B: ["B · AWX", "accent"],
-  C: ["C · Custom workflow", "run"],
-  D: ["D · Retire", "outline"],
-};
-const kinds: Record<string, string> = {
-  workflow: "Workflow",
-  action: "Action",
-  abx_action: "ABX action",
-  catalog_item: "Catalog item",
-  subscription: "Subscription",
-  day2_action: "Day-2 action",
-  form_field: "Form field",
-};
+const groupTones = { A: "ok", B: "accent", C: "run", D: "outline" } as const satisfies Record<string, Tone>;
+type Group = keyof typeof groupTones;
+const isGroup = (g: string): g is Group => g in groupTones;
+const kinds = [
+  "workflow",
+  "action",
+  "abx_action",
+  "catalog_item",
+  "subscription",
+  "day2_action",
+  "form_field",
+] as const;
+const kindLabel = (t: TFunction<"admin">, k: string) =>
+  (kinds as readonly string[]).includes(k) ? t(`vra.kind.${k as (typeof kinds)[number]}`) : k;
 /** The Select values of "no mapping" (by name, or none) and of "stays in vRA". */
 const AUTO = "_auto";
 const STAYS = "_stays";
 /** Every mutation of the page: one at a time. */
 const busyKey = ["vra"];
-const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
 function Notes({ notes }: { notes: S["VraNote"][] }) {
-  if (notes.length === 0) return <p className="text-secondary text-faint">Nothing to note.</p>;
+  const { t } = useTranslation("admin");
+  if (notes.length === 0) return <p className="text-secondary text-faint">{t("vra.nothingToNote")}</p>;
   return (
     <ul className="flex flex-col gap-2.5">
       {notes.map((n, i) => (
         <li key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-secondary">
-          <Badge tone={levels[n.level][1]}>{levels[n.level][0]}</Badge>
+          <Badge tone={levelTones[n.level]}>{t(`vra.level.${n.level}`)}</Badge>
           <code className="font-mono text-caption text-faint">{n.where}</code>
           <span className="min-w-0 basis-full">{n.text}</span>
         </li>
@@ -117,16 +113,19 @@ interface Noted {
 
 /** What a row's notes hold, as a button that opens them in a side panel. */
 function NotesButton({ of, notes, onOpen }: Noted & { onOpen: (n: Noted) => void }) {
+  const { t } = useTranslation("admin");
   const check = notes.filter((n) => n.level === "warning").length;
   const out = notes.filter((n) => n.level === "unmapped").length;
-  const parts = [check ? `${check} to check` : "", out ? `${out} left out` : ""].filter(Boolean);
-  const text = parts.length ? parts.join(" · ") : plural(notes.length, "note");
+  const parts = [check ? t("vra.toCheck", { count: check }) : "", out ? t("vra.leftOut", { count: out }) : ""].filter(
+    Boolean,
+  );
+  const text = parts.length ? parts.join(" · ") : t("vra.n.note", { count: notes.length });
   return (
     <Button
       size="sm"
       variant="quiet"
       aria-haspopup="dialog"
-      aria-label={`Notes on ${of}: ${text}`}
+      aria-label={t("vra.notesOnWith", { of, text })}
       onClick={() => onOpen({ of, notes })}
     >
       {text}
@@ -135,12 +134,13 @@ function NotesButton({ of, notes, onOpen }: Noted & { onOpen: (n: Noted) => void
 }
 
 function NotesSheet({ noted, onClose }: { noted: Noted; onClose: () => void }) {
+  const { t } = useTranslation("admin");
   return (
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Notes on ${noted.of}`}
-      description="What the import keeps, changes or leaves out, and what to check."
+      title={t("vra.notesOn", { of: noted.of })}
+      description={t("vra.notesDescription")}
     >
       <Notes notes={noted.notes} />
     </Sheet>
@@ -148,34 +148,37 @@ function NotesSheet({ noted, onClose }: { noted: Noted; onClose: () => void }) {
 }
 
 function Summary({ plan }: { plan: Plan }) {
+  const { t } = useTranslation("admin");
   const s = plan.summary;
-  const stat = (label: string, n: number, tone?: string) => (
+  const stat = (label: string, n: number, warn = false) => (
     <div className="flex flex-col">
-      <span className={"tnum text-title font-semibold " + (tone ?? "")}>{n}</span>
+      <span className={cn("tnum text-title font-semibold", warn && "text-warn")}>{n}</span>
       <span className="text-secondary text-muted">{label}</span>
     </div>
   );
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Panel title="Catalog">
+      <Panel title={t("vra.summary.catalog")}>
         <div className="flex flex-wrap gap-x-8 gap-y-3">
-          {stat("to create", s.items_create)}
-          {stat("new drafts", s.items_update)}
-          {stat("unchanged", s.items_unchanged)}
-          {stat("not imported", s.items_blocked, s.items_blocked ? "text-warn" : "")}
-          {stat("shares to add", s.shares_add)}
+          {stat(t("vra.summary.toCreate"), s.items_create)}
+          {stat(t("vra.summary.newDrafts"), s.items_update)}
+          {stat(t("vra.summary.unchanged"), s.items_unchanged)}
+          {stat(t("vra.summary.notImported"), s.items_blocked, s.items_blocked > 0)}
+          {stat(t("vra.summary.sharesToAdd"), s.shares_add)}
         </div>
       </Panel>
-      <Panel title="Deployments">
+      <Panel title={t("vra.summary.deployments")}>
         <div className="flex flex-wrap gap-x-8 gap-y-3">
-          {stat("to adopt", s.deployments_adopt)}
-          {stat("adopted", s.deployments_adopted)}
-          {stat("left in vRA", s.deployments_skipped, s.deployments_skipped ? "text-warn" : "")}
+          {stat(t("vra.summary.toAdopt"), s.deployments_adopt)}
+          {stat(t("vra.summary.adopted"), s.deployments_adopted)}
+          {stat(t("vra.summary.leftInVra"), s.deployments_skipped, s.deployments_skipped > 0)}
         </div>
       </Panel>
     </div>
   );
 }
+
+const stepState = (done: boolean, now: boolean): StepState => (done ? "done" : now ? "now" : "later");
 
 function planLeft(plan?: Plan) {
   const unplaced = plan?.projects.filter((p) => p.how === "none").length ?? 0;
@@ -197,54 +200,57 @@ function tabForStep(plan: Plan): VraTab {
 
 /** Where the move stands: read, map, import, move each project. */
 function Steps({ read, plan }: { read: S["VraSnapshot"] | null; plan?: Plan }) {
+  const { t } = useTranslation("admin");
   const { unplaced, items, left } = planLeft(plan);
   const s = plan?.summary;
   const steps = [
     {
-      title: "Read vRA",
+      title: t("vra.step.read"),
       done: read !== null,
       detail: read ? (
-        <>
-          Read <Time iso={read.read_at} />
-        </>
+        <Trans t={t} i18nKey="vra.step.readAt" components={{ time: <Time iso={read.read_at} /> }} />
       ) : (
-        "From vRA, or from the file rvav vra-export wrote."
+        t("vra.step.readHint")
       ),
     },
     {
-      title: "Map the projects",
+      title: t("vra.step.map"),
       done: Boolean(plan) && unplaced === 0,
       detail: !plan
-        ? "Each vRA project to an rvav project, or kept in vRA."
+        ? t("vra.step.mapHint")
         : unplaced > 0
-          ? `${plural(unplaced, "project")} with no rvav project of the same name: choose one, or keep it in vRA.`
-          : "Each has an rvav project, or stays in vRA.",
+          ? t("vra.step.unplaced", { count: unplaced })
+          : t("vra.step.mapped"),
     },
     {
-      title: "Import",
+      title: t("vra.step.import"),
       done: Boolean(plan) && left === 0,
       detail: !s
-        ? "The catalog as drafts, with its sharing, and the deployments."
+        ? t("vra.step.importHint")
         : left === 0
-          ? "Nothing left to import."
-          : `${plural(items, "item")}, ${plural(s.shares_add, "share")} and ${plural(s.deployments_adopt, "deployment")} to import.`,
+          ? t("vra.step.nothingLeft")
+          : t("vra.step.left", {
+              items: t("vra.n.item", { count: items }),
+              shares: t("vra.n.share", { count: s.shares_add }),
+              deployments: t("vra.n.deployment", { count: s.deployments_adopt }),
+            }),
     },
     {
-      title: "Move each project",
+      title: t("vra.step.move"),
       done: plan?.cutover.switch_off ?? false,
       detail: plan
-        ? `${plan.cutover.moved} of ${plan.cutover.total} moved.`
-        : "Its people request in rvav, and vRA stops offering its items.",
+        ? t("vra.step.moved", { count: plan.cutover.moved, moved: plan.cutover.moved, total: plan.cutover.total })
+        : t("vra.step.moveHint"),
     },
   ];
   const current = steps.findIndex((st) => !st.done);
   return (
     <ol
-      aria-label="Steps"
+      aria-label={t("vra.steps")}
       className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 xl:grid-cols-4"
     >
       {steps.map((st, i) => {
-        const state = st.done ? "done" : i === current ? "now" : "later";
+        const state = stepState(st.done, i === current);
         return (
           <li
             key={st.title}
@@ -255,7 +261,7 @@ function Steps({ read, plan }: { read: S["VraSnapshot"] | null; plan?: Plan }) {
             <div className="flex min-w-0 flex-col gap-0.5">
               <p className="text-body font-medium">
                 {st.title}
-                <span className="sr-only">: {state}</span>
+                <span className="sr-only">{t("vra.stepState", { state: t(`vra.state.${state}`) })}</span>
               </p>
               <p className="text-secondary text-muted">{st.detail}</p>
             </div>
@@ -267,6 +273,7 @@ function Steps({ read, plan }: { read: S["VraSnapshot"] | null; plan?: Plan }) {
 }
 
 function ProjectsTab({ plan }: { plan: Plan }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const projects = useQuery(adm.projectNames());
   const map = useMutation({
@@ -280,13 +287,14 @@ function ProjectsTab({ plan }: { plan: Plan }) {
       ),
     // The row stays busy until the plan shows the new mapping.
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] }),
-    onError: (e) => failed(e, "The project was not mapped"),
+    onError: (e) => failed(e, t("vra.projects.notMapped")),
   });
   const namesake = (name: string) => projects.data?.items.find((x) => x.name.toLowerCase() === name.toLowerCase());
+  const strategy = (p: S["VraProjectPlan"]) => (p.strategy ? t(`vra.strategy.${p.strategy}`) : null);
   const columns: Column<S["VraProjectPlan"]>[] = [
     {
       id: "vra",
-      header: "vRA project",
+      header: t("vra.projects.vra"),
       sortValue: (p) => p.name,
       cell: (p) => (
         <>
@@ -297,20 +305,22 @@ function ProjectsTab({ plan }: { plan: Plan }) {
     },
     {
       id: "rvav",
-      header: "rvav project",
+      header: t("vra.projects.rvav"),
       className: "w-72",
       cell: (p) => (
         <Select
-          aria-label={`rvav project for ${p.name}`}
+          aria-label={t("vra.projects.rvavFor", { name: p.name })}
           value={p.how === "mapped" ? (p.rvav_project_id ?? AUTO) : p.how === "stays" ? STAYS : AUTO}
           loading={map.isPending && map.variables.vra === p.vra_id}
           onChange={(v) => map.mutate({ vra: p.vra_id, to: v })}
           options={[
             {
               value: AUTO,
-              label: namesake(p.name) ? `By name: ${namesake(p.name)?.name}` : "By name: none, so it stays in vRA",
+              label: namesake(p.name)
+                ? t("vra.projects.byName", { name: namesake(p.name)?.name })
+                : t("vra.projects.byNameNone"),
             },
-            { value: STAYS, label: "Stays in vRA" },
+            { value: STAYS, label: t("vra.projects.stays") },
             ...(projects.data?.items ?? []).map((x) => ({ value: x.id, label: x.name })),
           ]}
         />
@@ -318,48 +328,52 @@ function ProjectsTab({ plan }: { plan: Plan }) {
     },
     {
       id: "strategy",
-      header: "Placement strategy",
-      sortValue: (p) => (p.strategy ? strategyLabels[p.strategy] : null),
+      header: t("vra.projects.strategy"),
+      sortValue: strategy,
       cell: (p) => (
         <>
-          {p.strategy ? strategyLabels[p.strategy] : <span className="text-faint">None</span>}
-          {p.placement_policy && <div className="font-mono text-caption text-faint">vRA: {p.placement_policy}</div>}
+          {strategy(p) ?? <span className="text-faint">{t("vra.projects.none")}</span>}
+          {p.placement_policy && (
+            <div className="font-mono text-caption text-faint">
+              {t("vra.projects.vraValue", { value: p.placement_policy })}
+            </div>
+          )}
         </>
       ),
     },
     {
       id: "properties",
-      header: "Custom properties",
+      header: t("vra.projects.properties"),
       cell: (p) => <ProjectProperties p={p} />,
     },
     {
       id: "sharing",
-      header: "Deployment sharing",
-      sortValue: (p) => sharingLabels[p.deployment_sharing],
+      header: t("vra.projects.sharing"),
+      sortValue: (p) => t(`vra.sharing.${p.deployment_sharing}`),
       cell: (p) => <ProjectSharing p={p} />,
     },
     {
       id: "ad",
-      header: "Active Directory OU",
+      header: t("vra.projects.ad"),
       cell: (p) =>
         p.ad_ou ? (
           <>
             <span className="font-mono text-caption">{p.ad_ou}</span>
-            {p.ad_blueprint_ou && <div className="text-caption text-faint">Templates may choose theirs</div>}
+            {p.ad_blueprint_ou && <div className="text-caption text-faint">{t("vra.projects.templatesChoose")}</div>}
           </>
         ) : (
-          <span className="text-faint">{p.ad_none ? "No computer objects" : "None"}</span>
+          <span className="text-faint">{p.ad_none ? t("vra.projects.noComputerObjects") : t("vra.projects.none")}</span>
         ),
     },
     {
       id: "items",
-      header: "Items shared",
+      header: t("vra.projects.itemsShared"),
       sortValue: (p) => p.items,
       cell: (p) => <span className="tnum">{p.items}</span>,
     },
     {
       id: "deployments",
-      header: "Deployments",
+      header: t("vra.projects.deployments"),
       sortValue: (p) => p.deployments,
       cell: (p) => <span className="tnum">{p.deployments}</span>,
     },
@@ -367,7 +381,7 @@ function ProjectsTab({ plan }: { plan: Plan }) {
   return (
     <>
       <DataTable
-        label="vRA projects"
+        label={t("vra.projects.label")}
         columns={columns}
         rows={plan.projects}
         rowKey={(p) => p.vra_id}
@@ -375,9 +389,9 @@ function ProjectsTab({ plan }: { plan: Plan }) {
         toolbar={
           projects.isError && (
             <p className="text-secondary text-bad">
-              rvav's projects couldn't be loaded, so only "by name" and "stays in vRA" can be chosen.{" "}
+              {t("vra.projects.notLoaded")}{" "}
               <Button size="sm" variant="quiet" onClick={() => void projects.refetch()}>
-                Retry
+                {t("vra.projects.retry")}
               </Button>
             </p>
           )
@@ -387,20 +401,16 @@ function ProjectsTab({ plan }: { plan: Plan }) {
   );
 }
 
-const sharingLabels: Record<S["DeploymentSharing"], string> = {
-  all_members: "All members",
-  owner_only: "Owners only",
-};
-
 // The import leaves the rvav project's deployment sharing alone: say where it differs.
 function ProjectSharing({ p }: { p: S["VraProjectPlan"] }) {
+  const { t } = useTranslation("admin");
   const rvav = p.rvav_deployment_sharing;
   return (
     <>
-      {sharingLabels[p.deployment_sharing]}
+      {t(`vra.sharing.${p.deployment_sharing}`)}
       {rvav && rvav !== p.deployment_sharing && (
         <div className="text-caption text-muted">
-          {p.rvav_project_name} has {sharingLabels[rvav].toLowerCase()}: set it in the project's Members tab.
+          {t(`vra.projects.sharingDiffers.${rvav}`, { project: p.rvav_project_name })}
         </div>
       )}
     </>
@@ -409,13 +419,18 @@ function ProjectSharing({ p }: { p: S["VraProjectPlan"] }) {
 
 // What importing the catalog adds to the rvav project, and what it can't.
 function ProjectProperties({ p }: { p: S["VraProjectPlan"] }) {
+  const { t } = useTranslation("admin");
   const add = Object.entries(p.properties_add ?? {});
   const unmapped = p.properties_unmapped ?? [];
-  if (add.length + unmapped.length === 0) return <span className="text-faint">None to add</span>;
+  if (add.length + unmapped.length === 0) return <span className="text-faint">{t("vra.projects.noneToAdd")}</span>;
   return (
     <>
       {add.length > 0 && (
-        <ul aria-label={`Custom properties added to ${p.rvav_project_name ?? "the rvav project"}`}>
+        <ul
+          aria-label={t("vra.projects.added", {
+            project: p.rvav_project_name ?? t("vra.projects.theRvavProject"),
+          })}
+        >
           {add.map(([k, v]) => (
             <li key={k} className="font-mono text-caption">
               {k}={v}
@@ -423,19 +438,22 @@ function ProjectProperties({ p }: { p: S["VraProjectPlan"] }) {
           ))}
         </ul>
       )}
-      {unmapped.length > 0 && <div className="text-caption text-warn">Left out: {unmapped.join(", ")}</div>}
+      {unmapped.length > 0 && (
+        <div className="text-caption text-warn">{t("vra.projects.leftOut", { names: unmapped.join(", ") })}</div>
+      )}
     </>
   );
 }
 
 function ItemsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }) {
+  const { t } = useTranslation("admin");
   const names = new Map(
     plan.projects.filter((p) => p.rvav_project_id).map((p) => [p.rvav_project_id!, p.rvav_project_name]),
   );
   const columns: Column<S["VraItemPlan"]>[] = [
     {
       id: "template",
-      header: "Cloud template",
+      header: t("vra.items.template"),
       sortValue: (it) => it.name,
       cell: (it) => (
         <>
@@ -449,62 +467,63 @@ function ItemsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }
     },
     {
       id: "maps",
-      header: "Maps",
-      sortValue: (it) => mapping[it.status][0],
-      cell: (it) => <Badge tone={mapping[it.status][1]}>{mapping[it.status][0]}</Badge>,
+      header: t("vra.items.maps"),
+      sortValue: (it) => t(`vra.maps.${it.status}`),
+      cell: (it) => <Badge tone={mappingTones[it.status]}>{t(`vra.maps.${it.status}`)}</Badge>,
     },
     {
       id: "import",
-      header: "Import",
-      sortValue: (it) => actions[it.action][0],
+      header: t("vra.items.import"),
+      sortValue: (it) => t(`vra.import.${it.action}`),
       cell: (it) => (
         <>
-          <Badge tone={actions[it.action][1]}>{actions[it.action][0]}</Badge>
+          <Badge tone={actionTones[it.action]}>{t(`vra.import.${it.action}`)}</Badge>
           {it.reason && <div className="mt-1 max-w-64 text-secondary text-muted">{it.reason}</div>}
         </>
       ),
     },
     {
       id: "shared",
-      header: "Shared with",
+      header: t("vra.items.sharedWith"),
       cell: (it) => (
         <span className="text-secondary">
           {it.share_add.length > 0 && (
             <div>
-              Adds{" "}
-              {it.share_add
-                .map(
-                  (id) =>
-                    (names.get(id) ?? id) +
-                    (it.share_audiences?.some((a) => a.project_id === id) ? " (chosen people)" : ""),
-                )
-                .join(", ")}
+              {t("vra.items.adds", {
+                projects: it.share_add
+                  .map((id) =>
+                    it.share_audiences?.some((a) => a.project_id === id)
+                      ? t("vra.items.chosenPeople", { project: names.get(id) ?? id })
+                      : (names.get(id) ?? id),
+                  )
+                  .join(", "),
+              })}
             </div>
           )}
           {it.share_unmapped.length > 0 && (
-            <div className="text-warn">Not {it.share_unmapped.join(", ")}: not mapped</div>
+            <div className="text-warn">{t("vra.items.notMapped", { projects: it.share_unmapped.join(", ") })}</div>
           )}
           {it.share_add.length === 0 && it.share_unmapped.length === 0 && (
-            <span className="text-faint">Nothing to add</span>
+            <span className="text-faint">{t("vra.items.nothingToAdd")}</span>
           )}
         </span>
       ),
     },
     {
       id: "notes",
-      header: "Notes",
+      header: t("vra.items.notes"),
       cell: (it) => <NotesButton of={it.name} notes={it.notes} onOpen={onNotes} />,
     },
   ];
   return (
     <>
       <DataTable
-        label="Cloud templates"
+        label={t("vra.items.label")}
         columns={columns}
         rows={plan.items}
         rowKey={(it) => it.blueprint_id}
         minWidth={820}
-        empty={<EmptyState title="No cloud template" body="vRA has no cloud template to import." />}
+        empty={<EmptyState title={t("vra.items.none")} body={t("vra.items.noneBody")} />}
       />
       {plan.templates.length > 0 && <Templates plan={plan} onNotes={onNotes} />}
       {plan.property_groups.length > 0 && <PropertyGroups plan={plan} onNotes={onNotes} />}
@@ -513,27 +532,25 @@ function ItemsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }
   );
 }
 
-const templateWhy: Partial<Record<S["VraTemplatePlan"]["action"], string>> = {
-  differs: "Left as it is: rvav's template isn't what vRA's mappings give.",
-  skip: "None of its regions is in a vCenter rvav manages.",
-};
-
 /** vRA's image mappings, made rvav templates before the items that use them. */
 function Templates({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }) {
+  const { t } = useTranslation("admin");
+  const why = (tp: S["VraTemplatePlan"]) =>
+    tp.action === "differs" || tp.action === "skip" ? t(`vra.templates.${tp.action}`) : null;
   const columns: Column<S["VraTemplatePlan"]>[] = [
     {
       id: "template",
-      header: "Template",
-      sortValue: (t) => t.label,
-      cell: (t) => (
+      header: t("vra.templates.template"),
+      sortValue: (tp) => tp.label,
+      cell: (tp) => (
         <>
-          <span className="font-medium">{t.label}</span>
+          <span className="font-medium">{tp.label}</span>
           <div className="text-caption text-faint">
-            <span className="font-mono">{t.key}</span>
+            <span className="font-mono">{tp.key}</span>
             {[
-              t.os_family === "windows" ? "Windows" : "Linux",
-              t.user_data ? "cloud-init" : "",
-              t.constraints.length ? plural(t.constraints.length, "constraint") : "",
+              tp.os_family === "windows" ? "Windows" : "Linux",
+              tp.user_data ? "cloud-init" : "",
+              tp.constraints.length ? t("vra.n.constraint", { count: tp.constraints.length }) : "",
             ]
               .filter(Boolean)
               .map((x) => ` · ${x}`)
@@ -544,55 +561,61 @@ function Templates({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void 
     },
     {
       id: "import",
-      header: "Import",
-      sortValue: (t) => templateActions[t.action][0],
-      cell: (t) => (
+      header: t("vra.items.import"),
+      sortValue: (tp) => t(`vra.import.${tp.action}`),
+      cell: (tp) => (
         <>
-          <Badge tone={templateActions[t.action][1]}>{templateActions[t.action][0]}</Badge>
-          {templateWhy[t.action] && (
-            <div className="mt-1 max-w-64 text-secondary text-muted">{templateWhy[t.action]}</div>
-          )}
+          <Badge tone={templateActionTones[tp.action]}>{t(`vra.import.${tp.action}`)}</Badge>
+          {why(tp) && <div className="mt-1 max-w-64 text-secondary text-muted">{why(tp)}</div>}
         </>
       ),
     },
     {
       id: "sources",
-      header: "In vCenter",
-      cell: (t) =>
-        t.sources.length ? (
+      header: t("vra.templates.inVcenter"),
+      cell: (tp) =>
+        tp.sources.length ? (
           <ul className="flex flex-col text-secondary">
-            {t.sources.map((s) => (
+            {tp.sources.map((s) => (
               <li key={s.vcenter}>
-                {s.vcenter || "The vCenter integration's"}: <span className="font-mono">{s.template}</span>
+                {t("vra.templates.source", { vcenter: s.vcenter || t("vra.templates.integrations") })}{" "}
+                <span className="font-mono">{s.template}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <span className="text-secondary text-faint">None</span>
+          <span className="text-secondary text-faint">{t("vra.templates.none")}</span>
         ),
     },
     {
       id: "notes",
-      header: "Notes",
-      cell: (t) => <NotesButton of={t.label} notes={t.notes} onOpen={onNotes} />,
+      header: t("vra.items.notes"),
+      cell: (tp) => <NotesButton of={tp.label} notes={tp.notes} onOpen={onNotes} />,
     },
   ];
   return (
     <section aria-labelledby="vra-templates" className="mt-6">
       <h3 id="vra-templates" className="px-4 pb-2 text-body font-medium">
-        Templates
+        {t("vra.templates.label")}
       </h3>
-      <DataTable label="Templates" columns={columns} rows={plan.templates} rowKey={(t) => t.key} minWidth={720} />
+      <DataTable
+        label={t("vra.templates.label")}
+        columns={columns}
+        rows={plan.templates}
+        rowKey={(tp) => tp.key}
+        minWidth={720}
+      />
     </section>
   );
 }
 
 /** vRA's property groups, made in rvav before the items that name them. */
 function PropertyGroups({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }) {
+  const { t } = useTranslation("admin");
   const columns: Column<S["VraPropertyGroupPlan"]>[] = [
     {
       id: "group",
-      header: "Property group",
+      header: t("vra.groups.group"),
       sortValue: (g) => g.label,
       cell: (g) => (
         <>
@@ -600,22 +623,22 @@ function PropertyGroups({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => 
           <div className="font-mono text-caption text-faint">
             {g.key} ·{" "}
             {g.type === "input"
-              ? plural(g.inputs.length, "input")
-              : plural(Object.keys(g.constants).length, "constant")}
+              ? t("vra.n.input", { count: g.inputs.length })
+              : t("vra.n.constant", { count: Object.keys(g.constants).length })}
           </div>
         </>
       ),
     },
     {
       id: "import",
-      header: "Import",
-      sortValue: (g) => groupActions[g.action][0],
+      header: t("vra.items.import"),
+      sortValue: (g) => t(`vra.import.${g.action}`),
       cell: (g) => (
         <>
-          <Badge tone={groupActions[g.action][1]}>{groupActions[g.action][0]}</Badge>
+          <Badge tone={groupActionTones[g.action]}>{t(`vra.import.${g.action}`)}</Badge>
           {g.action === "differs" && (
             <div className="mt-1 max-w-64 text-secondary text-muted">
-              Left as it is: items name its version {g.version}.
+              {t("vra.versionNamed", { version: g.version })}
             </div>
           )}
         </>
@@ -623,17 +646,17 @@ function PropertyGroups({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => 
     },
     {
       id: "notes",
-      header: "Notes",
+      header: t("vra.items.notes"),
       cell: (g) => <NotesButton of={g.label} notes={g.notes} onOpen={onNotes} />,
     },
   ];
   return (
     <section aria-labelledby="vra-property-groups" className="mt-6">
       <h3 id="vra-property-groups" className="px-4 pb-2 text-body font-medium">
-        Property groups
+        {t("vra.groups.label")}
       </h3>
       <DataTable
-        label="Property groups"
+        label={t("vra.groups.label")}
         columns={columns}
         rows={plan.property_groups}
         rowKey={(g) => g.vra_id}
@@ -643,17 +666,19 @@ function PropertyGroups({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => 
   );
 }
 
-const libraryWhy: Partial<Record<S["VraFormLibraryPlan"]["action"], (e: S["VraFormLibraryPlan"]) => string>> = {
-  differs: (e) => `Left as it is: items name its version ${e.version}.`,
-  skip: () => "Its fields keep a note naming the action: see why in the notes.",
-};
-
 /** The vRO actions custom forms use, made form library entries before the items that name them (ADR-0043). */
 function FormLibrary({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }) {
+  const { t } = useTranslation("admin");
+  const why = (e: S["VraFormLibraryPlan"]) =>
+    e.action === "differs"
+      ? t("vra.versionNamed", { version: e.version })
+      : e.action === "skip"
+        ? t("vra.library.skip")
+        : null;
   const columns: Column<S["VraFormLibraryPlan"]>[] = [
     {
       id: "action",
-      header: "vRO action",
+      header: t("vra.library.action"),
       sortValue: (e) => e.vro_action,
       cell: (e) => (
         <>
@@ -667,30 +692,28 @@ function FormLibrary({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => voi
     },
     {
       id: "import",
-      header: "Import",
-      sortValue: (e) => templateActions[e.action][0],
+      header: t("vra.items.import"),
+      sortValue: (e) => t(`vra.import.${e.action}`),
       cell: (e) => (
         <>
-          <Badge tone={templateActions[e.action][1]}>{templateActions[e.action][0]}</Badge>
-          {libraryWhy[e.action] && (
-            <div className="mt-1 max-w-64 text-secondary text-muted">{libraryWhy[e.action]!(e)}</div>
-          )}
+          <Badge tone={templateActionTones[e.action]}>{t(`vra.import.${e.action}`)}</Badge>
+          {why(e) && <div className="mt-1 max-w-64 text-secondary text-muted">{why(e)}</div>}
         </>
       ),
     },
     {
       id: "notes",
-      header: "Notes",
+      header: t("vra.items.notes"),
       cell: (e) => <NotesButton of={e.vro_action} notes={e.notes} onOpen={onNotes} />,
     },
   ];
   return (
     <section aria-labelledby="vra-form-library" className="mt-6">
       <h3 id="vra-form-library" className="px-4 pb-2 text-body font-medium">
-        Form library
+        {t("vra.library.label")}
       </h3>
       <DataTable
-        label="Form library"
+        label={t("vra.library.label")}
         columns={columns}
         rows={plan.form_library}
         rowKey={(e) => e.vro_action}
@@ -701,10 +724,11 @@ function FormLibrary({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => voi
 }
 
 function DeploymentsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }) {
+  const { t } = useTranslation("admin");
   const columns: Column<S["VraDeploymentPlan"]>[] = [
     {
       id: "deployment",
-      header: "Deployment",
+      header: t("vra.deployments.deployment"),
       sortValue: (d) => d.name,
       cell: (d) => (
         <>
@@ -712,20 +736,20 @@ function DeploymentsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => 
           <div className="text-caption text-faint">
             {d.vra_project}
             {d.environment ? ` · ${d.environment}` : ""}
-            {d.rvav_name && d.rvav_name !== d.name ? ` · ${d.rvav_name} in rvav` : ""}
+            {d.rvav_name && d.rvav_name !== d.name ? ` · ${t("vra.deployments.inRvav", { name: d.rvav_name })}` : ""}
           </div>
         </>
       ),
     },
     {
       id: "owner",
-      header: "Owner",
+      header: t("vra.deployments.owner"),
       sortValue: (d) => d.owner,
       cell: (d) => <span className="text-secondary">{d.owner}</span>,
     },
     {
       id: "vms",
-      header: "VMs",
+      header: t("vra.deployments.vms"),
       cell: (d) =>
         d.vms?.length ? (
           <ul className="flex flex-col gap-0.5">
@@ -733,26 +757,26 @@ function DeploymentsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => 
               <li key={`${v.vcenter}/${v.moref}/${v.name}`} className="flex flex-wrap items-center gap-1.5">
                 <span className="font-mono text-secondary">{v.name}</span>
                 {v.prevent_delete && (
-                  <Badge tone="neutral" title="Its deletion waits for an administrator to run Allow deletion.">
-                    <Lock aria-hidden /> Kept from deletion
+                  <Badge tone="neutral" title={t("vra.deployments.keptHint")}>
+                    <Lock aria-hidden /> {t("vra.deployments.kept")}
                   </Badge>
                 )}
               </li>
             ))}
           </ul>
         ) : (
-          <span className="text-faint">none found</span>
+          <span className="text-faint">{t("vra.deployments.noneFound")}</span>
         ),
     },
     {
       id: "adoption",
-      header: "Adoption",
-      sortValue: (d) => adoption[d.status][0],
+      header: t("vra.deployments.adoption"),
+      sortValue: (d) => t(`vra.adoption.${d.status}`),
       cell: (d) => {
         const why = [...d.notes].reverse().find((n) => n.level === "unmapped");
         return (
           <>
-            <Badge tone={adoption[d.status][1]}>{adoption[d.status][0]}</Badge>
+            <Badge tone={adoptionTones[d.status]}>{t(`vra.adoption.${d.status}`)}</Badge>
             {why && <div className="mt-1 max-w-72 text-secondary text-muted">{why.text}</div>}
           </>
         );
@@ -760,38 +784,42 @@ function DeploymentsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => 
     },
     {
       id: "notes",
-      header: "Notes",
+      header: t("vra.items.notes"),
       cell: (d) => <NotesButton of={d.name} notes={d.notes} onOpen={onNotes} />,
     },
   ];
   return (
     <DataTable
-      label="vRA deployments"
+      label={t("vra.deployments.label")}
       columns={columns}
       rows={plan.deployments}
       rowKey={(d) => d.vra_id}
       minWidth={820}
-      empty={<EmptyState title="No deployment" body="vRA has no deployment to adopt." />}
+      empty={<EmptyState title={t("vra.deployments.none")} body={t("vra.deployments.noneBody")} />}
     />
   );
 }
 
 function PoliciesTab({ plan }: { plan: Plan }) {
+  const { t } = useTranslation("admin");
   return (
     <div className="flex flex-col gap-3 p-4">
-      <p className="max-w-3xl text-secondary text-muted">
-        Policies decide who may do what, so the import doesn't change rvav's: set each where it says, with the values
-        below.
-      </p>
+      <p className="max-w-3xl text-secondary text-muted">{t("vra.policies.intro")}</p>
       {plan.policies.map((p) => (
         <section key={p.vra_id} className="rounded-md border border-line p-3" aria-label={p.name}>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-body font-medium">{p.name}</h3>
             <Badge tone="outline">{p.type}</Badge>
-            {p.enforcement && <Badge tone={p.enforcement === "soft" ? "warn" : "neutral"}>{p.enforcement}</Badge>}
-            <span className="text-secondary text-muted">{p.vra_project ? `In ${p.vra_project}` : "Every project"}</span>
+            {p.enforcement && (
+              <Badge tone={p.enforcement === "soft" ? "warn" : "neutral"}>
+                {t(`vra.enforcement.${p.enforcement}`)}
+              </Badge>
+            )}
+            <span className="text-secondary text-muted">
+              {p.vra_project ? t("vra.policies.inProject", { project: p.vra_project }) : t("vra.policies.everyProject")}
+            </span>
           </div>
-          <p className="mt-1 mb-2 text-secondary">Becomes: {p.becomes}</p>
+          <p className="mt-1 mb-2 text-secondary">{t("vra.policies.becomes", { what: p.becomes })}</p>
           <Notes notes={p.notes} />
         </section>
       ))}
@@ -801,16 +829,16 @@ function PoliciesTab({ plan }: { plan: Plan }) {
 
 type TriageItem = Plan["triage"]["items"][number];
 
-const triageColumns: Column<TriageItem>[] = [
+const triageColumnsOf = (t: TFunction<"admin">): Column<TriageItem>[] => [
   {
     id: "name",
-    header: "Name",
+    header: t("vra.triage.name"),
     sortValue: (it) => it.name,
     cell: (it) => (
       <>
         <span className="font-medium">{it.name}</span>
         <div className="text-caption text-faint">
-          {kinds[it.kind] ?? it.kind}
+          {kindLabel(t, it.kind)}
           {it.category && it.kind === "workflow" ? ` · ${it.category}` : ""}
           {it.systems.length > 0 ? ` · ${it.systems.join(", ")}` : ""}
         </div>
@@ -819,15 +847,15 @@ const triageColumns: Column<TriageItem>[] = [
   },
   {
     id: "used",
-    header: "Used by",
+    header: t("vra.triage.usedBy"),
     sortValue: (it) => it.used_by.length,
     cell: (it) => (
       <span className="text-secondary">
-        {it.used_by.length === 0 && <span className="text-faint">Nothing</span>}
+        {it.used_by.length === 0 && <span className="text-faint">{t("vra.triage.nothing")}</span>}
         {it.used_by.map((u, i) => (
           <div key={i} className={u.disabled ? "text-faint" : ""}>
-            {kinds[u.kind] ?? u.kind} {u.name}
-            {u.disabled ? " (disabled)" : ""}
+            {kindLabel(t, u.kind)} {u.name}
+            {u.disabled ? ` ${t("vra.triage.disabled")}` : ""}
           </div>
         ))}
       </span>
@@ -835,36 +863,39 @@ const triageColumns: Column<TriageItem>[] = [
   },
   {
     id: "run",
-    header: "Last run",
+    header: t("vra.triage.lastRun"),
     sortValue: (it) => it.last_run ?? null,
     className: "whitespace-nowrap",
     cell: (it) => (
       <span className="text-secondary">
-        {it.kind !== "workflow" ? "–" : it.last_run ? <Time iso={it.last_run} /> : "never"}
+        {it.kind !== "workflow" ? "–" : it.last_run ? <Time iso={it.last_run} /> : t("vra.triage.never")}
       </span>
     ),
   },
   {
     id: "group",
-    header: "Group",
+    header: t("vra.triage.group"),
     sortValue: (it) => it.group,
     cell: (it) => (
       <>
-        <Badge tone={groups[it.group]?.[1] ?? "neutral"}>{groups[it.group]?.[0] ?? it.group}</Badge>
+        <Badge tone={isGroup(it.group) ? groupTones[it.group] : "neutral"}>
+          {isGroup(it.group) ? t(`vra.group.${it.group}`) : it.group}
+        </Badge>
         <div className="mt-1 text-caption text-muted">{it.becomes}</div>
       </>
     ),
   },
   {
     id: "why",
-    header: "Why",
+    header: t("vra.triage.why"),
     className: "max-w-md",
     cell: (it) => <span className="text-secondary">{it.reasons.join(" ")}</span>,
   },
 ];
 
 function VroTab({ plan }: { plan: Plan }) {
-  const t = plan.triage;
+  const { t } = useTranslation("admin");
+  const triage = plan.triage;
   const download = useMutation({
     mutationFn: async () => {
       const text = await call(api.GET("/admin/vra/triage", { parseAs: "text" }));
@@ -872,24 +903,24 @@ function VroTab({ plan }: { plan: Plan }) {
       Object.assign(document.createElement("a"), { href: url, download: "vro-triage.md" }).click();
       URL.revokeObjectURL(url);
     },
-    onError: (e) => toast.error(isApiError(e) ? e.problem.title : "The report could not be made"),
+    onError: (e) => toast.error(isApiError(e) ? e.problem.title : t("vra.triage.reportFailed")),
   });
   return (
     <DataTable
-      label="vRO workflows and actions"
-      columns={triageColumns}
-      rows={t.items}
+      label={t("vra.triage.label")}
+      columns={triageColumnsOf(t)}
+      rows={triage.items}
       rowKey={(it) => it.kind + it.id}
       minWidth={900}
       toolbar={
         <div className="flex w-full flex-wrap items-center gap-3 text-secondary">
-          {Object.entries(groups).map(([g, [label, tone]]) => (
+          {(Object.keys(groupTones) as Group[]).map((g) => (
             <span key={g} className="flex items-center gap-1.5">
-              <Badge tone={tone}>{label}</Badge>
-              <span className="tnum">{t.groups[g] ?? 0}</span>
+              <Badge tone={groupTones[g]}>{t(`vra.group.${g}`)}</Badge>
+              <span className="tnum">{triage.groups[g] ?? 0}</span>
             </span>
           ))}
-          <span className="text-muted">vRO's own library ({t.library}) left out. Suggestions: people decide.</span>
+          <span className="text-muted">{t("vra.triage.library", { n: triage.library })}</span>
           <Button
             className="ml-auto"
             size="sm"
@@ -897,25 +928,26 @@ function VroTab({ plan }: { plan: Plan }) {
             disabled={download.isPending}
             onClick={() => download.mutate()}
           >
-            <Download /> Report (Markdown)
+            <Download /> {t("vra.triage.report")}
           </Button>
         </div>
       }
-      empty={<EmptyState title="No vRO workflow" body="Nothing in vRO outside its own library is used by vRA." />}
+      empty={<EmptyState title={t("vra.triage.none")} body={t("vra.triage.noneBody")} />}
     />
   );
 }
 
-type CheckLook = [React.ElementType, string, string];
-const notYet: CheckLook = [Circle, "text-faint", "Not yet"];
+type CheckLook = [React.ElementType, string, "ok" | "warn" | "todo" | "manual"];
+const notYet: CheckLook = [Circle, "text-faint", "todo"];
 const checkIcons: Record<string, CheckLook> = {
-  ok: [CircleCheck, "text-ok", "Done"],
-  warn: [TriangleAlert, "text-warn", "To do"],
+  ok: [CircleCheck, "text-ok", "ok"],
+  warn: [TriangleAlert, "text-warn", "warn"],
   todo: notYet,
-  manual: [Hand, "text-muted", "By hand"],
+  manual: [Hand, "text-muted", "manual"],
 };
 
 function MoveSheet({ project, onClose }: { project: S["VraCutoverProject"]; onClose: () => void }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const [note, setNote] = useState("");
   const move = useMutation({
@@ -928,27 +960,23 @@ function MoveSheet({ project, onClose }: { project: S["VraCutoverProject"]; onCl
       ),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] });
-      toast.success(`${project.name} moved to rvav`);
+      toast.success(t("vra.move.toast", { name: project.name }));
       onClose();
     },
-    onError: (e) => failed(e, "It was not marked moved"),
+    onError: (e) => failed(e, t("vra.move.notMarked")),
   });
   return (
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
       pending={move.isPending}
-      title={`Move ${project.name} to rvav`}
+      title={t("vra.move.title", { name: project.name })}
       onSubmit={() => move.mutate()}
-      submitLabel={move.isPending ? "Marking…" : "Mark as moved"}
+      submitLabel={move.isPending ? t("vra.move.marking") : t("vra.move.mark")}
     >
-      <p className="text-body">
-        From now on, {project.rvav_project_name}&apos;s people request in rvav. vRA&apos;s administrators stop offering
-        the project&apos;s items in vRA; the next read of vRA checks they did. vRA keeps its deployments not adopted
-        yet.
-      </p>
-      {!project.ready && <p className="text-warn">Not everything is ready: check the list before moving it.</p>}
-      <Field label="Note" htmlFor="vra-move-note" hint="Shown with the move, such as when or why.">
+      <p className="text-body">{t("vra.move.body", { project: project.rvav_project_name })}</p>
+      {!project.ready && <p className="text-warn">{t("vra.move.notReady")}</p>}
+      <Field label={t("vra.move.note")} htmlFor="vra-move-note" hint={t("vra.move.noteHint")}>
         <Textarea id="vra-move-note" rows={3} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
     </Sheet>
@@ -956,6 +984,7 @@ function MoveSheet({ project, onClose }: { project: S["VraCutoverProject"]; onCl
 }
 
 function UndoMove({ project, onClose }: { project: S["VraCutoverProject"]; onClose: () => void }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const undo = useMutation({
     mutationFn: () =>
@@ -967,22 +996,22 @@ function UndoMove({ project, onClose }: { project: S["VraCutoverProject"]; onClo
       ),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] });
-      toast.success(`${project.name} is no longer moved`);
+      toast.success(t("vra.undo.toast", { name: project.name }));
       onClose();
     },
     onError: (e) => {
       onClose();
-      failed(e, "It was not changed");
+      failed(e, t("vra.undo.notChanged"));
     },
   });
   return (
     <ConfirmDialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Mark ${project.name} not moved?`}
-      description='Its move date and note are cleared; marking it moved again starts the "Nothing new in vRA" check from then. Its adopted deployments stay in rvav.'
-      consequences="If vRA's administrators give its people vRA back, warn them: deleting an adopted deployment in vRA deletes its VMs."
-      confirmLabel="Not moved"
+      title={t("vra.undo.title", { name: project.name })}
+      description={t("vra.undo.description")}
+      consequences={t("vra.undo.consequences")}
+      confirmLabel={t("vra.undo.confirm")}
       pending={undo.isPending}
       onConfirm={() => undo.mutate()}
     />
@@ -990,6 +1019,7 @@ function UndoMove({ project, onClose }: { project: S["VraCutoverProject"]; onClo
 }
 
 function CutoverTab({ plan, busy }: { plan: Plan; busy: boolean }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const c = plan.cutover;
   const [moving, setMoving] = useState<S["VraCutoverProject"] | null>(null);
@@ -1003,16 +1033,27 @@ function CutoverTab({ plan, busy }: { plan: Plan; busy: boolean }) {
       qc.setQueryData(["admin", "vra", "plan"], r.plan);
       void qc.invalidateQueries({ queryKey: ["deployments"] });
       void qc.invalidateQueries({ queryKey: ["admin", "onboarding"] });
-      if (r.adopted.length) toast.success(`Adopted ${plural(r.adopted.length, "deployment")} of ${cp.name}`);
+      if (r.adopted.length)
+        toast.success(
+          t("vra.cutover.adoptedOf", {
+            count: r.adopted.length,
+            deployments: t("vra.n.deployment", { count: r.adopted.length }),
+            project: cp.name,
+          }),
+        );
       if (r.failed.length)
-        toast.error(`${plural(r.failed.length, "deployment")} not adopted`, {
-          description: r.failed.map((f) => `${f.name}: ${f.reason}`).join(" "),
-        });
-      if (!r.adopted.length && !r.failed.length) toast(`Nothing of ${cp.name}'s to adopt`);
+        toast.error(
+          t("vra.cutover.notAdopted", {
+            count: r.failed.length,
+            deployments: t("vra.n.deployment", { count: r.failed.length }),
+          }),
+          { description: r.failed.map((f) => t("vra.failure", { name: f.name, reason: f.reason })).join(" ") },
+        );
+      if (!r.adopted.length && !r.failed.length) toast(t("vra.cutover.nothingToAdopt", { project: cp.name }));
     },
     onError: (e) => {
       void qc.invalidateQueries({ queryKey: ["admin", "vra", "plan"] });
-      failed(e, "The adoption stopped; what was adopted is kept");
+      failed(e, t("vra.cutover.stopped"));
     },
   });
   const toAdopt = (cp: S["VraCutoverProject"]) =>
@@ -1021,82 +1062,106 @@ function CutoverTab({ plan, busy }: { plan: Plan; busy: boolean }) {
     <div className="flex flex-col gap-3 p-4">
       <p className="text-body" aria-live="polite">
         <span className="font-medium">
-          {c.moved} of {plural(c.total, "project")} moved
+          {t("vra.cutover.movedOf", {
+            count: c.total,
+            moved: c.moved,
+            projects: t("vra.n.project", { count: c.total }),
+          })}
         </span>
         {" · "}
         {c.deployments_left.length === 0
-          ? "every deployment adopted"
-          : `${plural(c.deployments_left.length, "deployment")} still in vRA`}
+          ? t("vra.cutover.everyAdopted")
+          : t("vra.cutover.stillInVra", {
+              deployments: t("vra.n.deployment", { count: c.deployments_left.length }),
+            })}
         {" · "}
         {c.switch_off ? (
-          <span className="text-ok">vRA can be switched off</span>
+          <span className="text-ok">{t("vra.cutover.canSwitchOff")}</span>
         ) : (
-          <span className="text-muted">
-            vRA can be switched off once every project has moved and every deployment is adopted
-          </span>
+          <span className="text-muted">{t("vra.cutover.switchOffWhen")}</span>
         )}
       </p>
-      {c.projects.map((cp) => (
-        <section key={cp.vra_id} className="rounded-md border border-line" aria-label={cp.name}>
-          <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-            <h3 className="text-body font-medium">{cp.name}</h3>
-            {cp.rvav_project_name && <span className="text-secondary text-muted">→ {cp.rvav_project_name}</span>}
-            {cp.moved_at ? (
-              <Badge tone="ok">
-                Moved <Time iso={cp.moved_at} />
-                {cp.moved_by ? ` by ${cp.moved_by}` : ""}
-              </Badge>
-            ) : cp.ready ? (
-              <Badge tone="accent">Ready</Badge>
-            ) : (
-              <Badge tone="outline">Not ready</Badge>
-            )}
-            <span className="ml-auto flex gap-1.5">
-              {toAdopt(cp) > 0 && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  aria-label={`Adopt ${plural(toAdopt(cp), "deployment")} (${cp.name})`}
-                  onClick={() => adopt.mutate(cp)}
-                >
-                  Adopt {plural(toAdopt(cp), "deployment")}
-                </Button>
+      {c.projects.map((cp) => {
+        const deployments = t("vra.n.deployment", { count: toAdopt(cp) });
+        return (
+          <section key={cp.vra_id} className="rounded-md border border-line" aria-label={cp.name}>
+            <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+              <h3 className="text-body font-medium">{cp.name}</h3>
+              {cp.rvav_project_name && (
+                <span className="text-secondary text-muted">
+                  {t("vra.cutover.to", { project: cp.rvav_project_name })}
+                </span>
               )}
               {cp.moved_at ? (
-                <Button size="sm" variant="quiet" aria-label={`Not moved… (${cp.name})`} onClick={() => setUndoing(cp)}>
-                  Not moved…
-                </Button>
-              ) : cp.rvav_project_id ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  aria-label={`Mark as moved… (${cp.name})`}
-                  onClick={() => setMoving(cp)}
-                >
-                  Mark as moved…
-                </Button>
+                <Badge tone="ok">
+                  <Trans
+                    t={t}
+                    i18nKey={cp.moved_by ? "vra.cutover.movedAtBy" : "vra.cutover.movedAt"}
+                    values={{ name: cp.moved_by }}
+                    components={{ time: <Time iso={cp.moved_at} /> }}
+                  />
+                </Badge>
+              ) : cp.ready ? (
+                <Badge tone="accent">{t("vra.cutover.ready")}</Badge>
               ) : (
-                <span className="self-center text-secondary text-muted">Moves once mapped to an rvav project</span>
+                <Badge tone="outline">{t("vra.cutover.notReady")}</Badge>
               )}
-            </span>
-          </div>
-          {cp.note && <p className="px-3 pt-2 text-secondary text-muted">{cp.note}</p>}
-          <ul className="flex flex-col gap-1.5 px-3 py-2">
-            {cp.checks.map((ch) => {
-              const [Icon, tone, label] = checkIcons[ch.state] ?? notYet;
-              return (
-                <li key={ch.key} className="flex items-start gap-2 text-secondary">
-                  <Icon className={"mt-px size-3.5 shrink-0 " + tone} aria-label={label} role="img" />
-                  <span>
-                    <span className="font-medium">{ch.label}.</span> {ch.detail}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
+              <span className="ml-auto flex flex-wrap gap-1.5">
+                {toAdopt(cp) > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy}
+                    aria-label={t("vra.cutover.adoptFor", { deployments, project: cp.name })}
+                    onClick={() => adopt.mutate(cp)}
+                  >
+                    {t("vra.cutover.adopt", { deployments })}
+                  </Button>
+                )}
+                {cp.moved_at ? (
+                  <Button
+                    size="sm"
+                    variant="quiet"
+                    aria-label={t("vra.cutover.notMovedFor", { project: cp.name })}
+                    onClick={() => setUndoing(cp)}
+                  >
+                    {t("vra.cutover.notMoved")}
+                  </Button>
+                ) : cp.rvav_project_id ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    aria-label={t("vra.cutover.markMovedFor", { project: cp.name })}
+                    onClick={() => setMoving(cp)}
+                  >
+                    {t("vra.cutover.markMoved")}
+                  </Button>
+                ) : (
+                  <span className="self-center text-secondary text-muted">{t("vra.cutover.onceMapped")}</span>
+                )}
+              </span>
+            </div>
+            {cp.note && <p className="px-3 pt-2 text-secondary text-muted">{cp.note}</p>}
+            <ul className="flex flex-col gap-1.5 px-3 py-2">
+              {cp.checks.map((ch) => {
+                const [Icon, tone, state] = checkIcons[ch.state] ?? notYet;
+                return (
+                  <li key={ch.key} className="flex items-start gap-2 text-secondary">
+                    <Icon
+                      className={"mt-px size-3.5 shrink-0 " + tone}
+                      aria-label={t(`vra.check.${state}`)}
+                      role="img"
+                    />
+                    <span>
+                      <span className="font-medium">{ch.label}.</span> {ch.detail}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
       {moving && <MoveSheet project={moving} onClose={() => setMoving(null)} />}
       {undoing && <UndoMove project={undoing} onClose={() => setUndoing(null)} />}
     </div>
@@ -1112,6 +1177,7 @@ function ImportSheet({
   onClose: () => void;
   onDone: (r: S["VraImportResult"]) => void;
 }) {
+  const { t } = useTranslation("admin");
   const s = plan.summary;
   const [catalog, setCatalog] = useState(true);
   const [deployments, setDeployments] = useState(false);
@@ -1124,78 +1190,89 @@ function ImportSheet({
       // It may have stopped half way: what it did is kept, and shown.
       for (const key of [["admin", "vra", "plan"], ["admin", "catalog"], ["deployments"], ["admin", "onboarding"]])
         void qc.invalidateQueries({ queryKey: key });
-      failed(e, "The import stopped; what was done is kept");
+      failed(e, t("vra.importSheet.stopped"));
     },
   });
+  const catalogHint = [
+    s.templates_create > 0 &&
+      t("vra.importSheet.templates", { templates: t("vra.n.template", { count: s.templates_create }) }),
+    s.property_groups_create > 0 &&
+      t("vra.importSheet.groups", { groups: t("vra.n.propertyGroup", { count: s.property_groups_create }) }),
+    s.form_library_create > 0 &&
+      t("vra.importSheet.library", { entries: t("vra.n.libraryEntry", { count: s.form_library_create }) }),
+    t("vra.importSheet.items", {
+      items: t("vra.n.item", { count: s.items_create }),
+      drafts: t("vra.n.newDraft", { count: s.items_update }),
+      shares: t("vra.n.share", { count: s.shares_add }),
+    }),
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
       pending={run.isPending}
-      title="Import from vRA"
-      description="It can run again: only what changed in vRA, or isn't yet in rvav, is imported."
+      title={t("vra.importSheet.title")}
+      description={t("vra.importSheet.description")}
       onSubmit={() => run.mutate()}
-      submitLabel={run.isPending ? "Importing…" : "Import"}
+      submitLabel={run.isPending ? t("vra.importSheet.importing") : t("vra.importSheet.submit")}
       submitDisabled={!catalog && !deployments}
     >
       <label htmlFor="vra-catalog" className="flex items-start gap-2 text-body">
         <Checkbox id="vra-catalog" className="mt-0.5" checked={catalog} onChange={setCatalog} />
         <span>
-          <span className="font-medium">Catalog items</span>
-          <span className="block text-secondary text-muted">
-            {s.templates_create > 0 && `${plural(s.templates_create, "template")} to make from vRA's image mappings; `}
-            {s.property_groups_create > 0 &&
-              `${plural(s.property_groups_create, "property group")} to make from vRA's; `}
-            {s.form_library_create > 0 &&
-              `${plural(s.form_library_create, "form library entry", "form library entries")} to make from vRO's actions; `}
-            {plural(s.items_create, "item")} to create and {plural(s.items_update, "new draft")}, nothing published;{" "}
-            {plural(s.shares_add, "share")} to add (an item offered to one more project).
-          </span>
+          <span className="font-medium">{t("vra.importSheet.catalog")}</span>
+          <span className="block text-secondary text-muted">{catalogHint}</span>
         </span>
       </label>
       <label htmlFor="vra-deployments" className="flex items-start gap-2 text-body">
         <Checkbox id="vra-deployments" className="mt-0.5" checked={deployments} onChange={setDeployments} />
         <span>
-          <span className="font-medium">Deployments</span>
+          <span className="font-medium">{t("vra.importSheet.deployments")}</span>
           <span className="block text-secondary text-muted">
-            {plural(s.deployments_adopt, "deployment")} to adopt through onboarding, every project&apos;s, nothing
-            changed in vCenter or EfficientIP. To adopt one project&apos;s, use its Cutover section.
+            {t("vra.importSheet.deploymentsHint", {
+              deployments: t("vra.n.deployment", { count: s.deployments_adopt }),
+            })}
           </span>
         </span>
       </label>
-      {!catalog && !deployments && <p className="text-secondary text-muted">Choose what to import.</p>}
+      {!catalog && !deployments && <p className="text-secondary text-muted">{t("vra.importSheet.choose")}</p>}
     </Sheet>
   );
 }
 
 function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }) {
+  const { t } = useTranslation(["admin", "common"]);
   const line = (label: string, names: string[]) =>
     names.length > 0 && (
       <p>
-        <span className="font-medium">{label}:</span> {names.join(", ")}
+        <span className="font-medium">{t("vra.result.lead", { label })}</span> {names.join(", ")}
       </p>
     );
   return (
     <Panel
-      title="Imported"
+      title={t("vra.result.title")}
       actions={
         <Button size="sm" variant="quiet" onClick={onClose}>
-          Close
+          {t("common:actions.close")}
         </Button>
       }
     >
-      <section aria-label="Imported" className="flex flex-col gap-1 text-body">
-        {line("Templates made", r.templates_created)}
-        {line("Property groups made", r.property_groups_created)}
-        {line("Form library entries made", r.form_library_created)}
-        {line("Projects given vRA's custom properties", r.projects_updated)}
-        {line("Items made, as drafts", r.created)}
-        {line("New drafts", r.updated)}
-        {r.shared > 0 && <p>{plural(r.shared, "share")} added: items offered to more projects.</p>}
-        {line("Deployments adopted", r.adopted)}
+      <section aria-label={t("vra.result.title")} className="flex flex-col gap-1 text-body">
+        {line(t("vra.result.templates"), r.templates_created)}
+        {line(t("vra.result.groups"), r.property_groups_created)}
+        {line(t("vra.result.library"), r.form_library_created)}
+        {line(t("vra.result.projects"), r.projects_updated)}
+        {line(t("vra.result.items"), r.created)}
+        {line(t("vra.result.drafts"), r.updated)}
+        {r.shared > 0 && (
+          <p>{t("vra.result.shared", { count: r.shared, shares: t("vra.n.share", { count: r.shared }) })}</p>
+        )}
+        {line(t("vra.result.adopted"), r.adopted)}
         {r.failed.map((f) => (
           <p key={f.name} className="text-bad">
-            {f.name}: {f.reason}
+            {t("vra.failure", { name: f.name, reason: f.reason })}
           </p>
         ))}
         {r.templates_created.length +
@@ -1207,13 +1284,14 @@ function Result({ r, onClose }: { r: S["VraImportResult"]; onClose: () => void }
           r.shared +
           r.adopted.length +
           r.failed.length ===
-          0 && <p className="text-muted">Nothing new to import. What is left, and why, is in the plan below.</p>}
+          0 && <p className="text-muted">{t("vra.result.nothing")}</p>}
       </section>
     </Panel>
   );
 }
 
 export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
+  const { t } = useTranslation(["admin", "shell"]);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const file = useRef<HTMLInputElement>(null);
@@ -1248,9 +1326,9 @@ export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
     onSuccess: (s) => {
       setResult(null);
       void qc.invalidateQueries({ queryKey: ["admin", "vra"] });
-      toast.success(s.source === "vra" ? "vRA read" : "The file was read");
+      toast.success(s.source === "vra" ? t("vra.readToast") : t("vra.fileRead"));
     },
-    onError: (e) => failed(e, "vRA could not be read"),
+    onError: (e) => failed(e, t("vra.notRead")),
   });
   const p = plan.data;
   // Chosen once, as the plan first comes: mapping the last project mustn't move the tab away.
@@ -1264,22 +1342,26 @@ export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
   return (
     <Page>
       <PageHeader
-        title="vRA import"
+        title={t("shell:nav.admin.vraImport")}
         description={
           <>
-            Move vRA&apos;s catalog and deployments to rvav, project by project. vRA is only read.
+            {t("vra.description")}
             {status.data && !configured && (
               <>
                 {" "}
-                rvav reads no vRA itself: set it in{" "}
-                <Link
-                  to="/admin/integrations/$kind"
-                  params={{ kind: "vra" }}
-                  className="text-accent underline underline-offset-2"
-                >
-                  Integrations › vRA
-                </Link>
-                , or upload the file rvav vra-export wrote.
+                <Trans
+                  t={t}
+                  i18nKey="vra.notConfigured"
+                  components={{
+                    integrations: (
+                      <Link
+                        to="/admin/integrations/$kind"
+                        params={{ kind: "vra" }}
+                        className="text-accent underline underline-offset-2"
+                      />
+                    ),
+                  }}
+                />
               </>
             )}
           </>
@@ -1288,13 +1370,28 @@ export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
           shown && (
             <>
               <span>
-                Read <Time iso={shown.read_at} />{" "}
-                {shown.source === "file" ? "from a file" : `from ${shown.url ?? "vRA"}`}
-                {shown.created_by ? ` by ${shown.created_by}` : ""}
+                <Trans
+                  t={t}
+                  i18nKey={
+                    shown.source === "file"
+                      ? shown.created_by
+                        ? "vra.readFromFileBy"
+                        : "vra.readFromFile"
+                      : shown.created_by
+                        ? "vra.readFromBy"
+                        : "vra.readFrom"
+                  }
+                  values={{ url: shown.url ?? "vRA", name: shown.created_by }}
+                  components={{ time: <Time iso={shown.read_at} /> }}
+                />
               </span>
               <span>
-                {plural(shown.counts.projects, "project")} · {plural(shown.counts.templates, "template")} ·{" "}
-                {plural(shown.counts.deployments, "deployment")} · {plural(shown.counts.vro_workflows, "vRO workflow")}
+                {t("vra.counts", {
+                  projects: t("vra.n.project", { count: shown.counts.projects }),
+                  templates: t("vra.n.template", { count: shown.counts.templates }),
+                  deployments: t("vra.n.deployment", { count: shown.counts.deployments }),
+                  workflows: t("vra.n.vroWorkflow", { count: shown.counts.vro_workflows }),
+                })}
               </span>
             </>
           )
@@ -1306,7 +1403,7 @@ export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
               type="file"
               accept="application/json,.json"
               className="hidden"
-              aria-label="vra-export file"
+              aria-label={t("vra.fileLabel")}
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) read.mutate(f);
@@ -1318,7 +1415,7 @@ export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
               disabled={busy}
               onClick={() => file.current?.click()}
             >
-              <FileUp /> Upload file…
+              <FileUp /> {t("vra.upload")}
             </Button>
             {configured && (
               <Button
@@ -1326,12 +1423,12 @@ export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
                 disabled={busy}
                 onClick={() => read.mutate(undefined)}
               >
-                <RefreshCw /> {read.isPending ? "Reading…" : "Read vRA"}
+                <RefreshCw /> {read.isPending ? t("vra.reading") : t("vra.readVra")}
               </Button>
             )}
             {p && (
               <Button variant="primary" disabled={busy} onClick={() => setImporting(true)}>
-                Import…
+                {t("vra.importMore")}
               </Button>
             )}
           </>
@@ -1343,20 +1440,16 @@ export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
         <Panel>
           <EmptyState
             icon={FileUp}
-            title="Nothing read yet"
-            body={
-              configured
-                ? "Read vRA to see what an import would do. Nothing is written until you import."
-                : "Upload the file rvav vra-export wrote, or set vRA in Integrations for rvav to read it itself."
-            }
+            title={t("vra.nothingRead")}
+            body={configured ? t("vra.nothingReadConfigured") : t("vra.nothingReadFile")}
             action={
               configured ? (
                 <Button size="sm" variant="primary" disabled={busy} onClick={() => read.mutate(undefined)}>
-                  <RefreshCw /> Read vRA
+                  <RefreshCw /> {t("vra.readVra")}
                 </Button>
               ) : (
                 <Button size="sm" variant="primary" disabled={busy} onClick={() => file.current?.click()}>
-                  <FileUp /> Upload file…
+                  <FileUp /> {t("vra.upload")}
                 </Button>
               )
             }
@@ -1376,14 +1469,14 @@ export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
                 void navigate({ to: "/admin/vra-import", search: { tab: v as VraTab }, replace: true })
               }
             >
-              <TabsList aria-label="The plan" className="px-4 pt-2">
-                <TabsTrigger value="projects">Projects</TabsTrigger>
-                <TabsTrigger value="items">Catalog items ({p.items.length})</TabsTrigger>
-                <TabsTrigger value="deployments">Deployments ({p.deployments.length})</TabsTrigger>
-                <TabsTrigger value="policies">Policies ({p.policies.length})</TabsTrigger>
-                <TabsTrigger value="vro">vRO ({p.triage.items.length})</TabsTrigger>
+              <TabsList aria-label={t("vra.thePlan")} className="px-4 pt-2">
+                <TabsTrigger value="projects">{t("vra.tab.projects")}</TabsTrigger>
+                <TabsTrigger value="items">{t("vra.tab.items", { n: p.items.length })}</TabsTrigger>
+                <TabsTrigger value="deployments">{t("vra.tab.deployments", { n: p.deployments.length })}</TabsTrigger>
+                <TabsTrigger value="policies">{t("vra.tab.policies", { n: p.policies.length })}</TabsTrigger>
+                <TabsTrigger value="vro">{t("vra.tab.vro", { n: p.triage.items.length })}</TabsTrigger>
                 <TabsTrigger value="cutover">
-                  Cutover ({p.cutover.moved}/{p.cutover.total})
+                  {t("vra.tab.cutover", { moved: p.cutover.moved, total: p.cutover.total })}
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="projects">
@@ -1420,7 +1513,7 @@ export function VraImportPage({ tab: asked }: { tab?: VraTab }) {
             void qc.invalidateQueries({ queryKey: ["admin", "catalog"] });
             void qc.invalidateQueries({ queryKey: ["deployments"] });
             void qc.invalidateQueries({ queryKey: ["admin", "onboarding"] });
-            toast.success("Imported from vRA");
+            toast.success(t("vra.importedToast"));
           }}
         />
       )}

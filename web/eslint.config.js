@@ -48,6 +48,7 @@ const translated = [
   "src/features/admin/SetupPage.tsx",
   "src/features/admin/SystemPage.tsx",
   "src/features/admin/VCenters.tsx",
+  "src/features/admin/VraImportPage.tsx",
   "src/features/deployments/**",
   "src/features/admin/onboarding/**",
   "src/features/admin/catalog/**",
@@ -101,6 +102,9 @@ const untranslated = [
   "Teams",
   "Slack",
   "Markdown",
+  "Windows",
+  "Linux",
+  "cloud-init",
   // rvav's mark, and keys as the keyboard shows them.
   "rv",
   "esc",

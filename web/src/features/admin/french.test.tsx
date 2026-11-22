@@ -262,3 +262,74 @@ describe("onboarding, AWX's templates and day-2 actions, in French", () => {
     expect(screen.getByRole("button", { name: "Synchroniser maintenant" })).toBeInTheDocument();
   });
 });
+
+describe("the vRA import, in French", () => {
+  it("counts projects, drafts and moves as each language does", () => {
+    expect(i18n.t("admin:vra.n.newDraft", { count: 0 })).toBe("0 nouveau brouillon");
+    expect(i18n.t("admin:vra.n.newDraft", { count: 0, lng: "en" })).toBe("0 new drafts");
+    expect(i18n.t("admin:vra.step.moved", { count: 2, moved: 2, total: 3 })).toBe("2 sur 3 basculés.");
+    expect(i18n.t("admin:vra.step.moved", { count: 1, moved: 1, total: 3, lng: "en" })).toBe("1 of 3 moved.");
+    expect(i18n.t("admin:vra.toCheck", { count: 2 })).toBe("2 à vérifier");
+  });
+
+  it("says where the move stands and maps the projects", { timeout: 15_000 }, async () => {
+    renderApp("/admin/vra-import");
+    expect(await screen.findByRole("heading", { level: 1, name: "Import depuis vRA" })).toBeInTheDocument();
+    expect(await screen.findByText("3 projets · 5 modèles · 4 déploiements · 7 workflows vRO")).toBeInTheDocument();
+    const steps = await screen.findByRole("list", { name: "Étapes" });
+    expect(within(steps).getAllByRole("listitem")[0]).toHaveTextContent(/Lire vRA\s: terminée/);
+    expect(await within(steps).findByText(/sans projet rvav du même nom/)).toBeInTheDocument();
+    expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent(
+      /Faire correspondre les projets\s: en cours/,
+    );
+    expect(await screen.findByRole("tab", { name: "Projets", selected: true })).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Projets vRA" });
+    await waitFor(() =>
+      expect(within(table).getByRole("combobox", { name: "Projet rvav pour Web Platform" })).toHaveTextContent(
+        "Par nom : Web Platform",
+      ),
+    );
+    const row = within(table).getByText("vra-prj-web").closest("tr") as HTMLTableRowElement;
+    expect(row.cells[2]).toHaveTextContent("Répartition");
+    expect(row.cells[4]).toHaveTextContent("Tous les membres");
+  });
+
+  it("lists what the import makes, then imports it", { timeout: 20_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=items");
+    const templates = await screen.findByRole("table", { name: "Modèles" });
+    const win = within(templates).getAllByText("win2022")[0]!.closest("tr") as HTMLTableRowElement;
+    expect(win).toHaveTextContent(/win2022 · Windows · 1 contrainteCréation/);
+    await user.click(within(templates).getByRole("button", { name: /^Notes sur win2022\s: 1 non repris$/ }));
+    expect(await screen.findByRole("dialog", { name: "Notes sur win2022" })).toHaveTextContent(
+      /Ce que l'import garde, change ou laisse de côté/,
+    );
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "Importer…" }));
+    const sheet = await screen.findByRole("dialog", { name: "Importer depuis vRA" });
+    expect(sheet).toHaveTextContent(/2 groupes de propriétés à créer depuis ceux de vRA\s;/);
+    expect(sheet).toHaveTextContent(/nouveaux? brouillons?, rien de publié\s; \d+ partages à ajouter/);
+    await user.click(within(sheet).getByRole("button", { name: "Importer" }));
+    const result = (await screen.findAllByRole("region", { name: "Importé" })).at(-1);
+    expect(result).toHaveTextContent(/Groupes de propriétés créés\s: corpInputs, dnsSettings/);
+    expect(result).toHaveTextContent(/Projets qui reçoivent les propriétés personnalisées de vRA\s: Web Platform/);
+  });
+
+  it("adopts a project's deployments and marks it moved", { timeout: 20_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/vra-import?tab=cutover");
+    expect(await screen.findByText("0 sur 3 projets basculés")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Intégrer 2 déploiements (Web Platform)" }));
+    expect(await screen.findByText("2 déploiements de Web Platform intégrés")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Marquer comme basculé… (Web Platform)" }));
+    const sheet = await screen.findByRole("dialog", { name: "Basculer Web Platform vers rvav" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Note" }), "Week-end de bascule");
+    await user.click(within(sheet).getByRole("button", { name: "Marquer comme basculé" }));
+    expect(await screen.findByText("Web Platform basculé vers rvav")).toBeInTheDocument();
+    expect(await screen.findByText("1 sur 3 projets basculés")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Non basculé… (Web Platform)" }));
+    const confirm = await screen.findByRole("alertdialog", { name: /^Marquer Web Platform comme non basculé\s\?$/ });
+    expect(confirm).toHaveTextContent(/supprimer dans vRA un déploiement intégré supprime ses VM/);
+  });
+});

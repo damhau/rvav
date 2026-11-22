@@ -262,6 +262,54 @@ test("day-2 actions and a day-2 form, in French", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("the vRA import, in French", async ({ page }) => {
+  test.setTimeout(150_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await inFrench(page);
+
+  await open(page, "Import depuis vRA");
+  await expect(page.getByText("3 projets · 5 modèles · 4 déploiements · 7 workflows vRO")).toBeVisible();
+  const steps = page.getByRole("list", { name: "Étapes" });
+  await expect(steps.getByRole("listitem").first()).toContainText(/Lire vRA\s: terminée/);
+  await expect(page.getByRole("tab", { name: "Projets", selected: true })).toBeVisible();
+  const projects = page.getByRole("table", { name: "Projets vRA" });
+  await expect(projects.getByRole("combobox", { name: "Projet rvav pour Web Platform" })).toHaveText(
+    /^Par nom\s: Web Platform$/,
+  );
+  await bothThemes(page, "the vRA import's projects");
+
+  await page.getByRole("tab", { name: /^Éléments de catalogue/ }).click();
+  const templates = page.getByRole("table", { name: "Modèles de cloud" });
+  await expect(templates.getByRole("row", { name: /RHEL 9 Server/ }).getByText("Inchangé")).toBeVisible();
+  await bothThemes(page, "the vRA import's catalog items");
+
+  await page.getByRole("tab", { name: /^vRO/ }).click();
+  await expect(
+    page.getByRole("table", { name: "Workflows et actions vRO" }).getByText("C · Workflow personnalisé"),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: /^Bascule/ }).click();
+  await expect(page.getByText("0 sur 3 projets basculés")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Legacy Apps" }).getByText("Basculera une fois associé à un projet rvav"),
+  ).toBeVisible();
+  await bothThemes(page, "the vRA import's cutover");
+
+  await page.getByRole("button", { name: "Importer…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Importer depuis vRA" });
+  await expect(dialog.getByText(/0 nouveau brouillon, rien de publié\s; 2 partages à ajouter/)).toBeVisible();
+  await scan(page, "the vRA import's sheet");
+  await dialog.getByRole("button", { name: "Annuler" }).click();
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole("button", { name: /^Compte/ }).click();
+  await page.getByRole("menuitem", { name: "English" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.getByRole("heading", { name: "vRA import", level: 1 })).toBeVisible();
+  await expect(page.getByText("0 of 3 projects moved")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test.describe("a French browser, at 320 px", () => {
   test.use({ locale: "fr-CH", viewport: { width: 320, height: 640 } });
   for (const path of [
@@ -281,6 +329,8 @@ test.describe("a French browser, at 320 px", () => {
     "/admin/catalog-items?tab=awx",
     "/admin/day2-actions",
     "/admin/day2-actions/awx.install-monitoring-agent/form",
+    "/admin/vra-import",
+    "/admin/vra-import?tab=cutover",
   ]) {
     test(`no sideways scrolling: ${path}`, async ({ page }) => {
       await page.goto(path);
