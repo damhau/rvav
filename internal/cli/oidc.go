@@ -67,7 +67,10 @@ func (a *app) deviceSignIn(ctx context.Context, cfg oauth2.Config) (*oauth2.Toke
 	if cfg.Endpoint.DeviceAuthURL == "" {
 		return nil, errors.New("rvav's identity provider offers no sign-in on another device: sign in in the browser, without --device")
 	}
-	da, err := cfg.DeviceAuth(ctx)
+	// PKCE on the device grant too: Keycloak asks for it there when the
+	// client requires it, as rvav's public client does.
+	verifier := oauth2.GenerateVerifier()
+	da, err := cfg.DeviceAuth(ctx, oauth2.S256ChallengeOption(verifier))
 	if err != nil {
 		return nil, refused(rvavclient.SignInStageProvider, fmt.Errorf("asking the identity provider for a code: %w", err))
 	}
@@ -76,7 +79,7 @@ func (a *app) deviceSignIn(ctx context.Context, cfg oauth2.Config) (*oauth2.Toke
 	} else {
 		fmt.Fprintf(a.Err, "To sign in, open %s\nand enter the code %s.\n", da.VerificationURI, da.UserCode)
 	}
-	t, err := cfg.DeviceAccessToken(ctx, da)
+	t, err := cfg.DeviceAccessToken(ctx, da, oauth2.VerifierOption(verifier))
 	if err != nil {
 		var re *oauth2.RetrieveError
 		if errors.As(err, &re) && re.ErrorCode == "access_denied" {

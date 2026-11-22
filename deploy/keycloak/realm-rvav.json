@@ -63,6 +63,7 @@
       "lastName": "Martin",
       "enabled": true,
       "emailVerified": true,
+      "realmRoles": ["default-roles-rvav"],
       "attributes": { "title": ["Platform engineer"], "manager": ["marc.keller@corp.example"] },
       "credentials": [{ "type": "password", "value": "rvav", "temporary": false }],
       "groups": ["/rvav-web-admins", "/rvav-catalog-admins"]
@@ -74,6 +75,7 @@
       "lastName": "Keller",
       "enabled": true,
       "emailVerified": true,
+      "realmRoles": ["default-roles-rvav"],
       "attributes": { "title": ["Infrastructure lead"], "manager": ["claire.dubois@corp.example"] },
       "credentials": [{ "type": "password", "value": "rvav", "temporary": false }],
       "groups": ["/rvav-admins", "/rvav-infra-leads"]
@@ -85,6 +87,7 @@
       "lastName": "Nguyen",
       "enabled": true,
       "emailVerified": true,
+      "realmRoles": ["default-roles-rvav"],
       "attributes": { "title": ["Developer"], "manager": ["lea.martin@corp.example"] },
       "credentials": [{ "type": "password", "value": "rvav", "temporary": false }],
       "groups": ["/rvav-web"]

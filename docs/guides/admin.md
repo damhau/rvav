@@ -308,6 +308,9 @@ By provider:
   Give it the same mappers as rvav's client: an audience mapper that
   adds rvav's client ID to the access token's audience, and the groups
   mapper. To use rvav's client instead, make the same changes there.
+  rvavctl asks for `offline_access`, so people need Keycloak's
+  `offline_access` role, which the realm's default roles give: without
+  it, Keycloak refuses the sign-in with "Offline tokens not allowed".
 - **Entra ID:** register an application for rvavctl. In
   **Authentication**, add the **Mobile and desktop applications**
   platform with `http://127.0.0.1/callback`, and set **Allow public

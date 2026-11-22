@@ -53,7 +53,8 @@ does, and signs in at the provider it names, with the web app's client
   RFC 8252). The port is any free one, or `--callback-port` for a
   provider that registers exact ports.
 - **On another device** (`--device`): the device authorization grant
-  (RFC 8628), for SSH sessions.
+  (RFC 8628), for SSH sessions, with PKCE as in the browser: Keycloak
+  asks for it there too when the client requires PKCE.
 - **`offline_access`** is asked for when the provider supports it, so
   that the sign-in outlives the provider's browser session (Entra ID
   gives no refresh token without it).

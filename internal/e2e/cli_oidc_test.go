@@ -37,7 +37,7 @@ type idpUser struct {
 
 // cliIdP is a provider for rvavctl's sign-ins, as Keycloak serves the rvav
 // public client: the authorization code with PKCE on a loopback redirect,
-// the device flow, and refresh tokens.
+// the device flow with PKCE, and refresh tokens.
 type cliIdP struct {
 	*fakeIdP
 	mu      sync.Mutex
@@ -104,7 +104,11 @@ func (p *cliIdP) serve(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, p.redirect+back+"&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
 	case "/device":
 		_ = r.ParseForm()
-		p.scope = r.PostForm.Get("scope")
+		if r.PostForm.Get("code_challenge_method") != "S256" {
+			reply(w, 400, map[string]string{"error": "invalid_request", "error_description": "Missing parameter: code_challenge_method"})
+			return
+		}
+		p.scope, p.challenge = r.PostForm.Get("scope"), r.PostForm.Get("code_challenge")
 		reply(w, 200, map[string]any{"device_code": "device-1", "user_code": "WDJB-MJHT",
 			"verification_uri": base + "/activate", "verification_uri_complete": base + "/activate?user_code=WDJB-MJHT",
 			"expires_in": 600, "interval": 1})
@@ -126,6 +130,10 @@ func (p *cliIdP) serve(w http.ResponseWriter, r *http.Request) {
 		case "urn:ietf:params:oauth:grant-type:device_code":
 			if p.devicePolls++; p.devicePolls == 1 || f.Get("device_code") != "device-1" {
 				reply(w, 400, map[string]string{"error": "authorization_pending"})
+				return
+			}
+			if sum := sha256.Sum256([]byte(f.Get("code_verifier"))); base64.RawURLEncoding.EncodeToString(sum[:]) != p.challenge {
+				reply(w, 400, map[string]string{"error": "invalid_grant", "error_description": "PKCE verification failed"})
 				return
 			}
 		case "refresh_token":
