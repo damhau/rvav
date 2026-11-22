@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"slices"
@@ -27,6 +28,7 @@ type Fake struct {
 	DataSources []string
 	mu          sync.Mutex
 	failing     map[string]int
+	refusing    map[string]int
 	tables      map[string][]Record
 	journal     map[string][]string // sys_id -> work notes
 	tokens      map[string]bool
@@ -98,6 +100,22 @@ func (f *Fake) FailOn(prefix string, status int) {
 		delete(f.failing, prefix)
 	} else {
 		f.failing[prefix] = status
+	}
+}
+
+// RefuseUpdates makes every update whose body holds this text answer
+// status, as a data policy or a business rule refuses one, until it is
+// called again with 0.
+func (f *Fake) RefuseUpdates(text string, status int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.refusing == nil {
+		f.refusing = map[string]int{}
+	}
+	if status == 0 {
+		delete(f.refusing, text)
+	} else {
+		f.refusing[text] = status
 	}
 }
 
@@ -223,8 +241,15 @@ func (f *Fake) table(w http.ResponseWriter, r *http.Request, parts []string) {
 			return
 		}
 		if r.Method != http.MethodGet {
+			body, _ := io.ReadAll(r.Body)
+			for text, status := range f.refusing {
+				if strings.Contains(string(body), text) {
+					fail(w, status, "Operation Failed", "Data Policy Exception: the fake was told to refuse it")
+					return
+				}
+			}
 			var in map[string]any
-			if json.NewDecoder(r.Body).Decode(&in) != nil {
+			if json.Unmarshal(body, &in) != nil {
 				fail(w, http.StatusBadRequest, "Exception while reading request", "not JSON")
 				return
 			}

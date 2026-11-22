@@ -177,3 +177,15 @@ func TestIdentify(t *testing.T) {
 		t.Fatalf("a 503: %v", err)
 	}
 }
+
+func TestIsRefused(t *testing.T) {
+	for status, want := range map[int]bool{400: true, 403: true, 409: true, 422: true,
+		401: false, 404: false, 408: false, 429: false, 500: false, 503: false} {
+		if got := IsRefused(&APIError{Method: "PATCH", Path: "/api/now/table/sc_req_item/x", Status: status}); got != want {
+			t.Errorf("%d: IsRefused = %v", status, got)
+		}
+	}
+	if IsRefused(context.DeadlineExceeded) {
+		t.Error("a timeout is no refusal")
+	}
+}

@@ -14,8 +14,13 @@ import (
 // each round sends the next of each.
 const notesRounds = 10
 
+// refusedTries is how many times a note ServiceNow refuses is sent before
+// it is given up: about five minutes of backoff.
+const refusedTries = 5
+
 // notes sends the work notes owed to requested items, in order: a note
-// ServiceNow refuses waits with backoff, and those after it wait too.
+// ServiceNow can't take waits with backoff, and those after it wait too;
+// one it keeps refusing is given up, so as not to hold them back for good.
 func (s *Syncer) notes(ctx context.Context, cl *servicenow.Client) error {
 	for range notesRounds {
 		due, err := s.Store.DueServiceNowNotes(ctx, s.now(), batch)
@@ -34,6 +39,13 @@ func (s *Syncer) notes(ctx context.Context, cl *servicenow.Client) error {
 				switch {
 				case servicenow.IsNotFound(err):
 					s.log().Warn("servicenow work note: the requested item is gone", "ritm", n.RITMNumber)
+				case servicenow.IsRefused(err) && n.Attempts+1 >= refusedTries:
+					s.log().Warn("servicenow work note refused, given up", "ritm", n.RITMNumber, "attempts", n.Attempts+1, "err", err)
+					if err := s.Store.GaveUpServiceNowNote(ctx, n.ID, s.now(), err.Error()); err != nil {
+						return err
+					}
+					sent++
+					continue
 				case err != nil:
 					if err := s.Store.RetryServiceNowNote(ctx, n.ID, s.now().Add(backoff(n.Attempts)), err.Error()); err != nil {
 						return err
@@ -71,6 +83,8 @@ type event struct {
 		Approval *struct {
 			Name      string  `json:"name"`
 			Level     int     `json:"level"`
+			Kind      string  `json:"kind"`
+			Status    string  `json:"status"`
 			Outcome   *string `json:"outcome"`
 			Approvers []struct {
 				Name string `json:"name"`
@@ -86,8 +100,11 @@ type event struct {
 // Note is the work note an event of a request writes on its requested
 // item, and the item's state after it ("" leaves it): work in progress
 // while rvav works, closed complete when the request succeeded, closed
-// incomplete when it failed, was rejected or cancelled. "" for an event
-// that says nothing to ServiceNow.
+// incomplete when it failed, was cancelled or a policy's level rejected
+// it. rvav writes no provisioning.post for a rejected request, so the
+// rejection is the level's approval.decided, a person's or an automatic
+// one (nobody can approve, no answer in time, even after escalation).
+// "" for an event that says nothing to ServiceNow.
 func Note(n store.ServiceNowNote, publicURL string) (state, text string) {
 	var ev event
 	if json.Unmarshal(n.Payload, &ev) != nil {
@@ -124,11 +141,12 @@ func Note(n store.ServiceNowNote, publicURL string) (state, text string) {
 		if a == nil || a.Outcome == nil {
 			return "", ""
 		}
-		by := ""
-		if a.DecidedBy != nil {
-			by = " by " + a.DecidedBy.Name
+		text = fmt.Sprintf("rvav: %s, %s (level %d): %s.", r.Number, a.Name, a.Level, strings.TrimSuffix(*a.Outcome, "."))
+		// A custom workflow's approval is the workflow's to act on.
+		if a.Status == "rejected" && a.Kind != "workflow" {
+			return servicenow.ItemClosedIncomplete, text + link("/requests/"+r.Number)
 		}
-		return "", fmt.Sprintf("rvav: %s %s%s at %s (level %d).", r.Number, *a.Outcome, by, a.Name, a.Level)
+		return "", text
 	case "provisioning.post":
 		outcome := ""
 		if r.Outcome != nil {
@@ -141,8 +159,6 @@ func Note(n store.ServiceNowNote, publicURL string) (state, text string) {
 				deps = append(deps, d.Name+link("/deployments/"+d.ID))
 			}
 			return servicenow.ItemClosedComplete, fmt.Sprintf("rvav: %s succeeded. Deployment: %s", r.Number, strings.Join(deps, "; "))
-		case r.Status == "rejected":
-			return servicenow.ItemClosedIncomplete, fmt.Sprintf("rvav: %s was rejected.%s", r.Number, link("/requests/"+r.Number))
 		case outcome == "cancelled":
 			return servicenow.ItemClosedIncomplete, fmt.Sprintf("rvav: %s was cancelled.%s", r.Number, link("/requests/"+r.Number))
 		default:

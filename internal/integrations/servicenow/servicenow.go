@@ -95,6 +95,22 @@ func (e *APIError) Temporary() bool {
 	return e.Status == http.StatusTooManyRequests || e.Status >= 500
 }
 
+// IsRefused says whether ServiceNow refused this call itself, which
+// trying again likely won't change: a 4xx answer, such as a data policy's
+// or a business rule's 403, but for 408 and 429, which pass later, 401,
+// which is rvav's sign-in and refuses every call alike, and 404.
+func IsRefused(err error) bool {
+	var e *APIError
+	if !errors.As(err, &e) || e.Status < 400 || e.Status > 499 {
+		return false
+	}
+	switch e.Status {
+	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusUnauthorized, http.StatusNotFound:
+		return false
+	}
+	return true
+}
+
 // IsNotFound says whether the record isn't there.
 func IsNotFound(err error) bool {
 	var e *APIError

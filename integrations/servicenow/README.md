@@ -154,14 +154,20 @@ integration. Give that account no admin role, only:
   no rvav user has the person's email, or no project of theirs offers
   the item.
 - **The RITM is Closed Incomplete.** Its work notes have rvav's reason:
-  an input it refused, a quota, an item the person can't request, or a
-  policy warning that the order didn't accept. "Not from ServiceNow's
+  an input it refused, a quota, an item the person can't request, a
+  policy warning that the order didn't accept, or a rejection, with the
+  approval level and who rejected it. "Not from ServiceNow's
   addresses" means that the call came from outside rvav's **Allowed
   sources**: add the instance's address, then order again.
 - **The RITM stays Open.** rvav couldn't be reached, refused the token
   (401, a revoked or expired token), or answered 429. The system log has a warning starting
   with `rvav:`, and `rvav: retry` submits the RITM again every 5 minutes
   for 3 days.
+- **A work note is missing.** ServiceNow refused it five times, for
+  example through a data policy or a business rule on `sc_req_item`, and
+  rvav gave it up so that the later notes still reach the RITM. rvav's
+  log has `servicenow work note refused, given up` with ServiceNow's
+  answer.
 - **An item doesn't show up.** rvav offers an item when it has a
   published version shared with at least one project. Run `rvav: catalog
   import` again after publishing it.

@@ -159,6 +159,14 @@ func (s *Store) SentServiceNowNote(ctx context.Context, id int64, at time.Time) 
 	return err
 }
 
+// GaveUpServiceNowNote marks a note ServiceNow refused for good as done,
+// keeping why.
+func (s *Store) GaveUpServiceNowNote(ctx context.Context, id int64, at time.Time, why string) error {
+	_, err := s.Pool.Exec(ctx, `update servicenow_ritm_notes set sent_at = $2, attempts = attempts + 1, last_error = $3 where id = $1`,
+		id, at, why)
+	return err
+}
+
 // ServiceNowWorkDue says whether a pass has anything to do now: a
 // deployment or a note due, or, with the CMDB kept, a reconcile.
 func (s *Store) ServiceNowWorkDue(ctx context.Context, now time.Time, cmdb bool, interval time.Duration) (bool, error) {

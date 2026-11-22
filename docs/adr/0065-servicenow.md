@@ -194,9 +194,18 @@ sync process sends them in order through the Table API, the note's
 text written from the event when it is sent, one PATCH of
 `sc_req_item` each with its `work_notes` and `state`: 2 (work in
 progress) while rvav works, 3 (closed complete) when it succeeded, 4
-(closed incomplete) when it failed, was rejected or cancelled. A note
-ServiceNow refuses is tried again with backoff, and the ones after it
-wait, so the record reads in order.
+(closed incomplete) when it failed, was cancelled or was rejected. rvav
+writes no `provisioning.post` for a rejected request, so the rejection
+that closes the item is the `approval.decided` of a policy's level whose
+status is `rejected`: an approver's, or rvav's own when nobody can
+approve or nobody answered in time, even after escalation. A custom
+workflow's approval leaves the item to the workflow. A note ServiceNow
+can't take is tried again with backoff, and the ones after it wait, so
+the record reads in order; one it refuses with a 4xx (but 401, 404, 408
+and 429) five times, about five minutes, is given up with its error
+kept in `servicenow_ritm_notes.last_error`, so that a data policy or a
+business rule that refuses one note doesn't hold back the item's later
+notes for good.
 
 ### Threat model
 - **A stolen token** can request, as any user rvav knows, what that user
