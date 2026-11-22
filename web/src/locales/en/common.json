@@ -23,5 +23,141 @@
     "MB": "{{value}} MB",
     "GB": "{{value}} GB",
     "TB": "{{value}} TB"
+  },
+  "actions": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "loading": "Loading",
+  "loadingEllipsis": "Loading…",
+  "select": {
+    "placeholder": "Select…"
+  },
+  "table": {
+    "selectAll": "Select all",
+    "actions": "Actions"
+  },
+  "breadcrumb": "Breadcrumb",
+  "blocked": {
+    "toOverview": "Go to the overview",
+    "notFound": {
+      "title": "Page not found",
+      "heading": "This address doesn't match anything in rvav",
+      "body": "The page may have moved, or the link has a typo. Start again from the overview."
+    },
+    "notAllowed": {
+      "title": "You can't open this page",
+      "heading": "{{page}} needs a role you don't have",
+      "body": "Ask an administrator for it if you need this page. <access>What I may do</access> lists what you can do."
+    }
+  },
+  "error": {
+    "title": "Something went wrong",
+    "requestId": "Request ID <id>{{id}}</id>",
+    "retry": "Try again"
+  },
+  "meter": {
+    "noLimit": "· no limit"
+  },
+  "itemType": {
+    "vm_blueprint": "VM blueprint",
+    "awx_job_template": "AWX job template",
+    "awx_workflow": "AWX workflow",
+    "composite": "Composite",
+    "workflow": "Custom workflow"
+  },
+  "copy": "Copy {{value}}",
+  "requestStatus": {
+    "pending_approval": "Awaiting approval",
+    "scheduled": "Scheduled",
+    "queued": "Queued",
+    "running": "In progress",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "rejected": "Rejected",
+    "cancelling": "Cancelling",
+    "cancelled": "Cancelled"
+  },
+  "deploymentStatus": {
+    "ready": "Ready",
+    "provisioning": "Provisioning",
+    "updating": "Updating",
+    "failed": "Failed",
+    "deleting": "Deleting",
+    "deleted": "Deleted"
+  },
+  "power": {
+    "unknown": "Unknown",
+    "on": "Powered on",
+    "off": "Powered off"
+  },
+  "approval": {
+    "status": {
+      "waiting": "Not open yet",
+      "pending": "Waiting",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "cancelled": "Cancelled"
+    },
+    "asks": {
+      "roles": "Asks whoever holds {{roles}} in the project",
+      "manager": "Asks the requester's manager",
+      "rolesAndManager": "Asks whoever holds {{roles}} in the project and the requester's manager"
+    },
+    "answered": "Answered",
+    "wentOn": "Went on",
+    "yes": "Yes",
+    "no": "No",
+    "due": {
+      "stepGoesOn": "then it goes on with no answer",
+      "stepFails": "then the step fails",
+      "approved": "then it is approved automatically",
+      "rejected": "then it is rejected automatically",
+      "escalates": "then it escalates to {{people}}",
+      "escalatesToApprovers": "then it escalates to the escalation approvers"
+    },
+    "vote": {
+      "rejected": "<name>{{name}}</name> <tone>rejected</tone> <time/>",
+      "answered": "<name>{{name}}</name> <tone>answered</tone> <time/>",
+      "approved": "<name>{{name}}</name> <tone>approved</tone> <time/>",
+      "comment": "“{{comment}}”",
+      "changed": "Changed {{field}} from <value>{{from}}</value> to <value>{{to}}</value>"
+    },
+    "levels": "Approval levels",
+    "levelOf": "level {{index}} of {{total}}",
+    "waitingFor": "Waiting for {{people}}",
+    "waiting": "Waiting",
+    "dueAt": "due <time/>"
+  },
+  "step": {
+    "system": {
+      "policy": "Policy",
+      "person": "Person",
+      "wait": "Wait",
+      "branch": "Branch"
+    },
+    "status": {
+      "done": "Done",
+      "running": "Running",
+      "failed": "Failed",
+      "skipped": "Skipped",
+      "cancelled": "Cancelled",
+      "pending": "Not started"
+    },
+    "waitingIcon": "Waiting",
+    "waiting": "waiting",
+    "running": "running",
+    "until": "Until {{date}}",
+    "showData": "Show data",
+    "showingData": "Showing data",
+    "ofStep": " of {{step}}",
+    "showOutput": "Show job output",
+    "showingOutput": "Showing job output"
+  },
+  "warnings": {
+    "goOn": "You may go on: the request keeps the warning.",
+    "label_one": "Policy warning",
+    "label_other": "Policy warnings"
   }
 }

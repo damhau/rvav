@@ -27,6 +27,8 @@ import {
   Wrench,
 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/lib/i18n";
 import { Tip } from "@/components/ui/tooltip";
 import type { CatalogItemType } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -84,15 +86,11 @@ export function ItemIcon({ name, type, className }: { name: string; type?: Catal
   );
 }
 
-export const itemTypeLabel: Record<CatalogItemType, string> = {
-  vm_blueprint: "VM blueprint",
-  awx_job_template: "AWX job template",
-  awx_workflow: "AWX workflow",
-  composite: "Composite",
-  workflow: "Custom workflow",
-};
+/** A catalog item's kind, in the language shown: call it while rendering. */
+export const itemTypeLabel = (type: CatalogItemType) => i18n.t(`common:itemType.${type}`);
 
 export function Time({ iso, className }: { iso: string; className?: string }) {
+  useTranslation();
   return (
     <Tip content={fullDate(iso)}>
       <time dateTime={iso} className={cn("tnum whitespace-nowrap", className)}>
@@ -107,13 +105,14 @@ export function Mono({ children, className }: { children: React.ReactNode; class
 }
 
 export function CopyText({ value, className }: { value: string; className?: string }) {
+  const { t } = useTranslation();
   const [done, setDone] = useState(false);
   return (
     <span className={cn("group inline-flex min-w-0 items-center gap-1", className)}>
       <span className="truncate font-mono text-secondary">{value}</span>
       <button
         type="button"
-        aria-label={`Copy ${value}`}
+        aria-label={t("copy", { value })}
         className="rounded-sm p-0.5 text-faint opacity-0 group-hover:opacity-100 hover:text-fg focus-visible:opacity-100"
         onClick={(e) => {
           e.stopPropagation();

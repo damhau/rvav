@@ -130,7 +130,7 @@ function NewItemSheet({ onClose }: { onClose: () => void }) {
             id="new-item-type"
             value={form.type}
             onChange={set("type")}
-            options={types.map((t) => ({ value: t, label: itemTypeLabel[t] }))}
+            options={types.map((t) => ({ value: t, label: itemTypeLabel(t) }))}
           />
         </Field>
       </div>
@@ -305,10 +305,10 @@ export function ItemsPanel() {
     {
       id: "kind",
       header: "Kind",
-      sortValue: (it) => itemTypeLabel[it.type],
+      sortValue: (it) => itemTypeLabel(it.type),
       cell: (it) => (
         <span className="text-secondary">
-          {itemTypeLabel[it.type]}
+          {itemTypeLabel(it.type)}
           {it.source.kind === "awx" && <span className="block text-muted">from AWX</span>}
         </span>
       ),
@@ -365,7 +365,7 @@ export function ItemsPanel() {
               onChange={(v) => setKind(v as CatalogItemType | "any")}
               options={[
                 { value: "any", label: "All kinds" },
-                ...types.map((t) => ({ value: t, label: itemTypeLabel[t] })),
+                ...types.map((t) => ({ value: t, label: itemTypeLabel(t) })),
               ]}
               className="w-44"
             />

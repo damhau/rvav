@@ -273,7 +273,7 @@ function Favourites() {
                 <span className="min-w-0">
                   <span className="block font-medium">{i.name}</span>
                   <span className="text-caption text-muted">
-                    {itemTypeLabel[i.type]} · {versionLabel(i)}
+                    {itemTypeLabel(i.type)} · {versionLabel(i)}
                     {i.typical_duration_seconds ? ` · ${roughDuration(i.typical_duration_seconds)}` : ""}
                   </span>
                 </span>

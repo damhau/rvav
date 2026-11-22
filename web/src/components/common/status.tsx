@@ -1,52 +1,56 @@
 import { Ban, CircleCheck, CircleDashed, CircleSlash, CircleX, Clock3, LoaderCircle, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import type { DeploymentStatus, RequestStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 type Tone = "ok" | "warn" | "bad" | "run" | "neutral";
 
-const requestMeta: Record<RequestStatus, { label: string; tone: Tone; icon: React.ElementType; spin?: boolean }> = {
-  pending_approval: { label: "Awaiting approval", tone: "warn", icon: Clock3 },
-  scheduled: { label: "Scheduled", tone: "neutral", icon: Clock3 },
-  queued: { label: "Queued", tone: "run", icon: CircleDashed },
-  running: { label: "In progress", tone: "run", icon: LoaderCircle, spin: true },
-  succeeded: { label: "Succeeded", tone: "ok", icon: CircleCheck },
-  failed: { label: "Failed", tone: "bad", icon: CircleX },
-  rejected: { label: "Rejected", tone: "neutral", icon: Ban },
-  cancelling: { label: "Cancelling", tone: "warn", icon: LoaderCircle, spin: true },
-  cancelled: { label: "Cancelled", tone: "neutral", icon: CircleSlash },
+const requestMeta: Record<RequestStatus, { tone: Tone; icon: React.ElementType; spin?: boolean }> = {
+  pending_approval: { tone: "warn", icon: Clock3 },
+  scheduled: { tone: "neutral", icon: Clock3 },
+  queued: { tone: "run", icon: CircleDashed },
+  running: { tone: "run", icon: LoaderCircle, spin: true },
+  succeeded: { tone: "ok", icon: CircleCheck },
+  failed: { tone: "bad", icon: CircleX },
+  rejected: { tone: "neutral", icon: Ban },
+  cancelling: { tone: "warn", icon: LoaderCircle, spin: true },
+  cancelled: { tone: "neutral", icon: CircleSlash },
 };
 
-export const requestStatusLabel = (s: RequestStatus) => requestMeta[s]?.label ?? s;
+export const requestStatusLabel = (s: RequestStatus) => (s in requestMeta ? i18n.t(`common:requestStatus.${s}`) : s);
 
 export function RequestStatusBadge({ status }: { status: RequestStatus }) {
-  const s = requestMeta[status] ?? { label: status, tone: "neutral" as const, icon: CircleDashed };
+  useTranslation();
+  const s = requestMeta[status] ?? { tone: "neutral" as const, icon: CircleDashed };
   return (
     <Badge tone={s.tone}>
       <s.icon className={cn(s.spin && "animate-spin")} aria-hidden />
-      {s.label}
+      {requestStatusLabel(status)}
     </Badge>
   );
 }
 
-const deploymentMeta: Record<DeploymentStatus, { label: string; tone: Tone; icon: React.ElementType; spin?: boolean }> =
-  {
-    ready: { label: "Ready", tone: "ok", icon: CircleCheck },
-    provisioning: { label: "Provisioning", tone: "run", icon: LoaderCircle, spin: true },
-    updating: { label: "Updating", tone: "run", icon: LoaderCircle, spin: true },
-    failed: { label: "Failed", tone: "bad", icon: CircleX },
-    deleting: { label: "Deleting", tone: "neutral", icon: Trash2 },
-    deleted: { label: "Deleted", tone: "neutral", icon: Trash2 },
-  };
+const deploymentMeta: Record<DeploymentStatus, { tone: Tone; icon: React.ElementType; spin?: boolean }> = {
+  ready: { tone: "ok", icon: CircleCheck },
+  provisioning: { tone: "run", icon: LoaderCircle, spin: true },
+  updating: { tone: "run", icon: LoaderCircle, spin: true },
+  failed: { tone: "bad", icon: CircleX },
+  deleting: { tone: "neutral", icon: Trash2 },
+  deleted: { tone: "neutral", icon: Trash2 },
+};
 
-export const deploymentStatusLabel = (s: DeploymentStatus) => deploymentMeta[s]?.label ?? s;
+export const deploymentStatusLabel = (s: DeploymentStatus) =>
+  s in deploymentMeta ? i18n.t(`common:deploymentStatus.${s}`) : s;
 
 export function DeploymentStatusBadge({ status }: { status: DeploymentStatus }) {
-  const s = deploymentMeta[status] ?? { label: status, tone: "neutral" as const, icon: CircleDashed };
+  useTranslation();
+  const s = deploymentMeta[status] ?? { tone: "neutral" as const, icon: CircleDashed };
   return (
     <Badge tone={s.tone}>
       <s.icon className={cn(s.spin && "animate-spin")} aria-hidden />
-      {s.label}
+      {deploymentStatusLabel(status)}
     </Badge>
   );
 }
@@ -66,7 +70,8 @@ export function EnvBadge({ env, production }: { env: string; production?: boolea
 }
 
 export function PowerDot({ on, label }: { on: boolean | null; label?: boolean }) {
-  const text = on === null ? "Unknown" : on ? "Powered on" : "Powered off";
+  const { t } = useTranslation();
+  const text = t(on === null ? "power.unknown" : on ? "power.on" : "power.off");
   return (
     <span className="inline-flex items-center gap-1.5" title={text}>
       <span

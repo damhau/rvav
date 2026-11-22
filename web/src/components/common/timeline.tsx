@@ -1,19 +1,22 @@
 import { CircleCheck, CircleDashed, CircleMinus, CircleSlash, CircleX, Hourglass, LoaderCircle } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/lib/i18n";
 import type { Step, StepStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { clock, duration, fullDate } from "@/lib/format";
 
-const systemLabel: Record<NonNullable<Step["system"]>, string> = {
-  rvav: "",
-  policy: "Policy",
-  vcenter: "vCenter",
-  efficientip: "EfficientIP",
-  awx: "AWX",
-  nsx: "NSX",
-  rest: "REST",
-  person: "Person",
-  wait: "Wait",
-  branch: "Branch",
+// The systems' own names read the same in every language.
+const systemLabel: Record<NonNullable<Step["system"]>, () => string> = {
+  rvav: () => "",
+  policy: () => i18n.t("common:step.system.policy"),
+  vcenter: () => "vCenter",
+  efficientip: () => "EfficientIP",
+  awx: () => "AWX",
+  nsx: () => "NSX",
+  rest: () => "REST",
+  person: () => i18n.t("common:step.system.person"),
+  wait: () => i18n.t("common:step.system.wait"),
+  branch: () => i18n.t("common:step.system.branch"),
 };
 
 const systemTone: Record<NonNullable<Step["system"]>, string> = {
@@ -29,19 +32,12 @@ const systemTone: Record<NonNullable<Step["system"]>, string> = {
   branch: "text-accent",
 };
 
-const statusText: Record<StepStatus, string> = {
-  done: "Done",
-  running: "Running",
-  failed: "Failed",
-  skipped: "Skipped",
-  cancelled: "Cancelled",
-  pending: "Not started",
-};
-
 function StepIcon({ status, small, waits }: { status: StepStatus; small?: boolean; waits?: boolean }) {
+  const { t } = useTranslation();
   const c = small ? "size-3.5" : "size-4";
-  const label = statusText[status];
-  if (waits && status === "running") return <Hourglass className={cn(c, "text-run")} aria-label="Waiting" />;
+  const label = t(`step.status.${status}`);
+  if (waits && status === "running")
+    return <Hourglass className={cn(c, "text-run")} aria-label={t("step.waitingIcon")} />;
   switch (status) {
     case "done":
       return <CircleCheck className={cn(c, "text-ok")} aria-label={label} />;
@@ -72,11 +68,12 @@ export function Timeline({
   onOpenData?: (step: Step) => void;
   selectedDataStep?: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <ol className="flex flex-col" aria-live="polite">
       {steps.map((s, i) => {
         const last = i === steps.length - 1;
-        const system = s.system ? systemLabel[s.system] : "";
+        const system = s.system ? (systemLabel[s.system]?.() ?? s.system) : "";
         return (
           <li key={s.id} className="relative grid grid-cols-[16px_minmax(0,1fr)] gap-x-3">
             {!last && (
@@ -119,9 +116,7 @@ export function Timeline({
                   {s.started_at && (s.status === "running" || s.finished_at) && (
                     <span className="w-14 text-right">
                       {s.status === "running"
-                        ? s.system === "wait"
-                          ? "waiting"
-                          : "running"
+                        ? t(s.system === "wait" ? "step.waiting" : "step.running")
                         : duration(s.started_at, s.finished_at)}
                     </span>
                   )}
@@ -130,7 +125,7 @@ export function Timeline({
               {s.detail && <span className="text-secondary text-muted">{s.detail}</span>}
               {/* A wait for a time, or a poll's deadline: in the viewer's own time. */}
               {s.due_at && (s.status === "running" || s.status === "done") && (
-                <span className="text-secondary text-muted">Until {fullDate(s.due_at)}</span>
+                <span className="text-secondary text-muted">{t("step.until", { date: fullDate(s.due_at) })}</span>
               )}
               {s.error && <span className="text-secondary text-bad">{s.error}</span>}
               {onOpenData && s.has_data && (
@@ -140,8 +135,8 @@ export function Timeline({
                   aria-pressed={selectedDataStep === s.id}
                   className="self-start text-secondary font-medium text-accent hover:underline"
                 >
-                  {selectedDataStep === s.id ? "Showing data" : "Show data"}
-                  <span className="sr-only"> of {s.title}</span>
+                  {t(selectedDataStep === s.id ? "step.showingData" : "step.showData")}
+                  <span className="sr-only">{t("step.ofStep", { step: s.title })}</span>
                 </button>
               )}
               {s.children.length > 0 && s.status !== "pending" && (
@@ -175,7 +170,7 @@ export function Timeline({
                       aria-pressed={selectedLogStep === s.id}
                       className="mt-2 text-secondary font-medium text-accent hover:underline"
                     >
-                      {selectedLogStep === s.id ? "Showing job output" : "Show job output"}
+                      {t(selectedLogStep === s.id ? "step.showingOutput" : "step.showOutput")}
                     </button>
                   )}
                 </div>

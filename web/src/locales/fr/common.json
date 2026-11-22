@@ -24,5 +24,142 @@
     "MB": "{{value}}\u00a0Mo",
     "GB": "{{value}}\u00a0Go",
     "TB": "{{value}}\u00a0To"
+  },
+  "actions": {
+    "close": "Fermer",
+    "cancel": "Annuler",
+    "save": "Enregistrer"
+  },
+  "loading": "Chargement",
+  "loadingEllipsis": "Chargement…",
+  "select": {
+    "placeholder": "Choisir…"
+  },
+  "table": {
+    "selectAll": "Tout sélectionner",
+    "actions": "Actions"
+  },
+  "breadcrumb": "Fil d'Ariane",
+  "blocked": {
+    "toOverview": "Aller à la vue d'ensemble",
+    "notFound": {
+      "title": "Page introuvable",
+      "heading": "Cette adresse ne correspond à rien dans rvav",
+      "body": "La page a peut-être été déplacée, ou le lien contient une faute de frappe. Repartez de la vue d'ensemble."
+    },
+    "notAllowed": {
+      "title": "Vous ne pouvez pas ouvrir cette page",
+      "heading": "{{page}} demande un rôle que vous n'avez pas",
+      "body": "Demandez-le à un administrateur si vous avez besoin de cette page. <access>Ce que je peux faire</access> liste ce que vous pouvez faire."
+    }
+  },
+  "error": {
+    "title": "Une erreur s'est produite",
+    "requestId": "ID de la requête <id>{{id}}</id>",
+    "retry": "Réessayer"
+  },
+  "meter": {
+    "noLimit": "· sans limite"
+  },
+  "itemType": {
+    "vm_blueprint": "Blueprint de VM",
+    "awx_job_template": "Modèle de job AWX",
+    "awx_workflow": "Workflow AWX",
+    "composite": "Composite",
+    "workflow": "Workflow personnalisé"
+  },
+  "copy": "Copier {{value}}",
+  "requestStatus": {
+    "pending_approval": "En attente d'approbation",
+    "scheduled": "Planifiée",
+    "queued": "En file d'attente",
+    "running": "En cours",
+    "succeeded": "Réussie",
+    "failed": "Échouée",
+    "rejected": "Rejetée",
+    "cancelling": "Annulation en cours",
+    "cancelled": "Annulée"
+  },
+  "deploymentStatus": {
+    "ready": "Prêt",
+    "provisioning": "Provisionnement",
+    "updating": "Mise à jour",
+    "failed": "Échec",
+    "deleting": "Suppression",
+    "deleted": "Supprimé"
+  },
+  "power": {
+    "unknown": "Inconnu",
+    "on": "Sous tension",
+    "off": "Hors tension"
+  },
+  "approval": {
+    "status": {
+      "waiting": "Pas encore ouverte",
+      "pending": "En attente",
+      "approved": "Approuvée",
+      "rejected": "Rejetée",
+      "cancelled": "Annulée"
+    },
+    "asks": {
+      "roles": "Demande à qui détient {{roles}} dans le projet",
+      "manager": "Demande au responsable du demandeur",
+      "rolesAndManager": "Demande à qui détient {{roles}} dans le projet et au responsable du demandeur"
+    },
+    "answered": "Répondue",
+    "wentOn": "Poursuivie",
+    "yes": "Oui",
+    "no": "Non",
+    "due": {
+      "stepGoesOn": "puis elle se poursuit sans réponse",
+      "stepFails": "puis l'étape échoue",
+      "approved": "puis elle est approuvée automatiquement",
+      "rejected": "puis elle est rejetée automatiquement",
+      "escalates": "puis elle passe à {{people}}",
+      "escalatesToApprovers": "puis elle passe aux approbateurs de l'escalade"
+    },
+    "vote": {
+      "rejected": "<name>{{name}}</name> <tone>a rejeté</tone> <time/>",
+      "answered": "<name>{{name}}</name> <tone>a répondu</tone> <time/>",
+      "approved": "<name>{{name}}</name> <tone>a approuvé</tone> <time/>",
+      "comment": "«\u00a0{{comment}}\u00a0»",
+      "changed": "A changé {{field}} de <value>{{from}}</value> à <value>{{to}}</value>"
+    },
+    "levels": "Niveaux d'approbation",
+    "levelOf": "niveau {{index}} sur {{total}}",
+    "waitingFor": "En attente de {{people}}",
+    "waiting": "En attente",
+    "dueAt": "échéance <time/>"
+  },
+  "step": {
+    "system": {
+      "policy": "Politique",
+      "person": "Personne",
+      "wait": "Attente",
+      "branch": "Branche"
+    },
+    "status": {
+      "done": "Terminée",
+      "running": "En cours",
+      "failed": "Échouée",
+      "skipped": "Ignorée",
+      "cancelled": "Annulée",
+      "pending": "Pas commencée"
+    },
+    "waitingIcon": "En attente",
+    "waiting": "en attente",
+    "running": "en cours",
+    "until": "Jusqu'au {{date}}",
+    "showData": "Afficher les données",
+    "showingData": "Données affichées",
+    "ofStep": " de {{step}}",
+    "showOutput": "Afficher la sortie du job",
+    "showingOutput": "Sortie du job affichée"
+  },
+  "warnings": {
+    "goOn": "Vous pouvez continuer\u00a0: la demande garde l'avertissement.",
+    "label_one": "Avertissement de politique",
+    "label_many": "Avertissements de politique",
+    "label_other": "Avertissements de politique"
   }
 }

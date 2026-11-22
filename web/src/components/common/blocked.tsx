@@ -1,28 +1,33 @@
 import { Link } from "@tanstack/react-router";
 import { MapPinOff, ShieldOff } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { Page } from "@/components/common/page";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 
-const toOverview = (
-  <Button variant="primary" size="sm" asChild>
-    <Link to="/">Go to the overview</Link>
-  </Button>
-);
+function ToOverview() {
+  const { t } = useTranslation();
+  return (
+    <Button variant="primary" size="sm" asChild>
+      <Link to="/">{t("blocked.toOverview")}</Link>
+    </Button>
+  );
+}
 
 /** An address that matches no page. */
 export function PageNotFound() {
+  const { t } = useTranslation();
   return (
     <Page>
-      <PageHeader title="Page not found" />
+      <PageHeader title={t("blocked.notFound.title")} />
       <Panel>
         <EmptyState
           icon={MapPinOff}
-          title="This address doesn't match anything in rvav"
-          body="The page may have moved, or the link has a typo. Start again from the overview."
-          action={toOverview}
+          title={t("blocked.notFound.heading")}
+          body={t("blocked.notFound.body")}
+          action={<ToOverview />}
         />
       </Panel>
     </Page>
@@ -31,23 +36,23 @@ export function PageNotFound() {
 
 /** A page the signed-in person may not open; the server would refuse what it shows. */
 export function PageNotAllowed({ page }: { page: string }) {
+  const { t } = useTranslation();
   return (
     <Page>
-      <PageHeader title="You can't open this page" />
+      <PageHeader title={t("blocked.notAllowed.title")} />
       <Panel>
         <EmptyState
           icon={ShieldOff}
-          title={`${page} needs a role you don't have`}
+          title={t("blocked.notAllowed.heading", { page })}
           body={
-            <>
-              Ask an administrator for it if you need this page.{" "}
-              <Link to="/access" className="text-accent underline underline-offset-2">
-                What I may do
-              </Link>{" "}
-              lists what you can do.
-            </>
+            <Trans
+              i18nKey="blocked.notAllowed.body"
+              components={{
+                access: <Link to="/access" className="text-accent underline underline-offset-2" />,
+              }}
+            />
           }
-          action={toOverview}
+          action={<ToOverview />}
         />
       </Panel>
     </Page>

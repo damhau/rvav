@@ -105,7 +105,11 @@ export function leaseLabel(expiresAt: string | null | undefined) {
   return i18n.t("common:lease.inDays", { count: d });
 }
 
+export type SizeUnit = "MB" | "GB" | "TB";
+
+export const isSizeUnit = (unit: unknown): unit is SizeUnit => unit === "MB" || unit === "GB" || unit === "TB";
+
 /** A size with its unit, as "60 GB" or "60 Go"; the number and unit never break apart in French. */
-export function formatSize(value: number, unit: "MB" | "GB" | "TB") {
+export function formatSize(value: number, unit: SizeUnit) {
   return i18n.t(`common:units.${unit}`, { value: formatNumber(value, { maximumFractionDigits: 1 }) });
 }

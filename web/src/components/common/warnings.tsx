@@ -2,6 +2,7 @@
 // and may go on; the request keeps the warnings they went on despite.
 import { TriangleAlert } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { cn } from "@/lib/utils";
@@ -14,7 +15,7 @@ export type PolicyWarning = components["schemas"]["PolicyWarning"];
  */
 export function PolicyWarnings({
   warnings,
-  note = "You may go on: the request keeps the warning.",
+  note,
   className,
   refusal,
 }: {
@@ -23,6 +24,7 @@ export function PolicyWarnings({
   className?: string;
   refusal?: number;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const listId = useId();
   useEffect(() => {
@@ -35,7 +37,7 @@ export function PolicyWarnings({
       role="note"
       tabIndex={-1}
       aria-live="polite"
-      aria-label={warnings.length === 1 ? "Policy warning" : "Policy warnings"}
+      aria-label={t("warnings.label", { count: warnings.length })}
       aria-describedby={listId}
       className={cn(
         "flex items-start gap-2 rounded-md bg-warn-soft px-3 py-2 text-secondary text-warn outline-none focus-visible:ring-2 focus-visible:ring-accent",
@@ -52,7 +54,7 @@ export function PolicyWarnings({
             </li>
           ))}
         </ul>
-        {note && <p>{note}</p>}
+        {note !== "" && <p>{note ?? t("warnings.goOn")}</p>}
       </div>
     </div>
   );

@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { formatNumber, formatSize, isSizeUnit } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,15 +20,16 @@ export function Meter({
   unit?: string;
   adding?: number;
 }) {
+  const { t } = useTranslation();
   const after = used + adding;
-  const fmt = (v: number) => (Number.isInteger(v) ? v : v.toFixed(1));
+  const fmt = (v: number) => formatNumber(v, { maximumFractionDigits: 1 });
+  const withUnit = (v: number) => (isSizeUnit(unit) ? formatSize(v, unit) : `${fmt(v)}${unit ? ` ${unit}` : ""}`);
   if (total === undefined || total === null) {
     return (
       <div className="flex items-baseline justify-between gap-2 text-secondary">
         <span className="text-muted">{label}</span>
         <span className="tnum">
-          {fmt(after)}
-          {unit ? ` ${unit}` : ""} <span className="text-faint">· no limit</span>
+          {withUnit(after)} <span className="text-faint">{t("meter.noLimit")}</span>
         </span>
       </div>
     );
@@ -40,9 +43,8 @@ export function Meter({
         <span className="tnum">
           <span className={cn(after > total && "font-medium text-bad")}>{fmt(after)}</span>
           <span className="text-faint">
-            {" "}
-            / {fmt(total)}
-            {unit ? ` ${unit}` : ""}
+            {" / "}
+            {withUnit(total)}
           </span>
         </span>
       </div>

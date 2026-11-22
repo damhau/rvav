@@ -1,5 +1,6 @@
 import { Check, ChevronDown, LoaderCircle } from "lucide-react";
 import { Select as S } from "radix-ui";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 export interface Option {
@@ -22,7 +23,7 @@ export function Select({
   value,
   onChange,
   options,
-  placeholder = "Select…",
+  placeholder,
   loading,
   disabled,
   className,
@@ -43,6 +44,7 @@ export function Select({
   /** When the list closes and gives the focus back to the select: prevent it to put the focus elsewhere. */
   onCloseAutoFocus?: (e: Event) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <S.Root value={value} onValueChange={onChange} disabled={disabled || loading}>
       <S.Trigger
@@ -56,7 +58,11 @@ export function Select({
         {/* Radix drops the value's className: as a block, it is cut off at the
             trigger's edge and reaches no further in a 320 px window. */}
         <span className="truncate [&>span]:block [&>span]:truncate">
-          {loading ? <span className="text-faint">Loading…</span> : <S.Value placeholder={placeholder} />}
+          {loading ? (
+            <span className="text-faint">{t("loadingEllipsis")}</span>
+          ) : (
+            <S.Value placeholder={placeholder ?? t("select.placeholder")} />
+          )}
         </span>
         {loading ? (
           <LoaderCircle className="size-3.5 animate-spin text-faint" />

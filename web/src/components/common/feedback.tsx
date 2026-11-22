@@ -1,4 +1,5 @@
 import { TriangleAlert } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { isApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -9,8 +10,9 @@ export function Skeleton({ className }: { className?: string }) {
 
 /** Placeholder rows for a table that is loading. */
 export function SkeletonRows({ rows = 5, cols = 4 }: { rows?: number; cols?: number }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex flex-col" role="status" aria-label="Loading">
+    <div className="flex flex-col" role="status" aria-label={t("loading")}>
       {Array.from({ length: rows }, (_, r) => (
         <div key={r} className="flex items-center gap-4 border-b border-line px-4 py-3 last:border-b-0">
           {Array.from({ length: cols }, (_, c) => (
@@ -32,8 +34,9 @@ export function ErrorState({
   onRetry?: () => void;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const api = isApiError(error) ? error : null;
-  const title = api?.problem.title ?? "Something went wrong";
+  const title = api?.problem.title ?? t("error.title");
   const detail = api?.problem.detail ?? (error instanceof Error ? error.message : undefined);
   return (
     <div role="alert" className={cn("flex items-start gap-3 px-4 py-6", className)}>
@@ -43,12 +46,17 @@ export function ErrorState({
         {detail && <p className="max-w-prose text-secondary text-muted">{detail}</p>}
         {api && api.requestId !== "none" && (
           <p className="text-secondary text-faint">
-            Request ID <span className="font-mono select-all">{api.requestId}</span>
+            <Trans
+              t={t}
+              i18nKey="error.requestId"
+              values={{ id: api.requestId }}
+              components={{ id: <span className="font-mono select-all" /> }}
+            />
           </p>
         )}
         {onRetry && (
           <Button size="sm" className="mt-1 self-start" onClick={onRetry}>
-            Try again
+            {t("error.retry")}
           </Button>
         )}
       </div>

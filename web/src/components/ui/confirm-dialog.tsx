@@ -1,4 +1,5 @@
 import { AlertDialog as A } from "radix-ui";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useOpener } from "@/components/ui/opener";
 
@@ -42,11 +43,12 @@ function ConfirmContent({
   description,
   consequences,
   confirmLabel,
-  cancelLabel = "Cancel",
+  cancelLabel,
   onConfirm,
   pending,
   tone = "danger",
 }: ConfirmProps & { ref?: React.Ref<HTMLDivElement> }) {
+  const { t } = useTranslation();
   const giveFocusBack = useOpener();
   return (
     <A.Content
@@ -64,7 +66,7 @@ function ConfirmContent({
       <div className="flex flex-wrap justify-end gap-2">
         <A.Cancel asChild>
           <Button variant="secondary" disabled={pending}>
-            {cancelLabel}
+            {cancelLabel ?? t("actions.cancel")}
           </Button>
         </A.Cancel>
         <Button variant={tone === "danger" ? "danger-solid" : "primary"} disabled={pending} onClick={onConfirm}>

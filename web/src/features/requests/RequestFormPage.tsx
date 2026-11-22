@@ -1364,7 +1364,7 @@ export function RequestFormPage({ itemKey, draftId, from }: { itemKey: string; d
         description={
           item.data && (
             <>
-              {itemTypeLabel[item.data.type]} {versionOf(item.data, form.data?.version_id).number}
+              {itemTypeLabel(item.data.type)} {versionOf(item.data, form.data?.version_id).number}
               {item.data.source.awx_template_name ? ` · launches ${item.data.source.awx_template_name}` : ""}
               {item.data.typical_duration_seconds
                 ? ` · usually done in ${roughDuration(item.data.typical_duration_seconds)}`

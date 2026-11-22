@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { Dialog as D } from "radix-ui";
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Button, IconButton } from "@/components/ui/button";
 import { focusInvalid, useOpener } from "@/components/ui/opener";
 import { cn } from "@/lib/utils";
@@ -52,13 +53,14 @@ function SheetPanel({
   description,
   children,
   onSubmit,
-  submitLabel = "Save",
+  submitLabel,
   submitDisabled,
   pending,
   footer,
   returnFocus,
   className,
 }: PanelProps & { ref?: React.Ref<HTMLDivElement> }) {
+  const { t } = useTranslation();
   const giveFocusBack = useOpener(returnFocus);
   const bodyRef = useRef<HTMLDivElement>(null);
   const submitRef = useRef<HTMLButtonElement>(null);
@@ -117,7 +119,7 @@ function SheetPanel({
           )}
         </div>
         <D.Close asChild>
-          <IconButton label="Close" className="-mt-1 -mr-2" disabled={pending}>
+          <IconButton label={t("actions.close")} className="-mt-1 -mr-2" disabled={pending}>
             <X />
           </IconButton>
         </D.Close>
@@ -138,11 +140,11 @@ function SheetPanel({
           <div className={bar}>
             <D.Close asChild>
               <Button type="button" variant="secondary" disabled={pending}>
-                Cancel
+                {t("actions.cancel")}
               </Button>
             </D.Close>
             <Button ref={submitRef} type="submit" variant="primary" disabled={submitDisabled || pending}>
-              {submitLabel}
+              {submitLabel ?? t("actions.save")}
             </Button>
           </div>
         </form>

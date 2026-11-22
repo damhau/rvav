@@ -96,7 +96,7 @@ function Details({ item, category }: { item: CatalogItem; category?: string }) {
   const duration = roughDuration(item.typical_duration_seconds);
   const earlier = (item.versions ?? []).filter((v) => v.id !== item.version.id).map((v) => v.number);
   const rows: { label: string; value: React.ReactNode }[] = [
-    { label: "Kind", value: itemTypeLabel[item.type] },
+    { label: "Kind", value: itemTypeLabel(item.type) },
     ...(category ? [{ label: "Category", value: category }] : []),
     {
       label: "Version",

@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { Dialog as D } from "radix-ui";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { IconButton } from "@/components/ui/button";
 import { useOpener } from "@/components/ui/opener";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ export function DialogContent(props: ContentProps) {
 
 // Mounted as the dialog opens, so that it reads what had the focus then.
 function Content({ className, title, description, children, onCloseAutoFocus, ...props }: ContentProps) {
+  const { t } = useTranslation();
   const giveFocusBack = useOpener();
   return (
     <D.Content
@@ -45,7 +47,7 @@ function Content({ className, title, description, children, onCloseAutoFocus, ..
           )}
         </div>
         <D.Close asChild>
-          <IconButton label="Close" className="-mt-0.5 -mr-1.5">
+          <IconButton label={t("actions.close")} className="-mt-0.5 -mr-1.5">
             <X />
           </IconButton>
         </D.Close>

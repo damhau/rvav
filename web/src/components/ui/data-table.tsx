@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, Ellipsis, Search } from "lucide-react";
 import { useId, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Menu, MenuContent, MenuTrigger } from "@/components/ui/dropdown-menu";
@@ -91,6 +92,7 @@ export function DataTable<T>({
   minWidth,
   className,
 }: DataTableProps<T>) {
+  const { t } = useTranslation();
   const [ownSort, setOwnSort] = useState<Sort | null>(defaultSort ?? null);
   const sort = sortProp === undefined ? ownSort : sortProp;
   const setSort = (s: Sort | null) => {
@@ -123,7 +125,7 @@ export function DataTable<T>({
               {selection && (
                 <th scope="col" className="w-px border-b border-line py-2 pr-1 pl-4">
                   <Checkbox
-                    aria-label={selection.allLabel ?? "Select all"}
+                    aria-label={selection.allLabel ?? t("table.selectAll")}
                     checked={allSelected}
                     disabled={!sorted?.length}
                     onChange={(on) => {
@@ -173,7 +175,7 @@ export function DataTable<T>({
               })}
               {hasMenu && (
                 <th scope="col" className="w-px border-b border-line py-2 pr-3 pl-1">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{t("table.actions")}</span>
                 </th>
               )}
             </tr>
@@ -247,7 +249,7 @@ export function DataTable<T>({
                           {menu ? (
                             <Menu>
                               <MenuTrigger asChild>
-                                <IconButton label={rowMenuLabel?.(row) ?? "Actions"}>
+                                <IconButton label={rowMenuLabel?.(row) ?? t("table.actions")}>
                                   <Ellipsis />
                                 </IconButton>
                               </MenuTrigger>
@@ -263,7 +265,7 @@ export function DataTable<T>({
         </table>
         {loading && !sorted?.length && (
           <span role="status" className="sr-only">
-            Loading
+            {t("loading")}
           </span>
         )}
       </div>

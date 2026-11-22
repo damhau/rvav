@@ -9,7 +9,7 @@ import tseslint from "typescript-eslint";
 // Folders whose text is translated (ADR-0061): a literal string a person
 // reads is refused there. Add a folder once it is converted; when every
 // folder is, this becomes "src/**".
-const translated = ["src/main.tsx", "src/lib/i18n/**"];
+const translated = ["src/main.tsx", "src/lib/i18n/**", "src/components/ui/**", "src/components/common/**"];
 
 // The props of rvav's building blocks and the attributes a person reads or
 // hears. Other attributes (className, variant, to, id…) hold no text.

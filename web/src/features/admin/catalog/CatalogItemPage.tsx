@@ -766,7 +766,7 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
         meta={
           <>
             <span className="font-mono">{it.slug}</span>
-            <span>{itemTypeLabel[it.type]}</span>
+            <span>{itemTypeLabel(it.type)}</span>
             {it.published_version ? (
               <Badge tone="ok">
                 Published{" "}

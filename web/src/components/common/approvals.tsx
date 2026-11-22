@@ -1,46 +1,56 @@
 import { Ban, CircleCheck, CircleDashed, CircleSlash, Clock3 } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import type { Approval, ApprovalStatus, ApprovalVote } from "@/lib/api/types";
+import { formatList } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { toText } from "@/lib/utils";
 import { Time } from "./misc";
 
 type Tone = "ok" | "warn" | "bad" | "run" | "neutral";
 
-const meta: Record<ApprovalStatus, { label: string; tone: Tone; icon: React.ElementType }> = {
-  waiting: { label: "Not open yet", tone: "neutral", icon: CircleDashed },
-  pending: { label: "Waiting", tone: "warn", icon: Clock3 },
-  approved: { label: "Approved", tone: "ok", icon: CircleCheck },
-  rejected: { label: "Rejected", tone: "neutral", icon: Ban },
-  cancelled: { label: "Cancelled", tone: "neutral", icon: CircleSlash },
+const meta: Record<ApprovalStatus, { tone: Tone; icon: React.ElementType }> = {
+  waiting: { tone: "neutral", icon: CircleDashed },
+  pending: { tone: "warn", icon: Clock3 },
+  approved: { tone: "ok", icon: CircleCheck },
+  rejected: { tone: "neutral", icon: Ban },
+  cancelled: { tone: "neutral", icon: CircleSlash },
 };
 
 export function ApprovalStatusBadge({ status, label }: { status: ApprovalStatus; label?: string }) {
-  const s = meta[status] ?? { label: status, tone: "neutral" as const, icon: CircleDashed };
+  const { t } = useTranslation();
+  const s = meta[status] ?? { tone: "neutral" as const, icon: CircleDashed };
   return (
     <Badge tone={s.tone}>
       <s.icon aria-hidden />
-      {label ?? s.label}
+      {label ?? (status in meta ? t(`approval.status.${status}`) : status)}
     </Badge>
   );
 }
 
 /** Whom a level asks besides the users it names: project roles' holders and the requester's manager. */
 function askedOf(a: Approval): string | undefined {
-  const parts = [
-    a.roles?.length ? `whoever holds ${a.roles.map((r) => r.name).join(" or ")} in the project` : undefined,
-    a.manager ? "the requester's manager" : undefined,
-  ].filter(Boolean);
-  return parts.length ? `Asks ${parts.join(" and ")}` : undefined;
+  const roles = a.roles?.length
+    ? formatList(
+        a.roles.map((r) => r.name),
+        "disjunction",
+      )
+    : undefined;
+  if (roles && a.manager) return i18n.t("common:approval.asks.rolesAndManager", { roles });
+  if (roles) return i18n.t("common:approval.asks.roles", { roles });
+  if (a.manager) return i18n.t("common:approval.asks.manager");
+  return undefined;
 }
 
 /** What a step's wait came to, when it goes on: an answer, or its timeout. */
 const stepLabel = (a: Approval) =>
-  a.step_key && a.status === "approved" ? (a.votes.length > 0 ? "Answered" : "Went on") : undefined;
+  a.step_key && a.status === "approved"
+    ? i18n.t(a.votes.length > 0 ? "common:approval.answered" : "common:approval.wentOn")
+    : undefined;
 
-/** What a step's wait said and was answered, for those who may read it. */
 /** An answer as a person reads it: a yes or no question was answered in words. */
 export function answerText(value: unknown): string {
-  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "boolean") return i18n.t(value ? "common:approval.yes" : "common:approval.no");
   return toText(value);
 }
 
@@ -70,38 +80,51 @@ function StepQuestion({ a }: { a: Approval }) {
 export function dueText(a: Pick<Approval, "on_timeout" | "escalate_to" | "escalated" | "step_key">): string {
   // A step's wait fails its step or goes on with no answer (ADR-0033).
   if (a.step_key) {
-    if (a.on_timeout === "approve") return "then it goes on with no answer";
-    if (a.on_timeout === "reject" || (a.on_timeout === "escalate" && a.escalated)) return "then the step fails";
+    if (a.on_timeout === "approve") return i18n.t("common:approval.due.stepGoesOn");
+    if (a.on_timeout === "reject" || (a.on_timeout === "escalate" && a.escalated))
+      return i18n.t("common:approval.due.stepFails");
   }
   switch (a.on_timeout) {
     case "approve":
-      return "then it is approved automatically";
+      return i18n.t("common:approval.due.approved");
     case "reject":
-      return "then it is rejected automatically";
+      return i18n.t("common:approval.due.rejected");
     case "escalate":
-      return a.escalated
-        ? "then it is rejected automatically"
-        : `then it escalates to ${(a.escalate_to ?? []).map((u) => u.name).join(", ") || "the escalation approvers"}`;
+      if (a.escalated) return i18n.t("common:approval.due.rejected");
+      return a.escalate_to?.length
+        ? i18n.t("common:approval.due.escalates", { people: a.escalate_to.map((u) => u.name).join(", ") })
+        : i18n.t("common:approval.due.escalatesToApprovers");
     default:
       return "";
   }
 }
 
 function Vote({ v, step }: { v: ApprovalVote; step: boolean }) {
+  const { t } = useTranslation();
+  const said = v.decision === "reject" ? "rejected" : step ? "answered" : "approved";
   return (
     <li className="flex flex-col gap-0.5">
       <span>
-        <span className="font-medium">{v.user.name}</span>{" "}
-        <span className={v.decision === "approve" ? "text-ok" : "text-bad"}>
-          {v.decision === "reject" ? "rejected" : step ? "answered" : "approved"}
-        </span>{" "}
-        <Time iso={v.decided_at} className="text-faint" />
+        <Trans
+          t={t}
+          i18nKey={`approval.vote.${said}`}
+          values={{ name: v.user.name }}
+          components={{
+            name: <span className="font-medium" />,
+            tone: <span className={v.decision === "approve" ? "text-ok" : "text-bad"} />,
+            time: <Time iso={v.decided_at} className="text-faint" />,
+          }}
+        />
       </span>
-      {v.comment && <span className="text-muted">“{v.comment}”</span>}
+      {v.comment && <span className="text-muted">{t("approval.vote.comment", { comment: v.comment })}</span>}
       {v.changes.map((c) => (
         <span key={c.field} className="text-muted">
-          Changed {c.label.toLowerCase()} from <span className="font-mono text-secondary">{toText(c.from)}</span> to{" "}
-          <span className="font-mono text-secondary">{toText(c.to)}</span>
+          <Trans
+            t={t}
+            i18nKey="approval.vote.changed"
+            values={{ field: c.label.toLowerCase(), from: toText(c.from), to: toText(c.to) }}
+            components={{ value: <span className="font-mono text-secondary" /> }}
+          />
         </span>
       ))}
     </li>
@@ -109,9 +132,10 @@ function Vote({ v, step }: { v: ApprovalVote; step: boolean }) {
 }
 
 /** The levels of a request's approval, with who decided what and why. */
-export function ApprovalHistory({ levels, label = "Approval levels" }: { levels: Approval[]; label?: string }) {
+export function ApprovalHistory({ levels, label }: { levels: Approval[]; label?: string }) {
+  const { t } = useTranslation();
   return (
-    <ol className="flex flex-col gap-3.5" aria-label={label}>
+    <ol className="flex flex-col gap-3.5" aria-label={label ?? t("approval.levels")}>
       {levels.map((a) => (
         <li key={a.id} className="flex flex-col gap-1.5 text-body">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -119,8 +143,8 @@ export function ApprovalHistory({ levels, label = "Approval levels" }: { levels:
               {a.level.name}
               {a.level.count > 1 && (
                 <span className="font-normal text-faint">
-                  {" "}
-                  · level {a.level.index} of {a.level.count}
+                  {" · "}
+                  {t("approval.levelOf", { index: a.level.index, total: a.level.count })}
                 </span>
               )}
             </span>
@@ -132,11 +156,13 @@ export function ApprovalHistory({ levels, label = "Approval levels" }: { levels:
           {a.outcome && <span className="text-secondary">{a.outcome}</span>}
           {a.status === "pending" && (
             <span className="text-secondary text-muted">
-              {a.approvers.length > 0 ? `Waiting for ${a.approvers.map((u) => u.name).join(", ")}` : "Waiting"}
+              {a.approvers.length > 0
+                ? t("approval.waitingFor", { people: a.approvers.map((u) => u.name).join(", ") })
+                : t("approval.waiting")}
               {a.due_at && (
                 <>
-                  {" · due "}
-                  <Time iso={a.due_at} />
+                  {" · "}
+                  <Trans t={t} i18nKey="approval.dueAt" components={{ time: <Time iso={a.due_at} /> }} />
                   {dueText(a) && `, ${dueText(a)}`}
                 </>
               )}

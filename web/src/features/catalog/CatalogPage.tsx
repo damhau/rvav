@@ -39,7 +39,7 @@ function Card({ item, mayRequest }: { item: CatalogItem; mayRequest: boolean }) 
             {item.name}
           </Link>
           <span className="text-caption text-muted">
-            {itemTypeLabel[item.type]}
+            {itemTypeLabel(item.type)}
             {item.source.awx_template_name ? ` · ${item.source.awx_template_name}` : ""}
           </span>
         </div>
@@ -126,7 +126,7 @@ export function CatalogPage({ search }: { search: CatalogSearch }) {
           onChange={(v) => set({ type: v === "any" ? undefined : (v as CatalogItemType) })}
           options={[
             { value: "any", label: "All kinds" },
-            ...catalogKinds.map((t) => ({ value: t, label: itemTypeLabel[t] })),
+            ...catalogKinds.map((t) => ({ value: t, label: itemTypeLabel(t) })),
           ]}
           className="w-48"
         />
