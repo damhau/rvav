@@ -69,10 +69,20 @@ func (s *Store) Reserve(ctx context.Context, db DB, requestID string, rows []Res
 // Reservations are the reservations that count, by request, cluster and
 // resource pool, but those of the request except.
 func (s *Store) Reservations(ctx context.Context, db DB, except string) ([]Reserved, error) {
+	return reserved(ctx, db, `r.request_id <> $1`, except)
+}
+
+// ReservationsOf are the request's own reservations that count: those of
+// its VMs not built yet.
+func (s *Store) ReservationsOf(ctx context.Context, db DB, requestID string) ([]Reserved, error) {
+	return reserved(ctx, db, `r.request_id = $1`, requestID)
+}
+
+func reserved(ctx context.Context, db DB, which, requestID string) ([]Reserved, error) {
 	rows, _ := db.Query(ctx, `select r.request_id, r.vcenter, r.cluster, r.resource_pool, sum(r.memory_mb)::bigint as memory_mb,
 		sum(r.vcpu)::int as vcpu, count(*)::int as vms
-		from placement_reservations r where r.request_id <> $1 and `+liveReservation+`
-		group by 1, 2, 3, 4 order by 2, 3, 4, 1`, except)
+		from placement_reservations r where `+which+` and `+liveReservation+`
+		group by 1, 2, 3, 4 order by 2, 3, 4, 1`, requestID)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[Reserved])
 }
 

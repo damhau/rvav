@@ -94,39 +94,49 @@ func (s *Service) lockRows(ctx context.Context, tx pgx.Tx, rows []store.Reservat
 }
 
 // holdRoomAgain reserves again the room of a request's VMs where they were
-// placed, as a retry does, once their clusters still have it, counting what
-// others reserved since; a ConflictError otherwise.
+// placed, as a retry does. Placing never refuses a cluster short of memory,
+// so it is a ConflictError only when what other requests reserved since
+// took the room its VMs not built yet need there.
 func (s *Service) holdRoomAgain(ctx context.Context, tx pgx.Tx, pl *placement, r store.RequestRow, rows []store.Reservation) error {
 	if _, err := s.lockRows(ctx, tx, rows); err != nil {
 		return err
 	}
-	if len(rows) > 0 {
-		var err error
-		if pl.reserved, err = s.Store.Reservations(ctx, tx, r.ID); err != nil {
-			return err
+	if err := s.Store.Reserve(ctx, tx, r.ID, rows); err != nil || len(rows) == 0 {
+		return err
+	}
+	// Those built are in their cluster's memory used already.
+	own, err := s.Store.ReservationsOf(ctx, tx, r.ID)
+	if err != nil {
+		return err
+	}
+	need := map[string]int64{}
+	var order []string
+	for _, x := range own {
+		k := x.VCenter + "/" + x.Cluster
+		if _, ok := need[k]; !ok {
+			order = append(order, k)
 		}
-		need := map[string]int64{}
-		var order []string
-		for _, x := range rows {
-			k := x.VCenter + "/" + x.Cluster
-			if _, ok := need[k]; !ok {
-				order = append(order, k)
-			}
-			need[k] += x.MemoryMB
+		need[k] += x.MemoryMB
+	}
+	others, err := s.Store.Reservations(ctx, tx, r.ID)
+	if err != nil {
+		return err
+	}
+	for _, k := range order {
+		i := slices.IndexFunc(pl.all, func(c store.InvCluster) bool { return c.VCenter+"/"+c.Name == k })
+		if i < 0 {
+			continue
 		}
-		for _, k := range order {
-			i := slices.IndexFunc(pl.all, func(c store.InvCluster) bool { return c.VCenter+"/"+c.Name == k })
-			if i < 0 {
-				continue
-			}
-			if free := pl.freeOn(&pl.all[i], ""); free < need[k] {
-				return &ConflictError{Msg: fmt.Sprintf("%s has %d MB of memory free, counting what other requests reserved; "+
-					"this request's VMs not built yet need %d MB there. Retry once it has room, or request the VMs again.",
-					pl.all[i].Name, max(free, 0), need[k])}
-			}
+		pl.reserved = nil
+		bare := pl.freeOn(&pl.all[i], "")
+		pl.reserved = others
+		if free := pl.freeOn(&pl.all[i], ""); free < need[k] && bare >= need[k] {
+			return &ConflictError{Msg: fmt.Sprintf("%s has %d MB of memory free, counting what other requests reserved; "+
+				"this request's VMs not built yet need %d MB there. Retry once it has room, or request the VMs again.",
+				pl.all[i].Name, max(free, 0), need[k])}
 		}
 	}
-	return s.Store.Reserve(ctx, tx, r.ID, rows)
+	return nil
 }
 
 // placedStill is errPlacementMoved when others hold more on one of these

@@ -124,9 +124,11 @@ resource pool: a row of `placement_reservations` per VM, by request.
   checked. A subscription's move (ADR-0054) records what others held on
   the cluster it counted room on and is checked the same way: placed
   again up to five times, then refused. A retry, which places nothing,
-  reserves its VMs again where they were placed, under the same locks,
-  once each of their clusters still has the room they need, counting
-  what others reserved there; a 409 naming the cluster otherwise (I1.6).
+  reserves its VMs again where they were placed, under the same locks.
+  It is a 409 naming the cluster when what others reserved there since
+  took the room its VMs not built yet need; a cluster short of memory
+  without them doesn't refuse it, as it didn't refuse the placement
+  (I1.6).
 - **Seen** in Administration › Templates and networks › vCenter objects:
   a cluster's memory free, and how much of it is held for VMs not built
   yet (`memory_reserved_gb`).
@@ -210,7 +212,8 @@ without hosts in the inventory are matched by their own tags, as before.
   the clusters with room instead of all choosing the one that looked
   freest. Memory still never refuses a placement, it ranks clusters; only
   a subscription moving a VM is refused when the cluster has no room, and
-  a retry when the cluster its VMs were placed on no longer has it.
+  a retry when others' reservations took it on the cluster its VMs were
+  placed on.
 - From a VM's clone to the inventory's next full read, at most one sync
   interval, its memory counts neither as reserved nor as used by vCenter;
   and vCenter's used memory is what VMs consume, not their size.

@@ -277,9 +277,9 @@ their times and tasks.
   - A retried day-2 action, such as a resize, is checked against the
     quotas and deployment limits as they are when you retry it.
   - A retry builds its VMs not built yet on the clusters they were placed
-    on. It's refused when one of those clusters no longer has the memory
-    they need, counting what other requests reserved there: retry later,
-    or submit a new request, which is placed again.
+    on. It's refused when other requests reserved, since, the memory they
+    need on one of those clusters: retry later, or submit a new request,
+    which is placed again.
 - **Request again:** a new request with the same answers.
 
 ## Requests on a schedule
