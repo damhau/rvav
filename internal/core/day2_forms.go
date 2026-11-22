@@ -177,6 +177,10 @@ func targetVars(d store.DeploymentRow, t day2.Target) map[string]any {
 		}
 		resource["os_family"], resource["vms"] = vmsFamily(t.Resources), vms
 	}
+	if day2.IsCustom(t.Type) {
+		_, props := customTarget(t)
+		resource["key"], resource["properties"] = props.Key, nonNilMap(props.Properties)
+	}
 	return map[string]any{
 		"resource":   resource,
 		"deployment": map[string]any{"id": d.ID, "name": d.Name, "description": d.Description, "owner_id": d.OwnerID, "item": d.ItemSlug},

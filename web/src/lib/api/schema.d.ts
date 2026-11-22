@@ -6270,8 +6270,10 @@ export interface components {
          *     `cpu_count`, `memory_gb`, `disk_gb`, `guest_os`, `os_family`, `fqdn`,
          *     `ip`, `moref`, `cluster`, `folder`, `tags` and `custom_properties`;
          *     for a deployment `os_family` and `vms`, each with `name`, `fqdn` and
-         *     `ip`) and `deployment` (`id`, `name`, `description`, `owner_id`,
-         *     `item`, the catalog item's slug). They are empty in request forms.
+         *     `ip`; for a custom resource, `type` `custom.<type key>`, its `key`
+         *     and `properties`) and `deployment` (`id`, `name`, `description`,
+         *     `owner_id`, `item`, the catalog item's slug). They are empty in
+         *     request forms.
          */
         UiRules: {
             /** @example inputs.environment != "prd" */

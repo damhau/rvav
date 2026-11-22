@@ -203,14 +203,7 @@ func (s *Service) typeAction(ctx context.Context, key string) (*day2.Action, err
 // workflow in its context, its AWX job in rvav.resource), then read the
 // resource again when its type can (ADR-0056).
 func (s *Service) customOps(ctx context.Context, ops []day2.Op, t day2.Target, deploymentID string) ([]day2.Op, error) {
-	var res day2.Resource
-	for _, r := range t.Resources {
-		if r.ID == t.ResourceID {
-			res = r
-		}
-	}
-	var props store.CustomProps
-	_ = json.Unmarshal(res.Properties, &props)
+	res, props := customTarget(t)
 	resource := map[string]any{"id": res.ID, "type": map[string]any{"key": props.ResourceType.Key, "title": props.ResourceType.Title},
 		"key": props.Key, "name": res.Name, "deployment_id": deploymentID, "phase": "day2",
 		"inputs": nonNilMap(props.Inputs), "properties": nonNilMap(props.Properties)}
@@ -234,6 +227,20 @@ func (s *Service) customOps(ctx context.Context, ops []day2.Op, t day2.Target, d
 		ops = append(ops, day2.ResourceOp("read", res))
 	}
 	return ops, nil
+}
+
+// customTarget is the custom resource an action runs on, and what rvav
+// recorded of it.
+func customTarget(t day2.Target) (day2.Resource, store.CustomProps) {
+	var res day2.Resource
+	for _, r := range t.Resources {
+		if r.ID == t.ResourceID {
+			res = r
+		}
+	}
+	var props store.CustomProps
+	_ = json.Unmarshal(res.Properties, &props)
+	return res, props
 }
 
 func nonNilMap(m map[string]any) map[string]any {

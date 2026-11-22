@@ -216,6 +216,9 @@ The actions a type lists are offered on each of its resources:
   rvav's inventory: there is no VM to target or to be powered on.
 - When the type has `read`, it runs after each action
   (`custom.read@<id>`): what it returns replaces the properties.
+- A form designed for the action (ADR-0050) reads the resource as
+  `resource`: its `id`, `name`, `type` (`custom.<type key>`), `key` and
+  `properties` (E1.6).
 
 Day-2 policies decide who runs them, as for any action. The deployment's
 page lists the custom resources on its Overview, with their type, key

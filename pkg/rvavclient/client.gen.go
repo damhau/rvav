@@ -10402,8 +10402,10 @@ type UiField struct {
 	// `cpu_count`, `memory_gb`, `disk_gb`, `guest_os`, `os_family`, `fqdn`,
 	// `ip`, `moref`, `cluster`, `folder`, `tags` and `custom_properties`;
 	// for a deployment `os_family` and `vms`, each with `name`, `fqdn` and
-	// `ip`) and `deployment` (`id`, `name`, `description`, `owner_id`,
-	// `item`, the catalog item's slug). They are empty in request forms.
+	// `ip`; for a custom resource, `type` `custom.<type key>`, its `key`
+	// and `properties`) and `deployment` (`id`, `name`, `description`,
+	// `owner_id`, `item`, the catalog item's slug). They are empty in
+	// request forms.
 	Rules *UiRules `json:"rules,omitempty"`
 
 	// Secret Stored encrypted, never returned by the API, and kept out of the request's plan and workflow history (a `{"$secret": "<field>"}` marker stands for it there): given only to the AWX job at launch and to cloud-init user data. The `secret` widget makes a field secret too.
@@ -10427,8 +10429,10 @@ type UiField struct {
 // `cpu_count`, `memory_gb`, `disk_gb`, `guest_os`, `os_family`, `fqdn`,
 // `ip`, `moref`, `cluster`, `folder`, `tags` and `custom_properties`;
 // for a deployment `os_family` and `vms`, each with `name`, `fqdn` and
-// `ip`) and `deployment` (`id`, `name`, `description`, `owner_id`,
-// `item`, the catalog item's slug). They are empty in request forms.
+// `ip`; for a custom resource, `type` `custom.<type key>`, its `key`
+// and `properties`) and `deployment` (`id`, `name`, `description`,
+// `owner_id`, `item`, the catalog item's slug). They are empty in
+// request forms.
 type UiRules struct {
 	// Default A default worked out from the other inputs: the field shows it
 	// and stays editable. It applies while the field has no value
