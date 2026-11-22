@@ -49,6 +49,7 @@ import {
 import { catalogGitHandlers } from "./catalogGit";
 import { adminState, administrationHandlers } from "./administration";
 import { ipRangeHandlers, rangeReconcile } from "./ipRanges";
+import { serviceNowHandlers } from "./servicenow";
 import { chooseLease, presentLease } from "./leases";
 import { onboardingHandlers } from "./onboarding";
 import { vraHandlers } from "./vra";
@@ -510,6 +511,7 @@ export const handlers = [
   ...governanceHandlers(db, base, wait),
   ...administrationHandlers(db, base, wait),
   ...ipRangeHandlers(db, base, wait),
+  ...serviceNowHandlers(db, base, wait),
   ...quotaHandlers(db, base, wait),
   ...limitHandlers(db, base, wait),
   ...onboardingHandlers(db, base, wait),

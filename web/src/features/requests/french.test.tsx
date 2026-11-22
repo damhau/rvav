@@ -126,6 +126,10 @@ describe("the requests' pages, in French", () => {
     expect(within(header).getByText(/^Les \d+ étapes terminées/)).toBeVisible();
     expect(within(header).getByRole("link", { name: "Ouvrir le déploiement" })).toBeVisible();
     expect(within(header).getByRole("link", { name: "Redemander" })).toBeVisible();
+    expect(within(header).getByRole("link", { name: "RITM0010032 (s'ouvre dans un nouvel onglet)" })).toHaveAttribute(
+      "href",
+      "https://corp.service-now.com/sc_req_item.do?sys_id=9d385017c611228701d22104cc95c371",
+    );
     expect(screen.getByRole("region", { name: "Ce qui a été demandé" })).toBeVisible();
   });
 

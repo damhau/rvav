@@ -247,6 +247,10 @@ export const adm = {
   system: () => get(["admin", "system"], (signal) => call(api.GET("/admin/system", { signal }))),
   inventoryToken: () =>
     get(["admin", "inventory-token"], (signal) => call(api.GET("/admin/integrations/awx/inventory-token", { signal }))),
+  serviceNowCmdb: () =>
+    get(["admin", "servicenow-cmdb"], (signal) => call(api.GET("/admin/integrations/servicenow/cmdb", { signal }))),
+  serviceNowToken: () =>
+    get(["admin", "servicenow-token"], (signal) => call(api.GET("/admin/integrations/servicenow/token", { signal }))),
   vcenters: () => get(["admin", "vcenters"], (signal) => call(api.GET("/admin/vcenters", { signal }))),
   nsxManagers: () => get(["admin", "nsx-managers"], (signal) => call(api.GET("/admin/nsx-managers", { signal }))),
   auditDestinations: () =>

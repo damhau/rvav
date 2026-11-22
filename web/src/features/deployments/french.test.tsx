@@ -67,6 +67,15 @@ describe("the deployments, in French", () => {
     },
   );
 
+  it("names the ServiceNow request it was ordered in, in French", { timeout: 15_000 }, async () => {
+    renderApp(`/deployments/${idOf("web-tst-search")}`);
+    const details = await screen.findByRole("region", { name: "Détails" }, { timeout: 5000 });
+    expect(value(details, "Demande ServiceNow")).toHaveTextContent("RITM0010032");
+    expect(
+      within(details).getByRole("link", { name: "RITM0010032 (s'ouvre dans un nouvel onglet)" }),
+    ).toBeInTheDocument();
+  });
+
   it("shows a VM's properties in French, sizes in Go", { timeout: 15_000 }, async () => {
     const user = userEvent.setup();
     renderApp(`/deployments/${idOf("web-prd-front")}`);

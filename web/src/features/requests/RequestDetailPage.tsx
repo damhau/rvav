@@ -95,6 +95,15 @@ function CancelButton({ request }: { request: ServiceRequest }) {
   );
 }
 
+// A link that Trans fills with its text.
+function NewTabLink({ href, children }: { href: string; children?: React.ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="font-mono text-accent underline underline-offset-2">
+      {children}
+    </a>
+  );
+}
+
 export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   const { t } = useTranslation("requests");
   useNow(1000);
@@ -177,6 +186,19 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                   ? t("detail.bySchedule", { schedule: r.schedule.name, name: r.requester.name })
                   : t("detail.requestedBy", { name: r.requester.name })}
               </span>
+              {r.servicenow && (
+                <span>
+                  <Trans
+                    t={t}
+                    i18nKey="detail.fromServiceNow"
+                    values={{ number: r.servicenow.number }}
+                    components={{
+                      ritm: <NewTabLink href={r.servicenow.url} />,
+                      newTab: <span className="sr-only" />,
+                    }}
+                  />
+                </span>
+              )}
               {r.kind === "update" && r.deployment_id ? (
                 <span>
                   <Trans

@@ -10,6 +10,17 @@ import { renderApp } from "@/test/render";
 const idOf = (name: string) => db.deployments.find((d) => d.name === name)!.id;
 
 describe("a deployment's page against the mock API", () => {
+  it("names the ServiceNow request it was ordered in", async () => {
+    renderApp(`/deployments/${idOf("web-tst-search")}`);
+    const details = await screen.findByRole("region", { name: "Details" }, { timeout: 5000 });
+    const ritm = within(details).getByRole("link", { name: "RITM0010032 (opens in a new tab)" });
+    expect(ritm).toHaveAttribute(
+      "href",
+      "https://corp.service-now.com/sc_req_item.do?sys_id=9d385017c611228701d22104cc95c371",
+    );
+    expect(ritm.closest("dd")!.previousElementSibling).toHaveTextContent("ServiceNow request");
+  });
+
   it("has every action of a one-VM deployment in its Actions menu, each it can't run with the reason", async () => {
     const user = userEvent.setup();
     renderApp(`/deployments/${idOf("web-dev-api")}`);

@@ -1,0 +1,63 @@
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import { renderApp } from "@/test/render";
+
+// ServiceNow's page (I1.5, ADR-0065) against the mock API: the token
+// ServiceNow requests with, and the CMDB report.
+
+function open() {
+  renderApp("/admin/integrations/servicenow");
+  return userEvent.setup();
+}
+
+describe("ServiceNow's integration", () => {
+  it("makes a token shown once, revoking the one before, and revokes it", async () => {
+    const user = open();
+    const panel = await screen.findByRole("region", { name: "ServiceNow's token" });
+    expect(await within(panel).findByText(/ServiceNow last called rvav/)).toBeInTheDocument();
+    expect(within(panel).getByText(/any address/)).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Make a new token" }));
+    const made = await within(panel).findByRole("region", { name: "ServiceNow's token made" });
+    expect(within(made).getByText(/^rvav_pat_/)).toBeInTheDocument();
+    expect(within(made).getByText("The token made before is revoked.")).toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: "Revoke" }));
+    const ask = await screen.findByRole("alertdialog", { name: "Revoke ServiceNow's token?" });
+    await user.click(within(ask).getByRole("button", { name: "Revoke token" }));
+    expect(await within(panel).findByText("None made: ServiceNow can't call rvav.")).toBeInTheDocument();
+    expect(within(panel).queryByRole("region", { name: "ServiceNow's token made" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Make a token" })).toBeInTheDocument();
+  }, 20_000);
+
+  it("reports the CIs kept, what ServiceNow refused and the CIs rvav no longer has", async () => {
+    const user = open();
+    const cmdb = await screen.findByRole("region", { name: "CMDB" });
+    expect(await within(cmdb).findByText("cmdb_ci_vmware_instance")).toBeInTheDocument();
+    expect(within(cmdb).getByText("Every project")).toBeInTheDocument();
+    const refused = within(cmdb).getByRole("table", { name: "Deployments ServiceNow refused" });
+    expect(within(refused).getByRole("link", { name: "web-dev-worker" })).toBeInTheDocument();
+    expect(within(refused).getByText(/Insufficient rights/)).toBeInTheDocument();
+    const orphans = within(cmdb).getByRole("table", { name: "CIs rvav no longer has" });
+    expect(within(orphans).getByRole("link", { name: /web-dev-old001/ })).toHaveAttribute(
+      "href",
+      "https://corp.service-now.com/cmdb_ci_vmware_instance.do?sys_id=b7e2c4a91b3d6010a8f1c0d5e04bcb21",
+    );
+    await user.click(within(cmdb).getByRole("button", { name: "Reconcile now" }));
+    expect(await screen.findByText("rvav reconciles within seconds")).toBeInTheDocument();
+  });
+
+  it("refuses an allowed source that isn't an address and a rate out of range", async () => {
+    const user = open();
+    const snow = await screen.findByRole("region", { name: "ServiceNow connection" });
+    await user.type(within(snow).getByRole("textbox", { name: "Allowed sources" }), "10.0.0.0/33");
+    const rate = within(snow).getByRole("textbox", { name: "Requests a minute" });
+    await user.clear(rate);
+    await user.type(rate, "0");
+    await user.click(within(snow).getByRole("button", { name: "Save settings" }));
+    expect(
+      await within(snow).findByText('"10.0.0.0/33" is neither an address nor a network such as 10.0.0.0/8.'),
+    ).toBeInTheDocument();
+    expect(within(snow).getByText("From 1 to 6000.")).toBeInTheDocument();
+  }, 20_000);
+});

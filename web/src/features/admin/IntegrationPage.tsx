@@ -12,13 +12,14 @@ import { IdentityProvider } from "./IdentityProvider";
 import { Integration, integrationAbout, integrationKinds, integrationTitle } from "./IntegrationSettings";
 import { InventoryToken } from "./InventoryToken";
 import { NSXManagers } from "./NSXManagers";
+import { ServiceNowCmdb, ServiceNowToken } from "./ServiceNow";
 import { VCenters } from "./VCenters";
 
 type Kind = (typeof integrationKinds)[number];
 
 const isKind = (k: string): k is Kind => (integrationKinds as readonly string[]).includes(k) && k !== "console";
 
-/** One integration's page: its settings, test and what goes with it (the console and other vCenters, AWX's inventory token, other NSX Managers). */
+/** One integration's page: its settings, test and what goes with it (the console and other vCenters, AWX's inventory token, other NSX Managers, ServiceNow's token and CMDB). */
 export function IntegrationPage({ kind }: { kind: string }) {
   const list = useQuery(adm.integrations());
   const known = isKind(kind);
@@ -59,6 +60,8 @@ export function IntegrationPage({ kind }: { kind: string }) {
       {it && kind === "vcenter" && <VCenters />}
       {it && kind === "awx" && <InventoryToken />}
       {it && kind === "nsx" && <NSXManagers />}
+      {it && kind === "servicenow" && <ServiceNowToken />}
+      {it && kind === "servicenow" && <ServiceNowCmdb />}
     </Page>
   );
 }

@@ -387,6 +387,7 @@
     "created": "Créé",
     "description": "Description",
     "createdBy": "Créé par",
+    "servicenow": "Demande ServiceNow",
     "vms": "VM",
     "vmsValue_one": "{{total}}, dont {{count}} allumée",
     "vmsValue_many": "{{total}}, dont {{count}} allumées",

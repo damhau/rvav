@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Power, SquareTerminal } from "lucide-react";
+import { ExternalLink, Power, SquareTerminal } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
@@ -656,6 +656,22 @@ function Details({ d }: { d: DeploymentDetail }) {
         >
           {d.created_by_request_id}
         </Link>
+      ),
+    });
+  if (d.servicenow)
+    items.push({
+      label: t("details.servicenow"),
+      value: (
+        <a
+          href={d.servicenow.url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 font-mono text-accent hover:underline"
+        >
+          {d.servicenow.number}
+          <ExternalLink className="size-3" aria-hidden />
+          <span className="sr-only">{t("vm.newTab")}</span>
+        </a>
       ),
     });
   if (d.vm_count > 0)

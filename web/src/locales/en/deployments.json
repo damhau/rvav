@@ -363,6 +363,7 @@
     "created": "Created",
     "description": "Description",
     "createdBy": "Created by",
+    "servicenow": "ServiceNow request",
     "vms": "VMs",
     "vmsValue_one": "{{total}}, {{count}} powered on",
     "vmsValue_other": "{{total}}, {{count}} powered on"

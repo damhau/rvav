@@ -28,6 +28,7 @@ import {
 } from "./roles";
 import { explainLimits } from "./limits";
 import { explainQuotaLines } from "./quotas";
+import { serviceNowSettingsErrors } from "./servicenow";
 import { localAdminPasswordChanged } from "./signIn";
 
 type S = components["schemas"];
@@ -2649,6 +2650,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
           ? (projects as unknown[]).map(String).find((x) => !db.projects.some((p) => p.id === x || p.code === x))
           : undefined;
         if (unknown !== undefined) bad.push(err("/settings/projects", `No project has the ID or code "${unknown}".`));
+        bad.push(...serviceNowSettingsErrors(w.settings));
         if (bad.length) return invalid(bad);
       }
       const every = w.settings.sync_interval;
