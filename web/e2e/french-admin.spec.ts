@@ -1,5 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { scan } from "./axe";
+import { chooseIn, chooseItem, press, typeInto } from "./keyboard";
 
 // Administration's integrations, system and catalog pages in French (O1.3,
 // ADR-0061): chosen once in the top bar, then walked in the app (a reload
@@ -49,6 +50,12 @@ async function inFrench(page: Page) {
   await page.getByRole("menuitem", { name: "Français" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "fr");
   await expect(page.getByRole("heading", { name: "Vue d'ensemble", level: 1 })).toBeVisible();
+}
+
+/** Tabs to a field and types `text` in place of what it holds. */
+async function retype(page: Page, field: Locator, text: string) {
+  await typeInto(page, field, text);
+  await expect(field).toHaveValue(text);
 }
 
 async function integration(page: Page, name: string) {
@@ -186,6 +193,82 @@ test("setup, branding, the audit log and the system, in French", async ({ page }
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("region", { name: "This install" })).toBeVisible();
   await expect(page.getByRole("table", { name: "Processes" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+// From the keyboard (W2): a refusal takes the focus to the field to fix, a
+// save gives it back to what opened the sheet or keeps it on Save, and the
+// refused forms pass axe in both themes. Branding comes last: its accent
+// colours every page after it.
+test("an audit destination and the branding, refused then saved from the keyboard, in French", async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await inFrench(page);
+
+  await open(page, "Transfert de l'audit");
+  await loaded(page);
+  // The sheet is modal, so each theme is chosen before it opens.
+  await theme(page, "Sombre");
+  const add = page.getByRole("button", { name: "Nouvelle destination" });
+  await press(page, add);
+  const sheet = page.getByRole("dialog", { name: "Nouvelle destination" });
+  const name = sheet.getByRole("textbox", { name: "Nom", exact: true });
+  await expect(name).toBeFocused();
+  await page.keyboard.type("Splunk");
+  await chooseIn(page, sheet.getByRole("combobox", { name: "Type" }), "Webhook");
+  const url = sheet.getByRole("textbox", { name: "URL" });
+  await retype(page, url, "https://splunk.example.org/hec");
+  await chooseIn(page, sheet.getByRole("combobox", { name: "Secret de signature" }), "webhook-signing");
+  await press(page, sheet.getByRole("button", { name: "Enregistrer la destination" }));
+  await expect(url).toBeFocused();
+  await expect(url).toHaveAttribute("aria-invalid", "true");
+  await expect(url).toHaveAccessibleDescription(/is not one of the hosts webhooks may call/);
+  await scan(page, "a refused destination, dark");
+
+  await retype(page, url, "https://hooks.corp.example/splunk");
+  await press(page, sheet.getByRole("button", { name: "Enregistrer la destination" }));
+  await expect(sheet).toBeHidden();
+  await expect(add).toBeFocused();
+  const destinations = page.getByRole("region", { name: "Destinations" });
+  await expect(destinations.getByRole("row", { name: /Splunk/ })).toContainText("https://hooks.corp.example/splunk");
+
+  await theme(page, "Clair");
+  const menu = destinations.getByRole("button", { name: "Actions pour Splunk" });
+  await press(page, menu);
+  await chooseItem(page, page.getByRole("menuitem", { name: "Modifier", exact: true }));
+  const change = page.getByRole("dialog", { name: "Modifier Splunk" });
+  const changed = change.getByRole("textbox", { name: "URL" });
+  await retype(page, changed, "https://soc:pw@hooks.corp.example/splunk");
+  await press(page, change.getByRole("button", { name: "Enregistrer la destination" }));
+  await expect(changed).toBeFocused();
+  await expect(changed).toHaveAccessibleDescription(/^Leave the user name and password out of the URL/);
+  await scan(page, "a destination refused for its URL's password, light");
+  await page.keyboard.press("Escape");
+  await expect(change).toBeHidden();
+  await expect(menu).toBeFocused();
+
+  await open(page, "Image de marque");
+  await loaded(page);
+  const accent = page.getByRole("textbox", { name: "Couleur d'accent", exact: true });
+  await retype(page, accent, "#ffcc00");
+  const save = page.getByRole("button", { name: "Enregistrer l'image de marque" });
+  await press(page, save);
+  await expect(accent).toBeFocused();
+  await expect(accent).toHaveAttribute("aria-invalid", "true");
+  await bothThemes(page, "a refused accent");
+
+  const use = page.getByRole("button", { name: /^Utiliser #[0-9a-f]{6}$/ }).first();
+  await press(page, use);
+  await expect(accent).toBeFocused();
+  await expect(page.getByRole("button", { name: /^Utiliser #/ })).toHaveCount(0);
+  await expect(accent).toBeFocused();
+  await press(page, save);
+  await expect(page.getByText("Image de marque enregistrée")).toBeVisible();
+  await expect(save).toBeFocused();
+  await expect(save).toBeEnabled();
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 10_000 });
+  await bothThemes(page, "the branding saved");
   expect(errors).toEqual([]);
 });
 

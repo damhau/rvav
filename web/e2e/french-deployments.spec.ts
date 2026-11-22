@@ -99,7 +99,7 @@ test("the deployments pages speak French, and English again once chosen", async 
     .click();
   await page.getByRole("link", { name: "web-tst-search", exact: true }).click();
   await expect(page.getByRole("heading", { name: "web-tst-search", level: 1 })).toBeVisible();
-  await (await openActions(page)).getByRole("menuitem", { name: "Update", exact: true }).click();
+  await (await openActions(page)).getByRole("menuitem", { name: "Mettre à jour", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Mettre à jour web-tst-search", level: 1 })).toBeVisible();
   const summary = page.getByRole("region", { name: "Ce que fait la mise à jour" });
   await expect(summary.getByText("Changez un champ pour voir ce que fait la mise à jour.")).toBeVisible();

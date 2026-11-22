@@ -1,5 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { scan } from "./axe";
+import { press, typeInto } from "./keyboard";
 
 // Administration's governance, access and notification pages in French
 // (O1.3, ADR-0061): chosen once in the top bar, then walked in the app (a
@@ -42,6 +43,12 @@ async function tab(page: Page, name: string) {
   await expect(page.getByRole("tab", { name, exact: true })).toHaveAttribute("aria-selected", "true");
 }
 
+/** Tabs to a field and types `text` in place of what it holds. */
+async function retype(page: Page, field: Locator, text: string) {
+  await typeInto(page, field, text);
+  await expect(field).toHaveValue(text);
+}
+
 async function inFrench(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
@@ -62,11 +69,18 @@ test("roles and what someone may do, in French", async ({ page }) => {
   const roles = page.getByRole("table", { name: "Rôles" });
   await expect(roles.getByRole("columnheader", { name: "Donné à" })).toBeVisible();
   await expect(roles.getByText("Prédéfini").first()).toBeVisible();
+  // rvav's own roles and permissions are worded by key (W1).
+  await expect(roles.getByRole("link", { name: "Administrateur de projet", exact: true })).toBeVisible();
+  await expect(roles).not.toContainText(/\b(Auditor|Catalog admin|Project admin|Viewer|Supervisor)\b/);
+  await expect(page.getByRole("button", { name: /^Compte/ })).toContainText("Administrateur");
   await bothThemes(page, "roles");
 
-  await roles.getByRole("link").first().click();
+  await roles.getByRole("link", { name: "Auditeur", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Auditeur", level: 1 })).toBeVisible();
   await expect(page.getByRole("link", { name: "Créer un rôle à partir de celui-ci" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Ce qu'il permet" })).toBeVisible();
+  const allows = page.getByRole("region", { name: "Ce qu'il permet" });
+  await expect(allows).toContainText("Lire le journal d'audit");
+  await expect(allows).not.toContainText("Read the audit log");
   await bothThemes(page, "a built-in role");
 
   await page.getByRole("link", { name: "Créer un rôle à partir de celui-ci" }).click();
@@ -85,12 +99,16 @@ test("roles and what someone may do, in French", async ({ page }) => {
   const explain = page.getByRole("region", { name: "Ce que quelqu'un peut faire" });
   await expect(explain.getByRole("table", { name: "Ce que vous pouvez faire pour l'ensemble de rvav" })).toBeVisible();
   await expect(explain.getByRole("combobox", { name: "Afficher" })).toContainText("Toutes les permissions");
+  await expect(explain).toContainText("Lire le journal d'audit");
+  await expect(explain).not.toContainText("Read the audit log");
   await bothThemes(page, "what someone may do");
 
   await page.getByRole("button", { name: /^Compte/ }).click();
   await page.getByRole("menuitem", { name: "Ce que je peux faire" }).click();
   await expect(page.getByRole("heading", { name: "Ce que je peux faire", level: 1 })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Vos permissions" })).toBeVisible();
+  const mine = page.getByRole("region", { name: "Vos permissions" });
+  await expect(mine).toContainText("Lire le journal d'audit");
+  await expect(mine).not.toContainText("Read the audit log");
   await bothThemes(page, "what I may do");
   expect(errors).toEqual([]);
 });
@@ -106,11 +124,38 @@ test("notification templates, in French, and back to English without a reload", 
   await expect(list.getByText("Modèles prédéfinis").first()).toBeVisible();
   await bothThemes(page, "notification templates");
 
-  await list.getByRole("link").first().click();
+  await list.getByRole("link", { name: "Approbation requise" }).click();
+  await expect(page.getByRole("heading", { name: "Approbation requise", level: 1 })).toBeVisible();
+  // It opens on the language the administrator reads (W13).
+  await expect(page.getByRole("group", { name: "Langue" }).getByRole("button", { name: "Français" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(page.getByRole("button", { name: "Enregistrer le modèle" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Objet" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "HTML" })).toBeVisible();
   await bothThemes(page, "an email template");
+
+  // From the keyboard (W2): a refusal takes the focus to the part to fix, a
+  // save and a reset to the status line that stands for what they replaced.
+  const subject = page.getByRole("textbox", { name: "Objet" });
+  await retype(page, subject, "{{.Deployment.Name}} attend");
+  await press(page, page.getByRole("button", { name: "Enregistrer le modèle" }));
+  await expect(subject).toBeFocused();
+  await expect(subject).toHaveAttribute("aria-invalid", "true");
+  await bothThemes(page, "a refused template");
+
+  await retype(page, subject, "Décider de {{.Request.Number}}");
+  await press(page, page.getByRole("button", { name: "Enregistrer le modèle" }));
+  await expect(page.getByText("Modèle enregistré")).toBeVisible();
+  await expect(page.getByText(/^Modifié par .+, /)).toBeFocused();
+  await press(page, page.getByRole("button", { name: "Rétablir le modèle prédéfini" }));
+  const reset = page.getByRole("alertdialog", { name: /^Revenir au modèle prédéfini/ });
+  await press(page, reset.getByRole("button", { name: "Rétablir le modèle prédéfini" }));
+  await expect(page.getByText("Modèle prédéfini rétabli")).toBeVisible();
+  await expect(page.getByText("Le modèle prédéfini.")).toBeFocused();
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 10_000 });
+  await bothThemes(page, "a template reset");
   await page.getByRole("button", { name: "Teams" }).click();
   await expect(page.getByRole("tab", { name: "Carte" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Titre" })).toBeVisible();

@@ -33,6 +33,10 @@ async function bothThemes(page: Page, where: string) {
 
 const h1 = (page: Page, name: string | RegExp) => page.getByRole("heading", { name, level: 1 });
 
+/** What the run's canvas would say in English, rather than the steps' own titles. */
+const english =
+  /\b(Done|Failed|Running|Not started|Skipped|Cancelled|Undone|Waiting|Runs first|Runs after|Undo by|Calls|Runs|Makes|For each|At a time|Catches|If it fails)\b/;
+
 test.describe("a French browser", () => {
   test.use({ locale: "fr-CH" });
 
@@ -70,7 +74,26 @@ test.describe("a French browser", () => {
     await expect(page.getByText(/^Les \d+ étapes terminées/)).toBeVisible();
     await expect(page.getByRole("region", { name: "Ce qui a été demandé" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Ouvrir le déploiement" })).toBeVisible();
+    // rvav's own steps are worded by key (W1).
+    const steps = page.getByRole("region", { name: "Étapes", exact: true });
+    await expect(steps).toContainText("Soumise");
+    await expect(steps).not.toContainText(/\b(Submitted|Waiting for approval|Ready)\b/);
     await bothThemes(page, "a request");
+
+    // A composite's run, failed at a step: its graph and its timeline.
+    await page.goto("/requests/REQ-10484");
+    const run = page.getByRole("application", { name: "Exécution de REQ-10484" });
+    await expect(run.getByRole("button", { name: /\. Échouée\./ }).first()).toBeVisible();
+    await expect(run.getByRole("button", { name: /\. Terminée\./ }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Réessayer", exact: true })).toBeVisible();
+    const words = await run
+      .locator(".react-flow__node, .react-flow__edge")
+      .evaluateAll((drawn) => drawn.map((d) => d.getAttribute("aria-label") ?? ""));
+    expect(words.filter((w) => english.test(w))).toEqual([]);
+    await bothThemes(page, "a composite's run");
+    await page.getByRole("button", { name: "Chronologie" }).click();
+    await expect(page.getByRole("region", { name: "Étapes", exact: true })).toContainText("Soumise");
+    await bothThemes(page, "a composite's timeline");
 
     await page.goto("/schedules");
     await expect(h1(page, "Planifications")).toBeVisible();
