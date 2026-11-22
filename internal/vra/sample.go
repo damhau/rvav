@@ -33,6 +33,10 @@ func SampleEstate(now time.Time) Estate {
 				Members: []Principal{user("lea.martin@corp.example")}, SharedResources: new(false)},
 			{ID: "vra-prj-legacy", Name: "Legacy Apps", Administrators: []Principal{user("former.admin@corp.example")}},
 		},
+		Directories: []Directory{{Name: "corp.example", BaseDN: "DC=corp,DC=example", DefaultOU: "OU=Computers", Projects: []DirectoryProject{
+			{ProjectID: "vra-prj-web", RelativeDN: "OU=Web,OU=Servers", Override: true},
+			{ProjectID: "vra-prj-legacy", Ignore: true},
+		}}},
 		Blueprints: []Blueprint{
 			{ID: "bp-rhel9", Name: "RHEL 9 Server", Description: "A RHEL 9 VM with its role and size.", ProjectID: "vra-prj-web",
 				ProjectName: "Web Platform", Status: "RELEASED", Content: rhel2, RequestScopeOrg: true, Versions: []BlueprintVersion{

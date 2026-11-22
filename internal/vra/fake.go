@@ -111,6 +111,8 @@ func (f *FakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		top(w, q, e.CloudAccounts)
 	case p == "/iaas/api/naming":
 		top(w, q, e.Namings)
+	case p == "/iaas/api/integrations":
+		top(w, q, fakeIntegrations(e.Directories))
 	case p == "/properties/api/property-groups":
 		pages(w, q, e.PropertyGroups)
 	case p == "/blueprint/api/blueprints":
@@ -304,6 +306,24 @@ func intParam(q url.Values, k string, def int) int {
 		return n
 	}
 	return def
+}
+
+// fakeIntegrations are the directories as vRA's integrations API gives
+// them, their projects a JSON text as integration properties are, with an
+// integration of another type.
+func fakeIntegrations(dirs []Directory) []map[string]any {
+	out := []map[string]any{{"name": "ipam.corp.example", "integrationType": "ipam"}}
+	for _, d := range dirs {
+		var projects []map[string]any
+		for _, p := range d.Projects {
+			projects = append(projects, map[string]any{"projectId": p.ProjectID, "relativeDN": p.RelativeDN, "override": p.Override,
+				"ignore": p.Ignore})
+		}
+		text, _ := json.Marshal(projects)
+		out = append(out, map[string]any{"name": d.Name, "integrationType": "activedirectory",
+			"integrationProperties": map[string]any{"baseDN": d.BaseDN, "defaultOU": d.DefaultOU, "projects": string(text)}})
+	}
+	return out
 }
 
 func top[T any](w http.ResponseWriter, q url.Values, all []T) {

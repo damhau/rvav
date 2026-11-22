@@ -174,7 +174,7 @@ func TestStandardVRO(t *testing.T) {
 		"std-notify":        {GroupNative, []string{StepNotify}},
 		"std-patch-window":  {GroupNative, []string{StepAWX, StepRvav, StepTime}},
 		"std-big-disk":      {GroupNative, []string{StepRvav, StepPerson, StepBranch}},
-		"std-ad-computer":   {GroupAWX, []string{StepAWX}},
+		"std-ad-computer":   {GroupNative, []string{}},
 		"std-guest-script":  {GroupAWX, []string{StepAWX, StepRvav}},
 		"std-rename":        {GroupNative, []string{StepRvav}},
 		"std-ask-requester": {GroupNative, []string{StepREST, StepPerson}},

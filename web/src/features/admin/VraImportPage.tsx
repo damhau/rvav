@@ -339,6 +339,19 @@ function ProjectsTab({ plan }: { plan: Plan }) {
       cell: (p) => <ProjectSharing p={p} />,
     },
     {
+      id: "ad",
+      header: "Active Directory OU",
+      cell: (p) =>
+        p.ad_ou ? (
+          <>
+            <span className="font-mono text-caption">{p.ad_ou}</span>
+            {p.ad_blueprint_ou && <div className="text-caption text-faint">Templates may choose theirs</div>}
+          </>
+        ) : (
+          <span className="text-faint">{p.ad_none ? "No computer objects" : "None"}</span>
+        ),
+    },
+    {
       id: "items",
       header: "Items shared",
       sortValue: (p) => p.items,

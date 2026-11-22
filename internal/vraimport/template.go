@@ -16,6 +16,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/integrations/ad"
 	"github.com/damhau/rvav/internal/vra"
 )
 
@@ -334,6 +335,7 @@ func mapVersion(e *vra.Estate, bp vra.Blueprint, v vra.BlueprintVersion, form *v
 					"(Catalog items › Secrets) before importing, since vRA never gives a secret's value.", name))
 			}
 		}
+		mapActiveDirectory(r.Properties, where, c, note)
 		mapFlags(r.Flags, where, c, note)
 		mapFolderAndProperties(sc, r.Properties, where, c, note)
 		mapMachineOptions(r.Properties, where, c, note)
@@ -1321,6 +1323,41 @@ func mapMachineOptions(props map[string]any, where string, c map[string]any, not
 	}
 }
 
+// mapActiveDirectory: a machine's activeDirectory.relativeDN and
+// ignoreActiveDirectory choose its computer object's OU, or none. rvav
+// counts them where the project's OU lets blueprints choose, as vRA where
+// the project allows an override (ADR-0064).
+func mapActiveDirectory(props map[string]any, where string, c map[string]any, note func(level, where, text string)) {
+	var choice map[string]any
+	skip, _ := props["ignoreActiveDirectory"].(bool)
+	if s, ok := props["ignoreActiveDirectory"].(string); ok {
+		skip = strings.EqualFold(s, "true")
+	}
+	if a, ok := props["activeDirectory"].(map[string]any); ok && !skip {
+		at := where + ".activeDirectory.relativeDN"
+		dn, _ := a["relativeDN"].(string)
+		if msg := ad.CheckDN(dn, ""); dn != "" && msg != "" {
+			note(Unmapped, at, fmt.Sprintf("OU %q: %s Left out: the project's OU applies.", dn, msg))
+		} else if dn != "" {
+			choice = map[string]any{"ou": dn}
+			note(Info, at, "The VMs' computer objects go in "+dn+" where the project's OU lets blueprints choose theirs (Projects › Placement › Active Directory).")
+		}
+	}
+	if skip {
+		choice = map[string]any{"skip": true}
+		note(Info, where+".ignoreActiveDirectory", "The VMs get no computer object where the project's OU lets blueprints choose (Projects › Placement › Active Directory).")
+	}
+	if choice == nil {
+		return
+	}
+	g, _ := c["guest"].(map[string]any)
+	if g == nil {
+		g = map[string]any{}
+	}
+	g["active_directory"] = choice
+	c["guest"] = g
+}
+
 // machineProps are the properties of vRA's vSphere machine schema; any
 // other property of a machine is a custom property.
 var machineProps = []string{"name", "description", "image", "imageRef", "flavor", "flavorRef", "cpuCount", "coreCount",
@@ -1328,7 +1365,7 @@ var machineProps = []string{"name", "description", "image", "imageRef", "flavor"
 	"attachedDisks", "storage", "constraints", "tags", "count", "folderName", "resourceGroupName", "remoteAccess",
 	"snapshotLimit", "ovfProperties", "imageDiskConstraints", "cloneFromSnapshot", "linkedClone", "enableDiskUuid",
 	"cpuLimit", "cpuReservation", "cpuShares", "cpuSharesLevel", "memoryLimitMb", "memoryReservationMb", "memoryShares",
-	"memorySharesLevel", "deploymentName", "hostName", "provisioningType", "storagePolicy"}
+	"memorySharesLevel", "deploymentName", "hostName", "provisioningType", "storagePolicy", "activeDirectory", "ignoreActiveDirectory"}
 
 // unreadProps are the machine schema's properties rvav has nothing for.
 var unreadProps = []string{"name", "hostName", "description", "imageRef", "flavorRef", "coreCount", "cloudConfigSettings",

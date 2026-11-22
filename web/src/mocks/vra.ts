@@ -84,16 +84,19 @@ const vraProjects: {
   properties?: Record<string, string>;
   /** vRA's Deployment sharing, on when absent. */
   shared_resources?: boolean;
+  /** The OU vRA's Active Directory integration gives it. */
+  ad?: Pick<S["VraProjectPlan"], "ad_ou" | "ad_blueprint_ou" | "ad_none">;
 }[] = [
   {
     id: "vra-prj-web",
     name: "Web Platform",
     placement_policy: "SPREAD",
     strategy: "spread",
+    ad: { ad_ou: "OU=Web,OU=Servers", ad_blueprint_ou: true },
     properties: { backupPolicy: "silver", costCenter: "CC-1001", "cost center": "CC-1001" },
   },
   { id: "vra-prj-data", name: "Data Services", shared_resources: false },
-  { id: "vra-prj-legacy", name: "Legacy Apps" },
+  { id: "vra-prj-legacy", name: "Legacy Apps", ad: { ad_none: true } },
 ];
 
 /**
@@ -165,7 +168,7 @@ function plan(db: Db, st: State): S["VraPlan"] {
     const sharing = db.projects.find((p) => p.id === id)?.deployment_sharing;
     return { vra_id: v.id, name: v.name, how, rvav_project_id: id, rvav_project_name: name, items, deployments,
       deployment_sharing: v.shared_resources === false ? "owner_only" : "all_members", rvav_deployment_sharing: id ? (sharing ?? "all_members") : undefined,
-      placement_policy: v.placement_policy, strategy: v.strategy, ...(id ? projectProperties(db, v.properties, id) : {}) }; // prettier-ignore
+      placement_policy: v.placement_policy, strategy: v.strategy, ...v.ad, ...(id ? projectProperties(db, v.properties, id) : {}) }; // prettier-ignore
   });
   const project = (id: string) => projects.find((p) => p.vra_id === id)!;
   const items: S["VraItemPlan"][] = templates.map((t) => {

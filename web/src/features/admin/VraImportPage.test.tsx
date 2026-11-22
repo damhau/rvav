@@ -26,6 +26,15 @@ describe("vRA import", () => {
     expect(strategy("vra-prj-legacy")).toHaveTextContent(/^None$/);
   });
 
+  it("shows the OU vRA's Active Directory integration gives each project", async () => {
+    renderApp("/admin/vra-import?tab=projects");
+    const table = await screen.findByRole("table", { name: "vRA projects" });
+    const ou = (id: string) => (within(table).getByText(id).closest("tr") as HTMLTableRowElement).cells[5];
+    expect(ou("vra-prj-web")).toHaveTextContent(/^OU=Web,OU=ServersTemplates may choose theirs$/);
+    expect(ou("vra-prj-data")).toHaveTextContent(/^None$/);
+    expect(ou("vra-prj-legacy")).toHaveTextContent(/^No computer objects$/);
+  });
+
   it("says what vRA's deployment sharing becomes, and where the rvav project's differs", async () => {
     const user = userEvent.setup();
     renderApp("/admin/vra-import?tab=projects");

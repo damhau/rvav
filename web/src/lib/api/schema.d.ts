@@ -8158,6 +8158,16 @@ export interface components {
             /** @description vRA's placement policy: DEFAULT, SPREAD or SPREAD_MEMORY. */
             placement_policy?: string;
             /**
+             * @description The OU vRA's Active Directory integration gives the project's
+             *     computer objects, relative to its base DN, for an administrator
+             *     to give the rvav project (the import writes none; ADR-0064).
+             */
+            ad_ou?: string;
+            /** @description vRA lets the project's templates choose their OU. */
+            ad_blueprint_ou?: boolean;
+            /** @description vRA makes no computer object for the project's machines. */
+            ad_none?: boolean;
+            /**
              * @description The placement rule strategy that places as the placement policy
              *     does, for an administrator to set on the rvav project's rules
              *     (the import writes none). Absent when rvav has none.

@@ -164,12 +164,24 @@ topics already bracket it, and a subscription that renames a VM on
 `compute.allocation.pre` (ADR-0054) does so before the object is made.
 
 ### vRA import
-The vRO triage maps `std-ad-computer` and `createComputerAD` workflows to
-this feature rather than to AWX. The importer reads vRA's Active
-Directory integration and its projects' relative DNs when the export has
-them, and suggests the placements; a blueprint's
-`activeDirectory.relativeDN` and `ignoreActiveDirectory` become
-`active_directory.ou` and `skip`.
+The vRO triage puts a workflow that makes or deletes computer objects
+with vRO's Active Directory plug-in (`createComputerAD`, `ComputerAD`)
+and reaches nothing but vCenter and Active Directory, `std-ad-computer`
+among the standard ones, in group A with no steps: this feature replaces
+it, and its subscription retires. One that also does something else
+stays in its group.
+
+A template machine's `activeDirectory.relativeDN` becomes its guest's
+`active_directory.ou` and `ignoreActiveDirectory` its `skip`; neither is
+a custom property. The importer reads vRA's Active Directory
+integrations (`/iaas/api/integrations`, type `activedirectory`) and
+shows each project's relative DN, whether its templates may override
+it, and whether it ignores Active Directory, in the plan's projects. It
+writes no placement: the integration's credentials aren't readable, and
+an administrator connects rvav's own first. vRA documents no schema for
+an integration's projects, so the reader takes several spellings and
+leaves out what it doesn't find: check the column against vRA's
+integration page.
 
 ## Consequences
 - The service account needs, on the OUs the placements name only: create

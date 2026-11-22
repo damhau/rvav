@@ -325,6 +325,73 @@ func (c *Client) PropertyGroups(ctx context.Context) ([]PropertyGroup, error) {
 	return list, err
 }
 
+// Directories are the Active Directory integrations; none when vRA has no
+// integrations API. vRA documents no schema for an integration's projects:
+// they are read under the names seen in its UI's requests, any of several
+// spellings, and left out when absent.
+func (c *Client) Directories(ctx context.Context) ([]Directory, error) {
+	list, err := listTop[map[string]any](ctx, c, "/iaas/api/integrations", url.Values{"apiVersion": {"2021-07-15"}})
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Directory
+	for _, raw := range list {
+		if t, _ := raw["integrationType"].(string); !strings.EqualFold(t, "activedirectory") {
+			continue
+		}
+		out = append(out, directoryOf(raw))
+	}
+	return out, nil
+}
+
+// directoryOf reads an integration's settings where vRA has put them: in
+// its integrationProperties or at its top.
+func directoryOf(raw map[string]any) Directory {
+	props, _ := raw["integrationProperties"].(map[string]any)
+	field := func(names ...string) any {
+		for _, n := range names {
+			for _, m := range []map[string]any{props, raw} {
+				if v, ok := m[n]; ok && v != nil {
+					return v
+				}
+			}
+		}
+		return nil
+	}
+	str := func(v any) string { s, _ := v.(string); return s }
+	truth := func(v any) bool {
+		b, ok := v.(bool)
+		return b || !ok && strings.EqualFold(str(v), "true")
+	}
+	d := Directory{Name: str(raw["name"]), BaseDN: str(field("baseDN", "baseDn", "base_dn")),
+		DefaultOU: str(field("defaultOU", "defaultOu", "default_ou"))}
+	projects, _ := field("projects", "associatedProjects", "projectConfigs").([]any)
+	if s, ok := field("projects", "associatedProjects", "projectConfigs").(string); ok {
+		_ = json.Unmarshal([]byte(s), &projects)
+	}
+	for _, p := range projects {
+		m, _ := p.(map[string]any)
+		get := func(names ...string) any {
+			for _, n := range names {
+				if v, ok := m[n]; ok {
+					return v
+				}
+			}
+			return nil
+		}
+		id := str(get("projectId", "projectID", "id"))
+		if id == "" {
+			continue
+		}
+		d.Projects = append(d.Projects, DirectoryProject{ProjectID: id, RelativeDN: str(get("relativeDN", "relativeDn", "ou")),
+			Override: truth(get("override", "overrideRelativeDN", "overrideOU")), Ignore: truth(get("ignore", "ignoreActiveDirectory"))})
+	}
+	return d
+}
+
 // RequestForm is the custom form of a template or workflow, if it has one.
 func (c *Client) RequestForm(ctx context.Context, sourceType, sourceID string) (*Form, error) {
 	var f Form
@@ -573,6 +640,9 @@ func (c *Client) Read(ctx context.Context) (*Estate, error) {
 		return nil, err
 	}
 	if e.PropertyGroups, err = c.PropertyGroups(ctx); err != nil {
+		return nil, err
+	}
+	if e.Directories, err = c.Directories(ctx); err != nil {
 		return nil, err
 	}
 	if e.Blueprints, err = c.Blueprints(ctx); err != nil {

@@ -108,6 +108,13 @@ type ProjectPlan struct {
 	// project's admin sets it, the import doesn't (ADR-0045).
 	DeploymentSharing     string `json:"deployment_sharing"`
 	RvavDeploymentSharing string `json:"rvav_deployment_sharing,omitempty"`
+	// ADOU is the OU vRA's Active Directory integration gives the project's
+	// computer objects, relative to its base DN, and ADBlueprintOU whether a
+	// template may choose another: an administrator gives them to the rvav
+	// project (ADR-0064), the import doesn't. ADNone says vRA makes none.
+	ADOU          string `json:"ad_ou,omitempty"`
+	ADBlueprintOU bool   `json:"ad_blueprint_ou,omitempty"`
+	ADNone        bool   `json:"ad_none,omitempty"`
 }
 
 // deploymentSharing is what vRA's Deployment sharing becomes in rvav.
@@ -176,6 +183,9 @@ func PlanImport(e *vra.Estate, r Rvav, st ImportState) ImportPlan {
 	for _, vp := range e.Projects {
 		pp := ProjectPlan{VRAID: vp.ID, Name: vp.Name, PlacementPolicy: vp.PlacementPolicy, Strategy: strategyFor(vp.PlacementPolicy),
 			DeploymentSharing: deploymentSharing(vp)}
+		if d := e.DirectoryOf(vp.ID); d != nil {
+			pp.ADOU, pp.ADBlueprintOU, pp.ADNone = d.RelativeDN, d.Override, d.Ignore
+		}
 		proj, how := mapProject(r, vp.ID, vp.Name)
 		pp.How = how
 		if proj != nil {

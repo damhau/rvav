@@ -1,12 +1,15 @@
 package vraimport
 
 import (
+	"encoding/json"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/vra"
 )
 
@@ -222,5 +225,72 @@ func TestPlanSecretsAndProjectProperties(t *testing.T) {
 	r.Secrets["root-password"] = true
 	if it := item(PlanImport(&e, r, st)); it.Action != ActionCreate {
 		t.Fatalf("kept with its secrets = %s %q", it.Action, it.Reason)
+	}
+}
+
+// TestMapActiveDirectory: a machine's relative DN is its guest's
+// active_directory.ou, ignoreActiveDirectory its skip; neither is a custom
+// property, and a relative DN that isn't a DN is left out (ADR-0064).
+func TestMapActiveDirectory(t *testing.T) {
+	for _, c := range []struct {
+		props map[string]any
+		want  any
+		note  string
+	}{
+		{map[string]any{"activeDirectory": map[string]any{"relativeDN": "OU=Linux,OU=Web"}}, map[string]any{"ou": "OU=Linux,OU=Web"}, Info},
+		{map[string]any{"ignoreActiveDirectory": true, "activeDirectory": map[string]any{"relativeDN": "OU=Linux"}}, map[string]any{"skip": true}, Info},
+		{map[string]any{"ignoreActiveDirectory": "true"}, map[string]any{"skip": true}, Info},
+		{map[string]any{"activeDirectory": map[string]any{"relativeDN": "${input.ou}"}}, nil, Unmapped},
+	} {
+		var notes []Note
+		out := map[string]any{}
+		mapActiveDirectory(c.props, "m", out, func(level, where, text string) { notes = append(notes, Note{level, where, text}) })
+		g, _ := out["guest"].(map[string]any)
+		if got := g["active_directory"]; !reflect.DeepEqual(got, c.want) && (c.want != nil || got != nil) {
+			t.Errorf("%v: active_directory = %v, want %v", c.props, got, c.want)
+		}
+		if len(notes) != 1 || notes[0].Level != c.note {
+			t.Errorf("%v: notes = %+v", c.props, notes)
+		}
+		props := map[string]any{}
+		mapFolderAndProperties(scope{}, c.props, "m", props, func(string, string, string) {})
+		if props["properties"] != nil {
+			t.Errorf("%v: custom properties %v", c.props, props["properties"])
+		}
+	}
+
+	// In a template, beside its cloud-init.
+	e := vra.SampleEstate(time.Now())
+	bp := e.Blueprints[slices.IndexFunc(e.Blueprints, func(b vra.Blueprint) bool { return b.ID == "bp-rhel9" })]
+	bp.Versions[1].Content = strings.Replace(bp.Versions[1].Content, "      image: rhel9\n",
+		"      image: rhel9\n      activeDirectory:\n        relativeDN: OU=Linux,OU=Web\n", 1)
+	p := MapTemplate(&e, bp)
+	raw, _ := json.Marshal(p.Doc.Versions[len(p.Doc.Versions)-1].Blueprint)
+	b, err := blueprint.Parse(raw)
+	if err != nil || b.Guest.ActiveDirectory == nil || b.Guest.ActiveDirectory.OU != "OU=Linux,OU=Web" || b.Guest.CloudInit == nil {
+		t.Fatalf("guest = %+v, %v", b.Guest, err)
+	}
+	if !has(p, Info, "resources.Cloud_vSphere_Machine_1.activeDirectory.relativeDN", "OU=Linux,OU=Web") {
+		t.Errorf("notes = %+v", p.Notes)
+	}
+}
+
+// TestPlanProjectDirectories: each project's plan says the OU vRA gives
+// its computer objects, whether its templates may choose theirs, and when
+// vRA makes none.
+func TestPlanProjectDirectories(t *testing.T) {
+	e := vra.SampleEstate(time.Now())
+	plan := PlanImport(&e, Rvav{Now: time.Now(), ProjectMap: map[string]string{}},
+		ImportState{Links: map[string]Link{}, Items: map[string]ItemState{}, Slugs: map[string]string{}})
+	type ad struct {
+		ou        string
+		blueprint bool
+		none      bool
+	}
+	want := map[string]ad{"vra-prj-web": {"OU=Web,OU=Servers", true, false}, "vra-prj-legacy": {"", false, true}}
+	for _, pp := range plan.Projects {
+		if got := (ad{pp.ADOU, pp.ADBlueprintOU, pp.ADNone}); got != want[pp.VRAID] {
+			t.Errorf("%s: %+v, want %+v", pp.VRAID, got, want[pp.VRAID])
+		}
 	}
 }

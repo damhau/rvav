@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -57,6 +58,11 @@ func TestRead(t *testing.T) {
 		}
 		if pair := e.Deployments[1].Resources; pair[0].PreventDelete == nil || !*pair[0].PreventDelete || pair[1].PreventDelete != nil {
 			t.Fatalf("%s: vra-web-pair's delete protection = %+v", name, pair)
+		}
+		// The Active Directory integration, its projects in a JSON text, the
+		// IPAM one left out.
+		if len(e.Directories) != 1 || !reflect.DeepEqual(e.Directories, want.Directories) {
+			t.Fatalf("%s: directories = %+v", name, e.Directories)
 		}
 		// vRO, and what runs it.
 		if len(e.Subscriptions) != 4 || !e.Subscriptions[1].Blocking || len(e.ResourceActions) != 1 ||

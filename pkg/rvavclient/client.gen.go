@@ -11495,6 +11495,17 @@ type VraProjectMapping struct {
 
 // VraProjectPlan defines model for VraProjectPlan.
 type VraProjectPlan struct {
+	// AdBlueprintOu vRA lets the project's templates choose their OU.
+	AdBlueprintOu *bool `json:"ad_blueprint_ou,omitempty"`
+
+	// AdNone vRA makes no computer object for the project's machines.
+	AdNone *bool `json:"ad_none,omitempty"`
+
+	// AdOu The OU vRA's Active Directory integration gives the project's
+	// computer objects, relative to its base DN, for an administrator
+	// to give the rvav project (the import writes none; ADR-0064).
+	AdOu *string `json:"ad_ou,omitempty"`
+
 	// DeploymentSharing What vRA's Deployment sharing (`sharedResources`, on when absent)
 	// becomes: `all_members` when on, `owner_only` when off. The import
 	// doesn't change the rvav project's; an administrator or its project

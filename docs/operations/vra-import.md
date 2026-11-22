@@ -185,6 +185,19 @@ rvav before you adopt deployments on it
 Adopting a VM gives it no address from a range: exclude its address from
 the range, as the reconcile report says.
 
+vRA's Active Directory integration isn't imported, nor its credentials.
+The **Active Directory OU** column of the **Projects** tab gives the OU
+it puts the project's computer objects in, relative to its base DN, and
+whether the project's templates may choose theirs. To keep them, set up
+the Active Directory integration (**Administration › Integrations ›
+Active Directory**), then add the OU to the rvav project or its
+environments (the project's **Placement** tab, **Active Directory**),
+with **Blueprints may choose their OU** when templates chose theirs
+([ADR-0064](../adr/0064-active-directory-computer-objects.md)). A
+project whose machines vRA ignores says **No computer objects**: give it
+no OU. rvav reads the integration from vRA's integrations API: a vRA
+without that API, or without the integration, gives no OU.
+
 A vRA project's custom properties go to its rvav project when you import
 the catalog ([ADR-0038](../adr/0038-names-groups-secrets-properties.md)):
 each VM of the project gets them as vSphere custom attributes. The
@@ -259,6 +272,7 @@ check it) or *unmapped* (left out).
 | `preventDelete: true` on a machine | The component's `prevent_delete`: its VMs can't be deleted until an administrator runs the deployment's **Allow deletion**. Adopting a vRA deployment keeps its VMs' protection too ([Deployments](#deployments)). |
 | Other resource flags (`ignoreChanges`, `createBeforeDelete`, `forceRecreate`, `allocatePerInstance`, `dependsOnPrevious`...) | Reported, left out. Timeouts (`createTimeout`...) are left out with an info note: rvav's own apply. |
 | `folderName` | The component's `folder`, below the VM folder of the placement rule folder's datacenter. `${input.x}` is `${inputs.x}`; a folder that reads a machine is reported. |
+| A machine's `activeDirectory.relativeDN`, `ignoreActiveDirectory: true` | The guest's `active_directory`: `ou` is the relative DN, below the integration's base DN, which counts when the project allows blueprints their OU; `skip: true` makes no computer object ([ADR-0064](../adr/0064-active-directory-computer-objects.md)). A relative DN that isn't a DN, such as one with an input, is reported and left out. Neither becomes a custom property. |
 | A machine's `name` or `hostName` | Reported, left out: the item's naming names the VMs, its `{seq}` numbering them across deployments, where `${count.index}` would repeat ([ADR-0024](../adr/0024-multi-vm-blueprints.md)). |
 | The vSphere machine schema's settings rvav has no equivalent of (`description`, `imageRef`, `flavorRef`, `coreCount`, `customizeGuestOs`, `cloneFromSnapshot`, `snapshotLimit`, `ovfProperties`, CPU and memory limits, reservations and shares...) | Reported, left out. |
 | A machine's other properties (not in vRA's vSphere machine schema) | Custom properties: the component's `properties`, which each VM gets as vSphere custom attributes. Text and numbers carry over, with `${input.x}` as `${inputs.x}`. Lists, maps, a key rvav refuses, and a value that reads a machine are reported. Check the list in the notes: a property that was a vSphere setting rvav doesn't have would become an attribute. |
@@ -544,7 +558,7 @@ another trigger.
 
 | Suggested group | When |
 |---|---|
-| **A. Native** | A workflow that only drives vCenter: rvav's built-in steps, or a composite item. One that also calls REST APIs, or only them, unless a subscription or day-2 action runs it: a composite item with REST call steps ([ADR-0033](../adr/0033-composite-step-kinds.md)). One that sends mail, a step that sends a message, under the same condition. A decision is a branch's, one nesting too deep a custom workflow's. One with a user interaction or a timer and no wait for an event, under the same condition: a composite item with steps that wait for a person or a time, or poll (a timer around a REST call). An action that fills a form field: a value source on the field (REST when it calls REST, CEL otherwise). |
+| **A. Native** | A workflow that only drives vCenter: rvav's built-in steps, or a composite item. One that makes or deletes computer objects in Active Directory with vRO's plug-in (`createComputerAD`, `ComputerAD`), and reaches nothing else: rvav's Active Directory integration, which needs no step ([ADR-0064](../adr/0064-active-directory-computer-objects.md)). Give its OU and groups to the project or environment, and retire the workflow with the subscription that runs it. One that also calls REST APIs, or only them, unless a subscription or day-2 action runs it: a composite item with REST call steps ([ADR-0033](../adr/0033-composite-step-kinds.md)). One that sends mail, a step that sends a message, under the same condition. A decision is a branch's, one nesting too deep a custom workflow's. One with a user interaction or a timer and no wait for an event, under the same condition: a composite item with steps that wait for a person or a time, or poll (a timer around a REST call). An action that fills a form field: a value source on the field (REST when it calls REST, CEL otherwise). |
 | **B. AWX** | A workflow that calls other systems (Active Directory, SQL, PowerShell, SSH, NSX...), mail when a subscription or day-2 action runs it or alongside those, or REST APIs when a subscription or day-2 action runs it, which can't run a composite: a playbook, with the Ansible collections the report names. ABX actions. |
 | **C. Custom Temporal workflow** | A workflow that waits for events, until a step can. One with a user interaction or a timer that also does, or that a subscription or day-2 action runs: it waits durably, and asks with rvav's approvals. |
 | **D. Retire** | Nothing in vRA runs it (or only disabled subscriptions), and it hasn't run for six months or is a copy of another that never ran. An action nothing calls. |

@@ -443,18 +443,52 @@ type Estate struct {
 	Namings []CustomNaming `json:"custom_namings,omitempty"`
 	// PropertyGroups are the property groups; none in a vRA without them.
 	PropertyGroups []PropertyGroup `json:"property_groups,omitempty"`
-	Blueprints     []Blueprint     `json:"blueprints"`
-	Forms          []Form          `json:"forms"`
-	CatalogItems   []CatalogItem   `json:"catalog_items"`
-	Entitlements   []Entitlement   `json:"entitlements"`
-	Policies       []Policy        `json:"policies"`
-	Deployments    []Deployment    `json:"deployments"`
+	// Directories are the Active Directory integrations, as far as vRA's
+	// integrations API gives them; none in a vRA without it.
+	Directories  []Directory   `json:"ad_integrations,omitempty"`
+	Blueprints   []Blueprint   `json:"blueprints"`
+	Forms        []Form        `json:"forms"`
+	CatalogItems []CatalogItem `json:"catalog_items"`
+	Entitlements []Entitlement `json:"entitlements"`
+	Policies     []Policy      `json:"policies"`
+	Deployments  []Deployment  `json:"deployments"`
 	// What extensibility runs: vRA's subscriptions, vRO's workflows and
 	// actions (the triage report, P2.4).
 	Subscriptions   []Subscription   `json:"subscriptions"`
 	ResourceActions []ResourceAction `json:"resource_actions"`
 	Workflows       []VROWorkflow    `json:"vro_workflows"`
 	Actions         []VROAction      `json:"vro_actions"`
+}
+
+// Directory is an Active Directory integration of vRA: its base DN and the
+// OU each project's computer objects go in (ADR-0064).
+type Directory struct {
+	Name      string             `json:"name"`
+	BaseDN    string             `json:"base_dn,omitempty"`
+	DefaultOU string             `json:"default_ou,omitempty"`
+	Projects  []DirectoryProject `json:"projects,omitempty"`
+}
+
+// DirectoryProject is a project's settings in a directory: its OU relative
+// to the base DN, whether a template may choose another, and whether its
+// machines get none.
+type DirectoryProject struct {
+	ProjectID  string `json:"project_id"`
+	RelativeDN string `json:"relative_dn,omitempty"`
+	Override   bool   `json:"override,omitempty"`
+	Ignore     bool   `json:"ignore,omitempty"`
+}
+
+// DirectoryOf is the directory settings of a project, nil for none.
+func (e *Estate) DirectoryOf(projectID string) *DirectoryProject {
+	for _, d := range e.Directories {
+		for i, p := range d.Projects {
+			if p.ProjectID == projectID {
+				return &d.Projects[i]
+			}
+		}
+	}
+	return nil
 }
 
 // VCenterOf is the vCenter of a region: its vSphere cloud account's host

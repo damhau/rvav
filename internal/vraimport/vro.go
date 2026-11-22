@@ -132,6 +132,10 @@ type Triage struct {
 	Steps map[string]int `json:"steps"`
 }
 
+// computerObjects is what vRO's Active Directory plugin scripts read as to
+// make, find or delete a computer object.
+var computerObjects = regexp.MustCompile(`\b(createComputerAD|getComputerAD|searchComputer\w*|destroyComputer\w*)\b|\bAD:ComputerAD\b|\bComputerAD\.`)
+
 var becomes = map[string]string{
 	GroupNative:   "Built-in rvav steps or a composite item",
 	GroupAWX:      "An AWX job template",
@@ -433,6 +437,11 @@ func TriageVRO(e *vra.Estate) Triage {
 				it.Reasons = append(it.Reasons, "Its content is the same as "+names[copyOf]+"'s.")
 			}
 			it.Reasons = append(it.Reasons, runReason(w.Runs, w.LastRun))
+		case computerObjects.MatchString(in.content) && len(without(it.Systems, "vCenter", "Active Directory")) == 0 && !human && !waits:
+			it.Group, it.Becomes = GroupNative, "rvav's Active Directory integration"
+			it.Reasons = append(it.Reasons, "It makes or deletes VMs' computer objects in Active Directory, which rvav does itself for "+
+				"every VM in an OU, before the build and after the delete (ADR-0064): give the OU and the groups to the project or "+
+				"environment (Projects › Placement › Active Directory) and retire it with what runs it. Check what else its scripts do.")
 		case (human || waits) && !events && !runsAlone(it.UsedBy):
 			it.Group = GroupNative
 			switch {
@@ -499,7 +508,9 @@ func TriageVRO(e *vra.Estate) Triage {
 			it.Group = GroupAWX
 			it.Reasons = append(it.Reasons, "It calls "+strings.Join(without(it.Systems, "vCenter"), ", ")+": a playbook does, with "+ansibleFor(it.Systems)+".")
 		}
-		if it.Group != GroupDrop {
+		if it.Becomes == "rvav's Active Directory integration" {
+			it.Steps = []string{}
+		} else if it.Group != GroupDrop {
 			// Rebuilt as a composite: with the step kinds D2 may add, if any.
 			it.Steps = compositeSteps(kinds, it.Systems)
 			if added := slices.DeleteFunc(slices.Clone(it.Steps), func(s string) bool { return !slices.Contains(NewSteps, s) }); len(added) > 0 {
