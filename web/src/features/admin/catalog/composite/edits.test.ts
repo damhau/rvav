@@ -819,7 +819,7 @@ describe("loops, catch paths, the error handler and waits for a signal (ADR-0057
     const t = addStep(flow, call("fix"), { catchOf: "step:dns" });
     expect(() => addStep(flow, { key: "w", wait: { for: "1h" } }, { catchOf: "step:dns" })).toThrow(EditError);
     expect(() => addStep(flow, { key: "w", signal: { name: "x", timeout: "1h" } }, "onError")).toThrow(
-      "A catch path doesn't wait",
+      "The error handler doesn't wait",
     );
     expect(() => addStep(t, call("again"), { catchOf: "step:fix" })).toThrow(
       "A step of a catch path has no catch path of its own.",

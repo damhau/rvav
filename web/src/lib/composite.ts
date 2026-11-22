@@ -408,17 +408,29 @@ export function loopRefused(s: Raw): string {
   return "";
 }
 
-/** Why a step can't be on a catch path or in the error handler, if it can't (core.catchRefused). */
-export function catchRefused(s: Raw): string {
+/** Why a step can't be on a catch path or in the error handler (handler), if it can't (core.catchRefused). */
+export function catchRefused(s: Raw, handler = false): string {
+  const [path, of] = handler ? ["The error handler", "the error handler"] : ["A catch path", "a catch path"];
   if (Array.isArray(s.parallel) || s.branch)
-    return "A catch path lists steps in order: a parallel group or a branch can't be one of them.";
+    return `${path} lists steps in order: a parallel group or a branch can't be one of them.`;
   if (s.ask || s.wait || s.poll || s.signal)
-    return "A catch path doesn't wait: it runs while the request is failing. Use a message, a REST call, an AWX job or a custom workflow.";
-  if (s.resource) return "A catch path makes no custom resource: nothing would roll it back.";
-  if (s.for_each) return "A step of a catch path doesn't loop.";
-  if (Array.isArray(s.catch) && s.catch.length > 0) return "A step of a catch path has no catch path of its own.";
-  if (s.undo !== undefined) return "A step of a catch path isn't undone: it runs because something failed.";
+    return `${path} doesn't wait: it runs while the request is failing. Use a message, a REST call, an AWX job or a custom workflow.`;
+  if (s.resource) return `${path} makes no custom resource: nothing would roll it back.`;
+  if (s.for_each) return `A step of ${of} doesn't loop.`;
+  if (Array.isArray(s.catch) && s.catch.length > 0) return `A step of ${of} has no catch path of its own.`;
+  if (s.undo !== undefined) return `A step of ${of} isn't undone: it runs because something failed.`;
   return "";
+}
+
+const varsLooseMessage =
+  "Read a shared variable as vars.<group>.<name>, written so: not by index, nor a group whole. rvav finds by name the variables an item reads, to check they exist and keep them.";
+
+/** Whether an expression reads a shared variable other than as the text vars.<group>.<name> (core.varsLoose). */
+export function varsLoose(expr: string): boolean {
+  const code = celCode(expr);
+  for (const m of code.matchAll(/(?<![.\w])vars\b/g))
+    if (!/^vars\.[A-Za-z_]\w*\.[A-Za-z_]\w*/.test(code.slice(m.index))) return true;
+  return false;
 }
 
 /** Why a step can't have a catch path, or be in a parallel group that has one, if it can't (core.caughtRefused). */
@@ -678,6 +690,7 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
     for (const x of pointedExpressions(s, sp)) {
       const why = flowVarsRead(x.expr, Boolean(forEach), catching);
       if (why) err(x.at, "invalid", why);
+      else if (varsLoose(x.expr)) err(x.at, "invalid", varsLooseMessage);
     }
     for (const e of expressions(s)) read(e, null);
     for (const e of undoExpressions(s)) read(e, key);
@@ -744,6 +757,23 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
   };
 
   /**
+   * A step refused where it is, as the server refuses it: none of it is
+   * checked nor counts for the steps after it. Its view is drawn, so its
+   * problem shows on it.
+   */
+  const drawnOnly = (x: Raw, xp: string, g: number): CompositeStepView => {
+    const kept = { problems: problems.length, seen: new Map(seen), signals: new Set(signals), catching };
+    const view = readStep(x, xp, g, null);
+    problems.length = kept.problems;
+    seen.clear();
+    kept.seen.forEach((v, k) => seen.set(k, v));
+    signals.clear();
+    kept.signals.forEach((s) => signals.add(s));
+    catching = kept.catching;
+    return view;
+  };
+
+  /**
    * A branch's sides. Their steps come after it, which they read, and share its
    * group: only later groups read them, as they read a step `when` skipped.
    */
@@ -797,7 +827,7 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
    * A catch path's steps: they run in order after the step or group failed,
    * read what came before it, and later groups may read them.
    */
-  const catchPath = (list: unknown, at: string, g: number): CompositeStepView[] => {
+  const catchPath = (list: unknown, at: string, g: number, handler = false): CompositeStepView[] => {
     const out: CompositeStepView[] = [];
     if (!Array.isArray(list)) return out;
     const scope: SideScope = { open: new Set(), others: new Set() };
@@ -805,9 +835,10 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
     try {
       (list as Raw[]).forEach((x, j) => {
         const xp = `${at}/${j}`;
-        const why = catchRefused(x);
+        const why = catchRefused(x, handler);
         if (why) {
           err(xp, "invalid", why);
+          out.push(drawnOnly(x, xp, g));
           return;
         }
         out.push(readStep(x, xp, g, scope));
@@ -873,7 +904,7 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
     groups.push(group);
   });
   // The error handler runs after any step: it reads them all.
-  const onError = catchPath(blueprint.on_error, `${prefix}/on_error`, steps.length);
+  const onError = catchPath(blueprint.on_error, `${prefix}/on_error`, steps.length, true);
   return { groups, groupCatch, onError, problems };
 }
 

@@ -741,6 +741,20 @@ describe("loops, catch paths and signals (ADR-0057)", () => {
     expect(g.problems).toEqual([]);
   });
 
+  it("draws a step refused on a catch path or in the error handler, with its problem", () => {
+    const g = compositeGraph({
+      kind: "composite",
+      steps: [post("make", { catch: [{ key: "later", signal: { name: "x", timeout: "1h" } }] })],
+      on_error: [{ key: "after", signal: { name: "y", timeout: "1h" } }],
+    });
+    expect(node(g, "step:later")).toMatchObject({
+      lines: [{ label: "Catches", text: "make" }, { label: "Waits for" }, { label: "Timeout" }],
+      problems: [expect.stringMatching(/^A catch path doesn't wait/)],
+    });
+    expect(node(g, "step:after").problems).toEqual([expect.stringMatching(/^The error handler doesn't wait/)]);
+    expect(edge(g, "seq:end>step:after")).toBeDefined();
+  });
+
   it("puts a side's catch path on its side", () => {
     const g = compositeGraph({
       kind: "composite",

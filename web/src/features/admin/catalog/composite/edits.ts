@@ -444,9 +444,9 @@ function listOf(doc: Document, holder: YAMLMap, key: string, order: string[]): Y
   return seq;
 }
 
-/** Refuses a step on a catch path that the server would refuse there. */
-function mayCatch(step: Raw) {
-  const why = catchRefused(step);
+/** Refuses a step on a catch path, or in the error handler (handler), that the server would refuse there. */
+function mayCatch(step: Raw, handler = false) {
+  const why = catchRefused(step, handler);
   if (why) throw new EditError(why);
 }
 
@@ -471,7 +471,7 @@ export function addStep(text: string, step: Raw, where: Where): string {
   const node = doc.createNode(step) as YAMLMap;
   if (where === "end") steps.items.push(node);
   else if (where === "onError") {
-    mayCatch(step);
+    mayCatch(step, true);
     listOf(doc, blueprintOf(doc), "on_error", blueprintOrder).items.push(node);
   } else if ("catchOf" in where) {
     mayCatch(step);
@@ -482,7 +482,7 @@ export function addStep(text: string, step: Raw, where: Where): string {
   } else if ("after" in where) {
     const at = locate(doc, where.after);
     if (at.caught) {
-      mayCatch(step);
+      mayCatch(step, at.caught.of === "on_error");
       at.caught.list.items.splice(at.caught.index + 1, 0, node);
     } else if (at.side) {
       if (step.branch !== undefined) throw new EditError(noBranchOnSide);
@@ -928,7 +928,7 @@ export function setForEach(text: string, id: string, field: "items" | "parallel"
   const at = locate(doc, id);
   const step = at.node.toJS(doc) as Raw;
   if (step.for_each === undefined) {
-    const why = at.caught ? "A step of a catch path doesn't loop." : loopRefused(step);
+    const why = at.caught ? catchRefused({ for_each: {} }, at.caught.of === "on_error") : loopRefused(step);
     if (why) throw new EditError(why);
     if (step.undo !== undefined)
       throw new EditError("A loop has no undo: each pass would need its own. Remove its undo first.");

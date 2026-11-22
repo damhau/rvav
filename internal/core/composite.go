@@ -387,7 +387,7 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 		defer func() { catching = false }()
 		for j, x := range list {
 			xp := fmt.Sprintf("%s/%d", at, j)
-			if why := catchRefused(x); why != "" {
+			if why := catchRefused(x, at == ptr+"/on_error"); why != "" {
 				errs = append(errs, fieldErr(xp, "invalid", why))
 				continue
 			}

@@ -99,22 +99,26 @@ func loopRefused(s blueprint.CompositeStep) string {
 }
 
 // catchRefused says why a step can't be on a catch path or in the error
-// handler, which run because something failed: only steps that run once,
-// with nothing to undo or wait for.
-func catchRefused(s blueprint.CompositeStep) string {
+// handler (handler), which run because something failed: only steps that
+// run once, with nothing to undo or wait for.
+func catchRefused(s blueprint.CompositeStep, handler bool) string {
+	path, of := "A catch path", "a catch path"
+	if handler {
+		path, of = "The error handler", "the error handler"
+	}
 	switch {
 	case len(s.Parallel) > 0, s.Branch != nil:
-		return "A catch path lists steps in order: a parallel group or a branch can't be one of them."
+		return path + " lists steps in order: a parallel group or a branch can't be one of them."
 	case s.Ask != nil, s.Wait != nil, s.Poll != nil, s.Signal != nil:
-		return "A catch path doesn't wait: it runs while the request is failing. Use a message, a REST call, an AWX job or a custom workflow."
+		return path + " doesn't wait: it runs while the request is failing. Use a message, a REST call, an AWX job or a custom workflow."
 	case s.Resource != nil:
-		return "A catch path makes no custom resource: nothing would roll it back."
+		return path + " makes no custom resource: nothing would roll it back."
 	case s.ForEach != nil:
-		return "A step of a catch path doesn't loop."
+		return "A step of " + of + " doesn't loop."
 	case len(s.Catch) > 0:
-		return "A step of a catch path has no catch path of its own."
+		return "A step of " + of + " has no catch path of its own."
 	case s.Undo != nil:
-		return "A step of a catch path isn't undone: it runs because something failed."
+		return "A step of " + of + " isn't undone: it runs because something failed."
 	}
 	return ""
 }

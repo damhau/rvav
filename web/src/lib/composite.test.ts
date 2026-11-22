@@ -561,12 +561,43 @@ describe("loops, catch paths and signals (ADR-0057)", () => {
       ["/definition/blueprint/steps/0/catch", noCatch],
       [
         "/definition/blueprint/on_error/0",
-        "A catch path doesn't wait: it runs while the request is failing. Use a message, a REST call, an AWX job or a custom workflow.",
+        "The error handler doesn't wait: it runs while the request is failing. Use a message, a REST call, an AWX job or a custom workflow.",
       ],
     ]);
     expect(
       refused({ steps: [{ parallel: [{ key: "lb", resource: { type: "lb" } }], catch: [post("fix", "{}")] }] }),
     ).toEqual([["/definition/blueprint/steps/0/catch", noCatch]]);
+  });
+
+  it("keeps a refused step of a catch path or the error handler in its view, checking nothing else of it", () => {
+    const v = readComposite({
+      steps: [post("make", "{}", { catch: [{ key: "later", signal: { name: "x", timeout: "nope" } }] })],
+      on_error: [{ key: "after", wait: { for: "1h" }, with: { x: "1" } }, post("tell", "{'w': steps.later.at}")],
+    });
+    expect(v.groups[0]![0]!.catch).toMatchObject([
+      { key: "later", kind: "signal", pointer: "/definition/blueprint/steps/0/catch/0" },
+    ]);
+    expect(v.onError.map((s) => [s.key, s.kind, s.pointer])).toEqual([
+      ["after", "wait", "/definition/blueprint/on_error/0"],
+      ["tell", "rest", "/definition/blueprint/on_error/1"],
+    ]);
+    // Only the refusals: not the timeout, nor the inputs; and a refused step isn't one later steps read.
+    expect(v.problems.map((p) => [p.field, p.code])).toEqual([
+      ["/definition/blueprint/steps/0/catch/0", "invalid"],
+      ["/definition/blueprint/on_error/0", "invalid"],
+      ["/definition/blueprint/on_error/1", "unknown_step"],
+    ]);
+  });
+
+  it("refuses a shared variable read other than as vars.<group>.<name> (core.varsLoose)", () => {
+    const loose = (body: string) =>
+      readComposite({ steps: [post("make", body)] }).problems.map((p) => [p.field, p.message.slice(0, 40)]);
+    expect(loose("{'a': vars.team.owner, 'b': 'vars[x]', 'c': inputs.vars}")).toEqual([]);
+    expect(loose("{'a': vars['team']['owner']}")).toEqual([
+      ["/definition/blueprint/steps/0/rest/body", "Read a shared variable as vars.<group>.<"],
+    ]);
+    expect(loose("{'a': vars.team}")).toHaveLength(1);
+    expect(loose("{'a': vars . team . owner}")).toHaveLength(1);
   });
 
   it("reads a loop, a signal, catch paths and the error handler, and what each may read", () => {
