@@ -202,7 +202,7 @@ func (a *Activities) ask(ctx context.Context, q asking) (asked, error) {
 			res.OK, res.Err = false, took.problem
 		}
 	}
-	u := store.RunUpdate{Unclaimed: true}
+	var u store.RunUpdate
 	var out asked
 	switch {
 	case !res.OK:
@@ -296,7 +296,7 @@ func (a *Activities) recover(ctx context.Context, q asking, runID, why string) (
 	sub.Target = q.sub.Recovery
 	start, res := a.deliverBlocking(ctx, dispatch.Delivery{RunID: id, Sub: sub, Event: withRecovery(q.payload, why, runID),
 		Blocking: true, Recovery: true, StepKey: key})
-	u := store.RunUpdate{Unclaimed: true}
+	var u store.RunUpdate
 	switch {
 	case !res.OK:
 		u.Status, u.Reason = "failed", &res.Err
@@ -353,8 +353,9 @@ func (a *Activities) deliverBlocking(ctx context.Context, d dispatch.Delivery) (
 	deadline := start.Add(timeout)
 	res := a.Subscriptions.Attempt(ctx, d)
 	if !res.OK && time.Until(deadline) > timeout/2 {
-		_ = a.Store.RecordAttempt(ctx, d.RunID, dispatch.AttemptRow(start, time.Now(), res),
-			store.RunUpdate{Status: "delivering", Unclaimed: true})
+		again := time.Now()
+		_ = a.Store.RecordAttempt(ctx, d.RunID, dispatch.AttemptRow(start, again, res),
+			store.RunUpdate{Status: "delivering", NextAttempt: &again, Again: true})
 		start = time.Now()
 		res = a.Subscriptions.Attempt(ctx, d)
 	}

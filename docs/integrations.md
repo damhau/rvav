@@ -591,7 +591,9 @@ The sample event of each topic shows its fields
     under the same `run_id`, up to three more times, and neither the
     recovery target nor `on_failure` decides. Make your target give the
     same answer to a run it has answered. An answer rvav had recorded
-    stands, and the target isn't asked again.
+    stands, and the target isn't asked again. The run's attempts count
+    every call, and its history shows a call whose answer rvav never
+    recorded as interrupted.
   - An AWX job answers with the `rvav_answer` artifact
     (`set_stats: {data: {rvav_answer: {…}}}`), a custom workflow with its
     result.

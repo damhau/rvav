@@ -479,13 +479,13 @@ func (s *Service) TestSubscription(ctx context.Context, p *auth.Principal, id st
 		return api.SubscriptionRunDetail{}, err
 	}
 	run := store.SubscriptionRun{ID: ids.New(ids.Run), SubscriptionID: sub.ID, EventID: ev.ID, Status: "delivering",
-		Blocking: sub.Blocking, Test: true}
+		Blocking: sub.Blocking, Test: true, Attempts: 1}
 	if err := s.Store.InsertRun(ctx, s.Store.Pool, run); err != nil {
 		return api.SubscriptionRunDetail{}, err
 	}
 	start := time.Now()
 	res := s.Dispatcher.Attempt(ctx, dispatch.Delivery{RunID: run.ID, Sub: sub, Event: payload, Blocking: sub.Blocking})
-	u := store.RunUpdate{Status: "delivered", Unclaimed: true}
+	u := store.RunUpdate{Status: "delivered"}
 	if !res.OK {
 		u.Status, u.Reason = "failed", &res.Err
 	} else if res.Outcome != "" {

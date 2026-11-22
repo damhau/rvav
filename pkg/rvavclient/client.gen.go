@@ -10401,6 +10401,12 @@ type SubscriptionOnFailure string
 
 // SubscriptionRun defines model for SubscriptionRun.
 type SubscriptionRun struct {
+	// Attempts The calls rvav made to the target, each counted as it began:
+	// retries included, whether the dispatcher's, a blocking run's
+	// second try, or a call made again after a worker restart or a
+	// Retry of the request. A call whose answer was never recorded is
+	// in `history` as failed, with the error "Interrupted before its
+	// answer was recorded."
 	Attempts      int        `json:"attempts"`
 	Blocking      bool       `json:"blocking"`
 	CreatedAt     time.Time  `json:"created_at"`
@@ -10459,6 +10465,12 @@ type SubscriptionRunAttempt struct {
 
 // SubscriptionRunDetail defines model for SubscriptionRunDetail.
 type SubscriptionRunDetail struct {
+	// Attempts The calls rvav made to the target, each counted as it began:
+	// retries included, whether the dispatcher's, a blocking run's
+	// second try, or a call made again after a worker restart or a
+	// Retry of the request. A call whose answer was never recorded is
+	// in `history` as failed, with the error "Interrupted before its
+	// answer was recorded."
 	Attempts int  `json:"attempts"`
 	Blocking bool `json:"blocking"`
 
@@ -10466,10 +10478,12 @@ type SubscriptionRunDetail struct {
 	// the answer's `machine` gave it: on compute.allocation.pre its name
 	// and placement, on network.configure its adapters' networks and
 	// addresses. rvav checks each change again before building.
-	Changes       *MachineChange           `json:"changes,omitempty"`
-	CreatedAt     time.Time                `json:"created_at"`
-	EventId       string                   `json:"event_id"`
-	FinishedAt    *time.Time               `json:"finished_at,omitempty"`
+	Changes    *MachineChange `json:"changes,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+	EventId    string         `json:"event_id"`
+	FinishedAt *time.Time     `json:"finished_at,omitempty"`
+
+	// History Its calls, oldest first.
 	History       []SubscriptionRunAttempt `json:"history"`
 	Id            string                   `json:"id"`
 	NextAttemptAt *time.Time               `json:"next_attempt_at,omitempty"`

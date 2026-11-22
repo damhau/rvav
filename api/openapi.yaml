@@ -14851,7 +14851,15 @@ components:
           properties:
             id: { type: string }
             number: { type: string }
-        attempts: { type: integer }
+        attempts:
+          type: integer
+          description: |
+            The calls rvav made to the target, each counted as it began:
+            retries included, whether the dispatcher's, a blocking run's
+            second try, or a call made again after a worker restart or a
+            Retry of the request. A call whose answer was never recorded is
+            in `history` as failed, with the error "Interrupted before its
+            answer was recorded."
         next_attempt_at: { type: string, format: date-time }
         outcome:
           type: string
@@ -14888,6 +14896,7 @@ components:
             changes: { $ref: "#/components/schemas/MachineChange" }
             history:
               type: array
+              description: Its calls, oldest first.
               items: { $ref: "#/components/schemas/SubscriptionRunAttempt" }
     SubscriptionRunPage:
       allOf:

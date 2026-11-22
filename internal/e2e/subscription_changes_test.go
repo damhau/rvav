@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -370,9 +371,10 @@ func (c *flakyChanger) ChangeMachine(ctx context.Context, ch provision.MachineCh
 }
 
 // TestBlockingCheckRetries: rvav's own failure while a blocking check runs
-// is tried again, asking the target again with the same run, and isn't
-// the subscription's: neither its recovery nor its on_failure decides; a
-// run the same delivery finished stands (E1.6, ADR-0054).
+// is tried again, asking the target again with the same run, which counts
+// both calls (#196), and isn't the subscription's: neither its recovery nor
+// its on_failure decides; a run the same delivery finished stands (E1.6,
+// ADR-0054).
 func TestBlockingCheckRetries(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -424,6 +426,13 @@ func TestBlockingCheckRetries(t *testing.T) {
 		if len(list.Items) != 1 || list.Items[0].Status != api.SubscriptionRunStatusDelivered || list.Items[0].Recovery {
 			t.Fatalf("runs = %+v", list.Items)
 		}
+		// Both calls count: the first one's answer was never recorded.
+		var detail api.SubscriptionRunDetail
+		h.json("GET", "/api/v1/admin/subscription-runs/"+list.Items[0].Id, admin, nil, 200, &detail)
+		if hist := detail.History; detail.Attempts != 2 || len(hist) != 2 || hist[0].Ok || deref(hist[0].Error) != store.Interrupted ||
+			!hist[1].Ok || hist[1].At.Before(hist[0].At) {
+			t.Fatalf("the run counts %d attempts: %+v", detail.Attempts, hist)
+		}
 		var steps struct{ Items []api.Step }
 		h.json("GET", "/api/v1/requests/"+req.Id+"/steps", owner, nil, 200, &steps)
 		var check *api.Step
@@ -452,7 +461,7 @@ func TestBlockingCheckRetries(t *testing.T) {
 		}
 		stop := "stop"
 		if err := h.store.RecordAttempt(ctx, run.Id, store.Attempt{At: time.Now(), OK: true},
-			store.RunUpdate{Status: "blocked", Outcome: &stop, Reason: new("No."), Unclaimed: true}); err != nil {
+			store.RunUpdate{Status: "blocked", Outcome: &stop, Reason: new("No.")}); err != nil {
 			t.Fatal(err)
 		}
 		if got := again("wf-1/7"); got.Status != "blocked" || deref(got.Reason) != "No." || got.FinishedAt == nil {
@@ -460,6 +469,103 @@ func TestBlockingCheckRetries(t *testing.T) {
 		}
 		if got := again("wf-2/7"); got.Status != "delivering" || got.Reason != nil {
 			t.Fatalf("a new delivery's run = %+v", got)
+		}
+	})
+}
+
+// heldHook holds its first call until the caller gives up on it, as a slow
+// target does while rvav's worker stops, and lets the others go on at once.
+type heldHook struct {
+	calls atomic.Int32
+	held  chan struct{}
+}
+
+func (h *heldHook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// The server notices the caller went away only once the body is read.
+	_, _ = io.Copy(io.Discard, r.Body)
+	if h.calls.Add(1) == 1 {
+		close(h.held)
+		select {
+		case <-r.Context().Done():
+		case <-time.After(time.Minute):
+		}
+		return
+	}
+	_, _ = w.Write([]byte(`{"outcome": "continue"}`))
+}
+
+// TestBlockingCheckAfterRestart: the worker stops while a blocking check
+// waits for its target, on the Temporal dev server. The next worker asks the
+// target again under the same run, which counts both calls: the first as
+// interrupted before its answer was recorded (#196).
+func TestBlockingCheckAfterRestart(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	ts := startTemporal(t)
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, owner, queue = "mkeller", "tnguyen", "rvav-check-restart-e2e"
+		hook := &heldHook{held: make(chan struct{})}
+		srv := httptest.NewServer(hook)
+		defer srv.Close()
+		h.allowWebhooks(srv.URL)
+		h.json("POST", "/api/v1/admin/secrets", admin, api.SecretWrite{Name: "cmdb-hook", Kind: api.SecretWriteKindToken,
+			Value: new("hook-signing-secret")}, 201, nil)
+		var target api.SubscriptionTarget
+		_ = json.Unmarshal([]byte(`{"webhook": {"url": "`+srv.URL+`/cmdb", "secret": "cmdb-hook"}}`), &target)
+		var sub api.Subscription
+		h.json("POST", "/api/v1/admin/subscriptions", admin, api.SubscriptionWrite{Name: "CMDB check", Topic: api.ProvisioningPre,
+			Blocking: new(true), TimeoutSeconds: new(5), Target: target}, 201, &sub)
+		tc := ts.Client()
+		h.svc.Workflows = &provision.Temporal{Client: tc, TaskQueue: queue}
+		w := provision.NewWorker(tc, queue, h.acts)
+		if err := w.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { w.Stop() }()
+
+		var item api.CatalogItem
+		h.json("GET", "/api/v1/catalog/items/rhel9-server?project_id=prj_web", owner, nil, 200, &item)
+		var req api.Request
+		h.json("POST", "/api/v1/requests", owner, api.RequestDraft{CatalogItemId: item.Id, VersionId: item.Version.Id,
+			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01",
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline"}}},
+			202, &req, "Idempotency-Key", uuid.NewString())
+		select {
+		case <-hook.held:
+		case <-time.After(time.Minute):
+			t.Fatal("the check didn't call its target")
+		}
+		// Stopping cancels the call, and Temporal gives the check to the
+		// next worker: at once when the stopped one reports it, after its
+		// StartToClose timeout (80 s) when it can't.
+		w.Stop()
+		w = provision.NewWorker(tc, queue, h.acts)
+		if err := w.Start(); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(3 * time.Minute)
+		for req.Status != api.RequestStatusSucceeded {
+			if time.Now().After(deadline) {
+				t.Fatalf("the request is %s %s", req.Status, errorOf(req))
+			}
+			time.Sleep(100 * time.Millisecond)
+			h.json("GET", "/api/v1/requests/"+req.Id, owner, nil, 200, &req)
+		}
+		if n := hook.calls.Load(); n != 2 {
+			t.Fatalf("the target was called %d times, want twice", n)
+		}
+		var list struct{ Items []api.SubscriptionRun }
+		h.json("GET", "/api/v1/admin/subscriptions/"+sub.Id+"/runs", admin, nil, 200, &list)
+		if len(list.Items) != 1 || list.Items[0].Status != api.SubscriptionRunStatusDelivered || list.Items[0].Attempts != 2 {
+			t.Fatalf("runs = %+v", list.Items)
+		}
+		var detail api.SubscriptionRunDetail
+		h.json("GET", "/api/v1/admin/subscription-runs/"+list.Items[0].Id, admin, nil, 200, &detail)
+		if hist := detail.History; len(hist) != 2 || hist[0].Ok || deref(hist[0].Error) != store.Interrupted || !hist[1].Ok ||
+			hist[1].StatusCode == nil || *hist[1].StatusCode != http.StatusOK {
+			t.Fatalf("the run's history = %+v", hist)
 		}
 	})
 }

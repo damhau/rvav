@@ -11476,6 +11476,14 @@ export interface components {
                 id: string;
                 number: string;
             };
+            /**
+             * @description The calls rvav made to the target, each counted as it began:
+             *     retries included, whether the dispatcher's, a blocking run's
+             *     second try, or a call made again after a worker restart or a
+             *     Retry of the request. A call whose answer was never recorded is
+             *     in `history` as failed, with the error "Interrupted before its
+             *     answer was recorded."
+             */
             attempts: number;
             /** Format: date-time */
             next_attempt_at?: string;
@@ -11514,6 +11522,7 @@ export interface components {
                 [key: string]: string;
             };
             changes?: components["schemas"]["MachineChange"];
+            /** @description Its calls, oldest first. */
             history: components["schemas"]["SubscriptionRunAttempt"][];
         };
         SubscriptionRunPage: components["schemas"]["PageInfo"] & {

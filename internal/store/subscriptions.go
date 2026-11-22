@@ -184,17 +184,19 @@ const runCols = `r.id, r.subscription_id, r.event_id, e.topic, r.status, r.block
 const runFrom = ` from subscription_runs r join integration_events e on e.id = r.event_id
 	left join requests q on q.id = r.request_id`
 
-// InsertRun adds a run, queued unless said otherwise; a second one for the
-// same subscription and event is ignored.
+// InsertRun adds a run, queued unless said otherwise, with the calls it
+// counts already (a test run's, as it begins); a second one for the same
+// subscription and event is ignored.
 func (s *Store) InsertRun(ctx context.Context, db DB, r SubscriptionRun) error {
 	next := r.NextAttemptAt
 	if next.IsZero() {
 		next = time.Now()
 	}
 	_, err := db.Exec(ctx, `insert into subscription_runs (id, subscription_id, event_id, status, blocking, test, request_id,
-			step_id, reason, finished_at, next_attempt_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			step_id, reason, finished_at, next_attempt_at, attempts) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		on conflict (subscription_id, event_id, recovery) do nothing`,
-		r.ID, r.SubscriptionID, r.EventID, r.Status, r.Blocking, r.Test, r.RequestID, r.StepID, r.Reason, r.FinishedAt, next)
+		r.ID, r.SubscriptionID, r.EventID, r.Status, r.Blocking, r.Test, r.RequestID, r.StepID, r.Reason, r.FinishedAt, next,
+		r.Attempts)
 	return err
 }
 
@@ -248,6 +250,9 @@ func (s *Store) ClaimRuns(ctx context.Context, limit int, now time.Time) ([]Clai
 	return out, rows.Err()
 }
 
+// Interrupted is what a call whose answer was never recorded says.
+const Interrupted = "Interrupted before its answer was recorded."
+
 // Attempt is one try at delivering a run.
 type Attempt struct {
 	At         time.Time `db:"at"`
@@ -272,9 +277,11 @@ type RunUpdate struct {
 	// Lease, for a run the dispatcher claimed: the run moves on only while
 	// it still holds that lease (another worker may have taken it since).
 	Lease *time.Time
-	// Unclaimed counts the attempt here: test and blocking runs aren't
-	// claimed, which is where attempts are otherwise counted.
-	Unclaimed bool
+	// Again counts a call about to begin: a blocking run's second try.
+	// Calls are counted as they begin, so that one whose answer is never
+	// recorded counts too; the others as the dispatcher claims a run, a
+	// test run is inserted or a blocking run starts.
+	Again bool
 }
 
 // RecordAttempt keeps an attempt and moves the run on.
@@ -291,7 +298,7 @@ func (s *Store) RecordAttempt(ctx context.Context, runID string, a Attempt, u Ru
 				attempts = attempts + case when $9 then 1 else 0 end, changes = coalesce($10, changes),
 				finished_at = case when $2 in ('delivered', 'failed', 'blocked') then now() end
 			where id = $1 and ($8::timestamptz is null or lease_until = $8)`,
-			runID, u.Status, u.NextAttempt, u.Outcome, u.Reason, nullJSON(u.Properties), u.StepID, u.Lease, u.Unclaimed,
+			runID, u.Status, u.NextAttempt, u.Outcome, u.Reason, nullJSON(u.Properties), u.StepID, u.Lease, u.Again,
 			nullJSON(u.Changes))
 		return err
 	})
@@ -360,9 +367,8 @@ func (s *Store) RetryRun(ctx context.Context, id string) (bool, error) {
 func (s *Store) PruneRuns(ctx context.Context, before time.Time) (int64, error) {
 	// A test or blocking run is attempted in place, without a lease: one
 	// still delivering after an hour was interrupted before its answer.
-	if _, err := s.Pool.Exec(ctx, `update subscription_runs set status = 'failed', finished_at = now(),
-			reason = 'Interrupted before its answer was recorded.'
-		where status = 'delivering' and lease_until is null and created_at < now() - interval '1 hour'`); err != nil {
+	if _, err := s.Pool.Exec(ctx, `update subscription_runs set status = 'failed', finished_at = now(), reason = $1
+		where status = 'delivering' and lease_until is null and created_at < now() - interval '1 hour'`, Interrupted); err != nil {
 		return 0, err
 	}
 	tag, err := s.Pool.Exec(ctx, `delete from subscription_runs where finished_at < $1`, before)
@@ -454,14 +460,28 @@ func (s *Store) RequestProperties(ctx context.Context, requestID string) (map[st
 // delivery names the workflow activity delivering it: a run the same
 // delivery finished (Temporal tried it again after an infrastructure
 // failure) comes back finished, as it was.
+//
+// A run it starts counts the call about to begin, and keeps when it began
+// in next_attempt_at: a run it starts again before it finished had a call
+// whose answer was never recorded (the worker stopped, or rvav failed),
+// which it keeps as an interrupted attempt.
 func (s *Store) StartBlockingRun(ctx context.Context, r SubscriptionRun, delivery string) (SubscriptionRun, error) {
-	if _, err := s.Pool.Exec(ctx, `insert into subscription_runs (id, subscription_id, event_id, status, blocking, recovery,
-			request_id, step_id, delivery) values ($1,$2,$3,'delivering',true,$4,$5,$6,nullif($7, ''))
-		on conflict (subscription_id, event_id, recovery) do update set status = 'delivering', step_id = excluded.step_id,
-			outcome = null, reason = null, finished_at = null, delivery = excluded.delivery
-			where subscription_runs.finished_at is null or excluded.delivery is null
-				or subscription_runs.delivery is distinct from excluded.delivery`,
-		r.ID, r.SubscriptionID, r.EventID, r.Recovery, r.RequestID, r.StepID, delivery); err != nil {
+	if _, err := s.Pool.Exec(ctx, `with prev as (
+			select id, finished_at, next_attempt_at from subscription_runs
+			where subscription_id = $2 and event_id = $3 and recovery = $4
+		), started as (
+			insert into subscription_runs (id, subscription_id, event_id, status, blocking, recovery, request_id, step_id,
+				delivery, attempts, next_attempt_at) values ($1,$2,$3,'delivering',true,$4,$5,$6,nullif($7, ''),1,now())
+			on conflict (subscription_id, event_id, recovery) do update set status = 'delivering', step_id = excluded.step_id,
+				outcome = null, reason = null, finished_at = null, delivery = excluded.delivery,
+				attempts = subscription_runs.attempts + 1, next_attempt_at = now()
+				where subscription_runs.finished_at is null or excluded.delivery is null
+					or subscription_runs.delivery is distinct from excluded.delivery
+			returning id)
+		insert into subscription_attempts (run_id, at, ok, error, duration_ms)
+		select p.id, p.next_attempt_at, false, $8::text, greatest(0, extract(epoch from now() - p.next_attempt_at) * 1000)::int
+		from prev p join started on started.id = p.id where p.finished_at is null`,
+		r.ID, r.SubscriptionID, r.EventID, r.Recovery, r.RequestID, r.StepID, delivery, Interrupted); err != nil {
 		return SubscriptionRun{}, err
 	}
 	rows, _ := s.Pool.Query(ctx, `select `+runCols+runFrom+` where r.subscription_id = $1 and r.event_id = $2 and r.recovery = $3`,
