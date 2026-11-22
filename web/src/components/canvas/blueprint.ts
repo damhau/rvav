@@ -16,7 +16,8 @@
 //   segments, the components with their counts and disks (an edge into one
 //   from each it is built after), then the groups their VMs are in, the
 //   security groups' firewall rules arriving at them from Any, another
-//   group or an existing one.
+//   group or an existing one. For the VM designer (designed), each disk
+//   is a node of its own, attached to the components whose VMs have it.
 import { formatList, formatNumber, formatSize } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
 import { allSteps, readComposite, type CompositeStepView } from "@/lib/composite";
@@ -43,11 +44,20 @@ const t = i18n.getFixedT(null, "canvas");
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+export interface GraphOptions {
+  /** Drawn for the VM designer: each disk is a node (disk:<component>:<index>, or disk@<index> for the blueprint's, which components without their own take). */
+  designed?: boolean;
+}
+
 /** The graph of a definition's blueprint, or null for kinds drawn as no graph (AWX and workflow items). */
-export function blueprintGraph(blueprint: unknown, prefix = "/definition/blueprint"): CanvasGraph | null {
+export function blueprintGraph(
+  blueprint: unknown,
+  prefix = "/definition/blueprint",
+  options: GraphOptions = {},
+): CanvasGraph | null {
   const bp = obj(blueprint);
   if (bp.kind === "composite") return compositeGraph(bp, prefix);
-  if (bp.kind === "vm") return vmGraph(bp, prefix);
+  if (bp.kind === "vm") return vmGraph(bp, prefix, options);
   return null;
 }
 
@@ -318,8 +328,8 @@ interface Builder {
   node(n: Omit<CanvasNode, "relations" | "problems"> & { problems?: string[] }, bucket: Bucket): CanvasNode;
 }
 
-type Bucket = "component" | "resource" | "network" | "segment" | "group" | "other" | "any";
-const bucketOrder: Bucket[] = ["component", "resource", "network", "segment", "group", "other", "any"];
+type Bucket = "component" | "disk" | "resource" | "network" | "segment" | "group" | "other" | "any";
+const bucketOrder: Bucket[] = ["component", "disk", "resource", "network", "segment", "group", "other", "any"];
 
 const segmentRef = /^segments\.([a-z][a-z0-9_]*)$/;
 const quoted = /^"([^"]*)"$|^'([^']*)'$/;
@@ -344,9 +354,9 @@ const readsOf = (text: string, root: "components" | "resources") =>
 /**
  * A VM item's topology: `component:<key>`, `resource:<key>` for a custom
  * resource (ADR-0056), `network:<binding>`, `segment:<key>`, `sg:<key>`,
- * `nsx:<id>`, `any`.
+ * `nsx:<id>`, `any`; designed, the disks too.
  */
-export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph {
+export function vmGraph(bp: Raw, prefix = "/definition/blueprint", options: GraphOptions = {}): CanvasGraph {
   const buckets = new Map<Bucket, Map<string, CanvasNode>>(bucketOrder.map((b) => [b, new Map()]));
   const edges: CanvasEdge[] = [];
   const problems: FieldError[] = [];
@@ -512,7 +522,7 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
         mono: true,
       });
     const disks = arr(c.disks ?? bp.disks).map(obj);
-    if (disks.length > 0)
+    if (disks.length > 0 && !options.designed)
       lines.push({
         label: t("lines.disks"),
         text: [
@@ -544,6 +554,34 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
       "component",
     );
     if (declared) byKey.set(key, { node: comp, title });
+    if (options.designed) {
+      const own = !declared || c.disks !== undefined;
+      disks.forEach((d, i) => {
+        const disk = b.node(
+          {
+            id: own ? `disk:${key}:${i}` : `disk@${i}`,
+            kind: "disk",
+            title: str(d.key) || t("vm.diskNumber", { number: i + 1 }),
+            badge: t("badge.disk"),
+            lines: [
+              { label: t("lines.size"), text: sizeText(d.size_gb) },
+              ...(str(d.storage_policy) ? [{ label: t("lines.policy"), text: str(d.storage_policy) }] : []),
+            ],
+            pointer: `${own ? pointer : prefix}/disks/${i}`,
+          },
+          "disk",
+        );
+        edges.push({
+          id: `attach:${disk.id}>${comp.id}`,
+          source: disk.id,
+          target: comp.id,
+          kind: "disk",
+          description: t("vm.diskEdge", { disk: disk.title, title }),
+        });
+        relate(comp, t("vm.hasDisk", { disk: disk.title, size: sizeText(d.size_gb) }));
+        relate(disk, t("vm.diskOf", { title }));
+      });
+    }
 
     const nics = arr(c.nics ?? bp.nics).map(obj);
     const adapters = [

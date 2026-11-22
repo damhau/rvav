@@ -46,7 +46,8 @@
     "vms": "VM",
     "vmCount_one": "{{count}} VM",
     "vmCount_many": "{{count}} VM",
-    "vmCount_other": "{{count}} VM"
+    "vmCount_other": "{{count}} VM",
+    "disk": "Disque"
   },
   "lines": {
     "calls": "Appelle",
@@ -73,7 +74,9 @@
     "template": "Modèle",
     "disks": "Disques",
     "then": "Ensuite",
-    "type": "Type"
+    "type": "Type",
+    "size": "Taille",
+    "policy": "Stratégie"
   },
   "composite": {
     "goesOn": "continue",
@@ -158,10 +161,18 @@
         "into": "{{action}} {{services}} depuis {{from}}",
         "from": "Règle vers {{to}}\u00a0: {{action}} {{services}}"
       }
-    }
+    },
+    "diskNumber": "Disque {{number}}",
+    "diskEdge": "{{disk}} attaché à {{title}}",
+    "hasDisk": "Disque {{disk}}, {{size}}",
+    "diskOf": "Attaché à {{title}}"
   },
   "taken": {
     "taken": "prise",
     "not-taken": "non prise"
+  },
+  "designer": {
+    "undo": "Défaire",
+    "redo": "Refaire"
   }
 }

@@ -598,6 +598,43 @@ describe("vmGraph", () => {
     ]);
     expect(vmGraph(t).edges.filter((e) => e.id.startsWith("after:"))).toEqual(after);
   });
+
+  it("draws each disk as a node for the designer: a component's own, and the blueprint's once for those that take them", () => {
+    const bp = {
+      kind: "vm",
+      disks: [{ size_gb: 20 }],
+      components: [
+        { key: "web", title: "Web" },
+        { key: "db", disks: [{ key: "data", size_gb: 100, storage_policy: "gold" }] },
+        { key: "cache" },
+      ],
+    };
+    expect(node(vmGraph(bp), "component:web").lines).toEqual([{ label: "Disks", text: "system, 20 GB" }]);
+    const g = vmGraph(bp, "/definition/blueprint", { designed: true });
+    expect(ids(g).filter((id) => id.startsWith("disk"))).toEqual(["disk@0", "disk:db:0"]);
+    expect(node(g, "component:web").lines).toEqual([]);
+    expect(node(g, "disk:db:0")).toMatchObject({
+      kind: "disk",
+      title: "data",
+      badge: "Disk",
+      lines: [
+        { label: "Size", text: "100 GB" },
+        { label: "Policy", text: "gold" },
+      ],
+      pointer: "/definition/blueprint/components/1/disks/0",
+      relations: ["Attached to db"],
+    });
+    expect(node(g, "disk@0")).toMatchObject({ title: "Disk 1", pointer: "/definition/blueprint/disks/0" });
+    expect(g.edges.filter((e) => e.kind === "disk").map((e) => e.id)).toEqual([
+      "attach:disk@0>component:web",
+      "attach:disk:db:0>component:db",
+      "attach:disk@0>component:cache",
+    ]);
+    expect(edge(g, "attach:disk@0>component:web")?.description).toBe("Disk 1 attached to Web");
+    expect(node(g, "component:db").relations).toContain("Disk data, 100 GB");
+    const single = vmGraph({ kind: "vm", disks: [{ size_gb: 50 }] }, "/definition/blueprint", { designed: true });
+    expect(node(single, "disk:vm:0").pointer).toBe("/definition/blueprint/disks/0");
+  });
 });
 
 describe("blueprintGraph", () => {

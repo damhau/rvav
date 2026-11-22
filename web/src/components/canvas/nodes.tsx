@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Flag,
   Globe,
+  HardDrive,
   Hourglass,
   LoaderCircle,
   Mail,
@@ -59,6 +60,7 @@ export function NodeIcon({ node, className }: { node: CanvasNode; className?: st
           security_group: Shield,
           nsx_group: ShieldCheck,
           resource: Shapes,
+          disk: HardDrive,
           any: Globe,
         }[node.kind];
   return <Icon className={cn("size-3.5 shrink-0 text-muted", className)} aria-hidden />;
@@ -121,10 +123,14 @@ export function handleSides(direction: CanvasDirection) {
 /** The handles of an edge within a column (CanvasLayout.side): both on the right. */
 export const sideHandles = { source: "side-out", target: "side-in" };
 
-function Handles({ direction }: { direction: CanvasDirection }) {
+/** In a designer, the one handle a connection is drawn from, on the side edges leave by. */
+export const connectHandle = "connect";
+
+function Handles({ direction, connectable = false }: { direction: CanvasDirection; connectable?: boolean }) {
   const s = handleSides(direction);
   return (
     <>
+      {connectable && <Handle id={connectHandle} type="source" position={s.source} className="rvav-connect" />}
       <Handle type="target" position={s.target} isConnectable={false} />
       <Handle type="source" position={s.source} isConnectable={false} />
       <Handle id={sideHandles.target} type="target" position={Position.Right} isConnectable={false} />
@@ -134,7 +140,7 @@ function Handles({ direction }: { direction: CanvasDirection }) {
 }
 
 /** A node on the canvas. Its size is the layout's (nodeHeight): rows of fixed height, text cut to fit. */
-export function CardView({ data }: NodeProps<CardNode>) {
+export function CardView({ data, isConnectable }: NodeProps<CardNode>) {
   const { t } = useTranslation("canvas");
   const { node, status, selected, direction } = data;
   return (
@@ -147,7 +153,7 @@ export function CardView({ data }: NodeProps<CardNode>) {
         selected && "ring-2 ring-accent",
       )}
     >
-      <Handles direction={direction} />
+      <Handles direction={direction} connectable={isConnectable} />
       {/* Spaces between the words of separate elements: not drawn (in a flex row, or
           ending a line), but read, so the node's text is its name's words in order,
           "1 VM Web", not "1 VMWeb" (WCAG 2.5.3, describeNode). */}

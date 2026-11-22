@@ -1,7 +1,10 @@
 // The canvas (ADR-0032): a blueprint's graph, drawn by React Flow and laid
 // out by dagre, or the same as a list. Read only: what it shows comes from
 // the graph (blueprintGraph), what changes is the caller's to decide
-// through onSelect, and the YAML stays the source of truth.
+// through onSelect, and the YAML stays the source of truth. A designer
+// (design) also hears of a connection drawn from a node's handle to
+// another node, and of a palette's entry dropped on the canvas: what they
+// write is its to decide too.
 //
 // Keyboard: the graph is one Tab stop, on the node last visited (the first
 // at the start). Arrow keys move to the nearest node that way, Home and End
@@ -11,7 +14,9 @@ import "@xyflow/react/dist/base.css";
 import "./canvas.css";
 import {
   Background,
+  ConnectionMode,
   type Edge,
+  type FinalConnectionState,
   MarkerType,
   type Node,
   Panel,
@@ -40,6 +45,14 @@ import {
 } from "./nodes";
 
 export type CanvasView = "graph" | "list";
+
+/** What a designer hears of the mouse on the canvas. */
+export interface CanvasDesign {
+  /** A connection drawn from a node's handle to another node. */
+  onConnect: (source: string, target: string) => void;
+  /** A palette's entry dropped: the data type it is dragged as, and what to do with its value, dropped on a node or on none. */
+  drop?: { type: string; onDrop: (value: string, target: string | null) => void };
+}
 const views: CanvasView[] = ["graph", "list"];
 
 export interface CanvasProps {
@@ -72,6 +85,8 @@ export interface CanvasProps {
   actions?: ReactNode;
   /** The graph's height in pixels; by default the layout's, between 220 and 560. */
   height?: number;
+  /** A designer's: connections drawn and entries dropped with the mouse. */
+  design?: CanvasDesign;
   className?: string;
 }
 
@@ -95,6 +110,7 @@ export function Canvas({
   renderDetails,
   actions,
   height,
+  design,
   className,
 }: CanvasProps) {
   const { t } = useTranslation("canvas");
@@ -149,6 +165,7 @@ export function Canvas({
             selected={selectedNode?.id ?? null}
             onSelect={select}
             height={height}
+            design={design}
           />
         </ReactFlowProvider>
       ) : list ? (
@@ -318,6 +335,7 @@ function Graph({
   selected,
   onSelect,
   height,
+  design,
 }: {
   graph: CanvasGraph;
   label: string;
@@ -326,6 +344,7 @@ function Graph({
   selected: string | null;
   onSelect: (id: string | null) => void;
   height?: number;
+  design?: CanvasDesign;
 }) {
   const { t, i18n } = useTranslation("canvas");
   const layout = useMemo(() => layoutGraph(graph), [graph]);
@@ -410,9 +429,40 @@ function Graph({
     }
   };
 
+  // Dropped anywhere on a node, not only on a handle: the node under the pointer.
+  const onConnectEnd = (e: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+    const from = state.fromNode?.id;
+    const point = "changedTouches" in e ? e.changedTouches[0] : e;
+    const under = point ? document.elementFromPoint(point.clientX, point.clientY) : null;
+    const to = state.toNode?.id ?? under?.closest<HTMLElement>(".react-flow__node")?.dataset.id;
+    if (design && from && to && from !== to && layout.nodes.has(to)) design.onConnect(from, to);
+  };
+  const drop = design?.drop;
+
   const h = height ?? Math.min(560, Math.max(220, layout.height + 24));
   return (
-    <div ref={wrapper} style={{ height: h }} className="w-full overflow-hidden rounded-md border border-line">
+    <div
+      ref={wrapper}
+      style={{ height: h }}
+      className="w-full overflow-hidden rounded-md border border-line"
+      onDragOver={
+        drop &&
+        ((e) => {
+          if (!e.dataTransfer.types.includes(drop.type)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        })
+      }
+      onDrop={
+        drop &&
+        ((e) => {
+          const value = e.dataTransfer.getData(drop.type);
+          if (!value) return;
+          e.preventDefault();
+          drop.onDrop(value, (e.target as HTMLElement).closest<HTMLElement>(".react-flow__node")?.dataset.id ?? null);
+        })
+      }
+    >
       <ReactFlow
         aria-label={label}
         onKeyDown={onKeyDown}
@@ -426,7 +476,9 @@ function Graph({
           onSelect(n.id);
         }}
         nodesDraggable={false}
-        nodesConnectable={false}
+        nodesConnectable={Boolean(design)}
+        connectionMode={ConnectionMode.Loose}
+        onConnectEnd={design && onConnectEnd}
         nodesFocusable={false}
         edgesFocusable={false}
         elementsSelectable={false}

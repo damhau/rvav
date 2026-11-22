@@ -43,7 +43,8 @@
     "vm": "VM",
     "vms": "VMs",
     "vmCount_one": "{{count}} VM",
-    "vmCount_other": "{{count}} VMs"
+    "vmCount_other": "{{count}} VMs",
+    "disk": "Disk"
   },
   "lines": {
     "calls": "Calls",
@@ -70,7 +71,9 @@
     "template": "Template",
     "disks": "Disks",
     "then": "Then",
-    "type": "Type"
+    "type": "Type",
+    "size": "Size",
+    "policy": "Policy"
   },
   "composite": {
     "goesOn": "goes on",
@@ -154,10 +157,18 @@
         "into": "{{action}} {{services}} from {{from}}",
         "from": "Rule into {{to}}: {{action}} {{services}}"
       }
-    }
+    },
+    "diskNumber": "Disk {{number}}",
+    "diskEdge": "{{disk}} attached to {{title}}",
+    "hasDisk": "Disk {{disk}}, {{size}}",
+    "diskOf": "Attached to {{title}}"
   },
   "taken": {
     "taken": "taken",
     "not-taken": "not taken"
+  },
+  "designer": {
+    "undo": "Undo",
+    "redo": "Redo"
   }
 }

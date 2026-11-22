@@ -23,6 +23,7 @@ export type CanvasNodeKind =
   | "security_group" // an NSX group made for each deployment
   | "nsx_group" // an existing NSX group, or groups chosen in the form
   | "resource" // a custom resource: a resource type's load balancer, DNS alias…
+  | "disk" // a VM's disk beyond the system disk, drawn only in the VM designer
   | "any"; // any source, in a firewall rule
 
 /** A line of detail under a node's title. */
@@ -33,7 +34,7 @@ export interface CanvasLine {
 }
 
 export interface CanvasNode {
-  /** Stable: `step:<key>`, `component:<key>`, `vm:<resource ID>`, `segment:<key>`, `sg:<key>`, `nsx:<id>`, `network:<expr>`, `resource:<resource ID>`, `inputs`, `end`, `any`. */
+  /** Stable: `step:<key>`, `component:<key>`, `vm:<resource ID>`, `segment:<key>`, `sg:<key>`, `nsx:<id>`, `network:<expr>`, `resource:<resource ID>`, `disk:<component>:<index>`, `disk@<index>`, `inputs`, `end`, `any`. */
   id: string;
   kind: CanvasNodeKind;
   title: string;
@@ -82,7 +83,8 @@ export type CanvasEdgeKind =
   | "sequence" // runs after
   | "network" // a component's adapter on a network
   | "member" // a component's VMs in a group
-  | "rule"; // a firewall rule into a group
+  | "rule" // a firewall rule into a group
+  | "disk"; // a disk attached to a component's VMs
 
 export interface CanvasEdge {
   id: string;

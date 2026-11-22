@@ -50,6 +50,7 @@ export const nodeWidth: Record<CanvasNodeKind, number> = {
   security_group: 200,
   nsx_group: 200,
   resource: 220,
+  disk: 180,
   any: 140,
 };
 

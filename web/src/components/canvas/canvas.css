@@ -13,12 +13,26 @@
   --xy-attribution-background-color: transparent;
 }
 
-/* Edges only join nodes here: nothing is connected by hand. */
+/* Edges only join nodes here: in a designer, a connection is drawn from the one handle shown. */
 .rvav-canvas .react-flow__handle {
   opacity: 0;
   border: 0;
   min-width: 1px;
   min-height: 1px;
+}
+
+.rvav-canvas .react-flow__handle.rvav-connect {
+  opacity: 1;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: crosshair;
+}
+
+.rvav-canvas .rvav-edge-disk .react-flow__edge-path {
+  stroke-dasharray: 2 3;
 }
 
 .rvav-canvas .react-flow__node:focus-visible {
