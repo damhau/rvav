@@ -34,7 +34,8 @@ type restResource struct {
 	fields *field
 }
 
-// warning is a delete that left something in rvav, which Terraform says.
+// warning is a create or delete that left something in rvav, which
+// Terraform says.
 type warning struct{ summary, detail string }
 
 func (w *warning) Error() string { return w.summary + ": " + w.detail }
@@ -42,6 +43,7 @@ func (w *warning) Error() string { return w.summary + ": " + w.detail }
 var (
 	_ resource.ResourceWithConfigure   = &restResource{}
 	_ resource.ResourceWithImportState = &restResource{}
+	_ resource.ResourceWithModifyPlan  = &restResource{}
 )
 
 func (r *restResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -86,7 +88,7 @@ func (r *restResource) put(state *tfsdk.State, diags *diag.Diagnostics, obj map[
 }
 
 func (r *restResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	body, err := bodyOf(r.fieldsOf(), req.Plan.Raw, false)
+	body, err := r.bodyOf(req.Plan.Raw, req.Config.Raw, false)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid configuration", err.Error())
 		return
@@ -97,9 +99,37 @@ func (r *restResource) Create(ctx context.Context, req resource.CreateRequest, r
 	if obj != nil {
 		r.put(&resp.State, &resp.Diagnostics, obj, req.Plan.Raw)
 	}
-	if err != nil {
+	var w *warning
+	switch {
+	case errors.As(err, &w):
+		resp.Diagnostics.AddWarning(w.summary, w.detail)
+	case err != nil:
 		resp.Diagnostics.AddError("rvav refused to create the "+title(r.name), err.Error())
 	}
+}
+
+// bodyOf is the plan as the API takes it, with the write-only attributes
+// that only the configuration has.
+func (r *restResource) bodyOf(plan, config tftypes.Value, zero bool) (map[string]any, error) {
+	body, err := bodyOf(r.fieldsOf(), plan, zero)
+	if err != nil {
+		return nil, err
+	}
+	var cfg map[string]any
+	for name, a := range r.schema.Attributes {
+		if !a.IsWriteOnly() {
+			continue
+		}
+		if cfg == nil {
+			if cfg, err = bodyOf(r.fieldsOf(), config, false); err != nil {
+				return nil, err
+			}
+		}
+		if v, ok := cfg[name]; ok {
+			body[name] = v
+		}
+	}
+	return body, nil
 }
 
 func (r *restResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -117,7 +147,7 @@ func (r *restResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 }
 
 func (r *restResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	body, err := bodyOf(r.fieldsOf(), req.Plan.Raw, r.patch)
+	body, err := r.bodyOf(req.Plan.Raw, req.Config.Raw, r.patch)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid configuration", err.Error())
 		return
@@ -145,6 +175,31 @@ func (r *restResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 func (r *restResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// ModifyPlan plans the state when the configuration changes only how it
+// says something, which a plan modifier then planned as the state's: a
+// catalog item by ID rather than slug, JSON formatted otherwise. The
+// framework has by then marked the computed values it doesn't configure
+// unknown, which Terraform would show as an update.
+func (r *restResource) ModifyPlan(_ context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() || req.Plan.Raw.Equal(req.State.Raw) {
+		return
+	}
+	var plan, state, config map[string]tftypes.Value
+	if req.Plan.Raw.As(&plan) != nil || req.State.Raw.As(&state) != nil || req.Config.Raw.As(&config) != nil {
+		return
+	}
+	for name, v := range plan {
+		if v.Equal(state[name]) {
+			continue
+		}
+		a, ok := r.schema.Attributes[name]
+		if !ok || v.IsKnown() || !a.IsComputed() || !config[name].IsNull() {
+			return
+		}
+	}
+	resp.Plan.Raw = req.State.Raw.Copy()
 }
 
 // title is a resource type's name as words: approval policy.

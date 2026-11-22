@@ -2,6 +2,7 @@ package tfprovider
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
@@ -20,7 +21,6 @@ import (
 )
 
 func newCatalogItemResource() resource.Resource {
-	keep := []planmodifier.String{stringplanmodifier.UseStateForUnknown()}
 	return &restResource{
 		name:  "catalog_item",
 		patch: true,
@@ -37,11 +37,12 @@ func newCatalogItemResource() resource.Resource {
 				"category": schema.StringAttribute{Required: true, MarkdownDescription: "Its category, by key."},
 				"type": schema.StringAttribute{Required: true, PlanModifiers: replaced(),
 					MarkdownDescription: "`vm_blueprint`, `awx_job_template`, `awx_workflow`, `composite` or `workflow`. It can't change."},
-				"icon": schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: keep,
-					MarkdownDescription: "One of rvav's icons; rvav picks one by type when not given."},
+				"icon": schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{itemIcon{}},
+					MarkdownDescription: "One of rvav's icons: when not given, the one rvav gives items of its type."},
 				"tags":     schema.SetAttribute{Optional: true, ElementType: types.StringType},
 				"featured": schema.BoolAttribute{Optional: true, MarkdownDescription: "Shown first in the catalog."},
-				"definition": schema.StringAttribute{Optional: true, Computed: true, CustomType: jsontypes.NormalizedType{}, PlanModifiers: keep,
+				"definition": schema.StringAttribute{Optional: true, Computed: true, CustomType: jsontypes.NormalizedType{},
+					PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown(), sameJSONAsState{}},
 					MarkdownDescription: "The version's definition as JSON: `form_schema`, `ui_schema`, `initial_values` and `blueprint`, " +
 						"as the item's YAML export has them (for example `jsonencode(yamldecode(file(\"rhel9.yaml\")))`). " +
 						"rvav starts a new item with a starter definition when not given."},
@@ -86,6 +87,13 @@ func itemFields(body map[string]any, keys ...string) map[string]any {
 func createItem(ctx context.Context, c *conn, body map[string]any) (map[string]any, error) {
 	obj, err := object(c.api.CreateCatalogItemWithBody(ctx, jsonType, send(itemFields(body,
 		"slug", "name", "summary", "category", "type", "icon", "tags", "featured", "definition"))))
+	if rvavclient.IsStatus(err, http.StatusConflict) {
+		if had, _ := object(c.api.GetAdminCatalogItem(ctx, str(body, "slug"))); had != nil {
+			return nil, fmt.Errorf("%w\nrvav already has the item %s with this slug: one made in the web app, or one that "+
+				"Terraform withdrew when it was destroyed after someone had requested it. To manage it here, import it: "+
+				"terraform import rvav_catalog_item.NAME %[2]s", err, str(had, "id"))
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -159,15 +167,18 @@ func readItem(ctx context.Context, c *conn, id string, state map[string]any) (ma
 	if managed != nil {
 		vid := str(managed, "id")
 		obj["version"], obj["version_id"] = managed["number"], vid
-		if def, ok := state["definition"]; ok && vid == str(state, "version_id") {
-			obj["definition"] = def
-		} else {
+		def, kept := state["definition"]
+		// A published version doesn't change; a draft does, in the web app.
+		if !kept || vid != str(state, "version_id") || !pub {
 			v, err := object(c.api.GetCatalogItemVersion(ctx, id, vid))
 			if err != nil {
 				return nil, err
 			}
-			obj["definition"] = v["definition"]
+			if !kept || !sameJSON(def, v["definition"]) {
+				def = v["definition"]
+			}
 		}
+		obj["definition"] = def
 	}
 	if ent, ok := obj["entitlements"].(map[string]any); ok {
 		obj["all_projects"], obj["project_ids"] = ent["all_projects"], ent["project_ids"]

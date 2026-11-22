@@ -5,6 +5,10 @@
 - Builds on the client and sign-in of [ADR-0051](0051-command-line.md)
   and the inputs rvav fills in of [ADR-0055](0055-inputs-left-out.md).
   O1.2 (#168).
+- Amended by O1.7 (#173): a deployment's `secret_inputs`, waits that go
+  on through transient errors, a stop and a destroy during a build,
+  `timeouts`, an item named by ID or slug, and imports that plan no
+  change.
 
 ## Context
 vRA has a Terraform provider (`vmware/vra`) and PowerCLI's vRA cmdlets.
@@ -84,7 +88,12 @@ data sources to find what Terraform doesn't manage. A resource:
 
 JSON-valued attributes (a catalog item's definition) are JSON strings
 compared by value, so that a configuration writes them with
-`jsonencode()` or `file()`, and rvav's own formatting is no diff.
+`jsonencode()` or `file()`, and rvav's own formatting is no diff, after
+an import too. A plan modifier plans the state's value when the
+configuration's differs only in its formatting, or names the same
+catalog item by its other name; the resource then plans the state
+whole, rather than the unknown computed values the framework marks once
+the configuration differs, which Terraform would show as an update.
 
 Where the API doesn't delete, destroying does what the web app does:
 - **A project is archived**, as rvav keeps projects for their
@@ -107,15 +116,22 @@ member `prj_web/usr_afavre`, a project's secret `prj_web/cmdb-hook`.
 The resources cover what rvav governs with: projects and catalog items;
 approval, day-2, naming, lease and deployment limit policies, lease
 rules and quotas; roles, their assignments, project members and group
-mappings; secrets and event subscriptions. And deployments, below.
-Infrastructure (vCenters, templates, placement) stays in the web app: it
-is set up once, and its objects come from vCenter.
+mappings; secrets and event subscriptions; IP ranges (`rvav_ip_range`,
+[ADR-0063](0063-ip-ranges.md)), which rvav itself holds for networks
+without EfficientIP. And deployments, below. Other infrastructure
+(vCenters, templates, placement) stays in the web app: it is set up
+once, and its objects come from vCenter.
 
 A catalog item's `definition` is the version Terraform writes: a change
 makes a new version, published (deprecating the one before) unless
 `publish` is false, which keeps it as the item's draft. A version
 published in the web app shows as a diff, and the next apply publishes the
-configuration's again.
+configuration's again; with `publish = false`, a change of the draft in
+the web app does too, as every refresh reads the draft. An item without
+`icon` plans the icon rvav gives its type, so that removing `icon` sets
+it again. Creating an item whose slug rvav already has, such as one
+withdrawn by a destroy, fails with the existing item's ID and the
+`terraform import` command that takes it over.
 
 ### Deployments are requests
 `rvav_deployment` makes requests, as a person does in the web app, and
@@ -124,6 +140,12 @@ waits for each until it ends, approvals included:
   rvav fills in the others from the form
   ([ADR-0055](0055-inputs-left-out.md)), so a configuration says what it
   cares about. Without `version`, the newest the project may request.
+  `catalog_item` is the item's slug or ID: the other one for the same
+  item changes nothing.
+- **`secret_inputs`** is a write-only attribute (Terraform 1.11 and
+  later): sent with `inputs` in each request, held in neither the plan
+  nor the state, unlike `inputs`. A change of it alone makes no request,
+  as rvav doesn't count a secret given again as a change.
 - **A change of `inputs` or `version`** is an update request
   ([ADR-0042](0042-deployment-updates.md)): the deployment's other inputs
   as they are, those given over them, and on a new version its new
@@ -133,14 +155,24 @@ waits for each until it ends, approvals included:
   deployment.
 - **A change of `name` or `description`** runs Edit deployment.
 - **Destroy** runs Delete. A change of project, environment or item
-  replaces the deployment.
+  replaces the deployment. A deployment that a request still builds or
+  updates can't be deleted yet: Terraform waits for that request, then
+  deletes it.
 
 A refresh reads the deployment's values of the inputs the configuration
 gives, so that one changed in the web app is a diff; the others aren't
 Terraform's. A secret input's value never comes back, so its change in
 the web app isn't seen. A request that fails leaves the deployment
-tainted, to be deleted and requested again by the next apply. Stopping
-Terraform while it waits doesn't stop the request.
+tainted, to be deleted and requested again by the next apply.
+
+A wait reads the request through errors that don't last (5xx, 408, 429,
+a dropped connection), as rvavctl's does, pausing longer after each, up
+to a minute. Stopping Terraform while it waits doesn't stop the request:
+on a create, the deployment stays in the state untainted, with a
+warning, since the request may still succeed and a taint would replace
+a good deployment. A `timeouts` block (`create`, `update`, `delete`) ends
+a wait sooner; none is set by default, as approvals can take days. A
+create its timeout ends is an error, and tainted, as Terraform does.
 
 ### The PowerShell module is a script module
 `powershell/Rvav`: a manifest and one script module on PowerShell 7.2 and
@@ -190,6 +222,8 @@ isn't on the PowerShell Gallery.
   wait in the process, without a connection (`Store.WithLock`).
 - A secret's value never comes back from rvav: Terraform can't see it
   changed in the web app, and an import doesn't have it.
+- The admin API takes no `If-Match`: an apply overwrites a change made in
+  the web app between its plan and itself.
 - Terraform downloads nothing for the provider, and the provider's
   archives aren't signed: a mirror's integrity is its directory's and the
   lock file's checksums.

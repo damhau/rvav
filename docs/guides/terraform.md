@@ -7,7 +7,8 @@ It also requests deployments and keeps them as your configuration says,
 through the same requests and approvals as the web app
 ([ADR-0053](../adr/0053-terraform-and-powershell.md)).
 
-You need Terraform 1.0 or later, or OpenTofu.
+You need Terraform 1.0 or later, or OpenTofu. A deployment's
+`secret_inputs` need Terraform 1.11 or later.
 
 ## Install the provider
 
@@ -116,7 +117,8 @@ The provider signs in with the first of these that it finds:
   token.
 - **An rvavctl profile.** At your desk, run `rvavctl login`. If `url` is
   left out or is the profile's rvav, the provider uses that sign-in and
-  renews it as rvavctl does.
+  renews it as rvavctl does. The provider and `rvavctl` can run at once:
+  each takes the sign-in that the other renewed.
 - **Neither:** the provider calls `url` without credentials, which only an
   rvav in development mode accepts.
 
@@ -161,12 +163,18 @@ resource "rvav_catalog_item" "app" {
   shape of the item's YAML export (`form_schema`, `ui_schema`,
   `initial_values`, `blueprint`). A change to it makes a new version and
   publishes it, which deprecates the version before. To keep the new
-  version as the item's draft instead, set `publish = false`.
+  version as the item's draft instead, set `publish = false`: Terraform
+  then manages the draft, and a plan shows the draft's changes made in
+  the web app.
+- Without `icon`, an item has the icon that rvav gives its type, such as
+  `server`: removing `icon` from the configuration sets that icon again.
 - Without `project_ids` or `all_projects`, Terraform leaves the item's
   sharing as it is.
 - Destroying an item that someone requested withdraws it, with a warning:
   rvav keeps it for its requests' history. An item nobody requested is
-  deleted.
+  deleted. Applying the item again then fails, as rvav still has its slug:
+  import the item by the ID that the error names, then apply. Terraform
+  publishes the configuration's definition as a new version.
 
 To refer to a project or an item that Terraform doesn't manage, use the
 data sources:
@@ -423,6 +431,11 @@ output "app_address" {
   give, and rvav fills in the others from the form, as for a request made
   in the web app. To leave an input that has a default empty, set it to
   `null`.
+- `inputs` show in the plan and stay in Terraform's state, in clear text.
+  Give the form's secret fields, such as a password, in `secret_inputs`
+  instead.
+- `catalog_item` takes the item's slug or its ID: naming the same item by
+  its other one changes nothing.
 - Without `version`, Terraform requests the newest version the project may
   request, and records its number.
 - While a request waits for approval, `terraform apply` waits too.
@@ -441,10 +454,68 @@ disk: the apply fails with rvav's reason, and the deployment stays as it
 was. Change the configuration back, or replace the deployment with
 `terraform apply -replace=rvav_deployment.app`.
 
+### Give secret inputs
+
+`secret_inputs` takes the form's secret fields as JSON. Terraform sends
+them with `inputs` in each request it makes, and keeps them neither in the
+plan nor in the state: it is a write-only attribute, which needs
+Terraform 1.11 or later.
+
+```hcl
+variable "join_password" {
+  type      = string
+  sensitive = true
+}
+
+resource "rvav_deployment" "app" {
+  # project_id, environment, catalog_item and inputs as above
+  secret_inputs = jsonencode({ join_password = var.join_password })
+}
+```
+
+rvav uses a secret value while the request runs, and keeps none. A
+change of `secret_inputs` alone makes no request: Terraform keeps no value
+to compare, and rvav doesn't count a secret given again as a change. The
+next update that a change of `inputs` or `version` makes sends the new
+values. An input can't be in both `inputs` and `secret_inputs`.
+
+### When a request fails or takes long
+
 If a request fails, the apply fails and Terraform marks the deployment
 tainted: the next apply deletes it and requests it again. To keep it
-instead, run `terraform untaint rvav_deployment.app`. The same happens if
-you stop Terraform while it waits: the request goes on in rvav.
+instead, run `terraform untaint rvav_deployment.app`.
+
+While it waits, Terraform goes on through errors that don't last, such as
+a proxy's `502 Bad Gateway` during a rolling restart or a dropped
+connection. It waits longer after each, up to a minute. To see them, set
+`TF_LOG=WARN`.
+
+If you stop Terraform while it waits for a new deployment, with Ctrl-C,
+it keeps the deployment in its state, not tainted, and warns that the
+request goes on in rvav. The next plan reads its status. To follow the
+request, run `rvavctl requests wait` with the request's number. Stopped
+while it waits for an update or a destroy, the apply fails, and rvav goes
+on with the request.
+
+To destroy a deployment that a request still builds or updates, Terraform
+waits for that request to end, then deletes it.
+
+Terraform waits as long as a request takes, approvals included. To give
+up waiting sooner, set a `timeouts` block:
+
+```hcl
+resource "rvav_deployment" "app" {
+  # …
+  timeouts = {
+    create = "2h"
+    update = "1h"
+    delete = "30m"
+  }
+}
+```
+
+When a timeout ends a wait, the apply fails, and rvav goes on with the
+request. After a create, the deployment is then tainted.
 
 ## Import what rvav already has
 
@@ -480,6 +551,9 @@ make:
   as an update, and rvav makes no request when the deployment already has
   those values.
 
+A catalog item's `definition` that differs only in its formatting, such
+as a file indented otherwise than rvav's JSON, isn't a change.
+
 ## Changes made outside Terraform
 
 Every plan reads what rvav holds:
@@ -491,5 +565,9 @@ Every plan reads what rvav holds:
   again.
 - A catalog item version published in the web app shows as a difference
   in `definition`, and the next apply publishes the configuration's again.
+  With `publish = false`, so does a change of the draft.
 - For a deployment, Terraform compares only the inputs your configuration
   gives, and not those of secret fields.
+- Terraform sends no version with its changes: if someone changes an
+  object in the web app between your plan and your apply, the apply
+  overwrites their change.
