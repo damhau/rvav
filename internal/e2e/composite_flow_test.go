@@ -2,7 +2,9 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -252,6 +254,87 @@ func TestSignalRetryAfterRollback(t *testing.T) {
 		}})
 		if r := rig.get(req.Id, requester); !waited || r.Status != api.RequestStatusSucceeded || rig.outputs(req.Id, "step:cab")["change"] != "CHG-2" {
 			t.Fatalf("the retry: waited %v, %s, cab outputs %v", waited, r.Status, rig.outputs(req.Id, "step:cab"))
+		}
+	})
+}
+
+// TestCompositeFlowLimits: a sibling's failure stops a loop of a parallel
+// group from starting passes; a loop's outputs, and all the steps', are
+// bounded below Temporal's payloads, failing the step that goes over
+// (E1.6, ADR-0057).
+func TestCompositeFlowLimits(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, requester = "mkeller", "tnguyen"
+		rig := askRig{t: t, h: h, ctx: ctx, admin: admin}
+		change := newChangeAPI(t)
+		h.svc.REST.Hosts = []string{change.URL}
+		failedWith := func(s api.Step, why string) bool {
+			return s.Status == api.StepStatusFailed && strings.Contains(deref(s.Error)+deref(s.Detail), why)
+		}
+
+		grouped := rig.publishDefinition("loop-group", askDefinition(false, map[string]any{"parallel": []any{
+			loopOf(checking(change, "each"), "['a', 'b', 'c', 'd']", 1),
+			posting(change, "bad", "{'x': int(inputs.name)}"),
+		}}))
+		change.script()
+		release := change.holding()
+		req := rig.submit(requester, grouped)
+		// A check of the loop waits until its sibling has failed.
+		go func() {
+			defer release()
+			for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+				var status string
+				_ = h.store.Pool.QueryRow(ctx, `select status from request_steps where request_id = $1 and key = 'step:bad'`, req.Id).Scan(&status)
+				if status == "failed" {
+					return
+				}
+			}
+		}()
+		rig.run(req.Id)
+		steps := rig.steps(req.Id, requester)
+		if r := rig.get(req.Id, requester); r.Status != api.RequestStatusFailed || steps["step:bad"].Status != api.StepStatusFailed {
+			t.Fatalf("the group = %s, bad %+v", r.Status, steps["step:bad"])
+		}
+		// The first pass may have begun before its sibling failed, no other.
+		ran := 0
+		for i := range 4 {
+			switch s := steps[fmt.Sprintf("step:each/each:%d", i)]; {
+			case i == 0 && s.Status == api.StepStatusDone:
+				ran++
+			case s.Status != api.StepStatusSkipped || deref(s.Detail) != "Another step of its group failed.":
+				t.Fatalf("pass %d = %+v", i+1, s)
+			}
+		}
+		if steps["step:each"].Status != api.StepStatusCancelled || change.checked() != ran {
+			t.Fatalf("the loop = %+v, %d checks for %d passes", steps["step:each"], change.checked(), ran)
+		}
+
+		change.script(state(strings.Repeat("x", 200<<10)))
+		looped := rig.publishDefinition("loop-big", askDefinition(false, loopOf(checking(change, "big"), "[1, 2, 3]", 1)))
+		req = rig.submit(requester, looped)
+		rig.run(req.Id)
+		if s := rig.steps(req.Id, requester)["step:big"]; rig.get(req.Id, requester).Status != api.RequestStatusFailed ||
+			!failedWith(s, "a loop gives 512 KiB at most") {
+			t.Fatalf("a loop over its bound = %+v", s)
+		}
+
+		// A REST step keeps 256 KiB at most: the seventh goes over.
+		change.script(state(strings.Repeat("y", 250<<10)))
+		var heavySteps []any
+		for i := 1; i <= 7; i++ {
+			heavySteps = append(heavySteps, checking(change, fmt.Sprintf("s%d", i)))
+		}
+		heavy := rig.publishDefinition("steps-big", askDefinition(false, append(heavySteps, posting(change, "after", "{}"))...))
+		req = rig.submit(requester, heavy)
+		rig.run(req.Id)
+		steps = rig.steps(req.Id, requester)
+		if rig.get(req.Id, requester).Status != api.RequestStatusFailed || steps["step:s6"].Status != api.StepStatusDone ||
+			!failedWith(steps["step:s7"], "later steps can be given 1536 KiB at most") || steps["step:after"].Status != api.StepStatusPending {
+			t.Fatalf("steps over their bound: s6 %+v, s7 %+v, after %+v", steps["step:s6"], steps["step:s7"], steps["step:after"])
 		}
 	})
 }

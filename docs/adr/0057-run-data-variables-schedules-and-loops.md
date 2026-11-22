@@ -181,8 +181,16 @@ narrowly.
   `step:<key>/each:<n>`, and reads `each` and `index` in its `with`, its
   `when` and a REST call's URL and body. The loop's outputs are
   `{items, count}`, each pass's outputs in the list's order. A pass that
-  fails stops those not begun and fails the loop. A Retry reads the list
-  again and keeps the passes done, by position.
+  fails stops those not begun and fails the loop. In a parallel group, a
+  sibling's failure stops those not begun too: they are skipped, "Another
+  step of its group failed.", and the loop is cancelled (E1.6). A Retry
+  reads the list again and keeps the passes done, by position.
+- Every later activity carries the steps' outputs, in Temporal payloads of
+  2 MB at most. A loop's outputs are 512 KiB at most, the steps' 1.5 MiB in
+  all (a REST step keeps 256 KiB of its answer, and a composite could have
+  six such before loops): the step that goes over fails, saying so, with
+  its outputs dropped, instead of a workflow task that fails again and
+  again. Both are behind `workflow.GetVersion("flow-limits")` (E1.6).
 - What can't loop, and why: a VM step (its VMs are planned at submit, so
   its item's count is the way), a custom resource step (one resource of its
   deployment, under the step's key, rolled back by its type's delete step

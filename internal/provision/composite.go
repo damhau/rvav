@@ -113,6 +113,7 @@ func runGroup(ctx workflow.Context, info Info, group []CompositeStep, outputs ma
 	var failed *stepResult
 	var again []CompositeStep
 	var stopped []string
+	var gave *CompositeStep
 	for i, c := range group {
 		if errors.Is(results[i].err, errContinueAsNew) {
 			again = append(again, c)
@@ -134,8 +135,14 @@ func runGroup(ctx workflow.Context, info Info, group []CompositeStep, outputs ma
 		}
 		if results[i].out != nil {
 			outputs[c.Key] = results[i].out
+			gave = &group[i]
 		}
 		*done = append(*done, c)
+	}
+	if failed == nil && gave != nil {
+		if err := overflow(ctx, info, outputs, *gave); err != nil {
+			failed = &stepResult{failed: gave.StepKey(), err: err}
+		}
 	}
 	if failed != nil {
 		// A wait that had left to continue as new when a sibling failed.
@@ -191,7 +198,7 @@ func beforeVMs(ctx workflow.Context, info Info, c CompositeStep, key string) (st
 // cancelled. extra is what a catch path's steps read besides (error).
 func runCompositeStep(ctx, stop workflow.Context, info Info, c CompositeStep, outputs map[string]any, extra map[string]any) stepResult {
 	if c.ForEach != nil && flowOn(ctx) {
-		return runLoop(ctx, info, c, outputs)
+		return runLoop(ctx, stop, info, c, outputs)
 	}
 	return runStepAs(ctx, stop, info, c, c.StepKey(), outputs, extra)
 }

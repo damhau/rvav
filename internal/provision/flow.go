@@ -24,6 +24,46 @@ func flowOn(ctx workflow.Context) bool {
 	return workflow.GetVersion(ctx, versionFlow, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 }
 
+// versionLimits: a loop stops starting passes once a sibling of its group
+// failed, and outputs too large to carry between steps fail the step that
+// gave them (E1.6).
+const versionLimits = "flow-limits"
+
+func limitsOn(ctx workflow.Context) bool {
+	return workflow.GetVersion(ctx, versionLimits, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+}
+
+// Every later activity of a composite carries its steps' outputs, in a
+// Temporal payload of 2 MB at most: a loop gives 512 KiB, the steps 1.5 MiB
+// in all (a REST step keeps 256 KiB, and composites had six such before).
+const (
+	maxLoopOutputs  = 512 << 10
+	maxStepsOutputs = 3 << 19
+)
+
+func outputsSize(v any) int {
+	b, _ := json.Marshal(v)
+	return len(b)
+}
+
+// overflow fails a step whose outputs bring its composite's over what later
+// steps can carry, and takes them out again.
+func overflow(ctx workflow.Context, info Info, outputs map[string]any, c CompositeStep) error {
+	if !limitsOn(ctx) {
+		return nil
+	}
+	n := outputsSize(outputs)
+	if n <= maxStepsOutputs {
+		return nil
+	}
+	delete(outputs, c.Key)
+	why := fmt.Sprintf("With its outputs, the steps' come to %d KiB: later steps can be given %d KiB at most. Keep less of what it answers.",
+		n>>10, maxStepsOutputs>>10)
+	var a *Activities
+	_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, c.StepKey(), "failed", why).Get(ctx, nil)
+	return permanent("%s", why)
+}
+
 const (
 	notFailed    = "Nothing failed before it."
 	passStopped  = "An earlier pass failed."
@@ -72,13 +112,15 @@ type LoopInput struct {
 // runLoop runs a step once for each item of its list, Parallel at a time,
 // each pass a step of its own reading each and index. Its outputs are each
 // pass's, in order, as items. A pass that fails stops those not begun; the
-// loop fails once those running end.
-func runLoop(ctx workflow.Context, info Info, c CompositeStep, outputs map[string]any) stepResult {
+// loop fails once those running end. A sibling's failure, stop, stops
+// those not begun too.
+func runLoop(ctx, stop workflow.Context, info Info, c CompositeStep, outputs map[string]any) stepResult {
 	var a *Activities
 	key := c.StepKey()
 	if info.done(key) {
 		return stepResult{out: info.Outputs[key]}
 	}
+	limits := limitsOn(ctx)
 	var items []any
 	in := LoopInput{RequestID: info.RequestID, ProjectID: info.ProjectID, StepKey: key, Title: c.Title, Items: c.ForEach.Items,
 		Parallel: c.ForEach.Parallel, Steps: outputs}
@@ -94,7 +136,7 @@ func runLoop(ctx workflow.Context, info Info, c CompositeStep, outputs map[strin
 		if err := sem.Acquire(ctx, 1); err != nil {
 			break
 		}
-		if failed >= 0 {
+		if failed >= 0 || limits && stop.Err() != nil {
 			sem.Release(1)
 			break
 		}
@@ -125,6 +167,19 @@ func runLoop(ctx workflow.Context, info Info, c CompositeStep, outputs map[strin
 		_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", why).Get(ctx, nil)
 		return stepResult{failed: r.failed, err: r.err}
 	}
+	if limits && begun < len(items) {
+		// A loop has no undo, and its passes don't wait.
+		if ctx.Err() != nil {
+			return stepResult{failed: key, err: temporal.NewCanceledError()}
+		}
+		var left []string
+		for i := begun; i < len(items); i++ {
+			left = append(left, PassKey(key, i))
+		}
+		_ = workflow.ExecuteActivity(ctx, a.SkipSteps, info.RequestID, info.ProjectID, left, stoppedBySibling).Get(ctx, nil)
+		_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "cancelled", stoppedBySibling).Get(ctx, nil)
+		return stepResult{skipped: true, stopped: true}
+	}
 	list := make([]any, len(items))
 	for i, r := range results {
 		if !r.skipped {
@@ -133,6 +188,14 @@ func runLoop(ctx workflow.Context, info Info, c CompositeStep, outputs map[strin
 	}
 	var recorded map[string]any
 	out := map[string]any{"items": list, "count": len(items)}
+	if limits {
+		if n := outputsSize(out); n > maxLoopOutputs {
+			why := fmt.Sprintf("Its passes give %d KiB of outputs: a loop gives %d KiB at most. Keep less of what each pass answers.",
+				n>>10, maxLoopOutputs>>10)
+			_ = workflow.ExecuteActivity(ctx, a.MarkStep, info.RequestID, info.ProjectID, key, "failed", why).Get(ctx, nil)
+			return stepResult{failed: key, err: permanent("%s", why)}
+		}
+	}
 	if err := workflow.ExecuteActivity(ctx, a.FinishStep, info.RequestID, info.ProjectID, key, out).Get(ctx, &recorded); err != nil {
 		return stepResult{failed: key, err: err}
 	}
@@ -222,6 +285,9 @@ func runCatch(ctx workflow.Context, info Info, failedStep, message string, stopp
 		}
 		if !r.skipped && r.out != nil {
 			outputs[s.Key] = r.out
+			if err := overflow(ctx, info, outputs, s); err != nil {
+				return s.StepKey(), err
+			}
 		}
 	}
 	return "", nil
