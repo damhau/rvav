@@ -125,6 +125,12 @@ export async function applyLocale(chosen: Locale | undefined) {
   if (i18n.resolvedLanguage !== lng) await i18n.changeLanguage(lng);
 }
 
+/** Resolves once the language shown is loaded: for text made while the app starts, before React renders. */
+export function i18nReady(): Promise<void> {
+  if (i18n.isInitialized) return Promise.resolve();
+  return new Promise((resolve) => i18n.on("initialized", () => resolve()));
+}
+
 /** The language shown now. */
 export function currentLocale(): Locale {
   return isLocale(i18n.resolvedLanguage) ? i18n.resolvedLanguage : "en";

@@ -3,6 +3,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Dialog } from "radix-ui";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { FolderOpen } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -30,17 +31,18 @@ const withoutProject = (path: string) =>
   path === "/access";
 
 function NoProject() {
+  const { t } = useTranslation("shell");
   const { me } = useCurrentProject();
   if (can(me, "system.manage")) {
     return (
       <Page>
         <EmptyState
           icon={FolderOpen}
-          title="You are not in a project yet"
-          body="Catalog, deployments and requests belong to projects. As an administrator, set rvav up: its connections, environments and projects, and a first catalog item."
+          title={t("noProject.title")}
+          body={t("noProject.bodyAdmin")}
           action={
             <Button variant="primary" size="sm" asChild>
-              <Link to="/admin/setup">Set up rvav</Link>
+              <Link to="/admin/setup">{t("noProject.setUp")}</Link>
             </Button>
           }
         />
@@ -51,11 +53,11 @@ function NoProject() {
     <Page>
       <EmptyState
         icon={FolderOpen}
-        title="You are not in a project yet"
-        body="Catalog, deployments and requests belong to projects. Ask a project admin to add you. You can still decide the approvals that wait for you."
+        title={t("noProject.title")}
+        body={t("noProject.body")}
         action={
           <Button variant="primary" size="sm" asChild>
-            <Link to="/approvals">Open approvals</Link>
+            <Link to="/approvals">{t("noProject.openApprovals")}</Link>
           </Button>
         }
       />
@@ -83,6 +85,7 @@ function SetupLanding() {
 
 // Mounted as the drawer opens, so that it reads its opener then.
 function NavDrawer({ onNavigate }: { onNavigate: () => void }) {
+  const { t } = useTranslation("shell");
   const giveFocusBack = useOpener();
   const ref = useRef<HTMLDivElement>(null);
   return (
@@ -101,14 +104,15 @@ function NavDrawer({ onNavigate }: { onNavigate: () => void }) {
       }}
       onCloseAutoFocus={giveFocusBack}
     >
-      <Dialog.Title className="sr-only">Navigation</Dialog.Title>
-      <Dialog.Description className="sr-only">Main sections of rvav</Dialog.Description>
+      <Dialog.Title className="sr-only">{t("drawer.title")}</Dialog.Title>
+      <Dialog.Description className="sr-only">{t("drawer.description")}</Dialog.Description>
       <Sidebar onNavigate={onNavigate} />
     </Dialog.Content>
   );
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const { t } = useTranslation("shell");
   const { projectId } = useCurrentProject();
   // The location whose pages are on screen: while the next page's code loads,
   // location is already the next one but the outlet still shows the last.
@@ -139,7 +143,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         href="#main"
         className="sr-only z-50 rounded-md bg-surface px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
       >
-        Skip to content
+        {t("skipToContent")}
       </a>
       <aside className={cn("hidden shrink-0 border-r border-line bg-rail md:block", rail ? "w-14" : "w-[232px]")}>
         <Sidebar rail={rail} />

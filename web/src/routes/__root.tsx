@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 import { Toaster } from "sonner";
+import { useTranslation } from "react-i18next";
 import { PageNotFound } from "@/components/common/blocked";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -15,12 +16,13 @@ export interface RouterContext {
 }
 
 function Boot({ state }: { state: "loading" | Error }) {
+  const { t } = useTranslation();
   const { name } = useBranding();
   return (
     <div className="flex h-full items-center justify-center p-6">
       {state === "loading" ? (
         <p className="text-muted" role="status">
-          Loading {name}…
+          {t("loadingApp", { name })}
         </p>
       ) : (
         <ErrorState

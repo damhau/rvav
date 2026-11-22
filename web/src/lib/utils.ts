@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
+import { i18n } from "@/lib/i18n";
 
 // Without the type scale's names, tailwind-merge takes text-caption for a
 // colour and drops it next to text-muted.
@@ -21,7 +22,7 @@ export function toText(v: unknown): string {
 
 /** Copies text to the clipboard; rejects where the browser has none (plain HTTP) or refuses. */
 export async function copyText(text: string): Promise<void> {
-  if (!navigator.clipboard) throw new Error("This page can't use the clipboard.");
+  if (!navigator.clipboard) throw new Error(i18n.t("common:clipboardMissing"));
   await navigator.clipboard.writeText(text);
 }
 

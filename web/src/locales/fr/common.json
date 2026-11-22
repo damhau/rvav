@@ -161,5 +161,7 @@
     "label_one": "Avertissement de politique",
     "label_many": "Avertissements de politique",
     "label_other": "Avertissements de politique"
-  }
+  },
+  "clipboardMissing": "Cette page ne peut pas utiliser le presse-papiers.",
+  "loadingApp": "Chargement de {{name}}…"
 }

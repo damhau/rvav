@@ -3,6 +3,7 @@
 // yet, or the session may do nothing but change the password.
 import { KeyRound, LogIn, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api/client";
 import type { Problem } from "@/lib/api/types";
 import {
@@ -55,15 +56,14 @@ function Alert({ children }: { children: React.ReactNode }) {
 
 /** The seconds left before another attempt, outside the alert: read when asked, not each second. */
 function Left({ seconds }: { seconds: number }) {
+  const { t } = useTranslation("account");
   if (seconds <= 0) return null;
   return (
     <p aria-live="off" className="-mt-1.5 text-secondary text-muted tabular-nums">
-      {seconds === 1 ? "1 second" : `${seconds} seconds`} left.
+      {t("signIn.left", { count: seconds })}
     </p>
   );
 }
-
-const unreachable = "Can't reach the rvav API. Check your connection and try again.";
 
 /** Seconds left before another attempt, counting down from a 429's Retry-After. */
 function useWait() {
@@ -85,9 +85,6 @@ function useWait() {
   };
 }
 
-const providerDown =
-  "The identity provider can't be reached. Sign in as the local administrator, or try single sign-on again later.";
-
 export function SignInPage({
   provider = hasProvider(),
   problem = signInProblem(),
@@ -95,7 +92,9 @@ export function SignInPage({
   provider?: boolean;
   problem?: ReturnType<typeof signInProblem>;
 }) {
+  const { t } = useTranslation("account");
   const { name } = useBranding();
+  const providerDown = t("signIn.providerDown");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(problem === "provider" ? providerDown : null);
@@ -117,18 +116,18 @@ export function SignInPage({
       if (response.status === 429) {
         const seconds = Number(response.headers.get("Retry-After") ?? "1") || 1;
         wait.start(seconds);
-        setError("Too many failed attempts in a row. Wait before trying again.");
+        setError(t("signIn.tooMany"));
       } else if (response.status === 401) {
-        setError("The username or password is wrong.");
+        setError(t("signIn.wrong"));
       } else if (response.status === 409 && problem?.detail) {
         // In FIPS 140-only mode, a password hash it refuses: what to do instead (ADR-0060).
         setError(problem.detail);
       } else {
-        setError("Signing in didn't work. Try again in a moment.");
+        setError(t("signIn.failed"));
       }
       setPassword("");
     } catch {
-      setError(unreachable);
+      setError(t("signIn.unreachable"));
     } finally {
       setBusy(false);
     }
@@ -136,18 +135,12 @@ export function SignInPage({
 
   return (
     <Screen
-      title={`Sign in to ${name}`}
-      lead={
-        problem === "api"
-          ? "rvav's API isn't answering: it may be starting again with newer settings."
-          : provider
-            ? "Sign in with your organisation's account."
-            : "No identity provider is set up yet. Sign in as the local administrator to set one up in Administration."
-      }
+      title={t("signIn.title", { name })}
+      lead={t(problem === "api" ? "signIn.lead.api" : provider ? "signIn.lead.provider" : "signIn.lead.noProvider")}
     >
       {problem === "api" && (
         <Button variant="primary" className="w-full" onClick={() => globalThis.location.reload()}>
-          <RotateCw aria-hidden /> Try again
+          <RotateCw aria-hidden /> {t("signIn.retry")}
         </Button>
       )}
       {provider && (
@@ -157,22 +150,22 @@ export function SignInPage({
             className="w-full"
             onClick={() => void signInWithProvider(target()).catch(() => setError(providerDown))}
           >
-            <LogIn aria-hidden /> Sign in with single sign-on
+            <LogIn aria-hidden /> {t("signIn.sso")}
           </Button>
           <div className="flex items-center gap-3 text-secondary text-faint" aria-hidden>
             <span className="h-px flex-1 bg-line" />
-            or, when single sign-on is down
+            {t("signIn.or")}
             <span className="h-px flex-1 bg-line" />
           </div>
         </>
       )}
       <form
-        aria-label="Local administrator"
+        aria-label={t("signIn.localForm")}
         className="flex flex-col gap-3.5"
         onSubmit={(e) => void submit(e)}
         noValidate
       >
-        <Field label="Username" htmlFor="sign-in-username">
+        <Field label={t("signIn.username")} htmlFor="sign-in-username">
           <Input
             id="sign-in-username"
             name="username"
@@ -184,7 +177,7 @@ export function SignInPage({
             onChange={(e) => setUsername(e.target.value)}
           />
         </Field>
-        <Field label="Password" htmlFor="sign-in-password">
+        <Field label={t("signIn.password")} htmlFor="sign-in-password">
           <Input
             id="sign-in-password"
             name="password"
@@ -203,7 +196,7 @@ export function SignInPage({
           className="w-full"
           disabled={busy || wait.left > 0 || username.trim() === "" || password === ""}
         >
-          <KeyRound aria-hidden /> {provider ? "Sign in as the local administrator" : "Sign in"}
+          <KeyRound aria-hidden /> {t(provider ? "signIn.asLocal" : "signIn.submit")}
         </Button>
       </form>
     </Screen>
@@ -213,6 +206,7 @@ export function SignInPage({
 const MIN_LENGTH = 12;
 
 export function ChangePasswordPage() {
+  const { t } = useTranslation("account");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [repeat, setRepeat] = useState("");
@@ -224,8 +218,8 @@ export function ChangePasswordPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const local: Record<string, string> = {};
-    if (next.length < MIN_LENGTH) local.new = `Use at least ${MIN_LENGTH} characters.`;
-    else if (repeat !== next) local.repeat = "The two new passwords differ.";
+    if (next.length < MIN_LENGTH) local.new = t("password.tooShort", { min: MIN_LENGTH });
+    else if (repeat !== next) local.repeat = t("password.differ");
     setErrors(local);
     setError(null);
     if (Object.keys(local).length > 0) return;
@@ -247,29 +241,31 @@ export function ChangePasswordPage() {
         setErrors(byField);
       } else if (response.status === 429) {
         wait.start(Number(response.headers.get("Retry-After") ?? "1") || 1);
-        setError("Too many failed attempts in a row. Wait before trying again.");
+        setError(t("signIn.tooMany"));
       } else if (response.status === 401) {
         // The session ended: the sign-in page again.
         globalThis.location.assign("/");
       } else {
-        setError(problem?.detail ?? "Changing the password didn't work. Try again in a moment.");
+        setError(problem?.detail ?? t("password.failed"));
       }
     } catch {
-      setError(unreachable);
+      setError(t("signIn.unreachable"));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Screen
-      title="Change the administrator's password"
-      lead="Choose your own password before going on: the one you signed in with was given at installation, or by a reset."
-    >
-      <form aria-label="Change password" className="flex flex-col gap-3.5" onSubmit={(e) => void submit(e)} noValidate>
+    <Screen title={t("password.title")} lead={t("password.lead")}>
+      <form
+        aria-label={t("password.form")}
+        className="flex flex-col gap-3.5"
+        onSubmit={(e) => void submit(e)}
+        noValidate
+      >
         {/* For password managers: the account this password belongs to. */}
         <input type="text" name="username" autoComplete="username" value="admin" readOnly hidden />
-        <Field label="Current password" htmlFor="password-current" error={errors.current}>
+        <Field label={t("password.current")} htmlFor="password-current" error={errors.current}>
           <Input
             id="password-current"
             type="password"
@@ -280,10 +276,10 @@ export function ChangePasswordPage() {
           />
         </Field>
         <Field
-          label="New password"
+          label={t("password.new")}
           htmlFor="password-new"
           error={errors.new}
-          hint={`At least ${MIN_LENGTH} characters, other than the current one.`}
+          hint={t("password.newHint", { min: MIN_LENGTH })}
         >
           <Input
             id="password-new"
@@ -295,7 +291,7 @@ export function ChangePasswordPage() {
             onChange={(e) => setNext(e.target.value)}
           />
         </Field>
-        <Field label="New password again" htmlFor="password-repeat" error={errors.repeat}>
+        <Field label={t("password.repeat")} htmlFor="password-repeat" error={errors.repeat}>
           <Input
             id="password-repeat"
             type="password"
@@ -309,10 +305,10 @@ export function ChangePasswordPage() {
         <Left seconds={wait.left} />
         <div className="flex items-center gap-2">
           <Button type="submit" variant="primary" disabled={busy || wait.left > 0 || current === "" || next === ""}>
-            Change password
+            {t("password.submit")}
           </Button>
           <Button type="button" variant="quiet" onClick={() => void signOut()}>
-            Sign out
+            {t("password.signOut")}
           </Button>
         </div>
       </form>
@@ -326,22 +322,20 @@ export function ChangePasswordPage() {
  * from it; this window closes.
  */
 export function TrialWindowPage({ result = trialResult() }: { result?: { token?: string; error?: string } }) {
+  const { t } = useTranslation("account");
   useEffect(() => {
     if (!result.token) return;
     const t = setTimeout(() => globalThis.close(), 1200);
     return () => clearTimeout(t);
   }, [result.token]);
   return (
-    <Screen
-      title="Trial sign-in"
-      lead="Signing in at the identity provider with the settings being tried, before they are saved."
-    >
+    <Screen title={t("trial.title")} lead={t("trial.lead")}>
       {result.token ? (
         <p role="status" className="text-body">
-          Signed in at the provider. What rvav reads from the token is on the Administration page; this window closes.
+          {t("trial.signedIn")}
         </p>
       ) : (
-        <Alert>The trial sign-in failed: {result.error ?? "no token came back."}</Alert>
+        <Alert>{t("trial.failed", { reason: result.error ?? t("trial.noToken") })}</Alert>
       )}
     </Screen>
   );

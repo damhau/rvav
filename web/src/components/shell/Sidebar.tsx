@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useId, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Tip } from "@/components/ui/tooltip";
 import { useBranding } from "@/lib/branding";
 import { useLiveStatus } from "@/lib/live/LiveProvider";
@@ -8,7 +9,7 @@ import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "./BrandMark";
-import { adminMenu, mainPages } from "./nav";
+import { adminLabel, adminMenu, groupLabel, mainLabel, mainPages } from "./nav";
 
 const row = "relative flex items-center rounded-md hover:bg-sunken hover:text-fg [&_svg]:shrink-0";
 const mainRow = "h-[30px] text-fg [&_svg]:size-4 [&_svg]:text-muted";
@@ -17,19 +18,10 @@ const wide = "gap-2.5 px-2 text-body";
 const narrow = "w-full justify-center";
 const active = "bg-surface font-medium text-fg shadow-[0_0_0_1px_var(--line)] hover:bg-surface [&_svg]:text-accent!";
 
-function liveText(status: ReturnType<typeof useLiveStatus>) {
-  return status === "open"
-    ? "Live updates on"
-    : status === "reconnecting"
-      ? "Reconnecting…"
-      : status === "connecting"
-        ? "Connecting…"
-        : "Live updates off";
-}
-
 function LiveIndicator({ rail }: { rail: boolean }) {
+  const { t } = useTranslation("shell");
   const status = useLiveStatus();
-  const text = liveText(status);
+  const text = t(status === "idle" ? "nav.live.closed" : `nav.live.${status}`);
   const dot = (
     <span
       className={cn(
@@ -62,6 +54,7 @@ function LiveIndicator({ rail }: { rail: boolean }) {
  * On the rail (between a phone's width and a desktop's) it shows icons only.
  */
 export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNavigate?: () => void }) {
+  const { t } = useTranslation("shell");
   const { projectId, me } = useCurrentProject();
   const branding = useBranding();
   const groups = adminMenu(me);
@@ -77,10 +70,10 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
       return rail ? (
         <>
           <span className="absolute top-1.5 right-2 size-1.5 rounded-full bg-run" aria-hidden />
-          <span className="sr-only">{runningCount} running</span>
+          <span className="sr-only">{t("nav.running", { count: runningCount })}</span>
         </>
       ) : (
-        <span className="tnum ml-auto text-caption text-run">{runningCount} running</span>
+        <span className="tnum ml-auto text-caption text-run">{t("nav.running", { count: runningCount })}</span>
       );
     }
     if (key === "approvals" && waiting > 0) {
@@ -90,7 +83,7 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
             "tnum rounded-full bg-warn-soft text-center font-medium text-warn",
             rail ? "absolute -top-0.5 right-0 min-w-4 px-1 text-badge" : "ml-auto min-w-[18px] px-1.5 text-caption",
           )}
-          aria-label={`${waiting} waiting for you`}
+          aria-label={t("nav.waitingForYou", { count: waiting })}
         >
           {waiting}
         </span>
@@ -111,7 +104,7 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
     );
 
   return (
-    <nav aria-label="Main" className="flex h-full flex-col">
+    <nav aria-label={t("nav.label")} className="flex h-full flex-col">
       <div className={cn("pt-3.5 pb-4", rail ? "flex justify-center px-2" : "px-3")}>
         <Link
           to="/"
@@ -137,7 +130,7 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
           {mainPages.map((p) => (
             <li key={p.key}>
               {withTip(
-                p.label,
+                mainLabel(p.key),
                 <Link
                   to={p.to}
                   activeOptions={p.to === "/" ? { exact: true } : undefined}
@@ -145,7 +138,7 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
                   {...linkProps}
                 >
                   <p.icon aria-hidden />
-                  {label(p.label)}
+                  {label(mainLabel(p.key))}
                   {extra(p.key)}
                 </Link>,
               )}
@@ -160,21 +153,21 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
             className={cn("flex flex-col border-t border-line", rail ? "gap-2 pt-2" : "gap-3 pt-3.5")}
           >
             <span id={adminId} className={rail ? "sr-only" : "px-2 text-secondary font-semibold text-fg"}>
-              Administration
+              {t("nav.administration")}
             </span>
             {groups.map((g, i) => (
               <div key={g.key} className={cn("flex flex-col", rail ? i > 0 && "border-t border-line pt-2" : "gap-1")}>
                 <span id={`${adminId}-${g.key}`} className={rail ? "sr-only" : "px-2 text-caption text-faint"}>
-                  {g.label}
+                  {groupLabel(g)}
                 </span>
                 <ul aria-labelledby={`${adminId}-${g.key}`} className="flex flex-col gap-px">
                   {g.pages.map((p) => (
                     <li key={p.to}>
                       {withTip(
-                        p.label,
+                        adminLabel(p),
                         <Link to={p.to} className={cn(row, adminRow, rail ? narrow : wide)} {...linkProps}>
                           <p.icon aria-hidden />
-                          {label(p.label)}
+                          {label(adminLabel(p))}
                         </Link>,
                       )}
                     </li>

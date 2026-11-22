@@ -1,1 +1,47 @@
-{}
+{
+  "trial": {
+    "missing": "The trial's settings are missing: start it again from Administration.",
+    "title": "Trial sign-in",
+    "lead": "Signing in at the identity provider with the settings being tried, before they are saved.",
+    "signedIn": "Signed in at the provider. What rvav reads from the token is on the Administration page; this window closes.",
+    "failed": "The trial sign-in failed: {{reason}}",
+    "noToken": "no token came back."
+  },
+  "signIn": {
+    "title": "Sign in to {{name}}",
+    "lead": {
+      "api": "rvav's API isn't answering: it may be starting again with newer settings.",
+      "provider": "Sign in with your organisation's account.",
+      "noProvider": "No identity provider is set up yet. Sign in as the local administrator to set one up in Administration."
+    },
+    "retry": "Try again",
+    "sso": "Sign in with single sign-on",
+    "or": "or, when single sign-on is down",
+    "localForm": "Local administrator",
+    "username": "Username",
+    "password": "Password",
+    "asLocal": "Sign in as the local administrator",
+    "submit": "Sign in",
+    "tooMany": "Too many failed attempts in a row. Wait before trying again.",
+    "wrong": "The username or password is wrong.",
+    "failed": "Signing in didn't work. Try again in a moment.",
+    "unreachable": "Can't reach the rvav API. Check your connection and try again.",
+    "providerDown": "The identity provider can't be reached. Sign in as the local administrator, or try single sign-on again later.",
+    "left_one": "{{count}} second left.",
+    "left_other": "{{count}} seconds left."
+  },
+  "password": {
+    "title": "Change the administrator's password",
+    "lead": "Choose your own password before going on: the one you signed in with was given at installation, or by a reset.",
+    "form": "Change password",
+    "current": "Current password",
+    "new": "New password",
+    "newHint": "At least {{min}} characters, other than the current one.",
+    "repeat": "New password again",
+    "tooShort": "Use at least {{min}} characters.",
+    "differ": "The two new passwords differ.",
+    "failed": "Changing the password didn't work. Try again in a moment.",
+    "submit": "Change password",
+    "signOut": "Sign out"
+  }
+}

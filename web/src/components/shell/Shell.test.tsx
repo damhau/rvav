@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { customRoles } from "@/mocks/roles";
 import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
-import { adminGroups, mainPages } from "./nav";
+import { adminGroups, adminLabel, mainLabel, mainPages } from "./nav";
 
 afterEach(() => localStorage.removeItem("rvav.mock.as"));
 
@@ -156,8 +156,8 @@ async function renderAndFindNav() {
 
 describe("pages and the menu", () => {
   const pages = [
-    ...mainPages.map((p) => ({ to: p.to, label: p.label })),
-    ...adminGroups.flatMap((g) => g.pages.map((p) => ({ to: p.to, label: p.label }))),
+    ...mainPages.map((p) => ({ to: p.to, label: mainLabel(p.key) })),
+    ...adminGroups.flatMap((g) => g.pages.map((p) => ({ to: p.to, label: adminLabel(p) }))),
   ];
 
   it.each(pages)("$to is titled $label, and its menu entry is the current page", async ({ to, label }) => {

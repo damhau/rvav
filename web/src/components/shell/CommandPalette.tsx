@@ -4,11 +4,13 @@ import { Command } from "cmdk";
 import { HardDrive, List, Monitor, Moon, Plus, Server, Sun } from "lucide-react";
 import { Dialog as D } from "radix-ui";
 import { useDeferredValue, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { requestStatusLabel } from "@/components/common/status";
 import { useOpener } from "@/components/ui/opener";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { useTheme } from "@/lib/theme";
-import { adminMenu, mainPages } from "./nav";
+import { adminLabel, adminMenu, groupLabel, mainLabel, mainPages } from "./nav";
 
 interface Entry {
   id: string;
@@ -44,6 +46,7 @@ function Group({ heading, entries }: { heading: string; entries: Entry[] }) {
 }
 
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { t } = useTranslation("shell");
   const navigate = useNavigate();
   const { projectId, me } = useCurrentProject();
   const { setTheme } = useTheme();
@@ -70,16 +73,16 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     !term || parts.some((p) => p?.toLowerCase().includes(term.toLowerCase()));
 
   const nav: Entry[] = mainPages
-    .filter((p) => match(p.label))
-    .map((p) => ({ id: `go-${p.key}`, label: p.label, icon: p.icon, run: go(p.to) }));
+    .filter((p) => match(mainLabel(p.key)))
+    .map((p) => ({ id: `go-${p.key}`, label: mainLabel(p.key), icon: p.icon, run: go(p.to) }));
 
   // The administration pages show once something is typed, in the sidebar's groups.
   const admin = term
     ? adminMenu(me).map((g) => ({
-        heading: g.label,
+        heading: groupLabel(g),
         entries: g.pages
-          .filter((p) => match(p.label, g.label, ...(p.keywords ?? [])))
-          .map((p): Entry => ({ id: `go-${p.to}`, label: p.label, icon: p.icon, run: go(p.to) })),
+          .filter((p) => match(adminLabel(p), groupLabel(g), ...(p.keywords ?? [])))
+          .map((p): Entry => ({ id: `go-${p.to}`, label: adminLabel(p), icon: p.icon, run: go(p.to) })),
       }))
     : [];
 
@@ -88,7 +91,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     .slice(0, term ? 5 : 3)
     .map((i) => ({
       id: `item-${i.slug}`,
-      label: `Request ${i.name}`,
+      label: t("palette.requestItem", { name: i.name }),
       meta: i.source.awx_template_name ?? i.version.number,
       icon: Plus,
       run: go("/catalog/$itemId/request", { itemId: i.slug }),
@@ -98,7 +101,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     ? (deployments.data?.pages[0]?.items ?? []).map((d) => ({
         id: `dep-${d.id}`,
         label: d.name,
-        meta: [d.primary_address?.ip, `${d.vm_count} VM${d.vm_count === 1 ? "" : "s"}`].filter(Boolean).join(" · "),
+        meta: [d.primary_address?.ip, t("palette.vmCount", { count: d.vm_count })].filter(Boolean).join(" · "),
         hint: d.environment,
         icon: Server,
         run: go("/deployments/$deploymentId", { deploymentId: d.id }),
@@ -110,8 +113,8 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     ? [
         {
           id: "find-vms",
-          label: `Find “${term}” in Resources`,
-          meta: "VMs by name, IP or FQDN",
+          label: t("palette.findVms", { term }),
+          meta: t("palette.findVmsMeta"),
           icon: HardDrive,
           run: () => {
             close();
@@ -125,17 +128,22 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     ? (requests.data?.pages[0]?.items ?? []).map((r) => ({
         id: `req-${r.id}`,
         label: `${r.number} ${r.title}`,
-        meta: r.status.replace("_", " "),
+        meta: requestStatusLabel(r.status),
         icon: List,
         run: go("/requests/$requestId", { requestId: r.number }),
       }))
     : [];
 
   const actions: Entry[] = [
-    { id: "theme-light", label: "Use light theme", icon: Sun, run: () => (setTheme("light"), close()) },
-    { id: "theme-dark", label: "Use dark theme", icon: Moon, run: () => (setTheme("dark"), close()) },
-    { id: "theme-system", label: "Follow system theme", icon: Monitor, run: () => (setTheme("system"), close()) },
-  ].filter((e) => term.length >= 2 && match(e.label, "theme"));
+    { id: "theme-light", label: t("palette.theme.light"), icon: Sun, run: () => (setTheme("light"), close()) },
+    { id: "theme-dark", label: t("palette.theme.dark"), icon: Moon, run: () => (setTheme("dark"), close()) },
+    {
+      id: "theme-system",
+      label: t("palette.theme.system"),
+      icon: Monitor,
+      run: () => (setTheme("system"), close()),
+    },
+  ].filter((e) => term.length >= 2 && match(e.label, "theme", t("palette.theme.keyword")));
 
   const loading = searching && (deployments.isFetching || requests.isFetching);
 
@@ -144,41 +152,43 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       <D.Portal>
         <D.Overlay className="fixed inset-0 z-40 bg-black/40" />
         <PaletteContent>
-          <Command label="Search or run a command" shouldFilter={false}>
+          <Command label={t("palette.label")} shouldFilter={false}>
             <Command.Input
               value={search}
               onValueChange={setSearch}
-              placeholder="Search VMs, IPs, requests, or type a command"
+              placeholder={t("palette.placeholder")}
               className="h-12 w-full border-b border-line bg-transparent px-4 text-body outline-none placeholder:text-faint"
             />
             <Command.List className="max-h-[60vh] overflow-y-auto py-1.5">
-              {loading && <Command.Loading className="px-4 py-2 text-secondary text-faint">Searching…</Command.Loading>}
+              {loading && (
+                <Command.Loading className="px-4 py-2 text-secondary text-faint">
+                  {t("palette.searching")}
+                </Command.Loading>
+              )}
               <Command.Empty className="px-4 py-5 text-body">
-                <span className="block font-medium">No matches for “{search}”</span>
-                <span className="text-secondary text-muted">
-                  Try a VM name, an IP address such as 10.21.10.37, or a request number.
-                </span>
+                <span className="block font-medium">{t("palette.noMatches", { search })}</span>
+                <span className="text-secondary text-muted">{t("palette.tryHint")}</span>
               </Command.Empty>
-              <Group heading="Deployments and VMs" entries={[...deps, ...vms]} />
-              <Group heading="Requests" entries={reqs} />
-              <Group heading="Request" entries={items} />
-              <Group heading="Go to" entries={nav} />
+              <Group heading={t("palette.groups.deploymentsAndVms")} entries={[...deps, ...vms]} />
+              <Group heading={t("palette.groups.requests")} entries={reqs} />
+              <Group heading={t("palette.groups.request")} entries={items} />
+              <Group heading={t("palette.groups.goTo")} entries={nav} />
               {admin.map((g) => (
                 <Group key={g.heading} heading={g.heading} entries={g.entries} />
               ))}
-              <Group heading="Actions" entries={actions} />
+              <Group heading={t("palette.groups.actions")} entries={actions} />
             </Command.List>
             <div className="flex flex-wrap gap-3.5 border-t border-line bg-bg px-4 py-2 text-caption text-faint">
               <span>
-                <span className="font-mono">↑↓</span> move
+                <span className="font-mono">↑↓</span> {t("palette.move")}
               </span>
               <span>
-                <span className="font-mono">↵</span> open
+                <span className="font-mono">↵</span> {t("palette.open")}
               </span>
               <span>
-                <span className="font-mono">esc</span> close
+                <span className="font-mono">esc</span> {t("palette.close")}
               </span>
-              <span className="ml-auto">Type 2+ characters to search deployments and requests</span>
+              <span className="ml-auto">{t("palette.typeToSearch")}</span>
             </div>
           </Command>
         </PaletteContent>
@@ -189,6 +199,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
 // Mounted as the palette opens, so that it reads what had the focus then.
 function PaletteContent({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation("shell");
   const giveFocusBack = useOpener();
   return (
     <D.Content
@@ -196,7 +207,7 @@ function PaletteContent({ children }: { children: React.ReactNode }) {
       onCloseAutoFocus={giveFocusBack}
       className="fixed top-[12vh] left-1/2 z-50 w-[min(620px,calc(100vw-32px))] -translate-x-1/2 overflow-hidden rounded-lg border border-line bg-surface shadow-pop"
     >
-      <D.Title className="sr-only">Search or run a command</D.Title>
+      <D.Title className="sr-only">{t("palette.label")}</D.Title>
       {children}
     </D.Content>
   );

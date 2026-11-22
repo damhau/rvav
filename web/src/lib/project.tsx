@@ -50,10 +50,11 @@ export function ProjectProvider({
     const membership = me.data.projects.find((p) => p.project.id === chosen) ?? me.data.projects[0];
     if (!membership) {
       // Approvers need not be in a project: the app works, project pages say why they are empty.
+      // The name is empty: the top bar says there is none, in the language shown.
       return {
         me: me.data,
         projectId: "",
-        project: { id: "", code: "", name: "No project" },
+        project: { id: "", code: "", name: "" },
         setProjectId,
       };
     }

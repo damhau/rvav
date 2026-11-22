@@ -23,5 +23,102 @@
     "language": "Langue",
     "mockMode": "Mode simulé\u00a0: session ouverte avec une identité de développement.",
     "signOut": "Se déconnecter"
+  },
+  "nav": {
+    "label": "Principale",
+    "main": {
+      "overview": "Vue d'ensemble",
+      "catalog": "Catalogue",
+      "deployments": "Déploiements",
+      "resources": "Ressources",
+      "requests": "Demandes",
+      "approvals": "Approbations",
+      "reports": "Rapports"
+    },
+    "administration": "Administration",
+    "groups": {
+      "catalog": "Catalogue",
+      "governance": "Gouvernance",
+      "infrastructure": "Infrastructure",
+      "operations": "Exploitation"
+    },
+    "admin": {
+      "catalogItems": "Éléments de catalogue",
+      "propertyGroups": "Groupes de propriétés",
+      "variables": "Variables",
+      "formLibrary": "Bibliothèque de formulaires",
+      "day2Actions": "Actions de jour 2",
+      "workflows": "Workflows personnalisés",
+      "resourceTypes": "Types de ressources",
+      "subscriptions": "Abonnements",
+      "projects": "Projets",
+      "roles": "Rôles",
+      "policies": "Politiques",
+      "integrations": "Intégrations",
+      "infrastructure": "Modèles et réseaux",
+      "onboarding": "Intégration de l'existant",
+      "vraImport": "Import depuis vRA",
+      "setup": "Mise en route",
+      "branding": "Image de marque",
+      "notificationTemplates": "Modèles de notification",
+      "audit": "Journal d'audit",
+      "auditForwarding": "Transfert de l'audit",
+      "system": "Système"
+    },
+    "running_one": "{{count}} en cours",
+    "running_many": "{{count}} en cours",
+    "running_other": "{{count}} en cours",
+    "waitingForYou_one": "{{count}} vous attend",
+    "waitingForYou_many": "{{count}} vous attendent",
+    "waitingForYou_other": "{{count}} vous attendent",
+    "live": {
+      "open": "Mises à jour en direct activées",
+      "reconnecting": "Reconnexion…",
+      "connecting": "Connexion…",
+      "closed": "Mises à jour en direct désactivées"
+    }
+  },
+  "noProject": {
+    "title": "Vous n'êtes encore dans aucun projet",
+    "bodyAdmin": "Le catalogue, les déploiements et les demandes appartiennent à des projets. En tant qu'administrateur, configurez rvav\u00a0: ses connexions, ses environnements et ses projets, et un premier élément de catalogue.",
+    "setUp": "Configurer rvav",
+    "body": "Le catalogue, les déploiements et les demandes appartiennent à des projets. Demandez à un administrateur de projet de vous ajouter. Vous pouvez tout de même décider des approbations qui vous attendent.",
+    "openApprovals": "Ouvrir les approbations",
+    "name": "Aucun projet"
+  },
+  "skipToContent": "Aller au contenu",
+  "drawer": {
+    "title": "Navigation",
+    "description": "Sections principales de rvav"
+  },
+  "palette": {
+    "label": "Rechercher ou lancer une commande",
+    "placeholder": "Rechercher des VM, des IP, des demandes, ou taper une commande",
+    "searching": "Recherche…",
+    "noMatches": "Aucun résultat pour «\u00a0{{search}}\u00a0»",
+    "tryHint": "Essayez un nom de VM, une adresse IP comme 10.21.10.37, ou un numéro de demande.",
+    "groups": {
+      "deploymentsAndVms": "Déploiements et VM",
+      "requests": "Demandes",
+      "request": "Demander",
+      "goTo": "Aller à",
+      "actions": "Actions"
+    },
+    "requestItem": "Demander {{name}}",
+    "vmCount_one": "{{count}} VM",
+    "vmCount_many": "{{count}} VM",
+    "vmCount_other": "{{count}} VM",
+    "findVms": "Chercher «\u00a0{{term}}\u00a0» dans Ressources",
+    "findVmsMeta": "VM par nom, IP ou FQDN",
+    "theme": {
+      "light": "Utiliser le thème clair",
+      "dark": "Utiliser le thème sombre",
+      "system": "Suivre le thème du système",
+      "keyword": "thème"
+    },
+    "move": "se déplacer",
+    "open": "ouvrir",
+    "close": "fermer",
+    "typeToSearch": "Tapez au moins 2 caractères pour chercher des déploiements et des demandes"
   }
 }

@@ -159,5 +159,7 @@
     "goOn": "You may go on: the request keeps the warning.",
     "label_one": "Policy warning",
     "label_other": "Policy warnings"
-  }
+  },
+  "clipboardMissing": "This page can't use the clipboard.",
+  "loadingApp": "Loading {{name}}…"
 }

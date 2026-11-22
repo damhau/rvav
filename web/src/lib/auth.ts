@@ -7,6 +7,7 @@
 // In mock mode there is no identity provider: a fixed development token is used.
 // With VITE_AUTH_MODE=none no token is sent (local Go API in dev auth mode).
 import type { UserManager } from "oidc-client-ts";
+import { i18n, i18nReady } from "@/lib/i18n";
 import type { components } from "@/lib/api/schema";
 import { env, isMock } from "./env";
 
@@ -381,7 +382,8 @@ async function startTrial(): Promise<"redirecting" | "trial"> {
   const raw = globalThis.localStorage.getItem(TRIAL_KEY);
   globalThis.localStorage.removeItem(TRIAL_KEY);
   if (!raw) {
-    sendTrial({ error: "The trial's settings are missing: start it again from Administration." });
+    await i18nReady();
+    sendTrial({ error: i18n.t("account:trial.missing") });
     return "trial";
   }
   if (isMock) {

@@ -64,7 +64,7 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
           <MenuTrigger asChild>
             <Button variant="secondary" className="border-line">
               <span className="text-caption font-normal text-faint">{t("topBar.project")}</span>
-              <span className="max-w-40 truncate">{project.name}</span>
+              <span className="max-w-40 truncate">{project.name || t("noProject.name")}</span>
               <ChevronDown className="text-faint" />
             </Button>
           </MenuTrigger>

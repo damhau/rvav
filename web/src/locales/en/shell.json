@@ -23,5 +23,99 @@
     "language": "Language",
     "mockMode": "Mock mode: signed in with a development identity.",
     "signOut": "Sign out"
+  },
+  "nav": {
+    "label": "Main",
+    "main": {
+      "overview": "Overview",
+      "catalog": "Catalog",
+      "deployments": "Deployments",
+      "resources": "Resources",
+      "requests": "Requests",
+      "approvals": "Approvals",
+      "reports": "Reports"
+    },
+    "administration": "Administration",
+    "groups": {
+      "catalog": "Catalog",
+      "governance": "Governance",
+      "infrastructure": "Infrastructure",
+      "operations": "Operations"
+    },
+    "admin": {
+      "catalogItems": "Catalog items",
+      "propertyGroups": "Property groups",
+      "variables": "Variables",
+      "formLibrary": "Form library",
+      "day2Actions": "Day-2 actions",
+      "workflows": "Custom workflows",
+      "resourceTypes": "Resource types",
+      "subscriptions": "Subscriptions",
+      "projects": "Projects",
+      "roles": "Roles",
+      "policies": "Policies",
+      "integrations": "Integrations",
+      "infrastructure": "Templates and networks",
+      "onboarding": "Onboarding",
+      "vraImport": "vRA import",
+      "setup": "Setup",
+      "branding": "Branding",
+      "notificationTemplates": "Notification templates",
+      "audit": "Audit log",
+      "auditForwarding": "Audit forwarding",
+      "system": "System"
+    },
+    "running_one": "{{count}} running",
+    "running_other": "{{count}} running",
+    "waitingForYou_one": "{{count}} waiting for you",
+    "waitingForYou_other": "{{count}} waiting for you",
+    "live": {
+      "open": "Live updates on",
+      "reconnecting": "Reconnecting…",
+      "connecting": "Connecting…",
+      "closed": "Live updates off"
+    }
+  },
+  "noProject": {
+    "title": "You are not in a project yet",
+    "bodyAdmin": "Catalog, deployments and requests belong to projects. As an administrator, set rvav up: its connections, environments and projects, and a first catalog item.",
+    "setUp": "Set up rvav",
+    "body": "Catalog, deployments and requests belong to projects. Ask a project admin to add you. You can still decide the approvals that wait for you.",
+    "openApprovals": "Open approvals",
+    "name": "No project"
+  },
+  "skipToContent": "Skip to content",
+  "drawer": {
+    "title": "Navigation",
+    "description": "Main sections of rvav"
+  },
+  "palette": {
+    "label": "Search or run a command",
+    "placeholder": "Search VMs, IPs, requests, or type a command",
+    "searching": "Searching…",
+    "noMatches": "No matches for “{{search}}”",
+    "tryHint": "Try a VM name, an IP address such as 10.21.10.37, or a request number.",
+    "groups": {
+      "deploymentsAndVms": "Deployments and VMs",
+      "requests": "Requests",
+      "request": "Request",
+      "goTo": "Go to",
+      "actions": "Actions"
+    },
+    "requestItem": "Request {{name}}",
+    "vmCount_one": "{{count}} VM",
+    "vmCount_other": "{{count}} VMs",
+    "findVms": "Find “{{term}}” in Resources",
+    "findVmsMeta": "VMs by name, IP or FQDN",
+    "theme": {
+      "light": "Use light theme",
+      "dark": "Use dark theme",
+      "system": "Follow system theme",
+      "keyword": "theme"
+    },
+    "move": "move",
+    "open": "open",
+    "close": "close",
+    "typeToSearch": "Type 2+ characters to search deployments and requests"
   }
 }

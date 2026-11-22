@@ -1,1 +1,48 @@
-{}
+{
+  "trial": {
+    "missing": "Les réglages de l'essai manquent\u00a0: relancez-le depuis l'administration.",
+    "title": "Essai de connexion",
+    "lead": "Connexion auprès du fournisseur d'identité avec les réglages à l'essai, avant leur enregistrement.",
+    "signedIn": "Connecté auprès du fournisseur. Ce que rvav lit dans le jeton figure sur la page d'administration\u00a0; cette fenêtre se ferme.",
+    "failed": "L'essai de connexion a échoué\u00a0: {{reason}}",
+    "noToken": "aucun jeton n'est revenu."
+  },
+  "signIn": {
+    "title": "Se connecter à {{name}}",
+    "lead": {
+      "api": "L'API de rvav ne répond pas\u00a0: elle redémarre peut-être avec de nouveaux réglages.",
+      "provider": "Connectez-vous avec le compte de votre organisation.",
+      "noProvider": "Aucun fournisseur d'identité n'est encore configuré. Connectez-vous en tant qu'administrateur local pour en configurer un dans l'administration."
+    },
+    "retry": "Réessayer",
+    "sso": "Se connecter avec l'authentification unique",
+    "or": "ou, quand l'authentification unique est indisponible",
+    "localForm": "Administrateur local",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "asLocal": "Se connecter en tant qu'administrateur local",
+    "submit": "Se connecter",
+    "tooMany": "Trop de tentatives échouées d'affilée. Patientez avant de réessayer.",
+    "wrong": "Le nom d'utilisateur ou le mot de passe est incorrect.",
+    "failed": "La connexion n'a pas abouti. Réessayez dans un instant.",
+    "unreachable": "Impossible de joindre l'API de rvav. Vérifiez votre connexion et réessayez.",
+    "providerDown": "Le fournisseur d'identité est injoignable. Connectez-vous en tant qu'administrateur local, ou réessayez l'authentification unique plus tard.",
+    "left_one": "{{count}} seconde restante.",
+    "left_many": "{{count}} secondes restantes.",
+    "left_other": "{{count}} secondes restantes."
+  },
+  "password": {
+    "title": "Changer le mot de passe de l'administrateur",
+    "lead": "Choisissez votre propre mot de passe avant de continuer\u00a0: celui avec lequel vous vous êtes connecté a été donné à l'installation, ou par une réinitialisation.",
+    "form": "Changer le mot de passe",
+    "current": "Mot de passe actuel",
+    "new": "Nouveau mot de passe",
+    "newHint": "Au moins {{min}} caractères, différent de l'actuel.",
+    "repeat": "Confirmer le nouveau mot de passe",
+    "tooShort": "Utilisez au moins {{min}} caractères.",
+    "differ": "Les deux nouveaux mots de passe diffèrent.",
+    "failed": "Le changement de mot de passe n'a pas abouti. Réessayez dans un instant.",
+    "submit": "Changer le mot de passe",
+    "signOut": "Se déconnecter"
+  }
+}
