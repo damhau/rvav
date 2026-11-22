@@ -1,1 +1,103 @@
-{}
+{
+  "ranges": {
+    "7": "Last 7 days",
+    "30": "Last 30 days",
+    "13w": "Last 13 weeks",
+    "12m": "Last 12 months"
+  },
+  "duration": {
+    "none": "none",
+    "seconds": "{{s}} s",
+    "minutes": "{{m}} min",
+    "hours": "{{h}} h",
+    "hoursMinutes": "{{h}} h {{m}} min",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days"
+  },
+  "weekOf": "Week of {{day}}",
+  "series": {
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "other": "Rejected, cancelled or not finished"
+  },
+  "chart": {
+    "legend": "Legend",
+    "label": {
+      "day": "Requests by day: {{total}} in all. Use the arrow keys to read each day, or the table below.",
+      "week": "Requests by week: {{total}} in all. Use the arrow keys to read each week, or the table below.",
+      "month": "Requests by month: {{total}} in all. Use the arrow keys to read each month, or the table below."
+    },
+    "live_one": "{{period}}: {{count}} request, {{parts}}",
+    "live_other": "{{period}}: {{count}} requests, {{parts}}",
+    "part": "{{n}} {{label}}",
+    "tipRequests_one": "<n>{{count}}</n> <label>request</label>",
+    "tipRequests_other": "<n>{{count}}</n> <label>requests</label>",
+    "showTable": "Show as a table",
+    "table": "Requests by period",
+    "period": "Period",
+    "requests": "Requests"
+  },
+  "quota": {
+    "none": "No projects",
+    "noneBody": "You see no project's quota here.",
+    "of": "Quota of {{scope}}"
+  },
+  "page": {
+    "title": "Reports",
+    "metaAll": "How the platform is used, across every project.",
+    "metaMember": "How the platform is used, in the projects you're a member of.",
+    "exportFailed": "The export failed",
+    "filters": "Report filters",
+    "period": "Period",
+    "by": "By",
+    "day": "Day",
+    "week": "Week",
+    "month": "Month",
+    "project": "Project",
+    "environment": "Environment",
+    "all": "All"
+  },
+  "stats": {
+    "requests": "Requests",
+    "successRate": "Success rate",
+    "outcomes": "{{succeeded}} succeeded, {{failed}} failed",
+    "provisioningTime": "Provisioning time",
+    "provisioningDetail": "median; 90% within {{time}}",
+    "nothingBuilt": "nothing built",
+    "approvalLeadTime": "Approval lead time",
+    "medianOf_one": "median of {{count}} decided",
+    "medianOf_other": "median of {{count}} decided",
+    "nothingDecided": "nothing decided",
+    "waiting": "Waiting for approval",
+    "oldestSince": "the oldest since {{date}}"
+  },
+  "panels": {
+    "requestsBy": {
+      "day": "Requests by day",
+      "week": "Requests by week",
+      "month": "Requests by month"
+    },
+    "mostRequested": "Most requested",
+    "nothingRequested": "Nothing requested",
+    "nothingRequestedBody": "No new deployments were requested in this period.",
+    "item": "Item",
+    "requests": "Requests",
+    "successRate": "Success rate",
+    "buildTime": "Build time (median)",
+    "approvals": "Approvals",
+    "decided": "Decided",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "leadMedian": "Lead time, median",
+    "lead90": "Lead time, 90%",
+    "waitingNow": "Waiting now",
+    "quota": "Usage against quota",
+    "leases": "Leases ending in the next 30 days",
+    "noLeases": "None",
+    "noLeasesBody": "No lease ends in the next 30 days.",
+    "deployment": "Deployment",
+    "project": "Project",
+    "owner": "Owner",
+    "ends": "Ends"
+  }
+}

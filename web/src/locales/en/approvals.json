@@ -1,1 +1,69 @@
-{}
+{
+  "level": {
+    "stepAsks": "A step asks: {{name}}",
+    "of": "{{name}} · level {{index}} of {{total}}"
+  },
+  "columns": {
+    "request": "Request",
+    "why": "Why",
+    "stepWaits": "A step waits for a person",
+    "requestedBy": "Requested by",
+    "environment": "Environment",
+    "submitted": "Submitted",
+    "decision": "Decision",
+    "due": "Due",
+    "overdue": "Overdue",
+    "noDeadline": "No deadline"
+  },
+  "decided": {
+    "approved": "Approved: {{number}}",
+    "recorded": "Your approval is recorded: {{number}}",
+    "rejected": "Rejected: {{number}}",
+    "levelWaits": "The level waits for the other approvers.",
+    "told": "The requester has been told.",
+    "notSaved": "The decision was not saved"
+  },
+  "facts": {
+    "requested": "requested",
+    "stepWaitsForYou": "A step of this request waits for your answer",
+    "stepWaitsForPerson": "A step of this request waits for a person",
+    "whyNeedsYou": "<label>Why this needs you: </label>{{reasons}}",
+    "whyNeedsApproval": "<label>Why it needs approval: </label>{{reasons}}",
+    "requesterReason": "Requester’s reason",
+    "due": "Due <time/>"
+  },
+  "sheet": {
+    "title": "Approval",
+    "reject": "Reject",
+    "approve": "Approve",
+    "approveWith": "Approve with {{changes}}",
+    "answerOnRequest": "Answer on the request's page",
+    "openRequest": "Open the request",
+    "comment": "Comment",
+    "commentHint": "The requester reads it. Required to reject.",
+    "rejectWhy": "Say why you reject it: the requester sees this comment."
+  },
+  "row": {
+    "ownRequest": "You can't decide your own request.",
+    "notYours": "You have answered, or it isn't yours to decide.",
+    "review": "Review",
+    "reject": "Reject…",
+    "menu": "Actions for {{number}}"
+  },
+  "page": {
+    "title": "Approvals",
+    "lead": "Requests that wait for your decision. Approving lets them start at once.",
+    "decidedCount_one": "{{count}} decided, newest first",
+    "decidedCount_other": "{{count}} decided, newest first",
+    "waitingCount_one": "{{count}} waiting, oldest first",
+    "waitingCount_other": "{{count}} waiting, oldest first",
+    "tabs": "Approvals",
+    "waiting": "Waiting for you",
+    "decided": "Decided",
+    "decidedTable": "Decided approvals",
+    "nothingDecided": "Nothing decided yet",
+    "nothingDecidedBody": "Approvals you approve or reject show up here.",
+    "nothingWaiting": "Nothing is waiting for you",
+    "nothingWaitingBody": "Requests that need your approval show up here, and you are notified when one arrives."
+  }
+}

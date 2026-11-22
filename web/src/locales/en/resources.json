@@ -1,1 +1,62 @@
-{}
+{
+  "power": {
+    "on": "Powered on",
+    "off": "Powered off",
+    "suspended": "Suspended"
+  },
+  "shortPower": {
+    "on": "On",
+    "off": "Off",
+    "suspended": "Suspended"
+  },
+  "columns": {
+    "vm": "VM",
+    "power": "Power",
+    "addresses": "Addresses",
+    "deployment": "Deployment",
+    "project": "Project",
+    "environment": "Environment",
+    "placement": "Placement",
+    "memory": "Memory",
+    "disks": "Disks",
+    "networks": "Networks"
+  },
+  "count": {
+    "summary": "{{vms}} · {{on}}",
+    "shown_one": "{{count}} shown",
+    "shown_other": "{{count}} shown",
+    "shownOn_one": "{{count}} of them powered on",
+    "shownOn_other": "{{count}} of them powered on",
+    "vms_one": "{{count}} VM",
+    "vms_other": "{{count}} VMs",
+    "on_one": "{{count}} powered on",
+    "on_other": "{{count}} powered on"
+  },
+  "toolbar": {
+    "search": "Search VMs",
+    "searchPlaceholder": "Name, IP or FQDN",
+    "environment": "Environment",
+    "allEnvironments": "All environments",
+    "power": "Power",
+    "anyPower": "Any power state",
+    "allVcenters": "All vCenters",
+    "cluster": "Cluster",
+    "allClusters": "All clusters",
+    "network": "Network",
+    "allNetworks": "All networks",
+    "clear": "Clear filters"
+  },
+  "page": {
+    "title": "Resources",
+    "leadAll": "The VMs your deployments hold in your projects, live from vCenter.",
+    "leadProject": "The VMs your deployments hold in {{project}}, live from vCenter.",
+    "loadMore": "Load more",
+    "table": "VMs",
+    "noMatch": "No VMs match",
+    "noMatchBody": "Try other words, or other filters.",
+    "noneAll": "No VMs in your projects yet",
+    "noneIn": "No VMs in {{project}} yet",
+    "noneBody": "The VMs your requests build show here, with their addresses, placement and size.",
+    "fromCatalog": "Request something from the catalog"
+  }
+}

@@ -1,7 +1,9 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { HardDrive, SearchX } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { EnvBadge } from "@/components/common/status";
@@ -12,7 +14,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import type { VmListItem, VmPowerState } from "@/lib/api/types";
+import { formatSize } from "@/lib/format";
 import { useSearchBox } from "@/lib/hooks";
+import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { q, type VmSort } from "@/lib/query";
 import { cn } from "@/lib/utils";
@@ -51,8 +55,7 @@ export const vmSorts = [
   "-disk_gb",
 ] as const satisfies readonly VmSort[];
 
-const powers: Record<VmPowerState, string> = { on: "Powered on", off: "Powered off", suspended: "Suspended" };
-const shortPower: Record<VmPowerState, string> = { on: "On", off: "Off", suspended: "Suspended" };
+const powerStates: VmPowerState[] = ["on", "off", "suspended"];
 
 // Each sortable column's sort: the API sorts the whole list, not the pages loaded.
 const sortKeys: Record<string, string> = {
@@ -78,16 +81,16 @@ const fromSort = (s: Sort | null): ResourcesSearch["sort"] => {
   return (s.desc ? `-${key}` : key) as VmSort;
 };
 
-const gb = (mb: number) => `${Math.round((mb / 1024) * 10) / 10} GB`;
+const gb = (mb: number) => formatSize(mb / 1024, "GB");
 const diskGb = (v: VmListItem) => v.vm.disks.reduce((n, d) => n + d.capacity_gb, 0);
 const mono = "font-mono text-secondary";
 
-function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListItem>[] {
+function columnsFor(t: TFunction<"resources">, all: boolean, open: (v: VmListItem) => void): Column<VmListItem>[] {
   return [
     {
       id: "name",
       className: "whitespace-nowrap",
-      header: "VM",
+      header: t("columns.vm"),
       sortValue: (v) => v.name,
       cell: (v) => (
         <>
@@ -108,7 +111,7 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
     },
     {
       id: "power",
-      header: "Power",
+      header: t("columns.power"),
       sortValue: (v) => v.vm.power_state,
       cell: (v) => (
         <span className="inline-flex items-center gap-1.5 text-secondary text-muted">
@@ -123,7 +126,7 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
                   : "border border-line-strong",
             )}
           />
-          {shortPower[v.vm.power_state]}
+          {t(`shortPower.${v.vm.power_state}`)}
         </span>
       ),
       className: "whitespace-nowrap",
@@ -131,7 +134,7 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
     {
       id: "addresses",
       className: "whitespace-nowrap",
-      header: "Addresses",
+      header: t("columns.addresses"),
       cell: (v) =>
         v.addresses.length === 0 ? (
           <span className="text-muted">–</span>
@@ -146,7 +149,7 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
     {
       id: "deployment",
       className: "whitespace-nowrap",
-      header: "Deployment",
+      header: t("columns.deployment"),
       sortValue: (v) => v.deployment.name,
       cell: (v) => (
         <Link
@@ -162,7 +165,7 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
       ? [
           {
             id: "project",
-            header: "Project",
+            header: t("columns.project"),
             sortValue: (v: VmListItem) => v.project.name,
             cell: (v: VmListItem) => <span className="text-muted">{v.project.name}</span>,
           },
@@ -170,14 +173,14 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
       : []),
     {
       id: "env",
-      header: "Environment",
+      header: t("columns.environment"),
       sortValue: (v) => v.environment,
       cell: (v) => <EnvBadge env={v.environment} />,
     },
     {
       id: "placement",
       className: "[overflow-wrap:anywhere]",
-      header: "Placement",
+      header: t("columns.placement"),
       cell: (v) => (
         <>
           <div className={mono}>{v.vm.vcenter}</div>
@@ -194,26 +197,26 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
     },
     {
       id: "memory",
-      header: "Memory",
+      header: t("columns.memory"),
       align: "end",
       sortValue: (v) => v.vm.memory_mb,
       cell: (v) => <span className="tnum whitespace-nowrap">{gb(v.vm.memory_mb)}</span>,
     },
     {
       id: "disks",
-      header: "Disks",
+      header: t("columns.disks"),
       align: "end",
       sortValue: diskGb,
       cell: (v) => (
         <span className="tnum whitespace-nowrap">
-          {v.vm.disks.length} · {diskGb(v)} GB
+          {v.vm.disks.length} · {formatSize(diskGb(v), "GB")}
         </span>
       ),
     },
     {
       id: "networks",
       className: "[overflow-wrap:anywhere]",
-      header: "Networks",
+      header: t("columns.networks"),
       cell: (v) => (
         <ul className={mono}>
           {[...new Set(v.vm.nics.map((n) => n.network))].map((n) => (
@@ -227,11 +230,14 @@ function columnsFor(all: boolean, open: (v: VmListItem) => void): Column<VmListI
 
 /** The count above the table: the rows loaded, said as such while more pages remain. */
 export function vmCount(n: number, on: number, more: boolean) {
-  if (more) return `${n} shown · ${on} of them powered on`;
-  return `${n} VM${n === 1 ? "" : "s"} · ${on} powered on`;
+  const t = i18n.getFixedT(null, "resources");
+  return more
+    ? t("count.summary", { vms: t("count.shown", { count: n }), on: t("count.shownOn", { count: on }) })
+    : t("count.summary", { vms: t("count.vms", { count: n }), on: t("count.on", { count: on }) });
 }
 
 export function ResourcesPage({ search }: { search: ResourcesSearch }) {
+  const { t } = useTranslation(["resources", "common"]);
   const { me, projectId, project } = useCurrentProject();
   const navigate = useNavigate({ from: "/resources" });
   const [text, setText] = useSearchBox(
@@ -277,17 +283,21 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
     ...new Set(vcenters.filter((v) => !search.vcenter || v.name === search.vcenter).flatMap((v) => v.clusters)),
   ].sort();
   const keep = (values: string[], v: string | undefined) => (v && !values.includes(v) ? [...values, v] : values);
-  const where = all ? "your projects" : project.name;
 
   const toolbar = (
     <>
-      <TableSearch label="Search VMs" placeholder="Name, IP or FQDN" value={text} onChange={setText} />
+      <TableSearch
+        label={t("toolbar.search")}
+        placeholder={t("toolbar.searchPlaceholder")}
+        value={text}
+        onChange={setText}
+      />
       <Select
-        aria-label="Environment"
+        aria-label={t("toolbar.environment")}
         value={search.env ?? "any"}
         onChange={(v) => set({ env: v === "any" ? undefined : v })}
         options={[
-          { value: "any", label: "All environments" },
+          { value: "any", label: t("toolbar.allEnvironments") },
           ...keep(envKeys, envs.length === 1 ? envs[0] : search.env).map((k) => ({
             value: k,
             label: k.includes(",") ? k.split(",").join(", ") : envName(k),
@@ -297,12 +307,12 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
         className="w-44"
       />
       <Select
-        aria-label="Power"
+        aria-label={t("toolbar.power")}
         value={search.power ?? "any"}
         onChange={(v) => set({ power: v === "any" ? undefined : (v as VmPowerState) })}
         options={[
-          { value: "any", label: "Any power state" },
-          ...Object.entries(powers).map(([value, label]) => ({ value, label })),
+          { value: "any", label: t("toolbar.anyPower") },
+          ...powerStates.map((value) => ({ value, label: t(`power.${value}`) })),
         ]}
         className="w-40"
       />
@@ -311,7 +321,7 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
         value={search.vcenter ?? "any"}
         onChange={(v) => set({ vcenter: v === "any" ? undefined : v, cluster: undefined })}
         options={[
-          { value: "any", label: "All vCenters" },
+          { value: "any", label: t("toolbar.allVcenters") },
           ...keep(
             vcenters.map((v) => v.name),
             search.vcenter,
@@ -320,28 +330,28 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
         className="w-56"
       />
       <Select
-        aria-label="Cluster"
+        aria-label={t("toolbar.cluster")}
         value={search.cluster ?? "any"}
         onChange={(v) => set({ cluster: v === "any" ? undefined : v })}
         options={[
-          { value: "any", label: "All clusters" },
+          { value: "any", label: t("toolbar.allClusters") },
           ...keep(clusters, search.cluster).map((c) => ({ value: c, label: c })),
         ]}
         className="w-44"
       />
       <Select
-        aria-label="Network"
+        aria-label={t("toolbar.network")}
         value={search.network ?? "any"}
         onChange={(v) => set({ network: v === "any" ? undefined : v })}
         options={[
-          { value: "any", label: "All networks" },
+          { value: "any", label: t("toolbar.allNetworks") },
           ...keep(facets.data?.networks ?? [], search.network).map((n) => ({ value: n, label: n })),
         ]}
         className="w-52"
       />
       {filtered && (
         <Button variant="quiet" onClick={clear}>
-          Clear filters
+          {t("toolbar.clear")}
         </Button>
       )}
     </>
@@ -350,8 +360,8 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
   return (
     <Page>
       <PageHeader
-        title="Resources"
-        description={`The VMs your deployments hold in ${where}, live from vCenter.`}
+        title={t("page.title")}
+        description={all ? t("page.leadAll") : t("page.leadProject", { project: project.name })}
         meta={items && vmCount(rows.length, on, list.hasNextPage)}
         actions={
           <>
@@ -371,14 +381,14 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
         footer={
           list.hasNextPage && (
             <Button size="sm" onClick={() => void list.fetchNextPage()} disabled={list.isFetchingNextPage}>
-              {list.isFetchingNextPage ? "Loading…" : "Load more"}
+              {list.isFetchingNextPage ? t("common:loadingEllipsis") : t("page.loadMore")}
             </Button>
           )
         }
       >
         <DataTable
-          label="VMs"
-          columns={columnsFor(all, setShown)}
+          label={t("page.table")}
+          columns={columnsFor(t, all, setShown)}
           rows={items}
           rowKey={(v) => v.id}
           sort={toSort(search.sort)}
@@ -392,22 +402,22 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
             filtered ? (
               <EmptyState
                 icon={SearchX}
-                title="No VMs match"
-                body="Try other words, or other filters."
+                title={t("page.noMatch")}
+                body={t("page.noMatchBody")}
                 action={
                   <Button size="sm" onClick={clear}>
-                    Clear filters
+                    {t("toolbar.clear")}
                   </Button>
                 }
               />
             ) : (
               <EmptyState
                 icon={HardDrive}
-                title={`No VMs in ${where} yet`}
-                body="The VMs your requests build show here, with their addresses, placement and size."
+                title={all ? t("page.noneAll") : t("page.noneIn", { project: project.name })}
+                body={t("page.noneBody")}
                 action={
                   <Button size="sm" asChild>
-                    <Link to="/catalog">Request something from the catalog</Link>
+                    <Link to="/catalog">{t("page.fromCatalog")}</Link>
                   </Button>
                 }
               />

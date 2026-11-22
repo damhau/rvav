@@ -1,1 +1,66 @@
-{}
+{
+  "power": {
+    "on": "Allumée",
+    "off": "Éteinte",
+    "suspended": "Suspendue"
+  },
+  "shortPower": {
+    "on": "Allumée",
+    "off": "Éteinte",
+    "suspended": "Suspendue"
+  },
+  "columns": {
+    "vm": "VM",
+    "power": "Alimentation",
+    "addresses": "Adresses",
+    "deployment": "Déploiement",
+    "project": "Projet",
+    "environment": "Environnement",
+    "placement": "Emplacement",
+    "memory": "Mémoire",
+    "disks": "Disques",
+    "networks": "Réseaux"
+  },
+  "count": {
+    "summary": "{{vms}} · {{on}}",
+    "shown_one": "{{count}} affichée",
+    "shown_many": "{{count}} affichées",
+    "shown_other": "{{count}} affichées",
+    "shownOn_one": "dont {{count}} allumée",
+    "shownOn_many": "dont {{count}} allumées",
+    "shownOn_other": "dont {{count}} allumées",
+    "vms_one": "{{count}} VM",
+    "vms_many": "{{count}} VM",
+    "vms_other": "{{count}} VM",
+    "on_one": "{{count}} allumée",
+    "on_many": "{{count}} allumées",
+    "on_other": "{{count}} allumées"
+  },
+  "toolbar": {
+    "search": "Rechercher des VM",
+    "searchPlaceholder": "Nom, IP ou FQDN",
+    "environment": "Environnement",
+    "allEnvironments": "Tous les environnements",
+    "power": "Alimentation",
+    "anyPower": "Tout état d'alimentation",
+    "allVcenters": "Tous les vCenter",
+    "cluster": "Cluster",
+    "allClusters": "Tous les clusters",
+    "network": "Réseau",
+    "allNetworks": "Tous les réseaux",
+    "clear": "Effacer les filtres"
+  },
+  "page": {
+    "title": "Ressources",
+    "leadAll": "Les VM que vos déploiements détiennent dans vos projets, lues en direct dans vCenter.",
+    "leadProject": "Les VM que vos déploiements détiennent dans {{project}}, lues en direct dans vCenter.",
+    "loadMore": "Charger plus",
+    "table": "VM",
+    "noMatch": "Aucune VM ne correspond",
+    "noMatchBody": "Essayez d'autres mots, ou d'autres filtres.",
+    "noneAll": "Aucune VM dans vos projets pour l'instant",
+    "noneIn": "Aucune VM dans {{project}} pour l'instant",
+    "noneBody": "Les VM que vos demandes construisent s'affichent ici, avec leurs adresses, leur emplacement et leur taille.",
+    "fromCatalog": "Demander quelque chose au catalogue"
+  }
+}

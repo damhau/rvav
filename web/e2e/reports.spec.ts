@@ -21,7 +21,7 @@ test("read the reports, filter them and export a section", async ({ page }) => {
   await chart.focus();
   await page.keyboard.press("ArrowRight");
   const tip = page.getByRole("tooltip");
-  await expect(tip).toContainText("requests");
+  await expect(tip).toContainText(/\d+ requests?/);
   await expect(tip).toContainText("succeeded");
   await page.keyboard.press("Escape");
   await expect(tip).toBeHidden();

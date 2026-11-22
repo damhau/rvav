@@ -1,1 +1,71 @@
-{}
+{
+  "level": {
+    "stepAsks": "Une étape demande\u00a0: {{name}}",
+    "of": "{{name}} · niveau {{index}} sur {{total}}"
+  },
+  "columns": {
+    "request": "Demande",
+    "why": "Motif",
+    "stepWaits": "Une étape attend une personne",
+    "requestedBy": "Demandée par",
+    "environment": "Environnement",
+    "submitted": "Soumise",
+    "decision": "Décision",
+    "due": "Échéance",
+    "overdue": "En retard",
+    "noDeadline": "Sans échéance"
+  },
+  "decided": {
+    "approved": "Approuvée\u00a0: {{number}}",
+    "recorded": "Votre approbation est enregistrée\u00a0: {{number}}",
+    "rejected": "Rejetée\u00a0: {{number}}",
+    "levelWaits": "Le niveau attend les autres approbateurs.",
+    "told": "Le demandeur a été prévenu.",
+    "notSaved": "La décision n'a pas été enregistrée"
+  },
+  "facts": {
+    "requested": "demandé",
+    "stepWaitsForYou": "Une étape de cette demande attend votre réponse",
+    "stepWaitsForPerson": "Une étape de cette demande attend une personne",
+    "whyNeedsYou": "<label>Pourquoi elle vous est soumise\u00a0: </label>{{reasons}}",
+    "whyNeedsApproval": "<label>Pourquoi elle doit être approuvée\u00a0: </label>{{reasons}}",
+    "requesterReason": "Motif du demandeur",
+    "due": "Échéance <time/>"
+  },
+  "sheet": {
+    "title": "Approbation",
+    "reject": "Rejeter",
+    "approve": "Approuver",
+    "approveWith": "Approuver avec {{changes}}",
+    "answerOnRequest": "Répondre sur la page de la demande",
+    "openRequest": "Ouvrir la demande",
+    "comment": "Commentaire",
+    "commentHint": "Le demandeur le lit. Obligatoire pour rejeter.",
+    "rejectWhy": "Dites pourquoi vous la rejetez\u00a0: le demandeur voit ce commentaire."
+  },
+  "row": {
+    "ownRequest": "Vous ne pouvez pas décider de votre propre demande.",
+    "notYours": "Vous avez répondu, ou ce n'est pas à vous de décider.",
+    "review": "Examiner",
+    "reject": "Rejeter…",
+    "menu": "Actions pour {{number}}"
+  },
+  "page": {
+    "title": "Approbations",
+    "lead": "Les demandes qui attendent votre décision. Les approuver les fait démarrer aussitôt.",
+    "decidedCount_one": "{{count}} décidée, la plus récente en premier",
+    "decidedCount_many": "{{count}} décidées, les plus récentes en premier",
+    "decidedCount_other": "{{count}} décidées, les plus récentes en premier",
+    "waitingCount_one": "{{count}} en attente, la plus ancienne en premier",
+    "waitingCount_many": "{{count}} en attente, les plus anciennes en premier",
+    "waitingCount_other": "{{count}} en attente, les plus anciennes en premier",
+    "tabs": "Approbations",
+    "waiting": "En attente de vous",
+    "decided": "Décidées",
+    "decidedTable": "Approbations décidées",
+    "nothingDecided": "Rien n'a encore été décidé",
+    "nothingDecidedBody": "Les approbations que vous approuvez ou rejetez s'affichent ici.",
+    "nothingWaiting": "Rien ne vous attend",
+    "nothingWaitingBody": "Les demandes qui requièrent votre approbation s'affichent ici, et vous êtes prévenu à l'arrivée de chacune."
+  }
+}

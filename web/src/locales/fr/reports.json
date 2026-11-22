@@ -1,1 +1,107 @@
-{}
+{
+  "ranges": {
+    "7": "7 derniers jours",
+    "30": "30 derniers jours",
+    "13w": "13 dernières semaines",
+    "12m": "12 derniers mois"
+  },
+  "duration": {
+    "none": "aucun",
+    "seconds": "{{s}}\u00a0s",
+    "minutes": "{{m}}\u00a0min",
+    "hours": "{{h}}\u00a0h",
+    "hoursMinutes": "{{h}}\u00a0h {{m}}\u00a0min",
+    "days_one": "{{count}}\u00a0jour",
+    "days_many": "{{count}}\u00a0jours",
+    "days_other": "{{count}}\u00a0jours"
+  },
+  "weekOf": "Semaine du {{day}}",
+  "series": {
+    "succeeded": "Réussies",
+    "failed": "Échouées",
+    "other": "Rejetées, annulées ou pas terminées"
+  },
+  "chart": {
+    "legend": "Légende",
+    "label": {
+      "day": "Demandes par jour\u00a0: {{total}} en tout. Utilisez les flèches pour lire chaque jour, ou le tableau ci-dessous.",
+      "week": "Demandes par semaine\u00a0: {{total}} en tout. Utilisez les flèches pour lire chaque semaine, ou le tableau ci-dessous.",
+      "month": "Demandes par mois\u00a0: {{total}} en tout. Utilisez les flèches pour lire chaque mois, ou le tableau ci-dessous."
+    },
+    "live_one": "{{period}}\u00a0: {{count}} demande, {{parts}}",
+    "live_many": "{{period}}\u00a0: {{count}} demandes, {{parts}}",
+    "live_other": "{{period}}\u00a0: {{count}} demandes, {{parts}}",
+    "part": "{{n}} {{label}}",
+    "tipRequests_one": "<n>{{count}}</n> <label>demande</label>",
+    "tipRequests_many": "<n>{{count}}</n> <label>demandes</label>",
+    "tipRequests_other": "<n>{{count}}</n> <label>demandes</label>",
+    "showTable": "Afficher sous forme de tableau",
+    "table": "Demandes par période",
+    "period": "Période",
+    "requests": "Demandes"
+  },
+  "quota": {
+    "none": "Aucun projet",
+    "noneBody": "Vous ne voyez ici le quota d'aucun projet.",
+    "of": "Quota de {{scope}}"
+  },
+  "page": {
+    "title": "Rapports",
+    "metaAll": "Comment la plateforme est utilisée, dans tous les projets.",
+    "metaMember": "Comment la plateforme est utilisée, dans les projets dont vous êtes membre.",
+    "exportFailed": "L'export a échoué",
+    "filters": "Filtres du rapport",
+    "period": "Période",
+    "by": "Par",
+    "day": "Jour",
+    "week": "Semaine",
+    "month": "Mois",
+    "project": "Projet",
+    "environment": "Environnement",
+    "all": "Tous"
+  },
+  "stats": {
+    "requests": "Demandes",
+    "successRate": "Taux de réussite",
+    "outcomes": "{{succeeded}} réussies, {{failed}} échouées",
+    "provisioningTime": "Durée de provisionnement",
+    "provisioningDetail": "médiane\u00a0; 90\u00a0% en moins de {{time}}",
+    "nothingBuilt": "rien de construit",
+    "approvalLeadTime": "Délai d'approbation",
+    "medianOf_one": "médiane de {{count}} décidée",
+    "medianOf_many": "médiane de {{count}} décidées",
+    "medianOf_other": "médiane de {{count}} décidées",
+    "nothingDecided": "rien de décidé",
+    "waiting": "En attente d'approbation",
+    "oldestSince": "la plus ancienne depuis le {{date}}"
+  },
+  "panels": {
+    "requestsBy": {
+      "day": "Demandes par jour",
+      "week": "Demandes par semaine",
+      "month": "Demandes par mois"
+    },
+    "mostRequested": "Les plus demandés",
+    "nothingRequested": "Rien de demandé",
+    "nothingRequestedBody": "Aucun nouveau déploiement n'a été demandé sur cette période.",
+    "item": "Élément",
+    "requests": "Demandes",
+    "successRate": "Taux de réussite",
+    "buildTime": "Durée de construction (médiane)",
+    "approvals": "Approbations",
+    "decided": "Décidées",
+    "approved": "Approuvées",
+    "rejected": "Rejetées",
+    "leadMedian": "Délai, médiane",
+    "lead90": "Délai, 90\u00a0%",
+    "waitingNow": "En attente",
+    "quota": "Utilisation du quota",
+    "leases": "Baux qui se terminent dans les 30 prochains jours",
+    "noLeases": "Aucun",
+    "noLeasesBody": "Aucun bail ne se termine dans les 30 prochains jours.",
+    "deployment": "Déploiement",
+    "project": "Projet",
+    "owner": "Propriétaire",
+    "ends": "Fin"
+  }
+}

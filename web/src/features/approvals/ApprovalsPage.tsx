@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { SquareCheckBig } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ApprovalHistory, ApprovalStatusBadge, dueText } from "@/components/common/approvals";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
@@ -24,7 +26,8 @@ import { useNow } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, toText } from "@/lib/utils";
-import { relative } from "@/lib/format";
+import { formatList, relative } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 
 export interface ApprovalsSearch {
   /** The approval open in the side panel. */
@@ -35,16 +38,17 @@ export interface ApprovalsSearch {
 type Decision = "approve" | "reject";
 
 function levelText(a: ApprovalSummary) {
-  return a.step_key
-    ? `A step asks: ${a.level.name}`
-    : `${a.level.name}${a.level.count > 1 ? ` · level ${a.level.index} of ${a.level.count}` : ""}`;
+  if (a.step_key) return i18n.t("approvals:level.stepAsks", { name: a.level.name });
+  return a.level.count > 1
+    ? i18n.t("approvals:level.of", { name: a.level.name, index: a.level.index, total: a.level.count })
+    : a.level.name;
 }
 
-function columnsFor(decided: boolean): Column<ApprovalSummary>[] {
+function columnsFor(t: TFunction<"approvals">, decided: boolean): Column<ApprovalSummary>[] {
   return [
     {
       id: "request",
-      header: "Request",
+      header: t("columns.request"),
       cell: (a) => (
         <>
           <Link
@@ -62,14 +66,12 @@ function columnsFor(decided: boolean): Column<ApprovalSummary>[] {
     },
     {
       id: "why",
-      header: "Why",
-      cell: (a) => (
-        <span className="text-secondary">{a.step_key ? "A step waits for a person" : a.reasons.join("; ")}</span>
-      ),
+      header: t("columns.why"),
+      cell: (a) => <span className="text-secondary">{a.step_key ? t("columns.stepWaits") : a.reasons.join("; ")}</span>,
     },
     {
       id: "requester",
-      header: "Requested by",
+      header: t("columns.requestedBy"),
       sortValue: (a) => a.requester.name,
       cell: (a) => (
         <>
@@ -78,10 +80,10 @@ function columnsFor(decided: boolean): Column<ApprovalSummary>[] {
         </>
       ),
     },
-    { id: "env", header: "Environment", cell: (a) => <EnvBadge env={a.environment} /> },
+    { id: "env", header: t("columns.environment"), cell: (a) => <EnvBadge env={a.environment} /> },
     {
       id: "submitted",
-      header: "Submitted",
+      header: t("columns.submitted"),
       sortValue: (a) => a.submitted_at,
       cell: (a) => (
         <span className="text-secondary text-muted">
@@ -90,18 +92,18 @@ function columnsFor(decided: boolean): Column<ApprovalSummary>[] {
       ),
     },
     decided
-      ? { id: "status", header: "Decision", cell: (a) => <ApprovalStatusBadge status={a.status} /> }
+      ? { id: "status", header: t("columns.decision"), cell: (a) => <ApprovalStatusBadge status={a.status} /> }
       : {
           id: "due",
-          header: "Due",
+          header: t("columns.due"),
           sortValue: (a) => a.due_at,
           cell: (a) =>
             a.overdue ? (
-              <span className="font-medium text-bad">Overdue</span>
+              <span className="font-medium text-bad">{t("columns.overdue")}</span>
             ) : a.due_at ? (
               <span className="tnum text-secondary">{relative(a.due_at)}</span>
             ) : (
-              <span className="text-secondary text-muted">No deadline</span>
+              <span className="text-secondary text-muted">{t("columns.noDeadline")}</span>
             ),
         },
   ];
@@ -130,10 +132,13 @@ function useDecide({
       void qc.invalidateQueries({ queryKey: keys.approvals.forRequest(a.request.id) });
       void qc.invalidateQueries({ queryKey: keys.requests.detail(a.request.number) });
       const what =
-        decision === "approve" ? (a.status === "approved" ? "Approved" : "Your approval is recorded") : "Rejected";
-      toast.success(`${what}: ${a.request.number}`, {
-        description:
-          a.status === "pending" ? "The level waits for the other approvers." : "The requester has been told.",
+        decision === "approve"
+          ? a.status === "approved"
+            ? "decided.approved"
+            : "decided.recorded"
+          : "decided.rejected";
+      toast.success(i18n.t(`approvals:${what}`, { number: a.request.number }), {
+        description: i18n.t(a.status === "pending" ? "approvals:decided.levelWaits" : "approvals:decided.told"),
       });
       onDecided?.(a);
     },
@@ -143,7 +148,7 @@ function useDecide({
         onCommentError(commentErr.message);
         return;
       }
-      toast.error(isApiError(e) ? e.problem.title : "The decision was not saved", {
+      toast.error(isApiError(e) ? e.problem.title : i18n.t("approvals:decided.notSaved"), {
         description: isApiError(e) ? (e.problem.errors?.[0]?.message ?? e.problem.detail) : undefined,
       });
     },
@@ -159,6 +164,7 @@ function EditableInput({
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
+  const { t } = useTranslation("approvals");
   const id = useId();
   if (field.options?.length) {
     return (
@@ -184,7 +190,7 @@ function EditableInput({
               <span className="flex flex-col">
                 <span>
                   {o.label}
-                  {o.value === field.value && <span className="text-faint"> · requested</span>}
+                  {o.value === field.value && <span className="text-faint"> · {t("facts.requested")}</span>}
                 </span>
                 {o.meta && <span className="text-secondary text-muted">{o.meta}</span>}
               </span>
@@ -211,6 +217,7 @@ function EditableInput({
 
 /** What the approval asks and why: the same for those who decide and those who read. */
 function ApprovalFacts({ a }: { a: Approval }) {
+  const { t } = useTranslation("approvals");
   return (
     <>
       <div className="flex flex-wrap items-center gap-1.5 text-secondary text-muted">
@@ -219,17 +226,17 @@ function ApprovalFacts({ a }: { a: Approval }) {
       </div>
       {a.step_key ? (
         <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-body">
-          <span className="font-medium">
-            {a.can_decide
-              ? "A step of this request waits for your answer"
-              : "A step of this request waits for a person"}
-          </span>
+          <span className="font-medium">{t(a.can_decide ? "facts.stepWaitsForYou" : "facts.stepWaitsForPerson")}</span>
           {a.question?.message && <p className="mt-0.5 whitespace-pre-wrap">{a.question.message}</p>}
         </div>
       ) : (
         <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-body">
-          <span className="font-medium">{a.can_decide ? "Why this needs you" : "Why it needs approval"}: </span>
-          {a.reasons.join("; ")}
+          <Trans
+            t={t}
+            i18nKey={a.can_decide ? "facts.whyNeedsYou" : "facts.whyNeedsApproval"}
+            values={{ reasons: a.reasons.join("; ") }}
+            components={{ label: <span className="font-medium" /> }}
+          />
           {a.rules.length > 0 && (
             <span className="mt-0.5 block font-mono text-caption break-words text-muted">{a.rules.join("  ·  ")}</span>
           )}
@@ -238,13 +245,13 @@ function ApprovalFacts({ a }: { a: Approval }) {
       {a.facts.length > 0 && <KeyValues items={a.facts.map((f) => ({ label: f.label, value: f.value }))} />}
       {a.justification && (
         <div className="flex flex-col gap-0.5 text-body">
-          <span className="text-secondary font-medium text-muted">Requester’s reason</span>
+          <span className="text-secondary font-medium text-muted">{t("facts.requesterReason")}</span>
           <p>{a.justification}</p>
         </div>
       )}
       {a.status === "pending" && a.due_at && (
         <p className="text-secondary text-muted">
-          Due <Time iso={a.due_at} />
+          <Trans t={t} i18nKey="facts.due" components={{ time: <Time iso={a.due_at} /> }} />
           {dueText(a) && ` · ${dueText(a)}`}
         </p>
       )}
@@ -269,6 +276,7 @@ function ApprovalSheet({
   onDecided: (a: Approval) => void;
   returnFocus: () => HTMLElement | null | undefined;
 }) {
+  const { t } = useTranslation(["approvals", "common"]);
   const query = useQuery(q.approval(id));
   const a = query.data;
   const commentId = useId();
@@ -292,20 +300,18 @@ function ApprovalSheet({
   const loaded = Boolean(a);
   useEffect(() => {
     const active = document.activeElement;
-    if (!loaded || !(active instanceof HTMLElement) || active.getAttribute("aria-label") !== "Close") return;
-    active
-      .closest('[role="dialog"]')
-      ?.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled])")
-      ?.focus();
+    const dialog = active instanceof HTMLButtonElement ? active.closest('[role="dialog"]') : null;
+    if (!loaded || !dialog) return;
+    dialog.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled])")?.focus();
   }, [loaded]);
 
   const changed = (a?.editable_fields ?? []).filter((f) => f.field in edits && edits[f.field] !== f.value);
-  const changeLabel = changed
-    .map((f) => f.options?.find((o) => o.value === edits[f.field])?.label ?? toText(edits[f.field]))
-    .join(", ");
+  const changeLabel = formatList(
+    changed.map((f) => f.options?.find((o) => o.value === edits[f.field])?.label ?? toText(edits[f.field])),
+  );
   const send = (decision: Decision) => {
     if (decision === "reject" && !comment.trim()) {
-      setCommentError("Say why you reject it: the requester sees this comment.");
+      setCommentError(t("sheet.rejectWhy"));
       commentRef.current?.focus();
       return;
     }
@@ -323,7 +329,7 @@ function ApprovalSheet({
   const openRequest = a && (
     <Button variant="secondary" asChild>
       <Link to="/requests/$requestId" params={{ requestId: a.request.number }}>
-        Open the request
+        {t("sheet.openRequest")}
       </Link>
     </Button>
   );
@@ -333,7 +339,7 @@ function ApprovalSheet({
       open
       onOpenChange={(open) => !open && onClose()}
       pending={decide.isPending}
-      title={a?.request.title ?? "Approval"}
+      title={a?.request.title ?? t("sheet.title")}
       description={a ? levelText(a) : undefined}
       returnFocus={returnFocus}
       footer={
@@ -342,16 +348,16 @@ function ApprovalSheet({
           <>
             {openRequest}
             <Button variant="danger" disabled={decide.isPending} onClick={() => send("reject")}>
-              Reject
+              {t("sheet.reject")}
             </Button>
             <Button variant="primary" disabled={decide.isPending} onClick={() => send("approve")}>
-              {changed.length ? `Approve with ${changeLabel}` : "Approve"}
+              {changed.length ? t("sheet.approveWith", { changes: changeLabel }) : t("sheet.approve")}
             </Button>
           </>
         ) : a.can_decide && a.step_key ? (
           <Button variant="primary" asChild>
             <Link to="/requests/$requestId" params={{ requestId: a.request.number }}>
-              Answer on the request's page
+              {t("sheet.answerOnRequest")}
             </Link>
           </Button>
         ) : (
@@ -360,7 +366,7 @@ function ApprovalSheet({
       }
     >
       {query.isPending ? (
-        <div className="flex flex-col gap-3" role="status" aria-label="Loading">
+        <div className="flex flex-col gap-3" role="status" aria-label={t("common:loading")}>
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-12" />
           <Skeleton className="h-28" />
@@ -380,12 +386,7 @@ function ApprovalSheet({
                   onChange={(v) => setEdits((old) => ({ ...old, [f.field]: v }))}
                 />
               ))}
-              <Field
-                label="Comment"
-                htmlFor={commentId}
-                hint="The requester reads it. Required to reject."
-                error={commentError}
-              >
+              <Field label={t("sheet.comment")} htmlFor={commentId} hint={t("sheet.commentHint")} error={commentError}>
                 <Textarea
                   id={commentId}
                   ref={commentRef}
@@ -423,13 +424,13 @@ function RowItems({
   onReject: () => void;
   onApprove: () => void;
 }) {
+  const { t } = useTranslation("approvals");
   const navigate = useNavigate();
-  const why =
-    a.requester.id === meId ? "You can't decide your own request." : "You have answered, or it isn't yours to decide.";
+  const why = t(a.requester.id === meId ? "row.ownRequest" : "row.notYours");
   const reason = !a.can_decide && <span className="text-caption leading-snug text-faint">{why}</span>;
   return (
     <div className="min-w-56">
-      <MenuItem onSelect={onReview}>Review</MenuItem>
+      <MenuItem onSelect={onReview}>{t("row.review")}</MenuItem>
       {a.status === "pending" &&
         (a.step_key ? (
           <MenuItem
@@ -437,7 +438,7 @@ function RowItems({
             onSelect={() => void navigate({ to: "/requests/$requestId", params: { requestId: a.request.number } })}
           >
             <span className="flex flex-col">
-              Answer on the request's page
+              {t("sheet.answerOnRequest")}
               {reason}
             </span>
           </MenuItem>
@@ -445,13 +446,13 @@ function RowItems({
           <>
             <MenuItem disabled={!a.can_decide} onSelect={onApprove}>
               <span className="flex flex-col">
-                Approve
+                {t("sheet.approve")}
                 {reason}
               </span>
             </MenuItem>
             <MenuItem disabled={!a.can_decide} danger onSelect={onReject}>
               <span className="flex flex-col">
-                Reject…
+                {t("row.reject")}
                 {reason}
               </span>
             </MenuItem>
@@ -459,13 +460,14 @@ function RowItems({
         ))}
       <MenuSeparator />
       <MenuItem onSelect={() => void navigate({ to: "/requests/$requestId", params: { requestId: a.request.number } })}>
-        Open the request
+        {t("sheet.openRequest")}
       </MenuItem>
     </div>
   );
 }
 
 export function ApprovalsPage({ search }: { search: ApprovalsSearch }) {
+  const { t } = useTranslation("approvals");
   useNow(30_000);
   const navigate = useNavigate({ from: "/approvals" });
   const router = useRouter();
@@ -520,13 +522,11 @@ export function ApprovalsPage({ search }: { search: ApprovalsSearch }) {
   return (
     <Page>
       <PageHeader
-        title="Approvals"
-        description="Requests that wait for your decision. Approving lets them start at once."
+        title={t("page.title")}
+        description={t("page.lead")}
         meta={
           total !== undefined && (
-            <span className="tnum">
-              {decided ? `${total} decided, newest first` : `${total} waiting, oldest first`}
-            </span>
+            <span className="tnum">{t(decided ? "page.decidedCount" : "page.waitingCount", { count: total })}</span>
           )
         }
       />
@@ -534,16 +534,16 @@ export function ApprovalsPage({ search }: { search: ApprovalsSearch }) {
         value={decided ? "decided" : "waiting"}
         onValueChange={(v) => void navigate({ search: v === "decided" ? { tab: "decided" } : {}, replace: true })}
       >
-        <TabsList aria-label="Approvals">
-          <TabsTrigger value="waiting">Waiting for you</TabsTrigger>
-          <TabsTrigger value="decided">Decided</TabsTrigger>
+        <TabsList aria-label={t("page.tabs")}>
+          <TabsTrigger value="waiting">{t("page.waiting")}</TabsTrigger>
+          <TabsTrigger value="decided">{t("page.decided")}</TabsTrigger>
         </TabsList>
         <TabsContent value={decided ? "decided" : "waiting"} className="pt-4">
           <Panel flush>
             <div ref={listRef}>
               <DataTable
-                label={decided ? "Decided approvals" : "Waiting for you"}
-                columns={columnsFor(decided)}
+                label={t(decided ? "page.decidedTable" : "page.waiting")}
+                columns={columnsFor(t, decided)}
                 rows={list.data?.items}
                 rowKey={(a) => a.id}
                 rowLinks
@@ -556,19 +556,15 @@ export function ApprovalsPage({ search }: { search: ApprovalsSearch }) {
                     onApprove={() => quick.mutate({ id: a.id, decision: "approve" })}
                   />
                 )}
-                rowMenuLabel={(a) => `Actions for ${a.request.number}`}
+                rowMenuLabel={(a) => t("row.menu", { number: a.request.number })}
                 minWidth={900}
                 loading={list.isPending}
                 error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
                 empty={
                   <EmptyState
                     icon={SquareCheckBig}
-                    title={decided ? "Nothing decided yet" : "Nothing is waiting for you"}
-                    body={
-                      decided
-                        ? "Approvals you approve or reject show up here."
-                        : "Requests that need your approval show up here, and you are notified when one arrives."
-                    }
+                    title={t(decided ? "page.nothingDecided" : "page.nothingWaiting")}
+                    body={t(decided ? "page.nothingDecidedBody" : "page.nothingWaitingBody")}
                   />
                 }
               />
