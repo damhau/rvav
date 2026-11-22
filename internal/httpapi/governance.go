@@ -736,3 +736,40 @@ func (s *Server) GetSystem(w http.ResponseWriter, r *http.Request) {
 	out, err := s.Core.System(r.Context(), principal(r))
 	s.reply(w, r, http.StatusOK, out, err)
 }
+
+func (s *Server) ListIpRanges(w http.ResponseWriter, r *http.Request) {
+	items, err := s.Core.IPRanges(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, api.IpRangeList{Items: items}, err)
+}
+
+func (s *Server) CreateIpRange(w http.ResponseWriter, r *http.Request) {
+	var b api.IpRangeWrite
+	if !s.decodeStrict(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveIPRange(r.Context(), principal(r), "", b)
+	s.reply(w, r, http.StatusCreated, out, err)
+}
+
+func (s *Server) GetIpRange(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	out, err := s.Core.IPRange(r.Context(), principal(r), id)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) UpdateIpRange(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	var b api.IpRangeWrite
+	if !s.decodeStrict(w, r, &b) {
+		return
+	}
+	out, err := s.Core.SaveIPRange(r.Context(), principal(r), id, b)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) DeleteIpRange(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	s.replyEmpty(w, r, s.Core.DeleteIPRange(r.Context(), principal(r), id))
+}
+
+func (s *Server) ListIpAllocations(w http.ResponseWriter, r *http.Request, id api.IdPath) {
+	items, err := s.Core.IPAllocations(r.Context(), principal(r), id)
+	s.reply(w, r, http.StatusOK, api.IpAllocationList{Items: items}, err)
+}

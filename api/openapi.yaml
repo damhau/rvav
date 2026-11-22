@@ -3881,7 +3881,11 @@ paths:
     get:
       tags: [admin]
       operationId: listNetworkMappings
-      summary: vSphere networks and their subnets, set by hand or from EfficientIP
+      summary: vSphere networks and their subnets, set by hand, from EfficientIP or from rvav's IP ranges
+      description: |
+        A network with IP ranges in a vCenter is listed once more for that
+        vCenter, with source `rvav`: its VMs there take their addresses from
+        the ranges, whatever its other mapping says (ADR-0063).
       responses:
         "200":
           description: OK
@@ -3921,6 +3925,126 @@ paths:
       summary: Remove a mapping set by hand (EfficientIP's comes back at the next sync)
       responses:
         "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/ip-ranges:
+    get:
+      tags: [admin]
+      operationId: listIpRanges
+      summary: IP ranges rvav hands addresses from, for networks without EfficientIP
+      description: |
+        A network (a port group or an NSX segment's, in one vCenter) with
+        at least one range takes its VMs' addresses from rvav's ranges
+        instead of EfficientIP (ADR-0063); every other network keeps
+        EfficientIP. rvav writes no DNS record for an address it hands
+        from a range. Each range says how many addresses it has, how many
+        are given and how many are free. Needs `infrastructure.read`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IpRangeList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: createIpRange
+      summary: Add an IP range to a network
+      description: |
+        The network must be in the vCenter's inventory. Ranges of one
+        network share its subnet, gateway, DNS servers, search domains and
+        DNS domain, and ranges of one vCenter don't overlap: either is
+        refused (422) naming the other range. The first range of a network
+        moves its new VMs from EfficientIP to rvav; VMs already built keep
+        their addresses. Needs `infrastructure.manage`. Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IpRangeWrite" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IpRange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/ip-ranges/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    get:
+      tags: [admin]
+      operationId: getIpRange
+      summary: An IP range and its usage
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IpRange" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [admin]
+      operationId: updateIpRange
+      summary: Change an IP range
+      description: |
+        As adding one. While the range has given addresses, its vCenter,
+        network, subnet and gateway can't change, and a new start, end or
+        exclusion that would leave a given address out is refused (422).
+        Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IpRangeWrite" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IpRange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [admin]
+      operationId: deleteIpRange
+      summary: Remove an IP range that gives no address
+      description: |
+        Refused (409) while a VM holds an address from it. When it was the
+        network's last range, the network's new VMs take their addresses
+        from EfficientIP again. Audited.
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/ip-ranges/{id}/allocations:
+    parameters:
+      - { $ref: "#/components/parameters/IdPath" }
+    get:
+      tags: [admin]
+      operationId: listIpAllocations
+      summary: The addresses a range gave, and who holds each
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IpAllocationList" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -11972,7 +12096,7 @@ components:
         tags: { type: array, items: { type: string } }
         subnet: { type: string, description: Empty when no mapping gives it a subnet. }
         dns_zone: { type: string }
-        source: { type: string, enum: [manual, efficientip, nsx], description: "nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028)." }
+        source: { type: string, enum: [manual, efficientip, nsx, rvav], description: "nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028). rvav: addresses come from rvav's IP ranges (ADR-0063)." }
     NetworkMapping:
       type: object
       required: [network, subnet, gateway, dns_zone, dns_servers, source]
@@ -11984,9 +12108,10 @@ components:
         dns_servers: { type: array, items: { type: string } }
         source:
           type: string
-          enum: [manual, efficientip, nsx]
-          description: "nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand."
+          enum: [manual, efficientip, nsx, rvav]
+          description: "nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand. rvav: the network has IP ranges in `vcenter` (ADR-0063): its VMs there take their addresses from them, not from EfficientIP, and rvav writes no DNS record for them; change it under `/admin/ip-ranges`."
         subnet_name: { type: string, description: The subnet's name in EfficientIP. }
+        vcenter: { type: string, description: "The vCenter whose network has IP ranges, for source rvav; absent for the others, which apply to the network in every vCenter." }
         synced_at: { type: string, format: date-time }
         subnet6:
           type: string
@@ -12004,6 +12129,80 @@ components:
         dns_servers: { type: array, items: { type: string } }
         subnet6: { type: string, description: "An IPv6 subnet in EfficientIP (ADR-0039), with `gateway6`; empty or absent for none." }
         gateway6: { type: string }
+    IpRange:
+      type: object
+      required: [id, name, vcenter, network, cidr, start_address, end_address, gateway, dns_servers, dns_search_domains,
+        dns_domain, excluded, size, used, free, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string, examples: [Lab apps] }
+        description: { type: string }
+        vcenter: { type: string, description: The vCenter the network is in., examples: [vc01.corp.example] }
+        network: { type: string, description: "The port group, or an NSX segment's port group.", examples: [dvpg-lab-vl510] }
+        cidr: { type: string, description: The network's IPv4 subnet., examples: [10.51.0.0/24] }
+        start_address: { type: string, examples: [10.51.0.10] }
+        end_address: { type: string, examples: [10.51.0.200] }
+        gateway: { type: string, examples: [10.51.0.1] }
+        dns_servers: { type: array, items: { type: string } }
+        dns_search_domains:
+          type: array
+          items: { type: string }
+          description: The domains the guest searches, after its own DNS domain.
+        dns_domain:
+          type: string
+          description: "The domain VMs on the network are named in (their FQDN); empty: the blueprint's guest domain. rvav writes no DNS record in it."
+        excluded:
+          type: array
+          items: { type: string }
+          description: Addresses never handed out, each one address or a span such as 10.51.0.50-10.51.0.59.
+        size: { type: integer, description: "The addresses the range can hand out: its exclusions, the gateway, and the subnet's network and broadcast addresses left out." }
+        used: { type: integer, description: The addresses VMs hold. }
+        free: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    IpRangeWrite:
+      type: object
+      required: [name, vcenter, network, cidr, start_address, end_address, gateway]
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        vcenter: { type: string }
+        network: { type: string }
+        cidr: { type: string }
+        start_address: { type: string }
+        end_address: { type: string }
+        gateway: { type: string }
+        dns_servers: { type: array, items: { type: string } }
+        dns_search_domains: { type: array, items: { type: string } }
+        dns_domain: { type: string }
+        excluded: { type: array, items: { type: string } }
+    IpRangeList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/IpRange" }
+    IpAllocation:
+      type: object
+      required: [address, hostname, allocated_at]
+      properties:
+        address: { type: string, examples: [10.51.0.10] }
+        hostname: { type: string, description: The VM's name. }
+        fqdn: { type: string }
+        adapter: { type: string, description: "The adapter's key in the blueprint; absent for the VM's first." }
+        deployment_id: { type: string }
+        deployment_name: { type: string }
+        request_id: { type: string }
+        allocated_at: { type: string, format: date-time }
+    IpAllocationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/IpAllocation" }
     NetworkMappingList:
       type: object
       required: [items]

@@ -124,13 +124,13 @@
       "id": "infrastructure.read",
       "scope": "rvav",
       "area": "Infrastructure",
-      "summary": "See templates, sizes, network mappings and the vCenters rvav reaches."
+      "summary": "See templates, sizes, network mappings, IP ranges and the vCenters rvav reaches."
     },
     {
       "id": "infrastructure.manage",
       "scope": "rvav",
       "area": "Infrastructure",
-      "summary": "Change templates, sizes and network mappings, and reconcile IPAM."
+      "summary": "Change templates, sizes, network mappings and IP ranges, and reconcile IPAM."
     },
     {
       "id": "integrations.manage",

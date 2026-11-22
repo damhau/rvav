@@ -370,10 +370,16 @@ func (s *Service) NetworkMappings(ctx context.Context, p *auth.Principal) ([]api
 	if err != nil {
 		return nil, err
 	}
+	ranges, err := s.Store.IPRanges(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]api.NetworkMapping, len(list))
 	for i, n := range list {
 		out[i] = presentNetworkMapping(n)
 	}
+	out = append(out, rangeMappings(ranges)...)
+	sortMappings(out)
 	return out, nil
 }
 

@@ -333,6 +333,10 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	var leaseRule api.LeaseRule
 	h.json("POST", "/api/v1/admin/lease-rules", admin, api.LeaseRuleWrite{Name: "A1 leases", Condition: `item.slug == "a1"`,
 		ProjectId: new("prj_fin"), DefaultDays: new(7), MaxDays: new(14), GraceDays: 7, ExpiryAction: api.PowerOffThenDelete}, 201, &leaseRule)
+	var ipRange api.IpRange
+	h.json("POST", "/api/v1/admin/ip-ranges", admin, api.IpRangeWrite{Name: "A1 lab", Vcenter: "vc01.corp.example",
+		Network: "dvpg-db-prd-vl230", Cidr: "10.22.30.0/25", StartAddress: "10.22.30.10", EndAddress: "10.22.30.20",
+		Gateway: "10.22.30.1"}, 201, &ipRange)
 	var limits api.DeploymentLimitPolicy
 	h.json("POST", "/api/v1/admin/deployment-limit-policies", admin, api.DeploymentLimitPolicyWrite{Name: "A1 limits",
 		ProjectId: new("prj_fin"), DeploymentsPerUser: new(50)}, 201, &limits)
@@ -414,6 +418,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"sizes/{key}":                    first("/api/v1/admin/sizes").Items[0].Key,
 		"naming-policies/{id}":           naming.Id,
 		"lease-rules/{id}":               leaseRule.Id,
+		"ip-ranges/{id}":                 ipRange.Id,
 		"approval-policies/{id}":         first("/api/v1/admin/approval-policies").Items[0].Id,
 		"day2-policies/{id}":             first("/api/v1/admin/day2-policies").Items[0].Id,
 		"deployment-limit-policies/{id}": limits.Id,

@@ -1463,6 +1463,7 @@ const (
 	NetworkMappingSourceEfficientip NetworkMappingSource = "efficientip"
 	NetworkMappingSourceManual      NetworkMappingSource = "manual"
 	NetworkMappingSourceNsx         NetworkMappingSource = "nsx"
+	NetworkMappingSourceRvav        NetworkMappingSource = "rvav"
 )
 
 // Valid indicates whether the value is a known member of the NetworkMappingSource enum.
@@ -1473,6 +1474,8 @@ func (e NetworkMappingSource) Valid() bool {
 	case NetworkMappingSourceManual:
 		return true
 	case NetworkMappingSourceNsx:
+		return true
+	case NetworkMappingSourceRvav:
 		return true
 	default:
 		return false
@@ -1832,6 +1835,7 @@ const (
 	PreviewNetworkSourceEfficientip PreviewNetworkSource = "efficientip"
 	PreviewNetworkSourceManual      PreviewNetworkSource = "manual"
 	PreviewNetworkSourceNsx         PreviewNetworkSource = "nsx"
+	PreviewNetworkSourceRvav        PreviewNetworkSource = "rvav"
 )
 
 // Valid indicates whether the value is a known member of the PreviewNetworkSource enum.
@@ -1842,6 +1846,8 @@ func (e PreviewNetworkSource) Valid() bool {
 	case PreviewNetworkSourceManual:
 		return true
 	case PreviewNetworkSourceNsx:
+		return true
+	case PreviewNetworkSourceRvav:
 		return true
 	default:
 		return false
@@ -6834,6 +6840,100 @@ type IpAddressResource struct {
 	Type      interface{} `json:"type"`
 }
 
+// IpAllocation defines model for IpAllocation.
+type IpAllocation struct {
+	// Adapter The adapter's key in the blueprint; absent for the VM's first.
+	Adapter *string `json:"adapter,omitempty"`
+
+	// Address Examples: 10.51.0.10
+	Address        string    `json:"address"`
+	AllocatedAt    time.Time `json:"allocated_at"`
+	DeploymentId   *string   `json:"deployment_id,omitempty"`
+	DeploymentName *string   `json:"deployment_name,omitempty"`
+	Fqdn           *string   `json:"fqdn,omitempty"`
+
+	// Hostname The VM's name.
+	Hostname  string  `json:"hostname"`
+	RequestId *string `json:"request_id,omitempty"`
+}
+
+// IpAllocationList defines model for IpAllocationList.
+type IpAllocationList struct {
+	Items []IpAllocation `json:"items"`
+}
+
+// IpRange defines model for IpRange.
+type IpRange struct {
+	// Cidr The network's IPv4 subnet.
+	//
+	// Examples: 10.51.0.0/24
+	Cidr        string    `json:"cidr"`
+	CreatedAt   time.Time `json:"created_at"`
+	Description *string   `json:"description,omitempty"`
+
+	// DnsDomain The domain VMs on the network are named in (their FQDN); empty: the blueprint's guest domain. rvav writes no DNS record in it.
+	DnsDomain string `json:"dns_domain"`
+
+	// DnsSearchDomains The domains the guest searches, after its own DNS domain.
+	DnsSearchDomains []string `json:"dns_search_domains"`
+	DnsServers       []string `json:"dns_servers"`
+
+	// EndAddress Examples: 10.51.0.200
+	EndAddress string `json:"end_address"`
+
+	// Excluded Addresses never handed out, each one address or a span such as 10.51.0.50-10.51.0.59.
+	Excluded []string `json:"excluded"`
+	Free     int      `json:"free"`
+
+	// Gateway Examples: 10.51.0.1
+	Gateway string `json:"gateway"`
+	Id      string `json:"id"`
+
+	// Name Examples: Lab apps
+	Name string `json:"name"`
+
+	// Network The port group, or an NSX segment's port group.
+	//
+	// Examples: dvpg-lab-vl510
+	Network string `json:"network"`
+
+	// Size The addresses the range can hand out: its exclusions, the gateway, and the subnet's network and broadcast addresses left out.
+	Size int `json:"size"`
+
+	// StartAddress Examples: 10.51.0.10
+	StartAddress string    `json:"start_address"`
+	UpdatedAt    time.Time `json:"updated_at"`
+
+	// Used The addresses VMs hold.
+	Used int `json:"used"`
+
+	// Vcenter The vCenter the network is in.
+	//
+	// Examples: vc01.corp.example
+	Vcenter string `json:"vcenter"`
+}
+
+// IpRangeList defines model for IpRangeList.
+type IpRangeList struct {
+	Items []IpRange `json:"items"`
+}
+
+// IpRangeWrite defines model for IpRangeWrite.
+type IpRangeWrite struct {
+	Cidr             string    `json:"cidr"`
+	Description      *string   `json:"description,omitempty"`
+	DnsDomain        *string   `json:"dns_domain,omitempty"`
+	DnsSearchDomains *[]string `json:"dns_search_domains,omitempty"`
+	DnsServers       *[]string `json:"dns_servers,omitempty"`
+	EndAddress       string    `json:"end_address"`
+	Excluded         *[]string `json:"excluded,omitempty"`
+	Gateway          string    `json:"gateway"`
+	Name             string    `json:"name"`
+	Network          string    `json:"network"`
+	StartAddress     string    `json:"start_address"`
+	Vcenter          string    `json:"vcenter"`
+}
+
 // IpamMissing defines model for IpamMissing.
 type IpamMissing struct {
 	DeploymentId   string          `json:"deployment_id"`
@@ -7254,7 +7354,7 @@ type NetworkMapping struct {
 	Gateway6 *string `json:"gateway6,omitempty"`
 	Network  string  `json:"network"`
 
-	// Source nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand.
+	// Source nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand. rvav: the network has IP ranges in `vcenter` (ADR-0063): its VMs there take their addresses from them, not from EfficientIP, and rvav writes no DNS record for them; change it under `/admin/ip-ranges`.
 	Source NetworkMappingSource `json:"source"`
 
 	// Subnet Examples: 10.31.10.0/24
@@ -7268,9 +7368,12 @@ type NetworkMapping struct {
 	// SubnetName The subnet's name in EfficientIP.
 	SubnetName *string    `json:"subnet_name,omitempty"`
 	SyncedAt   *time.Time `json:"synced_at,omitempty"`
+
+	// Vcenter The vCenter whose network has IP ranges, for source rvav; absent for the others, which apply to the network in every vCenter.
+	Vcenter *string `json:"vcenter,omitempty"`
 }
 
-// NetworkMappingSource nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand.
+// NetworkMappingSource nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand. rvav: the network has IP ranges in `vcenter` (ADR-0063): its VMs there take their addresses from them, not from EfficientIP, and rvav writes no DNS record for them; change it under `/admin/ip-ranges`.
 type NetworkMappingSource string
 
 // NetworkMappingList defines model for NetworkMappingList.
@@ -8360,7 +8463,7 @@ type PreviewNetwork struct {
 	DnsZone  *string  `json:"dns_zone,omitempty"`
 	Name     string   `json:"name"`
 
-	// Source nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028).
+	// Source nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028). rvav: addresses come from rvav's IP ranges (ADR-0063).
 	Source *PreviewNetworkSource `json:"source,omitempty"`
 
 	// Subnet Empty when no mapping gives it a subnet.
@@ -8368,7 +8471,7 @@ type PreviewNetwork struct {
 	Tags   []string `json:"tags"`
 }
 
-// PreviewNetworkSource nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028).
+// PreviewNetworkSource nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028). rvav: addresses come from rvav's IP ranges (ADR-0063).
 type PreviewNetworkSource string
 
 // PrivateKey A deployment's generated private key, which rvav no longer has.
@@ -12259,6 +12362,12 @@ type SetIntegrationJSONRequestBody = IntegrationWrite
 // TestIntegrationJSONRequestBody defines body for TestIntegration for application/json ContentType.
 type TestIntegrationJSONRequestBody = IntegrationWrite
 
+// CreateIpRangeJSONRequestBody defines body for CreateIpRange for application/json ContentType.
+type CreateIpRangeJSONRequestBody = IpRangeWrite
+
+// UpdateIpRangeJSONRequestBody defines body for UpdateIpRange for application/json ContentType.
+type UpdateIpRangeJSONRequestBody = IpRangeWrite
+
 // SetLeasePolicyJSONRequestBody defines body for SetLeasePolicy for application/json ContentType.
 type SetLeasePolicyJSONRequestBody = LeasePolicy
 
@@ -14640,6 +14749,89 @@ type ClientInterface interface {
 	// Corresponds with GET /admin/inventory (the `GetVsphereInventory` operationId).
 	GetVsphereInventory(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListIpRanges IP ranges rvav hands addresses from, for networks without EfficientIP
+	//
+	// A network (a port group or an NSX segment's, in one vCenter) with
+	// at least one range takes its VMs' addresses from rvav's ranges
+	// instead of EfficientIP (ADR-0063); every other network keeps
+	// EfficientIP. rvav writes no DNS record for an address it hands
+	// from a range. Each range says how many addresses it has, how many
+	// are given and how many are free. Needs `infrastructure.read`.
+	//
+	// Corresponds with GET /admin/ip-ranges (the `ListIpRanges` operationId).
+	ListIpRanges(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateIpRangeWithBody Add an IP range to a network
+	//
+	// The network must be in the vCenter's inventory. Ranges of one
+	// network share its subnet, gateway, DNS servers, search domains and
+	// DNS domain, and ranges of one vCenter don't overlap: either is
+	// refused (422) naming the other range. The first range of a network
+	// moves its new VMs from EfficientIP to rvav; VMs already built keep
+	// their addresses. Needs `infrastructure.manage`. Audited.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/ip-ranges (the `CreateIpRange` operationId).
+	CreateIpRangeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateIpRange Add an IP range to a network
+	//
+	// The network must be in the vCenter's inventory. Ranges of one
+	// network share its subnet, gateway, DNS servers, search domains and
+	// DNS domain, and ranges of one vCenter don't overlap: either is
+	// refused (422) naming the other range. The first range of a network
+	// moves its new VMs from EfficientIP to rvav; VMs already built keep
+	// their addresses. Needs `infrastructure.manage`. Audited.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/ip-ranges (the `CreateIpRange` operationId).
+	CreateIpRange(ctx context.Context, body CreateIpRangeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteIpRange Remove an IP range that gives no address
+	//
+	// Refused (409) while a VM holds an address from it. When it was the
+	// network's last range, the network's new VMs take their addresses
+	// from EfficientIP again. Audited.
+	//
+	// Corresponds with DELETE /admin/ip-ranges/{id} (the `DeleteIpRange` operationId).
+	DeleteIpRange(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIpRange An IP range and its usage
+	//
+	// Corresponds with GET /admin/ip-ranges/{id} (the `GetIpRange` operationId).
+	GetIpRange(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateIpRangeWithBody Change an IP range
+	//
+	// As adding one. While the range has given addresses, its vCenter,
+	// network, subnet and gateway can't change, and a new start, end or
+	// exclusion that would leave a given address out is refused (422).
+	// Audited.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/ip-ranges/{id} (the `UpdateIpRange` operationId).
+	UpdateIpRangeWithBody(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateIpRange Change an IP range
+	//
+	// As adding one. While the range has given addresses, its vCenter,
+	// network, subnet and gateway can't change, and a new start, end or
+	// exclusion that would leave a given address out is refused (422).
+	// Audited.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/ip-ranges/{id} (the `UpdateIpRange` operationId).
+	UpdateIpRange(ctx context.Context, id IdPath, body UpdateIpRangeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListIpAllocations The addresses a range gave, and who holds each
+	//
+	// Corresponds with GET /admin/ip-ranges/{id}/allocations (the `ListIpAllocations` operationId).
+	ListIpAllocations(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ReconcileIpam Compare EfficientIP with what rvav recorded
 	//
 	// Addresses and DNS records EfficientIP has with the class parameter
@@ -14821,7 +15013,11 @@ type ClientInterface interface {
 	// Corresponds with POST /admin/naming-preview (the `PreviewNaming` operationId).
 	PreviewNaming(ctx context.Context, body PreviewNamingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListNetworkMappings vSphere networks and their subnets, set by hand or from EfficientIP
+	// ListNetworkMappings vSphere networks and their subnets, set by hand, from EfficientIP or from rvav's IP ranges
+	//
+	// A network with IP ranges in a vCenter is listed once more for that
+	// vCenter, with source `rvav`: its VMs there take their addresses from
+	// the ranges, whatever its other mapping says (ADR-0063).
 	//
 	// Corresponds with GET /admin/network-mappings (the `ListNetworkMappings` operationId).
 	ListNetworkMappings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -19566,6 +19762,169 @@ func (c *Client) GetVsphereInventory(ctx context.Context, reqEditors ...RequestE
 	return c.Client.Do(req)
 }
 
+// ListIpRanges IP ranges rvav hands addresses from, for networks without EfficientIP
+//
+// A network (a port group or an NSX segment's, in one vCenter) with
+// at least one range takes its VMs' addresses from rvav's ranges
+// instead of EfficientIP (ADR-0063); every other network keeps
+// EfficientIP. rvav writes no DNS record for an address it hands
+// from a range. Each range says how many addresses it has, how many
+// are given and how many are free. Needs `infrastructure.read`.
+//
+// Corresponds with GET /admin/ip-ranges (the `ListIpRanges` operationId).
+func (c *Client) ListIpRanges(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIpRangesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateIpRangeWithBody Add an IP range to a network
+//
+// The network must be in the vCenter's inventory. Ranges of one
+// network share its subnet, gateway, DNS servers, search domains and
+// DNS domain, and ranges of one vCenter don't overlap: either is
+// refused (422) naming the other range. The first range of a network
+// moves its new VMs from EfficientIP to rvav; VMs already built keep
+// their addresses. Needs `infrastructure.manage`. Audited.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/ip-ranges (the `CreateIpRange` operationId).
+func (c *Client) CreateIpRangeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateIpRangeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateIpRange Add an IP range to a network
+//
+// The network must be in the vCenter's inventory. Ranges of one
+// network share its subnet, gateway, DNS servers, search domains and
+// DNS domain, and ranges of one vCenter don't overlap: either is
+// refused (422) naming the other range. The first range of a network
+// moves its new VMs from EfficientIP to rvav; VMs already built keep
+// their addresses. Needs `infrastructure.manage`. Audited.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/ip-ranges (the `CreateIpRange` operationId).
+func (c *Client) CreateIpRange(ctx context.Context, body CreateIpRangeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateIpRangeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteIpRange Remove an IP range that gives no address
+//
+// Refused (409) while a VM holds an address from it. When it was the
+// network's last range, the network's new VMs take their addresses
+// from EfficientIP again. Audited.
+//
+// Corresponds with DELETE /admin/ip-ranges/{id} (the `DeleteIpRange` operationId).
+func (c *Client) DeleteIpRange(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteIpRangeRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetIpRange An IP range and its usage
+//
+// Corresponds with GET /admin/ip-ranges/{id} (the `GetIpRange` operationId).
+func (c *Client) GetIpRange(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIpRangeRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateIpRangeWithBody Change an IP range
+//
+// As adding one. While the range has given addresses, its vCenter,
+// network, subnet and gateway can't change, and a new start, end or
+// exclusion that would leave a given address out is refused (422).
+// Audited.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/ip-ranges/{id} (the `UpdateIpRange` operationId).
+func (c *Client) UpdateIpRangeWithBody(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateIpRangeRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateIpRange Change an IP range
+//
+// As adding one. While the range has given addresses, its vCenter,
+// network, subnet and gateway can't change, and a new start, end or
+// exclusion that would leave a given address out is refused (422).
+// Audited.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/ip-ranges/{id} (the `UpdateIpRange` operationId).
+func (c *Client) UpdateIpRange(ctx context.Context, id IdPath, body UpdateIpRangeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateIpRangeRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListIpAllocations The addresses a range gave, and who holds each
+//
+// Corresponds with GET /admin/ip-ranges/{id}/allocations (the `ListIpAllocations` operationId).
+func (c *Client) ListIpAllocations(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIpAllocationsRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ReconcileIpam Compare EfficientIP with what rvav recorded
 //
 // Addresses and DNS records EfficientIP has with the class parameter
@@ -19937,7 +20296,11 @@ func (c *Client) PreviewNaming(ctx context.Context, body PreviewNamingJSONReques
 	return c.Client.Do(req)
 }
 
-// ListNetworkMappings vSphere networks and their subnets, set by hand or from EfficientIP
+// ListNetworkMappings vSphere networks and their subnets, set by hand, from EfficientIP or from rvav's IP ranges
+//
+// A network with IP ranges in a vCenter is listed once more for that
+// vCenter, with source `rvav`: its VMs there take their addresses from
+// the ranges, whatever its other mapping says (ADR-0063).
 //
 // Corresponds with GET /admin/network-mappings (the `ListNetworkMappings` operationId).
 func (c *Client) ListNetworkMappings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -28486,6 +28849,222 @@ func NewGetVsphereInventoryRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/admin/inventory")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListIpRangesRequest constructs an http.Request for the ListIpRanges method
+func NewListIpRangesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ip-ranges")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateIpRangeRequest calls the generic CreateIpRange builder with application/json body
+func NewCreateIpRangeRequest(server string, body CreateIpRangeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateIpRangeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateIpRangeRequestWithBody constructs an http.Request for the CreateIpRange method, with any body, and a specified content type
+func NewCreateIpRangeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ip-ranges")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteIpRangeRequest constructs an http.Request for the DeleteIpRange method
+func NewDeleteIpRangeRequest(server string, id IdPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ip-ranges/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetIpRangeRequest constructs an http.Request for the GetIpRange method
+func NewGetIpRangeRequest(server string, id IdPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ip-ranges/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateIpRangeRequest calls the generic UpdateIpRange builder with application/json body
+func NewUpdateIpRangeRequest(server string, id IdPath, body UpdateIpRangeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateIpRangeRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewUpdateIpRangeRequestWithBody constructs an http.Request for the UpdateIpRange method, with any body, and a specified content type
+func NewUpdateIpRangeRequestWithBody(server string, id IdPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ip-ranges/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListIpAllocationsRequest constructs an http.Request for the ListIpAllocations method
+func NewListIpAllocationsRequest(server string, id IdPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/ip-ranges/%s/allocations", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -39368,6 +39947,97 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /admin/inventory (the `GetVsphereInventory` operationId).
 	GetVsphereInventoryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVsphereInventoryResponse, error)
 
+	// ListIpRangesWithResponse IP ranges rvav hands addresses from, for networks without EfficientIP
+	//
+	// A network (a port group or an NSX segment's, in one vCenter) with
+	// at least one range takes its VMs' addresses from rvav's ranges
+	// instead of EfficientIP (ADR-0063); every other network keeps
+	// EfficientIP. rvav writes no DNS record for an address it hands
+	// from a range. Each range says how many addresses it has, how many
+	// are given and how many are free. Needs `infrastructure.read`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/ip-ranges (the `ListIpRanges` operationId).
+	ListIpRangesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListIpRangesResponse, error)
+
+	// CreateIpRangeWithBodyWithResponse Add an IP range to a network
+	//
+	// The network must be in the vCenter's inventory. Ranges of one
+	// network share its subnet, gateway, DNS servers, search domains and
+	// DNS domain, and ranges of one vCenter don't overlap: either is
+	// refused (422) naming the other range. The first range of a network
+	// moves its new VMs from EfficientIP to rvav; VMs already built keep
+	// their addresses. Needs `infrastructure.manage`. Audited.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/ip-ranges (the `CreateIpRange` operationId).
+	CreateIpRangeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateIpRangeResponse, error)
+
+	// CreateIpRangeWithResponse Add an IP range to a network
+	//
+	// The network must be in the vCenter's inventory. Ranges of one
+	// network share its subnet, gateway, DNS servers, search domains and
+	// DNS domain, and ranges of one vCenter don't overlap: either is
+	// refused (422) naming the other range. The first range of a network
+	// moves its new VMs from EfficientIP to rvav; VMs already built keep
+	// their addresses. Needs `infrastructure.manage`. Audited.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/ip-ranges (the `CreateIpRange` operationId).
+	CreateIpRangeWithResponse(ctx context.Context, body CreateIpRangeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateIpRangeResponse, error)
+
+	// DeleteIpRangeWithResponse Remove an IP range that gives no address
+	//
+	// Refused (409) while a VM holds an address from it. When it was the
+	// network's last range, the network's new VMs take their addresses
+	// from EfficientIP again. Audited.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /admin/ip-ranges/{id} (the `DeleteIpRange` operationId).
+	DeleteIpRangeWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*DeleteIpRangeResponse, error)
+
+	// GetIpRangeWithResponse An IP range and its usage
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/ip-ranges/{id} (the `GetIpRange` operationId).
+	GetIpRangeWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*GetIpRangeResponse, error)
+
+	// UpdateIpRangeWithBodyWithResponse Change an IP range
+	//
+	// As adding one. While the range has given addresses, its vCenter,
+	// network, subnet and gateway can't change, and a new start, end or
+	// exclusion that would leave a given address out is refused (422).
+	// Audited.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/ip-ranges/{id} (the `UpdateIpRange` operationId).
+	UpdateIpRangeWithBodyWithResponse(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateIpRangeResponse, error)
+
+	// UpdateIpRangeWithResponse Change an IP range
+	//
+	// As adding one. While the range has given addresses, its vCenter,
+	// network, subnet and gateway can't change, and a new start, end or
+	// exclusion that would leave a given address out is refused (422).
+	// Audited.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/ip-ranges/{id} (the `UpdateIpRange` operationId).
+	UpdateIpRangeWithResponse(ctx context.Context, id IdPath, body UpdateIpRangeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateIpRangeResponse, error)
+
+	// ListIpAllocationsWithResponse The addresses a range gave, and who holds each
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/ip-ranges/{id}/allocations (the `ListIpAllocations` operationId).
+	ListIpAllocationsWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*ListIpAllocationsResponse, error)
+
 	// ReconcileIpamWithResponse Compare EfficientIP with what rvav recorded
 	//
 	// Addresses and DNS records EfficientIP has with the class parameter
@@ -39563,7 +40233,11 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /admin/naming-preview (the `PreviewNaming` operationId).
 	PreviewNamingWithResponse(ctx context.Context, body PreviewNamingJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewNamingResponse, error)
 
-	// ListNetworkMappingsWithResponse vSphere networks and their subnets, set by hand or from EfficientIP
+	// ListNetworkMappingsWithResponse vSphere networks and their subnets, set by hand, from EfficientIP or from rvav's IP ranges
+	//
+	// A network with IP ranges in a vCenter is listed once more for that
+	// vCenter, with source `rvav`: its VMs there take their addresses from
+	// the ranges, whatever its other mapping says (ADR-0063).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -47606,6 +48280,392 @@ func (r GetVsphereInventoryResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetVsphereInventoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListIpRangesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IpRangeList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIpRangesResponse) GetJSON200() *IpRangeList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListIpRangesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListIpRangesResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIpRangesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIpRangesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIpRangesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIpRangesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateIpRangeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *IpRange
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateIpRangeResponse) GetJSON201() *IpRange {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateIpRangeResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateIpRangeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateIpRangeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateIpRangeResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateIpRangeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateIpRangeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateIpRangeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateIpRangeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteIpRangeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteIpRangeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteIpRangeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteIpRangeResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteIpRangeResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteIpRangeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteIpRangeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteIpRangeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteIpRangeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetIpRangeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IpRange
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetIpRangeResponse) GetJSON200() *IpRange {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetIpRangeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetIpRangeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetIpRangeResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetIpRangeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIpRangeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIpRangeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetIpRangeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateIpRangeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IpRange
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateIpRangeResponse) GetJSON200() *IpRange {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UpdateIpRangeResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateIpRangeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateIpRangeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateIpRangeResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateIpRangeResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateIpRangeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateIpRangeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateIpRangeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateIpRangeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListIpAllocationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IpAllocationList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIpAllocationsResponse) GetJSON200() *IpAllocationList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListIpAllocationsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListIpAllocationsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ListIpAllocationsResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIpAllocationsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIpAllocationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIpAllocationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIpAllocationsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -62656,6 +63716,145 @@ func (c *ClientWithResponses) GetVsphereInventoryWithResponse(ctx context.Contex
 	return ParseGetVsphereInventoryResponse(rsp)
 }
 
+// ListIpRangesWithResponse IP ranges rvav hands addresses from, for networks without EfficientIP
+//
+// A network (a port group or an NSX segment's, in one vCenter) with
+// at least one range takes its VMs' addresses from rvav's ranges
+// instead of EfficientIP (ADR-0063); every other network keeps
+// EfficientIP. rvav writes no DNS record for an address it hands
+// from a range. Each range says how many addresses it has, how many
+// are given and how many are free. Needs `infrastructure.read`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/ip-ranges (the `ListIpRanges` operationId).
+func (c *ClientWithResponses) ListIpRangesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListIpRangesResponse, error) {
+	rsp, err := c.ListIpRanges(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIpRangesResponse(rsp)
+}
+
+// CreateIpRangeWithBodyWithResponse Add an IP range to a network
+//
+// The network must be in the vCenter's inventory. Ranges of one
+// network share its subnet, gateway, DNS servers, search domains and
+// DNS domain, and ranges of one vCenter don't overlap: either is
+// refused (422) naming the other range. The first range of a network
+// moves its new VMs from EfficientIP to rvav; VMs already built keep
+// their addresses. Needs `infrastructure.manage`. Audited.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/ip-ranges (the `CreateIpRange` operationId).
+func (c *ClientWithResponses) CreateIpRangeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateIpRangeResponse, error) {
+	rsp, err := c.CreateIpRangeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateIpRangeResponse(rsp)
+}
+
+// CreateIpRangeWithResponse Add an IP range to a network
+//
+// The network must be in the vCenter's inventory. Ranges of one
+// network share its subnet, gateway, DNS servers, search domains and
+// DNS domain, and ranges of one vCenter don't overlap: either is
+// refused (422) naming the other range. The first range of a network
+// moves its new VMs from EfficientIP to rvav; VMs already built keep
+// their addresses. Needs `infrastructure.manage`. Audited.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/ip-ranges (the `CreateIpRange` operationId).
+func (c *ClientWithResponses) CreateIpRangeWithResponse(ctx context.Context, body CreateIpRangeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateIpRangeResponse, error) {
+	rsp, err := c.CreateIpRange(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateIpRangeResponse(rsp)
+}
+
+// DeleteIpRangeWithResponse Remove an IP range that gives no address
+//
+// Refused (409) while a VM holds an address from it. When it was the
+// network's last range, the network's new VMs take their addresses
+// from EfficientIP again. Audited.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /admin/ip-ranges/{id} (the `DeleteIpRange` operationId).
+func (c *ClientWithResponses) DeleteIpRangeWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*DeleteIpRangeResponse, error) {
+	rsp, err := c.DeleteIpRange(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteIpRangeResponse(rsp)
+}
+
+// GetIpRangeWithResponse An IP range and its usage
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/ip-ranges/{id} (the `GetIpRange` operationId).
+func (c *ClientWithResponses) GetIpRangeWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*GetIpRangeResponse, error) {
+	rsp, err := c.GetIpRange(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIpRangeResponse(rsp)
+}
+
+// UpdateIpRangeWithBodyWithResponse Change an IP range
+//
+// As adding one. While the range has given addresses, its vCenter,
+// network, subnet and gateway can't change, and a new start, end or
+// exclusion that would leave a given address out is refused (422).
+// Audited.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/ip-ranges/{id} (the `UpdateIpRange` operationId).
+func (c *ClientWithResponses) UpdateIpRangeWithBodyWithResponse(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateIpRangeResponse, error) {
+	rsp, err := c.UpdateIpRangeWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateIpRangeResponse(rsp)
+}
+
+// UpdateIpRangeWithResponse Change an IP range
+//
+// As adding one. While the range has given addresses, its vCenter,
+// network, subnet and gateway can't change, and a new start, end or
+// exclusion that would leave a given address out is refused (422).
+// Audited.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/ip-ranges/{id} (the `UpdateIpRange` operationId).
+func (c *ClientWithResponses) UpdateIpRangeWithResponse(ctx context.Context, id IdPath, body UpdateIpRangeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateIpRangeResponse, error) {
+	rsp, err := c.UpdateIpRange(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateIpRangeResponse(rsp)
+}
+
+// ListIpAllocationsWithResponse The addresses a range gave, and who holds each
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/ip-ranges/{id}/allocations (the `ListIpAllocations` operationId).
+func (c *ClientWithResponses) ListIpAllocationsWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*ListIpAllocationsResponse, error) {
+	rsp, err := c.ListIpAllocations(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIpAllocationsResponse(rsp)
+}
+
 // ReconcileIpamWithResponse Compare EfficientIP with what rvav recorded
 //
 // Addresses and DNS records EfficientIP has with the class parameter
@@ -62965,7 +64164,11 @@ func (c *ClientWithResponses) PreviewNamingWithResponse(ctx context.Context, bod
 	return ParsePreviewNamingResponse(rsp)
 }
 
-// ListNetworkMappingsWithResponse vSphere networks and their subnets, set by hand or from EfficientIP
+// ListNetworkMappingsWithResponse vSphere networks and their subnets, set by hand, from EfficientIP or from rvav's IP ranges
+//
+// A network with IP ranges in a vCenter is listed once more for that
+// vCenter, with source `rvav`: its VMs there take their addresses from
+// the ranges, whatever its other mapping says (ADR-0063).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -71428,6 +72631,305 @@ func ParseGetVsphereInventoryResponse(rsp *http.Response) (*GetVsphereInventoryR
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListIpRangesResponse parses an HTTP response from a ListIpRangesWithResponse call
+func ParseListIpRangesResponse(rsp *http.Response) (*ListIpRangesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIpRangesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IpRangeList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateIpRangeResponse parses an HTTP response from a CreateIpRangeWithResponse call
+func ParseCreateIpRangeResponse(rsp *http.Response) (*CreateIpRangeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateIpRangeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest IpRange
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteIpRangeResponse parses an HTTP response from a DeleteIpRangeWithResponse call
+func ParseDeleteIpRangeResponse(rsp *http.Response) (*DeleteIpRangeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteIpRangeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIpRangeResponse parses an HTTP response from a GetIpRangeWithResponse call
+func ParseGetIpRangeResponse(rsp *http.Response) (*GetIpRangeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIpRangeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IpRange
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateIpRangeResponse parses an HTTP response from a UpdateIpRangeWithResponse call
+func ParseUpdateIpRangeResponse(rsp *http.Response) (*UpdateIpRangeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateIpRangeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IpRange
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListIpAllocationsResponse parses an HTTP response from a ListIpAllocationsWithResponse call
+func ParseListIpAllocationsResponse(rsp *http.Response) (*ListIpAllocationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIpAllocationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IpAllocationList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	}
 

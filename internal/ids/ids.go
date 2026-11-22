@@ -46,6 +46,9 @@ const (
 	AuditDestination = "adt"
 	// Recurring schedules (ADR-0057).
 	Schedule = "sch"
+	// IP ranges and the addresses they gave (ADR-0063).
+	IPRange      = "ipr"
+	IPAllocation = "ipa"
 )
 
 // New returns prefix + "_" + a lower-case ULID.

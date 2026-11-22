@@ -840,7 +840,12 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
   );
 }
 
-const sourceLabel = { manual: "By hand", nsx: "NSX segment", efficientip: "EfficientIP" } as const;
+const sourceLabel = {
+  manual: "By hand",
+  nsx: "NSX segment",
+  efficientip: "EfficientIP",
+  rvav: "rvav IP ranges",
+} as const;
 
 function Networks({ canEdit }: { canEdit: boolean }) {
   const mappings = useQuery(adm.networkMappings());
@@ -903,7 +908,7 @@ function Networks({ canEdit }: { canEdit: boolean }) {
         label="Network mappings"
         columns={columns}
         rows={items}
-        rowKey={(m) => m.network}
+        rowKey={(m) => `${m.network}/${m.vcenter ?? ""}`}
         minWidth={720}
         loading={mappings.isPending}
         error={mappings.isError && <ErrorState error={mappings.error} onRetry={() => void mappings.refetch()} />}
@@ -920,7 +925,7 @@ function Networks({ canEdit }: { canEdit: boolean }) {
           canEdit
             ? (m) =>
                 // A segment made for a deployment goes with it (ADR-0028).
-                m.source === "nsx" ? null : (
+                m.source === "nsx" || m.source === "rvav" ? null : (
                   <>
                     <MenuItem onSelect={() => setEditing(m)}>
                       {m.source === "manual" ? "Change" : "Map by hand"}

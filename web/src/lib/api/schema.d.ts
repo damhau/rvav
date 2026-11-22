@@ -3022,7 +3022,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** vSphere networks and their subnets, set by hand or from EfficientIP */
+        /**
+         * vSphere networks and their subnets, set by hand, from EfficientIP or from rvav's IP ranges
+         * @description A network with IP ranges in a vCenter is listed once more for that
+         *     vCenter, with source `rvav`: its VMs there take their addresses from
+         *     the ranges, whatever its other mapping says (ADR-0063).
+         */
         get: operations["listNetworkMappings"];
         put?: never;
         post?: never;
@@ -3047,6 +3052,91 @@ export interface paths {
         post?: never;
         /** Remove a mapping set by hand (EfficientIP's comes back at the next sync) */
         delete: operations["deleteNetworkMapping"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/ip-ranges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * IP ranges rvav hands addresses from, for networks without EfficientIP
+         * @description A network (a port group or an NSX segment's, in one vCenter) with
+         *     at least one range takes its VMs' addresses from rvav's ranges
+         *     instead of EfficientIP (ADR-0063); every other network keeps
+         *     EfficientIP. rvav writes no DNS record for an address it hands
+         *     from a range. Each range says how many addresses it has, how many
+         *     are given and how many are free. Needs `infrastructure.read`.
+         */
+        get: operations["listIpRanges"];
+        put?: never;
+        /**
+         * Add an IP range to a network
+         * @description The network must be in the vCenter's inventory. Ranges of one
+         *     network share its subnet, gateway, DNS servers, search domains and
+         *     DNS domain, and ranges of one vCenter don't overlap: either is
+         *     refused (422) naming the other range. The first range of a network
+         *     moves its new VMs from EfficientIP to rvav; VMs already built keep
+         *     their addresses. Needs `infrastructure.manage`. Audited.
+         */
+        post: operations["createIpRange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/ip-ranges/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        /** An IP range and its usage */
+        get: operations["getIpRange"];
+        /**
+         * Change an IP range
+         * @description As adding one. While the range has given addresses, its vCenter,
+         *     network, subnet and gateway can't change, and a new start, end or
+         *     exclusion that would leave a given address out is refused (422).
+         *     Audited.
+         */
+        put: operations["updateIpRange"];
+        post?: never;
+        /**
+         * Remove an IP range that gives no address
+         * @description Refused (409) while a VM holds an address from it. When it was the
+         *     network's last range, the network's new VMs take their addresses
+         *     from EfficientIP again. Audited.
+         */
+        delete: operations["deleteIpRange"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/ip-ranges/{id}/allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        /** The addresses a range gave, and who holds each */
+        get: operations["listIpAllocations"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -9066,10 +9156,10 @@ export interface components {
             subnet?: string;
             dns_zone?: string;
             /**
-             * @description nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028).
+             * @description nsx: the port group of an NSX segment rvav made for a deployment (ADR-0028). rvav: addresses come from rvav's IP ranges (ADR-0063).
              * @enum {string}
              */
-            source?: "manual" | "efficientip" | "nsx";
+            source?: "manual" | "efficientip" | "nsx" | "rvav";
         };
         NetworkMapping: {
             network: string;
@@ -9079,12 +9169,14 @@ export interface components {
             dns_zone: string;
             dns_servers: string[];
             /**
-             * @description nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand.
+             * @description nsx: the port group of an NSX segment rvav made for a deployment, mapped to the subnet carved for it (ADR-0028); it goes with the deployment, and can't be changed by hand. rvav: the network has IP ranges in `vcenter` (ADR-0063): its VMs there take their addresses from them, not from EfficientIP, and rvav writes no DNS record for them; change it under `/admin/ip-ranges`.
              * @enum {string}
              */
-            source: "manual" | "efficientip" | "nsx";
+            source: "manual" | "efficientip" | "nsx" | "rvav";
             /** @description The subnet's name in EfficientIP. */
             subnet_name?: string;
+            /** @description The vCenter whose network has IP ranges, for source rvav; absent for the others, which apply to the network in every vCenter. */
+            vcenter?: string;
             /** Format: date-time */
             synced_at?: string;
             /**
@@ -9103,6 +9195,83 @@ export interface components {
             /** @description An IPv6 subnet in EfficientIP (ADR-0039), with `gateway6`; empty or absent for none. */
             subnet6?: string;
             gateway6?: string;
+        };
+        IpRange: {
+            id: string;
+            /** @example Lab apps */
+            name: string;
+            description?: string;
+            /**
+             * @description The vCenter the network is in.
+             * @example vc01.corp.example
+             */
+            vcenter: string;
+            /**
+             * @description The port group, or an NSX segment's port group.
+             * @example dvpg-lab-vl510
+             */
+            network: string;
+            /**
+             * @description The network's IPv4 subnet.
+             * @example 10.51.0.0/24
+             */
+            cidr: string;
+            /** @example 10.51.0.10 */
+            start_address: string;
+            /** @example 10.51.0.200 */
+            end_address: string;
+            /** @example 10.51.0.1 */
+            gateway: string;
+            dns_servers: string[];
+            /** @description The domains the guest searches, after its own DNS domain. */
+            dns_search_domains: string[];
+            /** @description The domain VMs on the network are named in (their FQDN); empty: the blueprint's guest domain. rvav writes no DNS record in it. */
+            dns_domain: string;
+            /** @description Addresses never handed out, each one address or a span such as 10.51.0.50-10.51.0.59. */
+            excluded: string[];
+            /** @description The addresses the range can hand out: its exclusions, the gateway, and the subnet's network and broadcast addresses left out. */
+            size: number;
+            /** @description The addresses VMs hold. */
+            used: number;
+            free: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        IpRangeWrite: {
+            name: string;
+            description?: string;
+            vcenter: string;
+            network: string;
+            cidr: string;
+            start_address: string;
+            end_address: string;
+            gateway: string;
+            dns_servers?: string[];
+            dns_search_domains?: string[];
+            dns_domain?: string;
+            excluded?: string[];
+        };
+        IpRangeList: {
+            items: components["schemas"]["IpRange"][];
+        };
+        IpAllocation: {
+            /** @example 10.51.0.10 */
+            address: string;
+            /** @description The VM's name. */
+            hostname: string;
+            fqdn?: string;
+            /** @description The adapter's key in the blueprint; absent for the VM's first. */
+            adapter?: string;
+            deployment_id?: string;
+            deployment_name?: string;
+            request_id?: string;
+            /** Format: date-time */
+            allocated_at: string;
+        };
+        IpAllocationList: {
+            items: components["schemas"]["IpAllocation"][];
         };
         NetworkMappingList: {
             items: components["schemas"]["NetworkMapping"][];
@@ -15825,6 +15994,161 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listIpRanges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpRangeList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createIpRange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IpRangeWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpRange"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getIpRange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpRange"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateIpRange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IpRangeWrite"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpRange"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    deleteIpRange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listIpAllocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAllocationList"];
+                };
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
