@@ -2,8 +2,10 @@ package e2e
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sync/atomic"
 	"testing"
 
 	"github.com/vmware/govmomi/simulator"
@@ -98,5 +100,64 @@ func TestNSXManagers(t *testing.T) {
 		}
 		h.json("DELETE", "/api/v1/admin/nsx-managers/"+nsx02, admin, nil, 204, nil)
 		h.json("DELETE", "/api/v1/admin/nsx-managers/"+nsx02, admin, nil, 404, nil)
+	})
+}
+
+// TestNSXManagerCertificateDropsPassword: an added NSX Manager switched to a
+// principal identity forgets its password, so switching back at another
+// address needs it again: the saved one never reaches a server it wasn't
+// given for, even in two saves (I1.6). The integration's NSX Manager keeps
+// refusing a move without the password, whatever its sign-in.
+func TestNSXManagerCertificateDropsPassword(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin, nsx02 = "mkeller", "nsx02.corp.example"
+		useFakeNSX(h, nsx.NewFakeServer())
+		real := httptest.NewTLSServer(nsx.NewFakeServer())
+		defer real.Close()
+		var seen atomic.Value
+		trap := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, p, ok := r.BasicAuth(); ok {
+				seen.Store(p)
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer trap.Close()
+		base := "/api/v1/admin/nsx-managers/" + nsx02
+		h.json("POST", "/api/v1/admin/nsx-managers", admin, api.NsxManagerWrite{Name: nsx02, Url: real.URL, Username: new(nsx.FakeUser),
+			Password: new(nsx.FakePassword), Insecure: new(true)}, 201, nil)
+
+		var saved api.NsxManager
+		h.json("PUT", base, admin, api.NsxManagerWrite{Name: nsx02, Url: trap.URL, CertFile: new("/nonexistent/client.crt"),
+			KeyFile: new("/nonexistent/client.key"), Insecure: new(true), Password: new(nsx.FakePassword)}, 200, &saved)
+		if saved.PasswordSet {
+			t.Fatalf("a principal identity keeps a password: %+v", saved)
+		}
+		var problem struct{ Errors []api.FieldError }
+		back := api.NsxManagerWrite{Name: nsx02, Url: trap.URL, Username: new(nsx.FakeUser), Insecure: new(true)}
+		h.json("PUT", base, admin, back, 422, &problem)
+		if got := fieldsOf(problem.Errors); !slices.Equal(got, []string{"/password"}) {
+			t.Fatalf("the account again without its password = %+v", problem.Errors)
+		}
+		h.json("POST", base+"/test", admin, back, 422, nil)
+		var test api.IntegrationTest
+		h.json("POST", base+"/test", admin, nil, 200, &test)
+		if p, _ := seen.Load().(string); p != "" {
+			t.Fatalf("a password went to %s, which it wasn't given for", trap.URL)
+		}
+		back.Url, back.Password = real.URL, new(nsx.FakePassword)
+		h.json("PUT", base, admin, back, 200, &saved)
+		if !saved.PasswordSet {
+			t.Fatalf("the account again = %+v", saved)
+		}
+
+		h.json("PUT", "/api/v1/admin/integrations/nsx", admin, api.IntegrationWrite{Settings: map[string]any{"url": trap.URL,
+			"cert_file": "/nonexistent/client.crt", "key_file": "/nonexistent/client.key"}}, 422, &problem)
+		if got := fieldsOf(problem.Errors); !slices.Equal(got, []string{"/secret"}) {
+			t.Fatalf("the integration's moved with a certificate = %+v", problem.Errors)
+		}
 	})
 }

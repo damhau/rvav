@@ -189,7 +189,11 @@ The external penetration test is the organisation's (Lab acceptance).
   `only` refuses and what stays outside it are in [fips.md](fips.md).
 - **The secrets key:** keep it in the vault, apart from database backups
   ([backups.md](backups.md)). Rotate it with `RVAV_SECRETS_OLD_KEYS` and
-  `rvav secrets rotate`.
+  `rvav secrets rotate`, which seals again everything sealed with an old
+  key: stored secrets, integrations' passwords and tokens, the passwords
+  of the vCenters and NSX Managers added, requests' secret inputs,
+  generated private keys not downloaded yet, and audit webhooks' header
+  values.
 - **Service accounts:** with only the permissions in
   [integrations.md](../integrations.md); the console account may only
   open consoles; the Active Directory account may only create and delete

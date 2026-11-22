@@ -34,7 +34,10 @@ Following the several vCenters of ADR-0024:
   principal-identity certificate and its key by their paths on rvav's
   servers, and the certificate checked, pinned or not checked, as for the
   integration's. The password is sealed under `nsx:<name>` and resealed
-  by `rvav secrets rotate`. **Test** signs in, shows the certificate and
+  by `rvav secrets rotate`. Saving a principal identity drops it, so
+  switching back to the account needs it again: kept, it would go to
+  the address the certificate was saved with, which it wasn't given for
+  (I1.6). **Test** signs in, shows the certificate and
   reads Tier-1 gateways, segments and groups, as the integration's test
   does.
 - **Each vCenter is served by one NSX Manager at most** (the

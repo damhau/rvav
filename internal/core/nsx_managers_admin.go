@@ -45,7 +45,7 @@ func (s *Service) vcenterOfKey(key string) (string, bool) {
 
 func (s *Service) presentNSXManager(m store.NSXManager, links map[string]string, key string) api.NsxManager {
 	out := api.NsxManager{Name: m.Name, Url: m.URL, Username: m.Username, CertFile: nonEmpty(m.CertFile), KeyFile: nonEmpty(m.KeyFile),
-		Insecure: m.Insecure, CertSha256: nonEmpty(m.CertSHA256), PasswordSet: len(m.Ciphertext) > 0, Vcenters: []string{}}
+		Insecure: m.Insecure, CertSha256: nonEmpty(m.CertSHA256), PasswordSet: len(m.Ciphertext) > 0 && m.CertFile == "", Vcenters: []string{}}
 	for vc, mgr := range links {
 		if name, ok := s.vcenterOfKey(vc); ok && mgr == key {
 			out.Vcenters = append(out.Vcenters, name)
@@ -134,6 +134,8 @@ func (s *Service) checkNSXManager(w api.NsxManagerWrite, current *store.NSXManag
 	if deref(w.CertSha256) != "" && !pinOK {
 		errs = append(errs, fieldErr("/cert_sha256", "invalid", "A certificate's SHA-256: 32 bytes in hex, with or without colons."))
 	}
+	insecure := w.Insecure != nil && *w.Insecure
+	moved := current != nil && (w.Url != current.URL || insecure && !current.Insecure || pin != "" && pin != current.CertSHA256)
 	certFile, keyFile := strings.TrimSpace(deref(w.CertFile)), strings.TrimSpace(deref(w.KeyFile))
 	switch {
 	case certFile != "" && keyFile == "":
@@ -141,17 +143,19 @@ func (s *Service) checkNSXManager(w api.NsxManagerWrite, current *store.NSXManag
 	case keyFile != "" && certFile == "":
 		errs = append(errs, fieldErr("/cert_file", "required", "Give the certificate this private key goes with."))
 	case certFile != "":
-		return errs // a principal identity: no account
+		return errs // a principal identity: no account, and the password saved is dropped
 	}
 	if strings.TrimSpace(deref(w.Username)) == "" {
 		errs = append(errs, fieldErr("/username", "required", "Give the account rvav signs in with, or a principal-identity certificate."))
 	}
 	given := w.Password != nil && *w.Password != ""
-	insecure := w.Insecure != nil && *w.Insecure
+	// One saved before a principal identity is gone: the address it was
+	// given for may have changed since.
+	saved := current != nil && len(current.Ciphertext) > 0 && current.CertFile == ""
 	switch {
-	case (current == nil || len(current.Ciphertext) == 0) && !given:
+	case !saved && !given:
 		errs = append(errs, fieldErr("/password", "required", "Give the account's password."))
-	case current != nil && !given && (w.Url != current.URL || insecure && !current.Insecure || pin != "" && pin != current.CertSHA256):
+	case !given && moved:
 		errs = append(errs, fieldErr("/password", "required",
 			"A new address, a certificate pinned, or the certificate not checked, needs the password again: the saved one only goes where it was given for."))
 	}
@@ -188,7 +192,7 @@ func (s *Service) SaveNSXManager(ctx context.Context, p *auth.Principal, name st
 	v := store.NSXManager{Name: w.Name, URL: w.Url, Username: strings.TrimSpace(deref(w.Username)),
 		CertFile: strings.TrimSpace(deref(w.CertFile)), KeyFile: strings.TrimSpace(deref(w.KeyFile)), Insecure: w.Insecure != nil && *w.Insecure}
 	v.CertSHA256, _ = trust.NormalFingerprint(deref(w.CertSha256))
-	if w.Password != nil && *w.Password != "" {
+	if w.Password != nil && *w.Password != "" && v.CertFile == "" {
 		if s.Secrets == nil {
 			return api.NsxManager{}, &ConflictError{Msg: "rvav has no secrets key (RVAV_SECRETS_KEY) to keep the password."}
 		}
@@ -321,6 +325,9 @@ func (s *Service) TestNSXManager(ctx context.Context, p *auth.Principal, name st
 			c.CertSHA256, _ = trust.NormalFingerprint(deref(w.CertSha256))
 			if w.Password != nil && *w.Password != "" {
 				c.Password = *w.Password
+			}
+			if c.CertFile != "" {
+				c.Password = ""
 			}
 		}
 	}

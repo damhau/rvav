@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auditlog"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/integrations/awx"
@@ -24,6 +25,7 @@ import (
 	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/trust"
+	"github.com/damhau/rvav/internal/vcenters"
 	"github.com/damhau/rvav/internal/vra"
 )
 
@@ -721,34 +723,46 @@ func (s *Service) testNSX(ctx context.Context, c config.NSXConfig, roots *x509.C
 	check("Groups", err, fmt.Sprintf("%d groups in the default domain.", len(groups)))
 }
 
-// RotateSecrets seals every stored secret again with the current key, so
-// RVAV_SECRETS_OLD_KEYS can be emptied afterwards (rvav secrets rotate).
+// RotateSecrets seals every value sealed with an older key again with the
+// current one, so RVAV_SECRETS_OLD_KEYS can be emptied afterwards (rvav
+// secrets rotate). TestSecretsRotateEverySealedColumn finds a sealed column
+// it leaves out.
 func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int, error) {
 	if box == nil {
 		return 0, secrets.ErrNoKey
 	}
 	n := 0
+	// reseal opens what is sealed under name and puts it back sealed with
+	// the current key; put says false when it was replaced meanwhile, as
+	// it is sealed with the current key already.
+	reseal := func(what, name, keyID string, nonce, ciphertext []byte,
+		put func(keyID string, nonce, ciphertext []byte) (bool, error)) error {
+		if len(ciphertext) == 0 || keyID == box.KeyID() {
+			return nil
+		}
+		plain, err := box.Open(name, keyID, nonce, ciphertext)
+		if err != nil {
+			return fmt.Errorf("%s: %w", what, err)
+		}
+		k, nn, ct, err := box.Seal(name, plain)
+		if err != nil {
+			return err
+		}
+		done, err := put(k, nn, ct)
+		if done {
+			n++
+		}
+		return err
+	}
 	list, err := st.Secrets(ctx)
 	if err != nil {
 		return 0, err
 	}
 	for _, v := range list {
-		if v.KeyID == box.KeyID() {
-			continue
-		}
-		plain, err := box.Open(v.SealName(), v.KeyID, v.Nonce, v.Ciphertext)
-		if err != nil {
-			return n, fmt.Errorf("secret %s: %w", v.SealName(), err)
-		}
-		keyID, nonce, ct, err := box.Seal(v.SealName(), plain)
-		if err != nil {
+		if err := reseal("secret "+v.SealName(), v.SealName(), v.KeyID, v.Nonce, v.Ciphertext, func(k string, nn, ct []byte) (bool, error) {
+			return st.ResealSecret(ctx, v, v.Nonce, k, nn, ct)
+		}); err != nil {
 			return n, err
-		}
-		// A secret replaced meanwhile is sealed with the current key already.
-		if done, err := st.ResealSecret(ctx, v, v.Nonce, keyID, nonce, ct); err != nil {
-			return n, err
-		} else if done {
-			n++
 		}
 	}
 	stored, err := st.StoredIntegrations(ctx)
@@ -756,22 +770,21 @@ func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int,
 		return n, err
 	}
 	for kind, row := range stored {
-		if row.SecretCiphertext == nil || row.SecretKeyID == box.KeyID() {
-			continue
-		}
-		name := IntegrationSecretName(kind)
-		plain, err := box.Open(name, row.SecretKeyID, row.SecretNonce, row.SecretCiphertext)
-		if err != nil {
-			return n, fmt.Errorf("%s settings: %w", kind, err)
-		}
-		keyID, nonce, ct, err := box.Seal(name, plain)
-		if err != nil {
+		if err := reseal(kind+" settings", IntegrationSecretName(kind), row.SecretKeyID, row.SecretNonce, row.SecretCiphertext,
+			func(k string, nn, ct []byte) (bool, error) {
+				return st.ResealIntegration(ctx, kind, row.SecretNonce, store.Sealed{KeyID: k, Nonce: nn, Ciphertext: ct})
+			}); err != nil {
 			return n, err
 		}
-		if done, err := st.ResealIntegration(ctx, kind, row.SecretNonce, store.Sealed{KeyID: keyID, Nonce: nonce, Ciphertext: ct}); err != nil {
+	}
+	vcs, err := st.VCenters(ctx)
+	if err != nil {
+		return n, err
+	}
+	for _, v := range vcs {
+		if err := reseal("vCenter "+v.Name+"'s password", vcenters.SecretName(v.Name), v.KeyID, v.Nonce, v.Ciphertext,
+			func(k string, nn, ct []byte) (bool, error) { return st.ResealVCenter(ctx, v.Name, v.Nonce, k, nn, ct) }); err != nil {
 			return n, err
-		} else if done {
-			n++
 		}
 	}
 	managers, err := st.NSXManagers(ctx)
@@ -779,22 +792,23 @@ func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int,
 		return n, err
 	}
 	for _, m := range managers {
-		if len(m.Ciphertext) == 0 || m.KeyID == box.KeyID() {
-			continue
-		}
-		name := nsxmanagers.SecretName(m.Name)
-		plain, err := box.Open(name, m.KeyID, m.Nonce, m.Ciphertext)
-		if err != nil {
-			return n, fmt.Errorf("NSX Manager %s's password: %w", m.Name, err)
-		}
-		keyID, nonce, ct, err := box.Seal(name, plain)
-		if err != nil {
+		if err := reseal("NSX Manager "+m.Name+"'s password", nsxmanagers.SecretName(m.Name), m.KeyID, m.Nonce, m.Ciphertext,
+			func(k string, nn, ct []byte) (bool, error) {
+				return st.ResealNSXManager(ctx, m.Name, m.Nonce, k, nn, ct)
+			}); err != nil {
 			return n, err
 		}
-		if done, err := st.ResealNSXManager(ctx, m.Name, m.Nonce, keyID, nonce, ct); err != nil {
+	}
+	dests, err := st.AuditDestinations(ctx)
+	if err != nil {
+		return n, err
+	}
+	for _, d := range dests {
+		if err := reseal("audit destination "+d.Name+"'s header", auditlog.AuthSecretName(d.ID), d.AuthKeyID, d.AuthNonce, d.AuthCiphertext,
+			func(k string, nn, ct []byte) (bool, error) {
+				return st.ResealAuditDestination(ctx, d.ID, d.AuthNonce, k, nn, ct)
+			}); err != nil {
 			return n, err
-		} else if done {
-			n++
 		}
 	}
 	// Requests' secret inputs (S14.6).
@@ -803,20 +817,12 @@ func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int,
 		return n, err
 	}
 	for _, in := range inputs {
-		name := secretinput.Name(in.RequestID, in.Field)
-		plain, err := box.Open(name, in.KeyID, in.Nonce, in.Ciphertext)
-		if err != nil {
-			return n, fmt.Errorf("request %s's %s: %w", in.RequestID, in.Field, err)
-		}
-		keyID, nonce, ct, err := box.Seal(name, plain)
-		if err != nil {
+		if err := reseal(fmt.Sprintf("request %s's %s", in.RequestID, in.Field), secretinput.Name(in.RequestID, in.Field), in.KeyID,
+			in.Nonce, in.Ciphertext, func(k string, nn, ct []byte) (bool, error) {
+				return st.ResealRequestSecret(ctx, in.RequestID, in.Field, in.Nonce,
+					store.SealedInput{Field: in.Field, KeyID: k, Nonce: nn, Ciphertext: ct})
+			}); err != nil {
 			return n, err
-		}
-		if done, err := st.ResealRequestSecret(ctx, in.RequestID, in.Field, in.Nonce,
-			store.SealedInput{Field: in.Field, KeyID: keyID, Nonce: nonce, Ciphertext: ct}); err != nil {
-			return n, err
-		} else if done {
-			n++
 		}
 	}
 	// Generated private keys not downloaded yet (ADR-0039).
@@ -825,19 +831,11 @@ func RotateSecrets(ctx context.Context, st *store.Store, box *secrets.Box) (int,
 		return n, err
 	}
 	for _, k := range keys {
-		name := store.DeploymentKeyName(k.DeploymentID)
-		plain, err := box.Open(name, deref(k.KeyID), k.Nonce, k.Ciphertext)
-		if err != nil {
-			return n, fmt.Errorf("deployment %s's private key: %w", k.DeploymentID, err)
-		}
-		keyID, nonce, ct, err := box.Seal(name, plain)
-		if err != nil {
+		if err := reseal("deployment "+k.DeploymentID+"'s private key", store.DeploymentKeyName(k.DeploymentID), deref(k.KeyID), k.Nonce,
+			k.Ciphertext, func(kid string, nn, ct []byte) (bool, error) {
+				return st.ResealDeploymentKey(ctx, k.DeploymentID, k.Nonce, kid, nn, ct)
+			}); err != nil {
 			return n, err
-		}
-		if done, err := st.ResealDeploymentKey(ctx, k.DeploymentID, k.Nonce, keyID, nonce, ct); err != nil {
-			return n, err
-		} else if done {
-			n++
 		}
 	}
 	return n, nil

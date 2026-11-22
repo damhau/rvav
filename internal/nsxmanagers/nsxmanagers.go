@@ -94,9 +94,10 @@ func (s *Set) Names(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-// Password opens an added NSX Manager's password; "" when it has none.
+// Password opens an added NSX Manager's password; "" when it has none or
+// signs in with a principal identity.
 func Password(box *secrets.Box, row store.NSXManager) (string, error) {
-	if len(row.Ciphertext) == 0 {
+	if len(row.Ciphertext) == 0 || row.CertFile != "" {
 		return "", nil
 	}
 	if box == nil {

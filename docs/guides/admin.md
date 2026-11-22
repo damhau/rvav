@@ -601,7 +601,8 @@ To add an NSX Manager for other vCenters, such as those of another site:
 3. Enter its name (its host name in lower case) and its HTTPS address.
 4. Enter the account rvav signs in with and its password, or the paths
    of a principal-identity certificate and its private key on rvav's
-   servers.
+   servers. An NSX Manager you switch to a principal identity forgets its
+   password: to switch it back to the account, enter the password again.
 5. Under **vCenters it serves**, select the vCenters registered with it
    as compute managers. A vCenter that another NSX Manager serves moves
    to this one: the sheet says so before you save.

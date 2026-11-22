@@ -38,8 +38,12 @@ func (s *Store) GetNSXManager(ctx context.Context, name string) (NSXManager, err
 }
 
 // SaveNSXManager adds the NSX Manager (create: ErrInUse when the name is
-// taken) or changes it; a nil ciphertext keeps the password.
+// taken) or changes it; a nil ciphertext keeps the password, and a
+// principal identity (a certificate file) drops it.
 func (s *Store) SaveNSXManager(ctx context.Context, v NSXManager, create bool) error {
+	if v.CertFile != "" {
+		v.KeyID, v.Nonce, v.Ciphertext = "", nil, nil
+	}
 	if create {
 		_, err := s.Pool.Exec(ctx, `insert into nsx_managers (name, url, username, cert_file, key_file, insecure, cert_sha256,
 			key_id, nonce, ciphertext) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, v.Name, v.URL, v.Username, v.CertFile, v.KeyFile,
@@ -50,8 +54,9 @@ func (s *Store) SaveNSXManager(ctx context.Context, v NSXManager, create bool) e
 		return err
 	}
 	tag, err := s.Pool.Exec(ctx, `update nsx_managers set url = $2, username = $3, cert_file = $4, key_file = $5, insecure = $6,
-		cert_sha256 = $7, key_id = case when $9::bytea is null then key_id else $8 end,
-		nonce = coalesce($9, nonce), ciphertext = coalesce($10, ciphertext), updated_at = now() where name = $1`,
+		cert_sha256 = $7, key_id = case when $4 <> '' then '' when $9::bytea is null then key_id else $8 end,
+		nonce = case when $4 <> '' then null else coalesce($9, nonce) end,
+		ciphertext = case when $4 <> '' then null else coalesce($10, ciphertext) end, updated_at = now() where name = $1`,
 		v.Name, v.URL, v.Username, v.CertFile, v.KeyFile, v.Insecure, v.CertSHA256, v.KeyID, v.Nonce, v.Ciphertext)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
