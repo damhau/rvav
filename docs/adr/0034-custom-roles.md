@@ -70,14 +70,14 @@ used, with the built-in roles unchanged.
 | `environments.manage` | R | Add, change and remove environments. | admin |
 | `access.read` | R | See the roles and who holds them, through groups too. | admin, auditor |
 | `access.manage` | R | Make roles and give them to users and groups, anywhere. | admin |
-| `catalog.manage` | R | Build, publish and open catalog items, with their categories, YAML, Git repository, AWX templates and secrets. | admin, catalog-admin |
+| `catalog.manage` | R | Build, publish and open catalog items, with their categories, YAML, Git repository, AWX templates, secrets and shared variables; read what their steps were given and gave. | admin, catalog-admin |
 | `infrastructure.read` | R | See templates, sizes, network mappings and vCenters. | admin, auditor |
 | `infrastructure.manage` | R | Change templates, sizes and network mappings, and reconcile IPAM. | admin |
 | `integrations.manage` | R | See, set and test the identity provider and every connection (vCenters included), and make the inventory token. | admin |
 | `policies.read` | R | See the approval, day-2, lease and naming policies. | admin, auditor |
 | `policies.manage` | R | Change them. | admin |
-| `extensibility.read` | R | See event subscriptions, their runs and custom workflows. | admin, auditor |
-| `extensibility.manage` | R | Change subscriptions, custom workflows and AWX day-2 actions; retry and test runs. | admin |
+| `extensibility.read` | R | See event subscriptions, their runs, custom workflows and custom resource types; read the shared variables and what composite steps were given and gave. | admin, auditor |
+| `extensibility.manage` | R | Change subscriptions, custom workflows, custom resource types, AWX day-2 actions and day-2 forms; retry and test runs. | admin |
 | `import.manage` | R | Onboard existing VMs and import from vRA. | admin |
 | `system.manage` | R | The setup checklist and the System page. | admin |
 | `tokens.manage` | R | See and revoke everyone's API tokens. | admin |

@@ -919,7 +919,8 @@ export interface paths {
          *     answer of a wait for a person is read only by those it asks and
          *     those who read every approval; others get `outputs_hidden`. It
          *     needs `catalog.manage` for all of rvav, as a blueprint's literals
-         *     do (ADR-0033): a requester reads the step's status, not its data.
+         *     do (ADR-0033), or `extensibility.read` (auditors): a requester reads
+         *     the step's status, not its data.
          */
         get: operations["getStepData"];
         put?: never;
@@ -4662,15 +4663,20 @@ export interface paths {
          * Shared variables (ADR-0057)
          * @description Named values that aren't secret, which composite steps and conditions
          *     read as `vars.<group>.<name>` each time they run, as vRO's
-         *     configuration elements. Each with the items that read it. Needs
-         *     `catalog.manage` for all of rvav.
+         *     configuration elements: written so, not by index nor a group whole,
+         *     which saving refuses. Each with the items that read it. Reading them
+         *     needs `catalog.manage` or `extensibility.read` (auditors) for all of
+         *     rvav; changing them, `catalog.manage`.
          */
         get: operations["listVariables"];
         put?: never;
         /**
          * Add a shared variable
-         * @description Not for passwords or tokens: a name that says it holds one is
-         *     refused, and those are stored as secrets. Audited with its value.
+         * @description Not for passwords, tokens or keys: a group or a name that says it
+         *     holds a password, a passphrase, a secret, a token, a credential, or a
+         *     private, SSH or API key is refused (`secret`), and those are stored
+         *     as secrets. Audited with its value. Needs `catalog.manage` for all of
+         *     rvav.
          */
         post: operations["createVariable"];
         delete?: never;
@@ -4698,7 +4704,7 @@ export interface paths {
          */
         put: operations["updateVariable"];
         post?: never;
-        /** Remove a shared variable no item reads */
+        /** Remove a shared variable no item or running request reads */
         delete: operations["deleteVariable"];
         options?: never;
         head?: never;
@@ -11051,7 +11057,7 @@ export interface components {
             name: string;
             value: components["schemas"]["VariableValue"];
             description: string;
-            /** @description The items whose draft or published version reads it (`item <slug>`): it can't be removed while one does. */
+            /** @description The items whose draft or published version reads it (`item <slug>`), and the requests to run or running whose deprecated version does (`request <number>`): it can't be removed while one does. A failed request isn't one: its Retry fails on the step that reads a variable removed. */
             used_by: string[];
             /** Format: date-time */
             created_at: string;

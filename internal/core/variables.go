@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/policy"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -24,7 +26,7 @@ var (
 	variableRef  = regexp.MustCompile(`\bvars\.([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)`)
 	// A nudge, not a guard: what a name says it holds belongs in a secret,
 	// which steps get masked and the run data never shows.
-	secretLike = regexp.MustCompile(`password|passwd|passphrase|secret|private_key|api_key|apikey`)
+	secretLike = regexp.MustCompile(`password|passwd|passphrase|secret|token|credential|private_key|ssh_key|api_key|apikey`)
 )
 
 const maxVariableValue = 16 << 10
@@ -39,7 +41,7 @@ func presentVariable(v store.Variable, users map[string][]string) api.Variable {
 
 // Variables lists the shared variables, with the items that read each.
 func (s *Service) Variables(ctx context.Context, p *auth.Principal) ([]api.Variable, error) {
-	if !p.Everywhere(auth.CatalogManage) {
+	if !readsRunData(p) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.Variables(ctx)
@@ -58,7 +60,7 @@ func (s *Service) Variables(ctx context.Context, p *auth.Principal) ([]api.Varia
 }
 
 func (s *Service) Variable(ctx context.Context, p *auth.Principal, key string) (api.Variable, error) {
-	if !p.Everywhere(auth.CatalogManage) {
+	if !readsRunData(p) {
 		return api.Variable{}, ErrForbidden
 	}
 	return s.variable(ctx, key)
@@ -170,7 +172,11 @@ func (s *Service) DeleteVariable(ctx context.Context, p *auth.Principal, key str
 		return err
 	}
 	if u := users[key]; len(u) > 0 {
-		return &ConflictError{Msg: "It is read by " + strings.Join(u, ", ") + ": change their steps first."}
+		then := "change their steps first."
+		if slices.ContainsFunc(u, func(by string) bool { return strings.HasPrefix(by, "request ") }) {
+			then = "change the items' steps, and let the requests finish, first."
+		}
+		return &ConflictError{Msg: "It is read by " + strings.Join(u, ", ") + ": " + then}
 	}
 	if err := s.Store.DeleteVariable(ctx, group, name); err != nil {
 		return err
@@ -184,8 +190,21 @@ func (s *Service) variableVars(ctx context.Context) (map[string]any, error) {
 	return s.Store.VariableValues(ctx)
 }
 
-// checkVariableRefs checks, to save or publish a composite, that the
-// shared variables its steps read exist.
+// varsLoose says whether expr reads a shared variable other than as the
+// text vars.<group>.<name>, which checkVariableRefs and VariableUsers find.
+func varsLoose(expr string) bool {
+	keys, loose, err := policy.VarsOf(expr)
+	if err != nil {
+		return false
+	}
+	for _, k := range keys {
+		loose = loose || !strings.Contains(expr, "vars."+k)
+	}
+	return loose
+}
+
+// checkVariableRefs checks, to publish a composite, that the shared
+// variables its steps read exist.
 func (s *Service) checkVariableRefs(ctx context.Context, d api.CatalogVersionDefinition, prefix string) ([]api.FieldError, error) {
 	raw, _ := json.Marshal(d.Blueprint)
 	b, err := blueprint.Parse(raw)
@@ -219,10 +238,10 @@ func (s *Service) checkVariableRefs(ctx context.Context, d api.CatalogVersionDef
 	return errs, failed
 }
 
-// withoutChildren is a step without the steps of its parallel group or
-// branch sides, which eachStep visits on their own.
+// withoutChildren is a step without the steps of its parallel group, its
+// catch path or its branch's sides, which eachStep visits on their own.
 func withoutChildren(st blueprint.CompositeStep) blueprint.CompositeStep {
-	st.Parallel = nil
+	st.Parallel, st.Catch = nil, nil
 	if st.Branch != nil {
 		b := blueprint.Branch{Cases: make([]blueprint.BranchCase, len(st.Branch.Cases))}
 		for i, c := range st.Branch.Cases {

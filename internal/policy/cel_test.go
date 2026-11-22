@@ -138,6 +138,26 @@ func TestReadsOf(t *testing.T) {
 	}
 }
 
+func TestVarsOf(t *testing.T) {
+	for expr, want := range map[string]struct {
+		keys  []string
+		loose bool
+	}{
+		`vars.cmdb.site + vars.network.dns[0] + vars.cmdb.site`: {keys: []string{"cmdb.site", "network.dns"}},
+		`has(vars.team.owner) ? vars.team.owner.email : ''`:     {keys: []string{"team.owner"}},
+		`inputs.vars + 'vars.a.b'`:                              {},
+		`vars['team']['owner']`:                                 {loose: true},
+		`vars.team['owner']`:                                    {loose: true},
+		`vars.team.owner + vars.team.size()`:                    {keys: []string{"team.owner"}, loose: true},
+		`[1].map(vars, vars + 1)`:                               {loose: true},
+	} {
+		keys, loose, err := VarsOf(expr)
+		if err != nil || !reflect.DeepEqual(keys, want.keys) || loose != want.loose {
+			t.Errorf("%s: %v %v %v, want %v %v", expr, keys, loose, err, want.keys, want.loose)
+		}
+	}
+}
+
 func TestSourcesReadSearch(t *testing.T) {
 	expr := `["web-01", "web-02", "db-01"].filter(x, x.contains(search))`
 	if err := CheckSource(expr); err != nil {

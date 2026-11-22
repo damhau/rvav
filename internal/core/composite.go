@@ -323,6 +323,10 @@ func checkComposite(b blueprint.Blueprint, ptr string, publish bool) []api.Field
 				errs = append(errs, fieldErr(x.at, "invalid", why))
 				return
 			}
+			if varsLoose(x.expr) {
+				errs = append(errs, fieldErr(x.at, "invalid", "Read a shared variable as vars.<group>.<name>, written so: not by index, nor a group whole. rvav finds by name the variables an item reads, to check they exist and keep them."))
+				return
+			}
 			for _, m := range stepRef.FindAllStringSubmatch(x.expr, -1) {
 				gr, ok := seen[m[1]]
 				switch {

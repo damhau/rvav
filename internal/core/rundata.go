@@ -15,12 +15,18 @@ import (
 // secretMask is what a reader sees of a secret input (ADR-0038).
 const secretMask = "••••"
 
+// readsRunData says whether p reads the run data and the shared variables
+// (ADR-0057): they hold a blueprint's literals, which catalog managers read
+// (ADR-0033), and auditors read them, as they read the subscriptions' runs.
+func readsRunData(p *auth.Principal) bool {
+	return p.Everywhere(auth.CatalogManage) || p.Everywhere(auth.ExtensibilityRead)
+}
+
 // StepData is what a step of a request was given and gave (ADR-0057), as this
 // reader may see it: a secret input masked, its value removed from any text
-// that repeats it, and a person's answer only for those who may read it. It
-// holds a blueprint's literals, which only catalog managers read (ADR-0033).
+// that repeats it, and a person's answer only for those who may read it.
 func (s *Service) StepData(ctx context.Context, p *auth.Principal, req store.RequestRow, stepID string) (api.StepData, error) {
-	if !p.Everywhere(auth.CatalogManage) {
+	if !readsRunData(p) {
 		return api.StepData{}, ErrForbidden
 	}
 	st, err := s.Store.GetStep(ctx, req.ID, stepID)

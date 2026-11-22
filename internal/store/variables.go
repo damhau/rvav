@@ -98,13 +98,25 @@ func (s *Store) VariableValues(ctx context.Context) (map[string]any, error) {
 }
 
 // VariableUsers lists, for each variable as group.name, the items whose
-// draft or published version reads it.
+// draft or published version reads it, and the requests still to run or
+// running whose deprecated version does. A failed one isn't counted: it
+// would keep the variable for ever, and its Retry fails on the step that
+// reads one removed.
 func (s *Store) VariableUsers(ctx context.Context) (map[string][]string, error) {
-	rows, err := s.Pool.Query(ctx, `select x.group_key || '.' || x.name,
-			array(select distinct 'item ' || i.slug from catalog_item_versions v join catalog_items i on i.id = v.item_id
-				where v.state in ('draft', 'published')
-					and v.blueprint::text ~ ('\mvars\.' || x.group_key || '\.' || x.name || '([^a-z0-9_]|$)')
-				order by 1)
+	rows, err := s.Pool.Query(ctx, `with unfinished as (
+			select version_id, number from requests where status in ('pending_approval', 'scheduled', 'queued', 'running', 'cancelling')),
+		reads as (
+			select x.group_key || '.' || x.name as key, v.id, v.state, i.slug
+			from variables x, catalog_item_versions v join catalog_items i on i.id = v.item_id
+			where (v.state in ('draft', 'published') or exists (select from unfinished q where q.version_id = v.id))
+				and v.blueprint::text ~ ('\mvars\.' || x.group_key || '\.' || x.name || '([^a-z0-9_]|$)'))
+		select x.group_key || '.' || x.name, array(select u from (
+				select 'item ' || r.slug as u from reads r
+				where r.key = x.group_key || '.' || x.name and r.state in ('draft', 'published')
+				union
+				select 'request ' || q.number from reads r join unfinished q on q.version_id = r.id
+				where r.key = x.group_key || '.' || x.name and r.state = 'deprecated'
+			) users order by u)
 		from variables x`)
 	if err != nil {
 		return nil, err

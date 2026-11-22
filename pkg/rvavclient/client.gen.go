@@ -10706,7 +10706,7 @@ type Variable struct {
 	// UpdatedBy Who changed it last.
 	UpdatedBy *string `json:"updated_by,omitempty"`
 
-	// UsedBy The items whose draft or published version reads it (`item <slug>`): it can't be removed while one does.
+	// UsedBy The items whose draft or published version reads it (`item <slug>`), and the requests to run or running whose deprecated version does (`request <number>`): it can't be removed while one does. A failed request isn't one: its Retry fails on the step that reads a variable removed.
 	UsedBy []string `json:"used_by"`
 
 	// Value Text, a number, true or false, a list or an object; never null.
@@ -15952,16 +15952,21 @@ type ClientInterface interface {
 	//
 	// Named values that aren't secret, which composite steps and conditions
 	// read as `vars.<group>.<name>` each time they run, as vRO's
-	// configuration elements. Each with the items that read it. Needs
-	// `catalog.manage` for all of rvav.
+	// configuration elements: written so, not by index nor a group whole,
+	// which saving refuses. Each with the items that read it. Reading them
+	// needs `catalog.manage` or `extensibility.read` (auditors) for all of
+	// rvav; changing them, `catalog.manage`.
 	//
 	// Corresponds with GET /admin/variables (the `ListVariables` operationId).
 	ListVariables(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateVariableWithBody Add a shared variable
 	//
-	// Not for passwords or tokens: a name that says it holds one is
-	// refused, and those are stored as secrets. Audited with its value.
+	// Not for passwords, tokens or keys: a group or a name that says it
+	// holds a password, a passphrase, a secret, a token, a credential, or a
+	// private, SSH or API key is refused (`secret`), and those are stored
+	// as secrets. Audited with its value. Needs `catalog.manage` for all of
+	// rvav.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -15970,15 +15975,18 @@ type ClientInterface interface {
 
 	// CreateVariable Add a shared variable
 	//
-	// Not for passwords or tokens: a name that says it holds one is
-	// refused, and those are stored as secrets. Audited with its value.
+	// Not for passwords, tokens or keys: a group or a name that says it
+	// holds a password, a passphrase, a secret, a token, a credential, or a
+	// private, SSH or API key is refused (`secret`), and those are stored
+	// as secrets. Audited with its value. Needs `catalog.manage` for all of
+	// rvav.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /admin/variables (the `CreateVariable` operationId).
 	CreateVariable(ctx context.Context, body CreateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteVariable Remove a shared variable no item reads
+	// DeleteVariable Remove a shared variable no item or running request reads
 	//
 	// Corresponds with DELETE /admin/variables/{key} (the `DeleteVariable` operationId).
 	DeleteVariable(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -17281,7 +17289,8 @@ type ClientInterface interface {
 	// answer of a wait for a person is read only by those it asks and
 	// those who read every approval; others get `outputs_hidden`. It
 	// needs `catalog.manage` for all of rvav, as a blueprint's literals
-	// do (ADR-0033): a requester reads the step's status, not its data.
+	// do (ADR-0033), or `extensibility.read` (auditors): a requester reads
+	// the step's status, not its data.
 	//
 	// Corresponds with GET /requests/{requestId}/steps/{stepId}/data (the `GetStepData` operationId).
 	GetStepData(ctx context.Context, requestId RequestIdPath, stepId string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -22435,8 +22444,10 @@ func (c *Client) UpdateVmTemplate(ctx context.Context, key KeyPath, body UpdateV
 //
 // Named values that aren't secret, which composite steps and conditions
 // read as `vars.<group>.<name>` each time they run, as vRO's
-// configuration elements. Each with the items that read it. Needs
-// `catalog.manage` for all of rvav.
+// configuration elements: written so, not by index nor a group whole,
+// which saving refuses. Each with the items that read it. Reading them
+// needs `catalog.manage` or `extensibility.read` (auditors) for all of
+// rvav; changing them, `catalog.manage`.
 //
 // Corresponds with GET /admin/variables (the `ListVariables` operationId).
 func (c *Client) ListVariables(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22453,8 +22464,11 @@ func (c *Client) ListVariables(ctx context.Context, reqEditors ...RequestEditorF
 
 // CreateVariableWithBody Add a shared variable
 //
-// Not for passwords or tokens: a name that says it holds one is
-// refused, and those are stored as secrets. Audited with its value.
+// Not for passwords, tokens or keys: a group or a name that says it
+// holds a password, a passphrase, a secret, a token, a credential, or a
+// private, SSH or API key is refused (`secret`), and those are stored
+// as secrets. Audited with its value. Needs `catalog.manage` for all of
+// rvav.
 //
 // Takes any type of body and a specified content type.
 //
@@ -22473,8 +22487,11 @@ func (c *Client) CreateVariableWithBody(ctx context.Context, contentType string,
 
 // CreateVariable Add a shared variable
 //
-// Not for passwords or tokens: a name that says it holds one is
-// refused, and those are stored as secrets. Audited with its value.
+// Not for passwords, tokens or keys: a group or a name that says it
+// holds a password, a passphrase, a secret, a token, a credential, or a
+// private, SSH or API key is refused (`secret`), and those are stored
+// as secrets. Audited with its value. Needs `catalog.manage` for all of
+// rvav.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -22491,7 +22508,7 @@ func (c *Client) CreateVariable(ctx context.Context, body CreateVariableJSONRequ
 	return c.Client.Do(req)
 }
 
-// DeleteVariable Remove a shared variable no item reads
+// DeleteVariable Remove a shared variable no item or running request reads
 //
 // Corresponds with DELETE /admin/variables/{key} (the `DeleteVariable` operationId).
 func (c *Client) DeleteVariable(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -25154,7 +25171,8 @@ func (c *Client) ListRequestSteps(ctx context.Context, requestId RequestIdPath, 
 // answer of a wait for a person is read only by those it asks and
 // those who read every approval; others get `outputs_hidden`. It
 // needs `catalog.manage` for all of rvav, as a blueprint's literals
-// do (ADR-0033): a requester reads the step's status, not its data.
+// do (ADR-0033), or `extensibility.read` (auditors): a requester reads
+// the step's status, not its data.
 //
 // Corresponds with GET /requests/{requestId}/steps/{stepId}/data (the `GetStepData` operationId).
 func (c *Client) GetStepData(ctx context.Context, requestId RequestIdPath, stepId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -41272,8 +41290,10 @@ type ClientWithResponsesInterface interface {
 	//
 	// Named values that aren't secret, which composite steps and conditions
 	// read as `vars.<group>.<name>` each time they run, as vRO's
-	// configuration elements. Each with the items that read it. Needs
-	// `catalog.manage` for all of rvav.
+	// configuration elements: written so, not by index nor a group whole,
+	// which saving refuses. Each with the items that read it. Reading them
+	// needs `catalog.manage` or `extensibility.read` (auditors) for all of
+	// rvav; changing them, `catalog.manage`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -41282,8 +41302,11 @@ type ClientWithResponsesInterface interface {
 
 	// CreateVariableWithBodyWithResponse Add a shared variable
 	//
-	// Not for passwords or tokens: a name that says it holds one is
-	// refused, and those are stored as secrets. Audited with its value.
+	// Not for passwords, tokens or keys: a group or a name that says it
+	// holds a password, a passphrase, a secret, a token, a credential, or a
+	// private, SSH or API key is refused (`secret`), and those are stored
+	// as secrets. Audited with its value. Needs `catalog.manage` for all of
+	// rvav.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -41292,15 +41315,18 @@ type ClientWithResponsesInterface interface {
 
 	// CreateVariableWithResponse Add a shared variable
 	//
-	// Not for passwords or tokens: a name that says it holds one is
-	// refused, and those are stored as secrets. Audited with its value.
+	// Not for passwords, tokens or keys: a group or a name that says it
+	// holds a password, a passphrase, a secret, a token, a credential, or a
+	// private, SSH or API key is refused (`secret`), and those are stored
+	// as secrets. Audited with its value. Needs `catalog.manage` for all of
+	// rvav.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /admin/variables (the `CreateVariable` operationId).
 	CreateVariableWithResponse(ctx context.Context, body CreateVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateVariableResponse, error)
 
-	// DeleteVariableWithResponse Remove a shared variable no item reads
+	// DeleteVariableWithResponse Remove a shared variable no item or running request reads
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -42725,7 +42751,8 @@ type ClientWithResponsesInterface interface {
 	// answer of a wait for a person is read only by those it asks and
 	// those who read every approval; others get `outputs_hidden`. It
 	// needs `catalog.manage` for all of rvav, as a blueprint's literals
-	// do (ADR-0033): a requester reads the step's status, not its data.
+	// do (ADR-0033), or `extensibility.read` (auditors): a requester reads
+	// the step's status, not its data.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -65923,8 +65950,10 @@ func (c *ClientWithResponses) UpdateVmTemplateWithResponse(ctx context.Context, 
 //
 // Named values that aren't secret, which composite steps and conditions
 // read as `vars.<group>.<name>` each time they run, as vRO's
-// configuration elements. Each with the items that read it. Needs
-// `catalog.manage` for all of rvav.
+// configuration elements: written so, not by index nor a group whole,
+// which saving refuses. Each with the items that read it. Reading them
+// needs `catalog.manage` or `extensibility.read` (auditors) for all of
+// rvav; changing them, `catalog.manage`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -65939,8 +65968,11 @@ func (c *ClientWithResponses) ListVariablesWithResponse(ctx context.Context, req
 
 // CreateVariableWithBodyWithResponse Add a shared variable
 //
-// Not for passwords or tokens: a name that says it holds one is
-// refused, and those are stored as secrets. Audited with its value.
+// Not for passwords, tokens or keys: a group or a name that says it
+// holds a password, a passphrase, a secret, a token, a credential, or a
+// private, SSH or API key is refused (`secret`), and those are stored
+// as secrets. Audited with its value. Needs `catalog.manage` for all of
+// rvav.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -65955,8 +65987,11 @@ func (c *ClientWithResponses) CreateVariableWithBodyWithResponse(ctx context.Con
 
 // CreateVariableWithResponse Add a shared variable
 //
-// Not for passwords or tokens: a name that says it holds one is
-// refused, and those are stored as secrets. Audited with its value.
+// Not for passwords, tokens or keys: a group or a name that says it
+// holds a password, a passphrase, a secret, a token, a credential, or a
+// private, SSH or API key is refused (`secret`), and those are stored
+// as secrets. Audited with its value. Needs `catalog.manage` for all of
+// rvav.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -65969,7 +66004,7 @@ func (c *ClientWithResponses) CreateVariableWithResponse(ctx context.Context, bo
 	return ParseCreateVariableResponse(rsp)
 }
 
-// DeleteVariableWithResponse Remove a shared variable no item reads
+// DeleteVariableWithResponse Remove a shared variable no item or running request reads
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -68210,7 +68245,8 @@ func (c *ClientWithResponses) ListRequestStepsWithResponse(ctx context.Context, 
 // answer of a wait for a person is read only by those it asks and
 // those who read every approval; others get `outputs_hidden`. It
 // needs `catalog.manage` for all of rvav, as a blueprint's literals
-// do (ADR-0033): a requester reads the step's status, not its data.
+// do (ADR-0033), or `extensibility.read` (auditors): a requester reads
+// the step's status, not its data.
 //
 // Returns a wrapper object for the known response body format(s).
 //

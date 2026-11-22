@@ -118,7 +118,7 @@
       "id": "catalog.manage",
       "scope": "rvav",
       "area": "Catalog",
-      "summary": "Build, publish and open catalog items, with their categories, secrets, Git repository and AWX templates."
+      "summary": "Build, publish and open catalog items, with their categories, secrets, shared variables, Git repository and AWX templates; read what their steps were given and gave."
     },
     {
       "id": "infrastructure.read",
@@ -154,13 +154,13 @@
       "id": "extensibility.read",
       "scope": "rvav",
       "area": "Extensibility",
-      "summary": "See event subscriptions, their runs and the custom workflows."
+      "summary": "See event subscriptions, their runs, the custom workflows and the custom resource types; read the shared variables and what composite steps were given and gave."
     },
     {
       "id": "extensibility.manage",
       "scope": "rvav",
       "area": "Extensibility",
-      "summary": "Change event subscriptions, custom workflows and AWX day-2 actions, retry and test runs."
+      "summary": "Change event subscriptions, custom workflows, custom resource types, AWX day-2 actions and day-2 forms, retry and test runs."
     },
     {
       "id": "import.manage",

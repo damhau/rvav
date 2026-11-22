@@ -52,8 +52,9 @@ there is something to read, so the steps list and the live events stay as
 light as before. A step's data holds its blueprint's literals, a URL's
 fixed text, a body, a template's variables, that a requester's view masks
 (ADR-0033), so it needs `catalog.manage` for all of rvav: those who build
-the items debug their runs. A requester reads the step's status and error,
-as before.
+the items debug their runs. `extensibility.read` for all of rvav reads it
+too: auditors read the runs, as they read the subscriptions' (E1.6). A
+requester reads the step's status and error, as before.
 
 Secrets are masked when read, never stored in clear:
 
@@ -86,23 +87,29 @@ published again. A shared variable is read as it is when the step runs.
   most. Composite steps and conditions read it as `vars.<group>.<name>`:
   `with`, `when`, a REST call's URL and body, a wait's or a poll's `until`,
   a branch's cases and a message's text. The VM steps planned at submit read
-  it then.
+  it then. Written so only: saving refuses `vars['network']['dns']`, a group
+  read whole and the like, since rvav finds by name what a version reads to
+  check it and keep it (E1.6).
 - Each read takes the value of the moment: the `ResolveStep` activity, and
   each activity that evaluates a step's CEL, loads the variables. A change
   reaches the steps that haven't run yet, in requests already running too.
   The workflow code is unchanged, so nothing needs `workflow.GetVersion`.
 - They aren't secret, and nothing masks them: they show in the run data
   and in the audit log, with their values. A group or a name that says it
-  holds a password, a secret or a key is refused; those are stored as
-  secrets, which stay masked.
+  holds a password, a passphrase, a secret, a token, a credential, or a
+  private, SSH or API key is refused; those are stored as secrets, which
+  stay masked.
 - `catalog.manage` for all of rvav reads and changes them, as it does
-  property groups, under `/admin/variables`. Each change is audited with
-  its value, and an update with the value it replaced.
+  property groups, under `/admin/variables`; `extensibility.read` reads
+  them (E1.6). Each change is audited with its value, and an update with
+  the value it replaced.
 - Publishing a version whose steps read a variable that doesn't exist is
   refused (`unknown_variable`), as a resource type that doesn't exist is;
   a draft may name one not added yet. A variable a draft or a published
   version reads isn't removed, so a published item never reads one that
-  is gone.
+  is gone; nor one a deprecated version reads while a request of it is to
+  run or running. A failed request doesn't keep one, which it would for
+  ever: its Retry fails on the step that reads one removed (E1.6).
 
 The **Variables** page, under Catalog in the administration menu, lists
 them with their values and the items that read them. The composite

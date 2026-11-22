@@ -86,3 +86,40 @@ func ReadsOf(expr string) (Reads, error) {
 	}))
 	return r, nil
 }
+
+// VarsOf parses expr, without checking it, and says which shared variables
+// it reads as vars.<group>.<name>, as group.name (ADR-0057). Loose is set
+// when it reads vars otherwise: by index, a group whole or all of them, so
+// which it reads can't be told before it runs.
+func VarsOf(expr string) (keys []string, loose bool, err error) {
+	env, err := build.celEnv()
+	if err != nil {
+		return nil, false, err
+	}
+	parsed, iss := env.Parse(expr)
+	if iss.Err() != nil {
+		return nil, false, fmt.Errorf("parse %q: %w", expr, iss.Err())
+	}
+	named := map[int64]bool{}
+	ast.PreOrderVisit(parsed.NativeRep().Expr(), ast.NewExprVisitor(func(e ast.Expr) {
+		switch e.Kind() {
+		case ast.SelectKind:
+			sel := e.AsSelect()
+			if sel.Operand().Kind() != ast.SelectKind {
+				return
+			}
+			group := sel.Operand().AsSelect()
+			if v := group.Operand(); v.Kind() == ast.IdentKind && v.AsIdent() == "vars" {
+				named[v.ID()] = true
+				if key := group.FieldName() + "." + sel.FieldName(); !slices.Contains(keys, key) {
+					keys = append(keys, key)
+				}
+			}
+		case ast.IdentKind:
+			if e.AsIdent() == "vars" && !named[e.ID()] {
+				loose = true
+			}
+		}
+	}))
+	return keys, loose, nil
+}
