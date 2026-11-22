@@ -4,7 +4,7 @@
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Ellipsis } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { icons, ItemIcon, itemTypeLabel } from "@/components/common/misc";
@@ -25,7 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemVersion, CatalogItemVersionDetail, FieldError } from "@/lib/api/types";
 import { useCurrentProject } from "@/lib/project";
-import { keys, q } from "@/lib/query";
+import { adm, keys, q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { relative } from "@/lib/format";
 import { GitBadge, ItemGitTab } from "./GitPanels";
@@ -60,13 +60,32 @@ function useRefresh(itemId: string) {
     void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
     void qc.invalidateQueries({ queryKey: keys.catalog.all });
     void qc.invalidateQueries({ queryKey: keys.catalogAdmin.item(itemId) });
+    // Their pages say which items read them, and a variable read can't be removed.
+    void qc.invalidateQueries({ queryKey: adm.variables().queryKey });
+    void qc.invalidateQueries({ queryKey: adm.resourceTypes().queryKey });
   };
 }
 
 function toastError(e: unknown, fallback: string) {
+  const errors = isApiError(e) ? e.fieldErrors : [];
   toast.error(isApiError(e) ? e.problem.title : fallback, {
-    description: isApiError(e) ? (e.fieldErrors[0]?.message ?? e.problem.detail) : undefined,
+    description:
+      errors.length > 1 ? (
+        <ul className="list-disc pl-4">
+          {errors.map((x, i) => (
+            <li key={i}>{x.message}</li>
+          ))}
+        </ul>
+      ) : isApiError(e) ? (
+        (errors[0]?.message ?? e.problem.detail)
+      ) : undefined,
   });
+}
+
+/** A publish refused for problems in the draft's definition, shown on their lines and steps. */
+interface Refusal {
+  versionId: string;
+  errors: FieldError[];
 }
 
 function download(name: string, text: string) {
@@ -143,7 +162,7 @@ function useVersionBusy(item: AdminCatalogItem): boolean {
   return useIsMutating({ mutationKey: versionActionKey(item.id) }) > 0;
 }
 
-function useVersionAction(item: AdminCatalogItem) {
+function useVersionAction(item: AdminCatalogItem, onRefused?: (r: Refusal) => void) {
   const refresh = useRefresh(item.id);
   return useMutation({
     mutationKey: versionActionKey(item.id),
@@ -188,7 +207,18 @@ function useVersionAction(item: AdminCatalogItem) {
       }[action];
       toast.success(done);
     },
-    onError: (e) => toastError(e, "That didn't work"),
+    onError: (e, { v, action }) => {
+      const errors = isApiError(e) && e.status === 422 ? e.fieldErrors : [];
+      const publishing = action === "publish" || action === "keep";
+      if (!onRefused || !publishing || v.state !== "draft" || !errors.some((x) => x.field.startsWith("/definition")))
+        return toastError(e, "That didn't work");
+      toast.error(`${v.number} not published`, {
+        description: `${errors.length === 1 ? "A problem" : `${errors.length} problems`} in its definition, shown on ${
+          item.type === "composite" ? "their lines and steps" : "their lines"
+        }.`,
+      });
+      onRefused({ versionId: v.id, errors });
+    },
   });
 }
 
@@ -209,13 +239,15 @@ function VersionsTab({
   item,
   wait,
   onWithdraw,
+  onRefused,
 }: {
   item: AdminCatalogItem;
   /** Why the draft can't be published yet. */
   wait?: string;
   onWithdraw: () => void;
+  onRefused: (r: Refusal) => void;
 }) {
-  const act = useVersionAction(item);
+  const act = useVersionAction(item, onRefused);
   const busy = useVersionBusy(item);
   const [comparing, setComparing] = useState(false);
   const [discarding, setDiscarding] = useState<CatalogItemVersion | null>(null);
@@ -343,7 +375,17 @@ function VersionsTab({
   );
 }
 
-function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (dirty: boolean) => void }) {
+function DefinitionTab({
+  item,
+  onDirty,
+  refusal,
+  onRefusalShown,
+}: {
+  item: AdminCatalogItem;
+  onDirty: (dirty: boolean) => void;
+  refusal?: Refusal;
+  onRefusalShown: () => void;
+}) {
   const qc = useQueryClient();
   const shown = item.draft_version ?? item.published_version ?? item.versions[0];
   const version = useQuery({
@@ -384,6 +426,16 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
     setProblems(pending ? problemsOnLines(original, pending.problems) : []);
     setRefused(pending?.problems.length ? { text: original, errors: pending.problems } : undefined);
   }, [original, pending, shown?.id]);
+  // After the effect above, which shows the draft as fetched: a publish
+  // refused shows its problems as a save refused does, once.
+  const problemList = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (!refusal || refusal.versionId !== shown?.id || !version.data || pending) return;
+    setProblems(problemsOnLines(original, refusal.errors));
+    setRefused({ text: original, errors: refusal.errors });
+    onRefusalShown();
+    requestAnimationFrame(() => problemList.current?.focus());
+  }, [refusal, shown?.id, version.data, pending, original, onRefusalShown]);
   const dirty = text !== original || Boolean(pending);
   // What may not work as meant in the version as saved (ADR-0035), on its lines.
   const warnings = useMemo(
@@ -489,7 +541,12 @@ function DefinitionTab({ item, onDirty }: { item: AdminCatalogItem; onDirty: (di
             </Suspense>
           )}
           {problems.length > 0 && (
-            <ul aria-label="Problems in the definition" className="mt-2 flex flex-col gap-0.5 text-secondary text-bad">
+            <ul
+              ref={problemList}
+              tabIndex={-1}
+              aria-label="Problems in the definition"
+              className="mt-2 flex flex-col gap-0.5 text-secondary text-bad"
+            >
               {problems.map((p, i) => (
                 <li key={i}>
                   Line {p.line}: {p.message}
@@ -691,8 +748,16 @@ function ItemMenu({ item, onAsk }: { item: AdminCatalogItem; onAsk: (action: "wi
 }
 
 /** The page's one primary action: publish the draft, or make one. */
-function PrimaryAction({ item, wait }: { item: AdminCatalogItem; wait?: string }) {
-  const act = useVersionAction(item);
+function PrimaryAction({
+  item,
+  wait,
+  onRefused,
+}: {
+  item: AdminCatalogItem;
+  wait?: string;
+  onRefused: (r: Refusal) => void;
+}) {
+  const act = useVersionAction(item, onRefused);
   const busy = useVersionBusy(item);
   const newDraft = useNewDraft(item);
   const draft = item.draft_version;
@@ -727,6 +792,8 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
   const [yamlDirty, setYamlDirty] = useState(false);
   const [asking, setAsking] = useState<"withdraw" | "delete" | null>(null);
   const [leavingFor, setLeavingFor] = useState<ItemTab | null>(null);
+  const [refusal, setRefusal] = useState<Refusal>();
+  const shownRefusal = useCallback(() => setRefusal(undefined), []);
   const wait = usePublishWait(item.data, yamlDirty);
   if (item.isPending) {
     return (
@@ -748,6 +815,11 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
   const openTab = (next: ItemTab) => {
     setYamlDirty(false);
     void navigate({ to: "/admin/catalog-items/$itemId", params: { itemId }, search: { tab: next }, replace: true });
+  };
+  // Publishing waits while the YAML has changes, so the tab opens without asking.
+  const refused = (r: Refusal) => {
+    setRefusal(r);
+    if (shown !== "definition") openTab("definition");
   };
   return (
     <Page>
@@ -784,7 +856,7 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
         actions={
           <>
             <ItemMenu item={it} onAsk={setAsking} />
-            <PrimaryAction item={it} wait={wait} />
+            <PrimaryAction item={it} wait={wait} onRefused={refused} />
           </>
         }
       />
@@ -806,13 +878,13 @@ export function CatalogItemPage({ itemId, tab = "versions" }: { itemId: string; 
           {it.git && <TabsTrigger value="git">Git</TabsTrigger>}
         </TabsList>
         <TabsContent value="versions" className="pt-4">
-          <VersionsTab item={it} wait={wait} onWithdraw={() => setAsking("withdraw")} />
+          <VersionsTab item={it} wait={wait} onWithdraw={() => setAsking("withdraw")} onRefused={refused} />
         </TabsContent>
         <TabsContent value="designer" className="pt-4">
           <FormDesigner item={it} />
         </TabsContent>
         <TabsContent value="definition" className="pt-4">
-          <DefinitionTab item={it} onDirty={setYamlDirty} />
+          <DefinitionTab item={it} onDirty={setYamlDirty} refusal={refusal} onRefusalShown={shownRefusal} />
         </TabsContent>
         <TabsContent value="details" className="pt-4">
           <DetailsTab key={it.id + it.name + it.icon} item={it} />

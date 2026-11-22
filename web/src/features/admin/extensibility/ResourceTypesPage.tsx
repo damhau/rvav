@@ -23,7 +23,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
-import { adm, q } from "@/lib/query";
+import { adm, keys, q } from "@/lib/query";
 import { errorAt, failed, fieldErrors, writable } from "../governance/common";
 
 type S = components["schemas"];
@@ -182,6 +182,8 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "resource-types"] });
       void qc.invalidateQueries({ queryKey: ["admin", "workflows"] });
+      // What the composite designer offers to steps is made from them.
+      void qc.invalidateQueries({ queryKey: keys.catalogAdmin.compositeSteps });
       toast.success(`${f.title} saved`);
       onClose();
     },
@@ -366,6 +368,7 @@ export function ResourceTypesPage() {
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["admin", "resource-types"] });
     void qc.invalidateQueries({ queryKey: ["admin", "workflows"] });
+    void qc.invalidateQueries({ queryKey: keys.catalogAdmin.compositeSteps });
   };
   const toggle = useMutation({
     mutationFn: (t: ResourceType) =>

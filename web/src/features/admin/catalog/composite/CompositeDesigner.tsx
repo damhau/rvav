@@ -248,16 +248,25 @@ export default function CompositeDesigner({
   const focusNext = useRef<string | null>(null);
 
   const server = design.serverProblems;
+  // Not for those who may not read them (403): the server says it when publishing.
+  const variables = useQuery({ ...adm.variables(), staleTime: 60_000, retry: false });
   const problemsFor = useCallback(
     (t: string) => {
       const d = parseDefinition(t);
-      return [
-        ...(d && targetsQuery.data ? designerProblems(d, targetsQuery.data.items, entitlements) : []),
-        // The steps' only: the rest are on their lines in the editor.
-        ...(server && server.text === t ? server.errors.filter((e) => within(e.field, edits.blueprintPrefix)) : []),
-      ];
+      const own =
+        d && targetsQuery.data ? designerProblems(d, targetsQuery.data.items, entitlements, variables.data?.items) : [];
+      // The steps' only: the rest are on their lines in the editor. One the designer says already isn't said twice.
+      const refused =
+        server && server.text === t
+          ? server.errors.filter(
+              (e) =>
+                within(e.field, edits.blueprintPrefix) &&
+                !own.some((o) => o.field === e.field && o.message === e.message),
+            )
+          : [];
+      return [...own, ...refused];
     },
-    [targetsQuery.data, server, entitlements],
+    [targetsQuery.data, server, entitlements, variables.data],
   );
 
   /** Makes an edit, then selects a node and focuses an element of its details. */

@@ -920,6 +920,40 @@ export function allSteps(view: CompositeView): CompositeStepView[] {
   ];
 }
 
+/** Every step of a composite with its pointer, a group or a branch before the steps it holds (core.eachStep). */
+export function eachStep(blueprint: unknown, prefix: string, visit: (s: Raw, at: string) => void) {
+  const list = (v: unknown): Raw[] => (Array.isArray(v) ? v.filter((x): x is Raw => !!x && typeof x === "object") : []);
+  const walk = (s: Raw, at: string) => {
+    visit(s, at);
+    list(s.parallel).forEach((x, j) => walk(x, `${at}/parallel/${j}`));
+    list(s.catch).forEach((x, j) => walk(x, `${at}/catch/${j}`));
+    const branch = s.branch as Raw | undefined;
+    if (!branch || typeof branch !== "object") return;
+    list(branch.cases).forEach((c, i) =>
+      list(c.steps).forEach((x, j) => walk(x, `${at}/branch/cases/${i}/steps/${j}`)),
+    );
+    list(branch.else).forEach((x, j) => walk(x, `${at}/branch/else/${j}`));
+  };
+  const bp = (blueprint ?? {}) as Raw;
+  list(bp.steps).forEach((s, g) => walk(s, `${prefix}/steps/${g}`));
+  list(bp.on_error).forEach((s, j) => walk(s, `${prefix}/on_error/${j}`));
+}
+
+/**
+ * The shared variables a step reads as vars.<group>.<name>, as <group>.<name>,
+ * once each: not those of the steps it holds, which eachStep visits on their
+ * own (core.withoutChildren, core.variableRef).
+ */
+export function variablesRead(s: Raw): string[] {
+  const { parallel: _p, catch: _c, branch, ...own } = s;
+  if (branch && typeof branch === "object") {
+    const cases = (branch as Raw).cases;
+    own.branch = { cases: Array.isArray(cases) ? cases.map((c) => ({ ...(c as Raw), steps: undefined })) : [] };
+  }
+  const refs = JSON.stringify(own).matchAll(/\bvars\.([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)/g);
+  return [...new Set([...refs].map((m) => `${m[1]}.${m[2]}`))];
+}
+
 /**
  * The form's secret inputs a composite's messages read (core.checkNotifyRefs),
  * refused on save: they would reach other people and their mailboxes. One read

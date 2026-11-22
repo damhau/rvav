@@ -64,13 +64,6 @@ export function variableValues(db: Db): Record<string, Record<string, unknown>> 
   return out;
 }
 
-/** A blueprint's references to shared variables that don't exist, as vars.<group>.<name>. */
-export function unknownVariables(db: Db, bp: unknown): string[] {
-  const known = new Set(state(db).map(keyOf));
-  const refs = JSON.stringify(bp ?? null).matchAll(/\bvars\.([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)/g);
-  return [...new Set([...refs].map((m) => `${m[1]}.${m[2]}`))].filter((k) => !known.has(k)).map((k) => `vars.${k}`);
-}
-
 function served(db: Db, v: Stored): S["Variable"] {
   const key = keyOf(v);
   const usedBy = [

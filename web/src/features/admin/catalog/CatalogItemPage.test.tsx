@@ -1,10 +1,12 @@
 import { EditorView } from "@codemirror/view";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import type { CatalogItemVersionDetail } from "@/lib/api/types";
-import { keys } from "@/lib/query";
+import { adm, keys } from "@/lib/query";
+import { server } from "@/mocks/node";
 import { renderApp } from "@/test/render";
 import { editDraft, openDraft, type Saver } from "./designer/draftStore";
 import type { Def } from "./designer/model";
@@ -96,6 +98,17 @@ describe("the Definition tab", () => {
     expect(shown().startsWith("# mine\n")).toBe(true);
   });
 
+  it("has the shared variables and resource types read again once saved: they say which items read them", async () => {
+    const { client } = await openDefinition();
+    client.setQueryData(adm.variables().queryKey, { items: [] });
+    client.setQueryData(adm.resourceTypes().queryKey, { items: [] });
+    type("# saved\n");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Save draft" }));
+    expect(await screen.findByText("Draft 3.3 saved")).toBeInTheDocument();
+    expect(client.getQueryState(adm.variables().queryKey)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(adm.resourceTypes().queryKey)?.isInvalidated).toBe(true);
+  });
+
   it("says which constraint names a tag vCenter doesn't have, once saved", async () => {
     await openDefinition();
     const at = shown().indexOf("blueprint:\n") + "blueprint:\n".length;
@@ -126,6 +139,63 @@ describe("the item's header and versions", () => {
     await u.click(publish);
     expect(await screen.findByText("3.3 published")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "New draft" })).toBeInTheDocument();
+  });
+
+  it("shows each problem a publish is refused for on its line of the definition", async () => {
+    const u = userEvent.setup();
+    renderApp("/admin/catalog-items/rhel9-server");
+    await u.click(await screen.findByRole("button", { name: "New draft" }));
+    const errors = [
+      { field: "/definition/blueprint/vm/cpu", code: "invalid", message: "Not that many CPUs." },
+      { field: "/definition/ui_schema/title", code: "required", message: "Give the form a title." },
+    ];
+    server.use(
+      http.post("*/api/v1/admin/catalog/items/:id/versions/:vid/publish", () =>
+        HttpResponse.json(
+          { type: "about:blank", title: "Some inputs need attention", status: 422, request_id: "req", errors },
+          { status: 422, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      ),
+    );
+    await u.click(await screen.findByRole("button", { name: "Publish 3.3" }));
+    expect(await screen.findByText("3.3 not published")).toBeInTheDocument();
+    expect(screen.getByText("2 problems in its definition, shown on their lines.")).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Definition" })).toHaveAttribute("aria-selected", "true");
+    const list = await screen.findByRole("list", { name: "Problems in the definition" });
+    const lines = within(list)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(lines).toEqual([
+      expect.stringMatching(/^Line \d+: Not that many CPUs\.$/),
+      expect.stringMatching(/^Line \d+: Give the form a title\.$/),
+    ]);
+    expect(lines[0]).not.toBe("Line 1: Not that many CPUs.");
+    await waitFor(() => expect(list).toHaveFocus());
+  });
+
+  it("lists every problem of a refusal it can't show on lines", async () => {
+    const u = userEvent.setup();
+    renderApp("/admin/catalog-items/rhel9-server");
+    server.use(
+      http.post("*/api/v1/admin/catalog/items/:id/versions", () =>
+        HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Some inputs need attention",
+            status: 422,
+            request_id: "req",
+            errors: [
+              { field: "/base", code: "invalid", message: "First." },
+              { field: "/base", code: "invalid", message: "Second." },
+            ],
+          },
+          { status: 422, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      ),
+    );
+    await u.click(await screen.findByRole("button", { name: "New draft" }));
+    expect(await screen.findByText("First.")).toBeInTheDocument();
+    expect(screen.getByText("Second.")).toBeInTheDocument();
   });
 
   it("asks before leaving the YAML typed, and stays when told to", async () => {

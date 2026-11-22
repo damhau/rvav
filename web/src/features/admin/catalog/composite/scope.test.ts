@@ -212,6 +212,29 @@ describe("what the server would refuse when the item is requested", () => {
     expect(targets.filter((t) => t.kind === "awx" && !t.awx_id)).toEqual([]);
   });
 
+  it("says a shared variable read that doesn't exist on the step that reads it, once the variables are known", () => {
+    const shared = [{ key: "cmdb.site" }] as Parameters<typeof designerProblems>[3];
+    const post = (key: string, body: string) => ({ key, rest: { method: "POST", url: "https://h.example/x", body } });
+    const d = {
+      blueprint: {
+        kind: "composite",
+        steps: [
+          { ...post("make", "{'s': vars.cmdb.site, 'n': vars.nope.x}"), catch: [post("fix", "{'g': vars.ghost.y}")] },
+          { parallel: [post("a", "{'g': vars.ghost.y, 'again': vars.ghost.y}")] },
+        ],
+        on_error: [post("tell", "{'z': vars.nope.z}")],
+      },
+    };
+    const missing = (v: string) => `There is no variable ${v}: add it under Administration > Variables.`;
+    expect(designerProblems(d, [], undefined, shared)).toEqual([
+      { field: "/definition/blueprint/steps/0", code: "unknown_variable", message: missing("vars.nope.x") },
+      { field: "/definition/blueprint/steps/0/catch/0", code: "unknown_variable", message: missing("vars.ghost.y") },
+      { field: "/definition/blueprint/steps/1/parallel/0", code: "unknown_variable", message: missing("vars.ghost.y") },
+      { field: "/definition/blueprint/on_error/0", code: "unknown_variable", message: missing("vars.nope.z") },
+    ]);
+    expect(designerProblems(d, [])).toEqual([]);
+  });
+
   it("goes on the node it is about, or on the group whose pointer holds it", () => {
     const graph = blueprintGraph(seededBlueprint("postgres-cluster")!)!;
     const withProblems = addProblems(graph, [

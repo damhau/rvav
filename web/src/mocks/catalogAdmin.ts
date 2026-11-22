@@ -7,7 +7,7 @@ import type { components } from "@/lib/api/schema";
 import { shownUrl } from "@/lib/utils";
 import { singleSource } from "@/forms/defaults";
 import { ownSources } from "@/forms/useFieldValues";
-import { parseUrl, readComposite, secretInMessages } from "@/lib/composite";
+import { eachStep, parseUrl, readComposite, secretInMessages, variablesRead } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
 import { constraintWarnings } from "./constraints";
@@ -31,7 +31,7 @@ import {
 import { applyStates, settledStates, userGroups, validateInputs, withStart } from "./logic";
 import { assignable, builtinRoles, customRoles } from "./roles";
 import type { Db, StoredItem } from "./seed";
-import { unknownVariables } from "./variables";
+import { variableValues } from "./variables";
 
 type S = components["schemas"];
 type Version = S["CatalogItemVersionDetail"];
@@ -708,14 +708,20 @@ function check(def: Definition, prefix: string): S["FieldError"][] {
 
 /** As the server's checkVariableRefs, to publish: the shared variables each step reads exist. */
 function variableProblems(db: Db, bp: unknown, ptr: string): S["FieldError"][] {
-  const steps = (bp as { steps?: unknown } | undefined)?.steps;
-  return (Array.isArray(steps) ? steps : []).flatMap((st, g) =>
-    unknownVariables(db, st).map((ref) => ({
-      field: `${ptr}/steps/${g}`,
-      code: "unknown_variable",
-      message: `There is no variable ${ref}: add it under Administration > Variables.`,
-    })),
-  );
+  const values = variableValues(db);
+  const out: S["FieldError"][] = [];
+  eachStep(bp, ptr, (st, at) => {
+    for (const key of variablesRead(st)) {
+      const [group = "", name = ""] = key.split(".");
+      if (!(values[group] && name in values[group]))
+        out.push({
+          field: at,
+          code: "unknown_variable",
+          message: `There is no variable vars.${key}: add it under Administration > Variables.`,
+        });
+    }
+  });
+  return out;
 }
 
 function nextNumber(versions: Version[]): string {

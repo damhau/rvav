@@ -168,7 +168,10 @@ export function describeNode(n: CanvasNode, status?: CanvasStatus): string {
   if (subtitle) parts.push(subtitle);
   for (const l of n.lines) parts.push(lineText(l));
   if (n.problems.length > 0)
-    parts.push(i18n.t("canvas:problemsList", { count: n.problems.length, list: n.problems.join(" ") }));
+    // The parts are joined by full stops: the last message's own isn't said twice.
+    parts.push(
+      i18n.t("canvas:problemsList", { count: n.problems.length, list: n.problems.join(" ").replace(/\.$/, "") }),
+    );
   parts.push(...n.relations);
   return parts.join(". ");
 }

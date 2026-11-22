@@ -13,7 +13,7 @@ import type {
   FieldError,
   Variable,
 } from "@/lib/api/types";
-import { secretInMessages } from "@/lib/composite";
+import { eachStep, secretInMessages, variablesRead } from "@/lib/composite";
 
 type Raw = Record<string, unknown>;
 
@@ -364,11 +364,14 @@ function listing(codes: string[]) {
  * step, on a side of a branch or on a catch path, or in a parallel group
  * with a catch path. Known only once the targets are loaded. A message's
  * secret input is the form's business too: the server refuses it on save.
+ * And, once the shared variables are loaded, a read of one that doesn't
+ * exist, which the server refuses to publish (core.checkVariableRefs).
  */
 export function designerProblems(
   def: Raw,
   targets: CompositeStepTarget[],
   offered?: CatalogEntitlements,
+  variables?: Variable[],
 ): FieldError[] {
   const out: FieldError[] = secretInMessages(def);
   const add = (field: string, code: string, message: string) => out.push({ field, code, message });
@@ -442,6 +445,14 @@ export function designerProblems(
           "invalid",
           `${s.label}: a VM is planned when the request is submitted, so its inputs come from the form, not from steps.`,
         );
+  }
+  if (variables) {
+    const known = new Set(variables.map((v) => v.key));
+    eachStep(def.blueprint, "/definition/blueprint", (st, at) => {
+      for (const key of variablesRead(st))
+        if (!known.has(key))
+          add(at, "unknown_variable", `There is no variable vars.${key}: add it under Administration > Variables.`);
+    });
   }
   return out;
 }

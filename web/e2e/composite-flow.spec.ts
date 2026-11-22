@@ -142,6 +142,58 @@ test("the graph is fitted again when typing adds a catch path or an error handle
   await allInPane(steps);
 });
 
+test("a publish refused for shared variables that don't exist says each on its step and its line", async ({ page }) => {
+  await page.goto("/admin/catalog-items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const dialog = page.getByRole("dialog", { name: "New item" });
+  await dialog.getByRole("textbox", { name: "Name" }).fill("Shared reads");
+  await dialog.getByRole("textbox", { name: "Slug" }).fill("shared-reads");
+  await dialog.getByRole("textbox", { name: "Summary" }).fill("Reads variables nobody added.");
+  await dialog.getByRole("combobox", { name: "Type" }).click();
+  await page.getByRole("option", { name: /composite/i }).click();
+  await dialog.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("tab", { name: "Definition" }).click();
+  const editor = page.getByRole("textbox", { name: /^Definition of Shared reads/ });
+  await expect(editor).toContainText("kind: composite");
+  const steps = page.getByRole("region", { name: "Steps of Shared reads" });
+  const node = (name: RegExp) => steps.getByRole("button", { name });
+  const reads = (key: string, title: string, expr: string, indent = "    ") =>
+    rest(key, title, indent).replace('body: "{}"', `body: "{'v': ${expr}}"`);
+  await editor.click();
+  await page.keyboard.press("Control+A");
+  await page.keyboard.insertText(
+    definition(
+      `${reads("make", "Make things", "vars.nope.x")}      catch:\n${reads("fix", "Fix things", "vars.ghost.y", "        ")}`,
+      `  on_error:\n${reads("incident", "Open an incident", "vars.nope.z")}`,
+    ),
+  );
+  const missing = (v: string) =>
+    `There is no variable ${v}: add it under Administration > Variables.`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // The designer knows the variables: it says so before the server does.
+  await expect(node(/^REST Fix things\./)).toHaveAccessibleName(new RegExp(`1 problem: ${missing("vars.ghost.y")}`));
+
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByText(/^Draft [\d.]+ saved$/)).toBeVisible();
+  await page.getByRole("tab", { name: "Versions" }).click();
+  await page.getByRole("button", { name: "Publish" }).click();
+  await expect(page.getByText(/^[\d.]+ not published$/)).toBeVisible();
+  await expect(page.getByText("3 problems in its definition, shown on their lines and steps.")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Definition" })).toHaveAttribute("aria-selected", "true");
+  const problems = page.getByRole("list", { name: "Problems in the definition" });
+  await expect(problems).toBeFocused();
+  await expect(problems.getByRole("listitem")).toHaveText([
+    new RegExp(`^Line \\d+: ${missing("vars.nope.x")}$`),
+    new RegExp(`^Line \\d+: ${missing("vars.ghost.y")}$`),
+    new RegExp(`^Line \\d+: ${missing("vars.nope.z")}$`),
+  ]);
+  // Once on each step: the server's word is the designer's.
+  await expect(node(/^REST Make things\./)).toHaveAccessibleName(new RegExp(`1 problem: ${missing("vars.nope.x")}`));
+  await expect(node(/^REST Fix things\./)).toHaveAccessibleName(/1 problem: /);
+  await expect(node(/^REST Open an incident\./)).toHaveAccessibleName(
+    new RegExp(`1 problem: ${missing("vars.nope.z")}`),
+  );
+});
+
 test("a loop, a catch path, the error handler and a wait for a signal, from the keyboard, to the run", async ({
   page,
 }) => {
