@@ -28,6 +28,12 @@ describe("the mocks' schedules", () => {
     expect(Date.now() - new Date(s.owner_seen_at!).getTime()).toBeLessThan(60_000);
   });
 
+  it("find a run beyond the next two months, as Temporal does", async () => {
+    const s = await call(api.POST("/schedules", { body: await write({ cron: "0 6 29 2 *" }) }));
+    expect(s.next_runs?.length).toBeGreaterThan(0);
+    for (const at of s.next_runs ?? []) expect(at).toMatch(/^\d{4}-02-29T06:00:00/);
+  });
+
   it("refuse a name too long with its own code", async () => {
     try {
       await call(api.POST("/schedules", { body: await write({ name: "x".repeat(121) }) }));

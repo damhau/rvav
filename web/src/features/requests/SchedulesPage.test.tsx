@@ -72,6 +72,19 @@ describe("Schedules", () => {
     expect(runs).toHaveTextContent("Target: the job's inventory has no host shop.corp.example.");
   });
 
+  it("says why a run was skipped while its owner hadn't signed in", async () => {
+    const user = userEvent.setup();
+    renderApp("/schedules");
+    await act(user, "DNS zone audit", "Show its runs");
+    const sheet = await screen.findByRole("dialog", { name: "DNS zone audit" });
+    expect(sheet).toHaveTextContent("Marc Keller · Signed in 12 days ago");
+    const runs = within(sheet).getByRole("region", { name: "Runs" });
+    expect(within(runs).getAllByText("Skipped")).toHaveLength(2);
+    expect(runs).toHaveTextContent(
+      "Its owner hasn't signed in for 90 days: a run would have the groups of their last sign-in. It runs again once they sign in.",
+    );
+  });
+
   it("pauses with a note, resumes, and deletes once asked", { timeout: 15_000 }, async () => {
     const user = userEvent.setup();
     renderApp("/schedules");

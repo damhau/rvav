@@ -78,8 +78,17 @@ function state(db: Db): Stored[] {
       timezone: "UTC",
       paused: true,
       paused_note: "Until the zone has moved to the new DDI.",
-      created_at: ago(60 * 24 * 20),
-      runs: [{ at: ago(60 * 24 * 3), outcome: "skipped", reason: "It was paused." }],
+      created_at: ago(60 * 24 * 200),
+      // Its owner was away for months before signing in again, 12 days ago.
+      runs: [
+        { at: ago(60 * 24 * 3), outcome: "skipped", reason: "It was paused." },
+        {
+          at: ago(60 * 24 * 30),
+          outcome: "skipped",
+          reason:
+            "Its owner hasn't signed in for 90 days: a run would have the groups of their last sign-in. It runs again once they sign in.",
+        },
+      ],
     },
   ];
   return d.schedules;
@@ -143,16 +152,17 @@ function cronNext(cron: string, tz: string, n: number): string[] {
   const off = offsetOf(tz, new Date(Math.floor(now.getTime() / 60_000) * 60_000));
   let t = Math.floor(now.getTime() / 60_000) + 1 + off;
   const out: string[] = [];
-  for (let i = 0; i < 60 * 24 * 62 && out.length < n; i++, t++) {
+  const day = 60 * 24;
+  // Five years, as Temporal finds a 29 February: a day that can't match is skipped whole.
+  const end = t + day * 366 * 5;
+  while (t < end && out.length < n) {
     const d = new Date(t * 60_000);
-    if (
-      mi!.has(d.getUTCMinutes()) &&
-      h!.has(d.getUTCHours()) &&
-      dom!.has(d.getUTCDate()) &&
-      mo!.has(d.getUTCMonth() + 1) &&
-      dow!.has(d.getUTCDay())
-    )
-      out.push(new Date((t - off) * 60_000).toISOString());
+    if (!dom!.has(d.getUTCDate()) || !mo!.has(d.getUTCMonth() + 1) || !dow!.has(d.getUTCDay())) {
+      t = (Math.floor(t / day) + 1) * day;
+      continue;
+    }
+    if (mi!.has(d.getUTCMinutes()) && h!.has(d.getUTCHours())) out.push(new Date((t - off) * 60_000).toISOString());
+    t++;
   }
   return out;
 }

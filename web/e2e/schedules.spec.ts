@@ -110,6 +110,16 @@ test("a requester schedules a job from the keyboard, then pauses, resumes and de
     await expect(runs).toHaveCount(0);
   }
   await theme(page, "Light");
+  await expect(page.getByRole("row", { name: /^Weekly TLS renewal/ })).toContainText(/Signed in \d+ minutes? ago/);
+
+  await act(page, "DNS zone audit", "Show its runs");
+  const dns = page.getByRole("dialog", { name: "DNS zone audit", exact: true });
+  await expect(dns).toContainText(/Marc Keller · Signed in 12 days ago/);
+  await expect(dns.getByRole("region", { name: "Runs", exact: true })).toContainText(
+    "Its owner hasn't signed in for 90 days: a run would have the groups of their last sign-in.",
+  );
+  await page.keyboard.press("Escape");
+  await expect(dns).toHaveCount(0);
 
   await act(page, "API certificate", "Delete");
   const confirm = page.getByRole("alertdialog", { name: "Delete API certificate?", exact: true });
