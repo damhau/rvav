@@ -34,6 +34,30 @@ function Wait-Approval([string] $Number) {
 $me = Connect-Rvav
 Assert ($me.UserId -eq 'usr_lmartin') "connected with RVAV_URL and RVAV_TOKEN as $($me.UserId)"
 
+try {
+    Connect-Rvav -Server http://rvav.corp.example -Token (ConvertTo-SecureString -String rvav_pat_x -AsPlainText -Force) | Out-Null
+    throw 'Not as expected: a token went to an http:// address of another machine'
+} catch {
+    Assert ($_.Exception.Message -match 'unencrypted') "an http:// address is refused (O1.7): $($_.Exception.Message)"
+}
+Assert ((Invoke-RvavApi me).user.id -eq 'usr_lmartin') 'a refused address leaves the connection as it was'
+
+# A call that gets no answer ends at -TimeoutSec (O1.7).
+$silent = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+$silent.Start()
+$module = Get-Module Rvav
+$server = & $module { $script:Connection.Server }
+& $module { param($s) $script:Connection.Server = $s } "http://127.0.0.1:$($silent.LocalEndpoint.Port)"
+try {
+    Invoke-RvavApi me -TimeoutSec 1 | Out-Null
+    throw 'Not as expected: a call nobody answered returned'
+} catch {
+    Assert ($_.Exception.Message -match "didn't answer within 1 seconds") "a call without an answer: $($_.Exception.Message)"
+} finally {
+    & $module { param($s) $script:Connection.Server = $s } $server
+    $silent.Stop()
+}
+
 $items = Get-RvavCatalogItem -ProjectId prj_web
 Assert ($items.slug -contains 'rhel9-server') "the catalog: $($items.slug -join ', ')"
 $item = Get-RvavCatalogItem -ProjectId prj_web -Item rhel9-server
@@ -47,6 +71,15 @@ try {
 }
 
 $placement = @{ cluster = 'GVA-DEV-CL01'; datastore = 'vsan-gva-dev-cl01'; network = 'dvpg-app-dev-vl310' }
+
+# -WhatIf has rvav check the request, and makes none (O1.7).
+$before = @(Get-RvavRequest -Mine).Count
+New-RvavRequest rhel9-server -ProjectId prj_web -Environment dev -Inputs @{ size = 'XXL' } -WhatIf `
+    -ErrorAction SilentlyContinue -ErrorVariable refused
+Assert ("$refused" -match 'would refuse' -and "$refused" -match 'size: ') "-WhatIf of a request rvav would refuse: $refused"
+New-RvavRequest rhel9-server -ProjectId prj_web -Environment dev -Inputs $placement -WhatIf -ErrorVariable accepted
+Assert ($accepted.Count -eq 0) "-WhatIf of a request rvav takes: $accepted"
+Assert (@(Get-RvavRequest -Mine).Count -eq $before) '-WhatIf requests nothing'
 $r = $item | New-RvavRequest -Environment dev -Inputs $placement -Justification 'PowerShell, O1.2.' -Wait
 Assert ($r.status -eq 'succeeded') "the request is $($r.status)"
 Assert ($r.inputs.role -eq 'app' -and $r.inputs.size) "rvav filled in the inputs left out: $($r.inputs | ConvertTo-Json -Compress)"
@@ -68,6 +101,8 @@ Assert ((Get-RvavDeployment $d.id).status -eq 'ready') '-WhatIf deletes nothing'
 $prd = @{ role = 'front'; cluster = 'GVA-PRD-CL02'; datastore = 'vsan-gva-prd-cl02'; network = 'dvpg-web-prd-vl210' }
 $approved = New-RvavRequest rhel9-server -ProjectId prj_web -Environment prd -Inputs $prd -Justification 'Fourth front node.'
 Assert ($approved.status -eq 'pending_approval') "the production request is $($approved.status)"
+$late = Wait-RvavRequest $approved.id -Timeout (New-TimeSpan -Milliseconds 200) -ErrorAction SilentlyContinue -ErrorVariable timedOut
+Assert ($late.status -eq 'pending_approval' -and "$timedOut" -match "hasn't finished") "a wait its timeout ends returns the request (O1.7): $($late.status), $timedOut"
 Connect-Approver | Out-Null
 Wait-Approval $approved.number | Approve-RvavApproval -Comment 'OK for the release.' | Out-Null
 $approved = Wait-RvavRequest $approved.id

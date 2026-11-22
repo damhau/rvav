@@ -11,7 +11,8 @@ PowerShell 5.1 isn't supported.
 ## Install the module
 
 1. Build the module's archive from rvav's repository, at the version of
-   your rvav:
+   your rvav. You need `zip`, and `VERSION` must be three numbers, such as
+   `1.4.0`, as a module's version can't hold a `v` or a suffix:
 
    ```sh
    VERSION=1.4.0 make powershell-dist
@@ -68,6 +69,12 @@ Connect-Rvav
 `Connect-Rvav` returns who rvav takes you for. The connection lasts for
 your session; `Disconnect-Rvav` forgets it.
 
+`Connect-Rvav` refuses an `http://` address of another machine, as your
+token would cross the network unencrypted. Use rvav's `https://` address.
+For a test rvav, `-AllowUnencryptedAuthentication` sends the token anyway.
+An `http://` address of your own machine, such as
+`http://localhost:8080`, needs no switch.
+
 An API token acts with the roles given to its user in rvav itself, not
 those of their groups. To approve as a member of an approver group, use
 the web app or `rvavctl login`.
@@ -99,7 +106,11 @@ the web app or `rvavctl login`.
 - Inputs you don't give take the values the form starts with in the web
   app, its initial values and defaults: rvav fills them in. To leave an
   input that has a default empty, give it `$null`.
-- To check what you request first, add `-WhatIf`.
+- To check a request without making it, add `-WhatIf`. rvav checks it as
+  it checks a request it gets: what rvav would refuse is an error, one line
+  per field, and its policies' warnings are warnings. The `What if` line
+  names the VMs that the request would make, and whether it would need
+  approval.
 
 You can also pipe an item into `New-RvavRequest`, which takes its slug and
 project:
@@ -127,9 +138,11 @@ Get-RvavCatalogItem rhel9-server -ProjectId prj_web |
 
 `Wait-RvavRequest`, and `-Wait` on the commands that make requests, return
 the request when it ends. If it doesn't succeed, they also write an error
-with rvav's reason. To stop a script there, add `-ErrorAction Stop`, or
-set `$ErrorActionPreference = 'Stop'`. Add `-Verbose` to see each step as
-the request runs.
+with rvav's reason. When `-Timeout` ends the wait, they return the request
+as it is then, and write an error: rvav goes on with the request. To stop a
+script there, add `-ErrorAction Stop`, or set
+`$ErrorActionPreference = 'Stop'`. Add `-Verbose` to see each step as the
+request runs.
 
 ## Act on your deployments
 
@@ -186,7 +199,7 @@ For example, to approve a request by its number:
 Get-RvavApproval | Where-Object { $_.request.number -eq 'REQ-10042' } | Approve-RvavApproval -Comment 'OK for the release'
 ```
 
-## Look up an address of an IP range
+## Read IP ranges and their addresses
 
 On networks without EfficientIP, rvav gives VMs addresses from its own IP
 ranges ([ADR-0063](../adr/0063-ip-ranges.md)). To read them, the token's
@@ -220,8 +233,11 @@ Invoke-RvavApi -Method POST -Path requests/REQ-10042/cancel
 - `-Body` takes an object or a hashtable, sent as JSON.
 - `-Idempotent` sends an `Idempotency-Key`, which the operations that make
   requests need.
+- `-TimeoutSec` is how long rvav may take to answer, 120 seconds unless
+  you give it. A call without an answer by then is an error.
 
-The API's reference is at `/api/docs` on your rvav.
+The API's description is at `/api/v1/openapi.json` on your rvav; the
+release's `api-reference.html` is its readable reference.
 
 ## Output and errors
 
@@ -230,4 +246,6 @@ The API's reference is at `/api/docs` on your rvav.
   `ConvertTo-Json -Depth 10`.
 - When rvav refuses a call, the cmdlet stops with a terminating error that
   gives rvav's reasons, one line per field. A `try`/`catch` block catches
-  it, whatever `-ErrorAction` says.
+  it, whatever `-ErrorAction` says. So does a call that can't reach rvav,
+  or that gets no answer within two minutes, or within the `-TimeoutSec`
+  of `Invoke-RvavApi`.

@@ -14,7 +14,8 @@ function Connect-Rvav {
     .DESCRIPTION
     Connects the module's cmdlets to an rvav as the user an API token belongs to. Without -Server or -Token, it takes
     RVAV_URL and RVAV_TOKEN from the environment, as rvavctl does. Make an API token in rvav's web app, under your
-    profile's API tokens.
+    profile's API tokens. An http:// address of another machine is refused, as the token would cross the network
+    unencrypted, unless -AllowUnencryptedAuthentication.
     .EXAMPLE
     Connect-Rvav -Server https://rvav.corp.example -Token (Read-Host -AsSecureString -Prompt 'API token')
     .EXAMPLE
@@ -28,11 +29,20 @@ function Connect-Rvav {
         # rvav's address, as the web app's: https://rvav.corp.example. RVAV_URL when not given.
         [string] $Server = $env:RVAV_URL,
         # An API token. RVAV_TOKEN when not given.
-        [securestring] $Token
+        [securestring] $Token,
+        # Sends the token to an http:// address of another machine, unencrypted: for a test rvav only.
+        [switch] $AllowUnencryptedAuthentication
     )
     try {
         if (-not $Server) {
             throw 'Give -Server, rvav''s address, or set RVAV_URL.'
+        }
+        $address = $null
+        if (-not [uri]::TryCreate($Server, [UriKind]::Absolute, [ref] $address) -or $address.Scheme -notin 'http', 'https') {
+            throw "$Server isn't an rvav address: give it as https://rvav.corp.example."
+        }
+        if ($address.Scheme -eq 'http' -and -not $address.IsLoopback -and -not $AllowUnencryptedAuthentication) {
+            throw "$Server would get your token unencrypted: use its https:// address, or add -AllowUnencryptedAuthentication."
         }
         if (-not $Token) {
             if (-not $env:RVAV_TOKEN) {
@@ -82,7 +92,8 @@ function Invoke-RvavApi {
     Calls rvav's API, for what the other cmdlets don't do.
     .DESCRIPTION
     Sends a request to rvav's API (/api/v1) as the connected user and returns its answer. A call rvav refuses is an
-    error with rvav's reasons. The API's reference is at /api/docs on your rvav.
+    error with rvav's reasons, as is a call that gets no answer within -TimeoutSec. The API's description is at
+    /api/v1/openapi.json on your rvav; the release's api-reference.html is its readable reference.
     .EXAMPLE
     Invoke-RvavApi -Path admin/approval-policies
     .EXAMPLE
@@ -100,7 +111,10 @@ function Invoke-RvavApi {
         # The request's body, sent as JSON.
         [object] $Body,
         # Sends an Idempotency-Key, as calls that make requests need.
-        [switch] $Idempotent
+        [switch] $Idempotent,
+        # How long rvav may take to answer, in seconds, as rvavctl waits.
+        [ValidateRange(1, [int]::MaxValue)]
+        [int] $TimeoutSec = 120
     )
     try {
         $c = $script:Connection
@@ -134,6 +148,7 @@ function Invoke-RvavApi {
             UserAgent          = 'rvav-powershell/' + $MyInvocation.MyCommand.Module.Version
             SkipHttpErrorCheck = $true
             StatusCodeVariable = 'status'
+            TimeoutSec         = $TimeoutSec
         }
         if ($PSBoundParameters.ContainsKey('Body')) {
             $call.Body = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $Body -Depth 32 -Compress))
@@ -143,6 +158,8 @@ function Invoke-RvavApi {
             $answer = Invoke-RestMethod @call
         } catch [System.Net.Http.HttpRequestException] {
             throw "Can't reach rvav at $($c.Server): $($_.Exception.Message)"
+        } catch [System.Threading.Tasks.TaskCanceledException] {
+            throw "rvav at $($c.Server) didn't answer within $TimeoutSec seconds."
         }
         if ($status -ge 400) {
             throw (Format-Problem -Answer $answer -Status $status)
@@ -163,12 +180,29 @@ function Format-Problem {
         $msg += ': ' + $Answer.detail
     }
     if ($Answer.PSObject.Properties['errors']) {
-        foreach ($e in $Answer.errors) {
-            $field = $e.field -replace '^/inputs/', '' -replace '^/', ''
-            $msg += "`n  " + $(if ($field) { $field + ': ' }) + $e.message
-        }
+        $msg += Format-FieldError $Answer.errors
     }
     $msg
+}
+
+function Format-FieldError($Errors) {
+    -join @(foreach ($e in $Errors) {
+            $field = $e.field -replace '^/inputs/', '' -replace '^/', ''
+            "`n  " + $(if ($field) { $field + ': ' }) + $e.message
+        })
+}
+
+function Format-Preview($Preview) {
+    $parts = @()
+    if ($Preview.names) {
+        $parts += 'VMs ' + (@($Preview.names) -join ', ')
+    }
+    if ($Preview.approval -and $Preview.approval.required) {
+        $parts += 'approval needed: ' + (@($Preview.approval.policies | ForEach-Object reason) -join '; ')
+    }
+    if ($parts) {
+        ' (' + ($parts -join '; ') + ')'
+    }
 }
 
 function Get-Page {
@@ -256,7 +290,9 @@ function New-RvavRequest {
     Requests a catalog item.
     .DESCRIPTION
     Requests an item in a project's environment with the inputs given: rvav fills in the others from the item's form,
-    as the web app starts it. With -Wait, it waits for the request to end, approvals included.
+    as the web app starts it. With -Wait, it waits for the request to end, approvals included. With -WhatIf, rvav
+    checks the request without making it: what rvav would refuse is an error, and its policies' warnings are
+    warnings.
     .EXAMPLE
     New-RvavRequest -CatalogItem rhel9-server -ProjectId prj_web -Environment dev -Inputs @{ size = 'M'; cluster = 'GVA-DEV-CL01' } -Wait
     .EXAMPLE
@@ -317,7 +353,20 @@ function New-RvavRequest {
             if ($AcceptWarnings) {
                 $draft.accept_warnings = $true
             }
-            if (-not $PSCmdlet.ShouldProcess("$($it.name) in $ProjectId, $Environment", 'Request')) {
+            $target = "$($it.name) in $ProjectId, $Environment"
+            $preview = $null
+            if ($WhatIfPreference) {
+                $preview = Invoke-RvavApi -Method POST -Path requests/preview -Query @{ validate = 'true' } -Body $draft
+                $target += Format-Preview $preview
+            }
+            if (-not $PSCmdlet.ShouldProcess($target, 'Request')) {
+                if ($preview -and -not $preview.valid) {
+                    Write-Error -Message ('rvav would refuse the request:' + (Format-FieldError $preview.errors)) `
+                        -TargetObject $preview -Category InvalidData -ErrorId RequestInvalid
+                }
+                foreach ($w in @($preview.warnings | Where-Object { $_ })) {
+                    Write-Warning $w.message
+                }
                 return
             }
             $r = Invoke-RvavApi -Method POST -Path requests -Body $draft -Idempotent
@@ -385,7 +434,8 @@ function Wait-RvavRequest {
     Waits for a request to end.
     .DESCRIPTION
     Reads the request until it succeeds, fails, is rejected or is cancelled, and returns it. A request that doesn't
-    succeed is also an error, with why: add -ErrorAction Stop to stop a script there.
+    succeed is also an error, with why: add -ErrorAction Stop to stop a script there. When -Timeout ends the wait,
+    it returns the request as it is, and writes an error: rvav goes on with the request.
     .EXAMPLE
     New-RvavRequest ... | Wait-RvavRequest -Timeout (New-TimeSpan -Minutes 30) -ErrorAction Stop
     #>
@@ -430,6 +480,7 @@ function Wait-RvavRequest {
                     if ($r.progress.total) { [math]::Min(100, 100 * $r.progress.done / $r.progress.total) } else { 0 })
                 if ($deadline -and [datetime]::UtcNow -gt $deadline) {
                     Write-Progress -Activity "$($r.number) $($r.title)" -Completed
+                    $r
                     Write-Error -Message "$($r.number) hasn't finished after $Timeout" -TargetObject $r -Category OperationTimeout -ErrorId RequestTimedOut
                     return
                 }

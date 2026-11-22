@@ -8,7 +8,8 @@
 - Amended by O1.7 (#173): a deployment's `secret_inputs`, waits that go
   on through transient errors, a stop and a destroy during a build,
   `timeouts`, an item named by ID or slug, and imports that plan no
-  change.
+  change; the module's refusal of `http://`, its calls' timeout, a
+  `-WhatIf` that rvav checks, and a wait that its timeout ends.
 
 ## Context
 vRA has a Terraform provider (`vmware/vra`) and PowerCLI's vRA cmdlets.
@@ -189,7 +190,11 @@ and rvav's address (else `RVAV_URL`), as rvavctl does. rvavctl's
 profiles and their browser sign-in aren't read: a person at their desk
 makes a token in the web app. Approvals work as the token's user named
 as approver, not through their groups
-([ADR-0051](0051-command-line.md)).
+([ADR-0051](0051-command-line.md)). An `http://` address of another
+machine is refused unless `-AllowUnencryptedAuthentication`, as rvavctl
+refuses it unless `--insecure-http`: the token would cross the network
+unencrypted. Each call waits two minutes for rvav's answer
+(`-TimeoutSec`), as rvavctl does.
 
 The cmdlets follow PowerShell's rules: approved verbs (`Get`, `New`,
 `Wait`, `Invoke`, `Remove`, `Approve`, `Deny`), objects with the API's
@@ -197,10 +202,14 @@ fields and a type name per kind for their table views, pipeline input by
 property name (`Get-RvavDeployment … | Get-RvavDeploymentAction`), and
 `-WhatIf` and `-Confirm` on what changes things. Deleting, and an action
 that can't be undone, asks first unless `-Force`. A request sends only
-the inputs given, as Terraform does. `-Wait` reads the request every two
-seconds until it ends; one that doesn't succeed is returned and is an
-error too, with rvav's reason. What rvav refuses is a terminating error
-with its reasons, field by field.
+the inputs given, as Terraform does. `-WhatIf` on a request has rvav
+check it (`POST /requests/preview?validate=true`, as
+`rvavctl … --dry-run`): what rvav would refuse is an error, its
+warnings are warnings, and the request isn't made. `-Wait` reads the
+request every two seconds until it ends; one that doesn't succeed is
+returned and is an error too, with rvav's reason. A wait that its
+`-Timeout` ends returns the request as it is, and is an error. What rvav
+refuses is a terminating error with its reasons, field by field.
 
 `VERSION=1.4.0 make powershell-dist` zips the module with its version
 set, in the `Rvav/1.4.0/` folder `Install-Module` would make, for a
