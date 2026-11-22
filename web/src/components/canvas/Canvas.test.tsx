@@ -1,12 +1,11 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Canvas } from "./Canvas";
 import { compositeGraph, vmGraph } from "./blueprint";
 
-// React Flow's fitView, as the canvas calls it: jsdom draws at 0×0, where a
-// fit moves nothing to see.
+// React Flow's fitView, as the canvas calls it.
 const fitView = vi.hoisted(() => vi.fn());
 vi.mock("@xyflow/react", async (importOriginal) => {
   const flow = await importOriginal<typeof import("@xyflow/react")>();
@@ -170,13 +169,16 @@ describe("Canvas", () => {
     expect(screen.getByRole("img", { name: "Failed" })).toBeInTheDocument();
   });
 
-  it("draws a run's statuses where the nodes are: nothing moves nor is fitted again", () => {
+  it("draws a run's statuses where the nodes are: nothing moves nor is fitted again", async () => {
     const where = () => ({
       viewport: document.querySelector<HTMLElement>(".react-flow__viewport")?.style.transform,
       nodes: [...document.querySelectorAll<HTMLElement>(".react-flow__node")].map((n) => n.style.transform),
     });
     const { rerender } = render(<Canvas graph={graph} label="Run" status={{ "step:vm": "running" }} />);
+    // The first fit, once React Flow is ready.
+    await act(() => new Promise((r) => setTimeout(r, 0)));
     const before = where();
+    expect(before.viewport).not.toBe("translate(0px,0px) scale(1)");
     expect(before.nodes.length).toBe(graph.nodes.length + graph.groups.length);
     fitView.mockClear();
     rerender(<Canvas graph={graph} label="Run" status={{ "step:vm": "done", "step:db_user": "running" }} />);

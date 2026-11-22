@@ -226,6 +226,10 @@ function toFlow(
       height: 1,
     })),
   ];
+  // `measured` too: React Flow fits only nodes it has measured, and a node
+  // object made anew (each edit, each selection) drops its measure while its
+  // element, the same size, is never measured again. The sizes are set, so
+  // they are known.
   const nodes: Node[] = [];
   for (const group of graph.groups) {
     const box = layout.groups.get(group.id);
@@ -236,6 +240,7 @@ function toFlow(
       position: { x: box.x, y: box.y },
       width: box.width,
       height: box.height,
+      measured: { width: box.width, height: box.height },
       data: { group, direction: graph.direction },
       draggable: false,
       selectable: false,
@@ -253,6 +258,7 @@ function toFlow(
       position: { x: box.x, y: box.y },
       width: box.width,
       height: box.height,
+      measured: { width: box.width, height: box.height },
       ...(box.parent ? { parentId: box.parent } : {}),
       data: { node: n, direction: graph.direction, status: st, selected: n.id === selected },
       draggable: false,

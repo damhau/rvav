@@ -54,6 +54,94 @@ async function fillAdd(page: Page, runs: string | RegExp, key: string, title: st
   return details;
 }
 
+/** The definition of an item whose steps are `steps`, and its error handler `onError`. */
+const definition = (steps: string, onError = "") => `form_schema:
+  type: object
+  properties: {}
+ui_schema:
+  layout:
+    kind: page
+    sections: [{key: main, title: Main, columns: 1, fields: []}]
+  fields: {}
+initial_values: {}
+blueprint:
+  kind: composite
+  steps:
+${steps}${onError}`;
+
+const rest = (key: string, title: string, indent = "    ") =>
+  `${indent}- key: ${key}\n${indent}  title: ${title}\n${indent}  rest: {method: POST, url: "https://cmdb.corp.example/api/${key}", body: "{}"}\n`;
+
+/** Every node of the graph lies inside its pane. */
+async function allInPane(steps: Locator) {
+  await expect
+    .poll(
+      () =>
+        steps.locator(".react-flow").evaluate((pane) => {
+          const box = pane.getBoundingClientRect();
+          return [...pane.querySelectorAll<HTMLElement>(".react-flow__node")]
+            .filter((n) => {
+              const r = n.getBoundingClientRect();
+              return (
+                r.top < box.top - 1 || r.bottom > box.bottom + 1 || r.left < box.left - 1 || r.right > box.right + 1
+              );
+            })
+            .map((n) => n.dataset.id);
+        }),
+      { message: "nodes outside the pane" },
+    )
+    .toEqual([]);
+}
+
+test("the graph is fitted again when typing adds a catch path or an error handler", async ({ page }) => {
+  await page.goto("/admin/catalog-items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const dialog = page.getByRole("dialog", { name: "New item" });
+  await dialog.getByRole("textbox", { name: "Name" }).fill("Fitted steps");
+  await dialog.getByRole("textbox", { name: "Slug" }).fill("fitted-steps");
+  await dialog.getByRole("textbox", { name: "Summary" }).fill("Steps, then their catch paths.");
+  await dialog.getByRole("combobox", { name: "Type" }).click();
+  await page.getByRole("option", { name: /composite/i }).click();
+  await dialog.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("tab", { name: "Definition" }).click();
+  const editor = page.getByRole("textbox", { name: /^Definition of Fitted steps/ });
+  await expect(editor).toContainText("kind: composite");
+  const steps = page.getByRole("region", { name: "Steps of Fitted steps" });
+  const node = (name: RegExp) => steps.getByRole("button", { name });
+  const write = async (yaml: string) => {
+    await editor.click();
+    await page.keyboard.press("Control+A");
+    await page.keyboard.insertText(yaml);
+  };
+
+  await write(
+    definition(
+      `${rest("make", "Make things")}      catch:\n${rest("fix", "Fix things", "        ")}`,
+      `  on_error:\n${rest("incident", "Open an incident")}`,
+    ),
+  );
+  await expect(node(/^REST Open an incident\. incident\. Catches: the request\./)).toBeVisible();
+  await allInPane(steps);
+
+  await write(definition(rest("one", "Step one") + rest("two", "Step two") + rest("three", "Step three")));
+  await expect(node(/^REST Step three\./)).toBeVisible();
+  await allInPane(steps);
+
+  await write(
+    definition(
+      `${rest("one", "Step one")}${rest("two", "Step two")}      catch:\n${rest("two_fix", "Fix two", "        ")}${rest("three", "Step three")}`,
+    ),
+  );
+  await expect(node(/^REST Fix two\. two_fix\. Catches: Step two\./)).toBeVisible();
+  await allInPane(steps);
+  await expect(node(/^Request\./)).toBeInViewport();
+
+  // Zoomed in, then fitted from the button: every node again.
+  for (let i = 0; i < 4; i++) await steps.getByRole("button", { name: "Zoom in" }).click();
+  await steps.getByRole("button", { name: "Fit to view" }).click();
+  await allInPane(steps);
+});
+
 test("a loop, a catch path, the error handler and a wait for a signal, from the keyboard, to the run", async ({
   page,
 }) => {
