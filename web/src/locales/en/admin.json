@@ -134,7 +134,7 @@
     "vcenters": "vCenters",
     "noneYet": "None yet",
     "title": "NSX Managers",
-    "description": "Each vCenter is served by one NSX Manager at most: the segments and security groups of its VMs are made there. A vCenter added later is served by none until you link it.",
+    "description": "Each vCenter is served by one NSX Manager at most: the segments and security groups of its VMs are made there. A vCenter you add while the integration's NSX Manager is the only one is served by it. Once you add another, a vCenter you add is served by none until you link it.",
     "emptyTitle": "No NSX Manager yet",
     "emptyBody": "Set the NSX connection above, or add an NSX Manager here.",
     "link": "Link vCenters",

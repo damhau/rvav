@@ -136,7 +136,7 @@
     "vcenters": "vCenter",
     "noneYet": "Aucun pour l'instant",
     "title": "NSX Manager",
-    "description": "Chaque vCenter est servi par un NSX Manager au plus\u00a0: les segments et groupes de sécurité de ses VM y sont créés. Un vCenter ajouté plus tard n'est servi par aucun tant que vous ne le liez pas.",
+    "description": "Chaque vCenter est servi par un NSX Manager au plus\u00a0: les segments et groupes de sécurité de ses VM y sont créés. Un vCenter ajouté tant que le NSX Manager de l'intégration est le seul est servi par lui. Une fois un autre ajouté, un vCenter ajouté n'est servi par aucun tant que vous ne le liez pas.",
     "emptyTitle": "Aucun NSX Manager pour l'instant",
     "emptyBody": "Configurez la connexion NSX ci-dessus, ou ajoutez un NSX Manager ici.",
     "link": "Lier des vCenter",
