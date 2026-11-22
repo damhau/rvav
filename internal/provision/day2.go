@@ -97,9 +97,15 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 	case "add_nic":
 		return v.AddNIC(ctx, in.Moref, argStr(args, "network"))
 	case "set_nic_network":
-		return "", v.SetNICNetwork(ctx, in.Moref, nicRef(args), argStr(args, "network"))
+		if err := v.SetNICNetwork(ctx, in.Moref, nicRef(args), argStr(args, "network")); err != nil {
+			return "", err
+		}
+		return "", a.releaseNIC(ctx, in)
 	case "remove_nic":
-		return "", v.RemoveNIC(ctx, in.Moref, nicRef(args))
+		if err := v.RemoveNIC(ctx, in.Moref, nicRef(args)); err != nil {
+			return "", err
+		}
+		return "", a.releaseNIC(ctx, in)
 	case "rename_vm":
 		return "", v.Rename(ctx, in.Moref, argStr(args, "name"))
 	case "check_name":

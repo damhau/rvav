@@ -30,6 +30,8 @@ type ciNIC struct {
 	PrefixLength int
 	Gateway      string
 	DNSServers   []string
+	// Search are searched after the domain (ADR-0063).
+	Search []string
 	// IP6 is an IPv6 address beside IP or DHCP (ADR-0039).
 	IP6           string
 	PrefixLength6 int
@@ -52,8 +54,14 @@ func cloudInitMetadata(instanceID, hostname, domain string, nics []ciNIC) ([]byt
 				routes = append(routes, map[string]any{"to": "default", "via": n.Gateway})
 			}
 			ns := map[string]any{"addresses": nonNil(n.DNSServers)}
-			if domain != "" {
-				ns["search"] = []string{domain}
+			var search []string
+			for _, d := range append([]string{domain}, n.Search...) {
+				if d != "" && !slices.Contains(search, d) {
+					search = append(search, d)
+				}
+			}
+			if search != nil {
+				ns["search"] = search
 			}
 			eth["nameservers"] = ns
 		}

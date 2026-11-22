@@ -347,7 +347,7 @@ func (s *Service) builtinValues(ctx context.Context, p *auth.Principal, proj sto
 			for _, n := range pl.networksFor(cluster) {
 				meta := "no subnet linked"
 				o := option(n.Name, n.Name, "")
-				if sn, ok := pl.subnets[n.Name]; ok {
+				if sn, ok := pl.subnetOf(n.VCenter, n.Name); ok {
 					meta = sn.Subnet
 				} else {
 					o.Disabled = present.Ptr(true)
@@ -452,6 +452,11 @@ func (s *Service) builtinValues(ctx context.Context, p *auth.Principal, proj sto
 		if network == "" {
 			return out, nil
 		}
+		if ip, ok, err := s.nextInRanges(ctx, network); err != nil || ok {
+			out.Value = ip
+			cache(10)
+			return out, err
+		}
 		sn, err := s.Store.NetworkSubnet(ctx, network)
 		if errors.Is(err, store.ErrNotFound) {
 			return out, nil
@@ -487,7 +492,9 @@ func (s *Service) builtinValues(ctx context.Context, p *auth.Principal, proj sto
 		}
 		zone := ""
 		if network, _ := inputs["network"].(string); network != "" {
-			if sn, err := s.Store.NetworkSubnet(ctx, network); err == nil {
+			if _, ranged, err := s.nextInRanges(ctx, network); err != nil {
+				return out, err
+			} else if sn, err := s.Store.NetworkSubnet(ctx, network); err == nil && !ranged {
 				zone = sn.DNSZone
 			}
 		}

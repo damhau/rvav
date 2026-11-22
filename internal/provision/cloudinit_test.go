@@ -47,6 +47,19 @@ func TestCloudInit(t *testing.T) {
 		t.Fatalf("metadata = %s", raw)
 	}
 
+	// An IP range's search domains come after the domain, each once
+	// (ADR-0063).
+	raw, err = cloudInitMetadata("dep_1/web01", "web01", "corp.example", []ciNIC{
+		{MAC: "00:50:56:aa:00:01", IP: "10.32.20.5", PrefixLength: 24, Search: []string{"svc.corp.example", "corp.example"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Network.Ethernets = nil
+	_ = json.Unmarshal(raw, &m)
+	if got := m.Network.Ethernets["nic0"].Nameservers.Search; strings.Join(got, " ") != "corp.example svc.corp.example" {
+		t.Fatalf("search = %v", got)
+	}
+
 	raw, err = cloudInitMetadata("dep_1/web01", "web01", "corp.example", []ciNIC{
 		{MAC: "00:50:56:aa:00:01", IP: "10.31.10.5", PrefixLength: 24, Gateway: "10.31.10.1",
 			IP6: "2001:db8:310::5", PrefixLength6: 64, Gateway6: "2001:db8:310::1"},

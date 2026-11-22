@@ -67,7 +67,10 @@ allocation. What gives an EfficientIP address back gives this one back:
 deleting the deployment or removing the VM, a rollback. Two more give it
 back too: a request that fails before its VM exists (the address is free
 for a retry, which takes one again), and a day-2 change that moves or
-removes the adapter.
+removes the adapter. A day-2 move to a network with ranges gives the
+adapter no address, as a move between EfficientIP networks doesn't.
+Renaming a VM whose addresses all come from ranges renames their
+allocations and asks EfficientIP nothing.
 
 A static address a subscription asks for (ADR-0054) must be one the
 network's ranges give and no other VM holds. A request is refused when it
@@ -76,10 +79,11 @@ need, with the code `no_free_address`.
 
 ### No DNS
 rvav writes no DNS record for an address from a range: the plan has no DNS
-step for a VM whose addresses all come from ranges. A VM is named in the
-range's DNS domain, or the blueprint's guest domain when the range has
-none. The guest gets the DNS servers and the search domains through its
-customization.
+step for a VM whose addresses all come from ranges, and its reserve step's
+system is rvav. A VM is named in the range's DNS domain, or the
+blueprint's guest domain when the range has none; no DNS check is made of
+the name. The guest gets the DNS servers and the search domains, after its
+own domain, through its customization or cloud-init.
 
 ### Reconcile
 The reconcile report, which needed EfficientIP, also runs without it, and

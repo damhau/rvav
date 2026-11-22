@@ -225,6 +225,12 @@ func (a *Activities) renameRecords(ctx context.Context, in OpInput) (string, err
 			if nic, _ := props["nic"].(string); nic != "" {
 				props["fqdn"] = cmp.Or(renames[old], old)
 			}
+			if id, _ := props["allocation_id"].(string); props["source"] == rangeSource {
+				to, _ := props["fqdn"].(string)
+				if err := a.Store.RenameAllocation(ctx, a.Store.Pool, id, name, to); err != nil {
+					return "", err
+				}
+			}
 		default:
 			continue
 		}

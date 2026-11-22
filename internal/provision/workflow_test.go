@@ -362,6 +362,19 @@ func TestPlanSteps(t *testing.T) {
 	if p.Limit() != "web-dev-app001,web-dev-app002" {
 		t.Fatalf("limit = %s", p.Limit())
 	}
+
+	// Addresses from rvav's IP ranges make no DNS records (ADR-0063).
+	ranged := vmPlan(true).Plan
+	ranged.VMs[0].IPRanges = true
+	steps = ranged.Steps("Production")
+	if steps[2].Key != KeyIPAM || steps[2].System != "rvav" || steps[3].Key != KeyClone {
+		t.Fatalf("ranged steps = %+v", steps)
+	}
+	ranged.VMs[0].NICs = []NICUnit{{Key: "backup", IPAM: "efficientip", FQDN: "web-backup.corp.example"}}
+	steps = ranged.Steps("Production")
+	if steps[2].System != "efficientip" || steps[3].Key != KeyDNS || ranged.VMs[0].dnsDetail() != "web-backup.corp.example" {
+		t.Fatalf("ranged, with an EfficientIP adapter: %+v", steps)
+	}
 }
 
 func TestErrMessage(t *testing.T) {

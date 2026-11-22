@@ -274,6 +274,12 @@ func (s *Store) ReleaseAddress(ctx context.Context, db DB, id string) error {
 	return err
 }
 
+// RenameAllocation follows a VM's new name.
+func (s *Store) RenameAllocation(ctx context.Context, db DB, id, hostname, fqdn string) error {
+	_, err := db.Exec(ctx, `update ip_allocations set hostname = $2, fqdn = $3 where id = $1`, id, hostname, fqdn)
+	return err
+}
+
 // ReleaseRequestAddresses gives back the addresses a request's VMs got
 // from ranges, but for the VMs in keep.
 func (s *Store) ReleaseRequestAddresses(ctx context.Context, requestID string, keep []string) ([]IPAllocation, error) {

@@ -715,7 +715,7 @@ func (c componentChange) scaleIn(u *componentPlan, refuse func(setting, reason s
 		}
 		if ids := day2.OwnResourceIDs(self, c.resources, "ipam.address"); len(ids) > 0 {
 			u.remove = append(u.remove, day2.Op{Key: "ipam.release@" + name, Title: "Release the IP addresses of " + name,
-				System: "efficientip", Op: "delete_resources", Args: map[string]any{"type": "ipam.address", "resources": ids}})
+				System: day2.AddressSystem(c.resources, ids), Op: "delete_resources", Args: map[string]any{"type": "ipam.address", "resources": ids}})
 		}
 		storage := 0
 		for _, d := range vm.t.VM.Disks {

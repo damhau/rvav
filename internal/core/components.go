@@ -69,6 +69,9 @@ type vmPart struct {
 	// on ("" for an existing network).
 	nicSubnets  []*store.NetworkSubnet
 	nicSegments []string
+	// dnsSearch are the search domains of the IP ranges its adapters'
+	// addresses come from (ADR-0063).
+	dnsSearch []string
 	// segment is the key of the NSX segment made for the deployment its
 	// VMs' network is, and segments where the placement rule makes them
 	// (ADR-0028).
@@ -115,6 +118,8 @@ func (p vmPart) title() string { return cmp.Or(p.comp.Title, p.comp.Key) }
 // the segments made for the deployment.
 func (p vmPart) zone() string {
 	switch {
+	case fromRanges(p.subnet):
+		return "" // rvav makes no DNS records for them (ADR-0063)
 	case p.subnet != nil:
 		return p.subnet.DNSZone
 	case p.segment != "" && p.segments != nil:
@@ -598,10 +603,21 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		}
 	}
 	if placed.Network != "" && !plan.DHCP {
-		if sn, ok := pl.subnets[plan.Network]; !ok {
+		sn, ok := pl.subnetOf(part.vcenter, plan.Network)
+		switch {
+		case !ok:
 			add(field("network"), "no_subnet", "No EfficientIP subnet is linked to "+plan.Network+". Ask an administrator to link one.")
-		} else if part.subnet = &sn; plan.IPv6 && sn.Subnet6 == "" {
+		case plan.IPv6 && fromRanges(&sn):
+			part.subnet = &sn
+			add(field("network"), "no_subnet6", "The IP ranges of "+plan.Network+" give IPv4 addresses only. Pick another network.")
+		case plan.IPv6 && sn.Subnet6 == "":
+			part.subnet = &sn
 			add(field("network"), "no_subnet6", "No EfficientIP IPv6 subnet is linked to "+plan.Network+". Ask an administrator to link one.")
+		default:
+			part.subnet = &sn
+		}
+		if fromRanges(part.subnet) {
+			part.dnsSearch = pl.rangeSearch(part.vcenter, plan.Network)
 		}
 	}
 	// Added disks and adapters are placed with the VM (ADR-0024).
@@ -626,8 +642,15 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		if n.IPAM != blueprint.IPAMEfficientIP {
 			continue
 		}
-		if sn, ok := pl.subnets[n.Network]; ok {
+		if sn, ok := pl.subnetOf(part.vcenter, n.Network); ok {
 			part.nicSubnets[i] = &sn
+			if fromRanges(&sn) {
+				for _, d := range pl.rangeSearch(part.vcenter, n.Network) {
+					if !slices.Contains(part.dnsSearch, d) {
+						part.dnsSearch = append(part.dnsSearch, d)
+					}
+				}
+			}
 		} else {
 			add(at, "no_subnet", "No EfficientIP subnet is linked to "+n.Network+". Ask an administrator to link one.")
 		}
@@ -718,7 +741,22 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 		add(def, "invalid_name", fmt.Sprintf("%s is not a valid host name.", part.names[0]))
 	}
 
-	if !strict && part.subnet != nil && s.IPAM != nil {
+	// Addresses from IP ranges are counted across components; their
+	// next one is a hint as EfficientIP's is.
+	if fromRanges(part.subnet) {
+		pl.takeFromRanges(part, plan.Network, "", field("network"), add)
+		if !strict {
+			if ip := pl.nextInRanges(pl.rangesOf(part.vcenter, plan.Network)); ip != "" {
+				part.addresses = []string{ip}
+			}
+		}
+	}
+	for i, sn := range part.nicSubnets {
+		if fromRanges(sn) {
+			pl.takeFromRanges(part, plan.NICs[i].Network, plan.NICs[i].Key, bindingField(c.NICs[i].Network, ""), add)
+		}
+	}
+	if !strict && part.subnet != nil && !fromRanges(part.subnet) && s.IPAM != nil {
 		if ip, err := s.IPAM.NextFree(ctx, subnetRef(*part.subnet)); err == nil {
 			part.addresses = []string{ip}
 		} else if errors.Is(err, efficientip.ErrSubnetFull) {
@@ -981,6 +1019,9 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 	}
 	if sn := p.subnet; sn != nil {
 		vm.FQDN = name + "." + sn.DNSZone
+		if vm.IPRanges = fromRanges(sn); vm.IPRanges {
+			vm.FQDN = strings.TrimSuffix(name+"."+cmp.Or(sn.DNSZone, p.guest.Domain), ".")
+		}
 		vm.Subnet, vm.SubnetID, vm.Gateway = sn.Subnet, sn.EfficientIPSubnetID, sn.Gateway
 		vm.PrefixLength, vm.DNSZone, vm.DNSServers = prefixLength(sn.Subnet), sn.DNSZone, sn.DNSServers
 		if p.vm.IPv6 {
@@ -1005,11 +1046,15 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 			sn := p.nicSubnets[i]
 			// <name>-<key> in its subnet's zone.
 			nu.FQDN = name + "-" + n.Key + "." + sn.DNSZone
+			if nu.IPRanges = fromRanges(sn); nu.IPRanges {
+				nu.FQDN = strings.TrimSuffix(name+"-"+n.Key+"."+cmp.Or(sn.DNSZone, p.guest.Domain), ".")
+			}
 			nu.Subnet, nu.SubnetID, nu.PrefixLength = sn.Subnet, sn.EfficientIPSubnetID, prefixLength(sn.Subnet)
 			nu.DNSZone, nu.DNSServers = sn.DNSZone, sn.DNSServers
 		}
 		vm.NICs = append(vm.NICs, nu)
 	}
+	vm.DNSSearch = p.dnsSearch
 	vm.Tags = p.vm.Tags
 	// Worked out as it is cloned, over the inputs it reads (a secret one
 	// sealed) (ADR-0024).

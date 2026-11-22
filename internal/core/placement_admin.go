@@ -358,7 +358,7 @@ func (s *Service) PlacementPreview(ctx context.Context, p *auth.Principal, proje
 		for _, n := range nets {
 			if networks[n.Name] == nil {
 				pn := &api.PreviewNetwork{Name: n.Name, Clusters: []string{}, Tags: nonNilStrings(n.Tags)}
-				if sub, ok := pl.subnets[n.Name]; ok {
+				if sub, ok := pl.subnetOf(n.VCenter, n.Name); ok {
 					src := api.PreviewNetworkSource(sub.Source)
 					pn.Subnet, pn.DnsZone, pn.Source = &sub.Subnet, &sub.DNSZone, &src
 				} else {

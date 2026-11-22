@@ -664,15 +664,21 @@ func (a *Activities) reserve(ctx context.Context, in VMInput, sn efficientip.Sub
 func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) {
 	var ip string
 	err := a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
-		var ips, subnets []string
+		var ips, subnets, from []string
 		if !in.VM.DHCP {
 			if ip = a.addressOf(ctx, in.RequestID, in.VM, ""); ip == "" {
 				var err error
-				if ip, err = a.reserve(ctx, in, a.subnet(in.VM), in.VM.Subnet, cmp.Or(in.VM.FQDN, in.VM.Name), "", in.VM.Address); err != nil {
+				if in.VM.IPRanges {
+					ip, err = a.allocate(ctx, in, in.VM.Network, cmp.Or(in.VM.FQDN, in.VM.Name), "", in.VM.Address)
+				} else {
+					ip, err = a.reserve(ctx, in, a.subnet(in.VM), in.VM.Subnet, cmp.Or(in.VM.FQDN, in.VM.Name), "", in.VM.Address)
+				}
+				if err != nil {
 					return "", "", err
 				}
 			}
 			ips, subnets = []string{ip}, []string{in.VM.Subnet}
+			from = []string{addressSource(in.VM.IPRanges, in.VM.Network, in.VM.Subnet)}
 		}
 		if in.VM.Subnet6 != "" {
 			ip6 := a.address6Of(ctx, in.RequestID, in.VM)
@@ -684,17 +690,26 @@ func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) 
 				}
 			}
 			ips, subnets = append(ips, ip6), append(subnets, in.VM.Subnet6)
+			from = append(from, addressSource(false, "", in.VM.Subnet6))
 		}
 		for _, n := range in.VM.Addressed() {
 			nip := a.addressOf(ctx, in.RequestID, in.VM, n.Key)
 			if nip == "" {
 				var err error
-				sn := efficientip.Subnet{ID: n.SubnetID, CIDR: n.Subnet}
-				if nip, err = a.reserve(ctx, in, sn, n.Subnet, n.FQDN, n.Key, n.Address); err != nil {
+				if n.IPRanges {
+					nip, err = a.allocate(ctx, in, n.Network, n.FQDN, n.Key, n.Address)
+				} else {
+					nip, err = a.reserve(ctx, in, efficientip.Subnet{ID: n.SubnetID, CIDR: n.Subnet}, n.Subnet, n.FQDN, n.Key, n.Address)
+				}
+				if err != nil {
 					return "", "", err
 				}
 			}
 			ips, subnets = append(ips, nip), append(subnets, n.Subnet)
+			from = append(from, addressSource(n.IPRanges, n.Network, n.Subnet))
+		}
+		if in.VM.FromRanges() {
+			return "Reserved " + strings.Join(ips, ", "), sourcesDetail(from), nil
 		}
 		if len(ips) == 1 {
 			return "Reserved " + ips[0], "Subnet " + subnets[0], nil
@@ -707,7 +722,7 @@ func (a *Activities) ReserveIP(ctx context.Context, in VMInput) (string, error) 
 func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 	return a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
 		var records []efficientip.Record
-		if !in.VM.DHCP {
+		if !in.VM.DHCP && !in.VM.IPRanges {
 			records = append(records,
 				efficientip.Record{FQDN: in.VM.FQDN, Type: "A", Value: in.IP, Zone: in.VM.DNSZone},
 				efficientip.Record{FQDN: efficientip.PTRName(in.IP), Type: "PTR", Value: in.VM.FQDN, Zone: "in-addr.arpa"})
@@ -718,8 +733,12 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 		if in.IP6 != "" {
 			records = append(records, efficientip.Record{FQDN: in.VM.FQDN, Type: "AAAA", Value: in.IP6, Zone: in.VM.DNSZone})
 		}
-		// Each added adapter's address has its own name (ADR-0024).
+		// Each added adapter's address has its own name (ADR-0024); those
+		// from rvav's IP ranges have none (ADR-0063).
 		for _, n := range in.VM.Addressed() {
+			if n.IPRanges {
+				continue
+			}
 			ip := a.addressOf(ctx, in.RequestID, in.VM, n.Key)
 			if ip == "" {
 				return "", "", fmt.Errorf("no address reserved for %s's adapter %s", in.VM.Name, n.Key)
@@ -753,7 +772,10 @@ func (a *Activities) CreateDNS(ctx context.Context, in VMInput) error {
 		if in.IP6 != "" {
 			title = "Created A, AAAA and PTR records"
 		}
-		if len(records) > 2 {
+		switch {
+		case len(records) == 0:
+			return "No record to create", "The addresses come from rvav's IP ranges", nil
+		case len(records) > 2:
 			return title, fmt.Sprintf("%s → %s and %d more", records[0].FQDN, records[0].Value, len(records)-2), nil
 		}
 		return title, records[0].FQDN + " → " + records[0].Value, nil
@@ -899,7 +921,8 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 		cu := vsphere.Customization{
 			OSFamily: in.Guest.OSFamily, Hostname: in.VM.Name, Domain: in.Guest.Domain, TimeZone: in.Guest.TimeZone,
 			IP: in.address(), DHCP: in.VM.DHCP, PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers,
-			IP6: in.IP6, PrefixLength6: in.VM.PrefixLength6, Gateway6: in.VM.Gateway6,
+			SearchDomains: in.VM.DNSSearch,
+			IP6:           in.IP6, PrefixLength6: in.VM.PrefixLength6, Gateway6: in.VM.Gateway6,
 			Spec: in.Guest.CustomizationSpec, Extra: extra,
 		}
 		detail := fmt.Sprintf("Hostname %s, %s", in.VM.Name, in.addressing())
@@ -1005,7 +1028,7 @@ func (a *Activities) guestNICs(ctx context.Context, in VMInput, extra []vsphere.
 		return nil, nil, permanent("%s has %d network adapters, %d were planned", in.VM.Name, len(vm.NICs), 1+len(extra))
 	}
 	nics := []ciNIC{{MAC: vm.NICs[0].MAC, IP: in.address(), PrefixLength: in.VM.PrefixLength, Gateway: in.VM.Gateway, DNSServers: in.VM.DNSServers,
-		IP6: in.IP6, PrefixLength6: in.VM.PrefixLength6, Gateway6: in.VM.Gateway6}}
+		Search: in.VM.DNSSearch, IP6: in.IP6, PrefixLength6: in.VM.PrefixLength6, Gateway6: in.VM.Gateway6}}
 	added := len(vm.NICs) - len(extra)
 	for _, n := range vm.NICs[1:added] {
 		nics = append(nics, ciNIC{MAC: n.MAC})
@@ -1828,6 +1851,11 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	if err != nil {
 		return err
 	}
+	if in.Outcome == "failed" && !in.Untouched {
+		if err := a.releaseUnbuilt(ctx, in.RequestID); err != nil {
+			return err
+		}
+	}
 	// The owner hears how it ended, and the requester when on their behalf.
 	n := store.NewNotification{Title: title + ": " + r.Title, Level: "success", Link: "/requests/" + r.Number,
 		RequestID: &r.ID, Kind: "request_succeeded", Data: map[string]any{"ready": title == "Ready"}}
@@ -1931,14 +1959,20 @@ func (a *Activities) deleteOne(ctx context.Context, r store.Resource) (string, e
 		what = w
 	case "ipam.address":
 		var p struct {
-			Address  string `json:"address"`
-			Subnet   string `json:"subnet"`
-			ID       string `json:"efficientip_id"`
-			Hostname string `json:"hostname"`
-			FQDN     string `json:"fqdn"`
+			Address    string `json:"address"`
+			Subnet     string `json:"subnet"`
+			ID         string `json:"efficientip_id"`
+			Hostname   string `json:"hostname"`
+			FQDN       string `json:"fqdn"`
+			Source     string `json:"source"`
+			Allocation string `json:"allocation_id"`
 		}
 		_ = json.Unmarshal(r.Properties, &p)
-		err = a.IPAM.Release(ctx, efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet, Hostname: cmp.Or(p.FQDN, p.Hostname)})
+		if p.Source == rangeSource {
+			err = a.Store.ReleaseAddress(ctx, a.Store.Pool, p.Allocation)
+		} else {
+			err = a.IPAM.Release(ctx, efficientip.Address{ID: p.ID, IP: p.Address, Subnet: p.Subnet, Hostname: cmp.Or(p.FQDN, p.Hostname)})
+		}
 		what = "released " + p.Address
 	case AccessResource:
 		err = a.Store.ForgetDeploymentKey(ctx, a.Store.Pool, r.DeploymentID, nil)

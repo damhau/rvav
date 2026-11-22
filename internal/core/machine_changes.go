@@ -454,23 +454,40 @@ func (c *machineChange) renetwork(ctx context.Context, idx int, network string) 
 		c.did = append(c.did, fmt.Sprintf("moving adapter %d to %s", idx, network))
 		return nil
 	}
-	sn, ok := pl.subnets[network]
+	sn, ok := pl.subnetOf(vm.VCenter, network)
 	if !ok {
 		return refuse("No EfficientIP subnet is linked to %s. Ask an administrator to link one.", network)
 	}
-	if idx == 0 && vm.Subnet6 != "" && sn.Subnet6 == "" {
+	ranged := fromRanges(&sn)
+	switch {
+	case idx == 0 && vm.Subnet6 != "" && ranged:
+		return refuse("The IP ranges of %s give IPv4 addresses only.", network)
+	case idx == 0 && vm.Subnet6 != "" && sn.Subnet6 == "":
 		return refuse("No EfficientIP IPv6 subnet is linked to %s. Ask an administrator to link one.", network)
 	}
-	fqdn := vm.Name + "." + sn.DNSZone
+	domain := sn.DNSZone
+	if ranged && domain == "" {
+		_, domain, _ = strings.Cut(vm.FQDN, ".")
+	}
+	fqdn := strings.TrimSuffix(vm.Name+"."+domain, ".")
 	if idx > 0 {
-		fqdn = vm.Name + "-" + vm.NICs[idx-1].Key + "." + sn.DNSZone
+		fqdn = strings.TrimSuffix(vm.Name+"-"+vm.NICs[idx-1].Key+"."+domain, ".")
 	}
-	if err := c.freeInDNS(ctx, fqdn); err != nil {
-		return err
+	// Addresses from IP ranges get no DNS records (ADR-0063).
+	if !ranged {
+		if err := c.freeInDNS(ctx, fqdn); err != nil {
+			return err
+		}
 	}
+	search := pl.rangeSearch(vm.VCenter, network)
 	c.set(func(v *provision.VMUnit) {
+		for _, d := range search {
+			if !slices.Contains(v.DNSSearch, d) {
+				v.DNSSearch = append(v.DNSSearch, d)
+			}
+		}
 		if idx == 0 {
-			v.Network, v.FQDN, v.Address = network, fqdn, ""
+			v.Network, v.FQDN, v.Address, v.IPRanges = network, fqdn, "", ranged
 			v.Subnet, v.SubnetID, v.Gateway = sn.Subnet, sn.EfficientIPSubnetID, sn.Gateway
 			v.PrefixLength, v.DNSZone, v.DNSServers = prefixLength(sn.Subnet), sn.DNSZone, sn.DNSServers
 			if v.Subnet6 != "" {
@@ -479,7 +496,7 @@ func (c *machineChange) renetwork(ctx context.Context, idx int, network string) 
 			return
 		}
 		nic := &v.NICs[idx-1]
-		nic.Network, nic.FQDN, nic.Address = network, fqdn, ""
+		nic.Network, nic.FQDN, nic.Address, nic.IPRanges = network, fqdn, "", ranged
 		nic.Subnet, nic.SubnetID, nic.PrefixLength = sn.Subnet, sn.EfficientIPSubnetID, prefixLength(sn.Subnet)
 		nic.DNSZone, nic.DNSServers = sn.DNSZone, sn.DNSServers
 	})
@@ -492,14 +509,15 @@ func (c *machineChange) renetwork(ctx context.Context, idx int, network string) 
 // holds. It is reserved when the VM's addresses are.
 func (c *machineChange) readdress(ctx context.Context, idx int, ip string) error {
 	vm := c.vm()
-	subnet, gateway, network := vm.Subnet, vm.Gateway, vm.Network
+	subnet, gateway, network, nic, ranged := vm.Subnet, vm.Gateway, vm.Network, "", vm.IPRanges
 	switch {
 	case idx == 0 && vm.DHCP:
 		return refuse("Adapter 0 gets its address from DHCP: it takes none.")
 	case idx > 0 && vm.NICs[idx-1].IPAM != blueprint.IPAMEfficientIP:
 		return refuse("Adapter %d gets no address from EfficientIP: it takes none.", idx)
 	case idx > 0:
-		subnet, gateway, network = vm.NICs[idx-1].Subnet, "", vm.NICs[idx-1].Network
+		n := vm.NICs[idx-1]
+		subnet, gateway, network, nic, ranged = n.Subnet, "", n.Network, n.Key, n.IPRanges
 	}
 	addr, err := netip.ParseAddr(ip)
 	if err != nil || !addr.Is4() {
@@ -526,6 +544,13 @@ func (c *machineChange) readdress(ctx context.Context, idx int, ip string) error
 			}
 		}
 	}
+	if ranged {
+		if err := c.inRanges(ctx, vm, network, nic, addr); err != nil {
+			return err
+		}
+		c.setAddress(idx, ip)
+		return nil
+	}
 	inUse, err := c.s.Store.IPAddressesInUse(ctx, prefix.String())
 	if err != nil {
 		return err
@@ -545,6 +570,11 @@ func (c *machineChange) readdress(ctx context.Context, idx int, ip string) error
 			return refuse("%s has DNS records in EfficientIP (%s %s).", ip, records[0].Type, records[0].FQDN)
 		}
 	}
+	c.setAddress(idx, ip)
+	return nil
+}
+
+func (c *machineChange) setAddress(idx int, ip string) {
 	c.set(func(v *provision.VMUnit) {
 		if idx == 0 {
 			v.Address = ip
@@ -553,6 +583,25 @@ func (c *machineChange) readdress(ctx context.Context, idx int, ip string) error
 		}
 	})
 	c.did = append(c.did, fmt.Sprintf("giving adapter %d the address %s", idx, ip))
+}
+
+// inRanges refuses an address the IP ranges of the adapter's network don't
+// give, or give another VM already (ADR-0063).
+func (c *machineChange) inRanges(ctx context.Context, vm provision.VMUnit, network, nic string, addr netip.Addr) error {
+	pl, err := c.placement(ctx)
+	if err != nil {
+		return err
+	}
+	rs := pl.rangesOf(vm.VCenter, network)
+	if !slices.ContainsFunc(rs, func(r store.IPRange) bool { return r.Range().Usable(addr) }) {
+		return refuse("%s is not an address the IP ranges of %s give.", addr, network)
+	}
+	for _, a := range pl.held {
+		mine := a.RequestID == c.req.ID && a.Hostname == vm.Name && a.NIC == nic
+		if a.Address == addr.String() && !mine && slices.ContainsFunc(rs, func(r store.IPRange) bool { return r.ID == a.RangeID }) {
+			return refuse("%s is taken: rvav gave it to %s.", addr, a.Hostname)
+		}
+	}
 	return nil
 }
 

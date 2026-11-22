@@ -215,7 +215,9 @@ func buildRound(ctx workflow.Context, info Info, vms []VMUnit, units []Component
 		c, in := comps[vm.Component], input(vm, earlier)
 		before := info.BuiltVMs[vm.Name]
 		in.Key = keys.vm(c, KeyIPAM, vm)
-		newIP := vm.Reserves() && (!info.done(in.Key) || before.IP == "" && !vm.DHCP)
+		// Addresses from IP ranges a failure gave back are asked for again
+		// (ADR-0063): asking keeps those still held.
+		newIP := vm.Reserves() && (!info.done(in.Key) || before.IP == "" && !vm.DHCP || vm.FromRanges())
 		in.IP = before.IP
 		if newIP {
 			if err := workflow.ExecuteActivity(ctx, a.ReserveIP, in).Get(ctx, &in.IP); err != nil {
@@ -227,7 +229,7 @@ func buildRound(ctx workflow.Context, info Info, vms []VMUnit, units []Component
 		}
 		newVM := !info.done(keys.vm(c, KeyClone, vm)) || before.Moref == ""
 		in.Key = keys.vm(c, KeyDNS, vm)
-		if vm.Reserves() && (!info.done(in.Key) || newIP || newVM) {
+		if vm.Records() && (!info.done(in.Key) || newIP || newVM) {
 			if err := workflow.ExecuteActivity(ctx, a.CreateDNS, in).Get(ctx, nil); err != nil {
 				return in.Key, err
 			}

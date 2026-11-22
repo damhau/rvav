@@ -21,8 +21,11 @@ func TestCustomizationSpecWindows(t *testing.T) {
 	cu := Customization{OSFamily: "windows", Hostname: "web-prd-db01", Domain: "corp.example", IP: "10.21.30.5", PrefixLength: 24,
 		Gateway: "10.21.30.1", DNSServers: []string{"10.0.0.53"}, AdminPassword: "local-secret", JoinDomain: "corp.example",
 		DomainOU: "OU=Servers,DC=corp,DC=example", DomainUser: "svc-join", DomainPassword: "join-secret",
-		Extra: []NICSetting{{IP: "10.90.0.5", PrefixLength: 16}, {DHCP: true}}}
+		Extra: []NICSetting{{IP: "10.90.0.5", PrefixLength: 16}, {DHCP: true}}, SearchDomains: []string{"svc.corp.example", "corp.example"}}
 	spec := CustomizationSpec(cu, base)
+	if got := spec.GlobalIPSettings.DnsSuffixList; len(got) != 2 || got[0] != "corp.example" || got[1] != "svc.corp.example" {
+		t.Fatalf("DNS suffixes = %v", got)
+	}
 	sp := spec.Identity.(*types.CustomizationSysprep)
 	if sp.UserData.ComputerName.(*types.CustomizationFixedName).Name != "web-prd-db01" || sp.UserData.ProductId != "KEY" ||
 		sp.GuiUnattended.TimeZone != 4 || sp.GuiUnattended.Password == nil || sp.GuiUnattended.Password.Value != "local-secret" {

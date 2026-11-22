@@ -448,6 +448,11 @@ type VMUnit struct {
 	// Address is the address of its first adapter a blocking subscription
 	// chose (ADR-0054), reserved instead of the subnet's first free one.
 	Address string `json:"address,omitempty"`
+	// IPRanges: its first adapter's address comes from rvav's IP ranges of
+	// its network, not EfficientIP, and has no DNS record; DNSSearch are
+	// the ranges' search domains (ADR-0063).
+	IPRanges  bool     `json:"ip_ranges,omitempty"`
+	DNSSearch []string `json:"dns_search,omitempty"`
 	// Disks and NICs are added after the template's, and Tags attached
 	// (ADR-0024).
 	Disks []blueprint.DiskPlan `json:"disks,omitempty"`
@@ -614,6 +619,9 @@ type NICUnit struct {
 	DNSServers   []string `json:"dns_servers,omitempty"`
 	// Address is the one a blocking subscription chose (ADR-0054).
 	Address string `json:"address,omitempty"`
+	// IPRanges: its address comes from rvav's IP ranges, with no DNS
+	// record (ADR-0063).
+	IPRanges bool `json:"ip_ranges,omitempty"`
 }
 
 func (vm VMUnit) cloneTitle() string {
@@ -640,9 +648,23 @@ func (vm VMUnit) ipTitle() string {
 	return "Reserve an IP address"
 }
 
-// Reserves says whether the VM has an address to reserve and records to
-// create: its first adapter's, or an added one's.
+// Reserves says whether the VM has an address to reserve: its first
+// adapter's, or an added one's.
 func (vm VMUnit) Reserves() bool { return !vm.DHCP || len(vm.Addressed()) > 0 }
+
+// Records says whether the VM has DNS records to create: those of its
+// addresses from EfficientIP, not rvav's IP ranges (ADR-0063).
+func (vm VMUnit) Records() bool {
+	return !vm.DHCP && !vm.IPRanges || slices.ContainsFunc(vm.Addressed(), func(n NICUnit) bool { return !n.IPRanges })
+}
+
+// ipSystem is the system its addresses come from.
+func (vm VMUnit) ipSystem() string {
+	if (vm.DHCP || vm.IPRanges) && !slices.ContainsFunc(vm.Addressed(), func(n NICUnit) bool { return !n.IPRanges }) {
+		return "rvav"
+	}
+	return "efficientip"
+}
 
 func (vm VMUnit) dnsTitle() string {
 	if vm.Subnet6 != "" {
@@ -653,12 +675,14 @@ func (vm VMUnit) dnsTitle() string {
 
 // dnsDetail names the records' host names.
 func (vm VMUnit) dnsDetail() string {
-	if !vm.DHCP {
+	if !vm.DHCP && !vm.IPRanges {
 		return vm.FQDN
 	}
 	var list []string
 	for _, n := range vm.Addressed() {
-		list = append(list, n.FQDN)
+		if !n.IPRanges {
+			list = append(list, n.FQDN)
+		}
 	}
 	return strings.Join(list, ", ")
 }
@@ -671,10 +695,14 @@ func (vm VMUnit) customizeDetail() string {
 }
 
 // addressSteps are its reserve and DNS steps, when it has anything to
-// reserve.
+// reserve, and records to create.
 func (vm VMUnit) addressSteps(reserve, dns StepDef) []StepDef {
 	if !vm.Reserves() {
 		return nil
+	}
+	reserve.System = vm.ipSystem()
+	if !vm.Records() {
+		return []StepDef{reserve}
 	}
 	return []StepDef{reserve, dns}
 }

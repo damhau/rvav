@@ -123,6 +123,8 @@ type Customization struct {
 	PrefixLength   int
 	Gateway        string
 	DNSServers     []string
+	// SearchDomains are searched after Domain (ADR-0063).
+	SearchDomains []string
 	// DHCP: the first adapter gets its address, gateway and DNS servers
 	// from DHCP; IP, PrefixLength, Gateway and DNSServers are unused.
 	DHCP bool
@@ -1339,6 +1341,17 @@ func (cl *Client) Customize(ctx context.Context, moref string, cu Customization)
 	return task.Wait(ctx)
 }
 
+// searchList is the domain, then the other search domains, each once.
+func searchList(domain string, more []string) []string {
+	var out []string
+	for _, d := range append([]string{domain}, more...) {
+		if d != "" && !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // CustomizationSpec is the specification applied: base (a vCenter
 // specification, or nil) with the host name, adapters, and for Windows the
 // domain join and administrator password, set from cu.
@@ -1348,8 +1361,8 @@ func CustomizationSpec(cu Customization, base *types.CustomizationSpec) types.Cu
 		spec = *base
 	}
 	spec.GlobalIPSettings.DnsServerList = cu.DNSServers
-	if cu.Domain != "" {
-		spec.GlobalIPSettings.DnsSuffixList = []string{cu.Domain}
+	if suffixes := searchList(cu.Domain, cu.SearchDomains); len(suffixes) > 0 {
+		spec.GlobalIPSettings.DnsSuffixList = suffixes
 	}
 	first := types.CustomizationIPSettings{
 		Ip:            &types.CustomizationFixedIp{IpAddress: cu.IP},

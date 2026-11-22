@@ -146,6 +146,12 @@ type placement struct {
 	datastores []store.InvDatastore
 	networks   []store.InvNetwork
 	subnets    map[string]store.NetworkSubnet
+	// ranges are rvav's IP ranges, held the addresses they gave, and
+	// rangeNeed those the request needs, by vCenter and network, by its
+	// components so far (ADR-0063).
+	ranges    []store.IPRange
+	held      []store.IPAllocation
+	rangeNeed map[string]int
 	// hosts, pools and pods are every vCenter's hosts, resource pools and
 	// datastore clusters (ADR-0036); a datastore in a pod carries the
 	// pod's tags in datastores.
@@ -334,6 +340,12 @@ func (s *Service) placement(ctx context.Context, projectID, environment string) 
 		return nil, err
 	}
 	if pl.subnets, err = s.Store.NetworkSubnets(ctx); err != nil {
+		return nil, err
+	}
+	if pl.ranges, err = s.Store.IPRanges(ctx); err != nil || len(pl.ranges) == 0 {
+		return pl, err
+	}
+	if pl.held, err = s.Store.IPAllocations(ctx, ""); err != nil {
 		return nil, err
 	}
 	return pl, nil

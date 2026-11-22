@@ -525,7 +525,9 @@ func buildVMs(ctx workflow.Context, info Info, list []VMUnit, guest blueprint.Gu
 		// depends on it: DNS on the address, customization and power on the VM.
 		before := info.Built[vm.DeploymentID]
 		in.Key = key(KeyIPAM, vm)
-		newIP := vm.Reserves() && (!info.done(in.Key) || before.IP == "" && !vm.DHCP)
+		// Addresses from IP ranges a failure gave back are asked for again
+		// (ADR-0063): asking keeps those still held.
+		newIP := vm.Reserves() && (!info.done(in.Key) || before.IP == "" && !vm.DHCP || vm.FromRanges())
 		in.IP = before.IP
 		if newIP {
 			if err := workflow.ExecuteActivity(ctx, a.ReserveIP, in).Get(ctx, &in.IP); err != nil {
@@ -537,7 +539,7 @@ func buildVMs(ctx workflow.Context, info Info, list []VMUnit, guest blueprint.Gu
 		}
 		newVM := !info.done(key(KeyClone, vm)) || before.Moref == ""
 		in.Key = key(KeyDNS, vm)
-		if vm.Reserves() && (!info.done(in.Key) || newIP || newVM) {
+		if vm.Records() && (!info.done(in.Key) || newIP || newVM) {
 			if err := workflow.ExecuteActivity(ctx, a.CreateDNS, in).Get(ctx, nil); err != nil {
 				return nil, in.Key, err
 			}

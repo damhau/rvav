@@ -44,6 +44,11 @@ func init() {
 			}
 			args := map[string]any{"name": name, "old_name": t.ResourceName, "fqdn": fqdn, "old_fqdn": old}
 			var ops []Op
+			// Addresses from rvav's IP ranges are renamed with the VM's
+			// records, and have no DNS records to replace (ADR-0063).
+			if rangedVM(t, t.ResourceName) {
+				old = ""
+			}
 			if old != "" {
 				ops = append(ops, Op{Key: "dns.check", Title: "Check " + fqdn + " is free", System: "efficientip", Op: "check_name", Args: args})
 			}
@@ -281,6 +286,9 @@ func deleteOps(t Target, in map[string]any) []Op {
 			if r.Type == typ {
 				names = append(names, r.Name)
 			}
+		}
+		if typ == "ipam.address" {
+			system = AddressSystem(t.Resources, nil)
 		}
 		if len(names) > 0 {
 			ops = append(ops, Op{Key: key, Title: title, Detail: strings.Join(names, ", "), System: system,

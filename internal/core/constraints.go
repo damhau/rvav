@@ -414,7 +414,7 @@ func (pl *placement) choose(q placementQuery) (clusterChoice, []constraintResult
 		for i, c := range network {
 			so := network[:i+1]
 			cands = slices.DeleteFunc(cands, func(cd computeCand) bool {
-				return !hasAny(pl.networksFor(cd.cluster.Name), func(n store.InvNetwork) bool { return pl.hasSubnet(n.Name) && meetsAll(so, n.Tags) })
+				return !hasAny(pl.networksFor(cd.cluster.Name), func(n store.InvNetwork) bool { return pl.hasSubnet(n) && meetsAll(so, n.Tags) })
 			})
 			if len(cands) == 0 {
 				return none, results, fmt.Sprintf("%s needs %s with a subnet, and no cluster allowed here has one.", whose(c), needs(c, "a network"))
@@ -522,8 +522,8 @@ func (pl *placement) fits(c *store.InvCluster, q placementQuery) bool {
 	return true
 }
 
-func (pl *placement) hasSubnet(network string) bool {
-	_, ok := pl.subnets[network]
+func (pl *placement) hasSubnet(n store.InvNetwork) bool {
+	_, ok := pl.subnetOf(n.VCenter, n.Name)
 	return ok
 }
 
@@ -562,7 +562,7 @@ func (pl *placement) datastoreCands(cluster, pod string, need int, cs []blueprin
 // pickNetwork is the first allowed network of the cluster, with a subnet,
 // meeting the constraints.
 func (pl *placement) pickNetwork(cluster string, cs []blueprint.Constraint) (string, []constraintResult, string) {
-	cands := slices.DeleteFunc(slices.Clone(pl.networksFor(cluster)), func(n store.InvNetwork) bool { return !pl.hasSubnet(n.Name) })
+	cands := slices.DeleteFunc(slices.Clone(pl.networksFor(cluster)), func(n store.InvNetwork) bool { return !pl.hasSubnet(n) })
 	cands, results, failed := narrow(cands, append(hard(cs), soft(cs)...), networkTags, networkName)
 	if failed != nil {
 		return "", results, fmt.Sprintf("%s needs %s on %s with a subnet, and none allowed is.", whose(*failed), needs(*failed, "a network"), cluster)
