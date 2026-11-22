@@ -42,6 +42,7 @@ const YamlEditor = lazy(() => import("./YamlEditor"));
 // The canvas (React Flow) loads with the Definition tab, not with the page.
 const DefinitionGraph = lazy(() => import("./DefinitionGraph"));
 const CompositeDesigner = lazy(() => import("./composite/CompositeDesigner"));
+const VmDesigner = lazy(() => import("./vm/VmDesigner"));
 
 const tr = i18n.getFixedT(null, "admin-catalog");
 
@@ -427,7 +428,7 @@ function DefinitionTab({
   // The server's last refusal, with the text it refused: the composite
   // designer shows its problems on their steps while the text is that one.
   const [refused, setRefused] = useState<{ text: string; errors: FieldError[] }>();
-  // The composite designer writes into the editor, as steps of its history.
+  // The composite and VM designers write into the editor, as steps of its history.
   const editor = useRef<YamlEditorHandle>(null);
   const [editorHistory, setEditorHistory] = useState<EditorHistory>({ canUndo: false, canRedo: false });
   const original = useMemo(
@@ -525,7 +526,14 @@ function DefinitionTab({
   });
   if (!shown) return null;
   const drawn = item.type === "vm_blueprint" || item.type === "composite";
-  const designed = item.type === "composite" && editable;
+  const design = {
+    text,
+    onEdit: (next: string) => editor.current?.apply(next),
+    history: editorHistory,
+    undo: () => editor.current?.undo(),
+    redo: () => editor.current?.redo(),
+    serverProblems: refused,
+  };
   return (
     <Panel
       title={editable ? t("items.draft", { number: shown.number }) : t("item.readOnly", { number: shown.number })}
@@ -590,19 +598,10 @@ function DefinitionTab({
         </div>
         {drawn && version.data && (
           <Suspense fallback={<Skeleton className="h-64" />}>
-            {designed ? (
-              <CompositeDesigner
-                name={item.name}
-                entitlements={item.entitlements}
-                design={{
-                  text,
-                  onEdit: (next) => editor.current?.apply(next),
-                  history: editorHistory,
-                  undo: () => editor.current?.undo(),
-                  redo: () => editor.current?.redo(),
-                  serverProblems: refused,
-                }}
-              />
+            {editable && item.type === "composite" ? (
+              <CompositeDesigner name={item.name} entitlements={item.entitlements} design={design} />
+            ) : editable && item.type === "vm_blueprint" ? (
+              <VmDesigner name={item.name} design={design} />
             ) : (
               <DefinitionGraph text={text} name={item.name} composite={item.type === "composite"} />
             )}

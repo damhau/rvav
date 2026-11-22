@@ -1420,7 +1420,8 @@
       "notNames": "Une entrée de {{at}} n'est pas un nom",
       "notMap": "{{at}} n'est pas un ensemble de champs",
       "noKey": "Une entrée de {{at}} n'a pas de clé",
-      "keyTwice": "Deux entrées de {{at}} ont la clé {{key}}"
+      "keyTwice": "Deux entrées de {{at}} ont la clé {{key}}",
+      "note": "Le canevas ne peut pas modifier ce YAML\u00a0: {{reason}}. Modifiez-le dans le YAML\u00a0; le canevas suit."
     },
     "edit": {
       "gone": "Cette partie n'est plus dans la définition.",
@@ -1473,6 +1474,80 @@
       "after": "Construit {{then}} après {{first}}.",
       "copyDisk": "Donne à {{name}} une copie de {{disk}}, dans ses propres disques.",
       "moveDisk": "Déplace {{disk}} de {{from}} vers {{name}}."
+    },
+    "theVmOption": "La VM",
+    "palette": {
+      "label": "Ajouter à la topologie",
+      "hint": "Faites glisser une entrée sur le canevas, ou choisissez-la pour l'ajouter. Pour connecter deux nœuds, faites glisser le point de l'un vers l'autre, ou choisissez dans Connecter à de ses détails."
+    },
+    "part": {
+      "component": "VM",
+      "network": "Réseau",
+      "segment": "Segment",
+      "sg": "Groupe de sécurité",
+      "nsx": "Groupe NSX",
+      "disk": "Disque",
+      "resource": "Ressource personnalisée",
+      "other": "Autre"
+    },
+    "add": {
+      "component": "Ajouter une VM",
+      "componentHelp": "Un composant\u00a0: une ou plusieurs VM construites de même, que le YAML nomme par sa clé.",
+      "network": "Ajouter un réseau",
+      "networkHelp": "Une carte sur un réseau qui existe déjà.",
+      "segment": "Ajouter un segment",
+      "segmentHelp": "Un segment NSX créé pour chaque déploiement, et supprimé avec lui.",
+      "sg": "Ajouter un groupe de sécurité",
+      "sgHelp": "Un groupe NSX créé pour chaque déploiement. Ses règles de pare-feu s'écrivent dans le YAML.",
+      "nsx": "Ajouter un groupe NSX",
+      "nsxHelp": "Un groupe NSX qui existe déjà, par son ID\u00a0: les VM le rejoignent.",
+      "disk": "Ajouter un disque",
+      "diskHelp": "Un disque de plus pour chacune des VM, après le disque système.",
+      "resource": "Ajouter une ressource personnalisée",
+      "resourceHelp": "Une ressource d'un type enregistré, créée une fois les VM construites.",
+      "submit": "Ajouter"
+    },
+    "field": {
+      "key": "Clé",
+      "keyHint": "16 lettres minuscules et chiffres au plus, en commençant par une lettre.",
+      "diskKeyHint": "Facultative, au format d'une clé.",
+      "title": "Titre",
+      "count": "Nombre",
+      "countHint": "Combien de VM\u00a0: de 0 à 20, ou du CEL sur les entrées.",
+      "firstKey": "Clé de la VM existante",
+      "firstKeyHint": "La VM de l'élément devient le premier composant, avec les réglages du blueprint.",
+      "network": "Réseau",
+      "networkHint": "CEL\u00a0: inputs.network pour le choix du demandeur, ou un nom entre guillemets.",
+      "nsxId": "ID du groupe NSX",
+      "size": "Taille en Go",
+      "sizeHint": "De 1 à 65536, ou du CEL sur les entrées.",
+      "type": "Type de ressource",
+      "chooseType": "Choisissez un type",
+      "to": "Connecté à",
+      "toNone": "Rien pour l'instant",
+      "template": "Modèle",
+      "naming": "Nommage",
+      "shared": "Vide\u00a0: celui du blueprint.",
+      "osFamily": "Famille d'OS",
+      "antiAffinity": "Garder ses VM sur des hôtes différents",
+      "policy": "Stratégie de stockage",
+      "datastore": "Banque de données"
+    },
+    "panel": {
+      "remove": "Retirer",
+      "problems": "Problèmes",
+      "properties": "Propriétés",
+      "connections": "Connexions",
+      "noConnections": "Aucune pour l'instant.",
+      "disconnect": "Déconnecter",
+      "removeConnection": "Déconnecter\u00a0: {{connection}}",
+      "connectTo": "Connecter à",
+      "chooseNode": "Choisissez un nœud",
+      "connect": "Connecter",
+      "placement": "Une première carte qui ne nomme aucun réseau va sur celui que donne son placement. Connectez les VM à un réseau pour en choisir un.",
+      "rules": "Ses règles de pare-feu s'écrivent dans le YAML, sous security_groups.",
+      "inputs": "Ses entrées (with) s'écrivent dans le YAML.",
+      "sharedDisk": "Le disque du blueprint\u00a0: chaque composant sans disques propres le prend, donc une modification ici vaut pour tous."
     }
   }
 }

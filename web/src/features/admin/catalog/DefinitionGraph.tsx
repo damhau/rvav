@@ -9,12 +9,20 @@
 // place (zoom, selection, focus) through a keystroke that breaks the YAML
 // for a moment, and the graph catches up when it parses again.
 //
-// The composite designer (composite/CompositeDesigner) draws through it,
-// with its own problems and the canvas's selection, actions and details.
+// The composite designer (composite/CompositeDesigner) and the VM designer
+// (vm/VmDesigner) draw through it, with their own problems and the canvas's
+// selection, actions, details and connections.
 import { TriangleAlert } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { type ReactNode, useDeferredValue, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { addProblems, blueprintGraph, Canvas, type CanvasGraph, type CanvasProps } from "@/components/canvas";
+import {
+  addProblems,
+  blueprintGraph,
+  Canvas,
+  type CanvasGraph,
+  type CanvasProps,
+  type GraphOptions,
+} from "@/components/canvas";
 import type { FieldError } from "@/lib/api/types";
 import { i18n } from "@/lib/i18n";
 import { parseText, problemsOnLines } from "./definitionYaml";
@@ -28,12 +36,12 @@ export interface Drawn {
 }
 
 /** The graph of the blueprint in a definition's YAML, or why there is none. */
-export function drawDefinition(text: string): Drawn {
+export function drawDefinition(text: string, options: GraphOptions = {}): Drawn {
   const { value: def, error } = parseText(text);
   if (error) return { graph: null, reason: error };
   const blueprint = def && typeof def === "object" ? (def as Record<string, unknown>).blueprint : undefined;
   if (!blueprint || typeof blueprint !== "object") return { graph: null, reason: tr("graph.noBlueprint") };
-  const graph = blueprintGraph(blueprint);
+  const graph = blueprintGraph(blueprint, undefined, options);
   if (!graph) {
     const kind = (blueprint as Record<string, unknown>).kind;
     return {
@@ -50,21 +58,33 @@ export interface DefinitionGraphProps {
   /** The item's name, for the canvas's label. */
   name: string;
   composite: boolean;
+  /** Drawn for the VM designer: each disk a node. */
+  designed?: boolean;
   /** More problems with a text than the structural ones, shown on their nodes (the designer's and the server's). */
   problemsFor?: (text: string) => FieldError[];
-  /** The designer's selection, actions and details. */
-  canvas?: Pick<CanvasProps, "selected" | "onSelect" | "renderDetails" | "actions">;
+  /** The designer's selection, actions, details and connections. */
+  canvas?: Pick<CanvasProps, "selected" | "onSelect" | "renderDetails" | "actions" | "design">;
+  /** Over the canvas, under the heading: the VM designer's palette. */
+  toolbar?: ReactNode;
 }
 
-export default function DefinitionGraph({ text, name, composite, problemsFor, canvas }: DefinitionGraphProps) {
+export default function DefinitionGraph({
+  text,
+  name,
+  composite,
+  designed,
+  problemsFor,
+  canvas,
+  toolbar,
+}: DefinitionGraphProps) {
   const { t } = useTranslation("admin-catalog");
   // Typing stays quick: the graph is drawn again once React has time.
   const current = useDeferredValue(text);
   const drawn = useMemo(() => {
-    const d = drawDefinition(current);
+    const d = drawDefinition(current, { designed });
     return d.graph && problemsFor ? { ...d, graph: addProblems(d.graph, problemsFor(current)) } : d;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the reason is told in the language shown
-  }, [current, problemsFor, i18n.language]);
+  }, [current, problemsFor, designed, i18n.language]);
   // The last graph drawn, for the moments the text has none, and kept while
   // what it draws is the same: a keystroke outside the blueprint (the form,
   // a comment) doesn't lay the graph out again.
@@ -87,6 +107,7 @@ export default function DefinitionGraph({ text, name, composite, problemsFor, ca
           </span>
         </p>
       )}
+      {toolbar}
       {graph && (
         <Canvas
           graph={graph}

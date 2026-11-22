@@ -1401,7 +1401,8 @@
       "notNames": "An entry of {{at}} isn't a name",
       "notMap": "{{at}} isn't a map of fields",
       "noKey": "An entry of {{at}} has no key",
-      "keyTwice": "Two entries of {{at}} have the key {{key}}"
+      "keyTwice": "Two entries of {{at}} have the key {{key}}",
+      "note": "The canvas can't edit this YAML: {{reason}}. Edit it in the YAML; the canvas follows."
     },
     "edit": {
       "gone": "That part isn't in the definition any more.",
@@ -1454,6 +1455,80 @@
       "after": "Builds {{then}} after {{first}}.",
       "copyDisk": "Gives {{name}} a copy of {{disk}}, as its own disks.",
       "moveDisk": "Moves {{disk}} from {{from}} to {{name}}."
+    },
+    "theVmOption": "The VM",
+    "palette": {
+      "label": "Add to the topology",
+      "hint": "Drag an entry onto the canvas, or choose it to add it. To connect two nodes, drag from one's dot to the other, or choose in Connect to in its details."
+    },
+    "part": {
+      "component": "VM",
+      "network": "Network",
+      "segment": "Segment",
+      "sg": "Security group",
+      "nsx": "NSX group",
+      "disk": "Disk",
+      "resource": "Custom resource",
+      "other": "Other"
+    },
+    "add": {
+      "component": "Add a VM",
+      "componentHelp": "A component: one or more VMs built alike, which the YAML names by its key.",
+      "network": "Add a network",
+      "networkHelp": "An adapter on a network that exists already.",
+      "segment": "Add a segment",
+      "segmentHelp": "An NSX segment made for each deployment, and deleted with it.",
+      "sg": "Add a security group",
+      "sgHelp": "An NSX group made for each deployment. Its firewall rules are written in the YAML.",
+      "nsx": "Add an NSX group",
+      "nsxHelp": "An NSX group that exists already, by its ID: the VMs join it.",
+      "disk": "Add a disk",
+      "diskHelp": "One more disk for each of the VMs, after the system disk.",
+      "resource": "Add a custom resource",
+      "resourceHelp": "A resource of a registered type, made once the VMs are built.",
+      "submit": "Add"
+    },
+    "field": {
+      "key": "Key",
+      "keyHint": "Up to 16 lower-case letters and digits, starting with a letter.",
+      "diskKeyHint": "Optional, as a key is.",
+      "title": "Title",
+      "count": "Count",
+      "countHint": "How many VMs: 0 to 20, or CEL over the inputs.",
+      "firstKey": "Key of the VM there is",
+      "firstKeyHint": "The item's VM becomes the first component, with the blueprint's settings.",
+      "network": "Network",
+      "networkHint": "CEL: inputs.network for the requester's choice, or a name in quotes.",
+      "nsxId": "NSX group ID",
+      "size": "Size in GB",
+      "sizeHint": "1 to 65536, or CEL over the inputs.",
+      "type": "Resource type",
+      "chooseType": "Choose a type",
+      "to": "Connected to",
+      "toNone": "Nothing yet",
+      "template": "Template",
+      "naming": "Naming",
+      "shared": "Blank: the blueprint's.",
+      "osFamily": "OS family",
+      "antiAffinity": "Keep its VMs on different hosts",
+      "policy": "Storage policy",
+      "datastore": "Datastore"
+    },
+    "panel": {
+      "remove": "Remove",
+      "problems": "Problems",
+      "properties": "Properties",
+      "connections": "Connections",
+      "noConnections": "None yet.",
+      "disconnect": "Disconnect",
+      "removeConnection": "Disconnect: {{connection}}",
+      "connectTo": "Connect to",
+      "chooseNode": "Choose a node",
+      "connect": "Connect",
+      "placement": "A first adapter that names no network goes on the one its placement gives. Connect the VMs to a network to choose one.",
+      "rules": "Its firewall rules are written in the YAML, under security_groups.",
+      "inputs": "Its inputs (with) are written in the YAML.",
+      "sharedDisk": "The blueprint's disk: each component without disks of its own takes it, so a change here is theirs all."
     }
   }
 }
