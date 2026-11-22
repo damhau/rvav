@@ -13,12 +13,17 @@ import (
 // ServiceNowRequest is the requested item a request was made for
 // (ADR-0065).
 type ServiceNowRequest struct {
-	RequestID  string    `db:"request_id"`
-	RITMSysID  string    `db:"ritm_sys_id"`
-	RITMNumber string    `db:"ritm_number"`
-	UserGiven  string    `db:"user_given"`
-	TokenID    *string   `db:"token_id"`
-	CreatedAt  time.Time `db:"created_at"`
+	RequestID  string `db:"request_id"`
+	RITMSysID  string `db:"ritm_sys_id"`
+	RITMNumber string `db:"ritm_number"`
+	UserGiven  string `db:"user_given"`
+	// OrderedByID is who placed the order in ServiceNow when it isn't the
+	// user, and OrderedByGiven how ServiceNow named the orderer ("" for a
+	// request made before rvav kept it).
+	OrderedByID    *string   `db:"ordered_by_id"`
+	OrderedByGiven string    `db:"ordered_by_given"`
+	TokenID        *string   `db:"token_id"`
+	CreatedAt      time.Time `db:"created_at"`
 }
 
 // ErrRITMTaken: a request was made for the requested item already.
@@ -27,15 +32,17 @@ var ErrRITMTaken = errors.New("a request was made for this requested item alread
 // InsertServiceNowRequest records it in the transaction that makes the
 // request, so that the request's first event finds it.
 func (s *Store) InsertServiceNowRequest(ctx context.Context, tx pgx.Tx, r ServiceNowRequest) error {
-	_, err := tx.Exec(ctx, `insert into servicenow_requests (request_id, ritm_sys_id, ritm_number, user_given, token_id)
-		values ($1, $2, $3, $4, $5)`, r.RequestID, r.RITMSysID, r.RITMNumber, r.UserGiven, r.TokenID)
+	_, err := tx.Exec(ctx, `insert into servicenow_requests (request_id, ritm_sys_id, ritm_number, user_given, ordered_by_id,
+		ordered_by_given, token_id) values ($1, $2, $3, $4, $5, $6, $7)`,
+		r.RequestID, r.RITMSysID, r.RITMNumber, r.UserGiven, r.OrderedByID, r.OrderedByGiven, r.TokenID)
 	if pe := (*pgconn.PgError)(nil); errors.As(err, &pe) && pe.Code == "23505" {
 		return ErrRITMTaken
 	}
 	return err
 }
 
-const serviceNowRequestCols = `request_id, ritm_sys_id, ritm_number, user_given, token_id, created_at`
+const serviceNowRequestCols = `request_id, ritm_sys_id, ritm_number, user_given, ordered_by_id, ordered_by_given, token_id,
+	created_at`
 
 // ServiceNowRequestOf is the requested item a request was made for.
 func (s *Store) ServiceNowRequestOf(ctx context.Context, requestID string) (ServiceNowRequest, error) {
@@ -87,17 +94,23 @@ func (s *Store) ServiceNowCatalogItems(ctx context.Context) ([]OfferedItem, erro
 	return pgx.CollectRows(rows, pgx.RowToStructByName[OfferedItem])
 }
 
+// MatchedUser is a user ServiceNow named, with when rvav last learned
+// their groups: their last sign-in, else when they were made.
+type MatchedUser struct {
+	User
+	SignedInAt time.Time `db:"signed_in_at"`
+}
+
 // ServiceNowUsersMatching are the users ServiceNow may request for whose
-// email is this one, any case, or, for a name without @, whose email's
-// part before the @ is it: never the local administrator or one of rvav's
-// own.
-func (s *Store) ServiceNowUsersMatching(ctx context.Context, given string) ([]User, error) {
-	rows, _ := s.Pool.Query(ctx, `select `+userCols+` from users
-		where email <> '' and subject not like 'local:%' and subject not like 'system:%'
-			and case when position('@' in $1) > 0 then lower(email) = lower($1)
-				else lower(split_part(email, '@', 1)) = lower($1) end
+// email is this one, or, for a name without @, whose user name is it,
+// whole, in any case: never the local administrator or one of rvav's own.
+func (s *Store) ServiceNowUsersMatching(ctx context.Context, given string) ([]MatchedUser, error) {
+	rows, _ := s.Pool.Query(ctx, `select `+userCols+`, coalesce(last_seen_at, created_at) as signed_in_at from users
+		where subject not like 'local:%' and subject not like 'system:%'
+			and case when position('@' in $1) > 0 then email <> '' and lower(email) = lower($1)
+				else username <> '' and lower(username) = lower($1) end
 		order by id limit 2`, given)
-	return pgx.CollectRows(rows, pgx.RowToStructByName[User])
+	return pgx.CollectRows(rows, pgx.RowToStructByName[MatchedUser])
 }
 
 // CountServiceNowSubmission counts a submission in the current minute,

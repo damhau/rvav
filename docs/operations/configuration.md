@@ -55,14 +55,14 @@ pool, for each PostgreSQL advisory lock it holds or waits for, and closes it
 with the lock:
 
 - a sync process: the inventory sync's, kept while the process runs (active
-  or standby), and one for each of the EfficientIP, AWX, NSX and catalog
-  repository syncs while it runs, so up to 5;
+  or standby), and one for each of the EfficientIP, AWX, NSX, catalog
+  repository and ServiceNow syncs while it runs, so up to 6;
 - an API: up to 5 at once, while it changes who administers rvav or a
   project, places a request again, settles a conflict or reads the catalog's
   repository, syncs AWX's templates, or imports from vRA;
 - a worker: 1, while it places a request again.
 
-To size PostgreSQL's `max_connections`, count each process's pool plus 5,
+To size PostgreSQL's `max_connections`, count each process's pool plus 6,
 and Temporal's own connections.
 
 Traces use OpenTelemetry's standard variables, read by every process:
@@ -102,7 +102,7 @@ still sign in and correct a wrong one.
 | `RVAV_OIDC_SCOPES` | `openid profile email` | | Integrations › Identity provider | The scopes the web app asks for, space-separated: with Entra ID, a scope of rvav's API (`api://<client>/access`) and `offline_access`. |
 | `RVAV_OIDC_GROUPS_CLAIM` | `groups` | | Integrations › Identity provider | The token claim with the user's groups (roles and approver groups map to them); `roles` for Entra ID's app roles. |
 | `RVAV_OIDC_MANAGER_CLAIM` | `manager` | | Integrations › Identity provider | The token claim with the user's manager, by email or subject, for approval levels that ask the requester's manager. rvav stores it at each sign-in; a token without it clears it. |
-| `RVAV_SCHEDULE_OWNER_IDLE_DAYS` | `90` | | install | How many days a recurring schedule's owner may go without signing in or using an API token before its runs are skipped. A run has the groups the identity provider gave the owner at their last sign-in, so someone who left would otherwise keep their rights through their schedules. `0` never skips. |
+| `RVAV_SCHEDULE_OWNER_IDLE_DAYS` | `90` | | install | How many days a recurring schedule's owner may go without signing in or using an API token before its runs are skipped. A run has the groups the identity provider gave the owner at their last sign-in, so someone who left would otherwise keep their rights through their schedules. The same limit applies to ServiceNow's orders: rvav refuses one for, or ordered by, someone whose last sign-in to rvav is older. `0` never skips or refuses. |
 
 ## Temporal
 

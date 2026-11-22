@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,6 +41,10 @@ func (o harnessOut) rows(table string, match func(map[string]any) bool) []map[st
 	return out
 }
 
+// leaSysID is Léa Martin's sys_user in the harness's fixture, who orders
+// for others.
+const leaSysID = "a8f98bb0eb32010045e1a5115206fe3a"
+
 // runHarness runs ServiceNow's scripts under Node, with rvav's answers in
 // responses.
 func runHarness(t *testing.T, responses map[string]any, steps ...map[string]any) harnessOut {
@@ -52,9 +57,10 @@ func runHarness(t *testing.T, responses map[string]any, steps ...map[string]any)
 		"properties": map[string]string{},
 		"aliases":    map[string]any{"global.rvav": map[string]string{"connection_url": "https://rvav.corp.example/", "api_key": "rvav_pat_x"}},
 		"user":       map[string]string{"sys_id": "6816f79cc0a8016401c5a33be04be441", "email": "thomas.nguyen@corp.example", "user_name": "tnguyen"},
-		"tables":     map[string]any{"sc_catalog": []map[string]string{{"sys_id": "e0d08b13c3330100c8b837659bba8fb4", "title": "Service Catalog"}}},
-		"responses":  responses,
-		"steps":      steps,
+		"tables": map[string]any{"sc_catalog": []map[string]string{{"sys_id": "e0d08b13c3330100c8b837659bba8fb4", "title": "Service Catalog"}},
+			"sys_user": []map[string]string{{"sys_id": leaSysID, "email": "lea.martin@corp.example", "user_name": "lmartin"}}},
+		"responses": responses,
+		"steps":     steps,
 	})
 	file := filepath.Join(t.TempDir(), "fixture.json")
 	if err := os.WriteFile(file, fixture, 0o600); err != nil {
@@ -162,7 +168,7 @@ func TestServiceNowScripts(t *testing.T) {
 		if err := json.Unmarshal(post.Body, &draft); err != nil {
 			t.Fatal(err)
 		}
-		if draft.User != "thomas.nguyen@corp.example" || draft.CatalogItemId != rhel || draft.RitmNumber != "RITM0010046" ||
+		if draft.User != "thomas.nguyen@corp.example" || draft.OrderedBy != "thomas.nguyen@corp.example" || draft.CatalogItemId != rhel || draft.RitmNumber != "RITM0010046" ||
 			draft.ProjectId != "prj_web" || draft.DeploymentName != nil || draft.AcceptWarnings != nil {
 			t.Fatalf("the draft = %s", post.Body)
 		}
@@ -178,6 +184,32 @@ func TestServiceNowScripts(t *testing.T) {
 		_ = json.Unmarshal(out.Answers[2], &ritm)
 		if ritm["state"] != "1" || ritm["work_notes"] != nil {
 			t.Errorf("a request rvav took = %v: rvav writes its progress", ritm)
+		}
+
+		// Ordered by someone else: who opened it is sent, and rvav takes it
+		// from Léa, Web Platform's admin. Opened by no one rvav can name,
+		// it is refused.
+		forThomas := maps.Clone(order)
+		forThomas["number"], forThomas["opened_by"] = "RITM0010047", leaSysID
+		nobody := maps.Clone(order)
+		nobody["number"], nobody["opened_by"] = "RITM0010048", "0000000000000000000000000000dead"
+		out = runHarness(t, answers, map[string]any{"do": "import"}, forThomas, nobody)
+		post = out.Calls[len(out.Calls)-1]
+		var byLea api.ServiceNowRequestDraft
+		if err := json.Unmarshal(post.Body, &byLea); err != nil || byLea.User != "thomas.nguyen@corp.example" ||
+			byLea.OrderedBy != "lea.martin@corp.example" {
+			t.Fatalf("ordered by Léa = %s, %v", post.Body, err)
+		}
+		// The harness numbers its records the same each run.
+		byLea.RitmSysId = strings.Repeat("e", 32)
+		var leas api.ServiceNowRequest
+		call("POST", "/requests", byLea, 202, &leas)
+		if leas.OrderedBy == nil || leas.OrderedBy.Id != "usr_lmartin" || leas.User.Id != "usr_tnguyen" {
+			t.Fatalf("rvav's request = %+v", leas)
+		}
+		_ = json.Unmarshal(out.Answers[2], &ritm)
+		if ritm["state"] != "4" || !strings.Contains(ritm["work_notes"].(string), "the person who ordered it is unknown") {
+			t.Errorf("opened by no one = %v", ritm)
 		}
 
 		// A refusal closes the requested item incomplete, saying why.

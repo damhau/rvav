@@ -10110,6 +10110,9 @@ type ServiceNowRef struct {
 	// Number Examples: RITM0010045
 	Number string `json:"number"`
 
+	// OrderedBy Who placed the order in ServiceNow, when it isn't the user it's for.
+	OrderedBy *UserRef `json:"ordered_by,omitempty"`
+
 	// SysId Examples: 9d385017c611228701d22104cc95c371
 	SysId string `json:"sys_id"`
 
@@ -10123,7 +10126,10 @@ type ServiceNowRef struct {
 // ServiceNowRequest defines model for ServiceNowRequest.
 type ServiceNowRequest struct {
 	DeploymentIds []string `json:"deployment_ids"`
-	RequestId     string   `json:"request_id"`
+
+	// OrderedBy Who placed the order, when it isn't the user it's for.
+	OrderedBy *ServiceNowUser `json:"ordered_by,omitempty"`
+	RequestId string          `json:"request_id"`
 
 	// RequestNumber Examples: REQ-10491
 	RequestNumber string        `json:"request_number"`
@@ -10148,6 +10154,9 @@ type ServiceNowRequestDraft struct {
 	Inputs        *map[string]interface{} `json:"inputs,omitempty"`
 	Justification *string                 `json:"justification,omitempty"`
 
+	// OrderedBy The requested item's `opened_by`, the person who placed the order, named as `user` is. Someone else than `user` must hold `request.on_behalf` in the project.
+	OrderedBy string `json:"ordered_by"`
+
 	// ProjectId The project's ID or code.
 	ProjectId string `json:"project_id"`
 
@@ -10155,7 +10164,7 @@ type ServiceNowRequestDraft struct {
 	RitmNumber string `json:"ritm_number"`
 	RitmSysId  string `json:"ritm_sys_id"`
 
-	// User The requested item's `requested_for`, by email, or by user name (the part of exactly one rvav user's email before the @).
+	// User The requested item's `requested_for`, the person the request is for, by email, or by user name: an rvav user's whole user name, their identity provider's `preferred_username`, in any case.
 	User string `json:"user"`
 }
 
@@ -12749,7 +12758,7 @@ type ListSchedulesParams struct {
 
 // GetServiceNowEntitlementsParams defines parameters for GetServiceNowEntitlements.
 type GetServiceNowEntitlementsParams struct {
-	// User The user's email, or ServiceNow's user name (the part of exactly one rvav user's email before the @).
+	// User The user's email, or ServiceNow's user name, which must be an rvav user's whole user name, in any case.
 	User string `form:"user" json:"user"`
 }
 
@@ -18103,7 +18112,9 @@ type ClientInterface interface {
 	//
 	// The projects the user may request in, with their environments and
 	// the items shared with the user there: what ServiceNow's catalog
-	// form offers them. The user is named as in a request.
+	// form offers them. The user is named as in a request. A user whose
+	// last sign-in to rvav is older than `RVAV_SCHEDULE_OWNER_IDLE_DAYS`
+	// answers 422, as their request would.
 	//
 	// Corresponds with GET /servicenow/entitlements (the `GetServiceNowEntitlements` operationId).
 	GetServiceNowEntitlements(ctx context.Context, params *GetServiceNowEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -18118,6 +18129,15 @@ type ClientInterface interface {
 	// as `servicenow.request`, a refusal as `servicenow.request_refused`.
 	// rvav writes the request's progress to the requested item's work
 	// notes and state.
+	//
+	// When `ordered_by` is someone other than `user`, they must be an
+	// rvav user who holds `request.on_behalf` in the project, as in
+	// rvav: 422 on `/ordered_by` otherwise. An approval policy then
+	// applies when its condition holds for either person, and approves
+	// automatically only when its `auto_approve` holds for both. A user
+	// or an orderer whose last sign-in is older than
+	// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
+	// may have changed since.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -18134,6 +18154,15 @@ type ClientInterface interface {
 	// as `servicenow.request`, a refusal as `servicenow.request_refused`.
 	// rvav writes the request's progress to the requested item's work
 	// notes and state.
+	//
+	// When `ordered_by` is someone other than `user`, they must be an
+	// rvav user who holds `request.on_behalf` in the project, as in
+	// rvav: 422 on `/ordered_by` otherwise. An approval policy then
+	// applies when its condition holds for either person, and approves
+	// automatically only when its `auto_approve` holds for both. A user
+	// or an orderer whose last sign-in is older than
+	// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
+	// may have changed since.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -26427,7 +26456,9 @@ func (c *Client) ListServiceNowCatalog(ctx context.Context, reqEditors ...Reques
 //
 // The projects the user may request in, with their environments and
 // the items shared with the user there: what ServiceNow's catalog
-// form offers them. The user is named as in a request.
+// form offers them. The user is named as in a request. A user whose
+// last sign-in to rvav is older than `RVAV_SCHEDULE_OWNER_IDLE_DAYS`
+// answers 422, as their request would.
 //
 // Corresponds with GET /servicenow/entitlements (the `GetServiceNowEntitlements` operationId).
 func (c *Client) GetServiceNowEntitlements(ctx context.Context, params *GetServiceNowEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -26452,6 +26483,15 @@ func (c *Client) GetServiceNowEntitlements(ctx context.Context, params *GetServi
 // as `servicenow.request`, a refusal as `servicenow.request_refused`.
 // rvav writes the request's progress to the requested item's work
 // notes and state.
+//
+// When `ordered_by` is someone other than `user`, they must be an
+// rvav user who holds `request.on_behalf` in the project, as in
+// rvav: 422 on `/ordered_by` otherwise. An approval policy then
+// applies when its condition holds for either person, and approves
+// automatically only when its `auto_approve` holds for both. A user
+// or an orderer whose last sign-in is older than
+// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
+// may have changed since.
 //
 // Takes any type of body and a specified content type.
 //
@@ -26478,6 +26518,15 @@ func (c *Client) SubmitServiceNowRequestWithBody(ctx context.Context, contentTyp
 // as `servicenow.request`, a refusal as `servicenow.request_refused`.
 // rvav writes the request's progress to the requested item's work
 // notes and state.
+//
+// When `ordered_by` is someone other than `user`, they must be an
+// rvav user who holds `request.on_behalf` in the project, as in
+// rvav: 422 on `/ordered_by` otherwise. An approval policy then
+// applies when its condition holds for either person, and approves
+// automatically only when its `auto_approve` holds for both. A user
+// or an orderer whose last sign-in is older than
+// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
+// may have changed since.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -44652,7 +44701,9 @@ type ClientWithResponsesInterface interface {
 	//
 	// The projects the user may request in, with their environments and
 	// the items shared with the user there: what ServiceNow's catalog
-	// form offers them. The user is named as in a request.
+	// form offers them. The user is named as in a request. A user whose
+	// last sign-in to rvav is older than `RVAV_SCHEDULE_OWNER_IDLE_DAYS`
+	// answers 422, as their request would.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -44670,6 +44721,15 @@ type ClientWithResponsesInterface interface {
 	// rvav writes the request's progress to the requested item's work
 	// notes and state.
 	//
+	// When `ordered_by` is someone other than `user`, they must be an
+	// rvav user who holds `request.on_behalf` in the project, as in
+	// rvav: 422 on `/ordered_by` otherwise. An approval policy then
+	// applies when its condition holds for either person, and approves
+	// automatically only when its `auto_approve` holds for both. A user
+	// or an orderer whose last sign-in is older than
+	// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
+	// may have changed since.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
@@ -44685,6 +44745,15 @@ type ClientWithResponsesInterface interface {
 	// as `servicenow.request`, a refusal as `servicenow.request_refused`.
 	// rvav writes the request's progress to the requested item's work
 	// notes and state.
+	//
+	// When `ordered_by` is someone other than `user`, they must be an
+	// rvav user who holds `request.on_behalf` in the project, as in
+	// rvav: 422 on `/ordered_by` otherwise. An approval policy then
+	// applies when its condition holds for either person, and approves
+	// automatically only when its `auto_approve` holds for both. A user
+	// or an orderer whose last sign-in is older than
+	// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
+	// may have changed since.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -64193,6 +64262,8 @@ type GetServiceNowEntitlementsResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
 	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
 	ApplicationproblemJSON429 *TooManyRequests
 	// Headers429 the parsed response headers for an HTTP 429 response
@@ -64217,6 +64288,11 @@ func (r GetServiceNowEntitlementsResponse) GetApplicationproblemJSON403() *Forbi
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r GetServiceNowEntitlementsResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetServiceNowEntitlementsResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
 }
 
 // GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
@@ -71535,7 +71611,9 @@ func (c *ClientWithResponses) ListServiceNowCatalogWithResponse(ctx context.Cont
 //
 // The projects the user may request in, with their environments and
 // the items shared with the user there: what ServiceNow's catalog
-// form offers them. The user is named as in a request.
+// form offers them. The user is named as in a request. A user whose
+// last sign-in to rvav is older than `RVAV_SCHEDULE_OWNER_IDLE_DAYS`
+// answers 422, as their request would.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -71559,6 +71637,15 @@ func (c *ClientWithResponses) GetServiceNowEntitlementsWithResponse(ctx context.
 // rvav writes the request's progress to the requested item's work
 // notes and state.
 //
+// When `ordered_by` is someone other than `user`, they must be an
+// rvav user who holds `request.on_behalf` in the project, as in
+// rvav: 422 on `/ordered_by` otherwise. An approval policy then
+// applies when its condition holds for either person, and approves
+// automatically only when its `auto_approve` holds for both. A user
+// or an orderer whose last sign-in is older than
+// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
+// may have changed since.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
@@ -71580,6 +71667,15 @@ func (c *ClientWithResponses) SubmitServiceNowRequestWithBodyWithResponse(ctx co
 // as `servicenow.request`, a refusal as `servicenow.request_refused`.
 // rvav writes the request's progress to the requested item's work
 // notes and state.
+//
+// When `ordered_by` is someone other than `user`, they must be an
+// rvav user who holds `request.on_behalf` in the project, as in
+// rvav: 422 on `/ordered_by` otherwise. An approval policy then
+// applies when its condition holds for either person, and approves
+// automatically only when its `auto_approve` holds for both. A user
+// or an orderer whose last sign-in is older than
+// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
+// may have changed since.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -86678,6 +86774,13 @@ func ParseGetServiceNowEntitlementsResponse(rsp *http.Response) (*GetServiceNowE
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest TooManyRequests

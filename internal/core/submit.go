@@ -36,6 +36,9 @@ type origin struct {
 }
 
 func (s *Service) submit(ctx context.Context, p *auth.Principal, d api.RequestDraft, o origin) (store.RequestRow, error) {
+	if o.fire != nil {
+		ctx = withOrder(ctx, order{via: "schedule"})
+	}
 	return s.placing(ctx, func() (store.RequestRow, error) { return s.submitOnce(ctx, p, d, o) })
 }
 

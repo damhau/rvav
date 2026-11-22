@@ -48,7 +48,7 @@ func TestServiceNowRejected(t *testing.T) {
 			"network": "dvpg-web-prd-vl210"}
 		var got api.ServiceNowRequest
 		h.json("POST", "/api/v1/servicenow/requests", "", api.ServiceNowRequestDraft{RitmSysId: ritm, RitmNumber: "RITM0010050",
-			User: "thomas.nguyen@corp.example", CatalogItemId: "rhel9-server", ProjectId: "web",
+			User: "thomas.nguyen@corp.example", OrderedBy: "thomas.nguyen@corp.example", CatalogItemId: "rhel9-server", ProjectId: "web",
 			Environment: "prd", Inputs: &inputs}, 202, &got, "Authorization", "Bearer "+made.Secret)
 		if got.Status != api.RequestStatusPendingApproval {
 			t.Fatalf("the request = %+v", got)

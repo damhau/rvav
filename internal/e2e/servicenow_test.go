@@ -360,7 +360,7 @@ func TestServiceNowRequests(t *testing.T) {
 
 		// Where the user requests, by email in any case or by user name.
 		var ent api.ServiceNowEntitlements
-		for _, who := range []string{"Thomas.Nguyen@corp.example", "thomas.nguyen"} {
+		for _, who := range []string{"Thomas.Nguyen@corp.example", "tnguyen"} {
 			call("GET", "/entitlements?user="+who, nil, 200, &ent)
 			if ent.User.Id != "usr_tnguyen" || len(ent.Projects) != 1 || ent.Projects[0].Project.Id != "prj_web" ||
 				!slices.Contains(ent.Projects[0].Items, rhel.Id) || slices.Contains(ent.Projects[0].Items, "itm_postgres-cluster") ||
@@ -374,7 +374,7 @@ func TestServiceNowRequests(t *testing.T) {
 		given := map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
 			"network": "dvpg-app-dev-vl310"}
 		draft := api.ServiceNowRequestDraft{RitmSysId: ritm, RitmNumber: "RITM0010045", User: "thomas.nguyen@corp.example",
-			CatalogItemId: "rhel9-server", ProjectId: "web", Environment: "dev", Inputs: &given}
+			OrderedBy: "thomas.nguyen@corp.example", CatalogItemId: "rhel9-server", ProjectId: "web", Environment: "dev", Inputs: &given}
 		with := func(change func(d *api.ServiceNowRequestDraft)) api.ServiceNowRequestDraft {
 			d := draft
 			change(&d)
@@ -384,12 +384,17 @@ func TestServiceNowRequests(t *testing.T) {
 		// Never more than the user may: someone rvav doesn't know, an item
 		// not shared in the project, a project the user isn't in.
 		var problem struct{ Errors []api.FieldError }
-		call("POST", "/requests", with(func(d *api.ServiceNowRequestDraft) { d.User = "nobody@corp.example" }), 422, &problem)
+		call("POST", "/requests", with(func(d *api.ServiceNowRequestDraft) {
+			d.User, d.OrderedBy = "nobody@corp.example", "nobody@corp.example"
+		}),
+			422, &problem)
 		if f := fieldsOf(problem.Errors); !slices.Equal(f, []string{"/user"}) {
 			t.Fatalf("an unknown user = %v", problem.Errors)
 		}
 		call("POST", "/requests", with(func(d *api.ServiceNowRequestDraft) { d.CatalogItemId = "postgres-cluster" }), 404, nil)
-		call("POST", "/requests", with(func(d *api.ServiceNowRequestDraft) { d.User = "sophie.brunner@corp.example" }), 404, nil)
+		call("POST", "/requests", with(func(d *api.ServiceNowRequestDraft) {
+			d.User, d.OrderedBy = "sophie.brunner@corp.example", "sophie.brunner@corp.example"
+		}), 404, nil)
 		var refused int
 		if err := h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action = 'servicenow.request_refused'
 			and actor_id = $1 and detail->>'ritm_number' = 'RITM0010045'`, auth.ServiceNowUserID).Scan(&refused); err != nil || refused != 3 {

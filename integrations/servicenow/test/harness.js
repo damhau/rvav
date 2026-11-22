@@ -8,7 +8,9 @@
 //
 // The fixture: {properties, user, responses: {"GET /catalog": {status,
 // body, headers}}, steps: [{do: "import"} | {do: "projects", item} |
-// {do: "order", item, number, approval, variables}]}. The output: the
+// {do: "order", item, number, approval, variables, requested_for,
+// opened_by}]}, the two people sys_user sys_ids, the fixture's user when
+// left out. The output: the
 // tables, the calls made to rvav, the events queued, the log and each
 // step's answer.
 
@@ -26,7 +28,7 @@ const answers = [];
 let ids = 0;
 
 // The references the scripts dot-walk.
-const refs = { sc_req_item: { cat_item: 'sc_cat_item', requested_for: 'sys_user' } };
+const refs = { sc_req_item: { cat_item: 'sc_cat_item', requested_for: 'sys_user', opened_by: 'sys_user' } };
 
 function rows(table) {
   tables[table] = tables[table] || [];
@@ -295,7 +297,8 @@ for (const step of fixture.steps) {
       ritm.initialize();
       ritm.setValue('number', step.number);
       ritm.setValue('cat_item', item.sys_id);
-      ritm.setValue('requested_for', fixture.user.sys_id);
+      ritm.setValue('requested_for', step.requested_for || fixture.user.sys_id);
+      ritm.setValue('opened_by', step.opened_by || fixture.user.sys_id);
       ritm.setValue('approval', step.approval || 'not requested');
       ritm.setValue('state', '1');
       ritm.setValue('active', true);

@@ -4154,7 +4154,9 @@ export interface paths {
          * Where a user may request, and what
          * @description The projects the user may request in, with their environments and
          *     the items shared with the user there: what ServiceNow's catalog
-         *     form offers them. The user is named as in a request.
+         *     form offers them. The user is named as in a request. A user whose
+         *     last sign-in to rvav is older than `RVAV_SCHEDULE_OWNER_IDLE_DAYS`
+         *     answers 422, as their request would.
          */
         get: operations["getServiceNowEntitlements"];
         put?: never;
@@ -4184,6 +4186,15 @@ export interface paths {
          *     as `servicenow.request`, a refusal as `servicenow.request_refused`.
          *     rvav writes the request's progress to the requested item's work
          *     notes and state.
+         *
+         *     When `ordered_by` is someone other than `user`, they must be an
+         *     rvav user who holds `request.on_behalf` in the project, as in
+         *     rvav: 422 on `/ordered_by` otherwise. An approval policy then
+         *     applies when its condition holds for either person, and approves
+         *     automatically only when its `auto_approve` holds for both. A user
+         *     or an orderer whose last sign-in is older than
+         *     `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
+         *     may have changed since.
          */
         post: operations["submitServiceNowRequest"];
         delete?: never;
@@ -11033,6 +11044,8 @@ export interface components {
             url: string;
             /** @description The email or user name ServiceNow named the user by. */
             user: string;
+            /** @description Who placed the order in ServiceNow, when it isn't the user it's for. */
+            ordered_by?: components["schemas"]["UserRef"];
         };
         ServiceNowCatalog: {
             items: components["schemas"]["ServiceNowCatalogItem"][];
@@ -11088,8 +11101,10 @@ export interface components {
             ritm_sys_id: string;
             /** @example RITM0010045 */
             ritm_number: string;
-            /** @description The requested item's `requested_for`, by email, or by user name (the part of exactly one rvav user's email before the @). */
+            /** @description The requested item's `requested_for`, the person the request is for, by email, or by user name: an rvav user's whole user name, their identity provider's `preferred_username`, in any case. */
             user: string;
+            /** @description The requested item's `opened_by`, the person who placed the order, named as `user` is. Someone else than `user` must hold `request.on_behalf` in the project. */
+            ordered_by: string;
             catalog_item_id: string;
             /** @description The project's ID or code. */
             project_id: string;
@@ -11111,6 +11126,8 @@ export interface components {
             request_number: string;
             status: components["schemas"]["RequestStatus"];
             user: components["schemas"]["ServiceNowUser"];
+            /** @description Who placed the order, when it isn't the user it's for. */
+            ordered_by?: components["schemas"]["ServiceNowUser"];
             /** @description The request in rvav. */
             url: string;
             deployment_ids: string[];
@@ -18519,7 +18536,7 @@ export interface operations {
     getServiceNowEntitlements: {
         parameters: {
             query: {
-                /** @description The user's email, or ServiceNow's user name (the part of exactly one rvav user's email before the @). */
+                /** @description The user's email, or ServiceNow's user name, which must be an rvav user's whole user name, in any case. */
                 user: string;
             };
             header?: never;
@@ -18540,6 +18557,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
             429: components["responses"]["TooManyRequests"];
         };
     };

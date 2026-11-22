@@ -71,7 +71,9 @@ type Config struct {
 	DrainTimeout time.Duration
 	// ScheduleOwnerIdleDays is how long a recurring schedule's owner may go
 	// without signing in or using a token before its runs are skipped: a
-	// run has the groups of their last sign-in (ADR-0057). 0: never.
+	// run has the groups of their last sign-in (ADR-0057). ServiceNow's orders
+	// for or by someone whose last sign-in is older are refused (ADR-0065).
+	// 0: never.
 	ScheduleOwnerIdleDays int
 
 	// WMKSSDKURLs are the scripts of VMware's HTML console client, in load

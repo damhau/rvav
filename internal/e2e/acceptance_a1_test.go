@@ -743,6 +743,7 @@ func (w a1Walk) body(o a1Op) any {
 		return w.draft
 	case "submitServiceNowRequest":
 		return api.ServiceNowRequestDraft{RitmSysId: a1RITM, RitmNumber: "RITM0010045", User: "thomas.nguyen@corp.example",
+			OrderedBy:     "thomas.nguyen@corp.example",
 			CatalogItemId: w.draft.CatalogItemId, ProjectId: w.draft.ProjectId, Environment: string(w.draft.Environment)}
 	case "createSchedule":
 		return api.ScheduleWrite{Name: "A1", CatalogItemId: w.draft.CatalogItemId, VersionId: w.draft.VersionId, ProjectId: w.draft.ProjectId,

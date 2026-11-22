@@ -841,11 +841,21 @@ everything and retires nothing.
 ### Take requests from ServiceNow
 
 People can order rvav's catalog items in ServiceNow. ServiceNow submits
-each order to rvav for the person it's requested for, matched by email
-or user name, and rvav writes the request's progress to the requested item (RITM): its
-work notes, its state and the deployment's link. The request is that
-person's own, with their entitlements, quotas, approvals and policies.
-rvav knows a person from their first sign-in to rvav.
+each order to rvav for the person it's requested for, and rvav writes
+the request's progress to the requested item (RITM): its work notes, its
+state and the deployment's link. The request is that person's own, with
+their entitlements, quotas, approvals and policies. rvav knows a person
+from their first sign-in to rvav, and matches them by email, or, when
+their ServiceNow user has no email, by their whole user name: their
+identity provider's `preferred_username`.
+
+ServiceNow also says who placed the order. To order for someone else,
+that person needs `request.on_behalf` in the project, as in rvav, and
+rvav's approval policies approve such an order automatically only when
+their automatic approval holds for both people. rvav refuses an order
+for or by someone whose last sign-in is older than
+`RVAV_SCHEDULE_OWNER_IDLE_DAYS` (90 days by default), since their groups
+may have changed.
 
 To take requests from ServiceNow:
 
@@ -867,8 +877,8 @@ are in the audit log.
 A request ordered in ServiceNow shows **From ServiceNow** and the RITM's
 number in its header, linked to the RITM, and its deployment shows the
 RITM under **Details**. The audit log has each request made for
-ServiceNow (`servicenow.request`): who it was for, the RITM, the token
-and the address it came from. It also has those rvav refused
+ServiceNow (`servicenow.request`): who it was for, who ordered it, the
+RITM, the token and the address it came from. It also has those rvav refused
 (`servicenow.request_refused`) and the calls over the rate
 (`servicenow.request_limited`).
 
@@ -1086,7 +1096,7 @@ and an environment, which policies would apply to a request and why.
 
 | Tab | What it decides |
 |---|---|
-| **Approval** | Which requests need approval, from whom (users, groups or project roles, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota, and what an update changes (see [Updates](#updates)). |
+| **Approval** | Which requests need approval, from whom (users, groups or project roles, in levels, any or all), and what happens on timeout (escalate, approve, reject). Conditions are CEL over the inputs, environment, project, item, VMs, user and quota, how the request was made, and what an update changes (see [Updates](#updates)). |
 | **Lease** | Default and longest leases per environment or project, extensions, the lifetime, the end (power off then delete, delete, or only tell the owner), and the enforcement. Lease rules give another lease to the deployments a condition matches (see [Lease rules and lifetime](#lease-rules-and-lifetime)). |
 | **Day-2** | Who may run which action, where, which need approval (deleting in production, by default), and the enforcement. |
 | **Limits** | How many deployments each user or each project may have, and how much vCPU and memory each deployment may take (see [Deployment limits](#deployment-limits)). |
@@ -1449,11 +1459,14 @@ goes through the same checks as a new request:
   update, only when the update grows them: an update that keeps or
   shrinks a deployment already beyond a limit goes on.
 - **Approval policies** apply to updates as well as new requests. Their
-  conditions read the kind of request and what the update changes:
+  conditions read the kind of request, how it was made, and what the
+  update changes:
 
   | Variable | Value |
   |---|---|
   | `request.kind` | `provision` for a new request, `update` for an update. |
+  | `request.via` | `rvav`, `schedule` for a schedule's run, or `servicenow` for an order placed in ServiceNow. |
+  | `request.ordered_by` | The ID of who ordered it: the requester's own, but for an order placed in ServiceNow for someone else. |
   | `update.version_changed` | `true` when the update moves the deployment to another version. |
   | `update.from_version`, `update.to_version` | The version numbers, such as `3`. |
   | `update.vcpu`, `update.memory_gb`, `update.storage_gb`, `update.vm_count` | The net change, negative when the update frees some. |

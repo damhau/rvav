@@ -25,9 +25,10 @@ func (s *Store) GetUserBySubject(ctx context.Context, subject string) (User, err
 }
 
 // UpsertOIDCUser finds the user for an OIDC subject, linking a pre-created
-// user by email on first login, or creates one. Name, email and manager
-// follow the identity provider: a token without a manager clears it.
-func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, email, title, manager string) (User, error) {
+// user by email on first login, or creates one. Name, user name, email and
+// manager follow the identity provider: a token without a manager clears
+// it.
+func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, username, email, title, manager string) (User, error) {
 	var u User
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
 		rows, _ := tx.Query(ctx, `select `+userCols+` from users where subject = $1 for update`, subject)
@@ -39,9 +40,9 @@ func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, email, title,
 		}
 		switch {
 		case err == pgx.ErrNoRows:
-			rows, _ = tx.Query(ctx, `insert into users (id, subject, name, email, title, manager, last_seen_at)
-				values ($1, $2, $3, $4, $5, $6, now()) returning `+userCols,
-				ids.New(ids.User), subject, name, email, title, manager)
+			rows, _ = tx.Query(ctx, `insert into users (id, subject, name, username, email, title, manager, last_seen_at)
+				values ($1, $2, $3, $4, $5, $6, $7, now()) returning `+userCols,
+				ids.New(ids.User), subject, name, username, email, title, manager)
 			u, err = pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[User])
 			return err
 		case err != nil:
@@ -50,8 +51,10 @@ func (s *Store) UpsertOIDCUser(ctx context.Context, subject, name, email, title,
 		if title == "" {
 			title = found.Title
 		}
-		rows, _ = tx.Query(ctx, `update users set subject = $2, name = $3, email = $4, title = $5, manager = $6,
-			last_seen_at = now() where id = $1 returning `+userCols, found.ID, subject, name, email, title, manager)
+		// A token without a user name keeps the one known.
+		rows, _ = tx.Query(ctx, `update users set subject = $2, name = $3, username = coalesce(nullif($4, ''), username),
+			email = $5, title = $6, manager = $7, last_seen_at = now() where id = $1 returning `+userCols,
+			found.ID, subject, name, username, email, title, manager)
 		u, err = pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[User])
 		return err
 	})

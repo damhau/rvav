@@ -39,10 +39,18 @@ on a real instance yet: they are checked under Node against rvav's API
   an item that needs one is requested in rvav.
 - The project list holds the projects where the person ordering may
   request the item, with each project's environments.
-- rvav submits the order as the RITM's **Requested for**, matched by
-  email (or, without one, by user name), with that person's entitlements,
-  quotas, approvals and policies. If rvav refuses it, the RITM is closed
-  incomplete with rvav's reason in its work notes.
+- rvav submits the order as the RITM's **Requested for**, with that
+  person's entitlements, quotas, approvals and policies, and says who
+  placed it, the RITM's **Opened by**. rvav matches each person by email,
+  or, when their ServiceNow user has no email, by their whole user name,
+  which must be their rvav user name: the `preferred_username` their
+  identity provider gives rvav. If rvav refuses the order, the RITM is
+  closed incomplete with rvav's reason in its work notes.
+- Someone who orders for another person needs, in rvav, the permission
+  to request for someone else in that project (`request.on_behalf`,
+  which project admins have), as in rvav itself. rvav's approval
+  policies then ask for approval unless their automatic approval holds
+  for both people.
 - rvav writes to the RITM as the request goes: submitted (state Work in
   Progress), waiting for approval and by whom, approved or rejected, then
   Closed Complete with the deployment's link, or Closed Incomplete.
@@ -56,8 +64,11 @@ on a real instance yet: they are checked under Node against rvav's API
 - The instance reaches rvav's URL over HTTPS, directly or through a MID
   server.
 - You have the `admin` role on the instance, in the global scope.
-- People who order rvav's items have an rvav user with the same email.
-  rvav knows a person from their first sign-in to rvav.
+- People who order rvav's items, and those they order for, have an rvav
+  user with the same email. rvav knows a person from their first sign-in
+  to rvav, and refuses an order for or by someone whose last sign-in is
+  older than 90 days (`RVAV_SCHEDULE_OWNER_IDLE_DAYS`): rvav would go by
+  groups they may have left.
 
 ## Install
 
@@ -132,8 +143,8 @@ on a real instance yet: they are checked under Node against rvav's API
 
 To check the installation, order an rvav item as someone with an rvav
 user. Within a minute its RITM's work notes say `rvav: request REQ-…
-submitted`, and rvav's audit log has a `servicenow.request` event naming
-that person.
+(<item name>) submitted`, and rvav's audit log has a `servicenow.request`
+event naming that person.
 
 ## The account rvav signs in with
 
@@ -155,14 +166,16 @@ integration. Give that account no admin role, only:
   the item.
 - **The RITM is Closed Incomplete.** Its work notes have rvav's reason:
   an input it refused, a quota, an item the person can't request, a
-  policy warning that the order didn't accept, or a rejection, with the
-  approval level and who rejected it. "Not from ServiceNow's
+  policy warning that the order didn't accept, an order for someone else
+  by a person who may not request for others in rvav, a last sign-in to
+  rvav too old, or a rejection, with the approval level and who rejected
+  it. "Not from ServiceNow's
   addresses" means that the call came from outside rvav's **Allowed
   sources**: add the instance's address, then order again.
 - **The RITM stays Open.** rvav couldn't be reached, refused the token
-  (401, a revoked or expired token), or answered 429. The system log has a warning starting
-  with `rvav:`, and `rvav: retry` submits the RITM again every 5 minutes
-  for 3 days.
+  (401, a revoked or expired token), answered 429, or answered an error
+  of its own (5xx). The system log has a warning starting with `rvav:`,
+  and `rvav: retry` submits the RITM again every 5 minutes for 3 days.
 - **A work note is missing.** ServiceNow refused it five times, for
   example through a data policy or a business rule on `sc_req_item`, and
   rvav gave it up so that the later notes still reach the RITM. rvav's
@@ -176,7 +189,8 @@ integration. Give that account no admin role, only:
 
 - The project list shows the projects of the person ordering. When they
   order for someone else, rvav checks the person it is requested for,
-  and refuses if that person can't request the item there.
+  and refuses if that person can't request the item there, or if the
+  person ordering may not request for others there.
 - Files can't be uploaded with an order.
 - An input whose name doesn't fit in a variable's name is left out, and
   takes its initial value. The system log says which.

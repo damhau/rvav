@@ -5415,12 +5415,14 @@ paths:
       description: |
         The projects the user may request in, with their environments and
         the items shared with the user there: what ServiceNow's catalog
-        form offers them. The user is named as in a request.
+        form offers them. The user is named as in a request. A user whose
+        last sign-in to rvav is older than `RVAV_SCHEDULE_OWNER_IDLE_DAYS`
+        answers 422, as their request would.
       parameters:
         - name: user
           in: query
           required: true
-          description: The user's email, or ServiceNow's user name (the part of exactly one rvav user's email before the @).
+          description: The user's email, or ServiceNow's user name, which must be an rvav user's whole user name, in any case.
           schema: { type: string, minLength: 1, maxLength: 254 }
       responses:
         "200":
@@ -5431,6 +5433,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /servicenow/requests:
@@ -5447,6 +5450,15 @@ paths:
         as `servicenow.request`, a refusal as `servicenow.request_refused`.
         rvav writes the request's progress to the requested item's work
         notes and state.
+
+        When `ordered_by` is someone other than `user`, they must be an
+        rvav user who holds `request.on_behalf` in the project, as in
+        rvav: 422 on `/ordered_by` otherwise. An approval policy then
+        applies when its condition holds for either person, and approves
+        automatically only when its `auto_approve` holds for both. A user
+        or an orderer whose last sign-in is older than
+        `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
+        may have changed since.
       requestBody:
         required: true
         content:
@@ -14330,6 +14342,9 @@ components:
         user:
           type: string
           description: The email or user name ServiceNow named the user by.
+        ordered_by:
+          description: Who placed the order in ServiceNow, when it isn't the user it's for.
+          $ref: "#/components/schemas/UserRef"
     ServiceNowCatalog:
       type: object
       required: [items]
@@ -14405,7 +14420,7 @@ components:
         label: { type: string }
     ServiceNowRequestDraft:
       type: object
-      required: [ritm_sys_id, ritm_number, user, catalog_item_id, project_id, environment]
+      required: [ritm_sys_id, ritm_number, user, ordered_by, catalog_item_id, project_id, environment]
       additionalProperties: false
       properties:
         ritm_sys_id: { type: string, pattern: "^[0-9a-f]{32}$" }
@@ -14414,7 +14429,18 @@ components:
           type: string
           minLength: 1
           maxLength: 254
-          description: The requested item's `requested_for`, by email, or by user name (the part of exactly one rvav user's email before the @).
+          description: >-
+            The requested item's `requested_for`, the person the request is
+            for, by email, or by user name: an rvav user's whole user name,
+            their identity provider's `preferred_username`, in any case.
+        ordered_by:
+          type: string
+          minLength: 1
+          maxLength: 254
+          description: >-
+            The requested item's `opened_by`, the person who placed the
+            order, named as `user` is. Someone else than `user` must hold
+            `request.on_behalf` in the project.
         catalog_item_id: { type: string }
         project_id:
           type: string
@@ -14443,6 +14469,9 @@ components:
         request_number: { type: string, examples: [REQ-10491] }
         status: { $ref: "#/components/schemas/RequestStatus" }
         user: { $ref: "#/components/schemas/ServiceNowUser" }
+        ordered_by:
+          description: Who placed the order, when it isn't the user it's for.
+          $ref: "#/components/schemas/ServiceNowUser"
         url:
           type: string
           description: The request in rvav.

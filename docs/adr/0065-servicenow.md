@@ -10,6 +10,10 @@
   [ADR-0019](0019-catalog-administration.md) and the audit log of
   [ADR-0058](0058-audit-forwarding-and-sign-ins.md). I1.5 (#178) of the parity
   programme, row D27 of the parity table.
+- Revised in I1.6 (#179), after I1's review: ServiceNow sends who placed
+  the order as well as who it's for, checked as in rvav; a user name is
+  a user's whole user name; a sign-in too old to go by is refused; a
+  rejection closes the requested item.
 
 ## Context
 vRA sites run ServiceNow next to it, through VMware's "Aria Automation
@@ -155,13 +159,24 @@ Making and revoking are audited (`servicenow.token`,
 **On whose behalf.** A request names its user in `user`: an email, or,
 without an `@`, a user name (ServiceNow's `sys_user.user_name`). rvav
 looks the email up among its users, whatever the case; a user name is
-taken as the part before the `@` of exactly one user's email (two match:
-refused as ambiguous). No match is refused (422 on `/user`, 404 for the
+an rvav user's whole user name, whatever the case: the identity
+provider's `preferred_username`, which rvav keeps at each sign-in
+(`users.username`), and the seed's names. Two users with it are refused
+as ambiguous; the part of an email before the `@` is never taken for a
+user name, so that `thomas` is no one rather than whichever Thomas's
+email starts so. No match is refused (422 on `/user`, 404 for the
 entitlements). Never the local administrator or one of rvav's own users.
 The request is then the user's own: rvav builds the user's principal from
 their roles and the groups of their last sign-in (none for a user who
-hasn't signed in yet, who then has their direct memberships only), and
-submits as they would, with their entitlements, quotas, approval
+hasn't signed in yet, who then has their direct memberships only). Those
+groups are refused once older than `RVAV_SCHEDULE_OWNER_IDLE_DAYS` (90 by
+default), as a schedule's run is (ADR-0057): a user whose last sign-in,
+or their creation for one who never signed in, is older is answered 422
+on `/user` (`idle`), and the entitlements likewise, saying to sign in to
+rvav once. A limit, rather than taking only recent groups, because a
+request with fewer groups than the person has fails in ways that don't
+say why, while a refusal does. Within the limit, rvav submits as they
+would, with their entitlements, quotas, approval
 policies, lease rules and soft policies' warnings (which a request from
 ServiceNow can only accept by saying so, `accept_warnings`). Nothing the
 integration holds is added: an item the user can't request in that
@@ -172,6 +187,31 @@ kept, followed by "Requested in ServiceNow, RITM…". A submission needs
 the connection set (409 otherwise): rvav couldn't tell the requested
 item how it goes.
 
+**Who ordered.** A request also names in `ordered_by` who placed the
+order, the requested item's `opened_by`, matched as `user` is (a
+sign-in too old included, 422 on `/ordered_by`). When it's the same
+person, nothing more. When it's someone else, they order for the user
+as in rvav, where a request for someone else takes `request.on_behalf`
+in the project (ADR-0034): rvav refuses unless the orderer is an rvav
+user who holds it there (422 on `/ordered_by`, `not_allowed` or
+`unknown_user`). The request stays the user's, with their entitlements
+and quotas, as the requester; the orderer is kept with the requested
+item (`servicenow_requests.ordered_by_id`, and the name ServiceNow gave),
+shown as `ordered_by` on `servicenow` and in ServiceNow's answer, and
+audited. Approval policies read `request.via` (`rvav`, `schedule` or
+`servicenow`) and `request.ordered_by` (the orderer's ID, the
+requester's own when they ordered). For an order placed for someone
+else, a policy applies when its condition holds for the requester or
+for the orderer (each as `user`), and approves automatically only when
+its `auto_approve` holds for both: never on the requester's rights
+alone, so that someone who may order for an infrastructure lead doesn't
+get production VMs without approval through the lead's
+`auto_approve`. We kept the user as the requester rather than make the
+orderer the requester and the user the owner, as rvav's own form does,
+because the order is the user's in ServiceNow: ServiceNow's approvals
+and its catalog form's projects are the user's, and the requester's
+manager is the one a level with `manager: true` asks.
+
 The request keeps the requested item's number and `sys_id`
 (`servicenow_requests`), its API shows them (`servicenow` on `Request`
 and on the deployment it made, with a link to the record), and a second
@@ -179,8 +219,9 @@ submission for the same `sys_id` answers the request already made (200)
 rather than making another. The audit log has
 `servicenow.request`: the actor is ServiceNow's user, the target the
 request, the detail `via: servicenow`, the user it was made for
-(`on_behalf_of`: ID, name, email), the email or user name ServiceNow
-gave, the requested item, the token, and the caller's address and user
+(`on_behalf_of`: ID, name, email), who ordered it (`ordered_by`, the
+same fields), the emails or user names ServiceNow gave (`user`,
+`ordered_by_given`), the requested item, the token, and the caller's address and user
 agent. A refusal (no such user, an item not entitled, a policy) is
 audited as `servicenow.request_refused` with why. The request itself is
 the user's: they are its requester, and its page says it came from
@@ -218,21 +259,27 @@ notes for good.
   database (`servicenow_rate`), and reads to ten times that rate in each
   process; every request made is audited with the token and the
   address; the token expires in a year, and Revoke ends it at once.
-- **A forged user name.** rvav believes the user ServiceNow names: it
+- **A forged user name.** rvav believes the people ServiceNow names: it
   can't check who ordered in ServiceNow. ServiceNow's side takes the
-  user from the requested item's `requested_for`, which its own ACLs
-  guard, and never from a variable the user fills. The user's
-  entitlements and approvals still apply: a forged name gets what that
-  user could request, with that user's approvers asked, who see the
-  request in rvav as the user's, made via ServiceNow. Matching on email
-  first, and refusing an ambiguous user name, keeps one ServiceNow user
-  from being taken for another rvav user.
+  user from the requested item's `requested_for` and the orderer from
+  its `opened_by`, which its own ACLs guard and ServiceNow sets to the
+  person whose session ordered, never from a variable the user fills.
+  Anyone who can set **Requested for** gets no more than they could in
+  rvav: ordering for someone else takes `request.on_behalf` in the
+  project, as in rvav, and the requester's `auto_approve` alone doesn't
+  approve it. The user's entitlements and approvals still apply, and
+  their approvers see the request as the user's, made via ServiceNow
+  and ordered by the orderer. What remains is a forged `opened_by` or a
+  stolen token, which can request as any user what that user may: rvav
+  can't tell them from a real order. An email matches only that email,
+  and a user name only a whole user name, so one ServiceNow user isn't
+  taken for another rvav user; ambiguous names are refused.
 - **Rate limits** answer 429 with `Retry-After` (the seconds to the
   next minute), audited as `servicenow.request_limited` once a minute at
   most in each process, so a flood doesn't fill the log.
-- **What the audit shows**: who the request was for, what ServiceNow
-  said (the email or user name), which requested item, which token,
-  which address and user agent; refusals likewise.
+- **What the audit shows**: who the request was for and who ordered
+  it, what ServiceNow said (the emails or user names), which requested
+  item, which token, which address and user agent; refusals likewise.
 - **rvav's account in ServiceNow** holds least privilege: read and write
   on the CMDB class and read on `sys_user` (for `owned_by`), write on
   `sc_req_item`'s `state` and `work_notes`, and the IRE's role
@@ -261,12 +308,13 @@ and its README the install steps:
 - A business rule on `sc_req_item` queues the event `rvav.order` when an
   item of rvav's is ordered (or, with `rvav.wait_for_approval`, once
   ServiceNow approved it); its script action, `RvavOrder`, submits it on
-  behalf of `requested_for`, by email, else user name. ServiceNow's
+  behalf of `requested_for`, ordered by `opened_by`, each by email, else
+  user name. ServiceNow's
   variables are strings: rvav takes them as the form's types, and an
   empty one as the initial value. A refusal closes the requested item
-  incomplete with rvav's problem in its work notes; rvav down, a 401 or
-  a 429 leave it open, and a job every 5 minutes submits again, for 3
-  days, the open ones rvav has no request for.
+  incomplete with rvav's problem in its work notes; rvav down, a 401, a
+  429 or a 5xx leave it open, and a job every 5 minutes submits again,
+  for 3 days, the open ones rvav has no request for.
 
 There is no update set. An update set is one XML file to import, but it
 is exported from an instance the records were made on, and we have none:

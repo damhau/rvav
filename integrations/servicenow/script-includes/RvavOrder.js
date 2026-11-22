@@ -2,9 +2,11 @@
  * Script Include: RvavOrder (global, not client callable).
  *
  * Submits a requested item of one of rvav's catalog items to rvav, on
- * behalf of its requested_for. rvav answers the same request for the same
- * sys_id, so submitting twice is harmless; rvav then writes the progress
- * to the requested item itself.
+ * behalf of its requested_for, saying who placed the order (opened_by):
+ * rvav refuses an order for someone else unless that person may request
+ * for others in rvav. rvav answers the same request for the same sys_id,
+ * so submitting twice is harmless; rvav then writes the progress to the
+ * requested item itself.
  */
 var RvavOrder = Class.create();
 
@@ -19,6 +21,15 @@ RvavOrder.STATE_CLOSED_INCOMPLETE = '4';
 RvavOrder.itemIdOf = function (catItem) {
   var meta = String(catItem.getValue('meta') || '');
   return meta.indexOf(RvavOrder.ITEM_PREFIX) === 0 ? meta.substring(RvavOrder.ITEM_PREFIX.length) : '';
+};
+
+// A person as rvav knows them: by email, else by user name.
+RvavOrder.nameOf = function (ref) {
+  if (ref.nil()) {
+    return '';
+  }
+  var user = ref.getRefRecord();
+  return String(user.getValue('email') || user.getValue('user_name') || '');
 };
 
 RvavOrder.isRvav = function (ritm) {
@@ -60,10 +71,10 @@ RvavOrder.prototype = {
   draft: function (ritm) {
     var item = ritm.cat_item.getRefRecord();
     var itemId = RvavOrder.itemIdOf(item);
-    var user = ritm.requested_for.getRefRecord();
-    var who = String(user.getValue('email') || user.getValue('user_name') || '');
-    if (itemId === '' || who === '') {
-      this.refuse(ritm, 'rvav: the item or the person it is requested for is unknown to rvav.');
+    var who = RvavOrder.nameOf(ritm.requested_for);
+    var by = RvavOrder.nameOf(ritm.opened_by);
+    if (itemId === '' || who === '' || by === '') {
+      this.refuse(ritm, 'rvav: the item, the person it is requested for or the person who ordered it is unknown to rvav.');
       return null;
     }
     var v = ritm.variables;
@@ -71,6 +82,7 @@ RvavOrder.prototype = {
       ritm_sys_id: ritm.getUniqueValue(),
       ritm_number: String(ritm.getValue('number')),
       user: who,
+      ordered_by: by,
       catalog_item_id: itemId,
       project_id: String(v.rvav_project || ''),
       environment: String(v.rvav_environment || ''),

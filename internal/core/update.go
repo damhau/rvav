@@ -579,12 +579,21 @@ func (u *updatePlan) vars() map[string]any {
 	}
 }
 
-// requestVars are what approval policies read as `request`.
-func (ev *Evaluation) requestVars() map[string]any {
+// requestVars are what approval policies read as `request`: its kind, how
+// it was made, and who ordered it, the requester themselves but for an
+// order placed in ServiceNow for someone else (ADR-0065).
+func (ev *Evaluation) requestVars(p *auth.Principal) map[string]any {
+	kind, via, by := "provision", ev.via, p.User.ID
 	if ev.Update != nil {
-		return map[string]any{"kind": "update"}
+		kind = "update"
 	}
-	return map[string]any{"kind": "provision"}
+	if via == "" {
+		via = "rvav"
+	}
+	if ev.orderedBy != nil {
+		by = ev.orderedBy.User.ID
+	}
+	return map[string]any{"kind": kind, "via": via, "ordered_by": by}
 }
 
 // updateVars are what approval policies read as `update`.

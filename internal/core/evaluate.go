@@ -89,6 +89,11 @@ type Evaluation struct {
 	OverSoft   []string
 	Lease      LeaseInfo
 	OnBehalfOf *store.User
+	// via is how the request is made, rvav, schedule or servicenow, and
+	// orderedBy who ordered it in ServiceNow for its requester; nil when
+	// the requester did (ADR-0065).
+	via       string
+	orderedBy *auth.Principal
 	// DeploymentName is the name the request gives its deployments, and
 	// DeploymentNames theirs from it; Description what they are for.
 	DeploymentName  string
@@ -189,6 +194,8 @@ func justificationErrs(j *string) []api.FieldError {
 func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest, validate bool,
 	kept map[string]bool, edit *requestEdit) (*Evaluation, error) {
 	ev := &Evaluation{Inputs: map[string]any{}, validate: validate, kept: kept, edit: edit}
+	o := orderOf(ctx)
+	ev.via, ev.orderedBy = o.via, o.by
 	for k, v := range d.Inputs {
 		ev.Inputs[k] = v
 	}
@@ -541,7 +548,7 @@ func PolicyVars(ev *Evaluation, p *auth.Principal) policy.Vars {
 		"vms":         ev.vmVars(),
 		"user":        user,
 		"quota":       quotaVars(ev.OverSoft),
-		"request":     ev.requestVars(),
+		"request":     ev.requestVars(p),
 		"update":      ev.updateVars(),
 	}
 }
@@ -682,6 +689,14 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 		return err
 	}
 	vars := PolicyVars(ev, p)
+	// Ordered by someone else (ADR-0065): a policy applies when its
+	// condition holds for either, and approves automatically only when
+	// its auto_approve holds for both, never on the requester's rights
+	// alone.
+	var orderer policy.Vars
+	if ev.orderedBy != nil {
+		orderer = PolicyVars(ev, ev.orderedBy)
+	}
 	ev.Approval = api.ApprovalPreview{Policies: []struct {
 		Levels []struct {
 			Approvers []api.UserRef                          `json:"approvers"`
@@ -695,6 +710,9 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 	ev.Chain, ev.AutoApproved = nil, nil
 	for _, pol := range policies {
 		match, err := policy.Bool(pol.Condition, vars)
+		if err == nil && !match && orderer != nil {
+			match, err = policy.Bool(pol.Condition, orderer)
+		}
 		if err != nil {
 			if !strict {
 				continue // inputs the condition needs are not filled in yet
@@ -707,7 +725,11 @@ func (s *Service) evaluateApproval(ctx context.Context, p *auth.Principal, ev *E
 		}
 		if pol.AutoApprove != nil && *pol.AutoApprove != "" {
 			// An expression that fails to evaluate approves nothing.
-			if auto, err := policy.Bool(*pol.AutoApprove, vars); err == nil && auto {
+			auto, err := policy.Bool(*pol.AutoApprove, vars)
+			if err == nil && auto && orderer != nil {
+				auto, err = policy.Bool(*pol.AutoApprove, orderer)
+			}
+			if err == nil && auto {
 				ev.AutoApproved = append(ev.AutoApproved, pol.Name)
 				continue
 			}

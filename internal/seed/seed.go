@@ -184,10 +184,12 @@ func Run(ctx context.Context, s *store.Store) error {
 		}
 		for _, u := range users {
 			// Once a user has signed in, their manager is the identity provider's.
-			if err := exec(`insert into users (id, subject, name, email, title, manager, global_roles) values ($1,$2,$3,$4,$5,$6,$7)
+			if err := exec(`insert into users (id, subject, name, username, email, title, manager, global_roles)
+				values ($1,$2,$3,$4,$5,$6,$7,$8)
 				on conflict (id) do update set global_roles = excluded.global_roles, title = excluded.title,
-				manager = case when users.subject like 'seed:%' then excluded.manager else users.manager end`,
-				UserID(u.name), "seed:"+u.name, u.display, u.email, u.title, u.manager, u.roles); err != nil {
+				manager = case when users.subject like 'seed:%' then excluded.manager else users.manager end,
+				username = case when users.username = '' then excluded.username else users.username end`,
+				UserID(u.name), "seed:"+u.name, u.display, u.name, u.email, u.title, u.manager, u.roles); err != nil {
 				return err
 			}
 		}

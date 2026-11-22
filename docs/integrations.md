@@ -487,8 +487,10 @@ join" names (KB5020276).
   a user's behalf, the request made for a requested item) with a token of
   scope `servicenow`, made in Administration for rvav's user
   `usr_rvav-servicenow`. No other token or session is taken there, and
-  that token nowhere else. rvav finds the user by email, else by user
-  name, and submits as that user would. Calls come only from
+  that token nowhere else. rvav finds the user by email, or else by
+  their whole user name (an rvav user's `preferred_username`), never by
+  the start of an email, and submits as that user would. An order placed
+  by someone else needs them to hold `request.on_behalf` in the project. Calls come only from
   `allowed_sources`, and submissions are limited to
   `requests_per_minute`.
 - **Work notes** (`internal/snowsync`, in `rvav sync`): the dispatcher

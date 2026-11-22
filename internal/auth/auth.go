@@ -660,7 +660,8 @@ func (o *OIDC) Authenticate(r *http.Request) (*Principal, error) {
 	if ReservedSubject(idt.Subject) {
 		return nil, fmt.Errorf("%w: the subject %q is one of rvav's own users'", ErrUnauthenticated, idt.Subject)
 	}
-	u, err := o.Store.UpsertOIDCUser(ctx, idt.Subject, name, str("email"), str("title"), managerIn(claims, ps.ManagerClaim))
+	u, err := o.Store.UpsertOIDCUser(ctx, idt.Subject, name, str("preferred_username"), str("email"), str("title"),
+		managerIn(claims, ps.ManagerClaim))
 	if err != nil {
 		return nil, err
 	}

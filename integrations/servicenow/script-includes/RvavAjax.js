@@ -27,6 +27,11 @@ RvavAjax.prototype = Object.extendsObject(AbstractAjaxProcessor, {
     if (res.status === 404) {
       return JSON.stringify({ error: 'rvav has no user ' + who + ': sign in to rvav once, or ask its administrators.' });
     }
+    // Such as a last sign-in to rvav too old to go by.
+    if (res.status === 422) {
+      var errors = (res.body && res.body.errors) || [];
+      return JSON.stringify({ error: errors.length > 0 ? errors[0].message : RvavClient.problem(res) });
+    }
     if (res.status !== 200) {
       return JSON.stringify({ error: 'rvav could not be reached. Try again in a minute.' });
     }

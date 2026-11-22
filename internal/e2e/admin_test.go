@@ -188,7 +188,7 @@ func TestProjectAdministration(t *testing.T) {
 			values ('usr_00stale', 'idp-old', 'Pat Doe', 'pat.doe@corp.example', now() - interval '30 days')`); err != nil {
 			t.Fatal(err)
 		}
-		pat, err := h.store.UpsertOIDCUser(ctx, "idp-new", "Pat Doe", "pat.doe@corp.example", "", "")
+		pat, err := h.store.UpsertOIDCUser(ctx, "idp-new", "Pat Doe", "pdoe", "pat.doe@corp.example", "", "")
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -223,9 +223,12 @@ func ServiceNowInputs(formSchema, uiSchema, initialValues json.RawMessage) []api
 	return out
 }
 
-// serviceNowUser finds the user ServiceNow names, by email or by user
-// name, as a principal of their own.
-func (s *Service) serviceNowUser(ctx context.Context, given string) (*auth.Principal, error) {
+// serviceNowUser finds the user ServiceNow names at field, by email or by
+// user name, as a principal of their own, with the groups of their last
+// sign-in: refused when that sign-in is older than
+// RVAV_SCHEDULE_OWNER_IDLE_DAYS, as a schedule's run is, since the
+// groups may no longer be theirs.
+func (s *Service) serviceNowUser(ctx context.Context, given, field string) (*auth.Principal, error) {
 	given = strings.TrimSpace(given)
 	users, err := s.Store.ServiceNowUsersMatching(ctx, given)
 	if err != nil {
@@ -235,10 +238,16 @@ func (s *Service) serviceNowUser(ctx context.Context, given string) (*auth.Princ
 	case len(users) == 0:
 		return nil, &unknownUserError{given: given}
 	case len(users) > 1:
-		return nil, &ValidationError{Errors: []api.FieldError{fieldErr("/user", "ambiguous",
-			fmt.Sprintf("More than one rvav user's email starts with %q: ServiceNow must send the email.", given))}}
+		return nil, &ValidationError{Errors: []api.FieldError{fieldErr(field, "ambiguous",
+			fmt.Sprintf("More than one rvav user has the user name %q: ServiceNow must send the email.", given))}}
 	}
-	return auth.ForUser(ctx, s.Store, users[0].ID)
+	u := users[0]
+	if idle := s.Config.ScheduleOwnerIdleDays; idle > 0 && time.Since(u.SignedInAt) > time.Duration(idle)*24*time.Hour {
+		return nil, &ValidationError{Errors: []api.FieldError{fieldErr(field, "idle", fmt.Sprintf(
+			"%s hasn't signed in to rvav for %d days: rvav doesn't request with the groups of a sign-in that old. "+
+				"They sign in to rvav once, then order again.", u.Name, idle))}}
+	}
+	return auth.ForUser(ctx, s.Store, u.ID)
 }
 
 // unknownUserError: no user ServiceNow may request for has this email or
@@ -247,6 +256,56 @@ type unknownUserError struct{ given string }
 
 func (e *unknownUserError) Error() string {
 	return fmt.Sprintf("no rvav user has the email or user name %q", e.given)
+}
+
+// serviceNowOrderer is who placed the order: the user it's for when
+// ServiceNow names the same person, else someone else, who must be
+// known to rvav.
+func (s *Service) serviceNowOrderer(ctx context.Context, up *auth.Principal, d api.ServiceNowRequestDraft) (*auth.Principal, error) {
+	given := strings.TrimSpace(d.OrderedBy)
+	switch {
+	case given == "":
+		return nil, &ValidationError{Errors: []api.FieldError{fieldErr("/ordered_by", "required",
+			"ServiceNow must say who placed the order: the requested item's opened_by.")}}
+	case strings.EqualFold(given, strings.TrimSpace(d.User)):
+		return up, nil
+	}
+	op, err := s.serviceNowUser(ctx, given, "/ordered_by")
+	var unknown *unknownUserError
+	if errors.As(err, &unknown) {
+		return nil, &ValidationError{Errors: []api.FieldError{fieldErr("/ordered_by", "unknown_user", fmt.Sprintf(
+			"No rvav user has the email or user name %q: to order for someone else, they sign in to rvav once.", unknown.given))}}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if op.User.ID == up.User.ID {
+		return up, nil
+	}
+	return op, nil
+}
+
+// orderKey holds in a context how a request being submitted was made, for
+// its approval policies (ADR-0065).
+type orderKey struct{}
+
+// order is how a request was made: via rvav, a schedule or ServiceNow,
+// and who ordered it, when not its requester.
+type order struct {
+	via string
+	by  *auth.Principal
+}
+
+func withOrder(ctx context.Context, o order) context.Context {
+	return context.WithValue(ctx, orderKey{}, o)
+}
+
+func orderOf(ctx context.Context) order {
+	o, _ := ctx.Value(orderKey{}).(order)
+	if o.via == "" {
+		o.via = "rvav"
+	}
+	return o
 }
 
 func presentServiceNowUser(u store.User) api.ServiceNowUser {
@@ -262,7 +321,7 @@ func (s *Service) ServiceNowEntitlements(ctx context.Context, p *auth.Principal,
 	if err := s.serviceNowLimit(ctx, p, false); err != nil {
 		return api.ServiceNowEntitlements{}, err
 	}
-	up, err := s.serviceNowUser(ctx, user)
+	up, err := s.serviceNowUser(ctx, user, "/user")
 	var unknown *unknownUserError
 	if errors.As(err, &unknown) {
 		return api.ServiceNowEntitlements{}, ErrNotFound
@@ -349,7 +408,7 @@ func (s *Service) SubmitServiceNowRequest(ctx context.Context, p *auth.Principal
 	}
 	client := auth.ClientFrom(ctx)
 	detail := map[string]any{"via": "servicenow", "ritm_number": d.RitmNumber, "ritm_sys_id": d.RitmSysId, "user": d.User,
-		"catalog_item_id": d.CatalogItemId, "project_id": d.ProjectId, "environment": d.Environment, "token_id": p.TokenID,
+		"ordered_by_given": d.OrderedBy, "catalog_item_id": d.CatalogItemId, "project_id": d.ProjectId, "environment": d.Environment, "token_id": p.TokenID,
 		"ip": client.IP, "user_agent": client.UserAgent}
 	refuse := func(err error) (api.ServiceNowRequest, bool, error) {
 		detail["reason"] = err.Error()
@@ -363,7 +422,7 @@ func (s *Service) SubmitServiceNowRequest(ctx context.Context, p *auth.Principal
 	if !s.liveConfig(ctx).ServiceNow.Configured() {
 		return refuse(&ConflictError{Msg: "ServiceNow's connection isn't set in rvav: it couldn't tell the requested item how the request goes."})
 	}
-	up, err := s.serviceNowUser(ctx, d.User)
+	up, err := s.serviceNowUser(ctx, d.User, "/user")
 	var unknown *unknownUserError
 	if errors.As(err, &unknown) {
 		err = &ValidationError{Errors: []api.FieldError{fieldErr("/user", "unknown_user",
@@ -373,17 +432,32 @@ func (s *Service) SubmitServiceNowRequest(ctx context.Context, p *auth.Principal
 		return refuse(err)
 	}
 	detail["on_behalf_of"] = map[string]any{"id": up.User.ID, "name": up.User.Name, "email": up.User.Email}
+	op, err := s.serviceNowOrderer(ctx, up, d)
+	if err != nil {
+		return refuse(err)
+	}
+	detail["ordered_by"] = map[string]any{"id": op.User.ID, "name": op.User.Name, "email": op.User.Email}
 	draft, err := s.serviceNowDraft(ctx, up, d)
 	if err != nil {
 		return refuse(err)
+	}
+	// As in rvav, ordering for someone else takes request.on_behalf there.
+	if op != up && !op.In(auth.RequestOnBehalf, draft.ProjectId) {
+		return refuse(&ValidationError{Errors: []api.FieldError{fieldErr("/ordered_by", "not_allowed", fmt.Sprintf(
+			"%s ordered it for %s, but may not request for someone else in this project: that takes request.on_behalf there.",
+			op.User.Name, up.User.Name))}})
 	}
 	var tokenID *string
 	if p.TokenID != "" {
 		tokenID = &p.TokenID
 	}
 	snow := &store.ServiceNowRequest{RITMSysID: d.RitmSysId, RITMNumber: d.RitmNumber, UserGiven: strings.TrimSpace(d.User),
-		TokenID: tokenID}
-	row, err := s.submit(ctx, up, draft, origin{snow: snow})
+		OrderedByGiven: strings.TrimSpace(d.OrderedBy), TokenID: tokenID}
+	o := order{via: "servicenow"}
+	if op != up {
+		o.by, snow.OrderedByID = op, &op.User.ID
+	}
+	row, err := s.submit(withOrder(ctx, o), up, draft, origin{snow: snow})
 	if errors.Is(err, store.ErrRITMTaken) {
 		// Made by a submission at the same moment.
 		made, err := s.Store.ServiceNowRequestForRITM(ctx, d.RitmSysId)
@@ -521,6 +595,14 @@ func (s *Service) presentServiceNowRequest(ctx context.Context, made store.Servi
 	out := api.ServiceNowRequest{RitmSysId: made.RITMSysID, RitmNumber: made.RITMNumber, RequestId: req.ID,
 		RequestNumber: req.Number, Status: api.RequestStatus(req.Status), User: presentServiceNowUser(u),
 		Url: strings.TrimSuffix(s.Config.PublicURL, "/") + "/requests/" + req.Number, DeploymentIds: []string{}}
+	if made.OrderedByID != nil {
+		by, err := s.Store.GetUser(ctx, *made.OrderedByID)
+		if err != nil {
+			return api.ServiceNowRequest{}, err
+		}
+		ordered := presentServiceNowUser(by)
+		out.OrderedBy = &ordered
+	}
 	for _, dep := range deps {
 		out.DeploymentIds = append(out.DeploymentIds, dep.ID)
 	}
@@ -534,8 +616,17 @@ func (s *Service) serviceNowRef(ctx context.Context, made store.ServiceNowReques
 	if err != nil {
 		return nil, err
 	}
-	return &api.ServiceNowRef{SysId: made.RITMSysID, Number: made.RITMNumber, User: made.UserGiven,
-		Url: servicenow.RecordURL(s.liveConfig(ctx).ServiceNow.URL, servicenow.TableRequestedItem, made.RITMSysID)}, nil
+	ref := &api.ServiceNowRef{SysId: made.RITMSysID, Number: made.RITMNumber, User: made.UserGiven,
+		Url: servicenow.RecordURL(s.liveConfig(ctx).ServiceNow.URL, servicenow.TableRequestedItem, made.RITMSysID)}
+	if made.OrderedByID != nil {
+		by, err := s.Store.GetUser(ctx, *made.OrderedByID)
+		if err != nil {
+			return nil, err
+		}
+		email := openapi_types.Email(by.Email)
+		ref.OrderedBy = &api.UserRef{Id: by.ID, Name: by.Name, Email: &email}
+	}
+	return ref, nil
 }
 
 // ServiceNowRefOfRequest is the requested item a request was made for;
