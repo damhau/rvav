@@ -30,11 +30,12 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { CanvasList, NodeFacts } from "./CanvasList";
-import type { CanvasGraph, CanvasNode, CanvasStatus } from "./graph";
+import type { CanvasDirection, CanvasGraph, CanvasNode, CanvasStatus } from "./graph";
 import { describeNode, lineText, statusLabel } from "./graph";
 import { arrowKeys, layoutGraph, nearest, takenLabel, type CanvasLayout } from "./layout";
 import {
   type CardNode,
+  connectHandle,
   edgeTypes,
   type FrameNode,
   handleSides,
@@ -220,9 +221,13 @@ function toFlow(
   selected: string | null,
   status: Partial<Record<string, CanvasStatus>> | undefined,
   taken: Partial<Record<string, number>> | undefined,
+  connectable: boolean,
 ): { nodes: Node[]; edges: Edge[] } {
   const s = handleSides(graph.direction);
-  // Where edges meet a node, before React Flow has measured its handles.
+  // Where edges meet a node, before React Flow has measured its handles. A
+  // node object made anew (each edit) takes these as its handles, and the
+  // element, the same size, is never measured again: a designer's dot must be
+  // one of them, or a connection can't be drawn from it (xyflow's getHandle).
   const handles = (w: number, h: number) => [
     ...(graph.direction === "TB"
       ? [
@@ -242,6 +247,7 @@ function toFlow(
       width: 1,
       height: 1,
     })),
+    ...(connectable ? [connectDot(graph.direction, w, h)] : []),
   ];
   // `measured` too: React Flow fits only nodes it has measured, and a node
   // object made anew (each edit, each selection) drops its measure while its
@@ -327,6 +333,20 @@ function toFlow(
   return { nodes, edges };
 }
 
+/** The designer's dot (canvas.css .rvav-connect: 10 px and a 2 px border), centred on the side edges leave by. */
+function connectDot(direction: CanvasDirection, w: number, h: number) {
+  const size = 14;
+  return {
+    id: connectHandle,
+    type: "source" as const,
+    position: handleSides(direction).source,
+    x: direction === "TB" ? w / 2 - size / 2 : w - size / 2,
+    y: direction === "TB" ? h - size / 2 : h / 2 - size / 2,
+    width: size,
+    height: size,
+  };
+}
+
 function Graph({
   graph,
   label,
@@ -351,11 +371,12 @@ function Graph({
   const order = graph.nodes.map((n) => n.id);
   const [visited, setVisited] = useState<string | undefined>(undefined);
   const active = visited && layout.nodes.has(visited) ? visited : order[0];
+  const connectable = Boolean(design);
   const flow = useMemo(
-    () => toFlow(graph, layout, active, selected, status, taken),
+    () => toFlow(graph, layout, active, selected, status, taken, connectable),
     // The language too: the nodes' names say their status in it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [graph, layout, active, selected, status, taken, i18n.language],
+    [graph, layout, active, selected, status, taken, connectable, i18n.language],
   );
   const ariaLabels = useMemo(
     () => ({
@@ -476,7 +497,7 @@ function Graph({
           onSelect(n.id);
         }}
         nodesDraggable={false}
-        nodesConnectable={Boolean(design)}
+        nodesConnectable={connectable}
         connectionMode={ConnectionMode.Loose}
         onConnectEnd={design && onConnectEnd}
         nodesFocusable={false}

@@ -499,6 +499,73 @@ test("the same build in French, with the keyboard only, and axe in both themes",
   expect(errors).toEqual([]);
 });
 
+/** With the mouse, as a person draws it: from `from`'s dot onto `to`, in small steps. */
+async function drawConnection(page: Page, from: Locator, to: Locator) {
+  const dot = await from.locator(".rvav-connect").boundingBox();
+  const target = await to.boundingBox();
+  if (!dot || !target) throw new Error("the dot or the node isn't drawn");
+  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 20 });
+  await page.mouse.up();
+}
+
+test("connections drawn with the mouse from a node's dot: on a draft just made, from a node added after, and after an edit", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/admin/catalog-items");
+  await page.getByRole("region", { name: "Items" }).getByRole("link", { name: "Web application" }).click();
+  // The published version's graph first, as a designer looks before making a draft.
+  await page.getByRole("tab", { name: "Definition" }).click();
+  const topology = page.getByRole("region", { name: "Topology of Web application" });
+  await expect(topology.locator(".react-flow__node").first()).toBeVisible();
+  await expect(topology.locator(".rvav-connect")).toHaveCount(0);
+  await page.getByRole("button", { name: "New draft" }).click();
+  await expect(page.getByText(/^Draft [\d.]+ made from the published version/)).toBeVisible();
+  const node = (name: RegExp) => topology.getByRole("button", { name });
+  const web = node(/^VMs Web servers\./);
+  const db = node(/^1 VM Database\./);
+  const edges = topology.locator(".react-flow__edge");
+  await expect(db).toBeVisible();
+  const drawn = await edges.count();
+
+  await drawConnection(page, web, db);
+  await expect(node(/^1 VM Database\..*Built after Web servers/)).toBeVisible();
+  await expect(edges).toHaveCount(drawn + 1);
+  const dependsOn = async (key: string) =>
+    ((await blueprintOf(page)).components as { key: string; depends_on?: string[] }[]).find((c) => c.key === key)
+      ?.depends_on;
+  expect(await dependsOn("db")).toEqual(["web"]);
+
+  // A VM added from the palette, by clicks: its dot works too.
+  await page
+    .getByRole("group", { name: "Add to the topology" })
+    .getByRole("button", { name: "VM", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Add a VM" });
+  await dialog.getByRole("textbox", { name: "Key", exact: true }).fill("cache");
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const cache = node(/^1 VM cache\./);
+  await drawConnection(page, cache, db);
+  await expect(node(/^1 VM Database\..*Built after Web servers\. Built after cache$/)).toBeVisible();
+  expect(await dependsOn("db")).toEqual(["web", "cache"]);
+
+  // After another edit (a title typed in the details), every dot still works.
+  await web.click();
+  const details = page.getByRole("region", { name: "Selected: Web servers" });
+  await details.getByRole("textbox", { name: "Title" }).fill("Front ends");
+  await details.getByRole("textbox", { name: "Title" }).press("Enter");
+  const front = node(/^VMs Front ends\./);
+  await expect(front).toBeVisible();
+  await drawConnection(page, front, cache);
+  await expect(node(/^1 VM cache\..*Built after Front ends/)).toBeVisible();
+  expect(await dependsOn("cache")).toEqual(["web"]);
+  expect(errors).toEqual([]);
+});
+
 test("axe, both themes: the designer with a VM's details, and the add dialog", async ({ page }) => {
   const { topology } = await designed(page, "web-shop-axe");
   await topology.getByRole("button", { name: /^\d+ VMs? web\./ }).click();
