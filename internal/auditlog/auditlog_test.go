@@ -25,7 +25,7 @@ func TestFormat(t *testing.T) {
 	e := Event{ID: "42", At: at, Category: "settings", Action: "settings.audit_destination.update.something.long",
 		TargetType: "audit_destination", TargetID: "adt_1", Detail: json.RawMessage(`{"name":"SIEM"}`)}
 	got := string(Format(Facilities["local0"], "rvav.corp.example", "rvav", e))
-	want := `<133>1 2026-11-19T08:30:00.123456Z rvav.corp.example rvav - settings.audit_destination.updat - {"id":"42",`
+	want := `<133>1 2026-11-19T08:30:00.123456Z rvav.corp.example rvav - settings.audit_destination - {"id":"42",`
 	if !strings.HasPrefix(got, want) {
 		t.Fatalf("got  %s\nwant %s…", got, want)
 	}
@@ -76,6 +76,10 @@ func TestSyslogTCPAndUDP(t *testing.T) {
 	}
 	defer ln.Close()
 	frames := make(chan string, 2)
+	// Open until the test ends: the test send counts a server that closes
+	// the connection after the events as a failure.
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
 		c, err := ln.Accept()
 		if err != nil {
@@ -93,6 +97,7 @@ func TestSyslogTCPAndUDP(t *testing.T) {
 			}
 			frames <- string(msg)
 		}
+		<-done
 	}()
 	msg, err := f.Send(context.Background(), syslogDestination(ln.Addr().String(), api.SyslogTCP), events)
 	if err != nil || !strings.HasSuffix(msg, "over TCP.") {

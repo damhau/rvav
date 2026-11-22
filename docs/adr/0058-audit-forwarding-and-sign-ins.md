@@ -64,7 +64,7 @@ variables), `settings`, `request` (with schedules) and `other`.
 `TestEveryAuditedActionHasACategory` finds every action the code audits
 and fails on one that would be `other`.
 
-### Durable, in order, at least once
+### Durable, in order
 `store.Audit` writes the event and a row in `audit_deliveries` for each
 enabled destination whose categories take it, in one statement: inside
 the audited action's transaction when it has one. An event is never
@@ -79,6 +79,21 @@ records the error and tries again after 5 s, 30 s, 1 min, then every
 destination is removed. Changing a destination tries it again at once.
 A batch delivered just before a crash is sent again: receivers drop an
 event `id` they already have.
+
+A webhook's 2xx answer delivers a batch, so a webhook gets every event at
+least once. A syslog server answers nothing, and a write over TCP or TLS
+succeeds once the data is in the local socket's buffer, even to a server
+that has just closed the connection: counted as delivered then, the
+batch would be lost. So a batch written counts as delivered only once
+the connection is seen still open, by a read that returns at once before
+the next batch is written, or that waits 250 ms after the last. Closed in between, the
+batch goes again on a new connection, three times in a round at most,
+then the round counts as a failure. That covers a server that restarts
+or closes a connection while rvav sends, at the cost of events received
+twice. It can't cover a server that loses what it took, nor one that
+closes the connection more than 250 ms after the last write without
+having read it: only a protocol with acknowledgements, such as RELP,
+would, and rvav doesn't speak one. Over UDP nothing is confirmed.
 
 The lease is taken with `FOR NO KEY UPDATE SKIP LOCKED`, after a look at
 which destinations have events waiting, so that nothing an audited
@@ -110,8 +125,9 @@ destination's backlog doesn't age into the alert.
 
 A test (`POST /admin/audit-destinations/{id}/test`) sends one made-up
 event, `settings.audit_destination.test` with the ID `test`, at once and
-outside the backlog, and says what the server answered. The test itself
-is audited.
+outside the backlog, and says what the server answered; a syslog
+server, whether it still had the connection open 250 ms after. The test
+itself is audited.
 
 ### The syslog message
 `<PRI>1 TIMESTAMP HOSTNAME APP-NAME - MSGID - MSG`:
@@ -120,11 +136,15 @@ is audited.
   is the destination's (`local0` by default);
 - HOSTNAME is the host of rvav's public URL, the same whichever replica
   sent; APP-NAME is the destination's (`rvav` by default); MSGID is the
-  action;
+  action, cut at a dot to RFC 5424's 32 characters
+  (`settings.audit_destination.create` is `settings.audit_destination`);
+- there is no structured data: an SD-ID of rvav's own would need a
+  private enterprise number from IANA, which rvav doesn't have;
 - MSG is the event as the webhook has it, in JSON: `id`, `at`,
-  `category`, `action`, `actor`, `target_type`, `target_id`, `project`,
-  `detail`. A UDP datagram over 8 KiB goes with `{"truncated": true}` as
-  its detail.
+  `category`, `action` (whole), `actor`, `target_type`, `target_id`,
+  `project`, `detail`, after a byte order mark when it isn't all ASCII
+  (RFC 5424's MSG-UTF8). A UDP datagram over 8 KiB goes with
+  `{"truncated": true}` as its detail.
 
 ### Sign-ins
 The API records what it sees, and the clients report what only they see:
@@ -191,6 +211,9 @@ it names no one, and a scanner would fill the log.
   has it meanwhile.
 - A destination that stays down grows its backlog by every event it
   takes: its state, the queue metric and its alert say so.
+- Over syslog, an event can arrive twice after the server closed a
+  connection, and is lost when the server loses what it took. A SIEM that
+  must have every event takes them by webhook.
 - A failure a client reports is a claim, not a fact: SIEM rules should
   treat `reported_by: client` as such. Successes, sign-outs and token
   use are facts.

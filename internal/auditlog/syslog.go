@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/trust"
@@ -64,15 +66,32 @@ func SyslogDefaults(c api.AuditSyslog) api.AuditSyslog {
 	return c
 }
 
-// Format is an event as an RFC 5424 message, its MSG the event's JSON.
+// Format is an event as an RFC 5424 message, its MSG the event's JSON,
+// after a byte order mark when it isn't all ASCII (MSG-UTF8).
 func Format(facility int, hostname, appName string, e Event) []byte {
 	severity := severityNotice
 	if e.Action == "auth.sign_in_failed" {
 		severity = severityWarning
 	}
 	body, _ := json.Marshal(e)
-	return fmt.Appendf(nil, "<%d>1 %s %s %s - %s - %s", facility*8+severity, e.At.UTC().Format("2006-01-02T15:04:05.000000Z"),
-		field(hostname, 255), field(appName, 48), field(e.Action, 32), body)
+	bom := ""
+	if slices.ContainsFunc(body, func(b byte) bool { return b >= utf8.RuneSelf }) {
+		bom = "\ufeff"
+	}
+	return fmt.Appendf(nil, "<%d>1 %s %s %s - %s - %s%s", facility*8+severity, e.At.UTC().Format("2006-01-02T15:04:05.000000Z"),
+		field(hostname, 255), field(appName, 48), msgID(e.Action), bom, body)
+}
+
+// msgID is the action, cut at a dot to RFC 5424's 32 characters:
+// settings.audit_destination.create is settings.audit_destination. MSG
+// has the action whole.
+func msgID(action string) string {
+	if len(action) > 32 {
+		if i := strings.LastIndexByte(action[:33], '.'); i > 0 {
+			action = action[:i]
+		}
+	}
+	return field(action, 32)
 }
 
 // field is a header field: printable US-ASCII, at most n characters, "-"
@@ -127,8 +146,11 @@ func (f *Forwarder) dialSyslog(ctx context.Context, c api.AuditSyslog) (sender, 
 	if err != nil {
 		return nil, err
 	}
+	// A server that refuses a connection it took closes it at once: in TLS
+	// 1.3 a client certificate it refuses is only told after the
+	// handshake, and events written before would be counted as sent.
 	if *c.Transport != api.SyslogUDP {
-		if err := refused(conn); err != nil {
+		if err := closed(conn, settle); err != nil {
 			_ = conn.Close()
 			return nil, err
 		}
@@ -138,12 +160,11 @@ func (f *Forwarder) dialSyslog(ctx context.Context, c api.AuditSyslog) (sender, 
 		timeout: f.timeout()}, nil
 }
 
-// refused waits a moment for the server to close the connection it just
-// took. A syslog server never writes, so whatever comes back is a refusal:
-// in TLS 1.3 a client certificate the server refuses is only told after
-// the handshake, and events written before would be counted as sent.
-func refused(conn net.Conn) error {
-	if err := conn.SetReadDeadline(time.Now().Add(250 * time.Millisecond)); err != nil {
+// closed waits up to wait for the server to close the connection, at
+// least a millisecond. A syslog server never writes, so whatever comes
+// back, an EOF, a reset or a TLS alert, ends the connection.
+func closed(conn net.Conn, wait time.Duration) error {
+	if err := conn.SetReadDeadline(time.Now().Add(max(wait, time.Millisecond))); err != nil {
 		return err
 	}
 	_, err := conn.Read(make([]byte, 1))
@@ -272,6 +293,13 @@ func (s *syslogSender) send(_ context.Context, events []Event) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("Sent %d to %s.", len(events), s.where), nil
+}
+
+func (s *syslogSender) alive(wait time.Duration) error {
+	if s.udp {
+		return nil
+	}
+	return closed(s.conn, wait)
 }
 
 func (s *syslogSender) oversize(e Event) string {

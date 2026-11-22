@@ -539,3 +539,76 @@ func TestAuditForwardingStops(t *testing.T) {
 		}
 	})
 }
+
+// TestAuditForwardingSyslogReconnects: a syslog server over TCP that
+// closes the connection while rvav sends, as one restarting does, gets
+// again what it may have missed on a new connection: no event is lost,
+// some can arrive twice.
+func TestAuditForwardingSyslogReconnects(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		rcv := newTCPSyslog(t)
+		w := rcv.destination("Lab")
+		w.Categories = &[]api.AuditCategory{api.AuditCategoryToken}
+		var dest api.AuditDestination
+		h.json("POST", "/api/v1/admin/audit-destinations", admin, w, 201, &dest)
+		var want []string
+		audit := func(n int) {
+			t.Helper()
+			for range n {
+				target := "tok-" + strconv.Itoa(len(want))
+				want = append(want, target)
+				if err := h.store.Audit(ctx, h.store.Pool, store.AuditEvent{Action: "token.create", TargetType: "api_token",
+					TargetID: target}); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		check := func(when string, conns int) {
+			t.Helper()
+			if err := h.svc.AuditLog.Once(ctx); err != nil {
+				t.Fatal(err)
+			}
+			got := map[string]bool{}
+			for _, m := range rcv.received() {
+				_, target, _ := strings.Cut(m, `"target_id":"`)
+				target, _, _ = strings.Cut(target, `"`)
+				got[target] = true
+			}
+			var missing []string
+			for _, target := range want {
+				if !got[target] {
+					missing = append(missing, target)
+				}
+			}
+			var d api.AuditDestination
+			h.json("GET", "/api/v1/admin/audit-destinations/"+dest.Id, admin, nil, 200, &d)
+			rcv.mu.Lock()
+			n := rcv.conns
+			rcv.mu.Unlock()
+			if len(missing) > 0 || d.State.Backlog != 0 || d.State.Failures != 0 || n != conns {
+				t.Fatalf("%s: %d events missing (%v), state %+v, %d connections", when, len(missing), missing, d.State, n)
+			}
+		}
+
+		// Closed after the first batch: the second, written before rvav
+		// could tell, goes again.
+		rcv.mu.Lock()
+		rcv.closeAfter, rcv.frames = 1, auditlog.Batch
+		rcv.mu.Unlock()
+		audit(3*auditlog.Batch + 50)
+		check("closed between batches", 2)
+
+		// Closed in the middle of the last batch: rvav waits a moment
+		// before it counts the last as received.
+		rcv.mu.Lock()
+		rcv.closeAfter, rcv.frames = 1, 20
+		rcv.mu.Unlock()
+		audit(50)
+		check("closed during the last batch", 4)
+	})
+}

@@ -2640,15 +2640,19 @@ What a destination receives:
 
 - **Syslog:** one RFC 5424 message per event, framed by octet counting
   over TLS (RFC 5425) or TCP, or one per datagram over UDP. HOSTNAME is
-  the host of rvav's address, MSGID the event's action, and MSG the event
-  in JSON: `id`, `at`, `category`, `action`, `actor`, `target_type`,
-  `target_id`, `project` and `detail`. Failed sign-ins have the warning
-  severity, other events notice. Use TCP and UDP for labs only: they
-  send in clear.
+  the host of rvav's address, MSGID the event's action cut at a dot to
+  32 characters, and MSG the event in JSON: `id`, `at`, `category`,
+  `action`, `actor`, `target_type`, `target_id`, `project` and
+  `detail`. Failed sign-ins have the warning severity, other events
+  notice. Use TCP and UDP for labs only: they send in clear.
 - **Webhook:** a POST of `{"contract": "rvav.audit.v1", "events": [...]}`
   with up to 100 events, the oldest first, signed in `X-Rvav-Signature`
   as subscriptions' webhooks are
   ([integrations.md](../integrations.md)). Any 2xx answer delivers them.
 
-An event can arrive twice, after a restart in the middle of a delivery:
-drop an `id` you already have.
+An event can arrive twice, after a restart in the middle of a delivery,
+or after a syslog server closed the connection while rvav sent: drop an
+`id` you already have. A syslog server doesn't confirm what it receives.
+If it loses events it took, or closes the connection without reading
+them more than a quarter of a second after rvav's last write, those
+events are lost. To receive every event, use a webhook.

@@ -186,8 +186,9 @@ func (r *syslogReceiver) none(t *testing.T) {
 	}
 }
 
-// rfc5424 is the header RFC 5424 gives a message, and its MSG.
-var rfc5424 = regexp.MustCompile(`^<(\d{1,3})>1 (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z) (\S{1,255}) (\S{1,48}) - (\S{1,32}) - (\{.*\})$`)
+// rfc5424 is the header RFC 5424 gives a message, and its MSG, after a
+// byte order mark when it isn't all ASCII.
+var rfc5424 = regexp.MustCompile(`^<(\d{1,3})>1 (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z) (\S{1,255}) (\S{1,48}) - (\S{1,32}) - (?:\x{FEFF})?(\{.*\})$`)
 
 type syslogMsg struct {
 	pri                  int

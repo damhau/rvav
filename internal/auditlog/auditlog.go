@@ -95,6 +95,15 @@ const Batch = 100
 // well before it ends.
 const lease = 2 * time.Minute
 
+// settle is how long a syslog server has to close a connection, after it
+// was opened or the last batch written, before what it got counts as
+// received.
+const settle = 250 * time.Millisecond
+
+// reconnects is how many times a round opens a syslog connection again
+// after the server closed it, before it counts as a failure.
+const reconnects = 3
+
 var backoff = []time.Duration{5 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute}
 
 // Backoff is the wait after the n-th failure in a row.
@@ -188,30 +197,90 @@ func (f *Forwarder) drain(parent context.Context, d store.AuditDestination) {
 			_ = s.close()
 		}
 	}()
-	for f.now().Before(until) && parent.Err() == nil {
-		rows, err := f.Store.AuditBacklog(ctx, d.ID, Batch)
-		if err != nil {
-			f.Log.Warn("audit forwarding: backlog", "destination", d.Name, "err", err)
-			return
+	// A syslog server answers nothing: the batch last written to it counts
+	// as received once the connection is seen still open, before the next
+	// is written or a moment after the last. Closed, the batch goes again
+	// on a new connection.
+	var unconfirmed []int64
+	var after int64
+	opened := 0
+	for {
+		more := f.now().Before(until) && parent.Err() == nil
+		var rows []store.AuditRow
+		if more {
+			var err error
+			if rows, err = f.Store.AuditBacklog(ctx, d.ID, after, Batch); err != nil {
+				f.Log.Warn("audit forwarding: backlog", "destination", d.Name, "err", err)
+				return
+			}
+		}
+		if len(unconfirmed) > 0 {
+			wait := time.Duration(0)
+			if len(rows) == 0 {
+				wait = settle
+			}
+			if err := s.(prober).alive(wait); err != nil {
+				_ = s.close()
+				s, unconfirmed, after = nil, nil, 0
+				if !more || opened > reconnects {
+					f.failed(ctx, d, err)
+					return
+				}
+				f.Log.Info("audit forwarding: the server closed the connection; what it was last sent goes again",
+					"destination", d.Name, "err", err)
+				continue
+			}
+			if !f.delivered(ctx, d, unconfirmed) {
+				return
+			}
+			unconfirmed = nil
 		}
 		if len(rows) == 0 {
 			return
 		}
+		after = rows[len(rows)-1].ID
 		events, sent := make([]Event, len(rows)), make([]int64, len(rows))
 		for i, r := range rows {
 			events[i], sent[i] = FromRow(r), r.ID
 		}
 		if s == nil {
+			var err error
 			if s, err = f.open(ctx, d); err != nil {
 				f.failed(ctx, d, err)
 				return
 			}
+			opened++
 		}
-		events, sent = f.setAsideOversize(ctx, d, s, events, sent)
-		if len(events) > 0 && !f.sendBatch(ctx, d, s, events, sent) {
+		if events, sent = f.setAsideOversize(ctx, d, s, events, sent); len(events) == 0 {
+			continue
+		}
+		if _, ok := s.(prober); ok {
+			if _, err := s.send(ctx, events); err != nil {
+				f.failed(ctx, d, err)
+				return
+			}
+			unconfirmed = sent
+			continue
+		}
+		if !f.sendBatch(ctx, d, s, events, sent) {
 			return
 		}
 	}
+}
+
+// prober is a sender whose server answers nothing, syslog's.
+type prober interface {
+	// alive says whether the server still has the connection open,
+	// waiting up to wait for it to close it.
+	alive(wait time.Duration) error
+}
+
+func (f *Forwarder) delivered(ctx context.Context, d store.AuditDestination, ids []int64) bool {
+	if err := f.Store.AuditDelivered(ctx, d.ID, ids, f.now()); err != nil {
+		f.Log.Warn("audit forwarding: delivered", "destination", d.Name, "err", err)
+		return false
+	}
+	return true
 }
 
 // setAsideOversize sets aside the events the sender would never send, and
@@ -238,10 +307,7 @@ func (f *Forwarder) sendBatch(ctx context.Context, d store.AuditDestination, s s
 	var tooLarge *tooLargeError
 	switch {
 	case err == nil:
-		if err := f.Store.AuditDelivered(ctx, d.ID, ids, f.now()); err != nil {
-			f.Log.Warn("audit forwarding: delivered", "destination", d.Name, "err", err)
-			return false
-		}
+		return f.delivered(ctx, d, ids)
 	case errors.As(err, &tooLarge) && len(events) == 1:
 		return f.setAside(ctx, d, ids[0], tooLarge.Error())
 	case errors.As(err, &tooLarge):
@@ -281,14 +347,19 @@ func (f *Forwarder) failed(ctx context.Context, d store.AuditDestination, err er
 }
 
 // Send sends events to a destination once, now: a test's. It says what
-// the destination answered.
+// the destination answered; a syslog server, that it kept the connection
+// open after.
 func (f *Forwarder) Send(ctx context.Context, d store.AuditDestination, events []Event) (string, error) {
 	s, err := f.open(ctx, d)
 	if err != nil {
 		return "", err
 	}
 	defer s.close()
-	return s.send(ctx, events)
+	msg, err := s.send(ctx, events)
+	if p, ok := s.(prober); ok && err == nil {
+		err = p.alive(settle)
+	}
+	return msg, err
 }
 
 // sender is an open connection to a destination.
