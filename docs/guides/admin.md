@@ -2575,7 +2575,12 @@ their delivery without changing them.
      server's certificate unless the system or the CA bundle already
      trusts them, and, for mutual TLS, the **Client certificate** with
      the stored secret that holds its **Client key**.
-   - **Webhook:** its **URL** and the **Signing secret**.
+   - **Webhook:** its **URL** and the **Signing secret**. If the SIEM
+     takes a credential in a header, such as Splunk's
+     `Authorization: Splunk <token>` or Datadog's `DD-API-KEY`, give the
+     header's name and its value. rvav keeps the value sealed and never
+     shows it again; to keep it when you change the destination, leave
+     the value empty. A value isn't kept for a URL with another host.
 5. Under **Events**, tick the categories to send, such as **Sign-ins and
    sign-outs**. To send every event, tick none.
 6. Click **Save destination**.
@@ -2589,6 +2594,17 @@ and when rvav tries again. rvav tries after 5 seconds, 30 seconds and
 the destination tries it again at once. **Turn off** stops sending and
 queuing; **Remove** drops the events waiting for it. The audit log keeps
 every event either way.
+
+Don't put a credential in a webhook's URL: rvav refuses a user name or
+password there, and shows the value of each query parameter as
+`REDACTED`, to auditors, in the audit log and in the destination's last
+error. rvav keeps the values it stored when you save the URL as shown.
+
+An event the destination refuses for good waits aside, and the events
+after it go on: a webhook that answers 413 for that event alone, or an
+event longer than 64 KB written for syslog over TCP or TLS. The row
+shows how many events are set aside and why. To send them again, raise
+the receiver's limit, then save the destination.
 
 What a destination receives:
 

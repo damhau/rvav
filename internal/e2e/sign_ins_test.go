@@ -207,8 +207,22 @@ func TestSignInsAudited(t *testing.T) {
 		if code, b := callAt(srv2.URL, "POST", "/api/v1/auth/sign-ins", other, "", map[string]any{"client": "web", "method": "oidc"}); code != 503 {
 			t.Fatalf("keys unavailable = %d %s", code, b)
 		}
-		if code, _ := report("", "", map[string]any{"client": "web", "method": "oidc"}); code != 401 {
-			t.Fatalf("no token = %d", code)
+		if code, b := report("", "", map[string]any{"client": "web", "method": "oidc"}); code != 401 ||
+			!strings.Contains(b, "Authorization header") || strings.Contains(b, "refused the token") {
+			t.Fatalf("no token = %d %s", code, b)
+		}
+		// Only as JSON: a form on another site can post text/plain.
+		before := h.lastAuditID()
+		req, _ := http.NewRequestWithContext(ctx, "POST", srv.URL+"/api/v1/auth/sign-ins",
+			strings.NewReader(`{"client":"web","method":"oidc","failure":{"stage":"provider"}}`))
+		req.Header.Set("Content-Type", "text/plain")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnsupportedMediaType || h.lastAuditID() != before {
+			t.Fatalf("a text/plain report = %d, audited %v", resp.StatusCode, h.lastAuditID() != before)
 		}
 		for _, bad := range []map[string]any{
 			{},

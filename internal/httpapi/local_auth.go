@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"math"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -104,6 +105,13 @@ func (s *Server) SignOut(w http.ResponseWriter, r *http.Request) {
 // ReportSignIn records how a sign-in at the identity provider went, as the
 // web app or rvavctl says (ADR-0058). The body is checked before the token.
 func (s *Server) ReportSignIn(w http.ResponseWriter, r *http.Request) {
+	// Anyone may report a failure: JSON only, which a form on another site
+	// can't post without a preflight, as it can text/plain.
+	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
+		s.problem(w, r, http.StatusUnsupportedMediaType, "unsupported-type", "Send the report as JSON",
+			"The body is sent as application/json.", nil)
+		return
+	}
 	var rep api.SignInReport
 	if !s.decodeStrict(w, r, &rep) {
 		return
@@ -131,8 +139,11 @@ func (s *Server) ReportSignIn(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		w.Header().Set("WWW-Authenticate", `Bearer realm="rvav"`)
-		s.problem(w, r, http.StatusUnauthorized, "unauthenticated", "Sign-in refused",
-			"rvav refused the token the identity provider gave.", nil)
+		detail := "rvav refused the token the identity provider gave."
+		if r.Header.Get("Authorization") == "" {
+			detail = "Send the token the identity provider gave in the Authorization header, or, without one, why the sign-in failed in failure."
+		}
+		s.problem(w, r, http.StatusUnauthorized, "unauthenticated", "Sign-in refused", detail, nil)
 		return
 	case errors.Is(err, auth.ErrProviderUnavailable):
 		w.Header().Set("Retry-After", "5")

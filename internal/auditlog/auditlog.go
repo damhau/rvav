@@ -17,6 +17,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/dispatch"
+	"github.com/damhau/rvav/internal/secrets"
 	"github.com/damhau/rvav/internal/store"
 	"github.com/damhau/rvav/internal/trust"
 )
@@ -69,6 +70,8 @@ type Forwarder struct {
 	Log   *slog.Logger
 	// Secret opens the stored secrets that sign webhooks and hold client keys.
 	Secret dispatch.SecretFunc
+	// Box opens the webhooks' authentication header values.
+	Box *secrets.Box
 	// WebhookHosts are the hosts webhooks may call, as saved now.
 	WebhookHosts func(context.Context) []string
 	// Hostname is syslog's HOSTNAME field.
@@ -191,21 +194,74 @@ func (f *Forwarder) drain(ctx context.Context, d store.AuditDestination) {
 			events[i], sent[i] = FromRow(r), r.ID
 		}
 		if s == nil {
-			s, err = f.open(ctx, d)
+			if s, err = f.open(ctx, d); err != nil {
+				f.failed(ctx, d, err)
+				return
+			}
 		}
-		if err == nil {
-			_, err = s.send(ctx, events)
-		}
-		if err != nil {
-			f.failed(ctx, d, err)
-			return
-		}
-		if err := f.Store.AuditDelivered(ctx, d.ID, sent, f.now()); err != nil {
-			f.Log.Warn("audit forwarding: delivered", "destination", d.Name, "err", err)
+		events, sent = f.setAsideOversize(ctx, d, s, events, sent)
+		if len(events) > 0 && !f.sendBatch(ctx, d, s, events, sent) {
 			return
 		}
 	}
 }
+
+// setAsideOversize sets aside the events the sender would never send, and
+// leaves the others.
+func (f *Forwarder) setAsideOversize(ctx context.Context, d store.AuditDestination, s sender, events []Event, ids []int64) ([]Event, []int64) {
+	keep, kept := events[:0:0], ids[:0:0]
+	for i, e := range events {
+		if why := s.oversize(e); why != "" {
+			if !f.setAside(ctx, d, ids[i], why) {
+				return keep, kept
+			}
+			continue
+		}
+		keep, kept = append(keep, e), append(kept, ids[i])
+	}
+	return keep, kept
+}
+
+// sendBatch sends events and records what came of them: delivered, or
+// failed. Events the destination refuses as too large go again one by one,
+// and one it refuses alone is set aside. False when sending stops.
+func (f *Forwarder) sendBatch(ctx context.Context, d store.AuditDestination, s sender, events []Event, ids []int64) bool {
+	_, err := s.send(ctx, events)
+	var tooLarge *tooLargeError
+	switch {
+	case err == nil:
+		if err := f.Store.AuditDelivered(ctx, d.ID, ids, f.now()); err != nil {
+			f.Log.Warn("audit forwarding: delivered", "destination", d.Name, "err", err)
+			return false
+		}
+	case errors.As(err, &tooLarge) && len(events) == 1:
+		return f.setAside(ctx, d, ids[0], tooLarge.Error())
+	case errors.As(err, &tooLarge):
+		for i := range events {
+			if !f.sendBatch(ctx, d, s, events[i:i+1], ids[i:i+1]) {
+				return false
+			}
+		}
+	default:
+		f.failed(ctx, d, err)
+		return false
+	}
+	return true
+}
+
+func (f *Forwarder) setAside(ctx context.Context, d store.AuditDestination, id int64, why string) bool {
+	f.Log.Warn("audit forwarding: event set aside", "destination", d.Name, "event", id, "reason", why)
+	if err := f.Store.AuditSetAside(ctx, d.ID, id, truncate(why, 1000), f.now()); err != nil {
+		f.Log.Warn("audit forwarding: set aside", "destination", d.Name, "err", err)
+		return false
+	}
+	return true
+}
+
+// tooLargeError is a destination's refusal, for good, of what was sent.
+type tooLargeError struct{ msg string }
+
+func (e *tooLargeError) Error() string { return e.msg }
 
 func (f *Forwarder) failed(ctx context.Context, d store.AuditDestination, err error) {
 	now := f.now()
@@ -230,6 +286,8 @@ func (f *Forwarder) Send(ctx context.Context, d store.AuditDestination, events [
 // sender is an open connection to a destination.
 type sender interface {
 	send(ctx context.Context, events []Event) (string, error)
+	// oversize says why the sender would never send an event, or "".
+	oversize(e Event) string
 	close() error
 }
 
@@ -246,7 +304,7 @@ func (f *Forwarder) open(ctx context.Context, d store.AuditDestination) (sender,
 		if err := json.Unmarshal(d.Settings, &cfg); err != nil {
 			return nil, err
 		}
-		return f.webhook(ctx, cfg)
+		return f.webhook(ctx, d, cfg)
 	}
 	return nil, errors.New("not a syslog server or a webhook")
 }

@@ -166,7 +166,10 @@ export interface paths {
          *       happened; at most 10 a minute from one address are kept.
          *
          *     Never send the authorization code, the state or a token in the
-         *     body.
+         *     body. The body is sent as `application/json`, which a form on
+         *     another site can't send without the browser asking first.
+         *
+         *     `AuditEvent` lists what the events' `detail` holds.
          */
         post: operations["reportSignIn"];
         delete?: never;
@@ -243,7 +246,13 @@ export interface paths {
          * The logo for the light or the dark theme
          * @description For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
          *     nothing that runs or fetches when it was saved. Its URL in
-         *     `Branding` changes with it.
+         *     `Branding` changes with it. It is sent with a
+         *     `Content-Security-Policy` that runs nothing and fetches nothing,
+         *     and `X-Content-Type-Options: nosniff`: the web app shows logos in
+         *     `<img>` elements only.
+         *
+         *     Answered with an `ETag`: sent back in `If-None-Match`, the answer
+         *     is 304 while the logo is the same.
          */
         get: operations["getBrandingLogo"];
         put?: never;
@@ -3859,13 +3868,14 @@ export interface paths {
          *     at most. An SVG with a script, an event handler, a foreign object,
          *     a link or a reference outside itself, or a DOCTYPE is refused (422):
          *     the picture is kept as it was sent, never rewritten. Emails show the
-         *     light theme's logo when it is a PNG or JPEG one.
+         *     light theme's logo when it is a PNG or JPEG one. A variant other
+         *     than `light` or `dark` is 400.
          */
         put: operations["setBrandingLogo"];
         post?: never;
         /**
          * Remove the logo for the light or the dark theme
-         * @description `system.manage`; audited (`settings.branding_logo.remove`).
+         * @description `system.manage`; audited (`settings.branding_logo.remove`). A variant other than `light` or `dark` is 400.
          */
         delete: operations["deleteBrandingLogo"];
         options?: never;
@@ -3905,7 +3915,7 @@ export interface paths {
         };
         /**
          * A kind's template for a channel and language, and its built-in one
-         * @description `system.manage`.
+         * @description `system.manage`. A kind that isn't one is 404; a channel or a locale that isn't one, 400.
          */
         get: operations["getNotificationTemplate"];
         /**
@@ -3914,13 +3924,16 @@ export interface paths {
          *     template: refused (422, per part) when it doesn't parse, names a
          *     variable its kind doesn't have, defines or calls other templates,
          *     or fails on the kind's sample data. Notifications sent from then on
-         *     use it.
+         *     use it. A kind that isn't one is 404; a channel or a locale that
+         *     isn't one, 422.
          */
         put: operations["setNotificationTemplate"];
         post?: never;
         /**
          * Go back to the built-in template
-         * @description `system.manage`; audited (`settings.notification_template.reset`) when it was edited.
+         * @description `system.manage`; audited (`settings.notification_template.reset`)
+         *     when it was edited. A kind that isn't one is 404; a channel or a
+         *     locale that isn't one, 400.
          */
         delete: operations["resetNotificationTemplate"];
         options?: never;
@@ -3941,7 +3954,8 @@ export interface paths {
          * A template written with its kind's sample data, as it would be sent
          * @description `system.manage`. Saves nothing. An email's HTML, a Teams card's
          *     JSON or Slack's blocks, with the portal's branding; a template
-         *     that can't be saved is 422, per part.
+         *     that can't be saved is 422, per part. A kind that isn't one is
+         *     404.
          */
         post: operations["previewNotificationTemplate"];
         delete?: never;
@@ -5053,7 +5067,7 @@ export interface paths {
         };
         /** One destination, with its delivery state */
         get: operations["getAuditDestination"];
-        /** Change a destination; the events waiting for it are tried again at once */
+        /** Change a destination; the events waiting for it, and those set aside, are tried again at once */
         put: operations["updateAuditDestination"];
         post?: never;
         /** Stop sending audit events there; those waiting are dropped (the audit log keeps them) */
@@ -10409,12 +10423,17 @@ export interface components {
             /** @description What templates may call besides Go's own (`if`, `range`, `eq`, `printf`...). */
             functions: components["schemas"]["TemplateVariable"][];
         };
+        /** @description Lengths are in bytes of UTF-8. */
         TemplateParts: {
             /** @description An email's subject; a Teams card's or a Slack message's title. */
             subject: string;
             /** @description An email's text part; a card's markdown or a message's mrkdwn, whose variables are escaped. */
             text: string;
-            /** @description An email's HTML part, put in the layout with the greeting, facts, button and footer. Emails only. */
+            /**
+             * @description An email's HTML part, put in the layout with the greeting,
+             *     facts, button and footer. An email needs one: left out or
+             *     empty, it is refused (422). Teams and Slack have none.
+             */
             html?: string;
         };
         NotificationTemplateWrite: components["schemas"]["TemplateParts"] & {
@@ -10477,15 +10496,16 @@ export interface components {
             logo_dark_url?: string;
         };
         BrandingWrite: {
-            /** @description Empty for rvav. */
+            /** @description Empty for rvav. Its spaces are collapsed; a control character, such as a tab or a line break, is refused. */
             name: string;
             /**
-             * @description #rrggbb or #rgb; empty for rvav's own.
+             * @description #rrggbb or #rgb; empty for rvav's own. One that isn't a colour is refused with the code `invalid`, one that doesn't read with `contrast`.
              * @example #5b2a86
              */
             accent: string;
         };
         AccentCheckQuery: {
+            /** @description #rrggbb or #rgb. */
             accent: string;
         };
         AccentCheck: {
@@ -11187,6 +11207,28 @@ export interface components {
             target_type: string;
             target_id: string;
             project?: components["schemas"]["ProjectRef"] | null;
+            /**
+             * @description What the action changed, or how it went. The `auth.*` events'
+             *     holds `method` (`local`, `oidc`, `device`, `dev` or `token`)
+             *     and, as the request came, `ip` and `user_agent`:
+             *     - `auth.sign_in`: reported by the web app or rvavctl, `client`,
+             *       with `roles` and `groups` from the identity provider; the
+             *       local administrator's, `password_change_required`.
+             *     - `auth.sign_in_failed`: `reason`, such as `wrong password`,
+             *       `unknown username` (its `username` is then `unknown`, never
+             *       what was typed), `state mismatch`, `provider refused`,
+             *       `token exchange failed`, `token refused` or `token_expired`.
+             *       The local administrator's adds `failures_in_a_row`; one a
+             *       client reported, `client`, `stage`, `error`, `description`
+             *       and `reported_by: client`.
+             *     - `auth.sign_out`; `auth.password_changed`, with
+             *       `sessions_ended` and `tokens_revoked`; `auth.token_used`, the
+             *       API token's `name`, on its first use of the day.
+             *     - `auth.password_reset` (`rvav admin reset-password`): `by`,
+             *       `sessions_ended` and `tokens_revoked`;
+             *       `auth.local_admin_created`: `password`, `generated` or
+             *       `RVAV_ADMIN_PASSWORD`.
+             */
             detail: {
                 [key: string]: unknown;
             };
@@ -11199,21 +11241,26 @@ export interface components {
          *     `sign_in` (`auth.*`), `token` (`token.*`, `awx.inventory_token`),
          *     `access` (projects, members, environments, roles and group mappings),
          *     `catalog`, `policy` (policies and naming), `infrastructure`
-         *     (placement, networks, templates, sizes, vCenters), `extensibility`
-         *     (subscriptions, workflows, resource types, day-2 actions and forms),
+         *     (placement, networks, templates, sizes, vCenters, IP ranges, Active
+         *     Directory placement), `extensibility` (subscriptions, workflows,
+         *     resource types, day-2 actions and forms, shared variables),
          *     `settings` (settings, secrets, integrations, vRA import), `request`
-         *     (requests, deployments, approvals, the console, onboarding) and
-         *     `other` for anything else.
+         *     (requests, deployments, approvals, schedules, the console,
+         *     onboarding) and `other` for anything else.
          * @enum {string}
          */
         AuditCategory: "sign_in" | "token" | "access" | "catalog" | "policy" | "infrastructure" | "extensibility" | "settings" | "request" | "other";
         /**
-         * @description `tls`: RFC 5425, octet-counting framing; `tcp`: the same framing in clear; `udp`: RFC 5426, one event per datagram. `tcp` and `udp` are for labs.
+         * @description `tls` (when left out): RFC 5425, octet-counting framing; `tcp`: the
+         *     same framing in clear; `udp`: RFC 5426, one event per datagram.
+         *     `tcp` and `udp` are for labs. Over TCP and TLS, an event longer
+         *     than 64 KB is set aside; over UDP, one longer than 8 KB goes
+         *     without its detail.
          * @enum {string}
          */
         SyslogTransport: "tls" | "tcp" | "udp";
         /**
-         * @description The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14).
+         * @description The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14). `local0` when left out.
          * @enum {string}
          */
         SyslogFacility: "kern" | "user" | "mail" | "daemon" | "auth" | "syslog" | "lpr" | "news" | "uucp" | "cron" | "authpriv" | "ftp" | "ntp" | "audit" | "alert" | "clock" | "local0" | "local1" | "local2" | "local3" | "local4" | "local5" | "local6" | "local7";
@@ -11234,10 +11281,30 @@ export interface components {
             client_key_secret?: string;
         };
         AuditWebhook: {
-            /** @description An HTTPS (or HTTP) URL on one of the hosts webhooks may call (Administration › Integrations › Allowed hosts). */
+            /**
+             * @description An HTTPS (or HTTP) URL on one of the hosts webhooks may call
+             *     (Administration › Integrations › Allowed hosts), without a user
+             *     name or password: `auth_header` carries a credential. Reads
+             *     show each value of its query as `REDACTED`; a URL sent back so
+             *     keeps the values stored.
+             */
             url: string;
             /** @description The stored secret each body is signed with, in `X-Rvav-Signature` as subscriptions' webhooks are. */
             secret: string;
+            /**
+             * @description A header sent with each call, such as `Authorization` or
+             *     `DD-API-KEY`, with `auth_value` as its value. Not one rvav sets
+             *     itself: `Content-Type`, `Content-Length`, `Host`, `User-Agent`
+             *     or an `X-Rvav-` one. Left out on a change, the header goes with
+             *     its value.
+             */
+            auth_header?: string;
+            /**
+             * @description The header's value, such as `Bearer …`, sealed as integrations'
+             *     passwords are and never shown. Kept when not given on a change,
+             *     unless the URL's scheme, host or port changes.
+             */
+            auth_value?: string;
         };
         /** @description A syslog server or a webhook, exactly one. */
         AuditDestinationWrite: {
@@ -11250,7 +11317,7 @@ export interface components {
             webhook?: components["schemas"]["AuditWebhook"];
         };
         AuditDeliveryState: {
-            /** @description Events waiting to be sent. */
+            /** @description Events waiting to be sent, without those set aside. */
             backlog: number;
             /**
              * Format: int64
@@ -11270,6 +11337,14 @@ export interface components {
              * @description When the events waiting are tried again, after a failure.
              */
             next_attempt_at?: string;
+            /**
+             * @description Events the destination refuses for good, such as a webhook's
+             *     413 or an event too long for syslog: they wait aside, and the
+             *     events after them go. Saving the destination tries them again.
+             */
+            set_aside: number;
+            /** @description Why the last event set aside was. */
+            set_aside_reason?: string;
         };
         AuditDestination: {
             id: string;
@@ -11312,7 +11387,7 @@ export interface components {
              * @enum {string}
              */
             stage: "state" | "provider" | "token";
-            /** @description The provider's error code, such as access_denied or invalid_grant. */
+            /** @description The provider's error code, such as access_denied or invalid_grant: printable ASCII. */
             error?: string;
             /** @description The provider's error_description, or the client's message. */
             description?: string;
@@ -11984,6 +12059,15 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            /** @description The body isn't sent as `application/json` */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             422: components["responses"]["ValidationFailed"];
             /** @description The identity provider can't be reached to check the token; nothing was recorded */
             503: {
@@ -12061,7 +12145,10 @@ export interface operations {
                  */
                 v?: string;
             };
-            header?: never;
+            header?: {
+                /** @description The `ETag` of the logo the caller has. */
+                "If-None-Match"?: string;
+            };
             path: {
                 variant: components["schemas"]["LogoVariant"];
             };
@@ -12072,6 +12159,8 @@ export interface operations {
             /** @description The logo */
             200: {
                 headers: {
+                    /** @description Changes when the logo does. */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -12079,6 +12168,13 @@ export interface operations {
                     "image/jpeg": string;
                     "image/svg+xml": string;
                 };
+            };
+            /** @description The logo is the one the ETag names. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             404: components["responses"]["NotFound"];
         };
@@ -17962,6 +18058,7 @@ export interface operations {
                     "application/json": components["schemas"]["Branding"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
@@ -17989,6 +18086,7 @@ export interface operations {
                     "application/json": components["schemas"]["AccentCheck"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };
@@ -18017,6 +18115,7 @@ export interface operations {
                     "application/json": components["schemas"]["Branding"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
@@ -18044,6 +18143,7 @@ export interface operations {
                     "application/json": components["schemas"]["Branding"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };
@@ -18093,8 +18193,10 @@ export interface operations {
                     "application/json": components["schemas"]["NotificationTemplate"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     setNotificationTemplate: {
@@ -18121,8 +18223,10 @@ export interface operations {
                     "application/json": components["schemas"]["NotificationTemplate"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
         };
     };
@@ -18149,8 +18253,10 @@ export interface operations {
                     "application/json": components["schemas"]["NotificationTemplate"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     previewNotificationTemplate: {
@@ -18177,8 +18283,10 @@ export interface operations {
                     "application/json": components["schemas"]["NotificationTemplatePreview"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
         };
     };
@@ -20286,6 +20394,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description This rvav process can't send audit events (no forwarder runs in it) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getReport: {

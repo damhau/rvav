@@ -3734,6 +3734,7 @@ type AccentCheck struct {
 
 // AccentCheckQuery defines model for AccentCheckQuery.
 type AccentCheckQuery struct {
+	// Accent #rrggbb or #rgb.
 	Accent string `json:"accent"`
 }
 
@@ -4565,16 +4566,17 @@ type AssignableRoleList struct {
 // `sign_in` (`auth.*`), `token` (`token.*`, `awx.inventory_token`),
 // `access` (projects, members, environments, roles and group mappings),
 // `catalog`, `policy` (policies and naming), `infrastructure`
-// (placement, networks, templates, sizes, vCenters), `extensibility`
-// (subscriptions, workflows, resource types, day-2 actions and forms),
+// (placement, networks, templates, sizes, vCenters, IP ranges, Active
+// Directory placement), `extensibility` (subscriptions, workflows,
+// resource types, day-2 actions and forms, shared variables),
 // `settings` (settings, secrets, integrations, vRA import), `request`
-// (requests, deployments, approvals, the console, onboarding) and
-// `other` for anything else.
+// (requests, deployments, approvals, schedules, the console,
+// onboarding) and `other` for anything else.
 type AuditCategory string
 
 // AuditDeliveryState defines model for AuditDeliveryState.
 type AuditDeliveryState struct {
-	// Backlog Events waiting to be sent.
+	// Backlog Events waiting to be sent, without those set aside.
 	Backlog int `json:"backlog"`
 
 	// Delivered Events sent since the destination was made.
@@ -4590,6 +4592,14 @@ type AuditDeliveryState struct {
 
 	// NextAttemptAt When the events waiting are tried again, after a failure.
 	NextAttemptAt *time.Time `json:"next_attempt_at,omitempty"`
+
+	// SetAside Events the destination refuses for good, such as a webhook's
+	// 413 or an event too long for syslog: they wait aside, and the
+	// events after them go. Saving the destination tries them again.
+	SetAside int `json:"set_aside"`
+
+	// SetAsideReason Why the last event set aside was.
+	SetAsideReason *string `json:"set_aside_reason,omitempty"`
 }
 
 // AuditDestination defines model for AuditDestination.
@@ -4641,8 +4651,29 @@ type AuditEvent struct {
 	Action string `json:"action"`
 
 	// Actor Null when rvav itself acted (a timeout, an auto-approval).
-	Actor      *UserRef               `json:"actor,omitempty"`
-	At         time.Time              `json:"at"`
+	Actor *UserRef  `json:"actor,omitempty"`
+	At    time.Time `json:"at"`
+
+	// Detail What the action changed, or how it went. The `auth.*` events'
+	// holds `method` (`local`, `oidc`, `device`, `dev` or `token`)
+	// and, as the request came, `ip` and `user_agent`:
+	// - `auth.sign_in`: reported by the web app or rvavctl, `client`,
+	//   with `roles` and `groups` from the identity provider; the
+	//   local administrator's, `password_change_required`.
+	// - `auth.sign_in_failed`: `reason`, such as `wrong password`,
+	//   `unknown username` (its `username` is then `unknown`, never
+	//   what was typed), `state mismatch`, `provider refused`,
+	//   `token exchange failed`, `token refused` or `token_expired`.
+	//   The local administrator's adds `failures_in_a_row`; one a
+	//   client reported, `client`, `stage`, `error`, `description`
+	//   and `reported_by: client`.
+	// - `auth.sign_out`; `auth.password_changed`, with
+	//   `sessions_ended` and `tokens_revoked`; `auth.token_used`, the
+	//   API token's `name`, on its first use of the day.
+	// - `auth.password_reset` (`rvav admin reset-password`): `by`,
+	//   `sessions_ended` and `tokens_revoked`;
+	//   `auth.local_admin_created`: `password`, `generated` or
+	//   `RVAV_ADMIN_PASSWORD`.
 	Detail     map[string]interface{} `json:"detail"`
 	Id         string                 `json:"id"`
 	Project    *ProjectRef            `json:"project,omitempty"`
@@ -4672,7 +4703,7 @@ type AuditSyslog struct {
 	// ClientKeySecret The stored secret (Catalog items › Secrets) that holds the client certificate's private key, in PEM.
 	ClientKeySecret *string `json:"client_key_secret,omitempty"`
 
-	// Facility The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14).
+	// Facility The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14). `local0` when left out.
 	Facility *SyslogFacility `json:"facility,omitempty"`
 
 	// Host The syslog server's name or address.
@@ -4681,16 +4712,36 @@ type AuditSyslog struct {
 	// Port 6514 for TLS, 514 otherwise, when left out.
 	Port *int `json:"port,omitempty"`
 
-	// Transport `tls`: RFC 5425, octet-counting framing; `tcp`: the same framing in clear; `udp`: RFC 5426, one event per datagram. `tcp` and `udp` are for labs.
+	// Transport `tls` (when left out): RFC 5425, octet-counting framing; `tcp`: the
+	// same framing in clear; `udp`: RFC 5426, one event per datagram.
+	// `tcp` and `udp` are for labs. Over TCP and TLS, an event longer
+	// than 64 KB is set aside; over UDP, one longer than 8 KB goes
+	// without its detail.
 	Transport *SyslogTransport `json:"transport,omitempty"`
 }
 
 // AuditWebhook defines model for AuditWebhook.
 type AuditWebhook struct {
+	// AuthHeader A header sent with each call, such as `Authorization` or
+	// `DD-API-KEY`, with `auth_value` as its value. Not one rvav sets
+	// itself: `Content-Type`, `Content-Length`, `Host`, `User-Agent`
+	// or an `X-Rvav-` one. Left out on a change, the header goes with
+	// its value.
+	AuthHeader *string `json:"auth_header,omitempty"`
+
+	// AuthValue The header's value, such as `Bearer …`, sealed as integrations'
+	// passwords are and never shown. Kept when not given on a change,
+	// unless the URL's scheme, host or port changes.
+	AuthValue *string `json:"auth_value,omitempty"`
+
 	// Secret The stored secret each body is signed with, in `X-Rvav-Signature` as subscriptions' webhooks are.
 	Secret string `json:"secret"`
 
-	// Url An HTTPS (or HTTP) URL on one of the hosts webhooks may call (Administration › Integrations › Allowed hosts).
+	// Url An HTTPS (or HTTP) URL on one of the hosts webhooks may call
+	// (Administration › Integrations › Allowed hosts), without a user
+	// name or password: `auth_header` carries a credential. Reads
+	// show each value of its query as `REDACTED`; a URL sent back so
+	// keeps the values stored.
 	Url string `json:"url"`
 }
 
@@ -4854,12 +4905,12 @@ type Branding struct {
 
 // BrandingWrite defines model for BrandingWrite.
 type BrandingWrite struct {
-	// Accent #rrggbb or #rgb; empty for rvav's own.
+	// Accent #rrggbb or #rgb; empty for rvav's own. One that isn't a colour is refused with the code `invalid`, one that doesn't read with `contrast`.
 	//
 	// Examples: #5b2a86
 	Accent string `json:"accent"`
 
-	// Name Empty for rvav.
+	// Name Empty for rvav. Its spaces are collapsed; a control character, such as a tab or a line break, is refused.
 	Name string `json:"name"`
 }
 
@@ -7704,12 +7755,16 @@ type NotificationRule struct {
 type NotificationTemplate struct {
 	// Channel A channel whose messages have templates.
 	Channel TemplateChannel `json:"channel"`
-	Default TemplateParts   `json:"default"`
+
+	// Default Lengths are in bytes of UTF-8.
+	Default TemplateParts `json:"default"`
 
 	// Edited The template is an administrator's; false: it is the built-in one.
 	Edited bool `json:"edited"`
 
-	// Html An email's HTML part, put in the layout with the greeting, facts, button and footer. Emails only.
+	// Html An email's HTML part, put in the layout with the greeting,
+	// facts, button and footer. An email needs one: left out or
+	// empty, it is refused (422). Teams and Slack have none.
 	Html *string `json:"html,omitempty"`
 
 	// Kind What a notification is about (ADR-0023).
@@ -7787,7 +7842,9 @@ type NotificationTemplateWrite struct {
 	// Channel A channel whose messages have templates.
 	Channel TemplateChannel `json:"channel"`
 
-	// Html An email's HTML part, put in the layout with the greeting, facts, button and footer. Emails only.
+	// Html An email's HTML part, put in the layout with the greeting,
+	// facts, button and footer. An email needs one: left out or
+	// empty, it is refused (422). Teams and Slack have none.
 	Html *string `json:"html,omitempty"`
 
 	// Locale A language messages are written in.
@@ -10192,7 +10249,7 @@ type SignInFailure struct {
 	// Description The provider's error_description, or the client's message.
 	Description *string `json:"description,omitempty"`
 
-	// Error The provider's error code, such as access_denied or invalid_grant.
+	// Error The provider's error code, such as access_denied or invalid_grant: printable ASCII.
 	Error *string `json:"error,omitempty"`
 
 	// Stage `state`: the browser came back from another sign-in, or with no sign-in under way; `provider`: the identity provider refused (an unknown or disabled user, consent refused); `token`: the code or device code couldn't be exchanged for a token.
@@ -10593,10 +10650,14 @@ type SubscriptionWrite struct {
 // longer found in vCenter.
 type SyncState string
 
-// SyslogFacility The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14).
+// SyslogFacility The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14). `local0` when left out.
 type SyslogFacility string
 
-// SyslogTransport `tls`: RFC 5425, octet-counting framing; `tcp`: the same framing in clear; `udp`: RFC 5426, one event per datagram. `tcp` and `udp` are for labs.
+// SyslogTransport `tls` (when left out): RFC 5425, octet-counting framing; `tcp`: the
+// same framing in clear; `udp`: RFC 5426, one event per datagram.
+// `tcp` and `udp` are for labs. Over TCP and TLS, an event longer
+// than 64 KB is set aside; over UDP, one longer than 8 KB goes
+// without its detail.
 type SyslogTransport string
 
 // System defines model for System.
@@ -10633,9 +10694,11 @@ type TemplateConstraints struct {
 // TemplateLocale A language messages are written in.
 type TemplateLocale string
 
-// TemplateParts defines model for TemplateParts.
+// TemplateParts Lengths are in bytes of UTF-8.
 type TemplateParts struct {
-	// Html An email's HTML part, put in the layout with the greeting, facts, button and footer. Emails only.
+	// Html An email's HTML part, put in the layout with the greeting,
+	// facts, button and footer. An email needs one: left out or
+	// empty, it is refused (422). Teams and Slack have none.
 	Html *string `json:"html,omitempty"`
 
 	// Subject An email's subject; a Teams card's or a Slack message's title.
@@ -12391,6 +12454,9 @@ type GetBrandingLogoParams struct {
 	// V The version `Branding` names in the logo's URL: the answer is
 	// cached for good while it is the logo's.
 	V *string `form:"v,omitempty" json:"v,omitempty"`
+
+	// IfNoneMatch The `ETag` of the logo the caller has.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
 // ListCatalogCategoriesParams defines parameters for ListCatalogCategories.
@@ -14271,14 +14337,14 @@ type ClientInterface interface {
 	// Corresponds with GET /admin/audit-destinations/{id} (the `GetAuditDestination` operationId).
 	GetAuditDestination(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdateAuditDestinationWithBody Change a destination; the events waiting for it are tried again at once
+	// UpdateAuditDestinationWithBody Change a destination; the events waiting for it, and those set aside, are tried again at once
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PUT /admin/audit-destinations/{id} (the `UpdateAuditDestination` operationId).
 	UpdateAuditDestinationWithBody(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdateAuditDestination Change a destination; the events waiting for it are tried again at once
+	// UpdateAuditDestination Change a destination; the events waiting for it, and those set aside, are tried again at once
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -14380,7 +14446,7 @@ type ClientInterface interface {
 
 	// DeleteBrandingLogo Remove the logo for the light or the dark theme
 	//
-	// `system.manage`; audited (`settings.branding_logo.remove`).
+	// `system.manage`; audited (`settings.branding_logo.remove`). A variant other than `light` or `dark` is 400.
 	//
 	// Corresponds with DELETE /admin/branding/logos/{variant} (the `DeleteBrandingLogo` operationId).
 	DeleteBrandingLogo(ctx context.Context, variant LogoVariant, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -14392,7 +14458,8 @@ type ClientInterface interface {
 	// at most. An SVG with a script, an event handler, a foreign object,
 	// a link or a reference outside itself, or a DOCTYPE is refused (422):
 	// the picture is kept as it was sent, never rewritten. Emails show the
-	// light theme's logo when it is a PNG or JPEG one.
+	// light theme's logo when it is a PNG or JPEG one. A variant other
+	// than `light` or `dark` is 400.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -15646,14 +15713,16 @@ type ClientInterface interface {
 
 	// ResetNotificationTemplate Go back to the built-in template
 	//
-	// `system.manage`; audited (`settings.notification_template.reset`) when it was edited.
+	// `system.manage`; audited (`settings.notification_template.reset`)
+	// when it was edited. A kind that isn't one is 404; a channel or a
+	// locale that isn't one, 400.
 	//
 	// Corresponds with DELETE /admin/notification-templates/{kind} (the `ResetNotificationTemplate` operationId).
 	ResetNotificationTemplate(ctx context.Context, kind NotificationKind, params *ResetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetNotificationTemplate A kind's template for a channel and language, and its built-in one
 	//
-	// `system.manage`.
+	// `system.manage`. A kind that isn't one is 404; a channel or a locale that isn't one, 400.
 	//
 	// Corresponds with GET /admin/notification-templates/{kind} (the `GetNotificationTemplate` operationId).
 	GetNotificationTemplate(ctx context.Context, kind NotificationKind, params *GetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -15664,7 +15733,8 @@ type ClientInterface interface {
 	// template: refused (422, per part) when it doesn't parse, names a
 	// variable its kind doesn't have, defines or calls other templates,
 	// or fails on the kind's sample data. Notifications sent from then on
-	// use it.
+	// use it. A kind that isn't one is 404; a channel or a locale that
+	// isn't one, 422.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -15677,7 +15747,8 @@ type ClientInterface interface {
 	// template: refused (422, per part) when it doesn't parse, names a
 	// variable its kind doesn't have, defines or calls other templates,
 	// or fails on the kind's sample data. Notifications sent from then on
-	// use it.
+	// use it. A kind that isn't one is 404; a channel or a locale that
+	// isn't one, 422.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -15688,7 +15759,8 @@ type ClientInterface interface {
 	//
 	// `system.manage`. Saves nothing. An email's HTML, a Teams card's
 	// JSON or Slack's blocks, with the portal's branding; a template
-	// that can't be saved is 422, per part.
+	// that can't be saved is 422, per part. A kind that isn't one is
+	// 404.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -15699,7 +15771,8 @@ type ClientInterface interface {
 	//
 	// `system.manage`. Saves nothing. An email's HTML, a Teams card's
 	// JSON or Slack's blocks, with the portal's branding; a template
-	// that can't be saved is 422, per part.
+	// that can't be saved is 422, per part. A kind that isn't one is
+	// 404.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -16981,7 +17054,10 @@ type ClientInterface interface {
 	//   happened; at most 10 a minute from one address are kept.
 	//
 	// Never send the authorization code, the state or a token in the
-	// body.
+	// body. The body is sent as `application/json`, which a form on
+	// another site can't send without the browser asking first.
+	//
+	// `AuditEvent` lists what the events' `detail` holds.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -17002,7 +17078,10 @@ type ClientInterface interface {
 	//   happened; at most 10 a minute from one address are kept.
 	//
 	// Never send the authorization code, the state or a token in the
-	// body.
+	// body. The body is sent as `application/json`, which a form on
+	// another site can't send without the browser asking first.
+	//
+	// `AuditEvent` lists what the events' `detail` holds.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -17037,7 +17116,13 @@ type ClientInterface interface {
 	//
 	// For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
 	// nothing that runs or fetches when it was saved. Its URL in
-	// `Branding` changes with it.
+	// `Branding` changes with it. It is sent with a
+	// `Content-Security-Policy` that runs nothing and fetches nothing,
+	// and `X-Content-Type-Options: nosniff`: the web app shows logos in
+	// `<img>` elements only.
+	//
+	// Answered with an `ETag`: sent back in `If-None-Match`, the answer
+	// is 304 while the logo is the same.
 	//
 	// Corresponds with GET /branding/logos/{variant} (the `GetBrandingLogo` operationId).
 	GetBrandingLogo(ctx context.Context, variant LogoVariant, params *GetBrandingLogoParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -18436,7 +18521,7 @@ func (c *Client) GetAuditDestination(ctx context.Context, id IdPath, reqEditors 
 	return c.Client.Do(req)
 }
 
-// UpdateAuditDestinationWithBody Change a destination; the events waiting for it are tried again at once
+// UpdateAuditDestinationWithBody Change a destination; the events waiting for it, and those set aside, are tried again at once
 //
 // Takes any type of body and a specified content type.
 //
@@ -18453,7 +18538,7 @@ func (c *Client) UpdateAuditDestinationWithBody(ctx context.Context, id IdPath, 
 	return c.Client.Do(req)
 }
 
-// UpdateAuditDestination Change a destination; the events waiting for it are tried again at once
+// UpdateAuditDestination Change a destination; the events waiting for it, and those set aside, are tried again at once
 //
 // Takes a body of the `application/json` content type.
 //
@@ -18665,7 +18750,7 @@ func (c *Client) CheckBrandingAccent(ctx context.Context, body CheckBrandingAcce
 
 // DeleteBrandingLogo Remove the logo for the light or the dark theme
 //
-// `system.manage`; audited (`settings.branding_logo.remove`).
+// `system.manage`; audited (`settings.branding_logo.remove`). A variant other than `light` or `dark` is 400.
 //
 // Corresponds with DELETE /admin/branding/logos/{variant} (the `DeleteBrandingLogo` operationId).
 func (c *Client) DeleteBrandingLogo(ctx context.Context, variant LogoVariant, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -18687,7 +18772,8 @@ func (c *Client) DeleteBrandingLogo(ctx context.Context, variant LogoVariant, re
 // at most. An SVG with a script, an event handler, a foreign object,
 // a link or a reference outside itself, or a DOCTYPE is refused (422):
 // the picture is kept as it was sent, never rewritten. Emails show the
-// light theme's logo when it is a PNG or JPEG one.
+// light theme's logo when it is a PNG or JPEG one. A variant other
+// than `light` or `dark` is 400.
 //
 // Takes any type of body and a specified content type.
 //
@@ -21271,7 +21357,9 @@ func (c *Client) ListNotificationTemplates(ctx context.Context, reqEditors ...Re
 
 // ResetNotificationTemplate Go back to the built-in template
 //
-// `system.manage`; audited (`settings.notification_template.reset`) when it was edited.
+// `system.manage`; audited (`settings.notification_template.reset`)
+// when it was edited. A kind that isn't one is 404; a channel or a
+// locale that isn't one, 400.
 //
 // Corresponds with DELETE /admin/notification-templates/{kind} (the `ResetNotificationTemplate` operationId).
 func (c *Client) ResetNotificationTemplate(ctx context.Context, kind NotificationKind, params *ResetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -21288,7 +21376,7 @@ func (c *Client) ResetNotificationTemplate(ctx context.Context, kind Notificatio
 
 // GetNotificationTemplate A kind's template for a channel and language, and its built-in one
 //
-// `system.manage`.
+// `system.manage`. A kind that isn't one is 404; a channel or a locale that isn't one, 400.
 //
 // Corresponds with GET /admin/notification-templates/{kind} (the `GetNotificationTemplate` operationId).
 func (c *Client) GetNotificationTemplate(ctx context.Context, kind NotificationKind, params *GetNotificationTemplateParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -21309,7 +21397,8 @@ func (c *Client) GetNotificationTemplate(ctx context.Context, kind NotificationK
 // template: refused (422, per part) when it doesn't parse, names a
 // variable its kind doesn't have, defines or calls other templates,
 // or fails on the kind's sample data. Notifications sent from then on
-// use it.
+// use it. A kind that isn't one is 404; a channel or a locale that
+// isn't one, 422.
 //
 // Takes any type of body and a specified content type.
 //
@@ -21332,7 +21421,8 @@ func (c *Client) SetNotificationTemplateWithBody(ctx context.Context, kind Notif
 // template: refused (422, per part) when it doesn't parse, names a
 // variable its kind doesn't have, defines or calls other templates,
 // or fails on the kind's sample data. Notifications sent from then on
-// use it.
+// use it. A kind that isn't one is 404; a channel or a locale that
+// isn't one, 422.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -21353,7 +21443,8 @@ func (c *Client) SetNotificationTemplate(ctx context.Context, kind NotificationK
 //
 // `system.manage`. Saves nothing. An email's HTML, a Teams card's
 // JSON or Slack's blocks, with the portal's branding; a template
-// that can't be saved is 422, per part.
+// that can't be saved is 422, per part. A kind that isn't one is
+// 404.
 //
 // Takes any type of body and a specified content type.
 //
@@ -21374,7 +21465,8 @@ func (c *Client) PreviewNotificationTemplateWithBody(ctx context.Context, kind N
 //
 // `system.manage`. Saves nothing. An email's HTML, a Teams card's
 // JSON or Slack's blocks, with the portal's branding; a template
-// that can't be saved is 422, per part.
+// that can't be saved is 422, per part. A kind that isn't one is
+// 404.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -24216,7 +24308,10 @@ func (c *Client) SignIn(ctx context.Context, body SignInJSONRequestBody, reqEdit
 //     happened; at most 10 a minute from one address are kept.
 //
 // Never send the authorization code, the state or a token in the
-// body.
+// body. The body is sent as `application/json`, which a form on
+// another site can't send without the browser asking first.
+//
+// `AuditEvent` lists what the events' `detail` holds.
 //
 // Takes any type of body and a specified content type.
 //
@@ -24247,7 +24342,10 @@ func (c *Client) ReportSignInWithBody(ctx context.Context, contentType string, b
 //     happened; at most 10 a minute from one address are kept.
 //
 // Never send the authorization code, the state or a token in the
-// body.
+// body. The body is sent as `application/json`, which a form on
+// another site can't send without the browser asking first.
+//
+// `AuditEvent` lists what the events' `detail` holds.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -24312,7 +24410,13 @@ func (c *Client) GetBranding(ctx context.Context, params *GetBrandingParams, req
 //
 // For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
 // nothing that runs or fetches when it was saved. Its URL in
-// `Branding` changes with it.
+// `Branding` changes with it. It is sent with a
+// `Content-Security-Policy` that runs nothing and fetches nothing,
+// and `X-Content-Type-Options: nosniff`: the web app shows logos in
+// `<img>` elements only.
+//
+// Answered with an `ETag`: sent back in `If-None-Match`, the answer
+// is 304 while the logo is the same.
 //
 // Corresponds with GET /branding/logos/{variant} (the `GetBrandingLogo` operationId).
 func (c *Client) GetBrandingLogo(ctx context.Context, variant LogoVariant, params *GetBrandingLogoParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -35955,6 +36059,21 @@ func NewGetBrandingLogoRequest(server string, variant LogoVariant, params *GetBr
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -40411,14 +40530,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /admin/audit-destinations/{id} (the `GetAuditDestination` operationId).
 	GetAuditDestinationWithResponse(ctx context.Context, id IdPath, reqEditors ...RequestEditorFn) (*GetAuditDestinationResponse, error)
 
-	// UpdateAuditDestinationWithBodyWithResponse Change a destination; the events waiting for it are tried again at once
+	// UpdateAuditDestinationWithBodyWithResponse Change a destination; the events waiting for it, and those set aside, are tried again at once
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /admin/audit-destinations/{id} (the `UpdateAuditDestination` operationId).
 	UpdateAuditDestinationWithBodyWithResponse(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAuditDestinationResponse, error)
 
-	// UpdateAuditDestinationWithResponse Change a destination; the events waiting for it are tried again at once
+	// UpdateAuditDestinationWithResponse Change a destination; the events waiting for it, and those set aside, are tried again at once
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -40528,7 +40647,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteBrandingLogoWithResponse Remove the logo for the light or the dark theme
 	//
-	// `system.manage`; audited (`settings.branding_logo.remove`).
+	// `system.manage`; audited (`settings.branding_logo.remove`). A variant other than `light` or `dark` is 400.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -40542,7 +40661,8 @@ type ClientWithResponsesInterface interface {
 	// at most. An SVG with a script, an event handler, a foreign object,
 	// a link or a reference outside itself, or a DOCTYPE is refused (422):
 	// the picture is kept as it was sent, never rewritten. Emails show the
-	// light theme's logo when it is a PNG or JPEG one.
+	// light theme's logo when it is a PNG or JPEG one. A variant other
+	// than `light` or `dark` is 400.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -41904,7 +42024,9 @@ type ClientWithResponsesInterface interface {
 
 	// ResetNotificationTemplateWithResponse Go back to the built-in template
 	//
-	// `system.manage`; audited (`settings.notification_template.reset`) when it was edited.
+	// `system.manage`; audited (`settings.notification_template.reset`)
+	// when it was edited. A kind that isn't one is 404; a channel or a
+	// locale that isn't one, 400.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -41913,7 +42035,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetNotificationTemplateWithResponse A kind's template for a channel and language, and its built-in one
 	//
-	// `system.manage`.
+	// `system.manage`. A kind that isn't one is 404; a channel or a locale that isn't one, 400.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -41926,7 +42048,8 @@ type ClientWithResponsesInterface interface {
 	// template: refused (422, per part) when it doesn't parse, names a
 	// variable its kind doesn't have, defines or calls other templates,
 	// or fails on the kind's sample data. Notifications sent from then on
-	// use it.
+	// use it. A kind that isn't one is 404; a channel or a locale that
+	// isn't one, 422.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -41939,7 +42062,8 @@ type ClientWithResponsesInterface interface {
 	// template: refused (422, per part) when it doesn't parse, names a
 	// variable its kind doesn't have, defines or calls other templates,
 	// or fails on the kind's sample data. Notifications sent from then on
-	// use it.
+	// use it. A kind that isn't one is 404; a channel or a locale that
+	// isn't one, 422.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -41950,7 +42074,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// `system.manage`. Saves nothing. An email's HTML, a Teams card's
 	// JSON or Slack's blocks, with the portal's branding; a template
-	// that can't be saved is 422, per part.
+	// that can't be saved is 422, per part. A kind that isn't one is
+	// 404.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -41961,7 +42086,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// `system.manage`. Saves nothing. An email's HTML, a Teams card's
 	// JSON or Slack's blocks, with the portal's branding; a template
-	// that can't be saved is 422, per part.
+	// that can't be saved is 422, per part. A kind that isn't one is
+	// 404.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -43365,7 +43491,10 @@ type ClientWithResponsesInterface interface {
 	//   happened; at most 10 a minute from one address are kept.
 	//
 	// Never send the authorization code, the state or a token in the
-	// body.
+	// body. The body is sent as `application/json`, which a form on
+	// another site can't send without the browser asking first.
+	//
+	// `AuditEvent` lists what the events' `detail` holds.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -43386,7 +43515,10 @@ type ClientWithResponsesInterface interface {
 	//   happened; at most 10 a minute from one address are kept.
 	//
 	// Never send the authorization code, the state or a token in the
-	// body.
+	// body. The body is sent as `application/json`, which a form on
+	// another site can't send without the browser asking first.
+	//
+	// `AuditEvent` lists what the events' `detail` holds.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -43425,7 +43557,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
 	// nothing that runs or fetches when it was saved. Its URL in
-	// `Branding` changes with it.
+	// `Branding` changes with it. It is sent with a
+	// `Content-Security-Policy` that runs nothing and fetches nothing,
+	// and `X-Content-Type-Options: nosniff`: the web app shows logos in
+	// `<img>` elements only.
+	//
+	// Answered with an `ETag`: sent back in `If-None-Match`, the answer
+	// is 304 while the logo is the same.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -45496,6 +45634,8 @@ type TestAuditDestinationResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Problem
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -45516,6 +45656,11 @@ func (r TestAuditDestinationResponse) GetApplicationproblemJSON403() *Forbidden 
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r TestAuditDestinationResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r TestAuditDestinationResponse) GetApplicationproblemJSON409() *Problem {
+	return r.ApplicationproblemJSON409
 }
 
 // GetBody returns the raw response body bytes
@@ -45793,6 +45938,8 @@ type SetBrandingResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Branding
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -45804,6 +45951,11 @@ type SetBrandingResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r SetBrandingResponse) GetJSON200() *Branding {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetBrandingResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -45855,6 +46007,8 @@ type CheckBrandingAccentResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *AccentCheck
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -45864,6 +46018,11 @@ type CheckBrandingAccentResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r CheckBrandingAccentResponse) GetJSON200() *AccentCheck {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CheckBrandingAccentResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -45910,6 +46069,8 @@ type DeleteBrandingLogoResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Branding
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -45919,6 +46080,11 @@ type DeleteBrandingLogoResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r DeleteBrandingLogoResponse) GetJSON200() *Branding {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DeleteBrandingLogoResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -45965,6 +46131,8 @@ type SetBrandingLogoResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Branding
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -45980,6 +46148,11 @@ type SetBrandingLogoResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r SetBrandingLogoResponse) GetJSON200() *Branding {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetBrandingLogoResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -51995,15 +52168,24 @@ type ResetNotificationTemplateResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NotificationTemplate
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ResetNotificationTemplateResponse) GetJSON200() *NotificationTemplate {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ResetNotificationTemplateResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -52014,6 +52196,11 @@ func (r ResetNotificationTemplateResponse) GetApplicationproblemJSON401() *Unaut
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r ResetNotificationTemplateResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ResetNotificationTemplateResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
 }
 
 // GetBody returns the raw response body bytes
@@ -52050,15 +52237,24 @@ type GetNotificationTemplateResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NotificationTemplate
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r GetNotificationTemplateResponse) GetJSON200() *NotificationTemplate {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetNotificationTemplateResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -52069,6 +52265,11 @@ func (r GetNotificationTemplateResponse) GetApplicationproblemJSON401() *Unautho
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r GetNotificationTemplateResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetNotificationTemplateResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
 }
 
 // GetBody returns the raw response body bytes
@@ -52105,10 +52306,14 @@ type SetNotificationTemplateResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NotificationTemplate
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationFailed
 }
@@ -52116,6 +52321,11 @@ type SetNotificationTemplateResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r SetNotificationTemplateResponse) GetJSON200() *NotificationTemplate {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetNotificationTemplateResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -52126,6 +52336,11 @@ func (r SetNotificationTemplateResponse) GetApplicationproblemJSON401() *Unautho
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r SetNotificationTemplateResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetNotificationTemplateResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
 }
 
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
@@ -52167,10 +52382,14 @@ type PreviewNotificationTemplateResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *NotificationTemplatePreview
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationFailed
 }
@@ -52178,6 +52397,11 @@ type PreviewNotificationTemplateResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r PreviewNotificationTemplateResponse) GetJSON200() *NotificationTemplatePreview {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r PreviewNotificationTemplateResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -52188,6 +52412,11 @@ func (r PreviewNotificationTemplateResponse) GetApplicationproblemJSON401() *Una
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r PreviewNotificationTemplateResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r PreviewNotificationTemplateResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
 }
 
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
@@ -59131,6 +59360,8 @@ type ReportSignInResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Problem
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationFailed
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
@@ -59145,6 +59376,11 @@ func (r ReportSignInResponse) GetApplicationproblemJSON400() *BadRequest {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r ReportSignInResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r ReportSignInResponse) GetApplicationproblemJSON415() *Problem {
+	return r.ApplicationproblemJSON415
 }
 
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
@@ -59275,11 +59511,18 @@ func (r GetBrandingResponse) ContentType() string {
 	return ""
 }
 
+// GetBrandingLogoResponse200Headers the declared response headers of an HTTP 200 response for GetBrandingLogo
+type GetBrandingLogoResponse200Headers struct {
+	ETag *string
+}
+
 type GetBrandingLogoResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetBrandingLogoResponse200Headers
 }
 
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
@@ -64686,7 +64929,7 @@ func (c *ClientWithResponses) GetAuditDestinationWithResponse(ctx context.Contex
 	return ParseGetAuditDestinationResponse(rsp)
 }
 
-// UpdateAuditDestinationWithBodyWithResponse Change a destination; the events waiting for it are tried again at once
+// UpdateAuditDestinationWithBodyWithResponse Change a destination; the events waiting for it, and those set aside, are tried again at once
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -64699,7 +64942,7 @@ func (c *ClientWithResponses) UpdateAuditDestinationWithBodyWithResponse(ctx con
 	return ParseUpdateAuditDestinationResponse(rsp)
 }
 
-// UpdateAuditDestinationWithResponse Change a destination; the events waiting for it are tried again at once
+// UpdateAuditDestinationWithResponse Change a destination; the events waiting for it, and those set aside, are tried again at once
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -64875,7 +65118,7 @@ func (c *ClientWithResponses) CheckBrandingAccentWithResponse(ctx context.Contex
 
 // DeleteBrandingLogoWithResponse Remove the logo for the light or the dark theme
 //
-// `system.manage`; audited (`settings.branding_logo.remove`).
+// `system.manage`; audited (`settings.branding_logo.remove`). A variant other than `light` or `dark` is 400.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -64895,7 +65138,8 @@ func (c *ClientWithResponses) DeleteBrandingLogoWithResponse(ctx context.Context
 // at most. An SVG with a script, an event handler, a foreign object,
 // a link or a reference outside itself, or a DOCTYPE is refused (422):
 // the picture is kept as it was sent, never rewritten. Emails show the
-// light theme's logo when it is a PNG or JPEG one.
+// light theme's logo when it is a PNG or JPEG one. A variant other
+// than `light` or `dark` is 400.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -67055,7 +67299,9 @@ func (c *ClientWithResponses) ListNotificationTemplatesWithResponse(ctx context.
 
 // ResetNotificationTemplateWithResponse Go back to the built-in template
 //
-// `system.manage`; audited (`settings.notification_template.reset`) when it was edited.
+// `system.manage`; audited (`settings.notification_template.reset`)
+// when it was edited. A kind that isn't one is 404; a channel or a
+// locale that isn't one, 400.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -67070,7 +67316,7 @@ func (c *ClientWithResponses) ResetNotificationTemplateWithResponse(ctx context.
 
 // GetNotificationTemplateWithResponse A kind's template for a channel and language, and its built-in one
 //
-// `system.manage`.
+// `system.manage`. A kind that isn't one is 404; a channel or a locale that isn't one, 400.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -67089,7 +67335,8 @@ func (c *ClientWithResponses) GetNotificationTemplateWithResponse(ctx context.Co
 // template: refused (422, per part) when it doesn't parse, names a
 // variable its kind doesn't have, defines or calls other templates,
 // or fails on the kind's sample data. Notifications sent from then on
-// use it.
+// use it. A kind that isn't one is 404; a channel or a locale that
+// isn't one, 422.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -67108,7 +67355,8 @@ func (c *ClientWithResponses) SetNotificationTemplateWithBodyWithResponse(ctx co
 // template: refused (422, per part) when it doesn't parse, names a
 // variable its kind doesn't have, defines or calls other templates,
 // or fails on the kind's sample data. Notifications sent from then on
-// use it.
+// use it. A kind that isn't one is 404; a channel or a locale that
+// isn't one, 422.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -67125,7 +67373,8 @@ func (c *ClientWithResponses) SetNotificationTemplateWithResponse(ctx context.Co
 //
 // `system.manage`. Saves nothing. An email's HTML, a Teams card's
 // JSON or Slack's blocks, with the portal's branding; a template
-// that can't be saved is 422, per part.
+// that can't be saved is 422, per part. A kind that isn't one is
+// 404.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -67142,7 +67391,8 @@ func (c *ClientWithResponses) PreviewNotificationTemplateWithBodyWithResponse(ct
 //
 // `system.manage`. Saves nothing. An email's HTML, a Teams card's
 // JSON or Slack's blocks, with the portal's branding; a template
-// that can't be saved is 422, per part.
+// that can't be saved is 422, per part. A kind that isn't one is
+// 404.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -69482,7 +69732,10 @@ func (c *ClientWithResponses) SignInWithResponse(ctx context.Context, body SignI
 //     happened; at most 10 a minute from one address are kept.
 //
 // Never send the authorization code, the state or a token in the
-// body.
+// body. The body is sent as `application/json`, which a form on
+// another site can't send without the browser asking first.
+//
+// `AuditEvent` lists what the events' `detail` holds.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -69509,7 +69762,10 @@ func (c *ClientWithResponses) ReportSignInWithBodyWithResponse(ctx context.Conte
 //     happened; at most 10 a minute from one address are kept.
 //
 // Never send the authorization code, the state or a token in the
-// body.
+// body. The body is sent as `application/json`, which a form on
+// another site can't send without the browser asking first.
+//
+// `AuditEvent` lists what the events' `detail` holds.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -69566,7 +69822,13 @@ func (c *ClientWithResponses) GetBrandingWithResponse(ctx context.Context, param
 //
 // For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
 // nothing that runs or fetches when it was saved. Its URL in
-// `Branding` changes with it.
+// `Branding` changes with it. It is sent with a
+// `Content-Security-Policy` that runs nothing and fetches nothing,
+// and `X-Content-Type-Options: nosniff`: the web app shows logos in
+// `<img>` elements only.
+//
+// Answered with an `ETag`: sent back in `If-None-Match`, the answer
+// is 304 while the logo is the same.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -72138,6 +72400,13 @@ func ParseTestAuditDestinationResponse(rsp *http.Response) (*TestAuditDestinatio
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
 	}
 
 	return response, nil
@@ -72345,6 +72614,13 @@ func ParseSetBrandingResponse(rsp *http.Response) (*SetBrandingResponse, error) 
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -72392,6 +72668,13 @@ func ParseCheckBrandingAccentResponse(rsp *http.Response) (*CheckBrandingAccentR
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -72432,6 +72715,13 @@ func ParseDeleteBrandingLogoResponse(rsp *http.Response) (*DeleteBrandingLogoRes
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -72471,6 +72761,13 @@ func ParseSetBrandingLogoResponse(rsp *http.Response) (*SetBrandingLogoResponse,
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -77111,6 +77408,13 @@ func ParseResetNotificationTemplateResponse(rsp *http.Response) (*ResetNotificat
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -77124,6 +77428,13 @@ func ParseResetNotificationTemplateResponse(rsp *http.Response) (*ResetNotificat
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	}
 
@@ -77151,6 +77462,13 @@ func ParseGetNotificationTemplateResponse(rsp *http.Response) (*GetNotificationT
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -77164,6 +77482,13 @@ func ParseGetNotificationTemplateResponse(rsp *http.Response) (*GetNotificationT
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	}
 
@@ -77191,6 +77516,13 @@ func ParseSetNotificationTemplateResponse(rsp *http.Response) (*SetNotificationT
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -77204,6 +77536,13 @@ func ParseSetNotificationTemplateResponse(rsp *http.Response) (*SetNotificationT
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationFailed
@@ -77238,6 +77577,13 @@ func ParsePreviewNotificationTemplateResponse(rsp *http.Response) (*PreviewNotif
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -77251,6 +77597,13 @@ func ParsePreviewNotificationTemplateResponse(rsp *http.Response) (*PreviewNotif
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationFailed
@@ -82656,6 +83009,13 @@ func ParseReportSignInResponse(rsp *http.Response) (*ReportSignInResponse, error
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationFailed
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -82760,6 +83120,9 @@ func ParseGetBrandingLogoResponse(rsp *http.Response) (*GetBrandingLogoResponse,
 	}
 
 	switch {
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -82767,6 +83130,19 @@ func ParseGetBrandingLogoResponse(rsp *http.Response) (*GetBrandingLogoResponse,
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetBrandingLogoResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil

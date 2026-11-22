@@ -22,10 +22,11 @@ import (
 // in (TestInstallSettingsOnly), a request provisioned in vcsim
 // (TestSlice1EndToEnd), sign-in with an identity provider (TestOIDCTokens),
 // webhooks signed with HMAC (TestEventOutbox), audit events forwarded to
-// syslog over mutual TLS and to a webhook, API tokens
+// syslog over mutual TLS and to a webhook with its sealed header, API tokens
 // (TestInventoryToken, TestTokensAndAudit) and the System page.
 const fipsOnly = "^(TestInstallSettingsOnly|TestSlice1EndToEnd|TestOIDCTokens|TestEventOutbox|TestInventoryToken|" +
-	"TestTokensAndAudit|TestLocalAdmin|TestSystemPage|TestAuditForwardingSyslog|TestAuditForwardingWebhook)$"
+	"TestTokensAndAudit|TestLocalAdmin|TestSystemPage|TestAuditForwardingSyslog|TestAuditForwardingWebhook|" +
+	"TestAuditForwardingWebhookCredentials)$"
 
 // TestFIPSOnly runs fipsOnly again in a process in FIPS 140-only mode,
 // against this run's database.

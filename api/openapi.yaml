@@ -202,7 +202,10 @@ paths:
           happened; at most 10 a minute from one address are kept.
 
         Never send the authorization code, the state or a token in the
-        body.
+        body. The body is sent as `application/json`, which a form on
+        another site can't send without the browser asking first.
+
+        `AuditEvent` lists what the events' `detail` holds.
       security: []
       requestBody:
         required: true
@@ -213,6 +216,11 @@ paths:
         "204": { description: Recorded }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "415":
+          description: The body isn't sent as `application/json`
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "503":
           description: The identity provider can't be reached to check the token; nothing was recorded
@@ -292,7 +300,13 @@ paths:
       description: |
         For anyone: a PNG, JPEG or SVG picture, an SVG checked to hold
         nothing that runs or fetches when it was saved. Its URL in
-        `Branding` changes with it.
+        `Branding` changes with it. It is sent with a
+        `Content-Security-Policy` that runs nothing and fetches nothing,
+        and `X-Content-Type-Options: nosniff`: the web app shows logos in
+        `<img>` elements only.
+
+        Answered with an `ETag`: sent back in `If-None-Match`, the answer
+        is 304 while the logo is the same.
       security: []
       parameters:
         - { name: variant, in: path, required: true, schema: { $ref: "#/components/schemas/LogoVariant" } }
@@ -302,9 +316,17 @@ paths:
             The version `Branding` names in the logo's URL: the answer is
             cached for good while it is the logo's.
           schema: { type: string, maxLength: 64 }
+        - name: If-None-Match
+          in: header
+          description: The `ETag` of the logo the caller has.
+          schema: { type: string }
       responses:
         "200":
           description: The logo
+          headers:
+            ETag:
+              description: Changes when the logo does.
+              schema: { type: string }
           content:
             image/png:
               schema: { type: string, format: binary }
@@ -312,6 +334,7 @@ paths:
               schema: { type: string, format: binary }
             image/svg+xml:
               schema: { type: string, format: binary }
+        "304": { description: The logo is the one the ETag names. }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /me/notifications:
@@ -4996,6 +5019,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Branding" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
@@ -5017,6 +5041,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AccentCheck" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -5031,7 +5056,8 @@ paths:
         at most. An SVG with a script, an event handler, a foreign object,
         a link or a reference outside itself, or a DOCTYPE is refused (422):
         the picture is kept as it was sent, never rewritten. Emails show the
-        light theme's logo when it is a PNG or JPEG one.
+        light theme's logo when it is a PNG or JPEG one. A variant other
+        than `light` or `dark` is 400.
       parameters:
         - { name: variant, in: path, required: true, schema: { $ref: "#/components/schemas/LogoVariant" } }
       requestBody:
@@ -5045,6 +5071,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Branding" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
@@ -5054,7 +5081,7 @@ paths:
       tags: [admin]
       operationId: deleteBrandingLogo
       summary: Remove the logo for the light or the dark theme
-      description: "`system.manage`; audited (`settings.branding_logo.remove`)."
+      description: "`system.manage`; audited (`settings.branding_logo.remove`). A variant other than `light` or `dark` is 400."
       parameters:
         - { name: variant, in: path, required: true, schema: { $ref: "#/components/schemas/LogoVariant" } }
       responses:
@@ -5063,6 +5090,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Branding" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -5090,7 +5118,7 @@ paths:
       tags: [admin]
       operationId: getNotificationTemplate
       summary: A kind's template for a channel and language, and its built-in one
-      description: "`system.manage`."
+      description: "`system.manage`. A kind that isn't one is 404; a channel or a locale that isn't one, 400."
       parameters:
         - { $ref: "#/components/parameters/TemplateChannelQuery" }
         - { $ref: "#/components/parameters/TemplateLocaleQuery" }
@@ -5100,8 +5128,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NotificationTemplate" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
     put:
       tags: [admin]
       operationId: setNotificationTemplate
@@ -5111,7 +5141,8 @@ paths:
         template: refused (422, per part) when it doesn't parse, names a
         variable its kind doesn't have, defines or calls other templates,
         or fails on the kind's sample data. Notifications sent from then on
-        use it.
+        use it. A kind that isn't one is 404; a channel or a locale that
+        isn't one, 422.
       requestBody:
         required: true
         content:
@@ -5123,14 +5154,19 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NotificationTemplate" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
     delete:
       tags: [admin]
       operationId: resetNotificationTemplate
       summary: Go back to the built-in template
-      description: "`system.manage`; audited (`settings.notification_template.reset`) when it was edited."
+      description: |
+        `system.manage`; audited (`settings.notification_template.reset`)
+        when it was edited. A kind that isn't one is 404; a channel or a
+        locale that isn't one, 400.
       parameters:
         - { $ref: "#/components/parameters/TemplateChannelQuery" }
         - { $ref: "#/components/parameters/TemplateLocaleQuery" }
@@ -5140,8 +5176,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NotificationTemplate" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /admin/notification-templates/{kind}/preview:
     post:
@@ -5151,7 +5189,8 @@ paths:
       description: |
         `system.manage`. Saves nothing. An email's HTML, a Teams card's
         JSON or Slack's blocks, with the portal's branding; a template
-        that can't be saved is 422, per part.
+        that can't be saved is 422, per part. A kind that isn't one is
+        404.
       parameters:
         - { name: kind, in: path, required: true, schema: { $ref: "#/components/schemas/NotificationKind" } }
       requestBody:
@@ -5165,8 +5204,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NotificationTemplatePreview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
   /admin/setup:
@@ -6657,7 +6698,7 @@ paths:
     put:
       tags: [admin]
       operationId: updateAuditDestination
-      summary: Change a destination; the events waiting for it are tried again at once
+      summary: Change a destination; the events waiting for it, and those set aside, are tried again at once
       requestBody:
         required: true
         content:
@@ -6704,6 +6745,11 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: This rvav process can't send audit events (no forwarder runs in it)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 
   /reports:
     get:
@@ -13569,6 +13615,7 @@ components:
     TemplateParts:
       type: object
       required: [subject, text]
+      description: Lengths are in bytes of UTF-8.
       properties:
         subject:
           type: string
@@ -13581,7 +13628,10 @@ components:
         html:
           type: string
           maxLength: 204800
-          description: An email's HTML part, put in the layout with the greeting, facts, button and footer. Emails only.
+          description: |
+            An email's HTML part, put in the layout with the greeting,
+            facts, button and footer. An email needs one: left out or
+            empty, it is refused (422). Teams and Slack have none.
     NotificationTemplateWrite:
       allOf:
         - $ref: "#/components/schemas/TemplateParts"
@@ -13639,15 +13689,24 @@ components:
         logo_dark_url: { type: string, description: "The dark theme's logo; the light one is shown when there is none." }
     BrandingWrite:
       type: object
+      additionalProperties: false
       required: [name, accent]
       properties:
-        name: { type: string, maxLength: 40, description: Empty for rvav. }
-        accent: { type: string, description: "#rrggbb or #rgb; empty for rvav's own.", examples: ["#5b2a86"] }
+        name:
+          type: string
+          maxLength: 40
+          description: Empty for rvav. Its spaces are collapsed; a control character, such as a tab or a line break, is refused.
+        accent:
+          type: string
+          pattern: "^(#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3})?$"
+          description: "#rrggbb or #rgb; empty for rvav's own. One that isn't a colour is refused with the code `invalid`, one that doesn't read with `contrast`."
+          examples: ["#5b2a86"]
     AccentCheckQuery:
       type: object
+      additionalProperties: false
       required: [accent]
       properties:
-        accent: { type: string }
+        accent: { type: string, description: "#rrggbb or #rgb." }
     AccentCheck:
       type: object
       required: [ok, ratio]
@@ -14503,7 +14562,30 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ProjectRef"
             - type: "null"
-        detail: { type: object, additionalProperties: true }
+        detail:
+          type: object
+          additionalProperties: true
+          description: |
+            What the action changed, or how it went. The `auth.*` events'
+            holds `method` (`local`, `oidc`, `device`, `dev` or `token`)
+            and, as the request came, `ip` and `user_agent`:
+            - `auth.sign_in`: reported by the web app or rvavctl, `client`,
+              with `roles` and `groups` from the identity provider; the
+              local administrator's, `password_change_required`.
+            - `auth.sign_in_failed`: `reason`, such as `wrong password`,
+              `unknown username` (its `username` is then `unknown`, never
+              what was typed), `state mismatch`, `provider refused`,
+              `token exchange failed`, `token refused` or `token_expired`.
+              The local administrator's adds `failures_in_a_row`; one a
+              client reported, `client`, `stage`, `error`, `description`
+              and `reported_by: client`.
+            - `auth.sign_out`; `auth.password_changed`, with
+              `sessions_ended` and `tokens_revoked`; `auth.token_used`, the
+              API token's `name`, on its first use of the day.
+            - `auth.password_reset` (`rvav admin reset-password`): `by`,
+              `sessions_ended` and `tokens_revoked`;
+              `auth.local_admin_created`: `password`, `generated` or
+              `RVAV_ADMIN_PASSWORD`.
     AuditEventPage:
       allOf:
         - $ref: "#/components/schemas/PageInfo"
@@ -14522,22 +14604,28 @@ components:
         `sign_in` (`auth.*`), `token` (`token.*`, `awx.inventory_token`),
         `access` (projects, members, environments, roles and group mappings),
         `catalog`, `policy` (policies and naming), `infrastructure`
-        (placement, networks, templates, sizes, vCenters), `extensibility`
-        (subscriptions, workflows, resource types, day-2 actions and forms),
+        (placement, networks, templates, sizes, vCenters, IP ranges, Active
+        Directory placement), `extensibility` (subscriptions, workflows,
+        resource types, day-2 actions and forms, shared variables),
         `settings` (settings, secrets, integrations, vRA import), `request`
-        (requests, deployments, approvals, the console, onboarding) and
-        `other` for anything else.
+        (requests, deployments, approvals, schedules, the console,
+        onboarding) and `other` for anything else.
       enum: [sign_in, token, access, catalog, policy, infrastructure, extensibility, settings, request, other]
       x-enum-varnames: [AuditCategorySignIn, AuditCategoryToken, AuditCategoryAccess, AuditCategoryCatalog, AuditCategoryPolicy,
         AuditCategoryInfrastructure, AuditCategoryExtensibility, AuditCategorySettings, AuditCategoryRequest, AuditCategoryOther]
     SyslogTransport:
       type: string
-      description: "`tls`: RFC 5425, octet-counting framing; `tcp`: the same framing in clear; `udp`: RFC 5426, one event per datagram. `tcp` and `udp` are for labs."
+      description: |
+        `tls` (when left out): RFC 5425, octet-counting framing; `tcp`: the
+        same framing in clear; `udp`: RFC 5426, one event per datagram.
+        `tcp` and `udp` are for labs. Over TCP and TLS, an event longer
+        than 64 KB is set aside; over UDP, one longer than 8 KB goes
+        without its detail.
       enum: [tls, tcp, udp]
       x-enum-varnames: [SyslogTLS, SyslogTCP, SyslogUDP]
     SyslogFacility:
       type: string
-      description: The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14).
+      description: The RFC 5424 facility; `audit` is "log audit" (13), `alert` "log alert" (14). `local0` when left out.
       enum: [kern, user, mail, daemon, auth, syslog, lpr, news, uucp, cron, authpriv, ftp, ntp, audit, alert, clock,
         local0, local1, local2, local3, local4, local5, local6, local7]
       x-enum-varnames: [FacilityKern, FacilityUser, FacilityMail, FacilityDaemon, FacilityAuth, FacilitySyslog, FacilityLpr,
@@ -14579,10 +14667,33 @@ components:
       properties:
         url:
           type: string
-          description: An HTTPS (or HTTP) URL on one of the hosts webhooks may call (Administration › Integrations › Allowed hosts).
+          description: |
+            An HTTPS (or HTTP) URL on one of the hosts webhooks may call
+            (Administration › Integrations › Allowed hosts), without a user
+            name or password: `auth_header` carries a credential. Reads
+            show each value of its query as `REDACTED`; a URL sent back so
+            keeps the values stored.
         secret:
           type: string
           description: The stored secret each body is signed with, in `X-Rvav-Signature` as subscriptions' webhooks are.
+        auth_header:
+          type: string
+          maxLength: 64
+          pattern: "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+          description: |
+            A header sent with each call, such as `Authorization` or
+            `DD-API-KEY`, with `auth_value` as its value. Not one rvav sets
+            itself: `Content-Type`, `Content-Length`, `Host`, `User-Agent`
+            or an `X-Rvav-` one. Left out on a change, the header goes with
+            its value.
+        auth_value:
+          type: string
+          writeOnly: true
+          maxLength: 4096
+          description: |
+            The header's value, such as `Bearer …`, sealed as integrations'
+            passwords are and never shown. Kept when not given on a change,
+            unless the URL's scheme, host or port changes.
     AuditDestinationWrite:
       type: object
       additionalProperties: false
@@ -14600,9 +14711,9 @@ components:
         webhook: { $ref: "#/components/schemas/AuditWebhook" }
     AuditDeliveryState:
       type: object
-      required: [backlog, delivered, failures]
+      required: [backlog, set_aside, delivered, failures]
       properties:
-        backlog: { type: integer, description: Events waiting to be sent. }
+        backlog: { type: integer, description: "Events waiting to be sent, without those set aside." }
         delivered: { type: integer, format: int64, description: Events sent since the destination was made. }
         failures: { type: integer, description: Failed attempts in a row since the last success. }
         last_success_at: { type: string, format: date-time }
@@ -14612,6 +14723,13 @@ components:
           type: string
           format: date-time
           description: When the events waiting are tried again, after a failure.
+        set_aside:
+          type: integer
+          description: |
+            Events the destination refuses for good, such as a webhook's
+            413 or an event too long for syslog: they wait aside, and the
+            events after them go. Saving the destination tries them again.
+        set_aside_reason: { type: string, description: Why the last event set aside was. }
     AuditDestination:
       type: object
       required: [id, name, enabled, kind, categories, state, created_at, updated_at]
@@ -14672,7 +14790,11 @@ components:
           description: "`state`: the browser came back from another sign-in, or with no sign-in under way; `provider`: the identity provider refused (an unknown or disabled user, consent refused); `token`: the code or device code couldn't be exchanged for a token."
           enum: [state, provider, token]
           x-enum-varnames: [SignInStageState, SignInStageProvider, SignInStageToken]
-        error: { type: string, maxLength: 64, description: "The provider's error code, such as access_denied or invalid_grant." }
+        error:
+          type: string
+          maxLength: 64
+          pattern: "^[ -~]*$"
+          description: "The provider's error code, such as access_denied or invalid_grant: printable ASCII."
         description: { type: string, maxLength: 500, description: "The provider's error_description, or the client's message." }
 
     # ── Events and subscriptions (ADR-0021) ──

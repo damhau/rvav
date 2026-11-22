@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auditlog"
@@ -26,6 +27,12 @@ import (
 
 var hostName = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*$`)
 
+// headerName is an HTTP header's name (RFC 9110's token).
+var headerName = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}$")
+
+// The headers rvav sets on a webhook's calls itself, or that HTTP owns.
+var ownHeaders = []string{"content-type", "content-length", "host", "user-agent", "transfer-encoding", "connection"}
+
 func mayReadAuditDestinations(p *auth.Principal) bool {
 	return p.Everywhere(auth.IntegrationsManage) || p.Everywhere(auth.AuditRead)
 }
@@ -33,8 +40,9 @@ func mayReadAuditDestinations(p *auth.Principal) bool {
 func presentAuditDestination(d store.AuditDestination) api.AuditDestination {
 	out := api.AuditDestination{Id: d.ID, Name: d.Name, Enabled: d.Enabled, Kind: api.AuditDestinationKind(d.Kind),
 		Categories: make([]api.AuditCategory, len(d.Categories)), CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
-		State: api.AuditDeliveryState{Backlog: d.Backlog, Delivered: d.Delivered, Failures: d.Failures,
-			LastSuccessAt: d.LastSuccessAt, LastError: d.LastError, LastErrorAt: d.LastErrorAt}}
+		State: api.AuditDeliveryState{Backlog: d.Backlog, SetAside: d.SetAside, SetAsideReason: d.SetAsideReason,
+			Delivered: d.Delivered, Failures: d.Failures, LastSuccessAt: d.LastSuccessAt, LastError: d.LastError,
+			LastErrorAt: d.LastErrorAt}}
 	for i, c := range d.Categories {
 		out.Categories[i] = api.AuditCategory(c)
 	}
@@ -50,10 +58,24 @@ func presentAuditDestination(d store.AuditDestination) api.AuditDestination {
 	case "webhook":
 		var c api.AuditWebhook
 		if json.Unmarshal(d.Settings, &c) == nil {
+			c.Url, c.AuthValue = auditlog.RedactURL(c.Url), nil
 			out.Webhook = &c
 		}
 	}
 	return out
+}
+
+// shownSettings are a destination's settings as readers see them, and the
+// audit log records them.
+func shownSettings(d store.AuditDestination) json.RawMessage {
+	shown := presentAuditDestination(d)
+	var b []byte
+	if shown.Webhook != nil {
+		b, _ = json.Marshal(shown.Webhook)
+	} else {
+		b, _ = json.Marshal(shown.Syslog)
+	}
+	return b
 }
 
 func (s *Service) AuditDestinations(ctx context.Context, p *auth.Principal) ([]api.AuditDestination, error) {
@@ -93,17 +115,19 @@ func (s *Service) SaveAuditDestination(ctx context.Context, p *auth.Principal, i
 		return api.AuditDestination{}, ErrForbidden
 	}
 	action := "settings.audit_destination.create"
+	var before *store.AuditDestination
 	if id != "" {
-		if _, err := s.auditDestination(ctx, id); err != nil {
+		b, err := s.auditDestination(ctx, id)
+		if err != nil {
 			return api.AuditDestination{}, err
 		}
-		action = "settings.audit_destination.update"
+		before, action = &b, "settings.audit_destination.update"
 	} else {
 		id = ids.New(ids.AuditDestination)
 	}
 	d := store.AuditDestination{ID: id, Name: strings.TrimSpace(w.Name), Enabled: w.Enabled == nil || *w.Enabled, Categories: []string{}}
 	var errs []api.FieldError
-	if d.Name == "" || len(d.Name) > 80 {
+	if d.Name == "" || utf8.RuneCountInString(d.Name) > 80 {
 		errs = append(errs, fieldErr("/name", "required", "Give the destination a name of at most 80 characters."))
 	}
 	if w.Categories != nil {
@@ -127,7 +151,7 @@ func (s *Service) SaveAuditDestination(ctx context.Context, p *auth.Principal, i
 		}
 		d.Kind, settings, errs = "syslog", c, append(errs, more...)
 	default:
-		c, more, err := s.checkAuditWebhook(ctx, *w.Webhook)
+		c, more, err := s.checkAuditWebhook(ctx, &d, before, *w.Webhook)
 		if err != nil {
 			return api.AuditDestination{}, err
 		}
@@ -144,7 +168,7 @@ func (s *Service) SaveAuditDestination(ctx context.Context, p *auth.Principal, i
 		return api.AuditDestination{}, err
 	}
 	s.audit(ctx, p, action, "audit_destination", id, nil, map[string]any{"name": d.Name, "kind": d.Kind,
-		"enabled": d.Enabled, "categories": d.Categories, "settings": json.RawMessage(d.Settings)})
+		"enabled": d.Enabled, "categories": d.Categories, "settings": shownSettings(d)})
 	saved, err := s.auditDestination(ctx, id)
 	return presentAuditDestination(saved), err
 }
@@ -218,16 +242,41 @@ func (s *Service) checkSyslog(ctx context.Context, c api.AuditSyslog) (api.Audit
 	return c, errs, nil
 }
 
-func (s *Service) checkAuditWebhook(ctx context.Context, c api.AuditWebhook) (api.AuditWebhook, []api.FieldError, error) {
+// checkAuditWebhook checks a webhook and seals its authentication header's
+// value into d. A URL sent back as readers see it keeps the stored one, and
+// a value not given the stored one, while the URL's origin is the same.
+func (s *Service) checkAuditWebhook(ctx context.Context, d, before *store.AuditDestination, c api.AuditWebhook) (api.AuditWebhook,
+	[]api.FieldError, error) {
 	var errs []api.FieldError
 	c.Url, c.Secret = strings.TrimSpace(c.Url), strings.TrimSpace(c.Secret)
+	var stored *api.AuditWebhook
+	if before != nil && before.Kind == "webhook" {
+		var b api.AuditWebhook
+		if json.Unmarshal(before.Settings, &b) == nil {
+			stored = &b
+		}
+	}
+	if stored != nil && c.Url == auditlog.RedactURL(stored.Url) {
+		c.Url = stored.Url
+	}
 	u, err := url.Parse(c.Url)
 	switch {
 	case err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http"):
 		errs = append(errs, fieldErr("/webhook/url", "invalid", "A URL such as https://siem.corp.example/rvav."))
+	case u.User != nil:
+		errs = append(errs, fieldErr("/webhook/url", "credentials",
+			"Leave the user name and password out of the URL: auditors would see them. Send the credential in an authentication header."))
+	case strings.Contains(u.RawQuery, "="+auditlog.Redacted):
+		errs = append(errs, fieldErr("/webhook/url", "redacted",
+			"Type the query's values again: they are kept only when the URL is sent back as it is shown."))
 	case !hosts.Allowed(s.liveConfig(ctx).WebhookHosts, u):
 		errs = append(errs, fieldErr("/webhook/url", "host", u.Host+" is not one of the hosts webhooks may call (Administration › Integrations › Allowed hosts)."))
 	}
+	more, err := s.sealAuthHeader(d, before, stored, &c, u)
+	if err != nil {
+		return c, nil, err
+	}
+	errs = append(errs, more...)
 	if c.Secret == "" {
 		errs = append(errs, fieldErr("/webhook/secret", "required", "Its calls are signed: give the stored secret to sign them with."))
 	} else if _, err := s.Store.GetSecret(ctx, c.Secret); errors.Is(err, store.ErrNotFound) {
@@ -236,6 +285,50 @@ func (s *Service) checkAuditWebhook(ctx context.Context, c api.AuditWebhook) (ap
 		return c, nil, err
 	}
 	return c, errs, nil
+}
+
+// sealAuthHeader seals the header's value given into d, or keeps the one
+// stored while the URL's scheme, host and port stay the same: a value
+// isn't sent to a server it wasn't given for.
+func (s *Service) sealAuthHeader(d, before *store.AuditDestination, stored, c *api.AuditWebhook, u *url.URL) ([]api.FieldError, error) {
+	header, value := strings.TrimSpace(deref(c.AuthHeader)), deref(c.AuthValue)
+	c.AuthHeader, c.AuthValue = nil, nil
+	if header == "" {
+		if value != "" {
+			return []api.FieldError{fieldErr("/webhook/auth_header", "required", "Name the header the value goes in, such as Authorization.")}, nil
+		}
+		return nil, nil
+	}
+	c.AuthHeader = &header
+	lower := strings.ToLower(header)
+	switch {
+	case !headerName.MatchString(header):
+		return []api.FieldError{fieldErr("/webhook/auth_header", "invalid", "A header's name: letters, digits and - at most 64.")}, nil
+	case slices.Contains(ownHeaders, lower) || strings.HasPrefix(lower, "x-rvav-"):
+		return []api.FieldError{fieldErr("/webhook/auth_header", "reserved", "rvav sets "+header+" itself: name another header.")}, nil
+	}
+	if value == "" {
+		if before != nil && before.AuthCiphertext != nil && stored != nil && sameOrigin(stored.Url, u) {
+			d.AuthKeyID, d.AuthNonce, d.AuthCiphertext = before.AuthKeyID, before.AuthNonce, before.AuthCiphertext
+			return nil, nil
+		}
+		return []api.FieldError{fieldErr("/webhook/auth_value", "required", "Give the header's value: a new URL's server doesn't get the one kept.")}, nil
+	}
+	if len(value) > 4096 || strings.ContainsFunc(value, func(r rune) bool { return r < 0x20 && r != '\t' || r == 0x7f }) {
+		return []api.FieldError{fieldErr("/webhook/auth_value", "invalid", "At most 4,096 characters, on one line.")}, nil
+	}
+	if s.Secrets == nil {
+		return nil, &ConflictError{Msg: "rvav has no secrets key (RVAV_SECRETS_KEY) to keep the header's value."}
+	}
+	var err error
+	d.AuthKeyID, d.AuthNonce, d.AuthCiphertext, err = s.Secrets.Seal(auditlog.AuthSecretName(d.ID), []byte(value))
+	return nil, err
+}
+
+// sameOrigin says whether a stored URL has u's scheme, host and port.
+func sameOrigin(stored string, u *url.URL) bool {
+	was, err := url.Parse(stored)
+	return err == nil && u != nil && strings.EqualFold(was.Scheme, u.Scheme) && strings.EqualFold(was.Host, u.Host)
 }
 
 func (s *Service) DeleteAuditDestination(ctx context.Context, p *auth.Principal, id string) error {
@@ -250,7 +343,7 @@ func (s *Service) DeleteAuditDestination(ctx context.Context, p *auth.Principal,
 		return err
 	}
 	s.audit(ctx, p, "settings.audit_destination.delete", "audit_destination", id, nil, map[string]any{"name": d.Name,
-		"kind": d.Kind, "dropped": d.Backlog})
+		"kind": d.Kind, "dropped": d.Backlog + d.SetAside})
 	return nil
 }
 

@@ -69,7 +69,7 @@ func (s *Server) GetBrandingLogo(w http.ResponseWriter, r *http.Request, variant
 
 func (s *Server) SetBranding(w http.ResponseWriter, r *http.Request) {
 	var b api.BrandingWrite
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.SetBranding(r.Context(), principal(r), b)
@@ -78,7 +78,7 @@ func (s *Server) SetBranding(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) CheckBrandingAccent(w http.ResponseWriter, r *http.Request) {
 	var b api.AccentCheckQuery
-	if !s.decode(w, r, &b) {
+	if !s.decodeStrict(w, r, &b) {
 		return
 	}
 	out, err := s.Core.CheckBrandingAccent(r.Context(), principal(r), b)

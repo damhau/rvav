@@ -28,7 +28,7 @@ function state(db: Db): Destination[] {
       kind: "syslog",
       categories: [],
       syslog: { host: "siem.corp.example", port: 6514, transport: "tls", facility: "audit", app_name: "rvav" },
-      state: { backlog: 0, delivered: 18_342, failures: 0, last_success_at: ago(1) },
+      state: { backlog: 0, set_aside: 0, delivered: 18_342, failures: 0, last_success_at: ago(1) },
       created_at: ago(60 * 24 * 40),
       updated_at: ago(60 * 24 * 40),
     },
@@ -41,6 +41,7 @@ function state(db: Db): Destination[] {
       webhook: { url: "https://hooks.corp.example/soc/rvav", secret: "webhook-signing" },
       state: {
         backlog: 37,
+        set_aside: 0,
         delivered: 912,
         failures: 4,
         last_success_at: ago(26),
@@ -195,13 +196,19 @@ export function auditForwardingHandlers(db: Db, base: string, wait: () => Promis
           id: current?.id ?? `adt_${Math.random().toString(36).slice(2, 10)}`,
           // Saved, the events waiting are tried again at once.
           state: current
-            ? { backlog: current.state.backlog, delivered: current.state.delivered, failures: current.state.failures, ...(current.state.last_success_at ? { last_success_at: current.state.last_success_at } : {}) } // prettier-ignore
-            : { backlog: 0, delivered: 0, failures: 0 },
+            ? { backlog: current.state.backlog + current.state.set_aside, set_aside: 0, delivered: current.state.delivered, failures: current.state.failures, ...(current.state.last_success_at ? { last_success_at: current.state.last_success_at } : {}) } // prettier-ignore
+            : { backlog: 0, set_aside: 0, delivered: 0, failures: 0 },
           created_at: current?.created_at ?? now(),
           updated_at: now(),
         };
         if (current && d.enabled && d.state.failures > 0 && !hostOf(d).startsWith("down")) {
-          d.state = { backlog: 0, delivered: d.state.delivered + d.state.backlog, failures: 0, last_success_at: now() };
+          d.state = {
+            backlog: 0,
+            set_aside: 0,
+            delivered: d.state.delivered + d.state.backlog,
+            failures: 0,
+            last_success_at: now(),
+          };
         }
         if (current) list[list.indexOf(current)] = d;
         else list.push(d);

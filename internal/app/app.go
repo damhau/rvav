@@ -712,7 +712,7 @@ func (a *App) AuditLog() *auditlog.Forwarder {
 	if hostname == "" || hostname == "localhost" {
 		hostname, _ = os.Hostname()
 	}
-	return &auditlog.Forwarder{Store: a.Store, Log: a.Log, Secret: dispatch.StoredSecret(a.Store, a.Secrets), Hostname: hostname,
+	return &auditlog.Forwarder{Store: a.Store, Log: a.Log, Secret: dispatch.StoredSecret(a.Store, a.Secrets), Box: a.Secrets, Hostname: hostname,
 		WebhookHosts: func(ctx context.Context) []string { return a.live(ctx).WebhookHosts }}
 }
 

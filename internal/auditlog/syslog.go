@@ -35,6 +35,11 @@ const (
 // with its detail left out, rather than cut in a receiver's buffer.
 const maxDatagram = 8 << 10
 
+// MaxFrame is the longest message sent over TCP and TLS: syslog-ng's
+// default log-msg-size, past which it closes the connection. A longer
+// event is set aside.
+const MaxFrame = 64 << 10
+
 // SyslogDefaults fills what a syslog destination leaves out.
 func SyslogDefaults(c api.AuditSyslog) api.AuditSyslog {
 	if c.Transport == nil {
@@ -267,6 +272,16 @@ func (s *syslogSender) send(_ context.Context, events []Event) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("Sent %d to %s.", len(events), s.where), nil
+}
+
+func (s *syslogSender) oversize(e Event) string {
+	if s.udp {
+		return ""
+	}
+	if n := len(Format(s.facility, s.hostname, s.appName, e)); n > MaxFrame {
+		return fmt.Sprintf("The event is %d KB written for syslog: over TCP and TLS, rvav sends %d KB at most", (n+1023)>>10, MaxFrame>>10)
+	}
+	return ""
 }
 
 func (s *syslogSender) close() error { return s.conn.Close() }

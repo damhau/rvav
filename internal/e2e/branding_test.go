@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"slices"
 	"strings"
 	"testing"
 
@@ -116,6 +117,13 @@ func TestBranding(t *testing.T) {
 		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/name" {
 			t.Fatalf("a long name = %+v", problem)
 		}
+		h.json("PUT", "/api/v1/admin/branding", admin, api.BrandingWrite{Name: "", Accent: "purple"}, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/accent" || deref(problem.Errors[0].Code) != "invalid" {
+			t.Fatalf("an accent that isn't a colour = %+v", problem)
+		}
+		// A misspelt field is refused, not taken as an empty accent.
+		h.json("PUT", "/api/v1/admin/branding", admin, map[string]string{"name": "Corp Cloud", "acent": "#5b2a86"}, 400, nil)
+		h.json("POST", "/api/v1/admin/branding/accent-check", admin, map[string]string{"accent": "#5b2a86", "x": ""}, 400, nil)
 
 		write.Accent = "#5B2A86"
 		h.json("PUT", "/api/v1/admin/branding", admin, write, 200, &b)
@@ -176,6 +184,10 @@ func TestBranding(t *testing.T) {
 		if code, _, _ := h.do("GET", "/api/v1/branding/logos/dark", "", nil); code != 404 {
 			t.Fatalf("GET a removed logo = %d", code)
 		}
+		if code, _, _ := h.do("GET", "/api/v1/branding/logos/sepia", "", nil); code != 404 {
+			t.Fatalf("GET a logo that is neither light nor dark = %d", code)
+		}
+		h.json("DELETE", "/api/v1/admin/branding/logos/sepia", admin, nil, 400, nil)
 
 		if n := h.audited("settings.branding.update"); n != 1 {
 			t.Errorf("%d branding updates audited", n)
@@ -223,6 +235,16 @@ func TestNotificationTemplates(t *testing.T) {
 			t.Fatalf("the built-in French email = %+v", tpl)
 		}
 		h.json("GET", path+"/nope?channel=email&locale=en", admin, nil, 404, nil)
+		// A channel or a locale in the query that isn't one: 400, not a
+		// 422 pointing at body fields.
+		h.json("GET", path+"/request_failed?channel=fax&locale=en", admin, nil, 400, nil)
+		h.json("DELETE", path+"/request_failed?channel=email&locale=de", admin, nil, 400, nil)
+		var badChannel struct{ Errors []api.FieldError }
+		h.json("PUT", path+"/request_failed", admin, api.NotificationTemplateWrite{Channel: "fax", Locale: "en", Subject: "s",
+			Text: "t"}, 422, &badChannel)
+		if got := fieldsOf(badChannel.Errors); !slices.Equal(got, []string{"/channel"}) {
+			t.Fatalf("a channel in the body that isn't one = %v", got)
+		}
 
 		refused := func(w api.NotificationTemplateWrite, field, says string) {
 			t.Helper()

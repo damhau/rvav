@@ -69,6 +69,9 @@ func (s *Service) Branding(ctx context.Context) (api.Branding, string, error) {
 
 // BrandingLogo is a logo, for anyone.
 func (s *Service) BrandingLogo(ctx context.Context, variant api.LogoVariant) (store.BrandLogo, error) {
+	if !variant.Valid() {
+		return store.BrandLogo{}, fmt.Errorf("%w: a logo is for the light or the dark theme", ErrNotFound)
+	}
 	b, err := s.Store.GetBranding(ctx, true)
 	if err != nil {
 		return store.BrandLogo{}, err
@@ -140,7 +143,9 @@ func (s *Service) SetBranding(ctx context.Context, p *auth.Principal, w api.Bran
 		errs = append(errs, fieldErr("/name", "invalid", "A portal's name has no control characters."))
 	}
 	if accent != "" {
-		if c := accentCheck(accent); !c.Ok {
+		if _, ok := brand.Normalize(accent); !ok {
+			errs = append(errs, fieldErr("/accent", "invalid", "A colour written #rrggbb or #rgb, such as #5b2a86."))
+		} else if c := accentCheck(accent); !c.Ok {
 			errs = append(errs, fieldErr("/accent", "contrast", deref(c.Message)))
 		} else {
 			accent, _ = brand.Normalize(accent)
@@ -239,18 +244,27 @@ func templateKind(kind api.NotificationKind) (notify.Kind, error) {
 	return k, nil
 }
 
-func templateTarget(channel api.TemplateChannel, locale api.TemplateLocale) error {
+// templateTarget checks a template's channel and locale: in the body, a
+// ValidationError; in the query, a BadRequestError.
+func templateTarget(channel api.TemplateChannel, locale api.TemplateLocale, inQuery bool) error {
 	var errs []api.FieldError
 	if !slices.Contains(notify.Channels, string(channel)) {
-		errs = append(errs, fieldErr("/channel", "invalid", "Email, teams or slack."))
+		errs = append(errs, fieldErr("/channel", "invalid", "The channel is email, teams or slack."))
 	}
 	if !slices.Contains(notify.Locales, string(locale)) {
-		errs = append(errs, fieldErr("/locale", "invalid", "en or fr."))
+		errs = append(errs, fieldErr("/locale", "invalid", "The locale is en or fr."))
 	}
-	if len(errs) > 0 {
-		return &ValidationError{Errors: errs}
+	switch {
+	case len(errs) == 0:
+		return nil
+	case inQuery:
+		msg := errs[0].Message
+		if len(errs) > 1 {
+			msg += " " + errs[1].Message
+		}
+		return &BadRequestError{Msg: msg}
 	}
-	return nil
+	return &ValidationError{Errors: errs}
 }
 
 func variablesOut(vs []notify.Variable) []api.TemplateVariable {
@@ -309,7 +323,7 @@ func (s *Service) NotificationTemplate(ctx context.Context, p *auth.Principal, k
 	if _, err := templateKind(kind); err != nil {
 		return api.NotificationTemplate{}, err
 	}
-	if err := templateTarget(channel, locale); err != nil {
+	if err := templateTarget(channel, locale, true); err != nil {
 		return api.NotificationTemplate{}, err
 	}
 	def, _ := notify.Default(string(kind), string(channel), string(locale))
@@ -344,7 +358,7 @@ func checkedTemplate(kind api.NotificationKind, w api.NotificationTemplateWrite)
 	if _, err := templateKind(kind); err != nil {
 		return notify.Parts{}, err
 	}
-	if err := templateTarget(w.Channel, w.Locale); err != nil {
+	if err := templateTarget(w.Channel, w.Locale, false); err != nil {
 		return notify.Parts{}, err
 	}
 	parts := notify.Parts{Subject: w.Subject, Text: w.Text, HTML: deref(w.Html)}
@@ -393,7 +407,7 @@ func (s *Service) ResetNotificationTemplate(ctx context.Context, p *auth.Princip
 	if _, err := templateKind(kind); err != nil {
 		return api.NotificationTemplate{}, err
 	}
-	if err := templateTarget(channel, locale); err != nil {
+	if err := templateTarget(channel, locale, true); err != nil {
 		return api.NotificationTemplate{}, err
 	}
 	if err := s.Store.Tx(ctx, func(tx pgx.Tx) error {

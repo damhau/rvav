@@ -177,7 +177,11 @@ events have waited more than 10 minutes.
    certificate, the client certificate, the allowed hosts, the signing
    secret), then **Send a test event**. Saving the destination tries it
    again at once. Nothing is lost while it waits; removing the
-   destination drops what waits for it.
+   destination drops what waits for it. The alert doesn't count a
+   destination turned off, nor events set aside because the receiver
+   refused them for good (a 413, an event over 64 KB for syslog over
+   TCP or TLS): the destination's row shows those, and saving it sends
+   them again.
 
 ## approvals-overdue
 
