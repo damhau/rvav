@@ -45,6 +45,9 @@ Following the several vCenters of ADR-0024:
   Linking a vCenter to an NSX Manager moves it from the one that served
   it. An administrator links vCenters in the same panel, the
   integration's NSX Manager too.
+- **The integration's URL can't name an added NSX Manager**: the API
+  would show both by that host name, and the added one could no longer
+  be changed or removed (I1.6).
 - **Upgrading changes nothing.** The migration links every vCenter that
   exists, the integration's included, to the integration's NSX Manager.
   A vCenter added later is served by none until it is linked: in another
@@ -63,6 +66,11 @@ Following the several vCenters of ADR-0024:
   naming the vCenter, before anything is made. One request's NSX objects
   are on one NSX Manager: VMs in vCenters of two NSX Managers are refused
   too (`nsx_managers`).
+- **rvav places VMs that need NSX** only on clusters of a vCenter an NSX
+  Manager serves, when rvav has one: a vCenter no NSX Manager serves is
+  left out, not chosen and then refused. With no such cluster allowed,
+  the request is refused (`no_nsx`). A cluster the form gives is
+  refused as above (I1.6).
 - **The placement rule that makes segments** is the first that does and
   names no vCenter, or a vCenter of that NSX Manager. With one NSX
   Manager, that is the first rule that makes segments, as before.
@@ -73,7 +81,9 @@ Following the several vCenters of ADR-0024:
   `nsx.policy` and `nsx.membership`). Deletes, day-2 group changes and
   tag drift go to the NSX Manager recorded; a resource without one is the
   integration's, where every NSX object was made before.
-- **The tag sync** reads each NSX Manager's VMs.
+- **The tag sync** reads each NSX Manager's VMs. An NSX Manager that
+  doesn't answer keeps its VMs' state as it was, the others' are
+  compared, and the sync's error names it (I1.6).
 - **A vRA deployment adopted** (ADR-0027) takes its NSX objects from the
   NSX Manager of its VMs' vCenter.
 - **An NSX Manager can't be removed** while a deployment not deleted has
@@ -87,7 +97,9 @@ Following the several vCenters of ADR-0024:
   environment, of every NSX Manager.
 - **Saving a catalog item** checks that each NSX group and service it
   names is on at least one NSX Manager: the environment, and so the NSX
-  Manager, is chosen when it is requested.
+  Manager, is chosen when it is requested. An NSX Manager that doesn't
+  answer is left out: what another has is found there, and only a name
+  none of those answering has waits for it (502, naming it) (I1.6).
 - **Saving a placement rule that makes segments** checks its Tier-1 on
   the NSX Manager of the vCenter it names. A rule that names none needs
   the Tier-1 on every NSX Manager that serves a vCenter.

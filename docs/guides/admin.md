@@ -613,14 +613,15 @@ To add an NSX Manager for other vCenters, such as those of another site:
 To change which vCenters an NSX Manager serves, the integration's
 included, open its **Actions** menu and select **Link vCenters**. To change
 the integration's NSX Manager itself, change the NSX settings above the
-list.
+list. Its URL can't name an NSX Manager you added: remove that one first.
 
 A vCenter you add later is served by no NSX Manager until you link it.
 With several NSX Managers:
-- A request whose VMs need NSX (a segment made for the deployment,
-  security groups, or a group to join) in a vCenter no NSX Manager serves
-  is refused before anything is made, and so is a request whose VMs are
-  in vCenters of two NSX Managers.
+- rvav places VMs that need NSX (a segment made for the deployment,
+  security groups, or a group to join) only on clusters of a vCenter an
+  NSX Manager serves. A request whose VMs need NSX in a vCenter no NSX
+  Manager serves is refused before anything is made, and so is a request
+  whose VMs are in vCenters of two NSX Managers.
 - The placement rule that makes the segments is the first that names no
   vCenter, or a vCenter of that NSX Manager. A rule that names no vCenter
   needs its Tier-1 gateway on every NSX Manager that serves a vCenter.
@@ -631,6 +632,9 @@ With several NSX Managers:
   update can't add VMs to groups on the NSX Manager the vCenter left.
 - You can't remove an NSX Manager while a deployment has a segment, a
   group, a policy or VM tags on it.
+- While an NSX Manager doesn't answer, the tag sync still checks the
+  other NSX Managers' VMs, and you can still save a catalog item whose
+  groups and services another NSX Manager has.
 
 ## IP ranges without EfficientIP
 

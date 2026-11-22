@@ -2,8 +2,11 @@ package inventory
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"time"
@@ -103,13 +106,16 @@ func (s *NSXTagSync) vms(ctx context.Context, manager string) (map[string]nsx.VM
 }
 
 // SyncOnce compares each VM's tags in NSX with those rvav set. A VM NSX
-// doesn't list is left as it is: vCenter's sync says when one is gone.
+// doesn't list is left as it is: vCenter's sync says when one is gone. An
+// NSX Manager that doesn't answer keeps its VMs as they were, the others'
+// are compared, and the error names it.
 func (s *NSXTagSync) SyncOnce(ctx context.Context) error {
 	list, err := s.Store.ResourcesOfType(ctx, "nsx.membership")
 	if err != nil || len(list) == 0 {
 		return err
 	}
 	seen := map[string]map[string]nsx.VM{}
+	var down []error
 	for _, r := range list {
 		var props map[string]any
 		var m membership
@@ -119,7 +125,7 @@ func (s *NSXTagSync) SyncOnce(ctx context.Context) error {
 		byUUID, asked := seen[m.NSX]
 		if !asked {
 			if byUUID, err = s.vms(ctx, m.NSX); err != nil {
-				return err
+				down = append(down, fmt.Errorf("NSX Manager %s: %w", cmp.Or(m.NSX, "(the NSX integration's)"), err))
 			}
 			seen[m.NSX] = byUUID
 		}
@@ -154,7 +160,7 @@ func (s *NSXTagSync) SyncOnce(ctx context.Context) error {
 		s.Events.Resource(ctx, dep.ProjectID, r)
 		s.Events.Deployment(ctx, r.DeploymentID)
 	}
-	return nil
+	return errors.Join(down...)
 }
 
 func compact(raw []byte) []byte {

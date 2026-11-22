@@ -696,24 +696,37 @@ func (s *Service) checkNSXRefs(ctx context.Context, b blueprint.Blueprint, ptr s
 		}
 	}
 	var errs []api.FieldError
+	// An NSX Manager that doesn't answer is left out: what the others have
+	// is checked, and only what none of them has waits for it.
+	down := map[int]error{}
+	unreachable := func() error {
+		i := slices.Min(slices.Collect(maps.Keys(down)))
+		return &UpstreamError{System: "NSX Manager " + s.nsxLabel(managers[i]), Err: down[i]}
+	}
 	read := map[string]*nsx.Group{}
 	for _, at := range sortedKeys(groups) {
 		id := groups[at]
 		if _, done := read[id]; !done {
 			read[id] = nil
-			for _, client := range clients {
+			for i, client := range clients {
+				if down[i] != nil {
+					continue
+				}
 				g, err := client.Group(ctx, id)
 				if errors.Is(err, nsx.ErrNotFound) {
 					continue
 				}
 				if err != nil {
-					return nil, &UpstreamError{System: "NSX", Err: err}
+					down[i] = err
+					continue
 				}
 				read[id] = &g
 				break
 			}
 		}
 		switch g := read[id]; {
+		case g == nil && len(down) > 0:
+			return nil, unreachable()
 		case g == nil:
 			errs = append(errs, fieldErr(at, "unknown", fmt.Sprintf("NSX has no group %s.", id)))
 		case g.RvavMade():
@@ -726,15 +739,23 @@ func (s *Service) checkNSXRefs(ctx context.Context, b blueprint.Blueprint, ptr s
 	}
 	if len(services) > 0 {
 		var known []nsx.Service
-		for _, client := range clients {
+		for i, client := range clients {
+			if down[i] != nil {
+				continue
+			}
 			got, err := client.Services(ctx)
 			if err != nil {
-				return nil, &UpstreamError{System: "NSX", Err: err}
+				down[i] = err
+				continue
 			}
 			known = append(known, got...)
 		}
 		for _, at := range sortedKeys(services) {
-			if !slices.ContainsFunc(known, func(k nsx.Service) bool { return k.ID == services[at] }) {
+			switch {
+			case slices.ContainsFunc(known, func(k nsx.Service) bool { return k.ID == services[at] }):
+			case len(down) > 0:
+				return nil, unreachable()
+			default:
 				errs = append(errs, fieldErr(at, "unknown", fmt.Sprintf("NSX has no service %s.", services[at])))
 			}
 		}

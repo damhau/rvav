@@ -439,8 +439,18 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			noTemplate = fmt.Sprintf("%s has no template in %s now, where the clusters allowed here are. Ask an administrator.",
 				part.image.Label, vcenterNames(part.imageExcluded))
 		}
-		ch, results, why := pl.choose(placementQuery{plan: placed, count: part.count, apart: c.AntiAffinity, anyDatastore: pickDatastore,
-			anyNetwork: pickNetwork, hasTemplate: hasTemplate, noTemplate: noTemplate, cons: cons, disks: disks, vmGB: vmGB})
+		q := placementQuery{plan: placed, count: part.count, apart: c.AntiAffinity, anyDatastore: pickDatastore,
+			anyNetwork: pickNetwork, hasTemplate: hasTemplate, noTemplate: noTemplate, cons: cons, disks: disks, vmGB: vmGB}
+		if needsSegments || ev.needsGroups(c, plan) {
+			serves, err := s.nsxServing(ctx, pl)
+			if err != nil {
+				return part, err
+			}
+			q.nsxServes = serves
+			q.noNSX = "These VMs need NSX for their segments or security groups, and no cluster allowed here is in a vCenter an " +
+				"NSX Manager serves. Ask an administrator to link one in Integrations › NSX."
+		}
+		ch, results, why := pl.choose(q)
 		placedBy = append(placedBy, results...)
 		switch {
 		case ch.cluster != nil:
@@ -449,6 +459,8 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			part.hosts, part.strategy, part.strategyNote = ch.hosts, ch.strategy, ch.note
 		case why != "" && why == noTemplate:
 			add("", "no_template", why)
+		case why != "" && why == q.noNSX:
+			add("", "no_nsx", why)
 		case why != "":
 			add("", "constraint", why)
 		case plan.Host != "":

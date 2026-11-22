@@ -349,7 +349,12 @@ type placementQuery struct {
 	// noTemplate is why nothing was chosen when hasTemplate rules out
 	// every cluster; "" says nothing more than no room.
 	noTemplate string
-	cons       constraintSet
+	// nsxServes, for VMs that need NSX, rules out the vCenters no NSX
+	// Manager serves (ADR-0062), and noNSX says why when it rules out
+	// every cluster; nil for VMs that don't.
+	nsxServes func(vcenter string) bool
+	noNSX     string
+	cons      constraintSet
 	// disks are the added disks whose datastores rvav chooses by their own
 	// constraints, by 1 + index; vmGB is what the VMs' datastore holds.
 	disks map[int]int
@@ -367,7 +372,7 @@ type placementQuery struct {
 func (pl *placement) choose(q placementQuery) (clusterChoice, []constraintResult, string) {
 	var none clusterChoice
 	var cands []computeCand
-	noTemplate := false
+	noTemplate, noNSX := false, false
 	for i := range pl.clusters {
 		c := &pl.clusters[i]
 		// A name in two vCenters is never chosen (its rule must say which),
@@ -379,10 +384,17 @@ func (pl *placement) choose(q placementQuery) (clusterChoice, []constraintResult
 			noTemplate = true
 			continue
 		}
+		if q.nsxServes != nil && !q.nsxServes(c.VCenter) {
+			noNSX = true
+			continue
+		}
 		cands = append(cands, pl.computeCands(c, q.plan.Host)...)
 	}
-	if len(cands) == 0 && noTemplate {
+	switch {
+	case len(cands) == 0 && noTemplate:
 		return none, nil, q.noTemplate
+	case len(cands) == 0 && noNSX:
+		return none, nil, q.noNSX
 	}
 	compute := q.cons.of(blueprint.Compute, 0)
 	cands, results, failed := narrow(cands, hard(compute), candTags, candName)

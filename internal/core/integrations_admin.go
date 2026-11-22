@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -188,6 +189,23 @@ func checkIntegrationKind(kind string) error {
 
 // SetIntegration saves an integration's settings; fields an environment
 // variable sets are left out. The secret, when given, is sealed.
+// nsxNameTaken is why the NSX integration can't have this address: its
+// host names an NSX Manager added besides it, and the API would know both
+// by that name (ADR-0062); "" when it can.
+func (s *Service) nsxNameTaken(ctx context.Context, raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" {
+		return "", nil
+	}
+	host := strings.ToLower(u.Hostname())
+	if _, err := s.Store.GetNSXManager(ctx, host); errors.Is(err, store.ErrNotFound) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s is an NSX Manager added besides the integration: remove it from NSX Managers first, or give the integration another.", host), nil
+}
+
 func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind string, w api.IntegrationWrite) (api.Integration, error) {
 	if !p.Everywhere(auth.IntegrationsManage) {
 		return api.Integration{}, ErrForbidden
@@ -222,6 +240,15 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 					return api.Integration{}, err
 				}
 			}
+		}
+	}
+	if u, ok := settings["url"].(string); ok && kind == "nsx" && bad["url"] == "" {
+		msg, err := s.nsxNameTaken(ctx, u)
+		if err != nil {
+			return api.Integration{}, err
+		}
+		if msg != "" {
+			bad["url"] = msg
 		}
 	}
 	for field, msg := range bad {

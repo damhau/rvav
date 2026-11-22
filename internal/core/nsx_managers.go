@@ -162,6 +162,39 @@ func (s *Service) segmentsFor(ctx context.Context, pl *placement, vcenter string
 	return nil, m, false, nil
 }
 
+// needsGroups says whether VMs of the component join NSX security groups:
+// the blueprint's, or existing ones a component or this plan names.
+func (ev *Evaluation) needsGroups(c blueprint.Component, plan blueprint.VMPlan) bool {
+	existing := func(g string) bool {
+		_, ok := blueprint.ExistingGroup(g)
+		return ok
+	}
+	return len(ev.Blueprint.SecurityGroups) > 0 || slices.ContainsFunc(slices.Concat(c.Groups, plan.Groups), existing) ||
+		slices.ContainsFunc(ev.Blueprint.Components, func(o blueprint.Component) bool { return slices.ContainsFunc(o.Groups, existing) })
+}
+
+// nsxServing says which vCenters of the clusters placement may choose an
+// NSX Manager serves; nil when rvav has none, which the request's
+// evaluation says.
+func (s *Service) nsxServing(ctx context.Context, pl *placement) (func(string) bool, error) {
+	all, err := s.allNSXManagers(ctx)
+	if err != nil || len(all) == 0 {
+		return nil, err
+	}
+	served := map[string]bool{}
+	for _, c := range pl.clusters {
+		if _, seen := served[c.VCenter]; seen {
+			continue
+		}
+		_, ok, err := s.nsxManagerOf(ctx, c.VCenter)
+		if err != nil {
+			return nil, err
+		}
+		served[c.VCenter] = ok
+	}
+	return func(vc string) bool { return served[vc] }, nil
+}
+
 // evaluateNSXManager picks the NSX Manager the request's segments and
 // security groups are made on: the one serving its VMs' vCenter, one for
 // them all. A VM that needs NSX in a vCenter no NSX Manager serves is

@@ -2655,6 +2655,16 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         bad.push(...serviceNowSettingsErrors(w.settings));
         if (bad.length) return invalid(bad);
       }
+      if (kind === "nsx" && typeof url === "string" && url) {
+        const host = /^https?:\/\/([^/:]+)/.exec(url)?.[1]?.toLowerCase();
+        if (host && st().nsxManagers.some((m) => m.name === host))
+          return invalid([
+            err(
+              "/settings/url",
+              `${host} is an NSX Manager added besides the integration: remove it from NSX Managers first, or give the integration another.`,
+            ),
+          ]);
+      }
       const every = w.settings.sync_interval;
       if (typeof every === "string" && every && !intervalOK(every))
         return invalid([err("/settings/sync_interval", "A duration from 30s to 24h, for example 5m or 1h30m.")]);
