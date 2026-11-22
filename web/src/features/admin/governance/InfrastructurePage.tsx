@@ -5,7 +5,9 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cpu, HardDrive, Network, Server, X } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -26,6 +28,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
 import { can } from "@/lib/can";
+import { formatList } from "@/lib/format";
 import { useCurrentProject } from "@/lib/project";
 import { errorAt, failed, fieldErrors, OfferEditor, offersText, writable } from "./common";
 import { IPRanges } from "./IPRanges";
@@ -55,26 +58,25 @@ function SourceEditor({
   /** The sources as saved, which say whether vCenter has them now. */
   stored?: S["VmTemplateSource"][];
 }) {
+  const { t } = useTranslation("admin-governance");
   const vcenters = useQuery(adm.vcenters());
   const primary = vcenters.data?.items.find((v) => v.primary)?.name ?? "";
   const options = (vcenters.data?.items ?? []).map((v) => ({
     value: v.name || unnamed,
-    label: v.name || "The vCenter integration's",
-    meta: v.primary ? "Integration" : undefined,
+    label: v.name || t("infra.source.integrationName"),
+    meta: v.primary ? t("infra.source.integration") : undefined,
   }));
   const valueOf = (src: Source) => src.vcenter || primary || unnamed;
   for (const src of value) {
     if (!options.some((o) => o.value === valueOf(src)))
-      options.push({ value: valueOf(src), label: src.vcenter || "The vCenter integration's", meta: undefined });
+      options.push({ value: valueOf(src), label: src.vcenter || t("infra.source.integrationName"), meta: undefined });
   }
   const set = (i: number, src: Source) => onChange(value.map((x, j) => (j === i ? src : x)));
   const unused = options.find((o) => !value.some((src) => valueOf(src) === o.value));
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="mb-1 text-secondary font-medium">In vCenter</legend>
-      <p className="text-secondary text-muted">
-        Its template in each vCenter. VMs go to the clusters of these vCenters only, cloned from that vCenter's.
-      </p>
+      <legend className="mb-1 text-secondary font-medium">{t("infra.source.legend")}</legend>
+      <p className="text-secondary text-muted">{t("infra.source.lead")}</p>
       {errors["/sources"] && <p className="text-secondary text-bad">{errors["/sources"]}</p>}
       {value.map((src, i) => {
         const at = `/sources/${i}`;
@@ -90,10 +92,15 @@ function SourceEditor({
             key={i}
             className="flex flex-col gap-2 rounded-md border border-line p-3"
             role="group"
-            aria-label={`Source ${i + 1}`}
+            aria-label={t("infra.source.group", { n: i + 1 })}
           >
             <div className="flex items-end gap-2">
-              <Field label="vCenter" htmlFor={`tpl-src-${i}-vc`} error={errors[`${at}/vcenter`]} className="flex-1">
+              <Field
+                label={t("infra.source.vcenter")}
+                htmlFor={`tpl-src-${i}-vc`}
+                error={errors[`${at}/vcenter`]}
+                className="flex-1"
+              >
                 <Select
                   id={`tpl-src-${i}-vc`}
                   value={valueOf(src)}
@@ -104,21 +111,21 @@ function SourceEditor({
               </Field>
               {missing && (
                 <Badge tone="warn" className="mb-2">
-                  Not found
+                  {t("infra.source.notFound")}
                 </Badge>
               )}
               <Button
                 type="button"
                 size="icon"
                 variant="quiet"
-                aria-label={`Remove source ${i + 1}`}
+                aria-label={t("infra.source.remove", { n: i + 1 })}
                 onClick={() => onChange(value.filter((_, j) => j !== i))}
               >
                 <X className="size-3.5" />
               </Button>
             </div>
             <div className="grid grid-cols-[1fr_160px] gap-2">
-              <Field label="Template" htmlFor={`tpl-src-${i}-tpl`} error={errors[`${at}/template`]}>
+              <Field label={t("infra.source.template")} htmlFor={`tpl-src-${i}-tpl`} error={errors[`${at}/template`]}>
                 <Input
                   id={`tpl-src-${i}-tpl`}
                   className="font-mono"
@@ -126,7 +133,11 @@ function SourceEditor({
                   onChange={(e) => set(i, { ...src, template: e.target.value })}
                 />
               </Field>
-              <Field label="Content library" htmlFor={`tpl-src-${i}-lib`} hint="When it is an item of one">
+              <Field
+                label={t("infra.source.library")}
+                htmlFor={`tpl-src-${i}-lib`}
+                hint={t("infra.source.libraryHint")}
+              >
                 <Input
                   id={`tpl-src-${i}-lib`}
                   className="font-mono"
@@ -151,7 +162,7 @@ function SourceEditor({
               ])
             }
           >
-            Add a vCenter
+            {t("infra.source.add")}
           </Button>
         </div>
       )}
@@ -160,11 +171,12 @@ function SourceEditor({
 }
 
 type ConsKind = keyof S["TemplateConstraints"];
-const kinds: { kind: ConsKind; label: string }[] = [
-  { kind: "compute", label: "Compute" },
-  { kind: "storage", label: "Storage" },
-  { kind: "network", label: "Network" },
-];
+const kinds: ConsKind[] = ["compute", "storage", "network"];
+// Product and directive names read the same in every language.
+const userDataFirstLine = { linux: "#cloud-config", windows: "#ps1_sysnative" } as const;
+const cloudInit = "cloud-init";
+const cloudbaseInit = "cloudbase-init";
+
 const tagList = (text: string) =>
   text
     .split(",")
@@ -181,16 +193,21 @@ function ConstraintFields({
   onChange: (v: Record<ConsKind, string>) => void;
   errors: Record<string, string>;
 }) {
+  const { t } = useTranslation("admin-governance");
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="mb-1 text-secondary font-medium">Constraint tags</legend>
+      <legend className="mb-1 text-secondary font-medium">{t("infra.constraints.legend")}</legend>
       <p className="text-secondary text-muted">
-        Added to the item's, separated by commas: <span className="font-mono">rvav-os/rhel9</span>,{" "}
-        <span className="font-mono">!rvav-zone/pci</span>, <span className="font-mono">rvav-tier/gold:soft</span>.
+        <Trans t={t} i18nKey="infra.constraints.lead" components={{ mono: <span className="font-mono" /> }} />
       </p>
       <div className="grid grid-cols-3 gap-2">
-        {kinds.map(({ kind, label }) => (
-          <Field key={kind} label={label} htmlFor={`tpl-cons-${kind}`} error={errorAt(errors, `/constraints/${kind}`)}>
+        {kinds.map((kind) => (
+          <Field
+            key={kind}
+            label={t(`infra.constraints.kind.${kind}`)}
+            htmlFor={`tpl-cons-${kind}`}
+            error={errorAt(errors, `/constraints/${kind}`)}
+          >
             <Input
               id={`tpl-cons-${kind}`}
               className="font-mono"
@@ -205,6 +222,7 @@ function ConstraintFields({
 }
 
 function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const [f, setF] = useState<S["VmTemplateWrite"]>(
     template
@@ -245,12 +263,12 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "templates"] });
-      toast.success(`${f.label} saved`);
+      toast.success(t("infra.templates.saved", { name: f.label }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("infra.notSaved"));
     },
   });
   return (
@@ -258,9 +276,9 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={template ? `Change ${template.label}` : "New VM template"}
-      description="VM forms offer it in their template picker, to the projects and environments below."
-      submitLabel={save.isPending ? "Saving…" : "Save template"}
+      title={template ? t("infra.changeNamed", { name: template.label }) : t("infra.templates.new")}
+      description={t("infra.templates.sheetLead")}
+      submitLabel={save.isPending ? t("infra.saving") : t("infra.templates.save")}
       submitDisabled={!f.key}
       onSubmit={() => {
         setErrors({});
@@ -268,7 +286,7 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
       }}
     >
       <div className="grid grid-cols-[140px_1fr] gap-3">
-        <Field label="Key" htmlFor="tpl-key" error={errors["/key"]}>
+        <Field label={t("infra.key")} htmlFor="tpl-key" error={errors["/key"]}>
           <Input
             id="tpl-key"
             className="font-mono"
@@ -277,7 +295,7 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
             onChange={(e) => setF({ ...f, key: e.target.value })}
           />
         </Field>
-        <Field label="Label" htmlFor="tpl-label" error={errors["/label"]}>
+        <Field label={t("infra.label")} htmlFor="tpl-label" error={errors["/label"]}>
           <Input id="tpl-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
         </Field>
       </div>
@@ -297,7 +315,7 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
         />
         <div className="flex flex-col">
           <label htmlFor="tpl-linked" className="text-body font-medium">
-            Linked clones
+            {t("infra.templates.linked")}
           </label>
           {errors["/linked_clone"] ? (
             <p id="tpl-linked-note" className="text-secondary text-bad">
@@ -305,14 +323,13 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
             </p>
           ) : (
             <p id="tpl-linked-note" className="text-secondary text-muted">
-              Clone its VMs from the vCenter template&apos;s current snapshot, unless the blueprint says otherwise. Not
-              for content library items; the VMs keep the template&apos;s disk size.
+              {t("infra.templates.linkedNote")}
             </p>
           )}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Operating system" htmlFor="tpl-os">
+        <Field label={t("infra.templates.os")} htmlFor="tpl-os">
           <Select
             id="tpl-os"
             value={f.os_family}
@@ -323,7 +340,11 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
             ]}
           />
         </Field>
-        <Field label="Customization spec" htmlFor="tpl-cust" hint="Empty for rvav's own">
+        <Field
+          label={t("infra.templates.customization")}
+          htmlFor="tpl-cust"
+          hint={t("infra.templates.customizationHint")}
+        >
           <Input
             id="tpl-cust"
             value={f.customization ?? ""}
@@ -331,7 +352,7 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
           />
         </Field>
       </div>
-      <Field label="Description" htmlFor="tpl-desc">
+      <Field label={t("infra.description")} htmlFor="tpl-desc">
         <Input
           id="tpl-desc"
           value={f.description ?? ""}
@@ -349,7 +370,7 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
           />
           <div className="flex flex-col">
             <label htmlFor="tpl-cbi" className="text-body font-medium">
-              Uses cloudbase-init
+              {t("infra.templates.cloudbaseInit")}
             </label>
             {errors["/cloudbase_init"] ? (
               <p id="tpl-cbi-note" className="text-secondary text-bad">
@@ -357,8 +378,7 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
               </p>
             ) : (
               <p id="tpl-cbi-note" className="text-secondary text-muted">
-                The template has cloudbase-init with its VMware GuestInfo service. rvav gives its VMs their name,
-                network, user and user data through guestinfo instead of a customization specification.
+                {t("infra.templates.cloudbaseInitNote")}
               </p>
             )}
           </div>
@@ -366,20 +386,18 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
       )}
       {(f.os_family === "linux" || f.cloudbase_init) && (
         <Field
-          label={f.os_family === "linux" ? "Cloud-init user data" : "cloudbase-init user data"}
+          label={f.os_family === "linux" ? t("infra.templates.userDataLinux") : t("infra.templates.userDataWindows")}
           htmlFor="tpl-ud"
           error={errors["/user_data"]}
           hint={
-            f.os_family === "linux"
-              ? "Merged with the item's. A Go template, as a blueprint's: print inputs through json. Empty for none."
-              : "Run before the item's: #ps1_sysnative, rem cmd or #cloud-config. A Go template, as a blueprint's. Empty for none."
+            f.os_family === "linux" ? t("infra.templates.userDataLinuxHint") : t("infra.templates.userDataWindowsHint")
           }
         >
           <Textarea
             id="tpl-ud"
             className="font-mono"
             rows={6}
-            placeholder={f.os_family === "linux" ? "#cloud-config" : "#ps1_sysnative"}
+            placeholder={f.os_family === "linux" ? userDataFirstLine.linux : userDataFirstLine.windows}
             value={f.user_data ?? ""}
             onChange={(e) => setF({ ...f, user_data: e.target.value })}
           />
@@ -396,18 +414,20 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
 }
 
 function useRemove(queryKey: string[], remove: (key: string) => Promise<unknown>) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ key }: { key: string; label: string }) => remove(key),
-    onSuccess: (_, { label }) => {
+    mutationFn: ({ key }: { key: string; done: string }) => remove(key),
+    onSuccess: (_, { done }) => {
       void qc.invalidateQueries({ queryKey });
-      toast.success(`${label} removed`);
+      toast.success(done);
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("infra.notRemoved")),
   });
 }
 
 function Templates({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const templates = useQuery(adm.templates());
   const projectName = useProjectName();
   const [editing, setEditing] = useState<S["VmTemplate"] | "new" | null>(null);
@@ -418,34 +438,34 @@ function Templates({ canEdit }: { canEdit: boolean }) {
   const items = templates.data?.items;
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New template
+      {t("infra.templates.add")}
     </Button>
   );
   const columns: Column<S["VmTemplate"]>[] = [
     {
       id: "template",
-      header: "Template",
-      sortValue: (t) => t.label,
-      cell: (t) => {
-        const tags = [...t.constraints.compute, ...t.constraints.storage, ...t.constraints.network];
+      header: t("infra.templates.template"),
+      sortValue: (tpl) => tpl.label,
+      cell: (tpl) => {
+        const tags = [...tpl.constraints.compute, ...tpl.constraints.storage, ...tpl.constraints.network];
         return (
           <span className="flex flex-col">
             <span>
-              <span className="font-medium">{t.label}</span>{" "}
-              <span className="font-mono text-caption text-muted">{t.key}</span>
-              {t.user_data && !t.cloudbase_init && (
+              <span className="font-medium">{tpl.label}</span>{" "}
+              <span className="font-mono text-caption text-muted">{tpl.key}</span>
+              {tpl.user_data && !tpl.cloudbase_init && (
                 <Badge tone="outline" className="ml-2">
-                  cloud-init
+                  {cloudInit}
                 </Badge>
               )}
-              {t.linked_clone && (
+              {tpl.linked_clone && (
                 <Badge tone="outline" className="ml-2">
-                  linked clones
+                  {t("infra.templates.linkedBadge")}
                 </Badge>
               )}
-              {t.cloudbase_init && (
+              {tpl.cloudbase_init && (
                 <Badge tone="outline" className="ml-2">
-                  cloudbase-init
+                  {cloudbaseInit}
                 </Badge>
               )}
             </span>
@@ -456,20 +476,22 @@ function Templates({ canEdit }: { canEdit: boolean }) {
     },
     {
       id: "vcenter",
-      header: "In vCenter",
-      sortValue: (t) => t.sources.length,
-      cell: (t) => {
+      header: t("infra.templates.inVcenter"),
+      sortValue: (tpl) => tpl.sources.length,
+      cell: (tpl) => {
         const names = [
-          ...new Set(t.sources.map((src) => (src.content_library ? `${src.content_library} / ` : "") + src.template)),
+          ...new Set(tpl.sources.map((src) => (src.content_library ? `${src.content_library} / ` : "") + src.template)),
         ];
-        const missing = t.sources.filter((src) => src.in_inventory === false).length;
+        const missing = tpl.sources.filter((src) => src.in_inventory === false).length;
         return (
           <span className="flex flex-col">
             <span className="text-secondary">
-              {t.sources.length} vCenter{t.sources.length === 1 ? "" : "s"}
+              {t("infra.templates.vcenters", { count: tpl.sources.length })}
               {missing > 0 && (
                 <Badge tone="warn" className="ml-2">
-                  {missing === t.sources.length ? "Not found" : `${missing} not found`}
+                  {missing === tpl.sources.length
+                    ? t("infra.templates.notFound")
+                    : t("infra.templates.someNotFound", { count: missing })}
                 </Badge>
               )}
             </span>
@@ -480,41 +502,41 @@ function Templates({ canEdit }: { canEdit: boolean }) {
     },
     {
       id: "offers",
-      header: "Offered to",
-      cell: (t) => <span className="text-secondary text-muted">{offersText(t.offers, projectName)}</span>,
+      header: t("infra.offeredTo"),
+      cell: (tpl) => <span className="text-secondary text-muted">{offersText(tpl.offers, projectName)}</span>,
     },
   ];
   return (
     <Panel
-      title="VM templates"
-      description="What VM forms offer in their template picker, and to which projects."
+      title={t("infra.templates.title")}
+      description={t("infra.templates.panelLead")}
       flush
       actions={canEdit && items?.length !== 0 && add}
     >
       <DataTable
-        label="VM templates"
+        label={t("infra.templates.title")}
         columns={columns}
         rows={items}
-        rowKey={(t) => t.key}
+        rowKey={(tpl) => tpl.key}
         loading={templates.isPending}
         error={templates.isError && <ErrorState error={templates.error} onRetry={() => void templates.refetch()} />}
         empty={
           <EmptyState
             icon={HardDrive}
-            title="No templates yet"
-            body="Blueprints name a vCenter template themselves until you add templates for their pickers."
+            title={t("infra.templates.emptyTitle")}
+            body={t("infra.templates.emptyBody")}
             action={canEdit && add}
           />
         }
-        rowMenuLabel={(t) => `Actions for ${t.label}`}
+        rowMenuLabel={(tpl) => t("infra.actionsFor", { name: tpl.label })}
         rowMenu={
           canEdit
-            ? (t) => (
+            ? (tpl) => (
                 <>
-                  <MenuItem onSelect={() => setEditing(t)}>Change</MenuItem>
+                  <MenuItem onSelect={() => setEditing(tpl)}>{t("infra.change")}</MenuItem>
                   <MenuSeparator />
-                  <MenuItem danger onSelect={() => setRemoving(t)}>
-                    Remove
+                  <MenuItem danger onSelect={() => setRemoving(tpl)}>
+                    {t("infra.remove")}
                   </MenuItem>
                 </>
               )
@@ -526,17 +548,23 @@ function Templates({ canEdit }: { canEdit: boolean }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.label}?`}
+          title={t("infra.removeNamed", { name: removing.label })}
           description={
-            <>
-              VM forms stop offering <span className="font-mono">{removing.key}</span> in their template picker.
-            </>
+            <Trans
+              t={t}
+              i18nKey="infra.templates.removeLead"
+              values={{ key: removing.key }}
+              components={{ mono: <span className="font-mono" /> }}
+            />
           }
-          consequences={`Offered to ${offersText(removing.offers, projectName)}. A blueprint that names its own template keeps it, and VMs built from this one aren't changed.`}
-          confirmLabel="Remove template"
+          consequences={t("infra.templates.removeConsequences", { offers: offersText(removing.offers, projectName) })}
+          confirmLabel={t("infra.templates.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() =>
-            remove.mutate({ key: removing.key, label: removing.label }, { onSuccess: () => setRemoving(null) })
+            remove.mutate(
+              { key: removing.key, done: t("infra.templates.removed", { name: removing.label }) },
+              { onSuccess: () => setRemoving(null) },
+            )
           }
         />
       )}
@@ -545,6 +573,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
 }
 
 function SizeSheet({ size, onClose }: { size?: S["SizePreset"]; onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const [f, setF] = useState<S["SizePresetWrite"]>(
     size ?? {
@@ -564,12 +593,12 @@ function SizeSheet({ size, onClose }: { size?: S["SizePreset"]; onClose: () => v
         : call(api.POST("/admin/sizes", { body: f })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "sizes"] });
-      toast.success(`${f.label} saved`);
+      toast.success(t("infra.sizes.saved", { name: f.label }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("infra.notSaved"));
     },
   });
   const num = (k: "vcpu" | "memory_gb" | "disk_gb", label: string) => (
@@ -588,9 +617,9 @@ function SizeSheet({ size, onClose }: { size?: S["SizePreset"]; onClose: () => v
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={size ? `Change ${size.label}` : "New size"}
-      description="VM forms offer it in their size picker, to the projects and environments below."
-      submitLabel={save.isPending ? "Saving…" : "Save size"}
+      title={size ? t("infra.changeNamed", { name: size.label }) : t("infra.sizes.new")}
+      description={t("infra.sizes.sheetLead")}
+      submitLabel={save.isPending ? t("infra.saving") : t("infra.sizes.save")}
       submitDisabled={!f.key}
       onSubmit={() => {
         setErrors({});
@@ -598,7 +627,7 @@ function SizeSheet({ size, onClose }: { size?: S["SizePreset"]; onClose: () => v
       }}
     >
       <div className="grid grid-cols-[140px_1fr] gap-3">
-        <Field label="Key" htmlFor="size-key" error={errors["/key"]}>
+        <Field label={t("infra.key")} htmlFor="size-key" error={errors["/key"]}>
           <Input
             id="size-key"
             className="font-mono"
@@ -607,14 +636,14 @@ function SizeSheet({ size, onClose }: { size?: S["SizePreset"]; onClose: () => v
             onChange={(e) => setF({ ...f, key: e.target.value })}
           />
         </Field>
-        <Field label="Label" htmlFor="size-label" error={errors["/label"]}>
+        <Field label={t("infra.label")} htmlFor="size-label" error={errors["/label"]}>
           <Input id="size-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
         </Field>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        {num("vcpu", "vCPU")}
-        {num("memory_gb", "Memory (GB)")}
-        {num("disk_gb", "System disk (GB)")}
+        {num("vcpu", t("infra.sizes.vcpu"))}
+        {num("memory_gb", t("infra.sizes.memory"))}
+        {num("disk_gb", t("infra.sizes.disk"))}
       </div>
       <OfferEditor
         value={f.offers ?? []}
@@ -626,6 +655,7 @@ function SizeSheet({ size, onClose }: { size?: S["SizePreset"]; onClose: () => v
 }
 
 function Sizes({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const sizes = useQuery(adm.sizes());
   const projectName = useProjectName();
   const [editing, setEditing] = useState<S["SizePreset"] | "new" | null>(null);
@@ -636,13 +666,13 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
   const items = sizes.data?.items;
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New size
+      {t("infra.sizes.add")}
     </Button>
   );
   const columns: Column<S["SizePreset"]>[] = [
     {
       id: "size",
-      header: "Size",
+      header: t("infra.sizes.size"),
       cell: (z) => (
         <>
           <span className="font-medium">{z.label}</span>{" "}
@@ -652,29 +682,29 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
     },
     {
       id: "shape",
-      header: "vCPU, memory, disk",
+      header: t("infra.sizes.shape"),
       sortValue: (z) => z.vcpu * 1000 + z.memory_gb,
       cell: (z) => (
         <span className="tnum">
-          {z.vcpu} vCPU, {z.memory_gb} GB, {z.disk_gb} GB
+          {t("infra.sizes.shapeValue", { vcpu: z.vcpu, memory: z.memory_gb, disk: z.disk_gb })}
         </span>
       ),
     },
     {
       id: "offers",
-      header: "Offered to",
+      header: t("infra.offeredTo"),
       cell: (z) => <span className="text-secondary text-muted">{offersText(z.offers, projectName)}</span>,
     },
   ];
   return (
     <Panel
-      title="Sizes"
-      description="What VM forms offer in their size picker: vCPU, memory and system disk."
+      title={t("infra.sizes.title")}
+      description={t("infra.sizes.panelLead")}
       flush
       actions={canEdit && items?.length !== 0 && add}
     >
       <DataTable
-        label="Sizes"
+        label={t("infra.sizes.title")}
         columns={columns}
         rows={items}
         rowKey={(z) => z.key}
@@ -683,20 +713,20 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
         empty={
           <EmptyState
             icon={Cpu}
-            title="No sizes yet"
-            body="Blueprints set their own vCPU and memory until you add sizes for their pickers."
+            title={t("infra.sizes.emptyTitle")}
+            body={t("infra.sizes.emptyBody")}
             action={canEdit && add}
           />
         }
-        rowMenuLabel={(z) => `Actions for ${z.label}`}
+        rowMenuLabel={(z) => t("infra.actionsFor", { name: z.label })}
         rowMenu={
           canEdit
             ? (z) => (
                 <>
-                  <MenuItem onSelect={() => setEditing(z)}>Change</MenuItem>
+                  <MenuItem onSelect={() => setEditing(z)}>{t("infra.change")}</MenuItem>
                   <MenuSeparator />
                   <MenuItem danger onSelect={() => setRemoving(z)}>
-                    Remove
+                    {t("infra.remove")}
                   </MenuItem>
                 </>
               )
@@ -708,17 +738,23 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.label}?`}
+          title={t("infra.removeNamed", { name: removing.label })}
           description={
-            <>
-              VM forms stop offering <span className="font-mono">{removing.key}</span> in their size picker.
-            </>
+            <Trans
+              t={t}
+              i18nKey="infra.sizes.removeLead"
+              values={{ key: removing.key }}
+              components={{ mono: <span className="font-mono" /> }}
+            />
           }
-          consequences={`Offered to ${offersText(removing.offers, projectName)}. A blueprint that sets its own size keeps it, and VMs of this size aren't changed.`}
-          confirmLabel="Remove size"
+          consequences={t("infra.sizes.removeConsequences", { offers: offersText(removing.offers, projectName) })}
+          confirmLabel={t("infra.sizes.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() =>
-            remove.mutate({ key: removing.key, label: removing.label }, { onSuccess: () => setRemoving(null) })
+            remove.mutate(
+              { key: removing.key, done: t("infra.sizes.removed", { name: removing.label }) },
+              { onSuccess: () => setRemoving(null) },
+            )
           }
         />
       )}
@@ -727,6 +763,7 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
 }
 
 function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const [network, setNetwork] = useState(mapping?.network ?? "");
   const [f, setF] = useState({
@@ -755,12 +792,12 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "network-mappings"] });
       void qc.invalidateQueries({ queryKey: ["admin", "placement-preview"] });
-      toast.success(`${network} mapped`);
+      toast.success(t("infra.networks.mapped", { network }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("infra.notSaved"));
     },
   });
   return (
@@ -768,16 +805,16 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={mapping ? `Map ${mapping.network} by hand` : "Map a network"}
-      description="A mapping by hand wins over EfficientIP's until it is removed."
-      submitLabel={save.isPending ? "Saving…" : "Save mapping"}
+      title={mapping ? t("infra.networks.byHandTitle", { network: mapping.network }) : t("infra.networks.new")}
+      description={t("infra.networks.sheetLead")}
+      submitLabel={save.isPending ? t("infra.saving") : t("infra.networks.save")}
       submitDisabled={!network}
       onSubmit={() => {
         setErrors({});
         save.mutate();
       }}
     >
-      <Field label="vCenter network" htmlFor="map-network">
+      <Field label={t("infra.networks.network")} htmlFor="map-network">
         <Input
           id="map-network"
           className="font-mono"
@@ -787,7 +824,7 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Subnet" htmlFor="map-subnet" error={errors["/subnet"]}>
+        <Field label={t("infra.networks.subnet")} htmlFor="map-subnet" error={errors["/subnet"]}>
           <Input
             id="map-subnet"
             className="font-mono"
@@ -795,7 +832,7 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
             onChange={(e) => setF({ ...f, subnet: e.target.value })}
           />
         </Field>
-        <Field label="Gateway" htmlFor="map-gateway" error={errors["/gateway"]}>
+        <Field label={t("infra.networks.gateway")} htmlFor="map-gateway" error={errors["/gateway"]}>
           <Input
             id="map-gateway"
             className="font-mono"
@@ -806,9 +843,9 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field
-          label="IPv6 subnet"
+          label={t("infra.networks.subnet6")}
           htmlFor="map-subnet6"
-          hint="Optional, for blueprints with ipv6"
+          hint={t("infra.networks.subnet6Hint")}
           error={errors["/subnet6"]}
         >
           <Input
@@ -818,7 +855,7 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
             onChange={(e) => setF({ ...f, subnet6: e.target.value })}
           />
         </Field>
-        <Field label="IPv6 gateway" htmlFor="map-gateway6" error={errors["/gateway6"]}>
+        <Field label={t("infra.networks.gateway6")} htmlFor="map-gateway6" error={errors["/gateway6"]}>
           <Input
             id="map-gateway6"
             className="font-mono"
@@ -827,10 +864,10 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
           />
         </Field>
       </div>
-      <Field label="DNS zone" htmlFor="map-zone" error={errors["/dns_zone"]}>
+      <Field label={t("infra.networks.zone")} htmlFor="map-zone" error={errors["/dns_zone"]}>
         <Input id="map-zone" value={f.dns_zone} onChange={(e) => setF({ ...f, dns_zone: e.target.value })} />
       </Field>
-      <Field label="DNS servers" htmlFor="map-dns" hint="Comma-separated">
+      <Field label={t("infra.networks.servers")} htmlFor="map-dns" hint={t("infra.networks.commaSeparated")}>
         <Input
           id="map-dns"
           className="font-mono"
@@ -842,14 +879,8 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
   );
 }
 
-const sourceLabel = {
-  manual: "By hand",
-  nsx: "NSX segment",
-  efficientip: "EfficientIP",
-  rvav: "rvav IP ranges",
-} as const;
-
 function Networks({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const mappings = useQuery(adm.networkMappings());
   const [editing, setEditing] = useState<S["NetworkMapping"] | "new" | null>(null);
   const [removing, setRemoving] = useState<S["NetworkMapping"] | null>(null);
@@ -859,13 +890,13 @@ function Networks({ canEdit }: { canEdit: boolean }) {
   const items = mappings.data?.items;
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      Map a network
+      {t("infra.networks.add")}
     </Button>
   );
   const columns: Column<S["NetworkMapping"]>[] = [
     {
       id: "network",
-      header: "Network",
+      header: t("infra.networks.networkColumn"),
       sortValue: (m) => m.network,
       cell: (m) => (
         <span className="font-mono text-secondary">
@@ -876,13 +907,13 @@ function Networks({ canEdit }: { canEdit: boolean }) {
     },
     {
       id: "subnet",
-      header: "Subnet",
+      header: t("infra.networks.subnet"),
       cell: (m) => (
         <span className="font-mono text-secondary">
-          {m.subnet} <span className="text-muted">via {m.gateway}</span>
+          {m.subnet} <span className="text-muted">{t("infra.networks.via", { gateway: m.gateway })}</span>
           {m.subnet6 && (
             <span className="block">
-              {m.subnet6} <span className="text-muted">via {m.gateway6}</span>
+              {m.subnet6} <span className="text-muted">{t("infra.networks.via", { gateway: m.gateway6 })}</span>
             </span>
           )}
         </span>
@@ -890,19 +921,21 @@ function Networks({ canEdit }: { canEdit: boolean }) {
     },
     {
       id: "dns",
-      header: "DNS",
+      header: t("infra.networks.dns"),
       cell: (m) => (
         <span className="text-secondary">
-          {m.source === "rvav" && !m.dns_zone ? "The blueprint's domain" : m.dns_zone}{" "}
+          {m.source === "rvav" && !m.dns_zone ? t("infra.networks.blueprintDomain") : m.dns_zone}{" "}
           <span className="font-mono text-muted">{m.dns_servers.join(", ")}</span>
-          {m.source === "rvav" && <span className="block text-caption text-muted">No DNS records</span>}
+          {m.source === "rvav" && (
+            <span className="block text-caption text-muted">{t("infra.networks.noRecords")}</span>
+          )}
         </span>
       ),
     },
     {
       id: "source",
-      header: "From",
-      sortValue: (m) => sourceLabel[m.source],
+      header: t("infra.networks.fromColumn"),
+      sortValue: (m) => t(`infra.networks.from.${m.source}`),
       cell: (m) =>
         m.source === "rvav" ? (
           <Link
@@ -910,22 +943,22 @@ function Networks({ canEdit }: { canEdit: boolean }) {
             search={{ tab: "ip-ranges" }}
             className="text-secondary font-medium text-accent hover:underline"
           >
-            {sourceLabel.rvav}
+            {t("infra.networks.from.rvav")}
           </Link>
         ) : (
-          <Badge tone={m.source === "manual" ? "accent" : "neutral"}>{sourceLabel[m.source]}</Badge>
+          <Badge tone={m.source === "manual" ? "accent" : "neutral"}>{t(`infra.networks.from.${m.source}`)}</Badge>
         ),
     },
   ];
   return (
     <Panel
-      title="Network mappings"
-      description="EfficientIP's subnets come with their vCenter network in the sync; map a network by hand when EfficientIP doesn't say. A network with IP ranges takes its addresses from them."
+      title={t("infra.networks.title")}
+      description={t("infra.networks.panelLead")}
       flush
       actions={canEdit && items?.length !== 0 && add}
     >
       <DataTable
-        label="Network mappings"
+        label={t("infra.networks.title")}
         columns={columns}
         rows={items}
         rowKey={(m) => `${m.network}/${m.vcenter ?? ""}`}
@@ -935,12 +968,12 @@ function Networks({ canEdit }: { canEdit: boolean }) {
         empty={
           <EmptyState
             icon={Network}
-            title="No networks mapped"
-            body="The EfficientIP sync maps the networks it knows. Map one by hand when it doesn't."
+            title={t("infra.networks.emptyTitle")}
+            body={t("infra.networks.emptyBody")}
             action={canEdit && add}
           />
         }
-        rowMenuLabel={(m) => `Actions for ${m.network}`}
+        rowMenuLabel={(m) => t("infra.actionsFor", { name: m.network })}
         rowMenu={
           canEdit
             ? (m) =>
@@ -948,13 +981,13 @@ function Networks({ canEdit }: { canEdit: boolean }) {
                 m.source === "nsx" || m.source === "rvav" ? null : (
                   <>
                     <MenuItem onSelect={() => setEditing(m)}>
-                      {m.source === "manual" ? "Change" : "Map by hand"}
+                      {m.source === "manual" ? t("infra.change") : t("infra.networks.byHand")}
                     </MenuItem>
                     {m.source === "manual" && (
                       <>
                         <MenuSeparator />
                         <MenuItem danger onSelect={() => setRemoving(m)}>
-                          Remove
+                          {t("infra.remove")}
                         </MenuItem>
                       </>
                     )}
@@ -968,14 +1001,14 @@ function Networks({ canEdit }: { canEdit: boolean }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove the mapping of ${removing.network}?`}
-          description={`Its subnet ${removing.subnet}, set by hand, stops applying.`}
-          consequences="The next EfficientIP sync brings back EfficientIP's subnet for the network, if it has one. VMs already on the network keep their addresses."
-          confirmLabel="Remove mapping"
+          title={t("infra.networks.removeTitle", { network: removing.network })}
+          description={t("infra.networks.removeLead", { subnet: removing.subnet })}
+          consequences={t("infra.networks.removeConsequences")}
+          confirmLabel={t("infra.networks.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() =>
             remove.mutate(
-              { key: removing.network, label: `The mapping of ${removing.network}` },
+              { key: removing.network, done: t("infra.networks.removed", { network: removing.network }) },
               { onSuccess: () => setRemoving(null) },
             )
           }
@@ -998,45 +1031,38 @@ interface VsphereObject {
   tags: string[];
 }
 
-const kindLabel: Record<Kind, string> = {
-  cluster: "Cluster",
-  host: "Host",
-  resource_pool: "Resource pool",
-  datastore: "Datastore",
-  datastore_cluster: "Datastore cluster",
-  network: "Network",
-};
+const kindFilters = ["all", "cluster", "host", "resource_pool", "datastore", "datastore_cluster", "network"] as const;
 
-const hostState: Record<S["InventoryHost"]["state"], string> = {
-  connected: "",
-  maintenance: ", in maintenance",
-  disconnected: ", disconnected",
-};
+type T = TFunction<"admin-governance">;
 
-function poolLimits(p: S["InventoryResourcePool"]): string {
+function poolLimits(p: S["InventoryResourcePool"], t: T): string {
   const limits = [
-    p.memory_limit_gb != null && `${p.memory_limit_gb} GB memory`,
-    p.cpu_limit_mhz != null && `${p.cpu_limit_mhz} MHz CPU`,
-  ].filter(Boolean);
-  return limits.length ? `limited to ${limits.join(" and ")}` : "no limits";
+    p.memory_limit_gb != null ? t("infra.inventory.poolMemory", { gb: p.memory_limit_gb }) : undefined,
+    p.cpu_limit_mhz != null ? t("infra.inventory.poolCpu", { mhz: p.cpu_limit_mhz }) : undefined,
+  ].filter((l) => l !== undefined);
+  return limits.length ? t("infra.inventory.limitedTo", { limits: formatList(limits) }) : t("infra.inventory.noLimits");
 }
 
-function objectsOf(inv: S["VsphereInventory"]): VsphereObject[] {
+function objectsOf(inv: S["VsphereInventory"], t: T): VsphereObject[] {
   return [
     ...inv.clusters.map((c) => ({
       kind: "cluster" as const,
       vcenter: c.vcenter,
       name: c.name,
       detail:
-        `${c.hosts} hosts, ${c.memory_free_gb} GB memory free` +
-        (c.memory_reserved_gb > 0 ? `, ${c.memory_reserved_gb} GB of it held for VMs not built yet` : ""),
+        t("infra.inventory.cluster", { count: c.hosts, free: c.memory_free_gb }) +
+        (c.memory_reserved_gb > 0 ? t("infra.inventory.clusterHeld", { reserved: c.memory_reserved_gb }) : ""),
       tags: c.tags,
     })),
     ...inv.hosts.map((h) => ({
       kind: "host" as const,
       vcenter: h.vcenter,
       name: h.name,
-      detail: `In ${h.cluster}, ${h.memory_free_gb} of ${h.memory_total_gb} GB memory free${hostState[h.state]}`,
+      detail: t(`infra.inventory.host.${h.state}`, {
+        cluster: h.cluster,
+        free: h.memory_free_gb,
+        total: h.memory_total_gb,
+      }),
       tags: h.tags,
     })),
     ...inv.resource_pools.map((p) => ({
@@ -1044,28 +1070,32 @@ function objectsOf(inv: S["VsphereInventory"]): VsphereObject[] {
       vcenter: p.vcenter,
       name: p.path,
       cluster: p.cluster,
-      detail: `In ${p.cluster}, ${poolLimits(p)}`,
+      detail: t("infra.inventory.pool", { cluster: p.cluster, limits: poolLimits(p, t) }),
       tags: p.tags,
     })),
     ...inv.datastore_clusters.map((d) => ({
       kind: "datastore_cluster" as const,
       vcenter: d.vcenter,
       name: d.name,
-      detail: `${d.free_gb} of ${d.capacity_gb} GB free on ${d.datastores.join(", ") || "no datastore"}, Storage DRS ${d.sdrs ? "on" : "off"}`,
+      detail: t(d.sdrs ? "infra.inventory.datastoreCluster.on" : "infra.inventory.datastoreCluster.off", {
+        free: d.free_gb,
+        capacity: d.capacity_gb,
+        datastores: d.datastores.join(", ") || t("infra.inventory.noDatastore"),
+      }),
       tags: d.tags,
     })),
     ...inv.datastores.map((d) => ({
       kind: "datastore" as const,
       vcenter: d.vcenter,
       name: d.name,
-      detail: `${d.free_gb} of ${d.capacity_gb} GB free`,
+      detail: t("infra.inventory.datastore", { free: d.free_gb, capacity: d.capacity_gb }),
       tags: d.tags,
     })),
     ...inv.networks.map((n) => ({
       kind: "network" as const,
       vcenter: n.vcenter,
       name: n.name,
-      detail: n.clusters.join(", ") || "No cluster",
+      detail: n.clusters.join(", ") || t("infra.inventory.noCluster"),
       tags: n.tags,
     })),
   ];
@@ -1073,52 +1103,58 @@ function objectsOf(inv: S["VsphereInventory"]): VsphereObject[] {
 
 /** The vCenter objects the sync read, with the tags placement rules and constraints choose by (ADR-0035). */
 function Inventory() {
+  const { t } = useTranslation("admin-governance");
   const inventory = useQuery(adm.inventory());
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<Kind | "all">("all");
-  const all = inventory.data ? objectsOf(inventory.data) : undefined;
+  const all = inventory.data ? objectsOf(inventory.data, t) : undefined;
   const needle = q.trim().toLowerCase();
   const rows = all?.filter(
     (o) =>
       (kind === "all" || o.kind === kind) &&
-      (!needle || o.name.toLowerCase().includes(needle) || o.tags.some((t) => t.toLowerCase().includes(needle))),
+      (!needle || o.name.toLowerCase().includes(needle) || o.tags.some((tag) => tag.toLowerCase().includes(needle))),
   );
   const columns: Column<VsphereObject>[] = [
     {
       id: "name",
-      header: "Name",
+      header: t("infra.inventory.name"),
       sortValue: (o) => o.name,
       cell: (o) => <span className="font-mono text-secondary">{o.name}</span>,
     },
-    { id: "kind", header: "Kind", sortValue: (o) => o.kind, cell: (o) => kindLabel[o.kind] },
-    { id: "vcenter", header: "vCenter", sortValue: (o) => o.vcenter, cell: (o) => o.vcenter },
-    { id: "detail", header: "Capacity or reach", cell: (o) => <span className="text-secondary">{o.detail}</span> },
+    {
+      id: "kind",
+      header: t("infra.inventory.kindColumn"),
+      sortValue: (o) => o.kind,
+      cell: (o) => t(`infra.inventory.kind.${o.kind}`),
+    },
+    { id: "vcenter", header: t("infra.inventory.vcenter"), sortValue: (o) => o.vcenter, cell: (o) => o.vcenter },
+    {
+      id: "detail",
+      header: t("infra.inventory.detail"),
+      cell: (o) => <span className="text-secondary">{o.detail}</span>,
+    },
     {
       id: "tags",
-      header: "Tags",
+      header: t("infra.inventory.tags"),
       sortValue: (o) => o.tags.join(" ") || null,
       cell: (o) =>
         o.tags.length ? (
           <span className="flex flex-wrap gap-1">
-            {o.tags.map((t) => (
-              <Badge key={t} tone="outline" className="font-mono">
-                {t}
+            {o.tags.map((tag) => (
+              <Badge key={tag} tone="outline" className="font-mono">
+                {tag}
               </Badge>
             ))}
           </span>
         ) : (
-          <span className="text-faint">None</span>
+          <span className="text-faint">{t("infra.inventory.none")}</span>
         ),
     },
   ];
   return (
-    <Panel
-      title="vCenter objects"
-      description="The clusters, hosts, resource pools, datastores, datastore clusters and networks the last inventory sync read. Placement rules name them, and blueprints' constraints choose by their vSphere tags, written category/tag."
-      flush
-    >
+    <Panel title={t("infra.inventory.title")} description={t("infra.inventory.lead")} flush>
       <DataTable
-        label="vCenter objects"
+        label={t("infra.inventory.title")}
         columns={columns}
         rows={rows}
         rowKey={(o) => `${o.kind}/${o.vcenter}/${o.cluster ?? ""}/${o.name}`}
@@ -1128,33 +1164,26 @@ function Inventory() {
         error={inventory.isError && <ErrorState error={inventory.error} onRetry={() => void inventory.refetch()} />}
         toolbar={
           <>
-            <TableSearch label="Search by name or tag" value={q} onChange={setQ} placeholder="Name or tag" />
+            <TableSearch
+              label={t("infra.inventory.search")}
+              value={q}
+              onChange={setQ}
+              placeholder={t("infra.inventory.searchPlaceholder")}
+            />
             <Select
-              aria-label="Kind"
+              aria-label={t("infra.inventory.kindColumn")}
               className="w-40"
               value={kind}
               onChange={(v) => setKind(v as Kind | "all")}
-              options={[
-                { value: "all", label: "All kinds" },
-                { value: "cluster", label: "Clusters" },
-                { value: "host", label: "Hosts" },
-                { value: "resource_pool", label: "Resource pools" },
-                { value: "datastore", label: "Datastores" },
-                { value: "datastore_cluster", label: "Datastore clusters" },
-                { value: "network", label: "Networks" },
-              ]}
+              options={kindFilters.map((value) => ({ value, label: t(`infra.inventory.kinds.${value}`) }))}
             />
           </>
         }
         empty={
           <EmptyState
             icon={Server}
-            title={all?.length ? "Nothing matches" : "No vCenter objects yet"}
-            body={
-              all?.length
-                ? "No vCenter object has that name or tag."
-                : "The inventory sync lists them once a vCenter is connected."
-            }
+            title={all?.length ? t("infra.inventory.nothingMatches") : t("infra.inventory.emptyTitle")}
+            body={all?.length ? t("infra.inventory.nothingMatchesBody") : t("infra.inventory.emptyBody")}
           />
         }
       />
@@ -1166,27 +1195,25 @@ export const infrastructureTabs = ["templates", "sizes", "networks", "ip-ranges"
 export type InfrastructureTab = (typeof infrastructureTabs)[number];
 
 export function InfrastructurePage({ tab = "templates" }: { tab?: InfrastructureTab }) {
+  const { t } = useTranslation(["admin-governance", "shell"]);
   const { me } = useCurrentProject();
   const navigate = useNavigate();
   const canEdit = can(me, "infrastructure.manage");
   return (
     <Page>
-      <PageHeader
-        title="Templates and networks"
-        description="What blueprints' template and size pickers offer, the subnet each network deploys into, rvav's own IP ranges, and the tags of vCenter objects."
-      />
+      <PageHeader title={t("shell:nav.admin.infrastructure")} description={t("infra.lead")} />
       <Tabs
         value={tab}
         onValueChange={(next) =>
           void navigate({ to: "/admin/infrastructure", search: { tab: next as InfrastructureTab }, replace: true })
         }
       >
-        <TabsList aria-label="Infrastructure sections">
-          <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="sizes">Sizes</TabsTrigger>
-          <TabsTrigger value="networks">Networks</TabsTrigger>
-          <TabsTrigger value="ip-ranges">IP ranges</TabsTrigger>
-          <TabsTrigger value="inventory">vCenter objects</TabsTrigger>
+        <TabsList aria-label={t("infra.tabsLabel")}>
+          <TabsTrigger value="templates">{t("infra.tabs.templates")}</TabsTrigger>
+          <TabsTrigger value="sizes">{t("infra.tabs.sizes")}</TabsTrigger>
+          <TabsTrigger value="networks">{t("infra.tabs.networks")}</TabsTrigger>
+          <TabsTrigger value="ip-ranges">{t("infra.tabs.ipRanges")}</TabsTrigger>
+          <TabsTrigger value="inventory">{t("infra.tabs.inventory")}</TabsTrigger>
         </TabsList>
         <TabsContent value="templates" className="pt-4">
           <Templates canEdit={canEdit} />

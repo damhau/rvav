@@ -5,6 +5,7 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, ListOrdered } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
@@ -51,16 +52,18 @@ function Given({ at }: { at: string }) {
 }
 
 function Holder({ hostname, adapter }: { hostname: string; adapter?: string }) {
+  const { t } = useTranslation("admin-governance");
   return (
     <span className={mono}>
       {hostname}
-      {adapter && <span className="block text-caption text-muted">adapter {adapter}</span>}
+      {adapter && <span className="block text-caption text-muted">{t("ipRanges.adapter", { name: adapter })}</span>}
     </span>
   );
 }
 
 function DeploymentLink({ id, name }: { id?: string; name?: string }) {
-  if (!id || !name) return <span className="text-secondary text-muted">Gone</span>;
+  const { t } = useTranslation("admin-governance");
+  if (!id || !name) return <span className="text-secondary text-muted">{t("ipRanges.gone")}</span>;
   return (
     <Link
       to="/deployments/$deploymentId"
@@ -73,6 +76,7 @@ function DeploymentLink({ id, name }: { id?: string; name?: string }) {
 }
 
 function RangeSheet({ range, onClose }: { range?: S["IpRange"]; onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const inventory = useQuery(adm.inventory());
   const [f, setF] = useState({
@@ -111,12 +115,12 @@ function RangeSheet({ range, onClose }: { range?: S["IpRange"]; onClose: () => v
     },
     onSuccess: () => {
       invalidate(qc);
-      toast.success(`${f.name} saved`);
+      toast.success(t("ipRanges.saved", { name: f.name }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("infra.notSaved"));
     },
   });
   const text = (
@@ -139,17 +143,17 @@ function RangeSheet({ range, onClose }: { range?: S["IpRange"]; onClose: () => v
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={range ? `Change ${range.name}` : "New IP range"}
-      description="VMs on the network take their addresses from its ranges instead of EfficientIP. rvav writes no DNS records for them."
-      submitLabel={save.isPending ? "Saving…" : "Save range"}
+      title={range ? t("infra.changeNamed", { name: range.name }) : t("ipRanges.new")}
+      description={t("ipRanges.sheetLead")}
+      submitLabel={save.isPending ? t("infra.saving") : t("ipRanges.save")}
       submitDisabled={!f.name || !f.network}
       onSubmit={() => {
         setErrors({});
         save.mutate();
       }}
     >
-      {text("name", "Name")}
-      <Field label="Description" htmlFor="ipr-description" hint="Optional">
+      {text("name", t("ipRanges.name"))}
+      <Field label={t("infra.description")} htmlFor="ipr-description" hint={t("ipRanges.optional")}>
         <Textarea
           id="ipr-description"
           rows={2}
@@ -157,13 +161,9 @@ function RangeSheet({ range, onClose }: { range?: S["IpRange"]; onClose: () => v
           onChange={(e) => setF({ ...f, description: e.target.value })}
         />
       </Field>
-      {held && (
-        <p className="text-secondary text-muted">
-          VMs hold {range?.used} addresses from this range: its vCenter, network, subnet and gateway stay as they are.
-        </p>
-      )}
+      {held && <p className="text-secondary text-muted">{t("ipRanges.held", { count: range?.used ?? 0 })}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="vCenter" htmlFor="ipr-vcenter" error={errors["/vcenter"]}>
+        <Field label={t("ipRanges.vcenter")} htmlFor="ipr-vcenter" error={errors["/vcenter"]}>
           <Select
             id="ipr-vcenter"
             value={vcenter}
@@ -173,7 +173,12 @@ function RangeSheet({ range, onClose }: { range?: S["IpRange"]; onClose: () => v
             disabled={held}
           />
         </Field>
-        <Field label="Network" htmlFor="ipr-network" error={errors["/network"]} hint="A port group or an NSX segment's">
+        <Field
+          label={t("ipRanges.network")}
+          htmlFor="ipr-network"
+          error={errors["/network"]}
+          hint={t("ipRanges.networkHint")}
+        >
           <Select
             id="ipr-network"
             value={f.network}
@@ -185,17 +190,17 @@ function RangeSheet({ range, onClose }: { range?: S["IpRange"]; onClose: () => v
         </Field>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {text("cidr", "Subnet", { monospace: true, hint: "IPv4, such as 10.51.0.0/24", disabled: held })}
-        {text("gateway", "Gateway", { monospace: true, disabled: held })}
+        {text("cidr", t("ipRanges.subnet"), { monospace: true, hint: t("ipRanges.subnetHint"), disabled: held })}
+        {text("gateway", t("ipRanges.gateway"), { monospace: true, disabled: held })}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {text("start_address", "First address", { monospace: true })}
-        {text("end_address", "Last address", { monospace: true })}
+        {text("start_address", t("ipRanges.first"), { monospace: true })}
+        {text("end_address", t("ipRanges.last"), { monospace: true })}
       </div>
       <Field
-        label="Excluded addresses"
+        label={t("ipRanges.excluded")}
         htmlFor="ipr-excluded"
-        hint="One address or span per line, such as 10.51.0.50-10.51.0.59: never given."
+        hint={t("ipRanges.excludedHint")}
         error={errorAt(errors, "/excluded")}
       >
         <Textarea
@@ -206,44 +211,46 @@ function RangeSheet({ range, onClose }: { range?: S["IpRange"]; onClose: () => v
           onChange={(e) => setF({ ...f, excluded: e.target.value })}
         />
       </Field>
-      {text("dns_servers", "DNS servers", { monospace: true, hint: "Comma-separated" })}
-      {text("dns_search_domains", "DNS search domains", {
-        hint: "Comma-separated, searched after the VM's own domain",
-      })}
-      {text("dns_domain", "DNS domain", {
-        hint: "The domain VMs are named in; empty: the blueprint's. rvav creates no DNS records in it.",
-      })}
+      {text("dns_servers", t("ipRanges.dnsServers"), { monospace: true, hint: t("ipRanges.commaSeparated") })}
+      {text("dns_search_domains", t("ipRanges.searchDomains"), { hint: t("ipRanges.searchDomainsHint") })}
+      {text("dns_domain", t("ipRanges.dnsDomain"), { hint: t("ipRanges.dnsDomainHint") })}
     </Sheet>
   );
 }
 
 function AddressesSheet({ range, onClose }: { range: S["IpRange"]; onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const allocations = useQuery(adm.ipAllocations(range.id));
   const columns: Column<S["IpAllocation"]>[] = [
-    { id: "address", header: "Address", cell: (a) => <span className={mono}>{a.address}</span> },
+    { id: "address", header: t("ipRanges.address"), cell: (a) => <span className={mono}>{a.address}</span> },
     {
       id: "vm",
-      header: "VM",
+      header: t("ipRanges.vm"),
       sortValue: (a) => a.hostname,
       cell: (a) => <Holder hostname={a.hostname} adapter={a.adapter} />,
     },
     {
       id: "deployment",
-      header: "Deployment",
+      header: t("ipRanges.deployment"),
       cell: (a) => <DeploymentLink id={a.deployment_id} name={a.deployment_name} />,
     },
-    { id: "given", header: "Given", sortValue: (a) => a.allocated_at, cell: (a) => <Given at={a.allocated_at} /> },
+    {
+      id: "given",
+      header: t("ipRanges.given"),
+      sortValue: (a) => a.allocated_at,
+      cell: (a) => <Given at={a.allocated_at} />,
+    },
   ];
   return (
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Addresses of ${range.name}`}
-      description={`${range.network} in ${range.vcenter}. rvav gives an address back when its VM or adapter goes.`}
+      title={t("ipRanges.addressesOf", { name: range.name })}
+      description={t("ipRanges.addressesLead", { network: range.network, vcenter: range.vcenter })}
     >
-      <Meter label={`${range.free} free`} used={range.used} total={range.size} />
+      <Meter label={t("ipRanges.free", { count: range.free })} used={range.used} total={range.size} />
       <DataTable
-        label="Addresses given"
+        label={t("ipRanges.addressesGiven")}
         columns={columns}
         rows={allocations.data?.items}
         rowKey={(a) => a.address}
@@ -252,19 +259,14 @@ function AddressesSheet({ range, onClose }: { range: S["IpRange"]; onClose: () =
         error={
           allocations.isError && <ErrorState error={allocations.error} onRetry={() => void allocations.refetch()} />
         }
-        empty={
-          <EmptyState
-            icon={ListOrdered}
-            title="No address given yet"
-            body="The network's next VM gets the range's first free address."
-          />
-        }
+        empty={<EmptyState icon={ListOrdered} title={t("ipRanges.noneGiven")} body={t("ipRanges.noneGivenBody")} />}
       />
     </Sheet>
   );
 }
 
 function Reconcile() {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const [run, setRun] = useState(false);
   const report = useQuery({ ...q.ipamReconcile(), enabled: run });
@@ -279,10 +281,10 @@ function Reconcile() {
     onSuccess: (_, o) => {
       invalidate(qc);
       void report.refetch();
-      toast.success(`${o.address} given back`);
+      toast.success(t("ipRanges.givenBack", { address: o.address }));
       setReleasing(null);
     },
-    onError: (e) => failed(e, "Not given back"),
+    onError: (e) => failed(e, t("ipRanges.notGivenBack")),
   });
   const exclude = useMutation({
     mutationFn: async (u: S["IpamUnallocated"]) => {
@@ -306,9 +308,9 @@ function Reconcile() {
     onSuccess: (_, u) => {
       invalidate(qc);
       void report.refetch();
-      toast.success(`${u.address} excluded from ${u.range_name}`);
+      toast.success(t("ipRanges.excludedFrom", { address: u.address, range: u.range_name }));
     },
-    onError: (e) => failed(e, "Not excluded"),
+    onError: (e) => failed(e, t("ipRanges.notExcluded")),
   });
   const data = report.data;
   const clean = data && data.orphan_allocations.length + data.unallocated.length === 0;
@@ -319,65 +321,66 @@ function Reconcile() {
   );
   return (
     <Panel
-      title="Reconcile the IP ranges"
-      description="Compares the ranges with what VMs hold. Nothing changes unless you give an address back."
+      title={t("ipRanges.reconcile.title")}
+      description={t("ipRanges.reconcile.lead")}
       flush
       actions={
         <Button size="sm" disabled={report.isFetching} onClick={() => (run ? void report.refetch() : setRun(true))}>
-          {report.isFetching ? "Checking…" : data ? "Check again" : "Run the check"}
+          {report.isFetching
+            ? t("ipRanges.reconcile.checking")
+            : data
+              ? t("ipRanges.reconcile.again")
+              : t("ipRanges.reconcile.run")}
         </Button>
       }
     >
-      {!run && (
-        <p className="px-4 py-3 text-secondary text-muted">
-          It lists the addresses given to VMs rvav no longer has, such as an unregistered VM&apos;s, and the vCenter VMs
-          on an address of a range that didn&apos;t give it to them.
-        </p>
-      )}
+      {!run && <p className="px-4 py-3 text-secondary text-muted">{t("ipRanges.reconcile.intro")}</p>}
       {run && report.isPending && <SkeletonRows rows={3} cols={4} />}
       {report.isError && <ErrorState error={report.error} onRetry={() => void report.refetch()} />}
-      {data && <p className="px-4 py-3 text-secondary text-muted">Checked {fullDate(data.checked_at)}.</p>}
+      {data && (
+        <p className="px-4 py-3 text-secondary text-muted">
+          {t("ipRanges.reconcile.checked", { at: fullDate(data.checked_at) })}
+        </p>
+      )}
       {clean && (
         <EmptyState
           icon={CircleCheck}
-          title="Nothing to reconcile"
-          body="Every address given belongs to a VM rvav has, and no vCenter VM is on an address its range didn't give it."
+          title={t("ipRanges.reconcile.cleanTitle")}
+          body={t("ipRanges.reconcile.cleanBody")}
         />
       )}
       {data && data.orphan_allocations.length > 0 && (
-        <section aria-label="Addresses of VMs rvav no longer has" className="border-t border-line">
-          <h3 className="px-4 py-2.5 text-body font-semibold">Addresses of VMs rvav no longer has</h3>
+        <section aria-label={t("ipRanges.reconcile.orphans")} className="border-t border-line">
+          <h3 className="px-4 py-2.5 text-body font-semibold">{t("ipRanges.reconcile.orphans")}</h3>
           <DataTable
-            label="Addresses of VMs rvav no longer has"
+            label={t("ipRanges.reconcile.orphans")}
             rows={data.orphan_allocations}
             rowKey={(o) => `${o.range_id}/${o.address}`}
             minWidth={560}
             columns={[
-              { id: "address", header: "Address", cell: (o) => <span className={mono}>{o.address}</span> },
-              { id: "vm", header: "VM", cell: (o) => <Holder hostname={o.hostname} adapter={o.adapter} /> },
-              { id: "range", header: "Range", cell: range },
-              { id: "given", header: "Given", cell: (o) => <Given at={o.allocated_at} /> },
+              { id: "address", header: t("ipRanges.address"), cell: (o) => <span className={mono}>{o.address}</span> },
+              { id: "vm", header: t("ipRanges.vm"), cell: (o) => <Holder hostname={o.hostname} adapter={o.adapter} /> },
+              { id: "range", header: t("ipRanges.reconcile.range"), cell: range },
+              { id: "given", header: t("ipRanges.given"), cell: (o) => <Given at={o.allocated_at} /> },
             ]}
-            rowMenuLabel={(o) => `Actions for ${o.address}`}
-            rowMenu={(o) => <MenuItem onSelect={() => setReleasing(o)}>Give back</MenuItem>}
+            rowMenuLabel={(o) => t("infra.actionsFor", { name: o.address })}
+            rowMenu={(o) => <MenuItem onSelect={() => setReleasing(o)}>{t("ipRanges.reconcile.giveBack")}</MenuItem>}
           />
         </section>
       )}
       {data && data.unallocated.length > 0 && (
-        <section aria-label="VMs on an address their range didn't give" className="border-t border-line">
-          <h3 className="px-4 pt-2.5 text-body font-semibold">VMs on an address their range didn&apos;t give</h3>
-          <p className="px-4 pb-2.5 text-secondary text-muted">
-            Exclude the address from its range, or move the VM, so that the range never gives it to another VM.
-          </p>
+        <section aria-label={t("ipRanges.reconcile.unallocated")} className="border-t border-line">
+          <h3 className="px-4 pt-2.5 text-body font-semibold">{t("ipRanges.reconcile.unallocated")}</h3>
+          <p className="px-4 pb-2.5 text-secondary text-muted">{t("ipRanges.reconcile.unallocatedLead")}</p>
           <DataTable
-            label="VMs on an address their range didn't give"
+            label={t("ipRanges.reconcile.unallocated")}
             rows={data.unallocated}
             rowKey={(u) => `${u.vcenter}/${u.vm}`}
             minWidth={560}
             columns={[
               {
                 id: "vm",
-                header: "VM",
+                header: t("ipRanges.vm"),
                 cell: (u) => (
                   <span className={mono}>
                     {u.vm}
@@ -389,21 +392,25 @@ function Reconcile() {
                   </span>
                 ),
               },
-              { id: "address", header: "Address", cell: (u) => <span className={mono}>{u.address}</span> },
-              { id: "range", header: "Range", cell: range },
+              { id: "address", header: t("ipRanges.address"), cell: (u) => <span className={mono}>{u.address}</span> },
+              { id: "range", header: t("ipRanges.reconcile.range"), cell: range },
               {
                 id: "held",
-                header: "Given to",
+                header: t("ipRanges.reconcile.heldBy"),
                 cell: (u) =>
-                  u.held_by ? <span className={mono}>{u.held_by}</span> : <span className="text-muted">No VM</span>,
+                  u.held_by ? (
+                    <span className={mono}>{u.held_by}</span>
+                  ) : (
+                    <span className="text-muted">{t("ipRanges.reconcile.noVm")}</span>
+                  ),
               },
             ]}
-            rowMenuLabel={(u) => `Actions for ${u.vm}`}
+            rowMenuLabel={(u) => t("infra.actionsFor", { name: u.vm })}
             rowMenu={(u) =>
               // An address another VM holds can't be excluded: one of the two VMs moves.
               u.held_by ? null : (
                 <MenuItem disabled={exclude.isPending} onSelect={() => exclude.mutate(u)}>
-                  Exclude from {u.range_name}
+                  {t("ipRanges.reconcile.excludeFrom", { range: u.range_name })}
                 </MenuItem>
               )
             }
@@ -414,10 +421,10 @@ function Reconcile() {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setReleasing(null)}
-          title={`Give back ${releasing.address}?`}
-          description={`No deployment has ${releasing.hostname} any more: the range can give the address to its next VM.`}
-          consequences="If the VM still runs on this address in vCenter, exclude the address from the range instead."
-          confirmLabel="Give back address"
+          title={t("ipRanges.reconcile.giveBackTitle", { address: releasing.address })}
+          description={t("ipRanges.reconcile.giveBackLead", { hostname: releasing.hostname })}
+          consequences={t("ipRanges.reconcile.giveBackConsequences")}
+          confirmLabel={t("ipRanges.reconcile.giveBackConfirm")}
           pending={release.isPending}
           onConfirm={() => release.mutate(releasing)}
         />
@@ -427,6 +434,7 @@ function Reconcile() {
 }
 
 export function IPRanges({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const ranges = useQuery(adm.ipRanges());
   const [editing, setEditing] = useState<S["IpRange"] | "new" | null>(null);
@@ -436,21 +444,21 @@ export function IPRanges({ canEdit }: { canEdit: boolean }) {
     mutationFn: (r: S["IpRange"]) => call(api.DELETE("/admin/ip-ranges/{id}", { params: { path: { id: r.id } } })),
     onSuccess: (_, r) => {
       invalidate(qc);
-      toast.success(`${r.name} removed`);
+      toast.success(t("ipRanges.removed", { name: r.name }));
       setRemoving(null);
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("infra.notRemoved")),
   });
   const items = ranges.data?.items;
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New IP range
+      {t("ipRanges.new")}
     </Button>
   );
   const columns: Column<S["IpRange"]>[] = [
     {
       id: "range",
-      header: "Range",
+      header: t("ipRanges.range"),
       sortValue: (r) => r.name,
       cell: (r) => (
         <>
@@ -461,7 +469,7 @@ export function IPRanges({ canEdit }: { canEdit: boolean }) {
     },
     {
       id: "network",
-      header: "Network",
+      header: t("ipRanges.network"),
       sortValue: (r) => r.network,
       cell: (r) => (
         <span className={mono}>
@@ -472,30 +480,30 @@ export function IPRanges({ canEdit }: { canEdit: boolean }) {
     },
     {
       id: "addresses",
-      header: "Addresses",
+      header: t("ipRanges.addresses"),
       cell: (r) => (
         <span className={mono}>
           {r.start_address} – {r.end_address}
           <span className="block text-caption text-muted">
-            {r.cidr} via {r.gateway}
-            {r.excluded.length > 0 && `, ${r.excluded.length} excluded`}
+            {t("ipRanges.via", { cidr: r.cidr, gateway: r.gateway })}
+            {r.excluded.length > 0 && t("ipRanges.excludedCount", { count: r.excluded.length })}
           </span>
         </span>
       ),
     },
     {
       id: "usage",
-      header: "Given",
+      header: t("ipRanges.given"),
       sortValue: (r) => (r.size ? r.used / r.size : 0),
       className: "min-w-40",
-      cell: (r) => <Meter label={`${r.free} free`} used={r.used} total={r.size} />,
+      cell: (r) => <Meter label={t("ipRanges.free", { count: r.free })} used={r.used} total={r.size} />,
     },
     {
       id: "dns",
-      header: "DNS",
+      header: t("ipRanges.dns"),
       cell: (r) => (
         <span className="text-secondary">
-          {r.dns_domain || "The blueprint's domain"}
+          {r.dns_domain || t("ipRanges.blueprintDomain")}
           <span className="block font-mono text-caption text-muted">{r.dns_servers.join(", ")}</span>
         </span>
       ),
@@ -504,13 +512,13 @@ export function IPRanges({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <Panel
-        title="IP ranges"
-        description="Addresses rvav gives VMs itself, on networks EfficientIP doesn't manage: a network with a range takes its new VMs' addresses from it. rvav creates no DNS records for them."
+        title={t("ipRanges.title")}
+        description={t("ipRanges.lead")}
         flush
         actions={canEdit && items?.length !== 0 && add}
       >
         <DataTable
-          label="IP ranges"
+          label={t("ipRanges.title")}
           columns={columns}
           rows={items}
           rowKey={(r) => r.id}
@@ -520,21 +528,21 @@ export function IPRanges({ canEdit }: { canEdit: boolean }) {
           empty={
             <EmptyState
               icon={ListOrdered}
-              title="No IP ranges"
-              body="Every network takes its VMs' addresses from EfficientIP. Add a range for a network EfficientIP doesn't manage."
+              title={t("ipRanges.emptyTitle")}
+              body={t("ipRanges.emptyBody")}
               action={canEdit && add}
             />
           }
-          rowMenuLabel={(r) => `Actions for ${r.name}`}
+          rowMenuLabel={(r) => t("infra.actionsFor", { name: r.name })}
           rowMenu={(r) => (
             <>
-              <MenuItem onSelect={() => setViewing(r)}>Addresses given</MenuItem>
+              <MenuItem onSelect={() => setViewing(r)}>{t("ipRanges.addressesGiven")}</MenuItem>
               {canEdit && (
                 <>
-                  <MenuItem onSelect={() => setEditing(r)}>Change</MenuItem>
+                  <MenuItem onSelect={() => setEditing(r)}>{t("infra.change")}</MenuItem>
                   <MenuSeparator />
                   <MenuItem danger onSelect={() => setRemoving(r)}>
-                    Remove
+                    {t("infra.remove")}
                   </MenuItem>
                 </>
               )}
@@ -547,18 +555,19 @@ export function IPRanges({ canEdit }: { canEdit: boolean }) {
           <ConfirmDialog
             open
             onOpenChange={(o) => !o && setRemoving(null)}
-            title={`Remove ${removing.name}?`}
+            title={t("infra.removeNamed", { name: removing.name })}
             description={
-              <>
-                It stops giving addresses on <span className="font-mono">{removing.network}</span>.
-              </>
+              <Trans
+                t={t}
+                i18nKey="ipRanges.removeLead"
+                values={{ network: removing.network }}
+                components={{ mono: <span className="font-mono" /> }}
+              />
             }
             consequences={
-              removing.used > 0
-                ? `VMs hold ${removing.used} addresses from it: delete them, or move their adapters, first.`
-                : "When it is the network's last range, the network's new VMs take their addresses from EfficientIP again."
+              removing.used > 0 ? t("ipRanges.removeHeld", { count: removing.used }) : t("ipRanges.removeFree")
             }
-            confirmLabel="Remove range"
+            confirmLabel={t("ipRanges.removeConfirm")}
             pending={remove.isPending}
             onConfirm={() => remove.mutate(removing)}
           />

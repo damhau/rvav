@@ -153,6 +153,38 @@ test("policies, in French", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("templates and networks, in French", async ({ page }) => {
+  test.setTimeout(150_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await inFrench(page);
+
+  await open(page, "Modèles et réseaux");
+  const templates = page.getByRole("region", { name: "Modèles de VM" });
+  await expect(templates.getByRole("columnheader", { name: /^Modèle/ })).toBeVisible();
+  await bothThemes(page, "French templates");
+
+  await templates.getByRole("button", { name: "Nouveau modèle" }).click();
+  const sheet = page.getByRole("dialog", { name: "Nouveau modèle de VM" });
+  await expect(sheet.getByRole("button", { name: "Enregistrer le modèle" })).toBeVisible();
+  await scan(page, "French new template");
+  await sheet.getByRole("button", { name: "Annuler" }).click();
+  await expect(sheet).toBeHidden();
+
+  await tab(page, "Tailles");
+  await expect(page.getByRole("region", { name: "Tailles" })).toBeVisible();
+  await tab(page, "Réseaux");
+  await expect(page.getByRole("region", { name: "Correspondances de réseaux" })).toBeVisible();
+  await bothThemes(page, "French network mappings");
+  await tab(page, "Plages IP");
+  await expect(page.getByRole("button", { name: "Nouvelle plage IP" })).toBeVisible();
+  await bothThemes(page, "French IP ranges");
+  await tab(page, "Objets vCenter");
+  await expect(page.getByRole("searchbox", { name: "Rechercher par nom ou par tag" })).toBeVisible();
+  await bothThemes(page, "French vCenter objects");
+  expect(errors).toEqual([]);
+});
+
 test.describe("a French browser, at 320 px", () => {
   test.use({ locale: "fr-CH", viewport: { width: 320, height: 640 } });
   for (const path of [
@@ -164,6 +196,9 @@ test.describe("a French browser, at 320 px", () => {
     "/admin/policies",
     "/admin/policies?tab=lease",
     "/admin/policies?tab=explain",
+    "/admin/infrastructure",
+    "/admin/infrastructure?tab=ip-ranges",
+    "/admin/infrastructure?tab=inventory",
   ]) {
     test(`no sideways scrolling: ${path}`, async ({ page }) => {
       await page.goto(path);
