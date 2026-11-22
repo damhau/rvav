@@ -146,15 +146,7 @@ func (p *rvavProvider) target(cfg providerModel, httpClient *http.Client) (strin
 		return "", nil, fmt.Errorf("no rvavctl profile %q in %s: sign in with rvavctl login --profile %s", name, path, name)
 	case prof != nil && (server == "" || sameServer(server, prof.Server)):
 		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
-		profile := cmp.Or(name, "default")
-		save := func(t *oauth2.Token) error {
-			return rvavclient.Update(path, profile, func(p *rvavclient.Profile) {
-				if p.OIDC != nil {
-					p.OIDC.Token = t
-				}
-			})
-		}
-		return prof.Server, prof.TokenSource(ctx, save), nil
+		return prof.Server, ps.TokenSource(ctx, cmp.Or(name, "default")), nil
 	case server == "":
 		return "", nil, errors.New("no rvav to call: set url and token (or RVAV_URL and RVAV_TOKEN), or sign in with rvavctl login")
 	}

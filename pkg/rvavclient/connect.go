@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -25,6 +26,21 @@ func BaseURL(server string) (string, error) {
 	u.Path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), APIPath) + APIPath
 	u.RawQuery, u.Fragment = "", ""
 	return u.String(), nil
+}
+
+// Unencrypted says whether calls to server would cross a network in clear
+// text: an http:// address of another machine than this one.
+func Unencrypted(server string) bool {
+	u, err := url.Parse(strings.TrimSpace(server))
+	if err != nil || !strings.EqualFold(u.Scheme, "http") {
+		return false
+	}
+	host := u.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip == nil || !ip.IsLoopback()
 }
 
 // StaticToken sends an API token (rvav_pat_…) or an access token as it is;
