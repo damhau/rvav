@@ -2,6 +2,9 @@
 
 - Status: accepted
 - Date: 2026-10-30
+- Amended by [ADR-0062](0062-several-nsx-managers.md) (I1.1, #174): the
+  NSX integration's NSX Manager is the first of several, each serving
+  vCenters; a VM's NSX objects are made on its vCenter's.
 
 ## Context
 vRA places VMs on NSX networks it creates or reuses, and puts them in

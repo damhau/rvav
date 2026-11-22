@@ -360,6 +360,18 @@ Nothing is created or changed in EfficientIP.
   Administration › Integrations › NSX, whose test signs in and lists the
   Tier-1s, transport zones and services). Lists are read by cursor;
   PATCH makes or updates by ID; calls are counted as system `nsx`.
+- **Several NSX Managers** ([ADR-0062](adr/0062-several-nsx-managers.md)):
+  the integration's is the first, and administrators add others under it
+  (**NSX Managers**: name, HTTPS address, account and password sealed
+  like a secret, or a principal identity's certificate and key files,
+  certificate check), with the same test, through
+  `/admin/nsx-managers`. Each serves vCenters, and a vCenter is served by
+  one at most (`vcenter_nsx`); upgrading links every vCenter to the
+  integration's. A request's NSX objects are made on the NSX Manager of
+  its VMs' vCenter, chosen at evaluation, and carried in the plan
+  (`nsx`, omitted for the integration's, so old histories replay). The
+  resources record it (`nsx_manager`): deletion, day-2 group changes and
+  the tag sync go where each object was made.
 - **Reads, never changes:** Tier-1 gateways, transport zones, services,
   existing segments (port groups in vCenter, placed like any network) and
   groups (VMs join them by the tags their conditions select).
@@ -372,8 +384,10 @@ Nothing is created or changed in EfficientIP.
   them; the VMs' tags, once NSX sees them. Adopted vRA deployments bring
   their segment and groups, tagged the same way.
 - **Tag sync:** with the inventory sync, every vCenter sync interval, each
-  VM's tags are compared with those rvav set; one removed shows the VM
-  and its deployment as changed outside rvav.
+  VM's tags are compared with those rvav set, on the NSX Manager that
+  tagged it; one removed shows the VM and its deployment as changed
+  outside rvav. An NSX Manager that doesn't answer is skipped until the
+  next sync.
 - **Fake:** `rvav fake-nsx` (the compose stack's `nsx` service) answers
   the same calls, with an organisation's sample infrastructure, and makes
   a segment's port group in the stack's vcsim as NSX does in vCenter.

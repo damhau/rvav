@@ -143,9 +143,10 @@ certificates**). A connection's test shows its server's certificate
 first: who it was issued to and by, until when, its SHA-256, and whether
 rvav trusts it. When it doesn't, the test stops there and offers:
 - **Trust this certificate** (vCenter, the vCenters added, AWX,
-  EfficientIP, NSX, vRA): its SHA-256 goes in the connection's **Trusted
-  certificate** field, and TLS verification on. Save, with the password
-  or token again (a new pin needs it, as a new address does), then test.
+  EfficientIP, NSX, the NSX Managers added, vRA): its SHA-256 goes in the
+  connection's **Trusted certificate** field, and TLS verification on.
+  Save, with the password or token again (a new pin needs it, as a new
+  address does), then test.
   For a self-signed certificate. When the server's certificate is
   renewed, test and trust it again.
 - **Add it to the CA bundle:** the CA that issued it (or a self-signed
@@ -552,6 +553,50 @@ With an NSX Manager set in **Integrations**
     who may is up to the **Day-2** policies (`nsx_group_add`,
     `nsx_group_remove`).
   - A tag removed in NSX shows the deployment as changed outside rvav.
+
+### Several NSX Managers
+
+rvav makes a VM's segment, groups and tags on the NSX Manager that serves
+the VM's vCenter ([ADR-0062](../adr/0062-several-nsx-managers.md)). The
+NSX integration's NSX Manager is the first. When you upgrade, it serves
+every vCenter rvav has, so nothing changes until you add another.
+
+To add an NSX Manager for other vCenters, such as those of another site:
+
+1. In **Administration › Integrations**, open **NSX**.
+2. Under **NSX Managers**, click **Add an NSX Manager**.
+3. Enter its name (its host name in lower case) and its HTTPS address.
+4. Enter the account rvav signs in with and its password, or the paths
+   of a principal-identity certificate and its private key on rvav's
+   servers.
+5. Under **vCenters it serves**, select the vCenters registered with it
+   as compute managers. A vCenter that another NSX Manager serves moves
+   to this one: the sheet says so before you save.
+6. Click **Test connection**. The test signs in, shows the certificate,
+   and reads the Tier-1 gateways, segments and groups.
+7. Click **Save NSX Manager**.
+
+To change which vCenters an NSX Manager serves, the integration's
+included, open its **Actions** menu and select **Link vCenters**. To change
+the integration's NSX Manager itself, change the NSX settings above the
+list.
+
+A vCenter you add later is served by no NSX Manager until you link it.
+With several NSX Managers:
+- A request whose VMs need NSX (a segment made for the deployment,
+  security groups, or a group to join) in a vCenter no NSX Manager serves
+  is refused before anything is made, and so is a request whose VMs are
+  in vCenters of two NSX Managers.
+- The placement rule that makes the segments is the first that names no
+  vCenter, or a vCenter of that NSX Manager. A rule that names no vCenter
+  needs its Tier-1 gateway on every NSX Manager that serves a vCenter.
+- Request forms offer the segments and groups of the NSX Manager that
+  serves the vCenter of the chosen cluster.
+- Linking a vCenter to another NSX Manager doesn't move what deployments
+  already have in NSX: rvav changes and deletes it where it made it. An
+  update can't add VMs to groups on the NSX Manager the vCenter left.
+- You can't remove an NSX Manager while a deployment has a segment, a
+  group, a policy or VM tags on it.
 
 ## Projects
 
