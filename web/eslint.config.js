@@ -50,21 +50,8 @@ const translated = [
   "src/features/admin/VCenters.tsx",
   "src/features/deployments/**",
   "src/features/admin/onboarding/**",
-  "src/features/admin/catalog/ItemsPanel.tsx",
-  "src/features/admin/catalog/CategoriesPanel.tsx",
-  "src/features/admin/catalog/SecretsPanel.tsx",
-  "src/features/admin/catalog/GitPanels.tsx",
-  "src/features/admin/catalog/SharingTab.tsx",
-  "src/features/admin/catalog/VariablesPage.tsx",
+  "src/features/admin/catalog/**",
   "src/features/admin/extensibility/**",
-  "src/features/admin/catalog/CatalogItemPage.tsx",
-  "src/features/admin/catalog/DefinitionGraph.tsx",
-  "src/features/admin/catalog/definitionYaml.ts",
-  "src/features/admin/catalog/YamlEditor.tsx",
-  "src/features/admin/catalog/PropertyGroupsPage.tsx",
-  "src/features/admin/catalog/FormLibraryPage.tsx",
-  "src/features/admin/catalog/designer/**",
-  "src/features/admin/catalog/composite/**",
 ];
 
 // The props of rvav's building blocks and the attributes a person reads or
