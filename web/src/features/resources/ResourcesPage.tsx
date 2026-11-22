@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
+import { Truncate } from "@/components/ui/truncate";
 import type { VmListItem, VmPowerState } from "@/lib/api/types";
 import { formatSize } from "@/lib/format";
 import { useSearchBox } from "@/lib/hooks";
@@ -102,9 +103,9 @@ function columnsFor(t: TFunction<"resources">, all: boolean, open: (v: VmListIte
             {v.name}
           </button>
           {v.vm.fqdn && (
-            <div className="max-w-52 truncate font-mono text-caption text-muted" title={v.vm.fqdn}>
+            <Truncate mono className="max-w-52 text-caption text-muted">
               {v.vm.fqdn}
-            </div>
+            </Truncate>
           )}
         </>
       ),

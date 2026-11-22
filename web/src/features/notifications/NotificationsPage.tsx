@@ -10,6 +10,7 @@ import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -215,7 +216,7 @@ function Preferences() {
               options={locales.map((l) => ({ value: l, label: localeNames[l] }))}
             />
           </Field>
-          <div className="overflow-x-auto">
+          <ScrollRegion label={t("prefs.where")}>
             <table className="w-full min-w-[620px] border-collapse text-body">
               <thead>
                 <tr className="label text-left">
@@ -267,7 +268,7 @@ function Preferences() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ScrollRegion>
           <div className="flex justify-end">
             <Button type="submit" variant="primary" disabled={save.isPending}>
               {t("prefs.save")}

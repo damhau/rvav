@@ -25,8 +25,14 @@ and fixed, and what still needs a person.
   - one `h1` first;
   - headings that don't skip a level.
 - **Reflow:** at 320 CSS pixels, a 1280-pixel window zoomed to 400%
-  (WCAG 1.4.10), no page scrolls sideways. Wide tables scroll inside
-  themselves.
+  (WCAG 1.4.10), no page scrolls sideways. Lists stack their rows as
+  cards; other wide tables scroll inside themselves, in a region that
+  takes the focus and says it scrolls sideways.
+- **Phones** (`phone.spec.ts`): at 375 and 320 px, the top bar is one
+  row, and its search and project buttons open from the keyboard and give
+  the focus back on Escape; a stacked list sorts, selects and opens a
+  row's menu; a cut FQDN shows whole in a tooltip on keyboard focus; axe
+  passes in both themes, in English and in French.
 - **Keyboard only:**
   - the skip link comes first;
   - Tab reaches the catalog's RHEL 9 server, then every field of its form
@@ -86,6 +92,13 @@ Already in place before the audit:
 | A day-2 action's typed confirmation opened on Close, not on the name to type. | 2.4.3 | It opens on what it asks first. |
 | Disabled menu items and buttons didn't say why (Publish, Move up and down, Mark as moved, Adopt). | 3.3.2 Labels or instructions | The reason is in the item's text or beside it, or the action shows only when it can run. |
 | Revoking a token and leaving typed YAML asked with `window.confirm`. | 4.1.2 | A `ConfirmDialog`, named, that gives the focus back. |
+
+## Found and fixed (V2.1, phones)
+
+| Finding | WCAG | Fix |
+|---|---|---|
+| On a phone, the tables of tokens, notification channels, reports and what someone may do scrolled sideways with nothing to show more was hidden, in a region that couldn't take the focus to scroll it. | 2.1.1 Keyboard | A `ScrollRegion`: its hidden edge fades, and it takes the focus while it scrolls, named after its table. |
+| A cut FQDN on Resources showed whole only in a `title`, which the keyboard never reaches. | 1.4.13 Content on hover or focus | `Truncate`: the cut name takes the focus and shows whole in a tooltip. |
 
 ## What still needs a person
 

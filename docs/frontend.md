@@ -241,7 +241,9 @@ it and works in both themes.
 | `Breadcrumbs` | A `Breadcrumb` navigation landmark: links to the pages above this one, top-level first. The page's own title follows it, so it isn't repeated. | In `PageHeader`'s `breadcrumbs` on every page below a top-level one: a deployment, a request, a request form, a catalog item, a project, a role. Top-level pages have none. |
 | `Panel` | A bordered region named by its title: a header with a title, a description and actions, a body, and an optional footer | One thing on a page: a list, a settings form, a summary. Pass `flush` when the body is a table. A settings form's Save goes in `footer`. A section of a long form is `as="fieldset"`: a group of fields its title names. |
 | `Section` | A titled region without a box | Content that has boxes of its own (cards, panels), or needs none. |
-| `DataTable` | A table of records: sortable columns, a ⋯ menu on each row, rows that open their link, a toolbar, loading, empty and failed states, and optional selection | Every list of records. Search (`TableSearch`), filter selects and chips go in `toolbar`; a row's actions in `rowMenu`, named by `rowMenuLabel`; an `EmptyState` in `empty`. Selecting all selects the rows shown; unticking it leaves selected rows the filters hide as they are (name it **Select all shown** with `selection.allLabel` when filters or paging hide rows). Pass `rowLinks` when a row has a page: a click anywhere on the row, but not on its buttons, checkbox or menu, focuses its first link and follows it, so what opens gives the focus back there. Only such rows light up under the pointer. A list loaded page by page sorts only where the server sorts too (its sort in the query, through `sort` and `onSortChange`, as Deployments does); otherwise leave `sortValue` off, as sorting the loaded rows would mislead. Pass `presorted` when the rows come in the server's order: a header then only changes the sort. |
+| `DataTable` | A table of records: sortable columns, a ⋯ menu on each row, rows that open their link, a toolbar, loading, empty and failed states, and optional selection | Every list of records. Search (`TableSearch`), filter selects and chips go in `toolbar`; a row's actions in `rowMenu`, named by `rowMenuLabel`; an `EmptyState` in `empty`. Selecting all selects the rows shown; unticking it leaves selected rows the filters hide as they are (name it **Select all shown** with `selection.allLabel` when filters or paging hide rows). Pass `rowLinks` when a row has a page: a click anywhere on the row, but not on its buttons, checkbox or menu, focuses its first link and follows it, so what opens gives the focus back there. Only such rows light up under the pointer. A list loaded page by page sorts only where the server sorts too (its sort in the query, through `sort` and `onSortChange`, as Deployments does); otherwise leave `sortValue` off, as sorting the loaded rows would mislead. Pass `presorted` when the rows come in the server's order: a header then only changes the sort. Narrower than 640 px, each row shows as a card: its first column as the title, the others as label and value, the checkbox and ⋯ menu at its top, and the sortable headers and **Select all** in a strip above the cards. Its roles stay a table's. Pass `stack={false}` for rows that only read side by side, such as a comparison: they then scroll sideways. |
+| `ScrollRegion` | Something wider than its place, such as a hand-made table, scrolling sideways within itself. The edge with more behind it fades. While it scrolls, it takes the focus, so the arrow keys scroll it, named "*label*, scrolls sideways". | Every table that isn't a `DataTable`, named like the table. `DataTable` uses it already. |
+| `Truncate` | A name on one line, cut with an ellipsis where it doesn't fit. The whole name shows in a tooltip on hover and keyboard focus; only a name that is cut takes the focus. | Long names in tables and lists: FQDNs, paths, keys. In a table cell, give it a maximum width (`max-w-56`), or the column grows to fit the name. Not for a name the page is about: wrap that one. |
 | `Segmented` | A row of toggle buttons for one choice, a `group` named by its `label`, the chosen one `aria-pressed`; an option can show only its icon (`iconOnly`), named by its label | A choice of two to four views of the same thing: a list's layout, its scope, the canvas's **Show as**. Not for a setting saved with a form: use `Select` or radios there. |
 | `EmptyState` | An icon, a title, one line, and the next step | A list or panel with nothing in it yet: say what goes there, and offer the step that adds it. |
 | `Sheet` | A side panel on the Radix dialog. It opens on its first field, keeps the focus inside, closes with Escape, and gives the focus back to what opened it, a row menu's button included. | Creating and editing a record, with the list still in view. Pass `onSubmit` and `submitLabel` for a Cancel and Save footer, or a `footer` of its own. Pass `pending` while its change runs: Cancel, Close and the submit button wait, and Escape or a click outside don't close it. A refused save moves the focus to the first field marked `aria-invalid`, or back to the submit button. When its action removes what opened it (a row decided, say), `returnFocus` names where the focus goes instead: the button above the list, for the first entry saved from an empty state. |
@@ -297,7 +299,10 @@ routes.
   later.
 - Motion is short (150–200 ms), answers the user's action, and is off with
   `prefers-reduced-motion`.
-- Responsive down to tablet width; the approval flows also work on a phone.
+- Every page works on a phone, from 320 px wide: nothing scrolls the page
+  sideways, lists stack as cards, and wide tables scroll within
+  themselves (`ScrollRegion`). `e2e/phone.spec.ts` checks the top bar, a
+  stacked list and a cut name at 375 and 320 px.
 
 ### Navigation
 - The sidebar (`components/shell/Sidebar.tsx`) starts with the main menu:
@@ -315,6 +320,11 @@ routes.
   icons, each with its label in a tooltip on hover and focus. Narrower, it's
   a drawer. On the rail and the drawer, the top bar's **Open navigation**
   button opens the drawer, with labels.
+- The top bar is one row at every width. Narrower than 768 px, the search
+  box and the project switcher become icon buttons, named **Search VMs,
+  IPs, requests…** and **Project: *name***. They open the command palette
+  and the project menu, which close with Escape and give the focus back to
+  their button. The notifications, the theme and the account menu stay.
 
 ## Command palette (⌘K)
 
@@ -1356,8 +1366,8 @@ into a constant.
 - **A button that shows text:** its accessible name contains that text
   (WCAG 2.5.3). Put extra context in a `sr-only` prefix, not an
   `aria-label` that replaces the text.
-- **Wide tables** scroll inside their own `overflow-x-auto` container, never
-  the page.
+- **Wide tables** scroll inside their own `ScrollRegion`, never the page.
+  On a phone, a `DataTable` stacks its rows as cards instead.
 
 ## Auth
 

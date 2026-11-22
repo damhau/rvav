@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   Check,
   ChevronDown,
+  Folders,
   KeyRound,
   Languages,
   LockKeyhole,
@@ -22,6 +23,7 @@ import { CHANGE_PASSWORD_PATH, signOut } from "@/lib/auth";
 import { isMock } from "@/lib/env";
 import { currentLocale, localeNames, locales } from "@/lib/i18n";
 import { useChooseLocale } from "@/lib/i18n/choose";
+import { useMediaQuery } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { rolesLabel } from "./roles";
 import { useTheme, type Theme } from "@/lib/theme";
@@ -42,31 +44,56 @@ export function TopBar({ onOpenPalette, onOpenNav }: { onOpenPalette: () => void
   const chooseLocale = useChooseLocale();
   const shown = currentLocale();
   const ThemeIcon = themes.find((th) => th.value === theme)?.icon ?? Monitor;
+  // A phone has room for one row of icons: search and the project switcher become buttons.
+  const compact = useMediaQuery("(width < 48rem)");
+  const projectName = project.name || t("noProject.name");
 
   return (
-    <header className="flex flex-wrap items-center gap-2.5 border-b border-line bg-surface px-4 py-2.5 md:px-6">
+    <header className="flex items-center gap-2.5 border-b border-line bg-surface px-4 py-2.5 md:px-6">
       <IconButton label={t("topBar.openNavigation")} className="lg:hidden" onClick={onOpenNav}>
         <MenuIcon />
       </IconButton>
-      <button
-        type="button"
-        onClick={onOpenPalette}
-        className="flex h-[30px] min-w-0 flex-[0_1_380px] items-center gap-2 rounded-md border border-line bg-bg pr-2 pl-2.5 text-left text-faint hover:border-line-strong"
-      >
-        <Search className="size-3.5 shrink-0" aria-hidden />
-        <span className="truncate">{t("topBar.search")}</span>
-        <Kbd className="ml-auto">⌘K</Kbd>
-      </button>
+      {!compact && (
+        <button
+          type="button"
+          onClick={onOpenPalette}
+          className="flex h-[30px] min-w-0 flex-[0_1_380px] items-center gap-2 rounded-md border border-line bg-bg pr-2 pl-2.5 text-left text-faint hover:border-line-strong"
+        >
+          <Search className="size-3.5 shrink-0" aria-hidden />
+          <span className="truncate">{t("topBar.search")}</span>
+          <Kbd className="ml-auto">⌘K</Kbd>
+        </button>
+      )}
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        {compact && (
+          <IconButton
+            variant="secondary"
+            className="size-[30px] border-line"
+            label={t("topBar.search")}
+            onClick={onOpenPalette}
+          >
+            <Search />
+          </IconButton>
+        )}
         <NotificationBell />
         <Menu>
           <MenuTrigger asChild>
-            <Button variant="secondary" className="border-line">
-              <span className="text-caption font-normal text-faint">{t("topBar.project")}</span>
-              <span className="max-w-40 truncate">{project.name || t("noProject.name")}</span>
-              <ChevronDown className="text-faint" />
-            </Button>
+            {compact ? (
+              <IconButton
+                variant="secondary"
+                className="size-[30px] border-line"
+                label={t("topBar.projectIs", { name: projectName })}
+              >
+                <Folders />
+              </IconButton>
+            ) : (
+              <Button variant="secondary" className="border-line">
+                <span className="text-caption font-normal text-faint">{t("topBar.project")}</span>
+                <span className="max-w-40 truncate">{projectName}</span>
+                <ChevronDown className="text-faint" />
+              </Button>
+            )}
           </MenuTrigger>
           <MenuContent>
             <MenuLabel>{t("topBar.yourProjects")}</MenuLabel>

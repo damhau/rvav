@@ -3,6 +3,7 @@
     "openNavigation": "Ouvrir la navigation",
     "search": "Rechercher des VM, des IP, des demandes…",
     "project": "Projet",
+    "projectIs": "Projet\u00a0: {{name}}",
     "yourProjects": "Vos projets",
     "theme": "Thème",
     "themeIs": {

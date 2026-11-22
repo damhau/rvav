@@ -1,9 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MenuItem, MenuLabel } from "./dropdown-menu";
-import { DataTable, TableSearch, type Column } from "./data-table";
+import { DataTable, PHONE, TableSearch, type Column } from "./data-table";
 import { EmptyState } from "./empty-state";
 
 interface Vm {
@@ -240,5 +240,94 @@ describe("DataTable", () => {
     );
     expect(screen.getByRole("alert")).toHaveTextContent("The list failed");
     expect(screen.queryByRole("table")).toBeNull();
+  });
+});
+
+describe("DataTable on a phone", () => {
+  beforeEach(() => {
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === PHONE,
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }) as unknown as MediaQueryList,
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("stacks each row as a card: the first column its title, the others labelled", () => {
+    render(<DataTable label="VMs" columns={columns} rows={vms} rowKey={(v) => v.name} />);
+    const table = screen.getByRole("table", { name: "VMs" });
+    expect(table).toHaveAttribute("data-stacked");
+    expect(screen.getByRole("columnheader", { name: "vCPU" })).toBeInTheDocument();
+    const [title, cpus] = within(screen.getAllByRole("row")[2]!).getAllByRole("cell");
+    expect(title).toHaveTextContent(/^web-10$/);
+    expect(within(cpus!).getByText("vCPU")).toHaveAttribute("aria-hidden", "true");
+    expect(cpus).toHaveTextContent("vCPU2");
+  });
+
+  it("sorts from the strip above the cards", async () => {
+    const user = userEvent.setup();
+    render(<DataTable label="VMs" columns={columns} rows={vms} rowKey={(v) => v.name} />);
+    expect(screen.getByText("Sort by")).toHaveAttribute("aria-hidden", "true");
+    await user.click(screen.getByRole("button", { name: "vCPU" }));
+    expect(screen.getByRole("columnheader", { name: "vCPU" })).toHaveAttribute("aria-sort", "ascending");
+    expect(names()).toEqual(["web-10", "web-02", "db-01"]);
+  });
+
+  it("names select all in words, and keeps each card's checkbox and menu", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const remove = vi.fn<(name: string) => void>();
+    render(
+      <DataTable
+        label="VMs"
+        columns={columns}
+        rows={vms}
+        rowKey={(v) => v.name}
+        selection={{ selected: new Set(), onChange, label: (v) => `Select ${v.name}` }}
+        rowMenuLabel={(v) => `Actions for ${v.name}`}
+        rowMenu={(v) => <MenuItem onSelect={() => remove(v.name)}>Remove</MenuItem>}
+      />,
+    );
+    await user.click(screen.getByText("Select all"));
+    expect([...(onChange.mock.calls[0]![0] as Set<string>)].sort()).toEqual(["db-01", "web-02", "web-10"]);
+    await user.click(screen.getByRole("checkbox", { name: "Select db-01" }));
+    expect([...(onChange.mock.calls[1]![0] as Set<string>)]).toEqual(["db-01"]);
+    await user.click(screen.getByRole("button", { name: "Actions for web-02" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    expect(remove).toHaveBeenCalledWith("web-02");
+  });
+
+  it("follows a card's link from anywhere in the card", async () => {
+    const user = userEvent.setup();
+    const followed = vi.fn((e: Event) => e.preventDefault());
+    render(<DataTable label="VMs" columns={columns} rows={vms} rowKey={(v) => v.name} rowLinks />);
+    screen.getByRole("link", { name: "web-10" }).addEventListener("click", followed);
+    await user.click(within(screen.getAllByRole("row")[2]!).getByText("vCPU"));
+    expect(followed).toHaveBeenCalledOnce();
+  });
+
+  it("shows its empty state as on a desktop", () => {
+    render(
+      <DataTable
+        label="VMs"
+        columns={columns}
+        rows={[]}
+        rowKey={(v) => v.name}
+        empty={<EmptyState title="No VMs" body="Request one." />}
+      />,
+    );
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByText("No VMs")).toBeInTheDocument();
+  });
+
+  it("keeps the columns side by side when asked not to stack", () => {
+    render(<DataTable label="VMs" columns={columns} rows={vms} rowKey={(v) => v.name} stack={false} />);
+    expect(screen.getByRole("table", { name: "VMs" })).not.toHaveAttribute("data-stacked");
+    expect(screen.queryByText("Sort by")).toBeNull();
+    expect(names()).toEqual(["web-02", "web-10", "db-01"]);
   });
 });

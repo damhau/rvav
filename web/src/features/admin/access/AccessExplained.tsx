@@ -9,6 +9,7 @@ import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -113,6 +114,7 @@ function Explanation({
   const a = answer.data;
   const c = catalogue.data;
   const where = a.project ? t("explain.inProject", { project: a.project.name }) : t("explain.forRvav");
+  const tableName = self ? t("explain.tableSelf", { where }) : t("explain.tableOther", { name: a.user.name, where });
   const groups = formatList(a.groups);
   const info = new Map(c.items.map((p) => [p.id, p]));
   const shown = a.permissions.filter((p) => show === "all" || p.held === (show === "held"));
@@ -139,11 +141,8 @@ function Explanation({
         </ul>
         <p className="text-secondary text-muted">{t(self ? "explain.tokenSelf" : "explain.tokenOther")}</p>
       </div>
-      <div className="overflow-x-auto">
-        <table
-          aria-label={self ? t("explain.tableSelf", { where }) : t("explain.tableOther", { name: a.user.name, where })}
-          className="w-full border-collapse text-body"
-        >
+      <ScrollRegion label={tableName}>
+        <table aria-label={tableName} className="w-full border-collapse text-body">
           <thead>
             <tr className="label text-left">
               <th scope="col" className={`${th} pl-4`}>
@@ -201,7 +200,7 @@ function Explanation({
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollRegion>
     </>
   );
 }

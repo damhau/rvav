@@ -46,6 +46,10 @@ Top bar:  ⌘K search · project switcher · notifications · theme · user menu
 - From 1024 px wide, the sidebar shows labels; from 768 px, icons with
   their labels in tooltips; narrower, it's a drawer. The menu button in the
   top bar opens the drawer, with labels, on the rail too.
+- The top bar is one row at every width. On a phone, the search box and
+  the project switcher become icon buttons beside the notifications, the
+  theme and the account menu; each opens what it stands for and gets the
+  focus back when it closes.
 - Keyboard: the skip link comes first, then the menu in order; the
   groups' headings aren't stops. The current page's entry has
   `aria-current="page"`, and every entry shows its focus. The drawer opens
@@ -206,6 +210,15 @@ sentence case.
   table.
 - **Failures offer a retry.** A list, a panel or a menu that couldn't load
   says so and offers **Try again**.
+- **Phones get cards, not a sideways page.** On a phone, a list's rows
+  stack as cards: the first column as the title, the others as label and
+  value, the checkbox and ⋯ menu at the top, and the sort and **Select
+  all** above the cards. A table that only reads side by side scrolls
+  within itself, its edge fading where there's more; the page never
+  scrolls sideways.
+- **Long names are cut, not broken.** An FQDN or a path in a table stays
+  on one line, cut with an ellipsis, and shows whole in a tooltip on hover
+  and keyboard focus.
 - **Nothing that comes later.** A feature that doesn't work yet isn't shown,
   not even as a disabled button.
 

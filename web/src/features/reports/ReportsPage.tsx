@@ -15,6 +15,7 @@ import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -512,7 +513,7 @@ export function ReportsPage() {
               {r.requests.by_item.length === 0 ? (
                 <EmptyState title={t("panels.nothingRequested")} body={t("panels.nothingRequestedBody")} />
               ) : (
-                <div className="overflow-x-auto">
+                <ScrollRegion label={t("panels.mostRequested")}>
                   <table className="w-full min-w-[420px] border-collapse text-body">
                     <thead>
                       <tr className="label">
@@ -543,7 +544,7 @@ export function ReportsPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ScrollRegion>
               )}
             </Panel>
             <Panel title={t("panels.approvals")} actions={csv("approvals")} className="min-w-0 flex-[1_1_260px]">
@@ -570,7 +571,7 @@ export function ReportsPage() {
             {r.leases.length === 0 ? (
               <EmptyState title={t("panels.noLeases")} body={t("panels.noLeasesBody")} />
             ) : (
-              <div className="overflow-x-auto">
+              <ScrollRegion label={t("panels.leases")}>
                 <table className="w-full min-w-[560px] border-collapse text-body">
                   <thead>
                     <tr className="label">
@@ -605,7 +606,7 @@ export function ReportsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ScrollRegion>
             )}
           </Panel>
         </div>

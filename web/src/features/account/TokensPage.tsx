@@ -9,6 +9,7 @@ import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -149,7 +150,7 @@ export function TokensPage() {
         {tokens.isError && <ErrorState error={tokens.error} onRetry={() => void tokens.refetch()} />}
         {tokens.data && list.length === 0 && <EmptyState title={t("tokens.none")} body={t("tokens.noneBody")} />}
         {list.length > 0 && (
-          <div className="overflow-x-auto">
+          <ScrollRegion label={t(everyone ? "tokens.everyones" : "tokens.yours")}>
             <table className="w-full min-w-[640px] border-collapse text-body">
               <thead>
                 <tr className="label text-left">
@@ -203,7 +204,7 @@ export function TokensPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollRegion>
         )}
       </Panel>
       {revoking && (

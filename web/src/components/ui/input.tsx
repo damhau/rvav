@@ -74,7 +74,7 @@ export function FieldNote({ id, error, hint }: { id?: string; error?: string; hi
       </p>
     );
   return hint ? (
-    <p id={id} className="text-secondary text-muted">
+    <p id={id} className="text-secondary break-words text-muted">
       {hint}
     </p>
   ) : null;

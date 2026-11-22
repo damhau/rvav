@@ -39,7 +39,9 @@
   },
   "table": {
     "selectAll": "Tout sélectionner",
-    "actions": "Actions"
+    "actions": "Actions",
+    "sortBy": "Trier par",
+    "scrolls": "{{label}}, défile horizontalement"
   },
   "breadcrumb": "Fil d'Ariane",
   "blocked": {

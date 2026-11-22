@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
+import { Truncate } from "@/components/ui/truncate";
 import type { Day2Action, Deployment, DeploymentStatusFilter } from "@/lib/api/types";
 import { can } from "@/lib/can";
 import { useSearchBox } from "@/lib/hooks";
@@ -173,7 +174,11 @@ function Address({ d }: { d: Deployment }) {
         {d.primary_address?.ip || "–"}
         {d.vm_count > 1 && <span className="text-muted"> +{d.vm_count - 1}</span>}
       </span>
-      {d.primary_address?.fqdn && <div className="font-mono text-caption text-muted">{d.primary_address.fqdn}</div>}
+      {d.primary_address?.fqdn && (
+        <Truncate mono className="max-w-56 text-caption text-muted">
+          {d.primary_address.fqdn}
+        </Truncate>
+      )}
     </>
   );
 }

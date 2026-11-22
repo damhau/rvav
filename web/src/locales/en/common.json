@@ -38,7 +38,9 @@
   },
   "table": {
     "selectAll": "Select all",
-    "actions": "Actions"
+    "actions": "Actions",
+    "sortBy": "Sort by",
+    "scrolls": "{{label}}, scrolls sideways"
   },
   "breadcrumb": "Breadcrumb",
   "blocked": {

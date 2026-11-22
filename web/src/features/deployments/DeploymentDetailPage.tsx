@@ -11,8 +11,10 @@ import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tip } from "@/components/ui/tooltip";
+import { Truncate } from "@/components/ui/truncate";
 import type {
   CustomResource,
   Day2Action,
@@ -91,8 +93,8 @@ function VmTable({
     else groups.push([key, [v]]);
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] border-collapse">
+    <ScrollRegion label={t("detail.vms")}>
+      <table className="w-full min-w-[760px] border-collapse" aria-label={t("detail.vms")}>
         <thead>
           <tr className="label text-left">
             <th scope="col" className="border-b border-line px-4 py-2 font-medium">
@@ -142,7 +144,7 @@ function VmTable({
                       <span className="flex flex-col">
                         <button
                           type="button"
-                          className="self-start text-left font-medium hover:text-accent hover:underline"
+                          className="self-start text-left font-medium whitespace-nowrap hover:text-accent hover:underline"
                           onClick={() => onOpen(r)}
                           aria-label={t("vms.properties", { name })}
                         >
@@ -159,7 +161,11 @@ function VmTable({
                   </td>
                   <td className="border-b border-line px-3 py-2.5">
                     {ip ? <CopyText value={ip} /> : <span className="text-faint">{t("vms.waitingForIp")}</span>}
-                    {vm.fqdn && <div className="font-mono text-caption text-faint">{vm.fqdn}</div>}
+                    {vm.fqdn && (
+                      <Truncate mono className="max-w-40 text-caption text-faint sm:max-w-56">
+                        {vm.fqdn}
+                      </Truncate>
+                    )}
                   </td>
                   <td className="tnum border-b border-line px-3 py-2.5">
                     {t("vms.sizeValue", {
@@ -223,7 +229,7 @@ function VmTable({
           </tbody>
         ))}
       </table>
-    </div>
+    </ScrollRegion>
   );
 }
 
@@ -278,7 +284,9 @@ function Network({
       ))}
       {dns.map((r) => (
         <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3">
-          <span className="min-w-0 font-mono text-secondary break-all">{r.fqdn}</span>
+          <Truncate mono className="text-secondary">
+            {r.fqdn}
+          </Truncate>
           <span className="text-caption text-faint">
             {r.record_type} → {r.value}
           </span>

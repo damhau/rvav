@@ -5,6 +5,8 @@ import { IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Menu, MenuContent, MenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { ScrollRegion } from "@/components/ui/scroll-region";
+import { useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 export interface Column<T> {
@@ -58,6 +60,12 @@ export interface DataTableProps<T> {
   presorted?: boolean;
   /** The width under which the table scrolls sideways, such as 720. */
   minWidth?: number;
+  /**
+   * On a phone, each row shows as a card: its first column as the title,
+   * the others as label and value. False keeps the columns side by side,
+   * scrolling sideways, for rows that only read compared with each other.
+   */
+  stack?: boolean;
   className?: string;
 }
 
@@ -70,6 +78,13 @@ const compare = (a: string | number | null | undefined, b: string | number | nul
 };
 
 const interactive = "a, button, input, select, textarea, label, [role=checkbox], [role=menuitem], [role=combobox]";
+
+/** Below this width, rows are stacked as cards. */
+export const PHONE = "(width < 40rem)";
+
+// A card's value takes the column's classes but not its width, and wraps.
+const asValue = (className?: string) =>
+  cn(className, "w-auto max-w-none min-w-0 [overflow-wrap:anywhere] whitespace-normal");
 
 /** A list of records: sortable columns, a row menu, a toolbar, and its loading, empty and failed states. */
 export function DataTable<T>({
@@ -90,9 +105,12 @@ export function DataTable<T>({
   onSortChange,
   presorted,
   minWidth,
+  stack = true,
   className,
 }: DataTableProps<T>) {
   const { t } = useTranslation();
+  const phone = useMediaQuery(PHONE);
+  const stacked = stack && phone;
   const [ownSort, setOwnSort] = useState<Sort | null>(defaultSort ?? null);
   const sort = sortProp === undefined ? ownSort : sortProp;
   const setSort = (s: Sort | null) => {
@@ -108,36 +126,61 @@ export function DataTable<T>({
   const hasMenu = menus !== undefined && [...menus.values()].some((m) => m !== null && m !== undefined && m !== false);
   const width = columns.length + (selection ? 1 : 0) + (hasMenu ? 1 : 0);
   const allSelected = Boolean(sorted?.length) && sorted!.every((r) => selection?.selected.has(rowKey(r)));
+  const firstSortable = columns.find((c) => c.sortValue)?.id;
+  const allLabel = selection?.allLabel ?? t("table.selectAll");
+  // Safari drops a table's semantics once its display changes: the roles keep them.
+  const role = (r: string) => (stacked ? r : undefined);
+  const cardColumns = [selection && "auto", "minmax(0,1fr)", hasMenu && "auto"].filter(Boolean).join(" ");
+  const selectAll = selection && (
+    <Checkbox
+      aria-label={allLabel}
+      checked={allSelected}
+      disabled={!sorted?.length}
+      onChange={(on) => {
+        const shown = new Set((sorted ?? []).map(rowKey));
+        // Rows selected but not shown stay selected either way.
+        selection.onChange(
+          new Set(on ? [...selection.selected, ...shown] : [...selection.selected].filter((k) => !shown.has(k))),
+        );
+      }}
+    />
+  );
 
   let body: React.ReactNode;
   if (error) body = error;
   else if (!loading && sorted && sorted.length === 0 && empty) body = empty;
   else {
     body = (
-      <div className="overflow-x-auto">
+      <ScrollRegion label={label}>
         <table
-          className="w-full border-collapse text-body"
-          style={minWidth ? { minWidth } : undefined}
+          role={role("table")}
+          className={cn("w-full text-body", stacked ? "block" : "border-collapse")}
+          style={minWidth && !stacked ? { minWidth } : undefined}
           aria-label={label}
+          data-stacked={stacked || undefined}
         >
-          <thead>
-            <tr className="label text-left">
+          <thead
+            role={role("rowgroup")}
+            className={cn(stacked && (firstSortable || selection ? "block border-b border-line" : "sr-only"))}
+          >
+            <tr
+              role={role("row")}
+              className={cn("label text-left", stacked && "flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2")}
+            >
               {selection && (
-                <th scope="col" className="w-px border-b border-line py-2 pr-1 pl-4">
-                  <Checkbox
-                    aria-label={selection.allLabel ?? t("table.selectAll")}
-                    checked={allSelected}
-                    disabled={!sorted?.length}
-                    onChange={(on) => {
-                      const shown = new Set((sorted ?? []).map(rowKey));
-                      // Rows selected but not shown stay selected either way.
-                      selection.onChange(
-                        new Set(
-                          on ? [...selection.selected, ...shown] : [...selection.selected].filter((k) => !shown.has(k)),
-                        ),
-                      );
-                    }}
-                  />
+                <th
+                  role={role("columnheader")}
+                  scope="col"
+                  className={cn(stacked ? "mr-2 block" : "w-px border-b border-line py-2 pr-1 pl-4")}
+                >
+                  {stacked ? (
+                    <label className="flex items-center gap-2 font-normal text-fg">
+                      {selectAll}
+                      <span aria-hidden>{allLabel}</span>
+                    </label>
+                  ) : (
+                    selectAll
+                  )}
                 </th>
               )}
               {columns.map((c, i) => {
@@ -146,15 +189,27 @@ export function DataTable<T>({
                 return (
                   <th
                     key={c.id}
+                    role={role("columnheader")}
                     scope="col"
                     aria-sort={active ? (sort.desc ? "descending" : "ascending") : undefined}
                     className={cn(
-                      "border-b border-line px-3 py-2 font-medium whitespace-nowrap",
-                      i === 0 && !selection && "pl-4",
-                      i === columns.length - 1 && !hasMenu && "pr-4",
-                      c.align === "end" && "text-right",
+                      stacked
+                        ? c.sortValue
+                          ? "block font-medium whitespace-nowrap"
+                          : "sr-only"
+                        : [
+                            "border-b border-line px-3 py-2 font-medium whitespace-nowrap",
+                            i === 0 && !selection && "pl-4",
+                            i === columns.length - 1 && !hasMenu && "pr-4",
+                            c.align === "end" && "text-right",
+                          ],
                     )}
                   >
+                    {stacked && c.id === firstSortable && (
+                      <span aria-hidden className="mr-3 font-normal text-faint">
+                        {t("table.sortBy")}
+                      </span>
+                    )}
                     {c.sortValue ? (
                       <button
                         type="button"
@@ -162,6 +217,7 @@ export function DataTable<T>({
                         className={cn(
                           "-mx-1 inline-flex items-center gap-1 rounded-sm px-1 hover:text-fg",
                           active && "text-fg",
+                          stacked && "min-h-6",
                         )}
                       >
                         {c.header}
@@ -174,19 +230,32 @@ export function DataTable<T>({
                 );
               })}
               {hasMenu && (
-                <th scope="col" className="w-px border-b border-line py-2 pr-3 pl-1">
+                <th
+                  role={role("columnheader")}
+                  scope="col"
+                  className={stacked ? "sr-only" : "w-px border-b border-line py-2 pr-3 pl-1"}
+                >
                   <span className="sr-only">{t("table.actions")}</span>
                 </th>
               )}
             </tr>
           </thead>
-          <tbody>
+          <tbody role={role("rowgroup")} className={cn(stacked && "block")}>
             {loading && !sorted?.length
               ? [0, 1, 2].map((r) => (
-                  <tr key={r} aria-hidden>
-                    {Array.from({ length: width }, (_, c) => (
-                      <td key={c} className="border-b border-line px-3 py-3 first:pl-4 last:pr-4">
-                        <span className="block h-3 w-3/4 animate-pulse rounded-sm bg-sunken" />
+                  <tr
+                    key={r}
+                    aria-hidden
+                    className={cn(stacked && "block border-b border-line px-4 py-3 last:border-b-0")}
+                  >
+                    {Array.from({ length: stacked ? 2 : width }, (_, c) => (
+                      <td
+                        key={c}
+                        className={cn(stacked ? "block py-1" : "border-b border-line px-3 py-3 first:pl-4 last:pr-4")}
+                      >
+                        <span
+                          className={cn("block h-3 animate-pulse rounded-sm bg-sunken", c === 0 ? "w-3/4" : "w-1/2")}
+                        />
                       </td>
                     ))}
                   </tr>
@@ -197,11 +266,14 @@ export function DataTable<T>({
                   return (
                     <tr
                       key={key}
+                      role={role("row")}
                       className={cn(
                         "border-b border-line last:border-b-0",
+                        stacked && "grid gap-x-3 gap-y-1 px-4 py-3",
                         selection?.selected.has(key) && "bg-accent-soft/40",
                         rowLinks && "cursor-pointer hover:bg-sunken/60",
                       )}
+                      style={stacked ? { gridTemplateColumns: cardColumns } : undefined}
                       onClick={
                         rowLinks
                           ? (e) => {
@@ -217,7 +289,11 @@ export function DataTable<T>({
                       }
                     >
                       {selection && (
-                        <td className="w-px py-2.5 pr-1 pl-4 align-middle">
+                        <td
+                          role={role("cell")}
+                          className={stacked ? "pt-0.5" : "w-px py-2.5 pr-1 pl-4 align-middle"}
+                          style={stacked ? { gridRow: 1, gridColumn: 1 } : undefined}
+                        >
                           <Checkbox
                             aria-label={selection.label(row)}
                             checked={selection.selected.has(key)}
@@ -230,22 +306,34 @@ export function DataTable<T>({
                           />
                         </td>
                       )}
-                      {columns.map((c, i) => (
-                        <td
-                          key={c.id}
-                          className={cn(
-                            "px-3 py-2.5 align-middle",
-                            i === 0 && !selection && "pl-4",
-                            i === columns.length - 1 && !hasMenu && "pr-4",
-                            c.align === "end" && "text-right",
-                            c.className,
-                          )}
-                        >
-                          {c.cell(row)}
-                        </td>
-                      ))}
+                      {columns.map((c, i) =>
+                        stacked ? (
+                          <StackedCell key={c.id} column={c} first={i === 0} indent={Boolean(selection)}>
+                            {c.cell(row)}
+                          </StackedCell>
+                        ) : (
+                          <td
+                            key={c.id}
+                            className={cn(
+                              "px-3 py-2.5 align-middle",
+                              i === 0 && !selection && "pl-4",
+                              i === columns.length - 1 && !hasMenu && "pr-4",
+                              c.align === "end" && "text-right",
+                              c.className,
+                            )}
+                          >
+                            {c.cell(row)}
+                          </td>
+                        ),
+                      )}
                       {hasMenu && (
-                        <td className="w-px py-1.5 pr-3 pl-1 text-right align-middle">
+                        <td
+                          role={role("cell")}
+                          className={
+                            stacked ? "-my-1 -mr-1.5 self-start" : "w-px py-1.5 pr-3 pl-1 text-right align-middle"
+                          }
+                          style={stacked ? { gridRow: 1, gridColumn: -2 } : undefined}
+                        >
                           {menu ? (
                             <Menu>
                               <MenuTrigger asChild>
@@ -268,7 +356,7 @@ export function DataTable<T>({
             {t("loading")}
           </span>
         )}
-      </div>
+      </ScrollRegion>
     );
   }
 
@@ -277,6 +365,45 @@ export function DataTable<T>({
       {toolbar && <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">{toolbar}</div>}
       {body}
     </div>
+  );
+}
+
+/** A cell of a row shown as a card: the first column is its title, the others its column's label and value. */
+function StackedCell<T>({
+  column,
+  first,
+  indent,
+  children,
+}: {
+  column: Column<T>;
+  first: boolean;
+  indent: boolean;
+  children: React.ReactNode;
+}) {
+  const labelled = !first && column.header !== "" && column.header !== null && column.header !== undefined;
+  return (
+    <td
+      // eslint-disable-next-line jsx-a11y/no-interactive-element-to-noninteractive-role -- see role() in DataTable
+      role="cell"
+      className={
+        first ? asValue(column.className) : "grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-baseline gap-x-3"
+      }
+      style={first ? { gridRow: 1 } : { gridColumn: indent ? "2 / -1" : "1 / -1" }}
+    >
+      {first ? (
+        children
+      ) : (
+        <>
+          {/* The column's header names the cell for screen readers already. */}
+          {labelled && (
+            <span aria-hidden className="label">
+              {column.header}
+            </span>
+          )}
+          <div className={cn(asValue(column.className), !labelled && "col-span-2")}>{children}</div>
+        </>
+      )}
+    </td>
   );
 }
 
