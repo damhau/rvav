@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 
+// A Button that turns disabled while focused is aria-disabled until the focus
+// leaves it (button.tsx): one is no control to move the focus to.
 const focusable = [
   "input:not([type=hidden]):not([disabled])",
   "textarea:not([disabled])",
   "select:not([disabled])",
-  "button:not([disabled])",
+  "button:not([disabled]):not([aria-disabled=true])",
   '[tabindex]:not([tabindex="-1"])',
 ].join(", ");
 

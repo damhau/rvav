@@ -298,8 +298,10 @@ routes.
   it has the focus, such as a submit button while its save runs, keeps
   it: it says `aria-disabled` and ignores presses until the focus
   leaves, then is disabled. Code that picks where the focus goes next
-  passes over it as a disabled one, as the form designer's arrows do
-  after a move. What a save removes or replaces hands the
+  passes over it as a disabled one (`:not([aria-disabled=true])` beside
+  `:not([disabled])`), as the form designer's arrows do after a move,
+  and a sheet's first field, `focusInvalid` and `fieldControl` do. What
+  a save removes or replaces hands the
   focus to what stands in for it: the field a suggestion filled, a
   template's status line.
 - A failed load says so and offers **Try again**, in a menu too: never an

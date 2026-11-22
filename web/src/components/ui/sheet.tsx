@@ -6,7 +6,9 @@ import { Button, IconButton } from "@/components/ui/button";
 import { useOpener, useSaveFocus } from "@/components/ui/opener";
 import { cn } from "@/lib/utils";
 
-const firstField = "input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])";
+// Past a held Button too: aria-disabled while focused (button.tsx).
+const firstField =
+  "input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([aria-disabled=true])";
 
 interface PanelProps {
   title: string;

@@ -56,11 +56,12 @@ export function Attention({
   );
 }
 
+// A held Button (aria-disabled while focused, button.tsx) takes no fix.
 const focusable = [
   "input:not([type=hidden]):not([disabled])",
   "textarea:not([disabled])",
   "select:not([disabled])",
-  "button:not([disabled])",
+  "button:not([disabled]):not([aria-disabled=true])",
   '[tabindex]:not([tabindex="-1"])',
 ].join(", ");
 

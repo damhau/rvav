@@ -397,11 +397,23 @@ test("the same build in French, with the keyboard only, and axe in both themes",
   expect(errors).toEqual([]);
 });
 
+/** Where an element is drawn once it stays put: after an edit, the canvas is fitted again. */
+async function still(page: Page, el: Locator) {
+  let last = "";
+  for (let i = 0; i < 50; i++) {
+    const box = await el.boundingBox();
+    const now = JSON.stringify(box);
+    if (box && now === last) return box;
+    last = now;
+    await page.waitForTimeout(100);
+  }
+  throw new Error("the canvas didn't settle");
+}
+
 /** With the mouse, as a person draws it: from `from`'s dot onto `to`, in small steps. */
 async function drawConnection(page: Page, from: Locator, to: Locator) {
-  const dot = await from.locator(".rvav-connect").boundingBox();
-  const target = await to.boundingBox();
-  if (!dot || !target) throw new Error("the dot or the node isn't drawn");
+  const dot = await still(page, from.locator(".rvav-connect"));
+  const target = await still(page, to);
   await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2);
   await page.mouse.down();
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 20 });
@@ -425,13 +437,14 @@ test("connections drawn with the mouse from a node's dot: on a draft just made, 
   const node = (name: RegExp) => topology.getByRole("button", { name });
   const web = node(/^VMs Web servers\./);
   const db = node(/^1 VM Database\./);
-  const edges = topology.locator(".react-flow__edge");
+  // The new edge by its name: the graph's others are drawn a moment after its nodes.
+  const after = topology.locator('.react-flow__edge[aria-label="Database built after Web servers"]');
   await expect(db).toBeVisible();
-  const drawn = await edges.count();
+  await expect(after).toHaveCount(0);
 
   await drawConnection(page, web, db);
   await expect(node(/^1 VM Database\..*Built after Web servers/)).toBeVisible();
-  await expect(edges).toHaveCount(drawn + 1);
+  await expect(after).toHaveCount(1);
   const dependsOn = async (key: string) =>
     ((await blueprintOf(page)).components as { key: string; depends_on?: string[] }[]).find((c) => c.key === key)
       ?.depends_on;
