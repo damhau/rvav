@@ -3,10 +3,12 @@
 // them; deliveries are made up.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
+import { can } from "@/lib/can";
 import { celCheck } from "./cel";
 import { audited } from "./governance";
 import { typesUsingWorkflow } from "./resourceTypes";
 import type { Db } from "./seed";
+import { unknownField } from "./strict";
 
 type S = components["schemas"];
 type Run = S["SubscriptionRunDetail"];
@@ -538,24 +540,59 @@ function state(db: Db): ExtState {
   return d.extensibility;
 }
 
+const subscriptionFields = [
+  "name",
+  "description",
+  "topic",
+  "condition",
+  "blocking",
+  "on_failure",
+  "priority",
+  "timeout_seconds",
+  "enabled",
+  "target",
+  "recovery",
+];
+
+/** The subscription a write makes, with the server's defaults for what it leaves out (core.SaveSubscription). */
+function fromWrite(w: S["SubscriptionWrite"]) {
+  const blocking = w.blocking === true;
+  return {
+    name: (w.name ?? "").trim(),
+    description: w.description ?? "",
+    topic: w.topic,
+    condition: (w.condition ?? "").trim(),
+    blocking,
+    on_failure: w.on_failure ?? "stop_request",
+    priority: w.priority ?? 100,
+    timeout_seconds: w.timeout_seconds ?? 30,
+    enabled: w.enabled !== false,
+    target: w.target,
+    ...(w.recovery && blocking ? { recovery: w.recovery } : {}),
+  } satisfies S["SubscriptionWrite"];
+}
+
 function checkSubscription(db: Db, w: S["SubscriptionWrite"]): S["FieldError"][] {
   const errors: S["FieldError"][] = [];
   const err = (field: string, code: string, message: string) => errors.push({ field, code, message });
-  if (!w.name?.trim()) err("/name", "required", "Name it.");
-  const topic = topics.find((t) => t.key === w.topic);
-  if (!topic) err("/topic", "unknown", `"${w.topic}" is not a topic.`);
-  if (w.condition) {
-    const why = celCheck(w.condition);
-    if (why) err("/condition", "invalid", `Not valid CEL: ${why}`);
-  }
-  if (w.blocking && topic && !mayBlock(topic.key))
+  const sub = fromWrite(w);
+  if (!sub.name) err("/name", "required", "Give the subscription a name.");
+  const topic = topics.find((t) => t.key === sub.topic);
+  if (!topic) err("/topic", "enum", `One of ${topics.map((t) => t.key).join(", ")}.`);
+  if (sub.blocking && topic && !mayBlock(topic.key))
     err(
       "/blocking",
       "not_pre",
       "Only provisioning.pre, compute.allocation.pre, network.configure, day2.pre and delete.pre subscriptions may block.",
     );
-  if (w.timeout_seconds < 1 || w.timeout_seconds > 3600)
-    err("/timeout_seconds", "range", "Between 1 and 3600 seconds.");
+  if (sub.condition && topic) {
+    const why = celCheck(sub.condition);
+    if (why) err("/condition", "invalid", `This condition is not valid CEL: ${why}`);
+  }
+  if (sub.on_failure !== "stop_request" && sub.on_failure !== "continue_request")
+    err("/on_failure", "enum", "stop_request or continue_request.");
+  if (sub.timeout_seconds < 1 || sub.timeout_seconds > 3600)
+    err("/timeout_seconds", "range", "From 1 second to an hour.");
   checkTarget(db, w.target, "/target", err);
   if (w.recovery && !w.blocking)
     err(
@@ -575,7 +612,10 @@ function checkTarget(
 ) {
   const st = state(db);
   const kinds = [t.webhook, t.awx, t.workflow].filter(Boolean).length;
-  if (kinds !== 1) err(at, "one_of", "Choose one target: a webhook, an AWX template or a custom workflow.");
+  if (kinds !== 1) {
+    err(at, "one_of", "Give one target: a webhook, an AWX template or a custom workflow.");
+    return;
+  }
   if (t.webhook) {
     let host = "";
     try {
@@ -584,20 +624,36 @@ function checkTarget(
     } catch {
       host = "";
     }
-    if (!host) err(`${at}/webhook/url`, "invalid", "An https URL.");
+    if (!host) err(`${at}/webhook/url`, "invalid", "A URL such as https://cmdb.corp.example/rvav.");
     else if (!webhookHosts.includes(host))
-      err(`${at}/webhook/url`, "not_allowed", `${host} is not an allowed webhook host (RVAV_WEBHOOK_HOSTS).`);
+      err(
+        `${at}/webhook/url`,
+        "host",
+        `${host} is not one of the hosts webhooks may call (Administration › Integrations › Allowed hosts).`,
+      );
     const secrets = (db as Db & { catalogAdmin?: { secrets: S["Secret"][] } }).catalogAdmin?.secrets ?? [];
-    if (!t.webhook.secret) err(`${at}/webhook/secret`, "required", "Choose the secret it is signed with.");
+    if (!t.webhook.secret?.trim())
+      err(
+        `${at}/webhook/secret`,
+        "required",
+        "A webhook's calls are signed: give the stored secret to sign them with.",
+      );
     else if (secrets.length > 0 && !secrets.some((s) => s.name === t.webhook?.secret))
-      err(`${at}/webhook/secret`, "unknown", `No secret is named ${t.webhook.secret}.`);
+      err(`${at}/webhook/secret`, "unknown", `There is no stored secret ${t.webhook.secret}.`);
   }
-  if (t.awx && !t.awx.job_template && !t.awx.template_id) err(`${at}/awx`, "required", "Choose the AWX template.");
+  if (t.awx && !t.awx.job_template?.trim() && !t.awx.template_id)
+    err(`${at}/awx`, "required", "Name the job template, or give its AWX ID.");
   if (t.workflow) {
-    const wf = st.workflows.find((x) => x.key === t.workflow?.key);
-    if (!wf) err(`${at}/workflow/key`, "unknown", "Choose a registered workflow.");
+    const key = t.workflow.key;
+    const wf = st.workflows.find((x) => x.key === key);
+    if (!wf) err(`${at}/workflow/key`, "unusable", `There is no custom workflow ${key} registered.`);
+    else if (!wf.enabled) err(`${at}/workflow/key`, "unusable", `The custom workflow ${key} is disabled.`);
     else if (!wf.usages.includes("subscription_target"))
-      err(`${at}/workflow/key`, "not_allowed", `${wf.title} isn't registered as a subscription target.`);
+      err(
+        `${at}/workflow/key`,
+        "unusable",
+        `The custom workflow ${key} isn't registered for this use (subscription_target).`,
+      );
   }
 }
 
@@ -626,11 +682,18 @@ function checkWorkflow(w: S["WorkflowRegistrationWrite"], create: boolean, taken
 /** The custom workflows registered. */
 export const workflowRegistrations = (db: Db) => state(db).workflows;
 
+const forbidden = () => problem(403, "Not allowed", undefined, "You do not have permission to do this.");
+const notFound = () => problem(404, "Not found", undefined, "It does not exist, or you cannot see it.");
+
 export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const findSub = (id: string) => state(db).subs.find((s) => s.id === id);
+  // As core's: auditors read the subscriptions and their runs; changing them is extensibility.manage's.
+  const read = () => can(db.me, "extensibility.read");
+  const manage = () => can(db.me, "extensibility.manage");
   return [
     http.get(`${base}/admin/event-topics`, async () => {
       await wait();
+      if (!read()) return forbidden();
       return HttpResponse.json({
         items: topics.map((t) => ({
           ...t,
@@ -642,18 +705,23 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
     }),
     http.get(`${base}/admin/subscriptions`, async () => {
       await wait();
+      if (!read()) return forbidden();
       return HttpResponse.json({ items: state(db).subs });
     }),
     http.post(`${base}/admin/subscriptions`, async ({ request }) => {
       await wait();
       const w = (await request.json()) as S["SubscriptionWrite"];
+      const strict = unknownField(w, subscriptionFields);
+      if (strict) return strict;
+      if (!manage()) return forbidden();
       const errors = checkSubscription(db, w);
       if (errors.length > 0) return problem(422, "Some inputs need attention", errors);
       const st = state(db);
       const sub: S["Subscription"] = {
-        ...w,
+        ...fromWrite(w),
         id: `sub_${++st.seq}`,
         created_at: now(),
+        updated_at: now(),
         runs: { delivered: 0, failed: 0, pending: 0 },
       };
       st.subs.push(sub);
@@ -662,25 +730,41 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
     }),
     http.get(`${base}/admin/subscriptions/:id`, async ({ params }) => {
       await wait();
+      if (!read()) return forbidden();
       const sub = findSub(String(params.id));
-      return sub ? HttpResponse.json(sub) : problem(404, "Not found");
+      return sub ? HttpResponse.json(sub) : notFound();
     }),
     http.put(`${base}/admin/subscriptions/:id`, async ({ params, request }) => {
       await wait();
-      const sub = findSub(String(params.id));
-      if (!sub) return problem(404, "Not found");
       const w = (await request.json()) as S["SubscriptionWrite"];
+      const strict = unknownField(w, subscriptionFields);
+      if (strict) return strict;
+      if (!manage()) return forbidden();
+      const st = state(db);
+      const i = st.subs.findIndex((s) => s.id === params.id);
+      if (i < 0) return notFound();
       const errors = checkSubscription(db, w);
       if (errors.length > 0) return problem(422, "Some inputs need attention", errors);
-      Object.assign(sub, w, { updated_at: now() });
+      // The write replaces it: what it leaves out takes its default, a recovery target left out goes.
+      const was = st.subs[i]!;
+      const sub: S["Subscription"] = {
+        ...fromWrite(w),
+        id: was.id,
+        created_at: was.created_at,
+        updated_at: now(),
+        runs: was.runs,
+        ...(was.last_run_at ? { last_run_at: was.last_run_at } : {}),
+      };
+      st.subs[i] = sub;
       audited(db, "subscription.updated", "subscription", sub.id, { name: sub.name });
       return HttpResponse.json(sub);
     }),
     http.delete(`${base}/admin/subscriptions/:id`, async ({ params }) => {
       await wait();
+      if (!manage()) return forbidden();
       const st = state(db);
       const i = st.subs.findIndex((s) => s.id === params.id);
-      if (i < 0) return problem(404, "Not found");
+      if (i < 0) return notFound();
       const gone = st.subs.splice(i, 1)[0]!;
       st.runs = st.runs.filter((r) => r.subscription_id !== gone.id);
       audited(db, "subscription.deleted", "subscription", gone.id, { name: gone.name });
@@ -688,9 +772,10 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
     }),
     http.post(`${base}/admin/subscriptions/:id/test`, async ({ params }) => {
       await wait();
+      if (!manage()) return forbidden();
       const st = state(db);
       const sub = findSub(String(params.id));
-      if (!sub) return problem(404, "Not found");
+      if (!sub) return notFound();
       const ok = !sub.target.webhook?.url.includes("fail");
       const at = now();
       const run: Run = {
@@ -728,7 +813,8 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
     }),
     http.get(`${base}/admin/subscriptions/:id/runs`, async ({ params, request }) => {
       await wait();
-      if (!findSub(String(params.id))) return problem(404, "Not found");
+      if (!read()) return forbidden();
+      if (!findSub(String(params.id))) return notFound();
       const status = new URL(request.url).searchParams.get("status");
       const items = state(db)
         .runs.filter((r) => r.subscription_id === params.id && (!status || r.status === status))
@@ -737,15 +823,18 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
     }),
     http.get(`${base}/admin/subscription-runs/:id`, async ({ params }) => {
       await wait();
+      if (!read()) return forbidden();
       const run = state(db).runs.find((r) => r.id === params.id);
-      return run ? HttpResponse.json(run) : problem(404, "Not found");
+      return run ? HttpResponse.json(run) : notFound();
     }),
     http.post(`${base}/admin/subscription-runs/:id/retry`, async ({ params }) => {
       await wait();
+      if (!manage()) return forbidden();
       const st = state(db);
       const run = st.runs.find((r) => r.id === params.id);
-      if (!run) return problem(404, "Not found");
-      if (run.status !== "failed") return problem(409, "Conflict", undefined, "Only a failed run is tried again.");
+      if (!run) return notFound();
+      if (run.status !== "failed")
+        return problem(409, "Not possible right now", undefined, "Only a failed run is tried again.");
       const at = now();
       run.status = "delivered";
       run.attempts++;

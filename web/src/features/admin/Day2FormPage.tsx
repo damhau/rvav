@@ -24,7 +24,7 @@ import { mapFieldErrors } from "@/forms/errors";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { Day2FormDefinition, Day2FormDesign, FieldError, FieldStates, VmResource } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
-import { keys, q } from "@/lib/query";
+import { adm, keys, q } from "@/lib/query";
 import { fullDate, relative } from "@/lib/format";
 import {
   closeDraft,
@@ -434,6 +434,8 @@ function Header({
   const qc = useQueryClient();
   const id = draftIdOf(design.action);
   const [dropping, setDropping] = useState(false);
+  const resourceTypes = useQuery(adm.resourceTypes());
+  const offeredOn = (resourceTypes.data?.items ?? []).filter((t) => t.actions?.includes(design.action));
   const turn = useMutation({
     mutationFn: ({ active, c }: { active: boolean; c: DraftCopy }) =>
       call(
@@ -483,6 +485,15 @@ function Header({
             Once you turn it on, the action&apos;s dialog asks for this form instead of {baseForm(design)}. Its rules
             and sources also read what the action runs on, as <span className="font-mono">resource</span> and{" "}
             <span className="font-mono">deployment</span>.
+            {offeredOn.length > 0 && (
+              <>
+                {" "}
+                On a custom resource ({offeredOn.map((t) => t.title).join(", ")}),{" "}
+                <span className="font-mono">resource</span> is its <span className="font-mono">id</span>,{" "}
+                <span className="font-mono">type</span>, <span className="font-mono">name</span>,{" "}
+                <span className="font-mono">key</span> and <span className="font-mono">properties</span>.
+              </>
+            )}
           </>
         }
         meta={

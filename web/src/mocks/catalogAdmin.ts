@@ -724,6 +724,73 @@ function variableProblems(db: Db, bp: unknown, ptr: string): S["FieldError"][] {
   return out;
 }
 
+type BlueprintStep = {
+  item?: string;
+  for_each?: unknown;
+  catch?: BlueprintStep[];
+  undo?: unknown;
+  when?: string;
+  with?: Record<string, unknown>;
+  parallel?: BlueprintStep[];
+  branch?: { cases?: { steps?: BlueprintStep[] }[]; else?: BlueprintStep[] };
+};
+
+/**
+ * As the server's checkVMSteps, on save and publish: what a VM step can't be
+ * or have, its VMs planned when the request is submitted.
+ */
+function vmStepProblems(db: Db, bp: unknown, ptr: string): S["FieldError"][] {
+  const b = (bp ?? {}) as { steps?: BlueprintStep[]; on_error?: BlueprintStep[] };
+  const out: S["FieldError"][] = [];
+  const err = (field: string, message: string) => out.push({ field, code: "invalid", message });
+  const isVM = (slug?: string) => Boolean(slug) && db.items.some((i) => i.slug === slug && i.type === "vm_blueprint");
+  const walk = (st: BlueprintStep, at: string, onSide: boolean) => {
+    const vm = isVM(st.item);
+    if (vm && onSide)
+      err(
+        at,
+        "A VM is planned when the request is submitted, before a branch chooses or a step fails, so it can't be on a side of a branch, on a catch path or in the error handler.",
+      );
+    else if (vm) {
+      if (st.for_each !== undefined && st.for_each !== null)
+        err(
+          `${at}/for_each`,
+          "A VM step can't loop: its VMs are planned when the request is submitted. Give its item a count instead.",
+        );
+      if (st.catch?.length)
+        err(
+          `${at}/catch`,
+          "A VM step has no catch path: what it built is the rollback's to delete, so the request can't go on past it.",
+        );
+      if (st.undo !== undefined && st.undo !== null)
+        err(`${at}/undo`, "A VM isn't undone by a job or workflow; a failure deletes it.");
+      if (st.when) err(`${at}/when`, "A VM step has no condition: its VMs are planned when the request is submitted.");
+      for (const k of Object.keys(st.with ?? {}).sort()) {
+        const v = st.with?.[k];
+        if (typeof v === "string" && /\bsteps\.[a-z][a-z0-9_]*/.test(v))
+          err(
+            `${at}/with/${k}`,
+            "A VM is planned when the request is submitted, so its inputs come from the form, not from steps.",
+          );
+      }
+    }
+    (st.parallel ?? []).forEach((x, j) => walk(x, `${at}/parallel/${j}`, onSide));
+    if ((st.parallel ?? []).some((x) => isVM(x.item)) && st.catch?.length && !onSide)
+      err(
+        `${at}/catch`,
+        "This group has a VM step, so it has no catch path: what it built is the rollback's to delete, so the request can't go on past it.",
+      );
+    (st.catch ?? []).forEach((x, j) => walk(x, `${at}/catch/${j}`, true));
+    (st.branch?.cases ?? []).forEach((c, i) =>
+      (c.steps ?? []).forEach((x, j) => walk(x, `${at}/branch/cases/${i}/steps/${j}`, true)),
+    );
+    (st.branch?.else ?? []).forEach((x, j) => walk(x, `${at}/branch/else/${j}`, true));
+  };
+  (b.steps ?? []).forEach((st, g) => walk(st, `${ptr}/steps/${g}`, false));
+  (b.on_error ?? []).forEach((x, j) => walk(x, `${ptr}/on_error/${j}`, true));
+  return out;
+}
+
 function nextNumber(versions: Version[]): string {
   const last = versions[0]?.number ?? "0.9";
   const m = /^(\d+)\.(\d+)$/.exec(last);
@@ -1324,6 +1391,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       const errors = [
         ...check(u.definition, "/definition"),
         ...libraryRefProblems(db, u.definition.ui_schema, "/definition", false),
+        ...vmStepProblems(db, u.definition.blueprint, "/definition/blueprint"),
       ];
       if (errors.length) return problem(422, "Some inputs need attention", errors);
       if (u.base_revision !== undefined && u.base_revision !== v.revision)
@@ -1366,6 +1434,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         ...searchProblems(v.definition, "/definition", true),
         ...fileProblems(v.definition, "/definition", true),
         ...libraryRefProblems(db, v.definition.ui_schema, "/definition", true),
+        ...vmStepProblems(db, v.definition.blueprint, "/definition/blueprint"),
         ...variableProblems(db, v.definition.blueprint, "/definition/blueprint"),
       ];
       if (incomplete.length) return problem(422, "Some inputs need attention", incomplete);

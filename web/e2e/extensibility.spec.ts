@@ -24,7 +24,7 @@ test("a webhook subscription: checked, saved, tested; a failed run tried again",
   await dialog.getByRole("textbox", { name: "URL" }).fill("https://example.org/hook");
   await pick(page, dialog, "Signing secret", "webhook-signing");
   await dialog.getByRole("button", { name: "Save subscription" }).click();
-  await expect(dialog.getByText("example.org is not an allowed webhook host")).toBeVisible();
+  await expect(dialog.getByText(/^example\.org is not one of the hosts webhooks may call/)).toBeVisible();
   await dialog.getByRole("textbox", { name: "URL" }).fill("https://hooks.corp.example/rvav");
   await dialog.getByRole("button", { name: "Save subscription" }).click();
   await expect(page.getByText("Inventory feed saved")).toBeVisible();

@@ -38,6 +38,7 @@ function state(db: Db): Stored[] {
       project,
       environment: "prd",
       owner: db.me.user,
+      owner_seen_at: ago(5),
       inputs: { target: "shop.corp.example" },
       justification: "The shop's certificate, renewed before it nears expiry.",
       accept_warnings: false,
@@ -70,6 +71,7 @@ function state(db: Db): Stored[] {
       project,
       environment: "dev",
       owner: db.users.find((u) => u.id === "usr_mkeller") ?? db.me.user,
+      owner_seen_at: ago(60 * 24 * 12),
       inputs: { target: "dev.corp.example" },
       accept_warnings: false,
       every_minutes: 240,
@@ -83,8 +85,21 @@ function state(db: Db): Stored[] {
   return d.schedules;
 }
 
+const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const dayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+/** A field's names as their numbers, as Temporal reads them: MON-FRI is 1-5, JAN is 1. */
+function numbered(field: string, names: string[], first: number): string {
+  return field.replace(/[A-Za-z]{3}/g, (n) => {
+    const i = names.indexOf(n.toUpperCase());
+    return i < 0 ? n : String(i + first);
+  });
+}
+
 function fieldSet(field: string, min: number, max: number): Set<number> | null {
   const out = new Set<number>();
+  if (max === 12) field = numbered(field, monthNames, 1);
+  if (max === 7) field = numbered(field, dayNames, 0);
   for (const part of field.split(",")) {
     const m = /^(\*|(\d+)(?:-(\d+))?)(?:\/(\d+))?$/.exec(part);
     if (!m) return null;
@@ -240,7 +255,7 @@ export function scheduleHandlers(
     const s = find(id);
     if (!s || (!sees(s) && !can(db.me, "project.see", s.project.id))) return problem(404, "Not found");
     if (!manages(s))
-      return problem(403, "Forbidden", undefined, "Only its owner or a project admin can change this schedule.");
+      return problem(403, "Not allowed", undefined, "Only its owner or a project admin can change this schedule.");
     return s;
   };
   return [
@@ -258,11 +273,12 @@ export function scheduleHandlers(
       const item = db.items.find((i) => i.id === w.catalog_item_id);
       const project = db.projects.find((p) => p.id === w.project_id);
       if (!item || !project) return problem(404, "Not found");
-      if (!can(db.me, "request.submit", project.id)) return problem(403, "Forbidden");
+      if (!can(db.me, "request.submit", project.id)) return problem(403, "Not allowed");
       const errors = specErrors(w);
       const name = (w.name ?? "").trim();
-      if (!name || [...name].length > 120)
-        errors.push({ field: "/name", code: "required", message: "Name it, in 120 characters at most." });
+      if (!name) errors.push({ field: "/name", code: "required", message: "Name it, in 120 characters at most." });
+      else if ([...name].length > 120)
+        errors.push({ field: "/name", code: "too_long", message: "Name it in 120 characters at most." });
       const inputs = w.inputs ?? {};
       const checked = check({
         catalog_item_id: item.id,
@@ -307,6 +323,7 @@ export function scheduleHandlers(
         project: { id: project.id, code: project.code, name: project.name },
         environment: w.environment,
         owner: db.me.user,
+        owner_seen_at: new Date().toISOString(),
         inputs,
         ...(w.justification?.trim() ? { justification: w.justification.trim() } : {}),
         accept_warnings: Boolean(w.accept_warnings),

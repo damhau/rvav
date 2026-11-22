@@ -55,6 +55,16 @@ async function openForm() {
 }
 
 describe("a custom action's form designer", () => {
+  it("says what resource is on the custom resources a resource type offers the action on", async () => {
+    renderApp("/admin/day2-actions/wf.lb-drain/form");
+    await screen.findByRole("heading", { name: "Drain form" }, { timeout: 5000 });
+    await waitFor(() =>
+      expect(document.body).toHaveTextContent(
+        "On a custom resource (Load balancer), resource is its id, type, name, key and properties.",
+      ),
+    );
+  });
+
   it("starts from the AWX survey, offers what a dialog takes, and saves a draft", { timeout: 20_000 }, async () => {
     const user = userEvent.setup();
     renderApp("/admin/day2-actions");

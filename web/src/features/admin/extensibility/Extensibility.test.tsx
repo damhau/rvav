@@ -103,7 +103,9 @@ describe("A blocking subscription on a VM's topic", () => {
     await user.click(within(recovery).getByRole("combobox", { name: "Recovery signing secret" }));
     await user.click(await screen.findByRole("option", { name: "webhook-signing" }));
     await user.click(within(sheet).getByRole("button", { name: "Save subscription" }));
-    expect(await within(recovery).findByText(/evil.example is not an allowed webhook host/)).toBeInTheDocument();
+    expect(
+      await within(recovery).findByText(/evil\.example is not one of the hosts webhooks may call/),
+    ).toBeInTheDocument();
 
     const url = within(recovery).getByRole("textbox", { name: "Recovery URL" });
     await user.clear(url);

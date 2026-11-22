@@ -3,12 +3,14 @@
 // designed form worked out on the deployment or VM it runs on.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
+import { can } from "@/lib/can";
 import type { ActionForm, DeploymentDetail, FieldError, RequestForm, UiField, VmResource } from "@/lib/api/types";
 import { formProblems } from "./catalogAdmin";
 import { workflowRegistrations } from "./extensibility";
 import { validationErrors } from "./formLibrary";
 import { applyStates, resolveField, settledStates, userGroups, validateInputs, withStart } from "./logic";
 import type { Db } from "./seed";
+import { unknownField } from "./strict";
 
 type S = components["schemas"];
 type Inputs = Record<string, unknown>;
@@ -307,7 +309,7 @@ function problem(status: number, title: string, errors?: FieldError[], detail?: 
 /** The deployment and VM a designer previews on, refused when the action doesn't run there. */
 function previewTarget(db: Db, c: Custom, deploymentId: string, resourceId?: string) {
   const d = db.deployments.find((x) => x.id === deploymentId);
-  if (!d) return { error: problem(404, "Not found", undefined, "There is no such deployment.") };
+  if (!d) return { error: problem(404, "Not found", undefined, "It does not exist, or you cannot see it.") };
   const vm = resourceId
     ? d.resources.find((r): r is VmResource => r.id === resourceId && r.type === "vsphere.vm")
     : undefined;
@@ -330,6 +332,9 @@ function previewTarget(db: Db, c: Custom, deploymentId: string, resourceId?: str
 export function day2FormHandlers(db: Db, base: string, wait: () => Promise<void>, src: CustomSources) {
   const find = (key: string) => custom(db, src, key);
   const notFound = () => problem(404, "Not found", undefined, "There is no such AWX or workflow action.");
+  // Designing an action's form is extensibility.manage's, reading it too (core.Day2Form).
+  const manage = () => can(db.me, "extensibility.manage");
+  const forbidden = () => problem(403, "Not allowed", undefined, "You do not have permission to do this.");
   const formOf = (c: Custom) => {
     const f = forms(db).get(c.key);
     return f ? asActionForm(f.definition) : { ...c.base, designed: true };
@@ -337,6 +342,7 @@ export function day2FormHandlers(db: Db, base: string, wait: () => Promise<void>
   return [
     http.get(`${base}/admin/day2-forms`, async () => {
       await wait();
+      if (!manage()) return forbidden();
       const items = [...forms(db).entries()].map(([action, f]) => ({
         action,
         active: f.active,
@@ -347,14 +353,18 @@ export function day2FormHandlers(db: Db, base: string, wait: () => Promise<void>
     }),
     http.get(`${base}/admin/day2-forms/:action`, async ({ params }) => {
       await wait();
+      if (!manage()) return forbidden();
       const c = find(String(params.action));
       return c ? HttpResponse.json(design(db, c)) : notFound();
     }),
     http.put(`${base}/admin/day2-forms/:action`, async ({ params, request }) => {
       await wait();
+      const w = (await request.json()) as S["Day2FormWrite"];
+      const strict = unknownField(w, ["definition", "base_revision", "active"]);
+      if (strict) return strict;
+      if (!manage()) return forbidden();
       const c = find(String(params.action));
       if (!c) return notFound();
-      const w = (await request.json()) as S["Day2FormWrite"];
       const saved = forms(db).get(c.key);
       const active = w.active ?? saved?.active ?? false;
       const errors = day2Problems(db, w.definition, active);
@@ -362,7 +372,7 @@ export function day2FormHandlers(db: Db, base: string, wait: () => Promise<void>
       if (w.base_revision !== undefined && w.base_revision !== (saved?.revision ?? 0))
         return problem(
           409,
-          "Conflict",
+          "Not possible right now",
           undefined,
           "This form was saved elsewhere since you opened it: reload it to see those changes.",
         );
@@ -375,13 +385,18 @@ export function day2FormHandlers(db: Db, base: string, wait: () => Promise<void>
       });
       return HttpResponse.json(design(db, c));
     }),
+    // As the server: an action with no form saved has nothing to remove, and says so with 204 too.
     http.delete(`${base}/admin/day2-forms/:action`, async ({ params }) => {
       await wait();
-      if (!forms(db).delete(String(params.action))) return notFound();
+      if (!manage()) return forbidden();
+      const c = find(String(params.action));
+      if (!c) return notFound();
+      forms(db).delete(c.key);
       return new HttpResponse(null, { status: 204 });
     }),
     http.post(`${base}/admin/day2-forms/:action/preview`, async ({ params, request }) => {
       await wait();
+      if (!manage()) return forbidden();
       const c = find(String(params.action));
       if (!c) return notFound();
       const q = (await request.json()) as S["Day2FormDesignerQuery"];
@@ -389,10 +404,13 @@ export function day2FormHandlers(db: Db, base: string, wait: () => Promise<void>
       if (t.error) return t.error;
       const form = formOf(c);
       const { fields, errors } = designedInputs(db, t.d, t.vm, c.key, form, q.inputs);
-      return HttpResponse.json({ form, fields, errors } satisfies S["Day2FormPreview"]);
+      // As core.startForm: the form starts with its initial values, else its schema's defaults.
+      const started = { ...form, initial_values: withStart(requestForm(c.key, form), {}) };
+      return HttpResponse.json({ form: started, fields, errors } satisfies S["Day2FormPreview"]);
     }),
     http.post(`${base}/admin/day2-forms/:action/values`, async ({ params, request }) => {
       await wait();
+      if (!manage()) return forbidden();
       const c = find(String(params.action));
       if (!c) return notFound();
       const q = (await request.json()) as S["Day2FormDesignerValuesQuery"];

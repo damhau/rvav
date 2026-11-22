@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ApprovalPage, ServiceRequest, Step, StepData } from "@/lib/api/types";
 import { bus } from "./events";
-import { db } from "./seed";
+import { db, resetDb } from "./seed";
 
 // The mocks' run of a composite (ADR-0033): a branch chooses when it runs, from
 // a person's answer as the server's does, and a message reads it when sent. A
@@ -279,5 +279,67 @@ describe("loops, catch paths and signals in the mocks (ADR-0057)", () => {
     expect(r.status).toBe("failed");
     expect(steps["step:ev"]!.status).toBe("failed");
     expect(r.error?.message).toContain("No event provisioning.post came in 1m.");
+  });
+});
+
+describe("signals sent to a request in the mocks (core.Signal)", () => {
+  const send = (id: string, name: string, body: string) =>
+    fetch(`http://localhost/api/v1/requests/${id}/signal/${name}`, {
+      method: "POST",
+      headers: { Authorization: "Bearer test", "Content-Type": "application/json" },
+      body,
+    });
+
+  it("goes on with what came as the waiting step's outputs, and refuses what nothing waits for", async () => {
+    const bp = {
+      kind: "composite",
+      steps: [
+        { key: "cab", signal: { name: "cab-approved", timeout: "24h" } },
+        { key: "tell", notify: { requester: true, message: "Approved by ${steps.cab.by}" } },
+      ],
+    };
+    const req = await request(await published("flow-signal", bp));
+    await until("it didn't wait", async () => {
+      const { items } = await api<{ items: Step[] }>("GET", `/requests/${req.id}/steps`);
+      return items.find((s) => s.key === "step:cab" && s.status === "running") ? true : undefined;
+    });
+    const array = await send(req.id, "cab-approved", "[1]");
+    expect(array.status).toBe(400);
+    const large = await send(req.id, "cab-approved", JSON.stringify({ text: "x".repeat(64 << 10) }));
+    expect(((await large.json()) as { errors: unknown[] }).errors).toEqual([
+      { field: "", code: "too_large", message: "At most 64 KiB of JSON." },
+    ]);
+    const other = await send(req.id, "cab-rejected", "{}");
+    expect(other.status).toBe(409);
+    expect(((await other.json()) as { detail: string }).detail).toBe(
+      `No step of ${req.number} waits for the signal cab-rejected now.`,
+    );
+    const got = await send(req.id, "cab-approved", JSON.stringify({ by: "CAB 42" }));
+    expect(got.status).toBe(202);
+    expect(await got.json()).toMatchObject({ step: "step:cab" });
+    const { r, steps } = await ended(req.id);
+    expect(r.status).toBe("succeeded");
+    expect(steps["step:cab"]!.status).toBe("done");
+    expect(await api<StepData>("GET", `/requests/${req.id}/steps/${steps["step:cab"]!.id}/data`)).toMatchObject({
+      outputs: { by: "CAB 42" },
+    });
+    const late = await send(req.id, "cab-approved", "{}");
+    expect(((await late.json()) as { detail: string }).detail).toBe(
+      "The request isn't running: nothing of it waits for a signal.",
+    );
+  });
+
+  it("is for those who manage the project's requests", async () => {
+    localStorage.setItem("rvav.mock.as", "auditor");
+    resetDb();
+    try {
+      const res = await send("REQ-10484", "cab-approved", "{}");
+      expect(res.status).toBe(403);
+      expect(((await res.json()) as { detail: string }).detail).toBe(
+        "Only those who manage the project's requests send it signals.",
+      );
+    } finally {
+      localStorage.removeItem("rvav.mock.as");
+    }
   });
 });

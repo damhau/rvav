@@ -903,6 +903,22 @@ export function stepAnswered(r: StoredRequest, key: string, outcome: string, giv
   schedule(r.request.id);
 }
 
+/**
+ * A signal came for the step that waits for it (provision.ReceiveSignal): the
+ * step goes on, the body as its outputs. None waits for it: undefined.
+ */
+export function signalled(r: StoredRequest, name: string, given: Rec): Step | undefined {
+  const s = r.steps.find((x) => {
+    const signal = x.status === "running" ? waits.get(x.id)?.signal : undefined;
+    return signal !== undefined && !text(signal.event) && text(signal.name) === name;
+  });
+  if (!s) return undefined;
+  waits.delete(s.id);
+  s.due_at = null;
+  stepAnswered(r, s.key, `The signal ${name} came.`, given);
+  return s;
+}
+
 /** A step's wait was rejected: the step fails, and with it the request. A Retry asks again. */
 export function stepRejected(r: StoredRequest, key: string, error: string) {
   const s = r.steps.find((x) => x.key === key && x.status === "running");

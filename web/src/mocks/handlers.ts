@@ -92,6 +92,7 @@ import {
   publishRequest,
   rememberHost,
   start,
+  signalled,
   stepAnswered,
   stepData,
   stepRejected,
@@ -950,6 +951,58 @@ export const handlers = [
       const s = all(r.steps).find((x) => x.id === params.stepId);
       if (!s) return notFound("Step");
       return json<S["StepData"]>(stepData(r, s));
+    },
+  ),
+
+  // As core.Signal: those who manage the project's requests send it, while it runs and a step waits for it.
+  http.post<{ requestId: string; name: string }>(
+    `${base}/requests/:requestId/signal/:name`,
+    async ({ params, request }) => {
+      await wait();
+      const text = await request.text();
+      let body: unknown = {};
+      try {
+        body = text.trim() ? JSON.parse(text) : {};
+      } catch (e) {
+        return problem(400, "bad-request", "The request body is not valid JSON", String(e));
+      }
+      if (body !== null && (typeof body !== "object" || Array.isArray(body)))
+        return problem(
+          400,
+          "bad-request",
+          "The request body is not valid JSON",
+          `json: cannot unmarshal ${Array.isArray(body) ? "array" : typeof body} into Go value of type map[string]interface {}`,
+        );
+      const r = requestByKey(params.requestId);
+      if (!r || !visibleRequest(r.request)) return notFound("Request");
+      if (!can(db.me, "request.manage", r.request.project.id))
+        return problem(
+          403,
+          "forbidden",
+          "Not allowed",
+          "Only those who manage the project's requests send it signals.",
+        );
+      const given = (body ?? {}) as Record<string, unknown>;
+      if (new TextEncoder().encode(JSON.stringify(given)).length > 64 << 10)
+        return problem(422, "validation", "Some inputs need attention", undefined, [
+          { field: "", code: "too_large", message: "At most 64 KiB of JSON." },
+        ]);
+      if (r.request.status !== "running")
+        return problem(
+          409,
+          "conflict",
+          "Not possible right now",
+          "The request isn't running: nothing of it waits for a signal.",
+        );
+      const s = signalled(r, params.name, given);
+      if (!s)
+        return problem(
+          409,
+          "conflict",
+          "Not possible right now",
+          `No step of ${r.request.number} waits for the signal ${params.name} now.`,
+        );
+      return json<S["SignalReceipt"]>({ step: s.key, received_at: new Date().toISOString() }, { status: 202 });
     },
   ),
 

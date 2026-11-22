@@ -3,10 +3,12 @@
 // day-2 actions offered on them. Checks follow the server's.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
+import { can } from "@/lib/can";
 import { itemBlueprints } from "./catalogAdmin";
 import { workflowRegistrations } from "./extensibility";
 import { audited } from "./governance";
 import type { Db } from "./seed";
+import { unknownField } from "./strict";
 
 type S = components["schemas"];
 type Stored = Omit<S["ResourceType"], "resources" | "used_by">;
@@ -170,17 +172,36 @@ const stored = (w: S["ResourceTypeWrite"], key: string, created: string): Stored
   updated_at: now(),
 });
 
+const writeFields = [
+  "key",
+  "title",
+  "description",
+  "create",
+  "delete",
+  "update",
+  "read",
+  "property_schema",
+  "actions",
+  "enabled",
+];
+const forbidden = () => problem(403, "Not allowed", undefined, "You do not have permission to do this.");
+const notFound = () => problem(404, "Not found", undefined, "It does not exist, or you cannot see it.");
+
 export function resourceTypeHandlers(db: Db, base: string, wait: () => Promise<void>) {
-  const manage = () => db.me.roles.some((r) => r.key === "admin");
+  const read = () => can(db.me, "extensibility.read");
+  const manage = () => can(db.me, "extensibility.manage");
   return [
     http.get(`${base}/admin/resource-types`, async () => {
       await wait();
+      if (!read()) return forbidden();
       return HttpResponse.json({ items: state(db).map((t) => served(db, t)) });
     }),
     http.post(`${base}/admin/resource-types`, async ({ request }) => {
       await wait();
-      if (!manage()) return problem(403, "Forbidden");
       const w = (await request.json()) as S["ResourceTypeWrite"];
+      const strict = unknownField(w, writeFields);
+      if (strict) return strict;
+      if (!manage()) return forbidden();
       const key = (w.key ?? "").trim();
       const errors = check(db, { ...w, key }, true);
       if (!errors.some((e) => e.field === "/key") && state(db).some((t) => t.key === key))
@@ -193,16 +214,19 @@ export function resourceTypeHandlers(db: Db, base: string, wait: () => Promise<v
     }),
     http.get(`${base}/admin/resource-types/:key`, async ({ params }) => {
       await wait();
+      if (!read()) return forbidden();
       const t = state(db).find((x) => x.key === params.key);
-      return t ? HttpResponse.json(served(db, t)) : problem(404, "Not found");
+      return t ? HttpResponse.json(served(db, t)) : notFound();
     }),
     http.put(`${base}/admin/resource-types/:key`, async ({ params, request }) => {
       await wait();
-      if (!manage()) return problem(403, "Forbidden");
+      const w = (await request.json()) as S["ResourceTypeWrite"];
+      const strict = unknownField(w, writeFields);
+      if (strict) return strict;
+      if (!manage()) return forbidden();
       const list = state(db);
       const i = list.findIndex((x) => x.key === params.key);
-      if (i < 0) return problem(404, "Not found");
-      const w = (await request.json()) as S["ResourceTypeWrite"];
+      if (i < 0) return notFound();
       const errors = check(db, w, false);
       if (errors.length > 0) return problem(422, "Some inputs need attention", errors);
       const t = stored(w, list[i]!.key ?? "", list[i]!.created_at);
@@ -212,10 +236,10 @@ export function resourceTypeHandlers(db: Db, base: string, wait: () => Promise<v
     }),
     http.delete(`${base}/admin/resource-types/:key`, async ({ params }) => {
       await wait();
-      if (!manage()) return problem(403, "Forbidden");
+      if (!manage()) return forbidden();
       const list = state(db);
       const i = list.findIndex((x) => x.key === params.key);
-      if (i < 0) return problem(404, "Not found");
+      if (i < 0) return notFound();
       const t = served(db, list[i]!);
       if (t.resources > 0)
         return problem(
