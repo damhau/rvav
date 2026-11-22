@@ -16,6 +16,7 @@ import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { errorAt, failed } from "../common";
+import { roleName } from "@/lib/i18n/names";
 
 type ApprovalLevel = components["schemas"]["ApprovalLevel"];
 type RoleRef = components["schemas"]["RoleRef"];
@@ -278,7 +279,10 @@ export function PriorityDialog<T extends Ordered>({
  * from `users` (the policy list's) shows by ID.
  */
 export function askedText(l: ApprovalLevel, roles: RoleRef[], users: UserRef[]): string {
-  const name = (k: string) => roles.find((r) => r.key === k)?.name ?? k;
+  const name = (k: string) => {
+    const r = roles.find((x) => x.key === k);
+    return r ? roleName(r) : k;
+  };
   const person = (id: string) => users.find((u) => u.id === id)?.name ?? id;
   const parts = [
     l.group,

@@ -14,6 +14,7 @@ import type { NotificationTemplateKind } from "@/lib/api/types";
 import { adm } from "@/lib/query";
 import { relative } from "@/lib/format";
 import { channelLabel, localeLabel } from "./templateLabels";
+import { kindName, kindWhen } from "@/lib/i18n/names";
 
 const edited = (k: NotificationTemplateKind) => k.templates.filter((t) => t.edited);
 
@@ -21,7 +22,7 @@ const columns = (t: TFunction<"admin-notifications">): Column<NotificationTempla
   {
     id: "kind",
     header: t("list.notification"),
-    sortValue: (k) => k.name,
+    sortValue: (k) => kindName(k),
     cell: (k) => (
       <>
         <Link
@@ -29,9 +30,9 @@ const columns = (t: TFunction<"admin-notifications">): Column<NotificationTempla
           params={{ kind: k.kind }}
           className="font-medium text-fg hover:underline"
         >
-          {k.name}
+          {kindName(k)}
         </Link>
-        <div className="text-caption text-muted">{k.when}</div>
+        <div className="text-caption text-muted">{kindWhen(k)}</div>
       </>
     ),
   },

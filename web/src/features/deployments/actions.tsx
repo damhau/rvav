@@ -39,6 +39,7 @@ import { useDebounced } from "@/lib/hooks";
 import { i18n } from "@/lib/i18n";
 import { keys, q } from "@/lib/query";
 import { newIdempotencyKey } from "@/lib/utils";
+import { day2Name } from "@/lib/i18n/names";
 
 const groupOrder: Day2Action["group"][] = ["power", "configuration", "snapshots", "automation", "access", "lifecycle"];
 
@@ -211,11 +212,11 @@ export function ActionDialog({
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        title={`${action.name} · ${target ?? deployment.name}`}
+        title={`${day2Name(action)} · ${target ?? deployment.name}`}
         description={
           action.confirm?.message ||
           (action.destructive
-            ? t("actions.runsOnConfirm", { action: action.name, target: target ?? deployment.name })
+            ? t("actions.runsOnConfirm", { action: day2Name(action), target: target ?? deployment.name })
             : undefined)
         }
         className="w-[min(560px,calc(100vw-32px))]"
@@ -327,8 +328,8 @@ export function ActionDialog({
               {action.approval.required
                 ? t(warnings.length > 0 ? "actions.askApprovalAnyway" : "actions.askApproval")
                 : warnings.length > 0
-                  ? t("actions.anyway", { action: action.name })
-                  : action.name}
+                  ? t("actions.anyway", { action: day2Name(action) })
+                  : day2Name(action)}
             </Button>
           </div>
         </form>
@@ -500,7 +501,7 @@ function ActionItems({
                   void navigate({ to: "/deployments/$deploymentId/console/$resourceId", params: consoleLink })
                 }
               >
-                {a.name}
+                {day2Name(a)}
               </MenuItem>
             ) : (
               <MenuItem
@@ -516,7 +517,7 @@ function ActionItems({
               >
                 <span className="flex min-w-0 flex-col">
                   <span>
-                    {a.name}
+                    {day2Name(a)}
                     {a.approval.required && (
                       <span className="ml-1.5 text-caption text-warn">{t("actions.approval")}</span>
                     )}

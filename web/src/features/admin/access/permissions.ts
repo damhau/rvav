@@ -2,6 +2,7 @@
 import type { components } from "@/lib/api/schema";
 import { formatList } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
+import { day2Group, day2Name, permissionSummary } from "@/lib/i18n/names";
 
 type S = components["schemas"];
 export type Catalogue = S["PermissionCatalogue"];
@@ -18,19 +19,26 @@ export function byArea(c: Catalogue): [string, S["PermissionInfo"][]][] {
 /** What these permissions allow, a sentence each: the catalogue's, then a day-2 group's. */
 export function allows(c: Catalogue, permissions: string[]): { id: string; text: string }[] {
   const held = new Set(permissions);
-  const out = c.items.filter((p) => held.has(p.id)).map((p) => ({ id: p.id, text: p.summary }));
+  const out = c.items.filter((p) => held.has(p.id)).map((p) => ({ id: p.id, text: permissionSummary(p) }));
   for (const g of c.day2) {
     if (held.has(g.permission)) {
-      out.push({ id: g.permission, text: i18n.t("admin-access:allows.group", { group: g.group }) });
+      out.push({ id: g.permission, text: i18n.t("admin-access:allows.group", { group: day2Group(g.group) }) });
       continue;
     }
     const prefix = `${g.permission}:`;
     const actions = permissions.filter((p) => p.startsWith(prefix));
     if (actions.length === 0) continue;
-    const names = actions.map((p) => g.actions.find((a) => a.permission === p)?.name ?? p.slice(prefix.length));
+    const names = actions.map((p) => {
+      const a = g.actions.find((x) => x.permission === p);
+      return a ? day2Name(a) : p.slice(prefix.length);
+    });
     out.push({
       id: actions.join(" "),
-      text: i18n.t("admin-access:allows.actions", { group: g.group, names: formatList(names), count: names.length }),
+      text: i18n.t("admin-access:allows.actions", {
+        group: day2Group(g.group),
+        names: formatList(names),
+        count: names.length,
+      }),
     });
   }
   return out;

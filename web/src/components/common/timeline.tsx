@@ -4,6 +4,7 @@ import { i18n } from "@/lib/i18n";
 import type { Step, StepStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { clock, duration, fullDate } from "@/lib/format";
+import { stepTitle } from "@/lib/i18n/names";
 
 // The systems' own names read the same in every language.
 const systemLabel: Record<NonNullable<Step["system"]>, () => string> = {
@@ -101,7 +102,7 @@ export function Timeline({
                     s.status === "failed" && "font-semibold text-bad",
                   )}
                 >
-                  {s.title}
+                  {stepTitle(s)}
                 </span>
                 {system && s.system && (
                   <span
@@ -138,7 +139,7 @@ export function Timeline({
                   className="self-start text-secondary font-medium text-accent hover:underline"
                 >
                   {t(selectedDataStep === s.id ? "step.showingData" : "step.showData")}
-                  <span className="sr-only">{t("step.ofStep", { step: s.title })}</span>
+                  <span className="sr-only">{t("step.ofStep", { step: stepTitle(s) })}</span>
                 </button>
               )}
               {s.children.length > 0 && s.status !== "pending" && (

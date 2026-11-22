@@ -33,6 +33,7 @@ import { adm } from "@/lib/query";
 import { relative } from "@/lib/format";
 import { TemplatePreview } from "./TemplatePreview";
 import { channelLabel, channels, localeInText, localeLabel, locales } from "./templateLabels";
+import { kindName, kindWhen } from "@/lib/i18n/names";
 
 const partsOf = (t: TemplateParts, channel: TemplateChannel): TemplateParts => ({
   subject: t.subject,
@@ -52,7 +53,11 @@ const nameColumn = (header: string): Column<TemplateVariable> => ({
 const descriptionColumn = (header: string): Column<TemplateVariable> => ({
   id: "description",
   header,
-  cell: (v) => <span className="text-secondary">{v.description}</span>,
+  cell: (v) => (
+    <span lang="en" className="text-secondary">
+      {v.description}
+    </span>
+  ),
 });
 
 const variableColumns = (t: TFunction<"admin-notifications">): Column<TemplateVariable>[] => [
@@ -248,11 +253,7 @@ function Variables({ kind, functions }: { kind: NotificationTemplateKind; functi
   const { t } = useTranslation("admin-notifications");
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[3fr_2fr]">
-      <Panel
-        title={t("editor.variables")}
-        description={t("editor.variablesLead", { kind: kind.name.toLowerCase() })}
-        flush
-      >
+      <Panel title={t("editor.variables")} description={t("editor.variablesLead", { kind: kindName(kind) })} flush>
         <DataTable
           label={t("editor.variables")}
           columns={variableColumns(t)}
@@ -310,8 +311,8 @@ export function NotificationTemplatePage({
             <Link to="/admin/notification-templates">{t("shell:nav.admin.notificationTemplates")}</Link>
           </Breadcrumbs>
         }
-        title={info?.name ?? t("editor.fallback")}
-        description={info?.when}
+        title={info ? kindName(info) : t("editor.fallback")}
+        description={info && kindWhen(info)}
       />
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <Segmented

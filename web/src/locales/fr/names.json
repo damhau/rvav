@@ -1,0 +1,168 @@
+{
+  "role": {
+    "admin": "Administrateur",
+    "catalog-admin": "Administrateur du catalogue",
+    "auditor": "Auditeur",
+    "user": "Utilisateur",
+    "project-admin": "Administrateur de projet",
+    "member": "Membre",
+    "viewer": "Lecteur",
+    "supervisor": "Superviseur"
+  },
+  "area": {
+    "projects": "Projets",
+    "requests": "Demandes",
+    "approvals": "Approbations",
+    "audit": "Audit",
+    "policies": "Politiques",
+    "access": "Accès",
+    "catalog": "Catalogue",
+    "infrastructure": "Infrastructure",
+    "integrations": "Intégrations",
+    "extensibility": "Extensibilité",
+    "import": "Import",
+    "system": "Système",
+    "day2": "Actions de jour 2"
+  },
+  "permission": {
+    "project_see": "Voir le projet\u00a0: son catalogue, ses déploiements, ses demandes, ses membres, ses quotas et ses rapports, à mesure qu'ils changent.",
+    "deployments_read_all": "Voir chaque déploiement et chaque demande du projet, quand ses déploiements ne s'affichent qu'à leurs propriétaires.",
+    "request_submit": "Demander depuis le catalogue du projet et enregistrer des brouillons\u00a0; y être propriétaire de déploiements, et y en déplacer un.",
+    "request_on_behalf": "Demander pour quelqu'un d'autre.",
+    "request_manage": "Annuler, réessayer et faire revenir en arrière la demande de n'importe qui dans le projet.",
+    "approval_project": "Être l'un des approbateurs du projet, sollicités quand un bail est prolongé au-delà de sa politique\u00a0; tenue seulement d'un rôle donné dans le projet.",
+    "project_members_manage": "Ajouter et retirer les membres du projet, et changer leurs rôles.",
+    "project_settings_read": "Voir l'administration du projet\u00a0: son placement, ses quotas et les politiques qui s'y appliquent\u00a0; pour l'ensemble de rvav, celle de chaque projet.",
+    "project_update": "Modifier les détails et les environnements du projet, ou l'archiver.",
+    "project_quotas_manage": "Fixer les quotas du projet.",
+    "placement_manage": "Modifier les règles de placement du projet et ses OU Active Directory.",
+    "audit_read": "Lire le journal d'audit\u00a0: les événements du projet, ou chaque événement pour l'ensemble de rvav.",
+    "project_policies_manage": "Écrire les politiques d'approbation, de jour 2 et de bail propres au projet\u00a0; une politique stricte globale l'emporte toujours.",
+    "approval_read_all": "Voir chaque approbation, et les questions et réponses des attentes d'une personne dans les composites.",
+    "project_create": "Créer des projets, et nommer leurs premiers administrateurs de projet, soi-même compris.",
+    "environments_read": "Voir les paramètres des environnements.",
+    "environments_manage": "Ajouter, modifier et supprimer des environnements.",
+    "access_read": "Voir les rôles et qui les détient, groupes du fournisseur d'identité compris.",
+    "access_manage": "Créer des rôles, et les donner à des utilisateurs et à des groupes\u00a0: qui la détient peut se donner n'importe quelle permission.",
+    "catalog_manage": "Construire, publier et ouvrir des éléments du catalogue, avec leurs catégories, secrets, variables partagées, dépôt Git et modèles AWX\u00a0; lire ce que leurs étapes ont reçu et rendu.",
+    "infrastructure_read": "Voir les modèles, les tailles, les correspondances de réseaux, les plages IP et les vCenter que rvav atteint.",
+    "infrastructure_manage": "Modifier les modèles, les tailles, les correspondances de réseaux et les plages IP, et réconcilier l'IPAM.",
+    "integrations_manage": "Voir, définir et tester le fournisseur d'identité et chaque connexion, et créer le jeton d'inventaire.",
+    "policies_read": "Voir les politiques d'approbation, de jour 2, de bail et de nommage, celles de chaque projet comprises.",
+    "policies_manage": "Modifier les politiques d'approbation, de jour 2, de bail et de nommage.",
+    "extensibility_read": "Voir les abonnements aux événements, leurs exécutions, les workflows personnalisés et les types de ressources personnalisés\u00a0; lire les variables partagées et ce que les étapes des composites ont reçu et rendu.",
+    "extensibility_manage": "Modifier les abonnements aux événements, les workflows personnalisés, les types de ressources personnalisés, les actions de jour 2 AWX et les formulaires de jour 2, réessayer et tester des exécutions.",
+    "import_manage": "Intégrer des VM existantes et importer depuis vRA.",
+    "system_manage": "Utiliser la liste de mise en route et la page Système\u00a0; définir l'image de marque et les modèles de notification.",
+    "tokens_manage": "Voir et révoquer les jetons d'API de chacun.",
+    "inventory_read": "Lire l'inventaire Ansible."
+  },
+  "step": {
+    "submit": {
+      "submitted": "Soumise"
+    },
+    "policy": {
+      "waiting": "En attente d'approbation",
+      "approvedAutomatically": "Approuvée automatiquement",
+      "notRequired": "Approbation non requise",
+      "rejected": "Rejetée"
+    },
+    "ready": {
+      "ready": "Prête",
+      "done": "Terminée"
+    },
+    "placement": {
+      "placed": "Placée selon les tags de contrainte"
+    }
+  },
+  "day2": {
+    "accept_changes": "Accepter les modifications faites dans vCenter",
+    "allow_delete": "Autoriser la suppression",
+    "change_owner": "Changer de propriétaire",
+    "change_project": "Déplacer vers un autre projet",
+    "console": "Ouvrir la console",
+    "delete": "Supprimer",
+    "disk_add": "Ajouter un disque",
+    "disk_extend": "Agrandir un disque",
+    "disk_remove": "Retirer un disque",
+    "edit": "Modifier le déploiement",
+    "extend_lease": "Prolonger le bail",
+    "iso_mount": "Monter une image ISO",
+    "iso_unmount": "Démonter l'image ISO",
+    "lease_expire": "Fin du bail",
+    "nic_add": "Ajouter une carte réseau",
+    "nic_move": "Changer le réseau d'une carte réseau",
+    "nic_remove": "Retirer une carte réseau",
+    "nsx_group_add": "Ajouter à un groupe de sécurité",
+    "nsx_group_remove": "Retirer d'un groupe de sécurité",
+    "power_off": "Éteindre",
+    "power_on": "Allumer",
+    "rename": "Renommer",
+    "reset": "Réinitialiser",
+    "resize": "Redimensionner",
+    "restart_guest": "Redémarrer l'OS invité",
+    "shutdown_guest": "Arrêter l'OS invité",
+    "snapshot_create": "Prendre un snapshot",
+    "snapshot_delete": "Supprimer un snapshot",
+    "snapshot_revert": "Revenir à un snapshot",
+    "suspend": "Suspendre",
+    "tags_edit": "Modifier les tags",
+    "unregister": "Désinscrire",
+    "update": "Mettre à jour",
+    "vm_unregister": "Désinscrire"
+  },
+  "day2Group": {
+    "power": "alimentation",
+    "configuration": "configuration",
+    "snapshots": "snapshots",
+    "access": "accès",
+    "lifecycle": "cycle de vie",
+    "automation": "automatisation"
+  },
+  "kind": {
+    "request_submitted": {
+      "name": "Demande soumise",
+      "when": "Au demandeur, et au propriétaire quand elle est faite pour lui, une fois une demande soumise."
+    },
+    "approval_needed": {
+      "name": "Approbation requise",
+      "when": "À chaque approbateur d'un niveau quand celui-ci s'ouvre, lui est délégué ou escaladé, ou quand un workflow personnalisé le sollicite."
+    },
+    "request_approved": {
+      "name": "Demande approuvée",
+      "when": "Au demandeur, une fois que le dernier niveau a approuvé."
+    },
+    "request_rejected": {
+      "name": "Demande rejetée",
+      "when": "Au demandeur, une fois qu'un niveau a rejeté."
+    },
+    "request_succeeded": {
+      "name": "Demande terminée",
+      "when": "Au propriétaire, et au demandeur quand il l'a faite pour lui, une fois une demande terminée."
+    },
+    "request_failed": {
+      "name": "Demande échouée",
+      "when": "Au propriétaire, et au demandeur quand il l'a faite pour lui, une fois qu'une demande a échoué."
+    },
+    "request_rolled_back": {
+      "name": "Retour en arrière d'une demande",
+      "when": "Au propriétaire, une fois supprimé ce qu'une demande échouée avait construit."
+    },
+    "lease_expiring": {
+      "name": "Bail bientôt échu",
+      "when": "Au propriétaire du déploiement, 7\u00a0jours et 1\u00a0jour avant la fin de son bail."
+    },
+    "lease_expired": {
+      "name": "Bail échu",
+      "when": "Au propriétaire du déploiement, une fois son bail échu."
+    },
+    "owner_changed": {
+      "name": "Déploiement transféré",
+      "when": "Au nouveau propriétaire d'un déploiement."
+    },
+    "step_message": {
+      "name": "Message d'un composite",
+      "when": "À ceux que nomme l'étape de message d'un composite, quand elle s'exécute."
+    }
+  }
+}

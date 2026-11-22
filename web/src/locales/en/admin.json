@@ -796,6 +796,26 @@
     "revision": "Revision {{n}}"
   },
   "setup": {
+    "detail": {
+      "fake": "The development fake ({{variable}}).",
+      "environments_one": "{{count}} environment",
+      "environments_other": "{{count}} environments",
+      "projects_one": "{{count}} project",
+      "projects_other": "{{count}} projects",
+      "placements_one": "{{count}} placement rule",
+      "placements_other": "{{count}} placement rules",
+      "items_one": "{{count}} item",
+      "items_other": "{{count}} items",
+      "published_one": "{{count}} published",
+      "published_other": "{{count}} published",
+      "fixed": {
+        "notSet": "Not set.",
+        "installPassword": "The install's password is still the administrator's.",
+        "passwordChanged": "Changed from the install's.",
+        "noProvider": "None: only the local administrator can sign in.",
+        "noGroup": "No group is mapped to admin, nor to another role holding access.manage."
+      }
+    },
     "step": {
       "password": {
         "title": "Change the administrator's password",
@@ -872,6 +892,8 @@
     "format": "A colour written #rrggbb, such as #5b2a86.",
     "checking": "Checking the contrast…",
     "checkFailed": "The contrast couldn't be checked.",
+    "contrast": "{{colour}} has a contrast of {{ratio}}:1 in the light theme: text needs {{needed}}:1.",
+    "closest": "{{colour}} is the closest darker colour that passes.",
     "use": "Use {{colour}}",
     "readsSame": "Reads at {{ratio}}:1 in the light theme. The dark theme takes it as it is so that its text reads too.",
     "readsLighter": "Reads at {{ratio}}:1 in the light theme. The dark theme takes {{dark}}, lighter so that its text reads too.",

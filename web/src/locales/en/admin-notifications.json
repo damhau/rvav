@@ -63,7 +63,7 @@
     "resetBody": "The edited {{channel}} template in {{locale}} is removed.",
     "resetConsequences": "Notifications sent from then on use rvav's built-in template.",
     "variables": "Variables",
-    "variablesLead": "What a template of {{kind}} can write. A template that names another is refused.",
+    "variablesLead": "What a template of “{{kind}}” can write. A template that names another is refused.",
     "functions": "Functions",
     "functionsLead": "Besides Go's own, such as <code>eq</code>, <code>printf</code> and <code>range</code>.",
     "fallback": "Notification template",

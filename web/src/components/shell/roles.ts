@@ -1,4 +1,5 @@
 import type { Me } from "@/lib/api/types";
+import { roleName } from "@/lib/i18n/names";
 
 /**
  * What the account button and the project menu say under a name: the names
@@ -9,5 +10,5 @@ import type { Me } from "@/lib/api/types";
 export function rolesLabel(me: Me, projectId: string): string | undefined {
   const given = me.projects.find((p) => p.project.id === projectId)?.roles ?? [];
   const held = given.length > 0 ? given : me.roles.filter((r) => r.key !== "user");
-  return held.length > 0 ? held.map((r) => r.name).join(", ") : undefined;
+  return held.length > 0 ? held.map(roleName).join(", ") : undefined;
 }

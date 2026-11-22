@@ -32,6 +32,7 @@ export const namespaces = [
   "admin-notifications",
   "admin-extensibility",
   "admin-onboarding",
+  "names",
 ] as const;
 export type Namespace = (typeof namespaces)[number];
 

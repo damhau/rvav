@@ -3,8 +3,9 @@ import { scan } from "./axe";
 
 // The deployments pages in French (O1.3, ADR-0061): the list, a deployment's
 // tabs and Actions menu, a VM's properties and the update page, with
-// lang="fr", passing axe in both themes. Day-2 action names and the server's
-// reasons stay as it sends them. Switching back to English shows at once.
+// lang="fr", passing axe in both themes. Built-in day-2 actions have French
+// names; an AWX action's name and the server's reasons stay as it sends them.
+// Switching back to English shows at once.
 
 async function loaded(page: Page) {
   await expect(page.getByRole("main")).toBeVisible();
@@ -65,7 +66,7 @@ test("the deployments pages speak French, and English again once chosen", async 
 
   const menu = await openActions(page);
   await expect(menu.getByText("Cycle de vie")).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: /^Power on/ })).toContainText("The VM is already powered on.");
+  await expect(menu.getByRole("menuitem", { name: /^Allumer/ })).toContainText("The VM is already powered on.");
   await scan(page, "a deployment's Actions menu");
   await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();

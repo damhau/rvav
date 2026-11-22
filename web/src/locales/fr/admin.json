@@ -819,6 +819,31 @@
     "revision": "Révision {{n}}"
   },
   "setup": {
+    "detail": {
+      "fake": "Le simulateur de développement ({{variable}}).",
+      "environments_one": "{{count}} environnement",
+      "environments_many": "{{count}} environnements",
+      "environments_other": "{{count}} environnements",
+      "projects_one": "{{count}} projet",
+      "projects_many": "{{count}} projets",
+      "projects_other": "{{count}} projets",
+      "placements_one": "{{count}} règle de placement",
+      "placements_many": "{{count}} règles de placement",
+      "placements_other": "{{count}} règles de placement",
+      "items_one": "{{count}} élément",
+      "items_many": "{{count}} éléments",
+      "items_other": "{{count}} éléments",
+      "published_one": "{{count}} publié",
+      "published_many": "{{count}} publiés",
+      "published_other": "{{count}} publiés",
+      "fixed": {
+        "notSet": "Non défini.",
+        "installPassword": "Le mot de passe est toujours celui de l'installation.",
+        "passwordChanged": "Différent de celui de l'installation.",
+        "noProvider": "Aucun\u00a0: seul l'administrateur local peut se connecter.",
+        "noGroup": "Aucun groupe n'est associé à admin, ni à un autre rôle qui détient access.manage."
+      }
+    },
     "step": {
       "password": {
         "title": "Changer le mot de passe de l'administrateur",
@@ -896,6 +921,8 @@
     "checking": "Vérification du contraste…",
     "checkFailed": "Le contraste n'a pas pu être vérifié.",
     "use": "Utiliser {{colour}}",
+    "contrast": "{{colour}} a un contraste de {{ratio}}:1 dans le thème clair\u00a0: le texte demande {{needed}}:1.",
+    "closest": "{{colour}} est la couleur plus foncée la plus proche qui convient.",
     "readsSame": "Se lit à {{ratio}}:1 dans le thème clair. Le thème sombre la prend telle quelle pour que son texte se lise aussi.",
     "readsLighter": "Se lit à {{ratio}}:1 dans le thème clair. Le thème sombre prend {{dark}}, plus clair, pour que son texte se lise aussi.",
     "saved": "Image de marque enregistrée",

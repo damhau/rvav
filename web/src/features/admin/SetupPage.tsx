@@ -3,6 +3,7 @@
 // An install without seed data or integration settings opens on it.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
@@ -18,6 +19,7 @@ import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { failed } from "./governance/common";
+import { serverText } from "@/lib/i18n/names";
 
 type S = components["schemas"];
 type Key = S["SetupStep"]["key"];
@@ -27,6 +29,26 @@ type Target =
   | { to: "/admin/projects"; tab: "projects" | "groups" }
   | { to: "/admin/catalog-items" }
   | { href: string };
+
+/** A step's detail as the server wrote it (internal/core/setup.go), in the language shown; addresses and group names as they are. */
+export function setupDetail(t: TFunction<"admin">, detail: string): string {
+  const fake = /^The development fake \((RVAV_FAKE_[A-Z0-9_]+)\)\.$/.exec(detail);
+  if (fake) return t("setup.detail.fake", { variable: fake[1] });
+  const projects = /^(\d+) environments?, (\d+) projects?, (\d+) placement rules?$/.exec(detail);
+  if (projects)
+    return [
+      t("setup.detail.environments", { count: Number(projects[1]) }),
+      t("setup.detail.projects", { count: Number(projects[2]) }),
+      t("setup.detail.placements", { count: Number(projects[3]) }),
+    ].join(", ");
+  const items = /^(\d+) items?, (\d+) published$/.exec(detail);
+  if (items)
+    return [
+      t("setup.detail.items", { count: Number(items[1]) }),
+      t("setup.detail.published", { count: Number(items[2]) }),
+    ].join(", ");
+  return serverText("admin", "setup.detail.fixed", detail);
+}
 
 const targets: Record<Key, Target> = {
   password: { href: CHANGE_PASSWORD_PATH },
@@ -148,7 +170,7 @@ export function SetupPage() {
                     <p className="text-secondary text-muted">{t(`setup.step.${s.key}.what`)}</p>
                     <p className="text-secondary break-words">
                       <span className="text-faint">{s.done ? t("setup.done") : t("setup.now")}</span>
-                      {s.detail}
+                      {setupDetail(t, s.detail)}
                     </p>
                   </div>
                   <div className="pl-9 sm:pl-0">

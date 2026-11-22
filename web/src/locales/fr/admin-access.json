@@ -5,10 +5,10 @@
     "any": "Dans un projet ou pour l'ensemble de rvav"
   },
   "allows": {
-    "group": "Exécuter toutes les actions de jour 2 {{group}}, y compris celles ajoutées plus tard.",
-    "actions_one": "Exécuter l'action de jour 2 {{group}} {{names}}.",
-    "actions_many": "Exécuter les actions de jour 2 {{group}} {{names}}.",
-    "actions_other": "Exécuter les actions de jour 2 {{group}} {{names}}.",
+    "group": "Exécuter toutes les actions de jour 2 du groupe {{group}}, y compris celles ajoutées plus tard.",
+    "actions_one": "Exécuter l'action de jour 2 {{names}} du groupe {{group}}.",
+    "actions_many": "Exécuter les actions de jour 2 {{names}} du groupe {{group}}.",
+    "actions_other": "Exécuter les actions de jour 2 {{names}} du groupe {{group}}.",
     "rvavOnly_one": "{{names}} est une permission pour l'ensemble de rvav seulement.",
     "rvavOnly_many": "{{names}} sont des permissions pour l'ensemble de rvav seulement.",
     "rvavOnly_other": "{{names}} sont des permissions pour l'ensemble de rvav seulement."
@@ -133,7 +133,7 @@
     "rvavOnlyBadge": "Ensemble de rvav seulement",
     "day2": "Actions de jour 2",
     "day2Lead": "Un groupe permet chacune de ses actions, y compris celles ajoutées plus tard\u00a0; ou choisissez des actions une à une.",
-    "everyAction": "Chaque action {{group}}.",
+    "everyAction": "Chaque action du groupe {{group}}.",
     "deleted": "{{name}} supprimé",
     "notDeleted": "Non supprimé",
     "deleteTitle": "Supprimer {{name}}\u00a0?",

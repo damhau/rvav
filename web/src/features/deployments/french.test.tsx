@@ -35,7 +35,7 @@ describe("the deployments, in French", () => {
   });
 
   it(
-    "names a deployment's tabs, panels and actions in French, the server's reasons as sent",
+    "names a deployment's tabs, panels and built-in actions in French, the server's reasons as sent",
     { timeout: 15_000 },
     async () => {
       const user = userEvent.setup();
@@ -53,9 +53,11 @@ describe("the deployments, in French", () => {
       const menu = await screen.findByRole("menu");
       for (const group of ["Alimentation", "Snapshots", "Cycle de vie"])
         expect(within(menu).getByText(group)).toBeVisible();
-      expect(within(menu).getByRole("menuitem", { name: /^Power on/ })).toHaveTextContent(
+      expect(within(menu).getByRole("menuitem", { name: /^Allumer/ })).toHaveTextContent(
         "The VM is already powered on.",
       );
+      expect(within(menu).getByRole("menuitem", { name: /^Prendre un snapshot/ })).toBeInTheDocument();
+      expect(within(menu).queryByRole("menuitem", { name: /^Power off/ })).not.toBeInTheDocument();
       await user.keyboard("{Escape}");
 
       await user.click(screen.getByRole("tab", { name: "Historique" }));

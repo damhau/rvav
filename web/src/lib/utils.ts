@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
+import { formatSize, type SizeUnit } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
 
 // Without the type scale's names, tailwind-merge takes text-caption for a
@@ -65,9 +66,15 @@ export function newIdempotencyKey() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-/** Keeps each number on the line of the word after it, such as a unit: "60 GB" never breaks. */
+/**
+ * Writes the sizes in a server's text, such as a size option's "2 vCPU · 4 GB",
+ * in the language shown ("4 Go"), and keeps each number on the line of the
+ * word after it: "60 GB" never breaks.
+ */
 export function withUnits(text: string): string {
-  return text.replace(/(\d) (?=\p{L})/gu, "$1\u00a0");
+  return text
+    .replace(/\b(\d+(?:\.\d+)?) (B|KB|MB|GB|TB)\b/g, (_, n: string, unit: SizeUnit) => formatSize(Number(n), unit))
+    .replace(/(\d) (?=\p{L})/gu, "$1\u00a0");
 }
 
 /**

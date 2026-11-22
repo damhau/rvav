@@ -89,20 +89,49 @@ formatter per language and options. Elsewhere, ESLint refuses
   and the like) are allowed.
 - **The unit tests run in English.** The vitest setup pins `lng: "en"`
   and fails on a missing English text. Playwright pins the browser to
-  `en-GB`. `e2e/french.spec.ts` chooses French and goes through the
-  shell, API tokens, the overview, the notifications and a request form.
-  It runs axe in both themes with `lang="fr"`, and checks reflow at
-  320 px with a French browser.
+  `en-GB`. The French specs, `web/e2e/french*.spec.ts`, choose French
+  and go through the shell, API tokens, the overview, the notifications,
+  a request form, the deployments pages, the user's pages and each area
+  of the administration. They run axe in both themes with `lang="fr"`,
+  and `e2e/french.spec.ts` checks reflow at 320 px with a French browser.
+
+### What rvav names, in the language shown
+The server names what rvav builds in, in English, under a fixed key: the
+built-in roles, the permissions and their areas, a request's own steps
+(submitted, its approval while it waits, ready or done), the built-in
+day-2 actions and their groups, and the notification kinds with whom
+they go to. The web app words them from `locales/<locale>/names.json`
+(`lib/i18n/names.ts`): when the server's text is the English there, it
+shows the language shown's; otherwise the server's text as it comes. A
+custom role, an AWX day-2 action, a kind newer than the page or a
+built-in the server renamed show as the server wrote them, so nothing is
+lost when the two drift. `names.test.ts` compares the English with the
+server's fixtures (`internal/auth/testdata/roles.json`, the notification
+templates) and the mocks' day-2 catalogue.
+
+The setup checklist's details and the accent check are worded the same
+way from what the server sends: its fixed sentences by their English,
+its counts, colours and ratios as values. Sizes in a server's option
+meta, such as a size's `2 vCPU · 4 GB`, take the language's units.
 
 ### What stays English
 - **The server's messages.** Problem titles, field errors, policy
-  reasons and a test message's result are written by the server in
-  English, and the app shows them as they come. The web app's own
-  framing around them is translated. The follow-up is for the API to
-  read `Accept-Language`, or the person's language, and answer in it.
+  reasons, a test message's result, a template's check errors, a
+  decided approval step's outcome, every other step's title and error,
+  the vRA import's notes, and what a notification template's variables
+  and functions hold are written by the server in English, and the app
+  shows them as they come. They are the API's answer to every client
+  (the CLI, the Terraform provider, scripts), and most are sentences the
+  server builds from data, which the web app could only word again by
+  parsing them. Where one fills a whole element on a French page (a
+  variable's description, an accent refused for a reason other than its
+  contrast), the element says `lang="en"`. The web app's own framing
+  around them is translated. The follow-up is for the API to read
+  `Accept-Language`, or the person's language, and answer in it.
 - **The mock backend**, whose messages stand in for the server's.
 - **Identifiers and names:** request numbers, keys, CEL, YAML, product
-  names, and what people typed (items, projects, comments).
+  names, and what people typed (items, projects, comments, a custom
+  role's or action's name).
 
 ## Consequences
 - A French speaker reads the portal and what rvav sends in French, from

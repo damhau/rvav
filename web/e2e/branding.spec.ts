@@ -112,7 +112,7 @@ test("an administrator brands the portal with a name, an accent that reads and a
   await page.getByRole("textbox", { name: "Portal name" }).fill("Corp Cloud");
   const color = page.getByRole("textbox", { name: "Accent colour", exact: true });
   await color.fill("#ffcc00");
-  await expect(page.getByText(/#ffcc00 has a contrast of 1\.\d+:1 against #e9edef in the light theme/)).toBeVisible();
+  await expect(page.getByText(/#ffcc00 has a contrast of 1\.\d+:1 in the light theme/)).toBeVisible();
   await bothThemes(page, "Branding, an accent that doesn't read");
   await page.getByRole("button", { name: /^Use #[0-9a-f]{6}$/ }).click();
   await expect(color).toHaveValue("#806600");

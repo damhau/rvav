@@ -112,6 +112,9 @@ describe("system, setup, branding and the audit log, in French", () => {
       "href",
       "/admin/integrations/vcenter",
     );
+    expect(steps[0]).toHaveTextContent("Le mot de passe est toujours celui de l'installation.");
+    expect(steps[4]).toHaveTextContent(/\d+ environnements?, \d+ projets?, \d+ règles? de placement/);
+    expect(screen.queryByText(/Not set|placement rule/)).not.toBeInTheDocument();
   });
 
   it("shows the system, its FIPS mode and the link to the integrations", async () => {
@@ -132,6 +135,18 @@ describe("system, setup, branding and the audit log, in French", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Image de marque" })).toBeInTheDocument();
     await user.type(await screen.findByLabelText("Couleur d'accent"), "#0b5394");
     expect(await screen.findByText(/^Se lit à \d+,\d{2}:1 dans le thème clair/)).toBeInTheDocument();
+  });
+
+  it("says in French why an accent doesn't read, and which colour does", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/branding");
+    await user.type(await screen.findByLabelText("Couleur d'accent"), "#FC0");
+    expect(
+      await screen.findByText(
+        /^#ffcc00 a un contraste de 1,\d{2}:1 dans le thème clair\s: le texte demande 4,5:1\. #[0-9a-f]{6} est la couleur plus foncée la plus proche qui convient\.$/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Utiliser #[0-9a-f]{6}$/ })).toBeInTheDocument();
   });
 
   it("filters the audit log to failed sign-ins", { timeout: 15_000 }, async () => {

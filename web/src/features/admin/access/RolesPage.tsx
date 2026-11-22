@@ -31,6 +31,7 @@ import { WhatSomeoneMayDo } from "./AccessExplained";
 import { scopeText } from "./permissions";
 import { AdminWarning, Refusal, refused } from "./refusal";
 import { cantDelete, DeleteRole } from "./RolePage";
+import { roleName } from "@/lib/i18n/names";
 
 type S = components["schemas"];
 
@@ -38,7 +39,7 @@ const roleColumns = (t: TFunction<"admin-access">): Column<S["Role"]>[] => [
   {
     id: "role",
     header: t("roles.role"),
-    sortValue: (r) => r.name,
+    sortValue: (r) => roleName(r),
     cell: (r) => (
       <>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -47,7 +48,7 @@ const roleColumns = (t: TFunction<"admin-access">): Column<S["Role"]>[] => [
             params={{ roleKey: r.key }}
             className="font-medium text-fg hover:text-accent"
           >
-            {r.name}
+            {roleName(r)}
           </Link>
           <span className="font-mono text-secondary text-muted">{r.key}</span>
           {r.built_in ? <Badge>{t("roles.builtIn")}</Badge> : <Badge tone="accent">{t("roles.custom")}</Badge>}
@@ -109,7 +110,7 @@ function Roles({ canEdit }: { canEdit: boolean }) {
         minWidth={720}
         loading={roles.isPending}
         error={roles.isError && <ErrorState error={roles.error} onRetry={() => void roles.refetch()} />}
-        rowMenuLabel={(r) => t("roles.actionsFor", { name: r.name })}
+        rowMenuLabel={(r) => t("roles.actionsFor", { name: roleName(r) })}
         rowMenu={
           canEdit
             ? (r) => (
@@ -149,14 +150,14 @@ const assignmentColumns = (t: TFunction<"admin-access">): Column<S["RoleAssignme
   {
     id: "role",
     header: t("rvavRoles.role"),
-    sortValue: (a) => a.role.name,
+    sortValue: (a) => roleName(a.role),
     cell: (a) => (
       <Link
         to="/admin/roles/$roleKey"
         params={{ roleKey: a.role.key }}
         className="text-accent underline underline-offset-2"
       >
-        {a.role.name}
+        {roleName(a.role)}
       </Link>
     ),
   },
@@ -190,7 +191,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
     mutationFn: (userId: string) => call(api.POST("/admin/role-assignments", { body: { user_id: userId, role } })),
     onSuccess: (a) => {
       changed();
-      toast.success(t("rvavRoles.holds", { user: a.user.name, role: a.role.name }));
+      toast.success(t("rvavRoles.holds", { user: a.user.name, role: roleName(a.role) }));
     },
     onError: (e) => {
       if (!refused(e)) failed(e, t("rvavRoles.notGiven"));
@@ -202,7 +203,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
     onSuccess: (_, a) => {
       changed();
       setTaking(null);
-      toast.success(t("rvavRoles.takenAway", { role: a.role.name, user: a.user.name }));
+      toast.success(t("rvavRoles.takenAway", { role: roleName(a.role), user: a.user.name }));
     },
     onError: (e) => {
       setTaking(null);
@@ -262,7 +263,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
                     loading={roles.isPending}
                     options={offered.map((r) => ({
                       value: r.key,
-                      label: r.name,
+                      label: roleName(r),
                       group: r.built_in ? t("rvavRoles.builtIn") : t("rvavRoles.custom"),
                     }))}
                   />
@@ -283,7 +284,7 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
             body={canEdit ? t("rvavRoles.noneGiveAbove") : t("rvavRoles.none")}
           />
         }
-        rowMenuLabel={(a) => t("rvavRoles.actionsFor", { role: a.role.name, user: a.user.name })}
+        rowMenuLabel={(a) => t("rvavRoles.actionsFor", { role: roleName(a.role), user: a.user.name })}
         rowMenu={
           canEdit
             ? (a) =>
@@ -305,8 +306,8 @@ function ForAllOfRvav({ canEdit }: { canEdit: boolean }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setTaking(null)}
-          title={t("rvavRoles.takeTitle", { role: taking.role.name, user: taking.user.name })}
-          description={t("rvavRoles.takeBody", { role: taking.role.name })}
+          title={t("rvavRoles.takeTitle", { role: roleName(taking.role), user: taking.user.name })}
+          description={t("rvavRoles.takeBody", { role: roleName(taking.role) })}
           consequences={t("rvavRoles.takeConsequences")}
           confirmLabel={t("rvavRoles.takeAway")}
           pending={remove.isPending}

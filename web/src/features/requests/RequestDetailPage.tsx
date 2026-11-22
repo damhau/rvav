@@ -34,6 +34,7 @@ import { FailureActions, mayActOnFailure } from "./FailureActions";
 import { LogViewer } from "./LogViewer";
 import { StepDataView } from "./StepDataView";
 import { failedNode, failedRollbackOf, flatten, pickLogStep, rollbackOf, runSteps } from "./run";
+import { day2Name } from "@/lib/i18n/names";
 
 // A composite's run on its graph: React Flow loads with it, on its pages only.
 const RequestRun = lazy(() => import("./RequestRun"));
@@ -225,7 +226,10 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                   <Trans
                     t={t}
                     i18nKey="detail.actionOn"
-                    values={{ action: r.action?.name ?? "", resource: r.resource?.name ?? t("detail.theDeployment") }}
+                    values={{
+                      action: r.action ? day2Name(r.action) : "",
+                      resource: r.resource?.name ?? t("detail.theDeployment"),
+                    }}
                     components={{
                       target: (
                         <Link

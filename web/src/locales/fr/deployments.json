@@ -281,7 +281,7 @@
     },
     "noGroup": "Aucun groupe",
     "aGroup": "un groupe",
-    "tagsRemoved": "Ses tags pour {{groups}} ont été supprimés dans NSX\u00a0: les règles de pare-feu du groupe ne s'y appliquent plus. Utilisez «\u00a0Add to a security group\u00a0» pour l'y remettre."
+    "tagsRemoved": "Ses tags pour {{groups}} ont été supprimés dans NSX\u00a0: les règles de pare-feu du groupe ne s'y appliquent plus. Utilisez «\u00a0Ajouter à un groupe de sécurité\u00a0» pour l'y remettre."
   },
   "placement": {
     "notYet": "L'emplacement est décidé au clonage de la VM.",

@@ -6,6 +6,7 @@ import { formatList } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
 import { toText } from "@/lib/utils";
 import { Time } from "./misc";
+import { roleName } from "@/lib/i18n/names";
 
 type Tone = "ok" | "warn" | "bad" | "run" | "neutral";
 
@@ -30,12 +31,7 @@ export function ApprovalStatusBadge({ status, label }: { status: ApprovalStatus;
 
 /** Whom a level asks besides the users it names: project roles' holders and the requester's manager. */
 function askedOf(a: Approval): string | undefined {
-  const roles = a.roles?.length
-    ? formatList(
-        a.roles.map((r) => r.name),
-        "disjunction",
-      )
-    : undefined;
+  const roles = a.roles?.length ? formatList(a.roles.map(roleName), "disjunction") : undefined;
   if (roles && a.manager) return i18n.t("common:approval.asks.rolesAndManager", { roles });
   if (roles) return i18n.t("common:approval.asks.roles", { roles });
   if (a.manager) return i18n.t("common:approval.asks.manager");

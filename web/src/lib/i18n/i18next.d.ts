@@ -15,6 +15,7 @@ import type catalog from "@/locales/en/catalog.json";
 import type common from "@/locales/en/common.json";
 import type deployments from "@/locales/en/deployments.json";
 import type forms from "@/locales/en/forms.json";
+import type names from "@/locales/en/names.json";
 import type notifications from "@/locales/en/notifications.json";
 import type overview from "@/locales/en/overview.json";
 import type reports from "@/locales/en/reports.json";
@@ -46,6 +47,7 @@ declare module "i18next" {
       "admin-notifications": typeof adminNotifications;
       "admin-extensibility": typeof adminExtensibility;
       "admin-onboarding": typeof adminOnboarding;
+      names: typeof names;
     };
   }
 }

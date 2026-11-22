@@ -1269,13 +1269,19 @@ and each area's texts are in `locales/<language>/<namespace>.json`.
   `longDay`, `clock`, `duration` and `leaseLabel`, all in the language
   shown. ESLint refuses `toLocaleString`
   and `new Intl.*Format` elsewhere.
+- **What rvav names** (built-in roles, permissions, a request's own
+  steps, day-2 actions, notification kinds) is worded by key in
+  `locales/<locale>/names.json` through `lib/i18n/names.ts`, falling back
+  to the server's text for anything custom or newer.
 - **What stays English:** the server's messages (problem titles, field
-  errors, policy reasons), the mock backend's, identifiers and names.
+  errors, policy reasons), the mock backend's, identifiers and names
+  ([ADR-0061](adr/0061-web-app-languages.md#what-stays-english)). A whole
+  element holding one on a French page says `lang="en"`.
 - **Checks:** `lib/i18n/resources.test.ts` compares the two languages;
   ESLint's `i18next/no-literal-string` refuses literal text in the
   folders listed in `translated` in `web/eslint.config.js`; the unit
-  tests run in English (`lng: "en"`), Playwright in `en-GB`, and
-  `e2e/french.spec.ts` in French.
+  tests run in English (`lng: "en"`), Playwright in `en-GB`, and the
+  French specs (`e2e/french*.spec.ts`) in French.
 
 ### Translating a folder
 
@@ -1316,9 +1322,10 @@ To convert a folder:
      (a status, a kind), as `NodeIcon` reads `node.stepKind`.
 6. Run `pnpm typecheck`, `pnpm lint`, `lib/i18n/resources.test.ts`, the
    folder's unit tests, the end-to-end specs that read its pages, and
-   `e2e/french.spec.ts`. Keep the English texts as they were, so the
-   tests that read them don't change; add a test in French for anything
-   that depends on the language, such as a plural or a format.
+   the French specs (`e2e/french*.spec.ts`) that read them. Keep the
+   English texts as they were, so the tests that read them don't change;
+   add a test in French for anything that depends on the language, such
+   as a plural or a format.
 
 The lint rule allows names that read the same in every language (the
 `untranslated` list), text with no letters, all-caps words, and the

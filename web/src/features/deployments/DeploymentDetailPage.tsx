@@ -37,6 +37,7 @@ import { ActionDialog, ActionsMenu, DeploymentActionsMenu, actionFailed, runsDir
 import { CustomResourcesPanel } from "./CustomResources";
 import { RemoteAccessPanel } from "./RemoteAccess";
 import { VmPropertiesSheet } from "./VmProperties";
+import { day2Name } from "@/lib/i18n/names";
 
 const DeploymentTopology = lazy(() => import("./DeploymentTopology"));
 
@@ -182,11 +183,16 @@ function VmTable({
                   </td>
                   <td className="border-b border-line px-4 py-2.5 text-right whitespace-nowrap">
                     <span className="inline-flex gap-1">
-                      <Tip content={powerBtn?.enabled ? powerBtn.name : (powerBtn?.disabled_reason ?? t("vms.power"))}>
+                      <Tip
+                        content={powerBtn?.enabled ? day2Name(powerBtn) : (powerBtn?.disabled_reason ?? t("vms.power"))}
+                      >
                         <span>
                           <Button
                             size="icon"
-                            aria-label={t("vms.powerLabel", { action: powerBtn?.name ?? t("vms.power"), name })}
+                            aria-label={t("vms.powerLabel", {
+                              action: powerBtn ? day2Name(powerBtn) : t("vms.power"),
+                              name,
+                            })}
                             disabled={!powerBtn?.enabled}
                             onClick={() => powerBtn && onPick(powerBtn)}
                           >
@@ -783,7 +789,9 @@ function History({ deploymentId, createdBy }: { deploymentId: string; createdBy?
           <span className="min-w-0">
             <Link to="/requests/$requestId" params={{ requestId: r.number }} className="font-medium">
               {r.kind === "day2"
-                ? (r.action?.name ?? r.title)
+                ? r.action
+                  ? day2Name(r.action)
+                  : r.title
                 : r.kind === "update"
                   ? t("history.updated")
                   : t("history.created")}

@@ -1,0 +1,168 @@
+{
+  "role": {
+    "admin": "Administrator",
+    "catalog-admin": "Catalog admin",
+    "auditor": "Auditor",
+    "user": "User",
+    "project-admin": "Project admin",
+    "member": "Member",
+    "viewer": "Viewer",
+    "supervisor": "Supervisor"
+  },
+  "area": {
+    "projects": "Projects",
+    "requests": "Requests",
+    "approvals": "Approvals",
+    "audit": "Audit",
+    "policies": "Policies",
+    "access": "Access",
+    "catalog": "Catalog",
+    "infrastructure": "Infrastructure",
+    "integrations": "Integrations",
+    "extensibility": "Extensibility",
+    "import": "Import",
+    "system": "System",
+    "day2": "Day-2 actions"
+  },
+  "permission": {
+    "project_see": "See the project: its catalog, deployments, requests, members, quotas and reports, as they change.",
+    "deployments_read_all": "See every deployment and request of the project, when its deployments show to their owners only.",
+    "request_submit": "Request from the project's catalog and save drafts; own deployments there, and move one into it.",
+    "request_on_behalf": "Request for someone else.",
+    "request_manage": "Cancel, retry and roll back anyone's request in the project.",
+    "approval_project": "Be one of the project's approvers, asked when a lease is extended beyond its policy; held only from a role given in the project.",
+    "project_members_manage": "Add and remove the project's members, and change their roles.",
+    "project_settings_read": "See the project's administration: its placement, quotas and the policies that apply there; for all of rvav, every project's.",
+    "project_update": "Change the project's details and environments, or archive it.",
+    "project_quotas_manage": "Set the project's quotas.",
+    "placement_manage": "Change the project's placement rules and Active Directory OUs.",
+    "audit_read": "Read the audit log: the project's events, or every event for all of rvav.",
+    "project_policies_manage": "Write the project's own approval, day-2 and lease policies; a global hard policy still wins.",
+    "approval_read_all": "See every approval, and the questions and answers of composites' waits for a person.",
+    "project_create": "Create projects, and name their first project admins, themselves included.",
+    "environments_read": "See the environments' settings.",
+    "environments_manage": "Add, change and remove environments.",
+    "access_read": "See the roles and who holds them, groups of the identity provider included.",
+    "access_manage": "Make roles, and give them to users and groups: whoever holds it can give themselves any permission.",
+    "catalog_manage": "Build, publish and open catalog items, with their categories, secrets, shared variables, Git repository and AWX templates; read what their steps were given and gave.",
+    "infrastructure_read": "See templates, sizes, network mappings, IP ranges and the vCenters rvav reaches.",
+    "infrastructure_manage": "Change templates, sizes, network mappings and IP ranges, and reconcile IPAM.",
+    "integrations_manage": "See, set and test the identity provider and every connection, and make the inventory token.",
+    "policies_read": "See the approval, day-2, lease and naming policies, every project's included.",
+    "policies_manage": "Change the approval, day-2, lease and naming policies.",
+    "extensibility_read": "See event subscriptions, their runs, the custom workflows and the custom resource types; read the shared variables and what composite steps were given and gave.",
+    "extensibility_manage": "Change event subscriptions, custom workflows, custom resource types, AWX day-2 actions and day-2 forms, retry and test runs.",
+    "import_manage": "Onboard existing VMs and import from vRA.",
+    "system_manage": "Use the setup checklist and the System page; set the branding and the notification templates.",
+    "tokens_manage": "See and revoke everyone's API tokens.",
+    "inventory_read": "Read the Ansible inventory."
+  },
+  "step": {
+    "submit": {
+      "submitted": "Submitted"
+    },
+    "policy": {
+      "waiting": "Waiting for approval",
+      "approvedAutomatically": "Approved automatically",
+      "notRequired": "Approval not required",
+      "rejected": "Rejected"
+    },
+    "ready": {
+      "ready": "Ready",
+      "done": "Done"
+    },
+    "placement": {
+      "placed": "Placed by constraint tags"
+    }
+  },
+  "day2": {
+    "accept_changes": "Accept the changes made in vCenter",
+    "allow_delete": "Allow deletion",
+    "change_owner": "Change owner",
+    "change_project": "Move to another project",
+    "console": "Open the console",
+    "delete": "Delete",
+    "disk_add": "Add a disk",
+    "disk_extend": "Extend a disk",
+    "disk_remove": "Remove a disk",
+    "edit": "Edit deployment",
+    "extend_lease": "Extend the lease",
+    "iso_mount": "Mount an ISO image",
+    "iso_unmount": "Unmount the ISO image",
+    "lease_expire": "End of the lease",
+    "nic_add": "Add a network adapter",
+    "nic_move": "Change a network adapter's network",
+    "nic_remove": "Remove a network adapter",
+    "nsx_group_add": "Add to a security group",
+    "nsx_group_remove": "Remove from a security group",
+    "power_off": "Power off",
+    "power_on": "Power on",
+    "rename": "Rename",
+    "reset": "Reset",
+    "resize": "Resize",
+    "restart_guest": "Restart guest",
+    "shutdown_guest": "Shut down guest",
+    "snapshot_create": "Take a snapshot",
+    "snapshot_delete": "Delete a snapshot",
+    "snapshot_revert": "Revert to a snapshot",
+    "suspend": "Suspend",
+    "tags_edit": "Edit tags",
+    "unregister": "Unregister",
+    "update": "Update",
+    "vm_unregister": "Unregister"
+  },
+  "day2Group": {
+    "power": "power",
+    "configuration": "configuration",
+    "snapshots": "snapshots",
+    "access": "access",
+    "lifecycle": "lifecycle",
+    "automation": "automation"
+  },
+  "kind": {
+    "request_submitted": {
+      "name": "Request submitted",
+      "when": "To the requester, and the owner when on behalf, once a request is submitted."
+    },
+    "approval_needed": {
+      "name": "Approval needed",
+      "when": "To each approver of a level when it opens, is delegated or escalated to them, or a custom workflow asks them."
+    },
+    "request_approved": {
+      "name": "Request approved",
+      "when": "To the requester, once the last level approved."
+    },
+    "request_rejected": {
+      "name": "Request rejected",
+      "when": "To the requester, once a level rejected."
+    },
+    "request_succeeded": {
+      "name": "Request done",
+      "when": "To the owner, and the requester when on behalf, once a request is done."
+    },
+    "request_failed": {
+      "name": "Request failed",
+      "when": "To the owner, and the requester when on behalf, once a request failed."
+    },
+    "request_rolled_back": {
+      "name": "Request rolled back",
+      "when": "To the owner, once what a failed request built was deleted."
+    },
+    "lease_expiring": {
+      "name": "Lease ending",
+      "when": "To the deployment's owner, 7 days and 1 day before its lease ends."
+    },
+    "lease_expired": {
+      "name": "Lease ended",
+      "when": "To the deployment's owner, once its lease ended."
+    },
+    "owner_changed": {
+      "name": "Deployment handed over",
+      "when": "To the new owner of a deployment."
+    },
+    "step_message": {
+      "name": "Message from a composite",
+      "when": "To those a composite's message step names, when it runs."
+    }
+  }
+}

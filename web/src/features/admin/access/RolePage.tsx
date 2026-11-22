@@ -27,6 +27,7 @@ import { adm } from "@/lib/query";
 import { errorAt, failed, fieldErrors } from "../governance/common";
 import { allows, byArea, type Catalogue, inOrder, scopeOf, scopeText } from "./permissions";
 import { AdminWarning, Refusal, refused } from "./refusal";
+import { areaName, day2Group, day2Name, permissionSummary, roleName } from "@/lib/i18n/names";
 
 type S = components["schemas"];
 
@@ -150,7 +151,7 @@ function PermissionList({
     <div className="flex flex-col gap-4">
       {byArea(catalogue).map(([area, items]) => (
         <fieldset key={area} className="flex flex-col">
-          <legend className="label mb-1">{area}</legend>
+          <legend className="label mb-1">{areaName(area)}</legend>
           {items.map((p) => (
             <PermissionBox
               key={p.id}
@@ -159,7 +160,7 @@ function PermissionList({
               mono
               what={
                 <>
-                  {p.summary}
+                  {permissionSummary(p)}
                   {p.scope === "rvav" && (
                     <Badge tone="outline" className="ml-1.5">
                       {t("role.rvavOnlyBadge")}
@@ -192,7 +193,7 @@ function PermissionList({
                 id={g.permission}
                 label={g.permission}
                 mono
-                what={t("role.everyAction", { group: g.group })}
+                what={t("role.everyAction", { group: day2Group(g.group) })}
                 checked={all}
                 onChange={(on) => set(g.permission, on, (p) => p.startsWith(prefix))}
               />
@@ -202,7 +203,7 @@ function PermissionList({
                     <PermissionBox
                       key={a.permission}
                       id={a.permission}
-                      label={a.name}
+                      label={day2Name(a)}
                       checked={all || held.has(a.permission)}
                       disabled={all}
                       onChange={(on) => set(a.permission, on)}
@@ -249,7 +250,7 @@ export function DeleteRole({
         predicate: (query) => JSON.stringify(query.queryKey) !== JSON.stringify(own),
       });
       void qc.invalidateQueries({ queryKey: ["me"] });
-      toast.success(t("role.deleted", { name: role.name }));
+      toast.success(t("role.deleted", { name: roleName(role) }));
       onClose();
       void Promise.resolve(onDeleted?.()).then(() => qc.removeQueries({ queryKey: own, exact: true }));
     },
@@ -262,7 +263,7 @@ export function DeleteRole({
     <ConfirmDialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={t("role.deleteTitle", { name: role.name })}
+      title={t("role.deleteTitle", { name: roleName(role) })}
       description={t("role.deleteBody")}
       consequences={t("role.deleteConsequences")}
       confirmLabel={t("role.deleteRole")}
@@ -445,7 +446,7 @@ function RoleMenu({ role, editable, onDelete }: { role: S["Role"]; editable: boo
   return (
     <Menu>
       <MenuTrigger asChild>
-        <IconButton label={t("role.moreActions", { name: role.name })} variant="secondary" className="size-8">
+        <IconButton label={t("role.moreActions", { name: roleName(role) })} variant="secondary" className="size-8">
           <Ellipsis />
         </IconButton>
       </MenuTrigger>
@@ -481,7 +482,7 @@ export function RolePage({ roleKey }: { roleKey: string }) {
     <Page>
       <PageHeader
         breadcrumbs={<Crumbs />}
-        title={r?.name ?? t("role.fallback")}
+        title={r ? roleName(r) : t("role.fallback")}
         meta={
           r && (
             <>
@@ -538,7 +539,7 @@ export function NewRolePage({ from }: { from?: string }) {
       <PageHeader
         breadcrumbs={<Crumbs />}
         title={t("role.newTitle")}
-        description={source.data ? t("role.startingFrom", { name: source.data.name }) : t("role.choose")}
+        description={source.data ? t("role.startingFrom", { name: roleName(source.data) }) : t("role.choose")}
         actions={ready && <SaveButton formId={formId} label={t("role.make")} />}
       />
       {!ready && !catalogue.isError && <Skeleton className="h-64" />}

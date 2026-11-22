@@ -37,7 +37,9 @@ describe("Branding", () => {
       const accent = screen.getByLabelText("Accent colour");
       await user.type(accent, "#ffcc00");
       expect(
-        await screen.findByText(/#ffcc00 has a contrast of 1\.\d+:1 against #e9edef in the light theme/),
+        await screen.findByText(
+          /^#ffcc00 has a contrast of 1\.\d+:1 in the light theme: text needs 4\.5:1\. #[0-9a-f]{6} is the closest/,
+        ),
       ).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "Save branding" }));
       expect(accent).toHaveAccessibleDescription(/text needs 4\.5:1/);

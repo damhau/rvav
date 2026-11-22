@@ -415,7 +415,7 @@ function SourcedSelectWidget({
         id={id}
         value={valid ? current : ""}
         onChange={onChange}
-        options={options.map((o) => ({ value: o.value, label: o.label, meta: o.meta }))}
+        options={options.map((o) => ({ value: o.value, label: o.label, meta: o.meta && withUnits(o.meta) }))}
         loading={sourced.isFetching && !sourced.data && !failed}
         disabled={readOnly || Boolean(empty) || (failed && options.length === 0)}
         placeholder={

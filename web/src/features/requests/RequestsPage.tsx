@@ -21,6 +21,7 @@ import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { Drafts } from "./Drafts";
 import { ProgressSegments } from "./ProgressBar";
+import { stepTitle } from "@/lib/i18n/names";
 
 export const requestFilters = ["open", "pending_approval", "failed", "succeeded"] as const;
 
@@ -59,7 +60,7 @@ const columnsFor = (t: TFunction<"requests">): Column<ServiceRequest>[] => [
     cell: (r) => (
       <div className="flex flex-col gap-1">
         <span className="text-muted">
-          {r.current_step?.title ??
+          {(r.current_step && stepTitle(r.current_step)) ??
             (r.status === "failed"
               ? r.error?.message
               : t("list.stepsOf", { done: r.progress.done, count: r.progress.total }))}

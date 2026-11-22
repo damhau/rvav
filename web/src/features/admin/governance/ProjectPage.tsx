@@ -36,6 +36,7 @@ import { DirectoryPlacements } from "./DirectoryPlacements";
 import { MemberQuotas } from "./MemberQuotas";
 import { ArchiveDialog, quotaTone, takenText } from "./ProjectsPage";
 import { enforcements, quotaResources as resources, resourceName } from "./QuotaLines";
+import { roleName } from "@/lib/i18n/names";
 
 type S = components["schemas"];
 type T = TFunction<"admin-governance">;
@@ -302,14 +303,14 @@ function RolesSheet({
         {offered.map((r) => (
           <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-body">
             <Checkbox id={`mr-${r.key}`} checked={keys.includes(r.key)} onChange={(on) => toggle(r.key, on)} />
-            {r.name}
+            {roleName(r)}
             {!r.built_in && <span className="font-mono text-secondary text-muted">{r.key}</span>}
           </label>
         ))}
         {kept.map((r) => (
           <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-body">
             <Checkbox id={`mr-${r.key}`} checked disabled onChange={() => undefined} />
-            {r.name}
+            {roleName(r)}
             <span className="text-secondary text-muted">{t("project.roles.cantTake")}</span>
           </label>
         ))}
@@ -317,7 +318,7 @@ function RolesSheet({
       {viaGroups.length > 0 && (
         <p className="text-secondary text-muted">
           {t("project.roles.throughGroups", {
-            roles: viaGroups.map((r) => `${r.name} (${r.groups.join(", ")})`).join("; "),
+            roles: viaGroups.map((r) => `${roleName(r)} (${r.groups.join(", ")})`).join("; "),
           })}
         </p>
       )}
@@ -412,7 +413,10 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
   const role = items.some((r) => r.key === picked)
     ? picked
     : ((items.find((r) => r.key === "member") ?? items[0])?.key ?? picked);
-  const roleName = (key: string) => offered.data?.items.find((r) => r.key === key)?.name ?? key;
+  const roleLabel = (key: string) => {
+    const r = offered.data?.items.find((x) => x.key === key);
+    return r ? roleName(r) : key;
+  };
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["admin"] });
     void qc.invalidateQueries({ queryKey: ["me"] });
@@ -427,7 +431,7 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
       ),
     onSuccess: (m) => {
       refresh();
-      toast.success(t("project.members.added", { name: m.user.name, role: roleName(role) }));
+      toast.success(t("project.members.added", { name: m.user.name, role: roleLabel(role) }));
     },
     onError: (e) => {
       if (!refused(e)) failed(e, t("project.members.notAdded"));
@@ -477,10 +481,10 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
                   params={{ roleKey: r.key }}
                   className="text-accent underline underline-offset-2"
                 >
-                  {r.name}
+                  {roleName(r)}
                 </Link>
               ) : (
-                r.name
+                roleName(r)
               )}{" "}
               <span className="text-secondary text-muted">{sourceText(t, r)}</span>
             </li>
@@ -516,7 +520,7 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
                     onPick={(u) => {
                       const m = members.data?.items.find((x) => x.user.id === u.id);
                       if (m?.direct_roles.includes(role))
-                        toast.info(t("project.members.already", { name: u.name, role: roleName(role) }), {
+                        toast.info(t("project.members.already", { name: u.name, role: roleLabel(role) }), {
                           description: t("project.members.alreadyHint"),
                         });
                       else add.mutate({ userId: u.id, roles: [...(m?.direct_roles ?? []), role] });
@@ -531,7 +535,7 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
                     loading={offered.isPending}
                     options={(offered.data?.items ?? []).map((r) => ({
                       value: r.key,
-                      label: r.name,
+                      label: roleName(r),
                       group: r.built_in ? t("projects.builtIn") : t("projects.custom"),
                     }))}
                   />
@@ -577,13 +581,13 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
           title={t("project.members.removeTitle", { name: removing.user.name })}
           description={t("project.members.removeLead", {
             project: project.name,
-            roles: removing.direct_roles.map(roleName).join(", "),
+            roles: removing.direct_roles.map(roleLabel).join(", "),
           })}
           consequences={
             kept(removing).length > 0
               ? t("project.members.keeps", {
                   roles: kept(removing)
-                    .map((r) => `${r.name} (${sourceText(t, { ...r, direct: false })})`)
+                    .map((r) => `${roleName(r)} (${sourceText(t, { ...r, direct: false })})`)
                     .join(", "),
                 })
               : t("project.members.deploymentsStay")

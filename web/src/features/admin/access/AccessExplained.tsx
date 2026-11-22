@@ -21,6 +21,7 @@ import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { td, th, UserPicker } from "../governance/common";
 import { allows } from "./permissions";
+import { areaName, permissionSummary, roleName } from "@/lib/i18n/names";
 
 type S = components["schemas"];
 
@@ -35,14 +36,14 @@ export function grantText(g: S["AccessGrant"], project: S["ProjectRef"] | null):
 }
 
 function RoleName({ role, linked }: { role: S["RoleRef"]; linked: boolean }) {
-  if (!linked) return <>{role.name}</>;
+  if (!linked) return <>{roleName(role)}</>;
   return (
     <Link
       to="/admin/roles/$roleKey"
       params={{ roleKey: role.key }}
       className="text-accent underline underline-offset-2"
     >
-      {role.name}
+      {roleName(role)}
     </Link>
   );
 }
@@ -117,10 +118,12 @@ function Explanation({
   const tableName = self ? t("explain.tableSelf", { where }) : t("explain.tableOther", { name: a.user.name, where });
   const groups = formatList(a.groups);
   const info = new Map(c.items.map((p) => [p.id, p]));
+  const summaryOf = (p: S["PermissionInfo"] | undefined) => p && permissionSummary(p);
   const shown = a.permissions.filter((p) => show === "all" || p.held === (show === "held"));
   const areas = new Map<string, S["AccessPermission"][]>();
   for (const p of shown) {
-    const area = info.get(p.id)?.area ?? t("explain.day2Area");
+    const known = info.get(p.id)?.area;
+    const area = known ? areaName(known) : t("explain.day2Area");
     areas.set(area, [...(areas.get(area) ?? []), p]);
   }
   return (
@@ -171,7 +174,7 @@ function Explanation({
                 {list.map((p) => (
                   <tr key={p.id}>
                     <td className={`${td} pl-4`}>
-                      {info.get(p.id)?.summary ?? allows(c, [p.id])[0]?.text ?? p.id}
+                      {summaryOf(info.get(p.id)) ?? allows(c, [p.id])[0]?.text ?? p.id}
                       <span className="block font-mono text-secondary text-muted">{p.id}</span>
                     </td>
                     <td className={td}>

@@ -20,6 +20,7 @@ import { adm, q } from "@/lib/query";
 import { leaseLabel, roughDuration } from "@/lib/format";
 import { versionLabel } from "@/features/catalog/facts";
 import { ProgressSegments } from "@/features/requests/ProgressBar";
+import { stepTitle } from "@/lib/i18n/names";
 
 const quotaUnit = { vcpu: "", memory_gb: "GB", storage_gb: "GB", vm_count: "" } as const;
 
@@ -152,7 +153,7 @@ const openColumns = (t: TFunction<"overview">): Column<OpenRequest>[] => [
     header: t("open.step"),
     cell: (r) => (
       <div className="flex flex-col gap-1">
-        <span className="text-muted">{r.current_step?.title ?? "–"}</span>
+        <span className="text-muted">{r.current_step ? stepTitle(r.current_step) : "–"}</span>
         {r.status === "running" && <ProgressSegments request={r} />}
       </div>
     ),

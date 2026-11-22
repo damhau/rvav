@@ -32,11 +32,15 @@ import { cn } from "@/lib/utils";
 import { AdminWarning, Refusal, refused } from "../access/refusal";
 import { failed, fieldErrors, UserPicker } from "./common";
 import { DirectoryPlacements } from "./DirectoryPlacements";
+import { roleName } from "@/lib/i18n/names";
 
 type S = components["schemas"];
 type T = TFunction<"admin-governance">;
 
 const keyExample = "dev";
+
+const mappedRole = (m: { role: string; role_name?: string }) =>
+  m.role_name ? roleName({ key: m.role, name: m.role_name }) : m.role;
 const groupExample = "rvav-web";
 
 export const projectsTabs = ["projects", "environments", "groups"] as const;
@@ -817,7 +821,7 @@ function MapGroupSheet({ onClose }: { onClose: () => void }) {
           loading={roles.isPending}
           options={offered.map((r) => ({
             value: r.key,
-            label: r.name,
+            label: roleName(r),
             group: r.built_in ? t("projects.builtIn") : t("projects.custom"),
           }))}
         />
@@ -850,8 +854,8 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
   });
   const gives = (m: S["GroupMapping"]) =>
     m.project
-      ? t("projects.groups.givesIn", { role: m.role_name ?? m.role, project: m.project.name })
-      : t("projects.groups.givesAll", { role: m.role_name ?? m.role });
+      ? t("projects.groups.givesIn", { role: mappedRole(m), project: m.project.name })
+      : t("projects.groups.givesAll", { role: mappedRole(m) });
   const columns: Column<S["GroupMapping"]>[] = [
     {
       id: "group",
@@ -868,7 +872,7 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
           <Trans
             t={t}
             i18nKey={m.project ? "projects.groups.givesInLink" : "projects.groups.givesAllLink"}
-            values={{ role: m.role_name ?? m.role, project: m.project?.name }}
+            values={{ role: mappedRole(m), project: m.project?.name }}
             components={{
               role: (
                 <Link

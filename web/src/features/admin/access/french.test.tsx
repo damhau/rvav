@@ -18,10 +18,10 @@ describe("roles and access, in French", () => {
   it("joins actions and permissions as French lists do", () => {
     const c = permissionsAnswer();
     expect(allows(c, ["day2.power:power_off", "day2.power:power_on"]).map((s) => s.text)).toContain(
-      "Exécuter les actions de jour 2 power Power off et Power on.",
+      "Exécuter les actions de jour 2 Éteindre et Allumer du groupe alimentation.",
     );
     expect(allows(c, ["day2.snapshots"]).map((s) => s.text)).toContain(
-      "Exécuter toutes les actions de jour 2 snapshots, y compris celles ajoutées plus tard.",
+      "Exécuter toutes les actions de jour 2 du groupe snapshots, y compris celles ajoutées plus tard.",
     );
     expect(scopeOf(c, ["policies.read"]).why).toBe(
       "policies.read est une permission pour l'ensemble de rvav seulement.",
@@ -51,6 +51,19 @@ describe("roles and access, in French", () => {
     const table = await screen.findByRole("table", { name: "Rôles" });
     expect(await within(table).findAllByText("Intégré")).not.toHaveLength(0);
     expect(screen.getByRole("link", { name: "Nouveau rôle" })).toBeInTheDocument();
+    expect(within(table).getByRole("link", { name: "Administrateur du catalogue" })).toHaveAttribute(
+      "href",
+      "/admin/roles/catalog-admin",
+    );
+    expect(within(table).queryByRole("link", { name: "Catalog admin" })).not.toBeInTheDocument();
+  });
+
+  it("names a built-in role's permissions and their areas in French", { timeout: 15_000 }, async () => {
+    db.me.locale = "fr";
+    renderApp("/admin/roles/project-admin");
+    expect(await screen.findByRole("heading", { level: 1, name: "Administrateur de projet" })).toBeInTheDocument();
+    expect(await screen.findByText("Demander pour quelqu'un d'autre.")).toBeInTheDocument();
+    expect(screen.queryByText("Request for someone else.")).not.toBeInTheDocument();
   });
 
   it("links the roles for all of rvav to the identity provider groups", { timeout: 15_000 }, async () => {

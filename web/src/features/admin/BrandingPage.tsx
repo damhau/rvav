@@ -29,6 +29,15 @@ const hexColour = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/;
 
 const twoDecimals = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 
+/** The contrast text needs, as the server's brand.MinContrast. */
+const minContrast = 4.5;
+
+/** A colour as the server writes it: #rrggbb, in lower case. */
+function normalHex(colour: string) {
+  const hex = colour.trim().slice(1).toLowerCase();
+  return `#${hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex}`;
+}
+
 /** How the accent looks in one theme: a button, a link and the current page in the menu. */
 function Swatch({ theme, palette }: { theme: keyof typeof themes; palette: AccentPalette }) {
   const { t } = useTranslation("admin");
@@ -86,7 +95,20 @@ function AccentCheckNote({ accent, onUse }: { accent: string; onUse: (colour: st
   else if (!check.data.ok)
     note = (
       <>
-        <p className="text-bad">{check.data.message}</p>
+        {check.data.ratio > 0 ? (
+          <p className="text-bad">
+            {t("branding.contrast", {
+              colour: normalHex(wanted),
+              ratio: formatNumber(check.data.ratio, twoDecimals),
+              needed: formatNumber(minContrast, { minimumFractionDigits: 1 }),
+            })}
+            {check.data.suggestion && <> {t("branding.closest", { colour: check.data.suggestion })}</>}
+          </p>
+        ) : (
+          <p lang="en" className="text-bad">
+            {check.data.message}
+          </p>
+        )}
         {check.data.suggestion && (
           <Button size="sm" type="button" className="self-start" onClick={() => onUse(check.data.suggestion!)}>
             <span
