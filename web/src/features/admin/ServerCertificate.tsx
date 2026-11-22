@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
-import { longDay } from "@/lib/utils";
+import { longDay } from "@/lib/format";
 import { failed } from "./governance/common";
 
 type S = components["schemas"];

@@ -23,7 +23,8 @@ import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, keys, q } from "@/lib/query";
-import { relative, toText } from "@/lib/utils";
+import { toText } from "@/lib/utils";
+import { relative } from "@/lib/format";
 
 type Entry = components["schemas"]["FormLibraryEntry"];
 type EntryWrite = components["schemas"]["FormLibraryEntryWrite"];

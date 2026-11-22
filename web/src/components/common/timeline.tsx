@@ -1,6 +1,7 @@
 import { CircleCheck, CircleDashed, CircleMinus, CircleSlash, CircleX, Hourglass, LoaderCircle } from "lucide-react";
 import type { Step, StepStatus } from "@/lib/api/types";
-import { clock, cn, duration, fullDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { clock, duration, fullDate } from "@/lib/format";
 
 const systemLabel: Record<NonNullable<Step["system"]>, string> = {
   rvav: "",

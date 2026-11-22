@@ -14,7 +14,7 @@ import { can } from "@/lib/can";
 import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
-import { roughDuration } from "@/lib/utils";
+import { roughDuration } from "@/lib/format";
 import { approvalHint, catalogKinds, versionLabel } from "./facts";
 import { FavouriteStar } from "./favourite";
 

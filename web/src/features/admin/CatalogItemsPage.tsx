@@ -18,7 +18,7 @@ import { SecretsPanel } from "@/features/admin/catalog/SecretsPanel";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { AwxTemplate } from "@/lib/api/types";
 import { keys, q } from "@/lib/query";
-import { relative } from "@/lib/utils";
+import { relative } from "@/lib/format";
 
 export const catalogTabs = ["items", "categories", "secrets", "awx"] as const;
 export type CatalogTab = (typeof catalogTabs)[number];

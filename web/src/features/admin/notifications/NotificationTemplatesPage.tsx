@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import type { NotificationTemplateKind } from "@/lib/api/types";
 import { adm } from "@/lib/query";
-import { relative } from "@/lib/utils";
+import { relative } from "@/lib/format";
 import { channelLabel, localeLabel } from "./templateLabels";
 
 const edited = (k: NotificationTemplateKind) => k.templates.filter((t) => t.edited);

@@ -18,7 +18,7 @@ import { Panel } from "@/components/ui/panel";
 import { Sheet } from "@/components/ui/sheet";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
-import { fullDate, relative } from "@/lib/utils";
+import { fullDate, relative } from "@/lib/format";
 import {
   countsText,
   DeletePlan,

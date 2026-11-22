@@ -15,7 +15,7 @@ import type { QuotaResource, ServiceRequest } from "@/lib/api/types";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q } from "@/lib/query";
-import { leaseLabel, roughDuration } from "@/lib/utils";
+import { leaseLabel, roughDuration } from "@/lib/format";
 import { versionLabel } from "@/features/catalog/facts";
 import { ProgressSegments } from "@/features/requests/ProgressBar";
 

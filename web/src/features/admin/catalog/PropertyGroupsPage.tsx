@@ -21,7 +21,7 @@ import { failed, fieldErrors, keyProblems } from "@/features/admin/governance/co
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { keys } from "@/lib/query";
-import { relative } from "@/lib/utils";
+import { relative } from "@/lib/format";
 
 type Group = components["schemas"]["PropertyGroup"];
 type GroupInput = components["schemas"]["PropertyGroupInput"];

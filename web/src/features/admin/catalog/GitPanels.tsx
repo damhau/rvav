@@ -18,7 +18,8 @@ import type { AdminCatalogItem, CatalogGitFile, CatalogItemGit, DiffLine } from 
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
-import { cn, relative } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { relative } from "@/lib/format";
 
 type CatalogGitStatus = components["schemas"]["CatalogGitStatus"];
 

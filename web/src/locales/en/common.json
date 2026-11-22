@@ -1,5 +1,27 @@
 {
   "language": {
     "notSaved": "Your language wasn't saved"
+  },
+  "time": {
+    "justNow": "just now",
+    "inAMoment": "in a moment",
+    "seconds": "{{s}}s",
+    "minutesSeconds": "{{m}}m {{s}}s",
+    "hoursMinutes": "{{h}}h {{m}}m",
+    "aboutAMinute": "1 min",
+    "aboutMinutes": "about {{m}} min",
+    "aboutHours": "about {{h}} h"
+  },
+  "lease": {
+    "none": "No expiry",
+    "expired": "Expired",
+    "tomorrow": "Tomorrow",
+    "inDays_one": "In {{count}} day",
+    "inDays_other": "In {{count}} days"
+  },
+  "units": {
+    "MB": "{{value}} MB",
+    "GB": "{{value}} GB",
+    "TB": "{{value}} TB"
   }
 }

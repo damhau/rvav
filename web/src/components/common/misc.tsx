@@ -29,7 +29,8 @@ import {
 import { useState } from "react";
 import { Tip } from "@/components/ui/tooltip";
 import type { CatalogItemType } from "@/lib/api/types";
-import { cn, fullDate, relative } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { fullDate, relative } from "@/lib/format";
 
 /** Catalog item icons: the same set as the server's (core.CatalogIcons). */
 export const icons: Record<string, React.ElementType> = {

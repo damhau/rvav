@@ -26,7 +26,7 @@ import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q } from "@/lib/query";
-import { fullDate, relative } from "@/lib/utils";
+import { fullDate, relative } from "@/lib/format";
 import { errorAt, failed, fieldErrors, priorityOf, writable } from "../governance/common";
 import { RunDialog } from "./runs";
 

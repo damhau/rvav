@@ -4,7 +4,8 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { Option, UiColumn, UiField, UiWidget } from "@/lib/api/types";
-import { fullDate, longDay, toText } from "@/lib/utils";
+import { toText } from "@/lib/utils";
+import { fullDate, longDay } from "@/lib/format";
 import { fileSize, isFileRef } from "./file";
 import type { Part } from "./sections";
 import { useFieldValues, type FormContext } from "./useFieldValues";

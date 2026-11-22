@@ -25,7 +25,7 @@ import { api, call, isApiError } from "@/lib/api/client";
 import type { Day2FormDefinition, Day2FormDesign, FieldError, FieldStates, VmResource } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
 import { keys, q } from "@/lib/query";
-import { fullDate, relative } from "@/lib/utils";
+import { fullDate, relative } from "@/lib/format";
 import {
   closeDraft,
   draftCopy,

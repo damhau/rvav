@@ -19,7 +19,8 @@ import { can } from "@/lib/can";
 import { useSearchBox } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { q, type DeploymentSort } from "@/lib/query";
-import { cn, daysUntil, leaseLabel } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { daysUntil, leaseLabel } from "@/lib/format";
 import { RowActionItems, usePickedAction } from "./actions";
 import { BulkDialog, bulkActions } from "./bulk";
 import {

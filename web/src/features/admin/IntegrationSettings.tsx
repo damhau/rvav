@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { fullDate, relative } from "@/lib/utils";
+import { fullDate, relative } from "@/lib/format";
 import { Applying } from "./Applying";
 import { failed, fieldErrors } from "./governance/common";
 import { ServerCertificate } from "./ServerCertificate";

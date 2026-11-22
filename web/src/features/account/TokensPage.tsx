@@ -17,7 +17,8 @@ import { api, call, isApiError } from "@/lib/api/client";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
-import { copyText, relative } from "@/lib/utils";
+import { copyText } from "@/lib/utils";
+import { relative } from "@/lib/format";
 
 const durations = [
   { value: "30", label: "30 days" },

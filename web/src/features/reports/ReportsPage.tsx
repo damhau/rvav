@@ -21,7 +21,8 @@ import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
-import { cn, fullDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { formatDate, formatNumber, fullDate } from "@/lib/format";
 
 type S = components["schemas"];
 type Interval = S["Report"]["interval"];
@@ -64,9 +65,8 @@ const percent = (r?: number | null) => (r === undefined || r === null ? "none" :
 
 function periodLabel(iso: string, interval: Interval, long = false) {
   const d = new Date(`${iso}T00:00:00Z`);
-  if (interval === "month")
-    return d.toLocaleDateString("en-GB", { month: long ? "long" : "short", year: "numeric", timeZone: "UTC" });
-  const day = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  if (interval === "month") return formatDate(d, { month: long ? "long" : "short", year: "numeric", timeZone: "UTC" });
+  const day = formatDate(d, { day: "numeric", month: "short", timeZone: "UTC" });
   return interval === "week" && long ? `Week of ${day}` : day;
 }
 
@@ -449,7 +449,7 @@ export function ReportsPage() {
       {r && (
         <div className={cn("flex flex-col gap-4 transition-opacity", report.isPlaceholderData && "opacity-60")}>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
-            <StatTile label="Requests" value={r.requests.totals.submitted.toLocaleString("en-GB")} />
+            <StatTile label="Requests" value={formatNumber(r.requests.totals.submitted)} />
             <StatTile
               label="Success rate"
               value={percent(r.requests.totals.success_rate)}

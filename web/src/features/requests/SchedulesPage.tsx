@@ -26,7 +26,7 @@ import type { Me, Schedule, ScheduleRun } from "@/lib/api/types";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
-import { fullDate } from "@/lib/utils";
+import { fullDate } from "@/lib/format";
 
 const units: [number, string][] = [
   [60 * 24 * 7, "week"],

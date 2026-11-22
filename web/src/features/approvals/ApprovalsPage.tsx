@@ -23,7 +23,8 @@ import type { Approval, ApprovalEditableField, ApprovalSummary } from "@/lib/api
 import { useNow } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
-import { cn, relative, toText } from "@/lib/utils";
+import { cn, toText } from "@/lib/utils";
+import { relative } from "@/lib/format";
 
 export interface ApprovalsSearch {
   /** The approval open in the side panel. */

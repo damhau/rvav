@@ -24,7 +24,7 @@ import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
-import { fullDate, relative } from "@/lib/utils";
+import { formatNumber, fullDate, relative } from "@/lib/format";
 import { errorAt, failed, fieldErrors } from "./governance/common";
 
 type S = components["schemas"];
@@ -408,8 +408,8 @@ function Delivery({ d }: { d: Destination }) {
           <Badge tone="ok">Up to date</Badge>
         )}
         <span>
-          {s.backlog > 0 ? `${s.backlog.toLocaleString("en")} waiting · ` : ""}
-          {s.delivered.toLocaleString("en")} delivered
+          {s.backlog > 0 ? `${formatNumber(s.backlog)} waiting · ` : ""}
+          {formatNumber(s.delivered)} delivered
         </span>
       </div>
       {s.failures > 0 && s.last_error && (
@@ -550,7 +550,7 @@ export function AuditForwardingPage() {
           description="rvav sends it nothing more."
           consequences={
             removing.state.backlog > 0
-              ? `The ${removing.state.backlog.toLocaleString("en")} events waiting for it are dropped. The audit log keeps them.`
+              ? `The ${formatNumber(removing.state.backlog)} events waiting for it are dropped. The audit log keeps them.`
               : "The audit log keeps every event."
           }
           confirmLabel="Remove destination"

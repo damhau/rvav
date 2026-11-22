@@ -20,7 +20,7 @@ import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { keys } from "@/lib/query";
-import { relative } from "@/lib/utils";
+import { relative } from "@/lib/format";
 
 type Secret = components["schemas"]["Secret"];
 type SecretWrite = components["schemas"]["SecretWrite"];

@@ -28,7 +28,7 @@ import type {
 } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
 import { adm } from "@/lib/query";
-import { relative } from "@/lib/utils";
+import { relative } from "@/lib/format";
 import { TemplatePreview } from "./TemplatePreview";
 import { channelLabel, channels, localeLabel, locales } from "./templateLabels";
 

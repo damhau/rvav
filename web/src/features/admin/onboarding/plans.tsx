@@ -21,7 +21,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { useDebounced } from "@/lib/hooks";
 import { adm } from "@/lib/query";
-import { fullDate, relative } from "@/lib/utils";
+import { fullDate, relative } from "@/lib/format";
 import { failed, fieldErrors } from "../governance/common";
 import { emptyTarget, inputProblems, planTarget, targetOf, TargetFields, useFocusRefused, type Target } from "./target";
 

@@ -19,7 +19,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import type { AwxAction, AwxActionUpdate, Day2FormSummary } from "@/lib/api/types";
 import { adm, keys, q } from "@/lib/query";
-import { fullDate, relative } from "@/lib/utils";
+import { fullDate, relative } from "@/lib/format";
 import { failed, fieldErrors } from "./governance/common";
 
 type Target = AwxAction["types"][number];

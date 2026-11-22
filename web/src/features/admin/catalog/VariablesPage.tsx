@@ -21,7 +21,7 @@ import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { Variable } from "@/lib/api/types";
 import { adm } from "@/lib/query";
-import { relative } from "@/lib/utils";
+import { relative } from "@/lib/format";
 
 type Kind = "text" | "number" | "boolean" | "json";
 

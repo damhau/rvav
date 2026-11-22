@@ -15,7 +15,7 @@ import type { CatalogItem, RequestForm } from "@/lib/api/types";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
-import { roughDuration } from "@/lib/utils";
+import { roughDuration } from "@/lib/format";
 import { approvalText, versionLabel } from "./facts";
 import { FavouriteButton } from "./favourite";
 

@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { components } from "@/lib/api/schema";
 import type { IpamReconcile } from "@/lib/api/types";
 import { adm, q } from "@/lib/query";
-import { fullDate, relative } from "@/lib/utils";
+import { fullDate, relative } from "@/lib/format";
 import { integrationAbout, integrationPage, integrationTitle } from "./IntegrationSettings";
 
 type S = components["schemas"];

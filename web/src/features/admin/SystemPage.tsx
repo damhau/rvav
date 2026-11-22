@@ -13,7 +13,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import type { components } from "@/lib/api/schema";
 import { adm } from "@/lib/query";
-import { cn, fullDate, relative } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { fullDate, relative } from "@/lib/format";
 import { roles } from "./Applying";
 import { integrationPage, integrationTitle } from "./IntegrationSettings";
 

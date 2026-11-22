@@ -21,7 +21,7 @@ import { projectsWith } from "@/lib/can";
 import { useDebounced } from "@/lib/hooks";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q, type AuditFilters } from "@/lib/query";
-import { fullDate } from "@/lib/utils";
+import { fullDate } from "@/lib/format";
 
 type AuditEvent = components["schemas"]["AuditEvent"];
 

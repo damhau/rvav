@@ -25,7 +25,8 @@ import type {
   GroupMembershipResource,
   VmResource,
 } from "@/lib/api/types";
-import { cn, fullDate, leaseLabel, newIdempotencyKey } from "@/lib/utils";
+import { cn, newIdempotencyKey } from "@/lib/utils";
+import { fullDate, leaseLabel } from "@/lib/format";
 import { q } from "@/lib/query";
 import { ActionDialog, ActionsMenu, DeploymentActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
 import { CustomResourcesPanel } from "./CustomResources";

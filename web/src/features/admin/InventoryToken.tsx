@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { api, call } from "@/lib/api/client";
 import { adm } from "@/lib/query";
-import { fullDate, relative } from "@/lib/utils";
+import { fullDate, relative } from "@/lib/format";
 import { failed, fieldErrors } from "./governance/common";
 
 export function InventoryToken() {

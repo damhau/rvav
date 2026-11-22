@@ -8,7 +8,8 @@ import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } fr
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { q } from "@/lib/query";
-import { cn, relative } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { relative } from "@/lib/format";
 
 type Notification = components["schemas"]["Notification"];
 

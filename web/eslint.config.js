@@ -60,6 +60,21 @@ const untranslated = [
   "Markdown",
 ];
 
+// Dates and numbers go through lib/format.ts, in the language shown.
+const intlSelectors = ["NewExpression[callee.object.name='Intl'][callee.property.name=/Format$|PluralRules/]"].map(
+  (selector) => ({ selector, message: "Format with lib/format.ts, in the language shown (ADR-0061)" }),
+);
+
+const toastSelectors = [
+  "CallExpression[callee.object.name='toast'] > Literal",
+  "CallExpression[callee.object.name='toast'] > TemplateLiteral",
+  "CallExpression[callee.name='toast'] > Literal",
+  "CallExpression[callee.name='toast'] > TemplateLiteral",
+  "CallExpression[callee.object.name='toast'] > ObjectExpression > Property[key.name='description'] > Literal",
+].map((selector) => ({ selector, message: "A toast is read: translate it with t() (ADR-0061)" }));
+
+const untested = ["**/*.test.ts", "**/*.test.tsx", "src/mocks/**", "src/test/**"];
+
 export default tseslint.config(
   {
     ignores: [
@@ -89,8 +104,22 @@ export default tseslint.config(
     },
   },
   {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [...untested, "src/lib/format.ts"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        ...["toLocaleString", "toLocaleDateString", "toLocaleTimeString"].map((property) => ({
+          property,
+          message: "Format with lib/format.ts, in the language shown (ADR-0061)",
+        })),
+      ],
+      "no-restricted-syntax": ["error", ...intlSelectors],
+    },
+  },
+  {
     files: translated,
-    ignores: ["**/*.test.ts", "**/*.test.tsx", "src/mocks/**", "src/test/**", "src/lib/api/**"],
+    ignores: [...untested, "src/lib/api/**", "src/lib/format.ts"],
     plugins: { i18next },
     rules: {
       "i18next/no-literal-string": [
@@ -105,19 +134,8 @@ export default tseslint.config(
           message: "Text a person reads goes through t() (ADR-0061, docs/frontend.md#translating-a-folder)",
         },
       ],
-      "no-restricted-syntax": [
-        "error",
-        ...[
-          "CallExpression[callee.object.name='toast'] > Literal",
-          "CallExpression[callee.object.name='toast'] > TemplateLiteral",
-          "CallExpression[callee.name='toast'] > Literal",
-          "CallExpression[callee.name='toast'] > TemplateLiteral",
-          "CallExpression[callee.object.name='toast'] > ObjectExpression > Property[key.name='description'] > Literal",
-        ].map((selector) => ({
-          selector,
-          message: "A toast is read: translate it with t() (ADR-0061)",
-        })),
-      ],
+      // Both lists: a later block's setting of a rule replaces an earlier one's.
+      "no-restricted-syntax": ["error", ...intlSelectors, ...toastSelectors],
     },
   },
   {
