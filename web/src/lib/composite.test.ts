@@ -173,9 +173,9 @@ describe("readComposite", () => {
       expect(v.problems).toEqual([]);
       const s = v.groups[1]![0]!;
       expect([s.kind, s.target, s.uses]).toEqual(["poll", "PUT https://itsm.example/${steps.first.id}", ["first"]]);
-      expect(s.poll).toEqual({ until: good.until, every: "10m", timeout: "72h, then the step fails" });
+      expect(s.poll).toEqual({ until: good.until, every: "10m", timeout: "72h", onTimeout: "fail" });
       const goesOn = readComposite({ steps: [{ key: "a", poll: { ...good, on_timeout: "continue" } }] });
-      expect(goesOn.groups[0]![0]!.poll!.timeout).toBe("72h, then it goes on");
+      expect(goesOn.groups[0]![0]!.poll!.onTimeout).toBe("continue");
     });
 
     it("refuses what the server refuses", () => {
@@ -232,9 +232,42 @@ describe("readComposite", () => {
         ],
       });
       expect(v.groups.flat().map((s) => [s.kind, s.ask])).toEqual([
-        ["ask", { who: "managers, 2 people", wants: "to approve or reject", timeout: "48h, then it goes on" }],
-        ["ask", { who: "the requester, the owner", wants: "1 answer", timeout: undefined }],
-        ["ask", { who: "a person", wants: "to approve or reject", timeout: undefined }],
+        [
+          "ask",
+          {
+            requester: false,
+            owner: false,
+            groups: ["managers"],
+            people: 2,
+            questions: 0,
+            timeout: "48h",
+            onTimeout: "continue",
+          },
+        ],
+        [
+          "ask",
+          {
+            requester: true,
+            owner: true,
+            groups: [],
+            people: 0,
+            questions: 1,
+            timeout: undefined,
+            onTimeout: "fail",
+          },
+        ],
+        [
+          "ask",
+          {
+            requester: false,
+            owner: false,
+            groups: [],
+            people: 0,
+            questions: 0,
+            timeout: undefined,
+            onTimeout: "fail",
+          },
+        ],
       ]);
     });
 
@@ -350,10 +383,10 @@ describe("a branch", () => {
     expect(view.problems).toEqual([]);
     const s = view.groups[0]![0]!;
     expect(s.kind).toBe("branch");
-    expect(s.sides!.map((x) => [x.label, x.when, x.taken, x.steps.map((y) => y.key)])).toEqual([
+    expect(s.sides!.map((x) => [x.title, x.when, x.taken, x.steps.map((y) => y.key)])).toEqual([
       ["Refused", "inputs.ok == false", 1, ["no"]],
-      ["Case 2", "inputs.size > 500", 2, []],
-      ["Otherwise", undefined, 0, ["yes", "then"]],
+      [undefined, "inputs.size > 500", 2, []],
+      [undefined, undefined, 0, ["yes", "then"]],
     ]);
     expect(allSteps(view).map((x) => x.key)).toEqual(["b", "no", "yes", "then"]);
     expect(view.groups.flat().map((x) => x.key)).toEqual(["b"]);
@@ -361,9 +394,9 @@ describe("a branch", () => {
 
   it("has an empty otherwise that goes on, when it writes none", () => {
     const s = readComposite({ steps: [{ key: "b", branch: { cases: [{ when: "inputs.a" }] } }] }).groups[0]![0]!;
-    expect(s.sides!.map((x) => [x.label, x.steps.length])).toEqual([
-      ["Case 1", 0],
-      ["Otherwise", 0],
+    expect(s.sides!.map((x) => [x.taken, x.steps.length])).toEqual([
+      [1, 0],
+      [0, 0],
     ]);
   });
 
@@ -445,7 +478,13 @@ describe("a message", () => {
     const s = read({ requester: true, groups: ["dba"], users: ["usr_1"], message: "Ready: ${inputs.role}" })
       .groups[0]![0]!;
     expect(s.kind).toBe("notify");
-    expect(s.notify).toEqual({ who: "the requester, dba, 1 person", message: "Ready: ${inputs.role}" });
+    expect(s.notify).toEqual({
+      requester: true,
+      owner: false,
+      groups: ["dba"],
+      people: 1,
+      message: "Ready: ${inputs.role}",
+    });
   });
 
   it("refuses what the server refuses", () => {
@@ -622,12 +661,13 @@ describe("loops, catch paths and signals (ADR-0057)", () => {
     expect(v.groups[0]![0]).toMatchObject({ forEach: { items: "inputs.hosts", parallel: 3 }, catch: [{ key: "fix" }] });
     expect(v.groups[1]![0]).toMatchObject({
       kind: "signal",
-      signal: { waitsFor: "the signal cab-approved", timeout: "72h, then the step fails" },
+      signal: { name: "cab-approved", timeout: "72h", onTimeout: "fail" },
     });
     expect(v.groups[2]![0]!.signal).toEqual({
-      waitsFor: "the event provisioning.post",
+      event: "provisioning.post",
       when: "item.slug == 'x'",
-      timeout: "1h, then it goes on",
+      timeout: "1h",
+      onTimeout: "continue",
     });
     expect(v.groupCatch[3]?.map((s) => s.key)).toEqual(["tell"]);
     expect(v.onError.map((s) => s.key)).toEqual(["incident"]);

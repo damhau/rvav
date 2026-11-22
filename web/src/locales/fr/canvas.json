@@ -16,6 +16,30 @@
   "problemsList_many": "{{count}} problèmes\u00a0: {{list}}",
   "problemsList_other": "{{count}} problèmes\u00a0: {{list}}",
   "line": "{{label}}\u00a0: {{text}}",
+  "timeoutThen": {
+    "fail": "{{timeout}}, puis l'étape échoue",
+    "continue": "{{timeout}}, puis elle continue",
+    "escalate": "{{timeout}}, puis elle escalade"
+  },
+  "who": {
+    "requester": "le demandeur",
+    "owner": "le propriétaire",
+    "people_one": "{{count}} personne",
+    "people_many": "{{count}} personnes",
+    "people_other": "{{count}} personnes",
+    "anyone": "une personne",
+    "others": "d'autres personnes"
+  },
+  "wants": {
+    "decision": "une approbation ou un refus",
+    "answers_one": "{{count}} réponse",
+    "answers_many": "{{count}} réponses",
+    "answers_other": "{{count}} réponses"
+  },
+  "waitsFor": {
+    "event": "l'événement {{name}}",
+    "signal": "le signal {{name}}"
+  },
   "status": {
     "pending": "Pas commencée",
     "running": "En cours",
@@ -95,7 +119,9 @@
     "runsFirst": "S'exécute en premier",
     "runsAfter": "S'exécute après {{names}}",
     "runsIf": "S'exécute si {{name}} échoue",
-    "onSide": "Dans la branche {{side}} de {{name}}",
+    "onSide": "Dans le cas {{side}} de {{name}}",
+    "case": "Cas {{number}}",
+    "otherwise": "Sinon",
     "sameTimeAs": "En même temps que {{names}}",
     "sameTime": "En même temps",
     "stepOf": "une étape de {{names}}",

@@ -14,6 +14,28 @@
   "problemsList_one": "{{count}} problem: {{list}}",
   "problemsList_other": "{{count}} problems: {{list}}",
   "line": "{{label}}: {{text}}",
+  "timeoutThen": {
+    "fail": "{{timeout}}, then the step fails",
+    "continue": "{{timeout}}, then it goes on",
+    "escalate": "{{timeout}}, then it escalates"
+  },
+  "who": {
+    "requester": "the requester",
+    "owner": "the owner",
+    "people_one": "{{count}} person",
+    "people_other": "{{count}} people",
+    "anyone": "a person",
+    "others": "other people"
+  },
+  "wants": {
+    "decision": "to approve or reject",
+    "answers_one": "{{count}} answer",
+    "answers_other": "{{count}} answers"
+  },
+  "waitsFor": {
+    "event": "the event {{name}}",
+    "signal": "the signal {{name}}"
+  },
   "status": {
     "pending": "Not started",
     "running": "Running",
@@ -92,6 +114,8 @@
     "runsAfter": "Runs after {{names}}",
     "runsIf": "Runs if {{name}} fails",
     "onSide": "On the side {{side}} of {{name}}",
+    "case": "Case {{number}}",
+    "otherwise": "Otherwise",
     "sameTimeAs": "At the same time as {{names}}",
     "sameTime": "At the same time",
     "stepOf": "a step of {{names}}",

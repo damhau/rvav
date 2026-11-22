@@ -20,7 +20,14 @@
 //   is a node of its own, attached to the components whose VMs have it.
 import { formatList, formatNumber, formatSize } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
-import { allSteps, readComposite, type CompositeStepView } from "@/lib/composite";
+import {
+  allSteps,
+  readComposite,
+  type CompositeAudience,
+  type CompositeSideView,
+  type CompositeStepView,
+  type OnTimeout,
+} from "@/lib/composite";
 import { celCode, dependsOn } from "@/lib/dependsOn";
 import type { FieldError } from "@/lib/api/types";
 import type { CanvasEdge, CanvasGraph, CanvasGroup, CanvasLine, CanvasNode, CanvasSide } from "./graph";
@@ -65,6 +72,24 @@ export function blueprintGraph(
 
 const stepBadge = (kind: CompositeStepView["kind"]) => i18n.t(`canvas:badge.${kind === "?" ? "step" : kind}`);
 
+const timeoutLine = (timeout: string, then: OnTimeout) => t(`timeoutThen.${then}`, { timeout });
+
+/** Whom a step asks or tells, in the order the server lists them. */
+function audience(a: CompositeAudience): string {
+  return [
+    a.requester ? t("who.requester") : "",
+    a.owner ? t("who.owner") : "",
+    ...a.groups,
+    a.people > 0 ? t("who.people", { count: a.people }) : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** A side's title as written, else "Case 2" or "Otherwise". */
+const sideLabel = (s: CompositeSideView) =>
+  s.title ?? (s.taken === 0 ? t("composite.otherwise") : t("composite.case", { number: s.taken }));
+
 function stepLines(s: CompositeStepView): CanvasLine[] {
   const lines: CanvasLine[] = [];
   if (s.target)
@@ -76,36 +101,49 @@ function stepLines(s: CompositeStepView): CanvasLine[] {
       mono: true,
     });
   if (s.ask) {
-    lines.push({ label: t("lines.asks"), text: s.ask.who }, { label: t("lines.wants"), text: s.ask.wants });
-    if (s.ask.timeout) lines.push({ label: t("lines.timeout"), text: s.ask.timeout });
+    lines.push(
+      { label: t("lines.asks"), text: audience(s.ask) || t("who.anyone") },
+      {
+        label: t("lines.wants"),
+        text: s.ask.questions === 0 ? t("wants.decision") : t("wants.answers", { count: s.ask.questions }),
+      },
+    );
+    if (s.ask.timeout) lines.push({ label: t("lines.timeout"), text: timeoutLine(s.ask.timeout, s.ask.onTimeout) });
   }
   if (s.forEach) {
     lines.push({ label: t("lines.forEach"), text: s.forEach.items, mono: true });
     if (s.forEach.parallel > 1) lines.push({ label: t("lines.atATime"), text: formatNumber(s.forEach.parallel) });
   }
   if (s.signal) {
-    lines.push({ label: t("lines.waitsFor"), text: s.signal.waitsFor });
+    lines.push({
+      label: t("lines.waitsFor"),
+      text:
+        s.signal.event !== undefined
+          ? t("waitsFor.event", { name: s.signal.event })
+          : t("waitsFor.signal", { name: s.signal.name ?? "" }),
+    });
     if (s.signal.when) lines.push({ label: t("lines.picks"), text: s.signal.when, mono: true });
-    if (s.signal.timeout) lines.push({ label: t("lines.timeout"), text: s.signal.timeout });
+    if (s.signal.timeout)
+      lines.push({ label: t("lines.timeout"), text: timeoutLine(s.signal.timeout, s.signal.onTimeout) });
   }
   if (s.wait?.for) lines.push({ label: t("lines.for"), text: s.wait.for });
   if (s.wait?.until) lines.push({ label: t("lines.until"), text: s.wait.until, mono: true });
   if (s.poll) {
     if (s.poll.until) lines.push({ label: t("lines.until"), text: s.poll.until, mono: true });
     if (s.poll.every) lines.push({ label: t("lines.every"), text: s.poll.every });
-    if (s.poll.timeout) lines.push({ label: t("lines.timeout"), text: s.poll.timeout });
+    if (s.poll.timeout) lines.push({ label: t("lines.timeout"), text: timeoutLine(s.poll.timeout, s.poll.onTimeout) });
   }
   for (const side of s.sides ?? [])
     lines.push(
       side.when === undefined
         ? {
-            label: side.label,
+            label: sideLabel(side),
             text: side.steps.length === 0 ? t("composite.goesOn") : t("composite.steps", { count: side.steps.length }),
           }
-        : { label: side.label, text: side.when, mono: true },
+        : { label: sideLabel(side), text: side.when, mono: true },
     );
   if (s.notify) {
-    lines.push({ label: t("lines.tells"), text: s.notify.who });
+    lines.push({ label: t("lines.tells"), text: audience(s.notify) || t("who.others") });
     if (s.notify.message) lines.push({ label: t("lines.says"), text: s.notify.message });
   }
   if (s.when) lines.push({ label: t("lines.when"), text: s.when, mono: true });
@@ -245,9 +283,10 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
       const next: Tail[] = [];
       const straight: { label: string; taken: number }[] = [];
       for (const side of branch) {
+        const label = sideLabel(side);
         const way = { node: slot, cases: [side.taken] };
-        let sideTails: Tail[] = [{ id: slot, names: titles, label: side.label, branch: way }];
-        const before = [t("composite.onSide", { side: side.label, name: titles[0]! })];
+        let sideTails: Tail[] = [{ id: slot, names: titles, label, branch: way }];
+        const before = [t("composite.onSide", { side: label, name: titles[0]! })];
         const sideNodes: string[] = [];
         side.steps.forEach((s, i) => {
           tails = sideTails;
@@ -269,8 +308,8 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
           sideNodes.push(stepId(s), ...caught.nodes.map((n) => n.id));
           sideTails = caught.tail ? [own, caught.tail] : [own];
         });
-        sides.push({ label: side.label, when: side.when, taken: side.taken, nodes: sideNodes });
-        if (side.steps.length === 0) straight.push(side);
+        sides.push({ label, when: side.when, taken: side.taken, nodes: sideNodes });
+        if (side.steps.length === 0) straight.push({ label, taken: side.taken });
         else next.push(...sideTails);
       }
       if (straight.length > 0)

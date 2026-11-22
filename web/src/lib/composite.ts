@@ -12,18 +12,18 @@ export interface CompositeStepView {
   kind:
     "item" | "awx" | "workflow" | "rest" | "ask" | "wait" | "poll" | "signal" | "branch" | "notify" | "resource" | "?";
   target: string;
-  /** A wait for a person, in words. A requester's topology names neither a group nor anyone. */
-  ask?: { who: string; wants: string; timeout?: string };
+  /** A wait for a person: whom it asks and what for. A requester's topology names neither a group nor anyone. */
+  ask?: CompositeAsk;
   /** A wait for a time: how long, or the CEL that says until when. */
   wait?: { for?: string; until?: string };
   /** A wait for a condition: what it waits for, how often it checks and for how long. */
-  poll?: { until: string; every: string; timeout: string };
+  poll?: { until: string; every: string; timeout: string; onTimeout: OnTimeout };
   /** A branch's sides: its cases in order, then what runs otherwise. */
   sides?: CompositeSideView[];
   /** A message: who it tells, and what it says. A requester's topology names no group or person, and has no text. */
-  notify?: { who: string; message?: string };
-  /** A wait for a signal or an event (ADR-0057): what it waits for, which event, until when. */
-  signal?: { waitsFor: string; when?: string; timeout: string };
+  notify?: CompositeAudience & { message?: string };
+  /** A wait for a signal or an event (ADR-0057): the signal's name or the event's topic, which event, until when. */
+  signal?: { event?: string; name?: string; when?: string; timeout: string; onTimeout: OnTimeout };
   /** A loop: the list it goes over, and how many passes run at once (1: one after the other). */
   forEach?: { items: string; parallel: number };
   /** Its catch path: the steps that run when it fails, and the request goes on. */
@@ -34,10 +34,29 @@ export interface CompositeStepView {
   pointer: string;
 }
 
+/** What a step does once its timeout passes; anything else reads as fail, as the server reads it. */
+export type OnTimeout = "fail" | "continue" | "escalate";
+
+/** Whom a wait for a person asks, or a message tells. */
+export interface CompositeAudience {
+  requester: boolean;
+  owner: boolean;
+  groups: string[];
+  /** How many people it names. */
+  people: number;
+}
+
+export interface CompositeAsk extends CompositeAudience {
+  /** How many questions its form asks: none means approve or reject. */
+  questions: number;
+  timeout?: string;
+  onTimeout: OnTimeout;
+}
+
 /** One side of a branch. */
 export interface CompositeSideView {
-  /** A case's title, "Case 2", or "Otherwise". */
-  label: string;
+  /** A case's title as written; none for Otherwise or a case without one. */
+  title?: string;
   /** A case's condition; undefined for Otherwise. */
   when?: string;
   /** Which it is, as a run says which it took (`Step.branch_case`): 1 for the first case, 0 for Otherwise. */
@@ -281,28 +300,18 @@ function checkPoll(p: Raw, ptr: string, key: string, err: (field: string, code: 
     err(`${ptr}/on_timeout`, "enum", "fail or continue.");
 }
 
-const timeoutWords: Record<string, string> = {
-  fail: "then the step fails",
-  continue: "then it goes on",
-  escalate: "then it escalates",
-};
+const onTimeout = (v: unknown): OnTimeout => (v === "continue" || v === "escalate" ? v : "fail");
 
-/** A wait for a person in words, from what a definition or a requester's topology has of it. */
-function askWords(ask: Raw): NonNullable<CompositeStepView["ask"]> {
-  const named = Array.isArray(ask.approvers) ? ask.approvers.length : 0;
-  const who = [
-    ask.requester ? "the requester" : "",
-    ask.owner ? "the owner" : "",
-    str(ask.group),
-    named === 0 ? "" : named === 1 ? "1 person" : `${named} people`,
-  ].filter(Boolean);
-  const questions = Array.isArray(ask.form) ? ask.form.length : 0;
+/** A wait for a person, from what a definition or a requester's topology has of it. */
+function readAsk(ask: Raw): CompositeAsk {
   return {
-    who: who.join(", ") || "a person",
-    wants: questions === 0 ? "to approve or reject" : questions === 1 ? "1 answer" : `${questions} answers`,
-    timeout: str(ask.timeout)
-      ? `${str(ask.timeout)}, ${timeoutWords[str(ask.on_timeout)] ?? timeoutWords.fail}`
-      : undefined,
+    requester: Boolean(ask.requester),
+    owner: Boolean(ask.owner),
+    groups: str(ask.group) ? [str(ask.group)] : [],
+    people: Array.isArray(ask.approvers) ? ask.approvers.length : 0,
+    questions: Array.isArray(ask.form) ? ask.form.length : 0,
+    timeout: str(ask.timeout) || undefined,
+    onTimeout: onTimeout(ask.on_timeout),
   };
 }
 
@@ -454,26 +463,25 @@ function flowVarsRead(expr: string, loop: boolean, caught: boolean): string {
   return "";
 }
 
-/** A wait for a signal or an event in words. */
-function signalWords(sig: Raw): NonNullable<CompositeStepView["signal"]> {
+/** A wait for a signal or an event. */
+function readSignal(sig: Raw): NonNullable<CompositeStepView["signal"]> {
   return {
-    waitsFor: str(sig.event) ? `the event ${str(sig.event)}` : `the signal ${str(sig.name)}`,
+    ...(str(sig.event) ? { event: str(sig.event) } : { name: str(sig.name) }),
     when: str(sig.when) || undefined,
-    timeout: str(sig.timeout) ? `${str(sig.timeout)}, ${timeoutWords[str(sig.on_timeout)] ?? timeoutWords.fail}` : "",
+    timeout: str(sig.timeout),
+    onTimeout: onTimeout(sig.on_timeout),
   };
 }
 
-/** A message in words, from what a definition or a requester's topology has of it. */
-function notifyWords(n: Raw): NonNullable<CompositeStepView["notify"]> {
-  const groups = Array.isArray(n.groups) ? (n.groups as unknown[]).map(str).filter(Boolean) : [];
-  const users = Array.isArray(n.users) ? n.users.length : 0;
-  const who = [
-    n.requester ? "the requester" : "",
-    n.owner ? "the owner" : "",
-    ...groups,
-    users === 0 ? "" : users === 1 ? "1 person" : `${users} people`,
-  ].filter(Boolean);
-  return { who: who.join(", ") || "other people", message: str(n.message) || undefined };
+/** A message, from what a definition or a requester's topology has of it. */
+function readNotify(n: Raw): NonNullable<CompositeStepView["notify"]> {
+  return {
+    requester: Boolean(n.requester),
+    owner: Boolean(n.owner),
+    groups: Array.isArray(n.groups) ? (n.groups as unknown[]).map(str).filter(Boolean) : [],
+    people: Array.isArray(n.users) ? n.users.length : 0,
+    message: str(n.message) || undefined,
+  };
 }
 
 /** A REST call on one line. */
@@ -729,19 +737,18 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
         str(s.workflow) ||
         str(resource?.type) ||
         (rest ? restLine(rest) : poll?.rest ? restLine(poll.rest as Raw) : ""),
-      ask: ask ? askWords(ask) : undefined,
+      ask: ask ? readAsk(ask) : undefined,
       wait: wait ? { for: str(wait.for) || undefined, until: str(wait.until) || undefined } : undefined,
       poll: poll
         ? {
             until: str(poll.until),
             every: str(poll.every),
-            timeout: str(poll.timeout)
-              ? `${str(poll.timeout)}, ${timeoutWords[str(poll.on_timeout)] ?? timeoutWords.fail}`
-              : "",
+            timeout: str(poll.timeout),
+            onTimeout: onTimeout(poll.on_timeout),
           }
         : undefined,
-      notify: notify ? notifyWords(notify) : undefined,
-      signal: signal ? signalWords(signal) : undefined,
+      notify: notify ? readNotify(notify) : undefined,
+      signal: signal ? readSignal(signal) : undefined,
       forEach: forEach
         ? {
             items: str(forEach.items),
@@ -781,14 +788,14 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
     const cases = Array.isArray(b.cases) ? (b.cases as Raw[]) : [];
     const lists = [
       ...cases.map((c, i) => ({
-        label: str(c.title) || `Case ${i + 1}`,
+        title: str(c.title) || undefined,
         when: str(c.when),
         taken: i + 1,
         steps: Array.isArray(c.steps) ? (c.steps as Raw[]) : [],
         at: `${ptr}/cases/${i}/steps`,
       })),
       {
-        label: "Otherwise",
+        title: undefined,
         when: undefined,
         taken: 0,
         steps: Array.isArray(b.else) ? (b.else as Raw[]) : [],
@@ -819,7 +826,7 @@ export function readComposite(blueprint: Raw, prefix = "/definition/blueprint"):
           views.push(view);
         }
       });
-      return { label: list.label, when: list.when, taken: list.taken, steps: views };
+      return { title: list.title, when: list.when, taken: list.taken, steps: views };
     });
   };
 
