@@ -176,7 +176,10 @@ The override's header lists the fakes' addresses and accounts to enter
 (vCenter `https://vcsim:8989/sdk`, EfficientIP `http://efficientip:8080`,
 Keycloak's realm as the identity provider). AWX stays the in-process
 fake. On a database without network mappings the fake EfficientIP serves
-vcsim's networks, so the sync reads them from it.
+vcsim's networks, so the sync reads them from it. The stack's vcsim is
+rvav's own image, `rvav-vcsim`, which makes the GVA layout as it starts
+and gives VMs set up through cloud-init their guest IPs
+([which vcsim](../../deploy/README.md#which-vcsim)).
 
 A project name of its own (`-p`) keeps its database apart from the
 development stack's; the `RVAV_*_PORT` variables move its ports when both

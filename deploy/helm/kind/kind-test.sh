@@ -18,8 +18,9 @@ kind get clusters | grep -qx "$cluster" || kind create cluster --name "$cluster"
 log "building and loading the images"
 docker build -q -t ghcr.io/damhau/rvav:1.0.0 . >/dev/null
 docker build -q -t ghcr.io/damhau/rvav-web:1.0.0 web >/dev/null
-for img in ghcr.io/damhau/rvav:1.0.0 ghcr.io/damhau/rvav-web:1.0.0 postgres:16.4 temporalio/auto-setup:1.25.2 \
-	quay.io/keycloak/keycloak:25.0.6 vmware/vcsim:v0.52.0; do
+docker build -q --target vcsim -t ghcr.io/damhau/rvav-vcsim:1.0.0 . >/dev/null
+for img in ghcr.io/damhau/rvav:1.0.0 ghcr.io/damhau/rvav-web:1.0.0 ghcr.io/damhau/rvav-vcsim:1.0.0 postgres:16.4 \
+	temporalio/auto-setup:1.25.2 quay.io/keycloak/keycloak:25.0.6; do
 	docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img" >/dev/null
 	kind load docker-image --name "$cluster" "$img" >/dev/null
 done
@@ -33,7 +34,6 @@ k -n rvav-deps rollout status deploy/postgres deploy/temporal deploy/keycloak de
 log "installing the chart"
 k create namespace "$ns" --dry-run=client -o yaml | k apply -f - >/dev/null
 helm --kube-context "$ctx" upgrade --install rvav deploy/helm/rvav -n "$ns" -f deploy/helm/kind/values.yaml --wait --timeout 10m
-k -n rvav-deps wait --for=condition=complete job/vcsim-bootstrap --timeout=300s >/dev/null
 # It failed until the chart's pods migrated the database: started again.
 k -n rvav-deps rollout restart deploy/efficientip >/dev/null
 k -n rvav-deps rollout status deploy/efficientip --timeout=300s >/dev/null

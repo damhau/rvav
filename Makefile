@@ -4,7 +4,7 @@ BIN     := bin
 COMPOSE := docker compose -f deploy/docker-compose.yml
 # Scanners, pinned (the image by digest).
 GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.9.0
-IMAGES      ?= rvav:scan rvav-web:scan
+IMAGES      ?= rvav:scan rvav-web:scan rvav-vcsim:scan
 # Files Trivy writes are the caller's, not root's.
 AS_ME        = -u $$(id -u):$$(id -g) --group-add $$(stat -c %g /var/run/docker.sock) -e TRIVY_CACHE_DIR=/tmp/trivy
 TRIVY       := aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
@@ -150,11 +150,12 @@ vuln-go: ## Vulnerabilities the Go code reaches (govulncheck, built with the mod
 vuln-web: ## The web app's dependencies, with its build and test tools (pnpm audit)
 	cd web && $(PNPM) audit
 
-images: ## Build the rvav and rvav-web images as $(IMAGES)
+images: ## Build the images as $(IMAGES): rvav, rvav-web, and rvav-vcsim when a third name is given
 	docker build -q -t $(word 1,$(IMAGES)) . >/dev/null
 	docker build -q -t $(word 2,$(IMAGES)) web >/dev/null
+	$(if $(word 3,$(IMAGES)),docker build -q --target vcsim -t $(word 3,$(IMAGES)) . >/dev/null)
 
-vuln-images: images ## Scan both images: no HIGH or CRITICAL vulnerability that has a fix (Trivy)
+vuln-images: images ## Scan the images: no HIGH or CRITICAL vulnerability that has a fix (Trivy)
 	for i in $(IMAGES); do \
 		docker run --rm -v /var/run/docker.sock:/var/run/docker.sock $(TRIVY) image --quiet \
 			--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $$i || exit 1; done

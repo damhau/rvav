@@ -142,25 +142,25 @@ services:
     image: axllent/mailpit:v1.27.10
     ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_MAILPIT_PORT:-8025}:8025"]
 
+  # rvav's own vcsim (rvav-vcsim, deploy/README.md): it makes the GVA
+  # inventory as it starts, again after a restart, and is healthy once it
+  # has. Stock vmware/vcsim would need `rvav vcsim-bootstrap`.
   vcsim:
-    image: vmware/vcsim:v0.52.0
-    command: ["-l", "0.0.0.0:8989"]
+    build: { context: .., dockerfile: Dockerfile, target: vcsim }
+    restart: on-failure
     ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_VCSIM_PORT:-8989}:8989"]
+    healthcheck:
+      test: ["CMD", "rvav-vcsim", "-healthcheck"]
+      interval: 2s
+      retries: 30
 
-  # One-shot jobs: schema and seed data, then the GVA inventory in vcsim.
+  # A one-shot job: schema and seed data.
   migrate:
     build: { context: .., dockerfile: Dockerfile }
     command: ["migrate", "-seed"]
     environment: *rvav-env
     depends_on:
       postgres: { condition: service_healthy }
-
-  vcsim-bootstrap:
-    build: { context: .., dockerfile: Dockerfile }
-    command: ["vcsim-bootstrap"]
-    environment: *rvav-env
-    restart: on-failure
-    depends_on: [vcsim]
 
   # A fake SOLIDserver with the subnets of the seeded network mappings.
   efficientip:
@@ -182,7 +182,7 @@ services:
     environment: *rvav-env
     restart: on-failure
     depends_on:
-      vcsim: { condition: service_started }
+      vcsim: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "rvav", "healthcheck"]
       interval: 2s
@@ -216,7 +216,7 @@ services:
       migrate: { condition: service_completed_successfully }
       efficientip: { condition: service_healthy }
       nsx: { condition: service_healthy }
-      vcsim-bootstrap: { condition: service_completed_successfully }
+      vcsim: { condition: service_healthy }
       temporal: { condition: service_healthy }
 
   sync:
@@ -228,7 +228,7 @@ services:
       migrate: { condition: service_completed_successfully }
       efficientip: { condition: service_healthy }
       nsx: { condition: service_healthy }
-      vcsim-bootstrap: { condition: service_completed_successfully }
+      vcsim: { condition: service_healthy }
 
   # The web app, served by nginx, which proxies /api to the api service.
   # Sign-in follows RVAV_AUTH_MODE; it is baked in at build time, so after

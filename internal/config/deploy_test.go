@@ -1,8 +1,11 @@
 package config
 
 import (
+	"errors"
+	"io"
 	"maps"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -70,13 +73,93 @@ func TestComposeFreshStart(t *testing.T) {
 	if cmd := fresh.Services["migrate"].Command; slices.ContainsFunc(cmd, func(a string) bool { return a != "migrate" }) {
 		t.Errorf("migrate = %v, want the schema only", cmd)
 	}
-	for _, name := range []string{"vcsim-bootstrap", "efficientip", "nsx"} {
+	for _, name := range []string{"vcsim", "efficientip", "nsx"} {
 		if _, ok := fresh.Services[name]; ok {
 			t.Errorf("the fresh start changes %s, a fake with its own settings", name)
 		}
 	}
 	if base.Env["RVAV_VCENTER_URL"] == "" || base.Services["api"].Environment["RVAV_VCENTER_URL"] == "" {
 		t.Fatal("the base file's environment wasn't read")
+	}
+}
+
+// The compose stack and kind run rvav's own vcsim, the Dockerfile's vcsim
+// stage, which makes the GVA layout itself: stock vmware/vcsim can crash on
+// a multi-VM request's clones and gives cloud-init VMs no guest IP
+// (rvav#188).
+func TestStackVcsimImage(t *testing.T) {
+	dockerfile, err := os.ReadFile("../../Dockerfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`(?m)^FROM \S+ AS vcsim$`).Match(dockerfile) {
+		t.Fatal("the Dockerfile has no vcsim stage")
+	}
+
+	var compose struct {
+		Services map[string]struct {
+			Image string `yaml:"image"`
+			Build struct {
+				Dockerfile string `yaml:"dockerfile"`
+				Target     string `yaml:"target"`
+			} `yaml:"build"`
+		} `yaml:"services"`
+	}
+	readYAML(t, "../../deploy/docker-compose.yml", &compose)
+	if vcsim := compose.Services["vcsim"]; vcsim.Image != "" || vcsim.Build.Dockerfile != "Dockerfile" || vcsim.Build.Target != "vcsim" {
+		t.Errorf("compose's vcsim = %+v, want the Dockerfile's vcsim stage", vcsim)
+	}
+	if _, ok := compose.Services["vcsim-bootstrap"]; ok {
+		t.Error("compose bootstraps vcsim, which rvav-vcsim does itself")
+	}
+
+	const kindImage = "ghcr.io/damhau/rvav-vcsim:1.0.0"
+	f, err := os.Open("../../deploy/helm/kind/deps.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var images []string
+	for dec := yaml.NewDecoder(f); ; {
+		var doc struct {
+			Kind     string `yaml:"kind"`
+			Metadata struct {
+				Name string `yaml:"name"`
+			} `yaml:"metadata"`
+			Spec struct {
+				Template struct {
+					Spec struct {
+						Containers []struct {
+							Image string `yaml:"image"`
+						} `yaml:"containers"`
+					} `yaml:"spec"`
+				} `yaml:"template"`
+			} `yaml:"spec"`
+		}
+		if err := dec.Decode(&doc); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			t.Fatal(err)
+		}
+		if doc.Metadata.Name == "vcsim-bootstrap" {
+			t.Errorf("kind bootstraps vcsim (%s), which rvav-vcsim does itself", doc.Kind)
+		}
+		if doc.Kind == "Deployment" && doc.Metadata.Name == "vcsim" {
+			for _, c := range doc.Spec.Template.Spec.Containers {
+				images = append(images, c.Image)
+			}
+		}
+	}
+	if !slices.Equal(images, []string{kindImage}) {
+		t.Errorf("kind's vcsim runs %v, want %s", images, kindImage)
+	}
+	script, err := os.ReadFile("../../deploy/helm/kind/kind-test.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(script), "--target vcsim -t "+kindImage) {
+		t.Errorf("kind-test.sh doesn't build %s from the vcsim stage", kindImage)
 	}
 }
 

@@ -12,7 +12,7 @@ docker compose -f deploy/docker-compose.yml up --build
 | API | http://localhost:8080/api/v1 | Dev authentication by default |
 | Temporal UI | http://localhost:8233 | Workflow history of every request |
 | Keycloak | http://localhost:8081 | `admin` / `admin`; realm `rvav`, users `lea`, `marc`, `thomas` (password `rvav`); each has a `manager` attribute, in the `manager` claim (Thomas: Léa; Léa: Marc; Marc: Claire) |
-| vcsim | https://localhost:8989/sdk | `user` / `pass`; the GVA layout is created by `vcsim-bootstrap` |
+| vcsim | https://localhost:8989/sdk | `user` / `pass`; rvav's own image, `rvav-vcsim`, which makes the GVA layout as it starts ([which vcsim](#which-vcsim)) |
 | PostgreSQL | localhost:5432 | `rvav` / `rvav` |
 
 Services start in order: the API and the worker wait until Temporal has
@@ -26,8 +26,8 @@ instead, set up from the UI: no seed, no integration variables, the local
 administrator signing in and the setup checklist
 ([installation.md](../docs/operations/installation.md#trying-a-new-install)).
 
-`vcsim-bootstrap` also tags the GVA layout for placement by tag and
-constraint tags ([ADR-0035](../docs/adr/0035-constraint-tags.md)):
+The GVA layout is tagged for placement by tag and constraint tags
+([ADR-0035](../docs/adr/0035-constraint-tags.md)):
 `env/dev`, `env/tst` and `env/prd` on each environment's clusters,
 `net/app` on the `dvpg-app-*` port groups, `rvav-tier/gold` and
 `rvav-tier/bronze` on clusters and datastores, and `rvav-zone/dmz` on
@@ -110,6 +110,37 @@ marks the signed-in person.
 
 For frontend work, `cd web && pnpm dev:real` on http://localhost:5173 reloads
 as you edit and uses the same API on `:8080`.
+
+## Which vcsim
+
+The stack runs `rvav-vcsim`, rvav's own build of govmomi's vCenter
+simulator: the `Dockerfile`'s `vcsim` stage, which `make images` builds as
+`rvav-vcsim:scan` and kind runs as `ghcr.io/damhau/rvav-vcsim`. Use it
+rather than the stock `vmware/vcsim` image wherever rvav provisions into
+vcsim:
+
+- **Concurrent clones:** stock vcsim can crash when two clones from
+  different templates go into one folder at once, as a multi-VM request's
+  do (#187). It then restarts empty, without the layout and the VMs rvav
+  made. `rvav-vcsim` runs clones into one folder one at a time, and refuses
+  a second VM of the same name in a folder, as vCenter does.
+- **Guest IPs:** vcsim reports a guest IP only for VMs set up through guest
+  customization. VMs set up through guestinfo (cloud-init, cloudbase-init)
+  never get one, and their requests wait at "Power on and wait for guest
+  IP" until they time out. In `rvav-vcsim`, a powered-on VM with
+  guestinfo metadata reports the addresses its metadata gives each
+  adapter, or an address from `10.99.0.0/16` for an adapter on DHCP.
+- **The layout:** it makes the GVA layout as it starts, and again after a
+  restart. Its tags and content library go through vcsim's vSphere
+  Automation (vapi) endpoint, and storage policies through its pbm
+  endpoint, which `rvav-vcsim` serves as stock vcsim does.
+- **Health:** the container is healthy once the layout is made:
+  `rvav-vcsim -healthcheck`, or `GET https://<host>:8989/readyz`.
+
+To point rvav at a stock vcsim instead, make the layout in it with
+`rvav vcsim-bootstrap` and the `RVAV_VCENTER_*` variables set. It's safe
+to run again, and makes again only what's missing, for example after vcsim
+restarted. The clone crash and the missing guest IPs remain there.
 
 ## Kubernetes and VMs
 

@@ -2,7 +2,8 @@
 
 One binary, `cmd/rvav`, runs every process (`api`, `worker`, `sync`, `dev`,
 `migrate`, `seed`, `vcsim-bootstrap`, `healthcheck`). `cmd/rvav-vcsim` runs the
-vCenter simulator with the GVA layout for local work. `cmd/rvavctl` is the
+vCenter simulator with the GVA layout for local work; it is the vcsim image
+of the compose stack and kind. `cmd/rvavctl` is the
 command line for users (`internal/cli`, ADR-0051), on the API client that
 `pkg/rvavclient` generates from the same contract.
 
@@ -30,7 +31,7 @@ command line for users (`internal/cli`, ADR-0051), on the API client that
 | `provision` | Temporal workflow `Provision`, its activities, the plan and step keys |
 | `seed` | Example organisation and catalog |
 | `store` | PostgreSQL access (pgx), keyset pagination |
-| `vcsim` | Workarounds in the vCenter simulator for the tests and `rvav-vcsim`: clones into one folder run one at a time (#187) |
+| `vcsim` | Workarounds in the vCenter simulator for the tests and `rvav-vcsim`: clones into one folder run one at a time (#187); in `rvav-vcsim`, guests report the addresses their cloud-init metadata gives (#188) |
 | `vmprops` | VM resource properties from vCenter data |
 
 ## How a request runs

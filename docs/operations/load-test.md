@@ -73,7 +73,10 @@ talks to), with:
 - the web app (nginx 1.30);
 - PostgreSQL 16.4 and Temporal 1.25;
 - Keycloak 25;
-- vcsim, the vCenter simulator;
+- vcsim, the vCenter simulator, from the stock `vmware/vcsim` image. The
+  stack now runs `rvav-vcsim`, which runs clones into one folder one at a
+  time ([which vcsim](../../deploy/README.md#which-vcsim)), so a run today
+  may differ;
 - the simulated AWX (each task 1.5 s);
 - the fake SOLIDserver, answering every call in 100 ms
   (`RVAV_FAKE_EFFICIENTIP_LATENCY`), as a SOLIDserver across a network

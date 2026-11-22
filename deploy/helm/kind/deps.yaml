@@ -97,36 +97,17 @@ spec:
     metadata: { labels: { app: vcsim } }
     spec:
       containers:
+        # rvav's own vcsim (deploy/README.md): it makes the GVA layout as it
+        # starts, and is ready once it has.
         - name: vcsim
-          image: vmware/vcsim:v0.52.0
-          args: ["-l", "0.0.0.0:8989"]
+          image: ghcr.io/damhau/rvav-vcsim:1.0.0
           ports: [{ containerPort: 8989 }]
+          readinessProbe: { httpGet: { path: /readyz, port: 8989, scheme: HTTPS }, periodSeconds: 2, failureThreshold: 60 }
 ---
 apiVersion: v1
 kind: Service
 metadata: { name: vcsim, namespace: rvav-deps }
 spec: { selector: { app: vcsim }, ports: [{ port: 8989 }] }
----
-# The GVA layout in vcsim, once the chart's pods have migrated.
-apiVersion: batch/v1
-kind: Job
-metadata: { name: vcsim-bootstrap, namespace: rvav-deps }
-spec:
-  backoffLimit: 30
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: bootstrap
-          image: ghcr.io/damhau/rvav:1.0.0
-          args: ["vcsim-bootstrap"]
-          env:
-            - { name: RVAV_VCENTER_URL, value: "https://vcsim.rvav-deps.svc.cluster.local:8989/sdk" }
-            - { name: RVAV_VCENTER_USERNAME, value: user }
-            - { name: RVAV_VCENTER_PASSWORD, value: pass }
-            - { name: RVAV_VCENTER_INSECURE, value: "1" }
-            - { name: RVAV_VCENTER_NAME, value: vc01.corp.example }
-            - { name: RVAV_DATABASE_URL, value: "postgres://rvav:rvav@postgres.rvav-deps.svc.cluster.local:5432/rvav?sslmode=disable" }
 ---
 apiVersion: apps/v1
 kind: Deployment
