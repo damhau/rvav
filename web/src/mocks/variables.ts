@@ -7,6 +7,7 @@ import { can } from "@/lib/can";
 import { itemBlueprints } from "./catalogAdmin";
 import { audited } from "./governance";
 import type { Db } from "./seed";
+import { unknownField } from "./strict";
 
 type S = components["schemas"];
 type Stored = Omit<S["Variable"], "used_by" | "key">;
@@ -15,7 +16,7 @@ const now = () => new Date().toISOString();
 const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
 
 const part = /^[a-z][a-z0-9_]{0,40}$/;
-const secretLike = /password|passwd|passphrase|secret|private_key|api_key|apikey/;
+const secretLike = /password|passwd|passphrase|secret|token|credential|private_key|ssh_key|api_key|apikey/;
 const maxValue = 16 << 10;
 
 function state(db: Db): Stored[] {
@@ -64,14 +65,21 @@ export function variableValues(db: Db): Record<string, Record<string, unknown>> 
   return out;
 }
 
+const unfinished = new Set(["pending_approval", "scheduled", "queued", "running", "cancelling"]);
+
+// As store.VariableUsers: a failed request isn't counted, or it would keep
+// the variable for ever.
 function served(db: Db, v: Stored): S["Variable"] {
   const key = keyOf(v);
+  const reading = itemBlueprints(db).filter((x) => reads(x.blueprint, key));
+  const deprecated = new Set(reading.filter((x) => x.state === "deprecated").map((x) => x.id));
   const usedBy = [
-    ...new Set(
-      itemBlueprints(db)
-        .filter((x) => (x.state === "draft" || x.state === "published") && reads(x.blueprint, key))
-        .map((x) => `item ${x.slug}`),
-    ),
+    ...new Set([
+      ...reading.filter((x) => x.state === "draft" || x.state === "published").map((x) => `item ${x.slug}`),
+      ...db.requests
+        .filter((r) => unfinished.has(r.request.status) && deprecated.has(r.request.version.id))
+        .map((r) => `request ${r.request.number}`),
+    ]),
   ].sort();
   return { ...v, key, used_by: usedBy };
 }
@@ -90,6 +98,8 @@ function problem(status: number, title: string, errors?: S["FieldError"][], deta
   );
 }
 
+const notFound = () => problem(404, "Not found", undefined, "It does not exist, or you cannot see it.");
+
 function checkValue(value: unknown, description: string | undefined): S["FieldError"][] {
   const errors: S["FieldError"][] = [];
   if (value === undefined || value === null)
@@ -98,28 +108,34 @@ function checkValue(value: unknown, description: string | undefined): S["FieldEr
       code: "required",
       message: "Give it a value: text, a number, true or false, a list or an object.",
     });
-  else if (JSON.stringify(value).length > maxValue)
+  else if (new TextEncoder().encode(JSON.stringify(value)).length > maxValue)
     errors.push({ field: "/value", code: "too_long", message: "At most 16 KiB of JSON: keep files elsewhere." });
   if ([...(description ?? "").trim()].length > 500)
     errors.push({ field: "/description", code: "too_long", message: "At most 500 characters." });
   return errors;
 }
 
+const forbidden = () => problem(403, "Not allowed", undefined, "You do not have permission to do this.");
+
 export function variableHandlers(db: Db, base: string, wait: () => Promise<void>) {
   const manage = () => can(db.me, "catalog.manage");
+  // Auditors read them, as they read the run data (core.readsRunData).
+  const read = () => manage() || can(db.me, "extensibility.read");
   const find = (key: unknown) => state(db).findIndex((v) => keyOf(v) === key);
   return [
     http.get(`${base}/admin/variables`, async () => {
       await wait();
-      if (!manage()) return problem(403, "Forbidden");
+      if (!read()) return forbidden();
       return HttpResponse.json({
         items: [...state(db)].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((v) => served(db, v)),
       });
     }),
     http.post(`${base}/admin/variables`, async ({ request }) => {
       await wait();
-      if (!manage()) return problem(403, "Forbidden");
       const w = (await request.json()) as S["VariableCreate"];
+      const strict = unknownField(w, ["group", "name", "value", "description"]);
+      if (strict) return strict;
+      if (!manage()) return forbidden();
       const group = (w.group ?? "").trim();
       const name = (w.name ?? "").trim();
       const errors: S["FieldError"][] = [];
@@ -165,17 +181,19 @@ export function variableHandlers(db: Db, base: string, wait: () => Promise<void>
     }),
     http.get(`${base}/admin/variables/:key`, async ({ params }) => {
       await wait();
-      if (!manage()) return problem(403, "Forbidden");
+      if (!read()) return forbidden();
       const v = state(db)[find(params.key)];
-      return v ? HttpResponse.json(served(db, v)) : problem(404, "Not found");
+      return v ? HttpResponse.json(served(db, v)) : notFound();
     }),
     http.put(`${base}/admin/variables/:key`, async ({ params, request }) => {
       await wait();
-      if (!manage()) return problem(403, "Forbidden");
+      const w = (await request.json()) as S["VariableUpdate"];
+      const strict = unknownField(w, ["value", "description"]);
+      if (strict) return strict;
+      if (!manage()) return forbidden();
       const list = state(db);
       const i = find(params.key);
-      if (i < 0) return problem(404, "Not found");
-      const w = (await request.json()) as S["VariableUpdate"];
+      if (i < 0) return notFound();
       const errors = checkValue(w.value, w.description);
       if (errors.length > 0) return problem(422, "Some inputs need attention", errors);
       const was = list[i]!;
@@ -192,17 +210,21 @@ export function variableHandlers(db: Db, base: string, wait: () => Promise<void>
     }),
     http.delete(`${base}/admin/variables/:key`, async ({ params }) => {
       await wait();
-      if (!manage()) return problem(403, "Forbidden");
+      if (!manage()) return forbidden();
       const list = state(db);
       const i = find(params.key);
-      if (i < 0) return problem(404, "Not found");
+      if (i < 0) return notFound();
       const v = served(db, list[i]!);
       if (v.used_by.length > 0)
         return problem(
           409,
           "Not possible right now",
           undefined,
-          `It is read by ${v.used_by.join(", ")}: change their steps first.`,
+          `It is read by ${v.used_by.join(", ")}: ${
+            v.used_by.some((u) => u.startsWith("request "))
+              ? "change the items' steps, and let the requests finish, first."
+              : "change their steps first."
+          }`,
         );
       list.splice(i, 1);
       audited(db, "variable.delete", "variable", v.key);

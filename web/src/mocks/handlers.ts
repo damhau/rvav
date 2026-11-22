@@ -944,7 +944,7 @@ export const handlers = [
       await wait();
       const r = requestByKey(params.requestId);
       if (!r || !visibleRequest(r.request)) return notFound("Request");
-      if (!can(db.me, "catalog.manage"))
+      if (!can(db.me, "catalog.manage") && !can(db.me, "extensibility.read"))
         return problem(403, "forbidden", "Not allowed", "A step's data is for those who manage the catalog.");
       const all = (steps: Step[]): Step[] => steps.flatMap((s) => [s, ...all(s.children)]);
       const s = all(r.steps).find((x) => x.id === params.stepId);

@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
+import { api, call } from "@/lib/api/client";
 import { itemBlueprints } from "@/mocks/catalogAdmin";
 import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
@@ -102,5 +103,40 @@ describe("Variables", () => {
     await user.click(within(confirm).getByRole("button", { name: "Remove variable" }));
     expect(await screen.findByText("vars.backup.s3_bucket removed")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("row", { name: /vars\.backup\.s3_bucket/ })).toBeNull());
+  });
+
+  it("names a request of an older version still running as a reader, and not one that failed", async () => {
+    const old = itemBlueprints(db).find((v) => v.slug === "postgres-cluster" && v.state === "published")!;
+    (old.blueprint as { steps: Record<string, unknown>[] }).steps.push({
+      key: "cmdb",
+      awx: { job_template: "cmdb-register" },
+      with: { site: "vars.cmdb.site" },
+    });
+    const item = db.items.find((i) => i.slug === "postgres-cluster")!;
+    await call(
+      api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/deprecate", {
+        params: { path: { itemId: item.id, versionId: old.id } },
+        body: {},
+      }),
+    );
+    const [running, failed] = db.requests;
+    running!.request = { ...running!.request, status: "running", version: { ...running!.request.version, id: old.id } };
+    failed!.request = { ...failed!.request, status: "failed", version: { ...failed!.request.version, id: old.id } };
+    renderApp("/admin/variables");
+    const site = await screen.findByRole("row", { name: /vars\.cmdb\.site/ });
+    expect(site).toHaveTextContent(`request ${running!.request.number}`);
+    expect(site).not.toHaveTextContent(`request ${failed!.request.number}`);
+  });
+
+  it("shows an auditor the variables and what reads them, without changing any", async () => {
+    localStorage.setItem("rvav.mock.as", "auditor");
+    resetDb();
+    renderApp("/admin/variables");
+    const table = await screen.findByRole("table", { name: "Variables" });
+    expect(await within(table).findByRole("row", { name: /vars\.network\.dns_servers/ })).toHaveTextContent(
+      "10.20.0.53, 10.20.0.54",
+    );
+    expect(screen.queryByRole("button", { name: "New variable" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Actions for/ })).toBeNull();
   });
 });

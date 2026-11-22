@@ -1872,6 +1872,38 @@ You can't delete an entry while a published, deprecated or retired version
 of an item names it: its menu says how many items use it. A draft that
 names a deleted entry is refused the next time you save it.
 
+### Shared variables
+
+A shared variable is a named value that isn't secret, such as a site's DNS
+servers, which composite steps read as `vars.<group>.<name>`
+([ADR-0057](../adr/0057-run-data-variables-schedules-and-loops.md)). Manage
+them in **Variables**, under **Catalog**. To add, change or remove one, you
+need `catalog.manage` for all of rvav. With `extensibility.read`, as an
+auditor, you see the same page and what reads each variable, without **New
+variable**, **Change** or **Remove**.
+
+- A change reaches the steps that haven't run yet, in requests already
+  running too: you don't publish the items again.
+- To publish a version, each variable its steps read must exist. The
+  composite designer marks a step that reads one that doesn't, and a
+  publish refused for it shows the problem on the step and on its line.
+- You can't remove a variable that a draft or a published version reads,
+  or that a request of an older version reads while it's still to run or
+  running. **Read by** lists those items and requests.
+
+For what a value may be and where steps read it, see
+[Shared variables](../service-catalog.md#shared-variables).
+
+### A run's step data
+
+A request's page shows what each step was given and what it gave. To read
+it, choose **Show data** on a step, in the timeline or in the selected
+node's details: the **Step data** panel lists the step's inputs and
+outputs, with secrets masked. You need `catalog.manage` or
+`extensibility.read` for all of rvav, so catalog admins and auditors read
+it; a requester sees each step's status and error only. For what each kind
+of step shows, see [A run's data](../service-catalog.md#a-runs-data).
+
 ### The catalog in Git
 
 The catalog can be kept in a Git repository
@@ -2027,6 +2059,12 @@ with sections, value sources and rules, as a catalog item's form has
    under **Runs on**. The preview works the form out there, as you.
 5. Select **Turn on**. From its next run, the action asks for this form.
 
+Once the form is on, each change you save reaches people from the action's
+next run: the page says **Saved: people get this form from their next
+run.** To work on the form without them getting your changes as you go,
+select **Turn off** first, which gives them the survey's or the schema's
+form meanwhile, and **Turn on** again when it's ready.
+
 An action's form differs from a catalog item's in these ways:
 
 - It shows in a dialog: lay it out as one page or as tabs, not as a
@@ -2038,7 +2076,9 @@ An action's form differs from a catalog item's in these ways:
     `memory_gb`, `disk_gb`, `guest_os`, `os_family`, `fqdn`, `ip`,
     `moref`, `cluster`, `folder`, `tags` and `custom_properties`; on a
     whole deployment, `name`, `os_family` and `vms`, each with `name`,
-    `fqdn` and `ip`.
+    `fqdn` and `ip`; on a custom resource, `id`, `type`
+    (`custom.<type key>`), `name`, `key` and `properties`, such as
+    `resource.properties.ttl`.
   - `deployment`: `id`, `name`, `description`, `owner_id` and `item`.
 
   For example, the default

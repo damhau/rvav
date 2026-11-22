@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, call, isApiError } from "@/lib/api/client";
-import type { ServiceRequest, Step } from "@/lib/api/types";
+import type { Me, ServiceRequest, Step } from "@/lib/api/types";
+import { can } from "@/lib/can";
 import { keys } from "@/lib/query";
 
 /**
@@ -16,16 +17,18 @@ import { keys } from "@/lib/query";
  *
  * The box is an alert, read out when it appears, unless `announce` is false
  * when it mounts: a page that moves it (a run's, with the selection) has it
- * read once.
+ * read once. Without `mayAct` (an auditor's), it says only what failed.
  */
 export function FailureActions({
   request,
   rolledBack,
   announce = true,
+  mayAct = true,
 }: {
   request: ServiceRequest;
   rolledBack?: Step;
   announce?: boolean;
+  mayAct?: boolean;
 }) {
   const { t } = useTranslation("requests");
   const undone = request.kind === "provision" && rolledBack;
@@ -63,35 +66,54 @@ export function FailureActions({
       className="mt-1 flex flex-col gap-2 rounded-lg border border-bad bg-bad-soft px-3.5 py-3"
     >
       <span className="font-semibold text-bad">{request.error?.message}</span>
-      <span className="text-secondary">
-        {request.kind !== "provision"
-          ? t("failure.retryKeeps")
-          : undone
-            ? t("failure.rolledBack", { detail: undone.detail || t("failure.createdDeleted") })
-            : t("failure.keptForLook")}
-      </span>
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="primary" onClick={() => retry.mutate()} disabled={retry.isPending}>
-          {undone ? t("failure.retry") : t("failure.retryFromFailed")}
-        </Button>
-        {request.kind === "provision" && !undone && (
-          <>
-            <Button size="sm" variant="danger" onClick={() => setConfirmRollback(true)}>
-              {t("failure.rollBack")}
+      {mayAct && (
+        <>
+          <span className="text-secondary">
+            {request.kind !== "provision"
+              ? t("failure.retryKeeps")
+              : undone
+                ? t("failure.rolledBack", { detail: undone.detail || t("failure.createdDeleted") })
+                : t("failure.keptForLook")}
+          </span>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="primary" onClick={() => retry.mutate()} disabled={retry.isPending}>
+              {undone ? t("failure.retry") : t("failure.retryFromFailed")}
             </Button>
-            <ConfirmDialog
-              open={confirmRollback}
-              onOpenChange={setConfirmRollback}
-              title={t("failure.confirmTitle", { number: request.number })}
-              description={t("failure.confirmBody")}
-              confirmLabel={t("failure.rollBack")}
-              cancelLabel={t("failure.keep")}
-              pending={rollback.isPending}
-              onConfirm={() => rollback.mutate()}
-            />
-          </>
-        )}
-      </div>
+            {request.kind === "provision" && !undone && (
+              <>
+                <Button size="sm" variant="danger" onClick={() => setConfirmRollback(true)}>
+                  {t("failure.rollBack")}
+                </Button>
+                <ConfirmDialog
+                  open={confirmRollback}
+                  onOpenChange={setConfirmRollback}
+                  title={t("failure.confirmTitle", { number: request.number })}
+                  description={t("failure.confirmBody")}
+                  confirmLabel={t("failure.rollBack")}
+                  cancelLabel={t("failure.keep")}
+                  pending={rollback.isPending}
+                  onConfirm={() => rollback.mutate()}
+                />
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * Whether `me` may retry or roll back the request, as core.failedRequest
+ * decides: its requester, its owner or a project admin. A day-2 request's
+ * deployment may have moved to another owner or project since: the server
+ * decides those.
+ */
+export function mayActOnFailure(me: Me, request: ServiceRequest): boolean {
+  return (
+    request.requester.id === me.user.id ||
+    request.on_behalf_of?.id === me.user.id ||
+    Boolean(request.deployment_id) ||
+    can(me, "request.manage", request.project.id)
   );
 }

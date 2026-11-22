@@ -19,7 +19,9 @@ PolicyDefinition (approval | lease | day2 | quota |   ├── ContentSource (n
   └── scoped to: global | project | catalog item
 
 Day2Action ── (native | awx job template) ── bound to ResourceType
-Subscription (event → awx template | webhook)
+Subscription (event → awx template | webhook | custom workflow; recovery target)
+Day2Form ── designed for a Day2Action (awx | custom workflow)
+Variable (vars.<group>.<name>) ── read by composite steps
 ```
 
 ## Core entities
@@ -69,7 +71,13 @@ Subscription (event → awx template | webhook)
   and project roles. Grants "can request" to those who also hold
   `request.submit` in the project (ADR-0019, Sharing).
 - **Form**: JSON Schema (data) plus UI schema (layout, widgets, conditions,
-  dynamic value sources). See [service catalog](service-catalog.md#custom-forms).
+  dynamic value sources). See [service catalog](service-catalog.md#3-custom-forms).
+- **Variable**: a shared value that isn't secret, by group and name, which
+  composite steps read as `vars.<group>.<name>`: its JSON value (16 KiB at
+  most), description, and who changed it last. To publish a version, each
+  one its steps read must exist; one that a draft, a published version or
+  a request of an older version still to run reads can't be removed
+  ([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)).
 
 ### Blueprint (for `vm_blueprint` items)
 - One or more VM components, each with: a count, source (vSphere template or
@@ -92,7 +100,14 @@ Subscription (event → awx template | webhook)
   that makes no deployment: version, project, environment, inputs (no
   secrets), a cron expression and time zone or an interval, paused or
   not. Its Temporal schedule starts each run; each run is recorded with
-  the request it started or why it started none
+  the request it started or why it started none, such as an earlier run
+  still going or an owner who hasn't signed in for
+  `RVAV_SCHEDULE_OWNER_IDLE_DAYS` (90 by default), whose last sign-in it
+  shows ([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)).
+- **Step data**: what a request's step was given (its inputs, kept with
+  the step) and gave (its outputs), secrets masked; read with
+  `catalog.manage` or `extensibility.read`, and cleared when a Retry runs
+  the step again
   ([ADR-0057](adr/0057-run-data-variables-schedules-and-loops.md)).
 - **SignalWait**: a composite step waiting for a signal by name or an
   event by topic: its condition, deadline, what came and when, closed
@@ -150,6 +165,12 @@ Subscription (event → awx template | webhook)
   for example `resource.guestOS.startsWith("linux")`), implementation (`native:<op>`
   or `awx:<template id>`), optional form, whether it needs confirmation.
 - **Day2Run**: execution record linked to its own timeline events.
+- **Day2Form**: a form designed for an AWX or custom workflow day-2
+  action, in place of its survey's or input schema's: the form's schema,
+  UI schema and initial values, a revision, and whether it's on. Off, it's
+  a draft and the action asks for the survey's form; on, the action asks
+  for it from its next run
+  ([ADR-0050](adr/0050-designed-day2-forms.md)).
 
 ### Policies
 - **PolicyDefinition**: `type`, `scope` (global | project | catalog item),
@@ -178,7 +199,10 @@ Subscription (event → awx template | webhook)
 - **Subscription**: event topic (for example `provisioning.post`,
   `compute.provision.post`, `approval.decided`, `project.updated`;
   [ADR-0049](adr/0049-event-topics.md)), condition (CEL), target (AWX
-  template, webhook or custom workflow), `blocking`, `timeout`, priority.
+  template, webhook or custom workflow), `blocking`, `on_failure`,
+  `timeout`, priority, and for a blocking one a recovery target (the
+  same kinds), told when it fails
+  ([ADR-0054](adr/0054-subscriptions-that-change-the-request.md)).
 - **ResourceType**: key, title, description, the custom workflow or AWX
   template of each step (`create` and `delete`, optional `update` and
   `read`), a property schema (JSON Schema), the day-2 actions offered on

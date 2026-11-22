@@ -92,7 +92,7 @@ export const adminGroups: AdminGroup[] = [
         key: "variables",
         icon: Variable,
         keywords: ["configuration elements", "shared values", "vars"],
-        show: (me) => can(me, "catalog.manage"),
+        show: (me) => can(me, "catalog.manage") || can(me, "extensibility.read"),
       },
       {
         to: "/admin/form-library",

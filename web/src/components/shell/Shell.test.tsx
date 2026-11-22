@@ -109,7 +109,8 @@ describe("sidebar", () => {
 
   it("shows a custom role only its groups and pages", async () => {
     // A VM operator holds nothing of the administration; a custom role adds
-    // what workflows, subscriptions and the templates take, read only.
+    // what workflows, subscriptions, the shared variables and the templates
+    // take, read only.
     localStorage.setItem("rvav.mock.as", "vm-operator");
     resetDb();
     expect(adminMenuOf(await renderAndFindNav())).toEqual({});
@@ -119,7 +120,7 @@ describe("sidebar", () => {
     db.me.roles = [...db.me.roles, { key: "reader", name: "Reader" }];
     cleanup();
     expect(adminMenuOf(await renderAndFindNav())).toEqual({
-      Catalog: ["Custom workflows", "Resource types", "Subscriptions"],
+      Catalog: ["Variables", "Custom workflows", "Resource types", "Subscriptions"],
       Infrastructure: ["Templates and networks"],
     });
   });

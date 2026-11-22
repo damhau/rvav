@@ -30,7 +30,7 @@ import { toText } from "@/lib/utils";
 import { duration } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
 import { AskPanel } from "./AskPanel";
-import { FailureActions } from "./FailureActions";
+import { FailureActions, mayActOnFailure } from "./FailureActions";
 import { LogViewer } from "./LogViewer";
 import { StepDataView } from "./StepDataView";
 import { failedNode, flatten, pickLogStep, rollbackOf, runSteps } from "./run";
@@ -144,8 +144,8 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
     pickLogStep((selectedNode && byNode?.get(selectedNode)) || [], null) ??
     pickLogStep(all, null);
   // The step chosen, else the selected node's own: its ID is its step's key.
-  // A step's data holds its blueprint's literals: for catalog managers (ADR-0057).
-  const readsData = can(me, "catalog.manage");
+  // A step's data holds its blueprint's literals: for catalog managers and auditors (ADR-0057).
+  const readsData = can(me, "catalog.manage") || can(me, "extensibility.read");
   const withData = readsData ? flatten(all).filter((s) => s.has_data) : [];
   const openData = readsData ? (s: Step) => setChosenData(s.id) : undefined;
   const dataStep =
@@ -296,6 +296,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 onOpenLog={(s) => setChosenLog(s.id)}
                 dataStep={dataStep?.id ?? null}
                 onOpenData={openData}
+                mayAct={mayActOnFailure(me, r)}
               />
             </Suspense>
           ) : (
@@ -308,7 +309,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 selectedDataStep={dataStep?.id ?? null}
               />
               {r?.status === "failed" && r.error && (
-                <FailureActions request={r} rolledBack={rollbackOf(steps.data.items)} />
+                <FailureActions request={r} rolledBack={rollbackOf(steps.data.items)} mayAct={mayActOnFailure(me, r)} />
               )}
             </>
           )}

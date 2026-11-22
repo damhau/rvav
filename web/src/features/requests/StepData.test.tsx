@@ -71,8 +71,8 @@ describe("a run's data (ADR-0057)", () => {
     );
   });
 
-  it("is for those who manage the catalog: a requester reads the steps, not their data", async () => {
-    db.me.permissions = db.me.permissions.filter((p) => p !== "catalog.manage");
+  it("is for those who manage the catalog or audit: a requester reads the steps, not their data", async () => {
+    db.me.permissions = db.me.permissions.filter((p) => p !== "catalog.manage" && p !== "extensibility.read");
     renderApp("/requests/REQ-10484");
     await screen.findByRole("application", { name: "Run of REQ-10484" }, { timeout: 5000 });
     expect(await screen.findByRole("region", { name: "Selected: The database's owner" })).toBeVisible();

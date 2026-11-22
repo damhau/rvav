@@ -30,6 +30,8 @@ export interface RequestRunProps {
   /** The step whose data the page shows (ADR-0057); none for who may not read it. */
   dataStep: string | null;
   onOpenData?: (step: Step) => void;
+  /** Whether the reader may retry or roll back a failure (mayActOnFailure). */
+  mayAct?: boolean;
 }
 
 export default function RequestRun({
@@ -42,6 +44,7 @@ export default function RequestRun({
   onOpenLog,
   dataStep,
   onOpenData,
+  mayAct,
 }: RequestRunProps) {
   const { t } = useTranslation("requests");
   const [view, setView] = useState<CanvasView>("graph");
@@ -59,7 +62,12 @@ export default function RequestRun({
     announced.current = failureKey;
   }, [failureKey]);
   const failure = failureKey ? (
-    <FailureActions request={request} rolledBack={rollbackOf(steps)} announce={announced.current !== failureKey} />
+    <FailureActions
+      request={request}
+      rolledBack={rollbackOf(steps)}
+      announce={announced.current !== failureKey}
+      mayAct={mayAct}
+    />
   ) : null;
 
   return (

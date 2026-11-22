@@ -20,6 +20,8 @@ import { Sheet } from "@/components/ui/sheet";
 import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { Variable } from "@/lib/api/types";
+import { can } from "@/lib/can";
+import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { relative } from "@/lib/format";
 
@@ -268,6 +270,9 @@ const columns: Column<Variable>[] = [
 
 export function VariablesPage() {
   const qc = useQueryClient();
+  const { me } = useCurrentProject();
+  // Auditors read them (extensibility.read); changing one is the catalog's (ADR-0057).
+  const canEdit = can(me, "catalog.manage");
   const variables = useQuery(adm.variables());
   const [editing, setEditing] = useState<Variable | "new" | null>(null);
   const [removing, setRemoving] = useState<Variable | null>(null);
@@ -285,7 +290,7 @@ export function VariablesPage() {
     },
   });
   const list = variables.data?.items;
-  const add = (
+  const add = canEdit && (
     <Button variant="primary" onClick={() => setEditing("new")}>
       New variable
     </Button>
@@ -316,20 +321,28 @@ export function VariablesPage() {
             <EmptyState
               icon={VariableIcon}
               title="No variables yet"
-              body="Add a value several items share, such as a site's DNS servers, so that each reads it from one place."
-              action={add}
+              body={
+                canEdit
+                  ? "Add a value several items share, such as a site's DNS servers, so that each reads it from one place."
+                  : "No value is shared between items yet."
+              }
+              action={add || undefined}
             />
           }
           rowMenuLabel={(v) => `Actions for ${refOf(v)}`}
-          rowMenu={(v) => (
-            <>
-              <MenuItem onSelect={() => setEditing(v)}>Change the value</MenuItem>
-              <MenuSeparator />
-              <MenuItem danger disabled={v.used_by.length > 0} onSelect={() => setRemoving(v)}>
-                {v.used_by.length > 0 ? "Remove: in use" : "Remove"}
-              </MenuItem>
-            </>
-          )}
+          rowMenu={
+            canEdit
+              ? (v) => (
+                  <>
+                    <MenuItem onSelect={() => setEditing(v)}>Change the value</MenuItem>
+                    <MenuSeparator />
+                    <MenuItem danger disabled={v.used_by.length > 0} onSelect={() => setRemoving(v)}>
+                      {v.used_by.length > 0 ? "Remove: in use" : "Remove"}
+                    </MenuItem>
+                  </>
+                )
+              : undefined
+          }
         />
       </Panel>
       {editing && <VariableSheet existing={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}

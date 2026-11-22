@@ -481,8 +481,9 @@ delete, what its type's workflow or job gave. Its step runs wherever the
 resource is made or changed: a blueprint's resources, a composite's resource
 step, a day-2 action or the deployment's deletion.
 
-You need `catalog.manage` for all of rvav to read a step's data, as you do to
-read a blueprint. A requester sees each step's status and error, not its data.
+You need `catalog.manage` or `extensibility.read` for all of rvav to read a
+step's data: catalog admins and auditors read it. A requester sees each
+step's status and error, not its data.
 Secrets stay masked: a secret input reads `••••`, a stored secret its
 `${secret.<name>}`, and a secret input's value repeated in a text, such as a
 REST answer, reads `[removed]`. A person's answer is shown only to those it
@@ -514,20 +515,27 @@ steps:
 ```
 
 To add one, go to **Administration > Variables** and choose **New
-variable**. You need `catalog.manage` for all of rvav. A value is text, a
-number, true or false, or a list or an object written as JSON, 16 KiB at
-most.
+variable**. You need `catalog.manage` for all of rvav; with
+`extensibility.read`, as an auditor, you read the variables and change
+none. A value is text, a number, true or false, or a list or an object
+written as JSON, 16 KiB at most.
 
 - A step reads the value as it is when the step runs. A change reaches the
   steps that haven't run yet, in requests already running too. Unlike a
   property group's constants, you don't publish the items again.
 - Nothing masks a variable: the run data and the audit log show its value.
   Store a password, a token or a key as a secret instead. A group or a name
-  such as `admin_password` is refused.
+  that says so, such as `admin_password`, `api_token` or `ssh_key`, is
+  refused.
+- Read a variable written as `vars.<group>.<name>`. Saving refuses another
+  way, such as `vars['cmdb']['site']` or the group `vars.cmdb` whole: rvav
+  finds the variables an item reads by name, to check they exist and keep
+  them.
 - To publish a version, every variable its steps read must exist; a draft
   may read one you haven't added yet.
-- You can't remove a variable that a draft or a published version reads.
-  The page lists the items that read each one.
+- You can't remove a variable that a draft or a published version reads,
+  or that a request of an older version reads while it's still to run or
+  running. The page lists the items and requests that read each one.
 
 The API is `/admin/variables`, with each variable at
 `/admin/variables/<group>.<name>`. Each change is audited with its value.

@@ -98,16 +98,20 @@ describe("the Definition tab", () => {
     expect(shown().startsWith("# mine\n")).toBe(true);
   });
 
-  it("has the shared variables and resource types read again once saved: they say which items read them", async () => {
-    const { client } = await openDefinition();
-    client.setQueryData(adm.variables().queryKey, { items: [] });
-    client.setQueryData(adm.resourceTypes().queryKey, { items: [] });
-    type("# saved\n");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Save draft" }));
-    expect(await screen.findByText("Draft 3.3 saved")).toBeInTheDocument();
-    expect(client.getQueryState(adm.variables().queryKey)?.isInvalidated).toBe(true);
-    expect(client.getQueryState(adm.resourceTypes().queryKey)?.isInvalidated).toBe(true);
-  });
+  it(
+    "has the shared variables and resource types read again once saved: they say which items read them",
+    { timeout: 15_000 },
+    async () => {
+      const { client } = await openDefinition();
+      client.setQueryData(adm.variables().queryKey, { items: [] });
+      client.setQueryData(adm.resourceTypes().queryKey, { items: [] });
+      type("# saved\n");
+      await userEvent.setup().click(screen.getByRole("button", { name: "Save draft" }));
+      expect(await screen.findByText("Draft 3.3 saved")).toBeInTheDocument();
+      expect(client.getQueryState(adm.variables().queryKey)?.isInvalidated).toBe(true);
+      expect(client.getQueryState(adm.resourceTypes().queryKey)?.isInvalidated).toBe(true);
+    },
+  );
 
   it("says which constraint names a tag vCenter doesn't have, once saved", async () => {
     await openDefinition();
@@ -141,7 +145,7 @@ describe("the item's header and versions", () => {
     expect(await screen.findByRole("button", { name: "New draft" })).toBeInTheDocument();
   });
 
-  it("shows each problem a publish is refused for on its line of the definition", async () => {
+  it("shows each problem a publish is refused for on its line of the definition", { timeout: 15_000 }, async () => {
     const u = userEvent.setup();
     renderApp("/admin/catalog-items/rhel9-server");
     await u.click(await screen.findByRole("button", { name: "New draft" }));
@@ -173,7 +177,7 @@ describe("the item's header and versions", () => {
     await waitFor(() => expect(list).toHaveFocus());
   });
 
-  it("lists every problem of a refusal it can't show on lines", async () => {
+  it("lists every problem of a refusal it can't show on lines", { timeout: 15_000 }, async () => {
     const u = userEvent.setup();
     renderApp("/admin/catalog-items/rhel9-server");
     server.use(

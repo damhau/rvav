@@ -502,6 +502,20 @@ test("an auditor reads the administration pages without changing them", async ({
   await expect(members.getByRole("list", { name: "Roles of Thomas Nguyen" })).toContainText("Member");
   await expect(members.getByRole("textbox", { name: "Add someone" })).toBeHidden();
   await expect(members.getByRole("button", { name: /^Actions for/ })).toHaveCount(0);
+
+  // The shared variables and a run's step data, read only (ADR-0057).
+  await open(page, "Variables", "Variables");
+  const variables = page.getByRole("table", { name: "Variables" });
+  await expect(variables.getByRole("row", { name: /vars\.network\.dns_servers/ })).toContainText("10.20.0.53");
+  await expect(page.getByRole("button", { name: "New variable" })).toBeHidden();
+  await expect(variables.getByRole("button", { name: /^Actions for/ })).toHaveCount(0);
+  await page.goto("/requests/REQ-10484");
+  await expect(page.getByRole("region", { name: "Step data", exact: true })).toContainText(
+    "The database's owner · pg-create-role",
+  );
+  // Its failure, without the Retry only its requester, its owner or a project admin may use.
+  await expect(page.getByText("It was rolled back")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Retry/ })).toHaveCount(0);
 });
 
 test("several vCenters: added, tested and removed (S12.6)", async ({ page }) => {
