@@ -239,7 +239,7 @@ func (s *Service) holdChange(ctx context.Context, tx pgx.Tx, ch *quotaChange, ov
 		if !slices.Contains(overSoft, res) {
 			// Who approves it was decided without this soft quota.
 			return &ConflictError{Msg: "A request asked for at the same time took what this one counted on: " +
-				"it now goes over a soft quota, which needs approval. Ask for it again."}
+				"it now goes over a soft quota, which needs approval. Ask for it again.", Retry: true}
 		}
 	}
 	return accepted(warnings, acceptAll, listed)

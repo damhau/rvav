@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"os/exec"
@@ -45,22 +46,33 @@ func (o harnessOut) rows(table string, match func(map[string]any) bool) []map[st
 // for others.
 const leaSysID = "a8f98bb0eb32010045e1a5115206fe3a"
 
+// thomasSysID is Thomas Nguyen's sys_user, the harness's signed-in user.
+const thomasSysID = "6816f79cc0a8016401c5a33be04be441"
+
 // runHarness runs ServiceNow's scripts under Node, with rvav's answers in
 // responses.
 func runHarness(t *testing.T, responses map[string]any, steps ...map[string]any) harnessOut {
+	t.Helper()
+	return runHarnessWith(t, nil, responses, steps...)
+}
+
+// runHarnessWith is runHarness on an instance that has these rows too.
+func runHarnessWith(t *testing.T, rows map[string]any, responses map[string]any, steps ...map[string]any) harnessOut {
 	t.Helper()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("no node to run ServiceNow's scripts with")
 	}
+	tables := map[string]any{"sc_catalog": []map[string]string{{"sys_id": "e0d08b13c3330100c8b837659bba8fb4", "title": "Service Catalog"}},
+		"sys_user": []map[string]string{{"sys_id": leaSysID, "email": "lea.martin@corp.example", "user_name": "lmartin"}}}
+	maps.Copy(tables, rows)
 	fixture, _ := json.Marshal(map[string]any{
 		"properties": map[string]string{},
 		"aliases":    map[string]any{"global.rvav": map[string]string{"connection_url": "https://rvav.corp.example/", "api_key": "rvav_pat_x"}},
-		"user":       map[string]string{"sys_id": "6816f79cc0a8016401c5a33be04be441", "email": "thomas.nguyen@corp.example", "user_name": "tnguyen"},
-		"tables": map[string]any{"sc_catalog": []map[string]string{{"sys_id": "e0d08b13c3330100c8b837659bba8fb4", "title": "Service Catalog"}},
-			"sys_user": []map[string]string{{"sys_id": leaSysID, "email": "lea.martin@corp.example", "user_name": "lmartin"}}},
-		"responses": responses,
-		"steps":     steps,
+		"user":       map[string]string{"sys_id": thomasSysID, "email": "thomas.nguyen@corp.example", "user_name": "tnguyen"},
+		"tables":     tables,
+		"responses":  responses,
+		"steps":      steps,
 	})
 	file := filepath.Join(t.TempDir(), "fixture.json")
 	if err := os.WriteFile(file, fixture, 0o600); err != nil {
@@ -238,4 +250,68 @@ func TestServiceNowScripts(t *testing.T) {
 			t.Errorf("rvav down = %v, calls %v", ritm, paths)
 		}
 	})
+}
+
+// TestServiceNowRetryJob: the retry job gets past requested items that
+// wait for ServiceNow's approval and those rvav has already, however many
+// come first, and orders again later after a 409 that passes, not after
+// one that is final.
+func TestServiceNowRetryJob(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	const item = "cccccccccccccccccccccccccccccccc"
+	ritm := func(n int, approval string) map[string]any {
+		return map[string]any{"sys_id": fmt.Sprintf("%032x", n), "number": fmt.Sprintf("RITM%07d", n), "cat_item": item,
+			"requested_for": thomasSysID, "opened_by": thomasSysID, "approval": approval, "state": "1", "active": true,
+			"variables": map[string]string{"rvav_project": "prj_web", "rvav_environment": "dev"}}
+	}
+	var items []map[string]any
+	for n := 1; n <= 60; n++ {
+		items = append(items, ritm(n, "requested"))
+	}
+	known, waiting := fmt.Sprintf("%032x", 61), fmt.Sprintf("%032x", 62)
+	items = append(items, ritm(61, "approved"), ritm(62, "not requested"))
+	rows := map[string]any{"sc_cat_item": []map[string]any{{"sys_id": item, "meta": "rvav:itm_rhel9-server", "active": true}},
+		"sc_req_item": items}
+	conflict := func(retry bool) map[string]any {
+		body := map[string]any{"type": "https://rvav.dev/problems/conflict", "title": "Not possible right now", "status": 409,
+			"request_id": "req_1", "detail": "Requests placed at the same time keep taking the room chosen for these VMs. Try again."}
+		if retry {
+			body["retry"] = true
+		}
+		return map[string]any{"status": 409, "body": body}
+	}
+	answers := map[string]any{
+		"GET /requests/" + known: map[string]any{"status": 200, "body": map[string]any{"request_number": "REQ-10007"}},
+		"POST /requests":         conflict(true),
+	}
+	row := func(out harnessOut, sysID string) map[string]any {
+		got := out.rows("sc_req_item", func(r map[string]any) bool { return r["sys_id"] == sysID })
+		if len(got) != 1 {
+			t.Fatalf("no requested item %s", sysID)
+		}
+		return got[0]
+	}
+
+	out := runHarnessWith(t, rows, answers, map[string]any{"do": "retry"})
+	var paths []string
+	for _, c := range out.Calls {
+		paths = append(paths, c.Method+" "+c.Path)
+	}
+	if !slices.Equal(paths, []string{"GET /requests/" + known, "GET /requests/" + waiting, "POST /requests"}) {
+		t.Fatalf("the retry job's calls = %v", paths)
+	}
+	if r := row(out, known); r["state"] != "2" || !strings.Contains(fmt.Sprint(r["work_notes"]), "REQ-10007") {
+		t.Errorf("the item rvav has = %v", r)
+	}
+	if r := row(out, waiting); r["state"] != "1" || r["work_notes"] != nil {
+		t.Errorf("after a 409 that passes = %v", r)
+	}
+
+	answers["POST /requests"] = conflict(false)
+	out = runHarnessWith(t, rows, answers, map[string]any{"do": "retry"})
+	if r := row(out, waiting); r["state"] != "4" || !strings.Contains(fmt.Sprint(r["work_notes"]), "Requests placed at the same time") {
+		t.Errorf("after a final 409 = %v", r)
+	}
 }

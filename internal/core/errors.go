@@ -29,7 +29,12 @@ func (e *ValidationError) Error() string {
 }
 
 // ConflictError is a state that does not allow the action (HTTP 409).
-type ConflictError struct{ Msg string }
+// Retry says that the same call may succeed later, unchanged: the state
+// is one that passes, such as requests placed at the same moment.
+type ConflictError struct {
+	Msg   string
+	Retry bool
+}
 
 func (e *ConflictError) Error() string { return e.Msg }
 

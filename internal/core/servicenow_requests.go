@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -34,7 +35,44 @@ const (
 	// readsPerSubmission: each process takes this many reads for each
 	// submission the limit allows, for the catalog form's lookups.
 	readsPerSubmission = 10
+	// serviceNowNameMax is the longest email or user name ServiceNow
+	// names a person by.
+	serviceNowNameMax = 254
 )
+
+// ServiceNow's sys_ids and requested items' numbers, as the API documents
+// them: a sys_id is stored, and named in paths rvav and ServiceNow build.
+var (
+	serviceNowSysID  = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	serviceNowNumber = regexp.MustCompile(`^[A-Z]{2,8}[0-9]{4,12}$`)
+)
+
+// checkServiceNowDraft refuses a submission the API's schema doesn't take.
+func checkServiceNowDraft(d api.ServiceNowRequestDraft) error {
+	var errs []api.FieldError
+	if !serviceNowSysID.MatchString(d.RitmSysId) {
+		errs = append(errs, fieldErr("/ritm_sys_id", "pattern", "A sys_id is 32 lower-case hexadecimal digits."))
+	}
+	if !serviceNowNumber.MatchString(d.RitmNumber) {
+		errs = append(errs, fieldErr("/ritm_number", "pattern",
+			"A requested item's number is 2 to 8 capital letters, then 4 to 12 digits, for example RITM0010045."))
+	}
+	for _, f := range []struct{ ptr, v string }{{"/user", d.User}, {"/ordered_by", d.OrderedBy}} {
+		switch {
+		case strings.TrimSpace(f.v) == "":
+			errs = append(errs, fieldErr(f.ptr, "required", "An email or a user name."))
+		case len(f.v) > serviceNowNameMax:
+			errs = append(errs, fieldErr(f.ptr, "too_long", fmt.Sprintf("At most %d characters.", serviceNowNameMax)))
+		}
+	}
+	if d.Justification != nil && len([]rune(*d.Justification)) > 2000 {
+		errs = append(errs, fieldErr("/justification", "too_long", "At most 2000 characters."))
+	}
+	if len(errs) > 0 {
+		return &ValidationError{Errors: errs}
+	}
+	return nil
+}
 
 // RateLimitedError: more calls this minute than the limit; RetryAfter is
 // the wait until the next minute.
@@ -397,13 +435,21 @@ func (s *Service) SubmitServiceNowRequest(ctx context.Context, p *auth.Principal
 	if err := serviceNowCaller(p); err != nil {
 		return api.ServiceNowRequest{}, false, err
 	}
-	if err := s.serviceNowLimit(ctx, p, true); err != nil {
+	if err := checkServiceNowDraft(d); err != nil {
 		return api.ServiceNowRequest{}, false, err
 	}
+	// A submission made already is answered as a read: ServiceNow's retry
+	// job asks again, and shouldn't use up the room for new orders.
 	if made, err := s.Store.ServiceNowRequestForRITM(ctx, d.RitmSysId); err == nil {
+		if err := s.serviceNowLimit(ctx, p, false); err != nil {
+			return api.ServiceNowRequest{}, false, err
+		}
 		out, err := s.presentServiceNowRequest(ctx, made)
 		return out, false, err
 	} else if !errors.Is(err, store.ErrNotFound) {
+		return api.ServiceNowRequest{}, false, err
+	}
+	if err := s.serviceNowLimit(ctx, p, true); err != nil {
 		return api.ServiceNowRequest{}, false, err
 	}
 	client := auth.ClientFrom(ctx)
@@ -420,7 +466,8 @@ func (s *Service) SubmitServiceNowRequest(ctx context.Context, p *auth.Principal
 		return api.ServiceNowRequest{}, false, err
 	}
 	if !s.liveConfig(ctx).ServiceNow.Configured() {
-		return refuse(&ConflictError{Msg: "ServiceNow's connection isn't set in rvav: it couldn't tell the requested item how the request goes."})
+		return refuse(&ConflictError{Msg: "ServiceNow's connection isn't set in rvav: it couldn't tell the requested item how the request goes.",
+			Retry: true})
 	}
 	up, err := s.serviceNowUser(ctx, d.User, "/user")
 	var unknown *unknownUserError
@@ -568,6 +615,9 @@ func ServiceNowValues(formSchema json.RawMessage, given map[string]any) map[stri
 func (s *Service) ServiceNowRequest(ctx context.Context, p *auth.Principal, sysID string) (api.ServiceNowRequest, error) {
 	if err := serviceNowCaller(p); err != nil {
 		return api.ServiceNowRequest{}, err
+	}
+	if !serviceNowSysID.MatchString(sysID) {
+		return api.ServiceNowRequest{}, &BadRequestError{Msg: "A sys_id is 32 lower-case hexadecimal digits."}
 	}
 	if err := s.serviceNowLimit(ctx, p, false); err != nil {
 		return api.ServiceNowRequest{}, err

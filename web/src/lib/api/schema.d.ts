@@ -4195,6 +4195,13 @@ export interface paths {
          *     or an orderer whose last sign-in is older than
          *     `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
          *     may have changed since.
+         *
+         *     The body is checked against the schema: a field it doesn't list
+         *     answers 400, a `sys_id`, number or name out of its pattern or
+         *     length 422. A submission made already is counted as a read, not
+         *     against `requests_per_minute`. A 409 with `retry` (the
+         *     connection isn't set yet, or requests placed at the same moment
+         *     took the room) may succeed later; any other 409 is final.
          */
         post: operations["submitServiceNowRequest"];
         delete?: never;
@@ -6013,6 +6020,8 @@ export interface components {
             /** @description Correlation ID, also in the `X-Request-Id` response header. Quote it to support. */
             request_id: string;
             errors?: components["schemas"]["FieldError"][];
+            /** @description On a 409, true when the same call may succeed later, unchanged: requests placed at the same moment took the room this one counted on, or a setting it needs isn't made yet. A 409 without it is final. */
+            retry?: boolean;
         };
         FieldError: {
             /** @description JSON pointer into the submitted inputs, for example `/inputs/memory_gb`. Empty for form-level errors. */
@@ -18601,6 +18610,7 @@ export interface operations {
                     "application/json": components["schemas"]["ServiceNowRequest"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -18631,6 +18641,7 @@ export interface operations {
                     "application/json": components["schemas"]["ServiceNowRequest"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

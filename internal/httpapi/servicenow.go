@@ -28,7 +28,7 @@ func (s *Server) GetServiceNowEntitlements(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) SubmitServiceNowRequest(w http.ResponseWriter, r *http.Request) {
 	var d api.ServiceNowRequestDraft
-	if !s.decode(w, r, &d) {
+	if !s.decodeStrict(w, r, &d) {
 		return
 	}
 	out, made, err := s.Core.SubmitServiceNowRequest(r.Context(), principal(r), d)

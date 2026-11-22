@@ -123,7 +123,8 @@ func (s *Service) placing(ctx context.Context, place func() (store.RequestRow, e
 		})
 	}
 	if errors.Is(err, errPlacementMoved) {
-		return store.RequestRow{}, &ConflictError{Msg: "Requests placed at the same time keep taking the room chosen for these VMs. Try again."}
+		return store.RequestRow{}, &ConflictError{Msg: "Requests placed at the same time keep taking the room chosen for these VMs. Try again.",
+			Retry: true}
 	}
 	return out, err
 }

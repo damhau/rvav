@@ -84,7 +84,9 @@ is missing from vCenter, `correlation_id` (rvav's resource ID) and a
 `short_description` naming the deployment, its project and its owner
 (`rvav: deployment web-dev-app001 (dep_…) in Web Platform, owned by
 Thu Nguyen`). `owned_by` is the ServiceNow user whose email is the
-owner's, when there is exactly one. Which vCenter is in the
+owner's, when there is exactly one, looked up only for an email that
+fits in an encoded query as it is (no `^`, `=`, or `javascript:`, which
+ServiceNow would run). Which vCenter is in the
 description's `vcenter_uuid`; a relation to the vCenter's CI is left to
 discovery.
 
@@ -111,7 +113,9 @@ retention rules delete it if the site has any.
 every deployment in scope and every deployment with a CI it keeps, which
 catches what an event couldn't (a CI made while ServiceNow was down for
 longer than the backoff, a VM changed in vCenter), and reads the CIs
-ServiceNow has of its data source that are not retired: those rvav
+ServiceNow has of its data source that are not retired, in pages ordered
+by `sys_id` (pages of a read with no order may repeat or skip rows):
+those rvav
 doesn't keep are reported as CIs rvav no longer has (a VM deleted while
 the integration was off, a CI copied by hand). The report, with the
 counts and the errors, is on the integration's page and in the API
@@ -187,6 +191,16 @@ kept, followed by "Requested in ServiceNow, RITM…". A submission needs
 the connection set (409 otherwise): rvav couldn't tell the requested
 item how it goes.
 
+The body is held to the API's schema: a field it doesn't list answers
+400, and a `sys_id` that isn't 32 lower-case hexadecimal digits, a
+number out of its pattern or a name longer than 254 characters 422,
+before anything is looked up or kept, since a `sys_id` is stored and
+named in the paths both sides build. A 409 says in `retry` whether it
+passes: the connection not set yet, requests placed at the same moment
+taking the room counted on, or a soft quota a request asked for at the
+same moment crossed. ServiceNow keeps such an item open and orders it
+again later; any other 409 is final and closes it.
+
 **Who ordered.** A request also names in `ordered_by` who placed the
 order, the requested item's `opened_by`, matched as `user` is (a
 sign-in too old included, 422 on `/ordered_by`). When it's the same
@@ -257,7 +271,9 @@ notes for good.
   proxies; submissions are limited to `requests_per_minute` (30 by
   default) across rvav's API processes, counted by the minute in the
   database (`servicenow_rate`), and reads to ten times that rate in each
-  process; every request made is audited with the token and the
+  process, a requested item submitted again being a read, so that the
+  retry job's asking again doesn't hold back new orders; every request
+  made is audited with the token and the
   address; the token expires in a year, and Revoke ends it at once.
 - **A forged user name.** rvav believes the people ServiceNow names: it
   can't check who ordered in ServiceNow. ServiceNow's side takes the
@@ -313,15 +329,20 @@ and its README the install steps:
   variables are strings: rvav takes them as the form's types, and an
   empty one as the initial value. A refusal closes the requested item
   incomplete with rvav's problem in its work notes; rvav down, a 401, a
-  429 or a 5xx leave it open, and a job every 5 minutes submits again,
-  for 3 days, the open ones rvav has no request for.
+  429, a 5xx or a 409 with `retry` leave it open, and a job every 5
+  minutes submits again, for 3 days, the open ones rvav has no request
+  for. It asks rvav about 50 at most a run, oldest first; those waiting
+  for ServiceNow's approval cost no call, and one rvav has already but
+  whose first work note didn't land is set to Work in Progress, so that
+  neither holds back the items behind them.
 
 There is no update set. An update set is one XML file to import, but it
 is exported from an instance the records were made on, and we have none:
 a hand-written one we can't check would be worse than steps that say
 what each record is. The scripts are checked under Node, with a stand-in
-for the Glide APIs, against rvav's real answers (`TestServiceNowScripts`):
-the import, the projects, the draft rvav takes, a refusal and a retry.
+for the Glide APIs, against rvav's real answers (`TestServiceNowScripts`,
+`TestServiceNowRetryJob`): the import, the projects, the draft rvav
+takes, a refusal and a retry.
 I1.6's acceptance runs them on a personal developer instance.
 
 ### Events

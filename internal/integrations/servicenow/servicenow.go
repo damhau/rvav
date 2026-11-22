@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -399,9 +400,14 @@ func (c *Client) Identify(ctx context.Context, dataSource string, ci CI) (Identi
 	return Identified{SysID: it.SysID, Operation: it.Operation}, nil
 }
 
+// queryEmail is an email that goes into an encoded query as it is: no
+// condition separator (^), operator or javascript: prefix, which
+// ServiceNow would run, fits in it.
+var queryEmail = regexp.MustCompile(`^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
+
 // UserSysID is the sys_id of the active user with this email, or "".
 func (c *Client) UserSysID(ctx context.Context, email string) (string, error) {
-	if email == "" || strings.ContainsAny(email, "^=") {
+	if !queryEmail.MatchString(email) {
 		return "", nil
 	}
 	recs, err := c.Records(ctx, TableUser, Query{Encoded: "active=true^email=" + email, Fields: []string{"sys_id"}, Limit: 2})

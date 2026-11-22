@@ -5459,6 +5459,13 @@ paths:
         or an orderer whose last sign-in is older than
         `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
         may have changed since.
+
+        The body is checked against the schema: a field it doesn't list
+        answers 400, a `sys_id`, number or name out of its pattern or
+        length 422. A submission made already is counted as a read, not
+        against `requests_per_minute`. A 409 with `retry` (the
+        connection isn't set yet, or requests placed at the same moment
+        took the room) may succeed later; any other 409 is final.
       requestBody:
         required: true
         content:
@@ -5475,6 +5482,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ServiceNowRequest" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -5500,6 +5508,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ServiceNowRequest" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -8097,6 +8106,13 @@ components:
         errors:
           type: array
           items: { $ref: "#/components/schemas/FieldError" }
+        retry:
+          type: boolean
+          description: >-
+            On a 409, true when the same call may succeed later, unchanged:
+            requests placed at the same moment took the room this one
+            counted on, or a setting it needs isn't made yet. A 409 without
+            it is final.
 
     FieldError:
       type: object

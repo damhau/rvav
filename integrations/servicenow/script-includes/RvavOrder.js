@@ -16,7 +16,10 @@ RvavOrder.FIXED = ['rvav_project', 'rvav_environment', 'rvav_deployment_name', '
   'rvav_accept_warnings'];
 // Pending and Open: the states before rvav's first work note sets 2.
 RvavOrder.STATES_WAITING = '-5,1';
+RvavOrder.STATE_WORK_IN_PROGRESS = '2';
 RvavOrder.STATE_CLOSED_INCOMPLETE = '4';
+// The requested items one run of the retry job asks rvav about at most.
+RvavOrder.RETRY_CALLS = 50;
 
 RvavOrder.itemIdOf = function (catItem) {
   var meta = String(catItem.getValue('meta') || '');
@@ -60,7 +63,10 @@ RvavOrder.prototype = {
     if (res.status === 200 || res.status === 202) {
       return 'made';
     }
-    if (res.status === 0 || res.status === 401 || res.status === 429 || res.status >= 500) {
+    // A 409 with retry passes: requests placed at the same moment, or a
+    // setting rvav doesn't have yet. Any other 409 is final.
+    var passing = res.status === 409 && res.body !== null && res.body.retry === true;
+    if (res.status === 0 || res.status === 401 || res.status === 429 || res.status >= 500 || passing) {
       gs.warn('rvav: ' + ritm.getValue('number') + ' will be submitted again: ' + RvavClient.problem(res));
       return 'retry';
     }
@@ -116,7 +122,9 @@ RvavOrder.prototype = {
   },
 
   // retry submits again the open requested items rvav has no request for:
-  // those rvav couldn't take when they were ordered.
+  // those rvav couldn't take when they were ordered. Items waiting for an
+  // approval take no call, and those rvav has leave the waiting states,
+  // so that neither holds back the items behind them.
   retry: function () {
     var gr = new GlideRecord('sc_req_item');
     gr.addActiveQuery();
@@ -125,14 +133,19 @@ RvavOrder.prototype = {
     gr.addQuery('sys_updated_on', '<', gs.minutesAgo(5));
     gr.addQuery('sys_created_on', '>', gs.daysAgo(3));
     gr.orderBy('sys_created_on');
-    gr.setLimit(50);
     gr.query();
-    while (gr.next()) {
+    var calls = 0;
+    while (calls < RvavOrder.RETRY_CALLS && gr.next()) {
       if (!RvavOrder.ready(gr)) {
         continue;
       }
+      calls++;
       var known = this.client.request(gr.getUniqueValue());
       if (known.status === 200) {
+        // rvav's first work note didn't reach the item: rvav works on it.
+        gr.work_notes = 'rvav: request ' + ((known.body || {}).request_number || '') + ' was submitted.';
+        gr.setValue('state', RvavOrder.STATE_WORK_IN_PROGRESS);
+        gr.update();
         continue;
       }
       if (known.status !== 404 || this.submit(gr) === 'retry') {

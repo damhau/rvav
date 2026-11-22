@@ -62,7 +62,13 @@ on a real instance yet: they are checked under Node against rvav's API
   needs the roles in
   [The account rvav signs in with](#the-account-rvav-signs-in-with).
 - The instance reaches rvav's URL over HTTPS, directly or through a MID
-  server.
+  server, and checks the certificates of the servers it calls: the
+  system properties `com.glide.communications.trustmanager_trust_all`
+  is `false`, its default, and
+  `com.glide.communications.httpclient.verify_hostname` is `true`.
+  Otherwise anyone on the way to rvav can read rvav's token. A MID
+  server checks them with its own Java trust store: rvav's certificate
+  authority must be in it.
 - You have the `admin` role on the instance, in the global scope.
 - People who order rvav's items, and those they order for, have an rvav
   user with the same email. rvav knows a person from their first sign-in
@@ -173,9 +179,12 @@ integration. Give that account no admin role, only:
   addresses" means that the call came from outside rvav's **Allowed
   sources**: add the instance's address, then order again.
 - **The RITM stays Open.** rvav couldn't be reached, refused the token
-  (401, a revoked or expired token), answered 429, or answered an error
-  of its own (5xx). The system log has a warning starting with `rvav:`,
-  and `rvav: retry` submits the RITM again every 5 minutes for 3 days.
+  (401, a revoked or expired token), answered 429, answered an error of
+  its own (5xx), or answered a conflict that passes (409 with `retry`:
+  rvav's ServiceNow connection isn't set, or orders placed at the same
+  moment took the room counted on). The system log has a warning
+  starting with `rvav:`, and `rvav: retry` submits the RITM again every
+  5 minutes for 3 days.
 - **A work note is missing.** ServiceNow refused it five times, for
   example through a data policy or a business rule on `sc_req_item`, and
   rvav gave it up so that the later notes still reach the RITM. rvav's

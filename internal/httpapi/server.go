@@ -281,6 +281,10 @@ func principal(r *http.Request) *auth.Principal { return auth.From(r.Context()) 
 
 // problem writes an RFC 9457 problem response.
 func (s *Server) problem(w http.ResponseWriter, r *http.Request, status int, typ, title, detail string, errs []api.FieldError) {
+	send(w, problemOf(r, status, typ, title, detail, errs))
+}
+
+func problemOf(r *http.Request, status int, typ, title, detail string, errs []api.FieldError) api.Problem {
 	p := api.Problem{
 		Type:      "https://rvav.dev/problems/" + typ,
 		Title:     title,
@@ -294,8 +298,12 @@ func (s *Server) problem(w http.ResponseWriter, r *http.Request, status int, typ
 	if errs != nil {
 		p.Errors = &errs
 	}
+	return p
+}
+
+func send(w http.ResponseWriter, p api.Problem) {
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
+	w.WriteHeader(p.Status)
 	_ = json.NewEncoder(w).Encode(p)
 }
 
@@ -326,7 +334,11 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.As(err, &ve):
 		s.problem(w, r, http.StatusUnprocessableEntity, "validation", "Some inputs need attention", ve.Error(), ve.Errors)
 	case errors.As(err, &ce):
-		s.problem(w, r, http.StatusConflict, "conflict", "Not possible right now", ce.Msg, nil)
+		p := problemOf(r, http.StatusConflict, "conflict", "Not possible right now", ce.Msg, nil)
+		if ce.Retry {
+			p.Retry = &ce.Retry
+		}
+		send(w, p)
 	case errors.As(err, &be):
 		s.problem(w, r, http.StatusBadRequest, "bad-request", "The request is not valid", be.Msg, nil)
 	case errors.As(err, &te):

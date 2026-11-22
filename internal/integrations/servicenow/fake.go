@@ -119,7 +119,7 @@ func (f *Fake) RefuseUpdates(text string, status int) {
 	}
 }
 
-// Calls are the calls made so far, as "METHOD /path".
+// Calls are the calls made so far, as "METHOD /path?query".
 func (f *Fake) Calls() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -144,7 +144,7 @@ func newSysID() string {
 func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
+	f.calls = append(f.calls, r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery)
 	for prefix, status := range f.failing {
 		if strings.HasPrefix(r.URL.Path, prefix) {
 			fail(w, status, "Service unavailable", "the fake was told to fail")
@@ -215,6 +215,9 @@ func (f *Fake) table(w http.ResponseWriter, r *http.Request, parts []string) {
 				rows = append(rows, row)
 			}
 		}
+		if by := orderBy(q.Get("sysparm_query")); by != "" {
+			slices.SortStableFunc(rows, func(a, b Record) int { return strings.Compare(a[by], b[by]) })
+		}
 		off, _ := strconv.Atoi(q.Get("sysparm_offset"))
 		lim, _ := strconv.Atoi(q.Get("sysparm_limit"))
 		rows = rows[min(off, len(rows)):]
@@ -279,6 +282,16 @@ func pick(row Record, fields string) Record {
 		out[f] = row[f]
 	}
 	return out
+}
+
+// orderBy is the field an encoded query orders by, or "".
+func orderBy(query string) string {
+	for _, c := range strings.Split(query, "^") {
+		if f, ok := strings.CutPrefix(c, "ORDERBY"); ok {
+			return f
+		}
+	}
+	return ""
 }
 
 // matches says whether a row meets an encoded query's conditions.

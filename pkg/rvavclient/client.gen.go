@@ -8751,8 +8751,11 @@ type Problem struct {
 
 	// RequestId Correlation ID, also in the `X-Request-Id` response header. Quote it to support.
 	RequestId string `json:"request_id"`
-	Status    int    `json:"status"`
-	Title     string `json:"title"`
+
+	// Retry On a 409, true when the same call may succeed later, unchanged: requests placed at the same moment took the room this one counted on, or a setting it needs isn't made yet. A 409 without it is final.
+	Retry  *bool  `json:"retry,omitempty"`
+	Status int    `json:"status"`
+	Title  string `json:"title"`
 
 	// Type A URI identifying the problem type, for example `https://rvav.dev/problems/quota-exceeded`.
 	Type string `json:"type"`
@@ -18152,6 +18155,13 @@ type ClientInterface interface {
 	// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
 	// may have changed since.
 	//
+	// The body is checked against the schema: a field it doesn't list
+	// answers 400, a `sys_id`, number or name out of its pattern or
+	// length 422. A submission made already is counted as a read, not
+	// against `requests_per_minute`. A 409 with `retry` (the
+	// connection isn't set yet, or requests placed at the same moment
+	// took the room) may succeed later; any other 409 is final.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
@@ -18176,6 +18186,13 @@ type ClientInterface interface {
 	// or an orderer whose last sign-in is older than
 	// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
 	// may have changed since.
+	//
+	// The body is checked against the schema: a field it doesn't list
+	// answers 400, a `sys_id`, number or name out of its pattern or
+	// length 422. A submission made already is counted as a read, not
+	// against `requests_per_minute`. A 409 with `retry` (the
+	// connection isn't set yet, or requests placed at the same moment
+	// took the room) may succeed later; any other 409 is final.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -26506,6 +26523,13 @@ func (c *Client) GetServiceNowEntitlements(ctx context.Context, params *GetServi
 // `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
 // may have changed since.
 //
+// The body is checked against the schema: a field it doesn't list
+// answers 400, a `sys_id`, number or name out of its pattern or
+// length 422. A submission made already is counted as a read, not
+// against `requests_per_minute`. A 409 with `retry` (the
+// connection isn't set yet, or requests placed at the same moment
+// took the room) may succeed later; any other 409 is final.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
@@ -26540,6 +26564,13 @@ func (c *Client) SubmitServiceNowRequestWithBody(ctx context.Context, contentTyp
 // or an orderer whose last sign-in is older than
 // `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
 // may have changed since.
+//
+// The body is checked against the schema: a field it doesn't list
+// answers 400, a `sys_id`, number or name out of its pattern or
+// length 422. A submission made already is counted as a read, not
+// against `requests_per_minute`. A 409 with `retry` (the
+// connection isn't set yet, or requests placed at the same moment
+// took the room) may succeed later; any other 409 is final.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -44743,6 +44774,13 @@ type ClientWithResponsesInterface interface {
 	// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
 	// may have changed since.
 	//
+	// The body is checked against the schema: a field it doesn't list
+	// answers 400, a `sys_id`, number or name out of its pattern or
+	// length 422. A submission made already is counted as a read, not
+	// against `requests_per_minute`. A 409 with `retry` (the
+	// connection isn't set yet, or requests placed at the same moment
+	// took the room) may succeed later; any other 409 is final.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
@@ -44767,6 +44805,13 @@ type ClientWithResponsesInterface interface {
 	// or an orderer whose last sign-in is older than
 	// `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
 	// may have changed since.
+	//
+	// The body is checked against the schema: a field it doesn't list
+	// answers 400, a `sys_id`, number or name out of its pattern or
+	// length 422. A submission made already is counted as a read, not
+	// against `requests_per_minute`. A 409 with `retry` (the
+	// connection isn't set yet, or requests placed at the same moment
+	// took the room) may succeed later; any other 409 is final.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -64354,6 +64399,8 @@ type SubmitServiceNowRequestResponse struct {
 	JSON200 *ServiceNowRequest
 	// JSON202 the response for an HTTP 202 `application/json` response
 	JSON202 *ServiceNowRequest
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -64380,6 +64427,11 @@ func (r SubmitServiceNowRequestResponse) GetJSON200() *ServiceNowRequest {
 // GetJSON202 returns the response for an HTTP 202 `application/json` response
 func (r SubmitServiceNowRequestResponse) GetJSON202() *ServiceNowRequest {
 	return r.JSON202
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SubmitServiceNowRequestResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -64456,6 +64508,8 @@ type GetServiceNowRequestResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *ServiceNowRequest
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -64471,6 +64525,11 @@ type GetServiceNowRequestResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r GetServiceNowRequestResponse) GetJSON200() *ServiceNowRequest {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetServiceNowRequestResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -71659,6 +71718,13 @@ func (c *ClientWithResponses) GetServiceNowEntitlementsWithResponse(ctx context.
 // `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
 // may have changed since.
 //
+// The body is checked against the schema: a field it doesn't list
+// answers 400, a `sys_id`, number or name out of its pattern or
+// length 422. A submission made already is counted as a read, not
+// against `requests_per_minute`. A 409 with `retry` (the
+// connection isn't set yet, or requests placed at the same moment
+// took the room) may succeed later; any other 409 is final.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
@@ -71689,6 +71755,13 @@ func (c *ClientWithResponses) SubmitServiceNowRequestWithBodyWithResponse(ctx co
 // or an orderer whose last sign-in is older than
 // `RVAV_SCHEDULE_OWNER_IDLE_DAYS` is refused, 422, as their groups
 // may have changed since.
+//
+// The body is checked against the schema: a field it doesn't list
+// answers 400, a `sys_id`, number or name out of its pattern or
+// length 422. A submission made already is counted as a read, not
+// against `requests_per_minute`. A 409 with `retry` (the
+// connection isn't set yet, or requests placed at the same moment
+// took the room) may succeed later; any other 409 is final.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -86848,6 +86921,13 @@ func ParseSubmitServiceNowRequestResponse(rsp *http.Response) (*SubmitServiceNow
 		}
 		response.JSON202 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -86935,6 +87015,13 @@ func ParseGetServiceNowRequestResponse(rsp *http.Response) (*GetServiceNowReques
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized

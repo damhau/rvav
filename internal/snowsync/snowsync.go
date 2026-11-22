@@ -329,7 +329,8 @@ type Orphan struct {
 
 func (s *Syncer) report(ctx context.Context, cl *servicenow.Client, c config.ServiceNowConfig, at time.Time) error {
 	r := Report{CheckedAt: at, Orphans: []Orphan{}}
-	cis, err := cl.All(ctx, c.Class, servicenow.Query{Encoded: "discovery_source=" + c.DataSource + "^install_status!=" + servicenow.InstallRetired,
+	// Pages of a read with no order may repeat or skip rows.
+	cis, err := cl.All(ctx, c.Class, servicenow.Query{Encoded: "discovery_source=" + c.DataSource + "^install_status!=" + servicenow.InstallRetired + "^ORDERBYsys_id",
 		Fields: []string{"sys_id", "name", "vm_instance_uuid", "sys_updated_on"}}, 500)
 	if err != nil {
 		r.Error = err.Error()

@@ -129,8 +129,15 @@ func TestRecordsAndUpdates(t *testing.T) {
 	if id, _ := cl.UserSysID(ctx, "gone@corp.example"); id != "" {
 		t.Fatal("an inactive user was found")
 	}
-	if id, _ := cl.UserSysID(ctx, "x@corp.example^active=false"); id != "" {
-		t.Fatal("a query was injected")
+	calls := len(f.Calls())
+	for _, email := range []string{"x@corp.example^active=false", "javascript:gs.getUserID()@corp.example",
+		"x@corp.example^NQactive=false", "x=y@corp.example", "x@corp.example ", "x@localhost", ""} {
+		if id, _ := cl.UserSysID(ctx, email); id != "" {
+			t.Fatalf("%q: a query was injected", email)
+		}
+	}
+	if got := f.Calls()[calls:]; len(got) != 0 {
+		t.Fatalf("emails that don't fit a query were sent: %v", got)
 	}
 }
 

@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -167,6 +168,13 @@ func TestServiceNowCMDB(t *testing.T) {
 		if cis()[0]["cpus"] != "6" || r.OrphansTotal != 1 || len(r.Orphans) != 1 || r.Orphans[0].SysId != stray ||
 			!strings.HasSuffix(r.Orphans[0].Url, "/cmdb_ci_vmware_instance.do?sys_id="+stray) || r.Servicenow == nil || *r.Servicenow != 2 {
 			t.Fatalf("after the reconcile: %v, %+v", cis(), r)
+		}
+		// Its pages keep one order, or they may repeat or skip CIs.
+		read := slices.IndexFunc(snow.Calls(), func(c string) bool {
+			return strings.HasPrefix(c, "GET /api/now/table/"+servicenow.DefaultClass+"?")
+		})
+		if read < 0 || !strings.Contains(snow.Calls()[read], "ORDERBYsys_id") {
+			t.Fatalf("the reconcile's read: %v", snow.Calls())
 		}
 
 		// Deleted: retired, not deleted.
@@ -461,11 +469,16 @@ func TestServiceNowRequests(t *testing.T) {
 		h.svc.Config.ServiceNow.AllowedSources = []string{"10.99.0.0/16", "127.0.0.1"}
 		call("GET", "/catalog", nil, 200, nil)
 
-		// So many submissions a minute, across processes.
+		// So many submissions a minute, across processes. A requested item
+		// submitted again is a read, so these are new ones, for no one rvav
+		// knows.
 		h.svc.Config.ServiceNow.RequestsPerMinute = 1
 		limited := false
-		for range 3 {
-			code, _, hdr := h.do("POST", "/api/v1/servicenow/requests", "", draft, token...)
+		for i := range 3 {
+			fresh := with(func(d *api.ServiceNowRequestDraft) {
+				d.RitmSysId, d.RitmNumber, d.User = fmt.Sprintf("%032x", 0xf00+i), fmt.Sprintf("RITM%07d", 20000+i), "nobody@corp.example"
+			})
+			code, _, hdr := h.do("POST", "/api/v1/servicenow/requests", "", fresh, token...)
 			if code == http.StatusTooManyRequests {
 				if secs, err := strconv.Atoi(hdr.Get("Retry-After")); err != nil || secs < 1 || secs > 60 {
 					t.Fatalf("Retry-After = %q", hdr.Get("Retry-After"))
