@@ -2530,16 +2530,19 @@ Saving refuses a template, with the part and the line, when:
 
 - it doesn't parse;
 - it names a variable the notification doesn't have, in any branch;
-- it uses `define`, `block` or `template`, or a `range` over anything
-  but a list, such as `.Approval.Reasons`;
+- it uses `define`, `block` or `template`, a `range` over anything but
+  a list, such as `.Approval.Reasons`, or a `range` inside another;
 - its subject or text is empty, or a part is too long: 1 KB for the
   subject, 20 KB for the text, 200 KB for the HTML;
-- it fails, or writes nothing, with the sample data.
+- it fails, or writes nothing, with the sample data. `printf` pads to
+  100 characters at most, and fails past that.
 
 To go back to the built-in template, click **Reset to built-in**. An
 edited template doesn't take the improvements later releases make to the
 built-in one: reset it to get them. If an edited template fails when a
-notification is sent, rvav logs a warning and sends the built-in one.
+notification is sent, rvav logs a warning and sends the built-in one. A
+template fails when it writes more than 64 KB in its subject or text, or
+512 KB in its HTML, such as over a long list.
 
 The audit log records `settings.branding.update`,
 `settings.branding_logo.set`, `settings.branding_logo.remove`,

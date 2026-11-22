@@ -175,7 +175,7 @@ func (s *Server) SlackInteractions(w http.ResponseWriter, r *http.Request) {
 		switch a.ActionID {
 		case notify.SlackApprove:
 			by, err := s.Core.DecideFromChannel(ctx, "slack", cb.User.ID, data.ApprovalID, true, "")
-			msg := &slack.WebhookMessage{ReplaceOriginal: true, Text: data.Title,
+			msg := &slack.WebhookMessage{ReplaceOriginal: true, Text: notify.SlackText(data.Title),
 				Blocks: &slack.Blocks{BlockSet: notify.DecidedBlocks(data, true, by)}}
 			if err != nil {
 				msg = &slack.WebhookMessage{ResponseType: slack.ResponseTypeEphemeral, Text: notify.ProblemText(data.Locale, why(err))}
@@ -215,7 +215,7 @@ func (s *Server) SlackInteractions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if meta.Channel != "" && meta.TS != "" {
-			if _, _, _, err := sl.API().UpdateMessageContext(ctx, meta.Channel, meta.TS, slack.MsgOptionText(meta.Title, false),
+			if _, _, _, err := sl.API().UpdateMessageContext(ctx, meta.Channel, meta.TS, slack.MsgOptionText(notify.SlackText(meta.Title), false),
 				slack.MsgOptionBlocks(notify.DecidedBlocks(meta.CardData, false, by)...)); err != nil {
 				s.Log.Warn("update the Slack message", "err", err)
 			}

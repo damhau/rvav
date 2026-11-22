@@ -89,13 +89,21 @@ func (s *Slack) Send(ctx context.Context, m Message) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	channel, ts, err := api.PostMessageContext(ctx, *id.ConversationID, slack.MsgOptionText(m.Subject, false),
-		slack.MsgOptionBlocks(Blocks(m)...))
+	channel, ts, err := api.PostMessageContext(ctx, *id.ConversationID, post(m)...)
 	if err != nil {
 		return id.ExternalID, "", err
 	}
 	return id.ExternalID, channel + "/" + ts, nil
 }
+
+func post(m Message) []slack.MsgOption {
+	return []slack.MsgOption{slack.MsgOptionText(SlackText(m.Subject), false), slack.MsgOptionBlocks(Blocks(m)...)}
+}
+
+// SlackText is a subject as a message's top-level text, which Slack reads
+// as mrkdwn and shows in its notifications: escaped, a request's title in
+// it can't mention @channel or link elsewhere.
+func SlackText(subject string) string { return escape(subject) }
 
 func plain(s string) *slack.TextBlockObject {
 	return slack.NewTextBlockObject(slack.PlainTextType, s, false, false)

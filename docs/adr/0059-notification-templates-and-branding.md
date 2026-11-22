@@ -72,8 +72,9 @@ the part and the line:
   walks the parse tree, following `with`, `range` and `$variables`, so
   `{{if .Ready}}{{.Requst.Number}}{{end}}` is refused even though the
   sample takes the other branch;
-- `{{define}}`, `{{block}}` and `{{template}}`, and a `range` over
-  anything but a list variable;
+- `{{define}}`, `{{block}}` and `{{template}}`, a `range` over
+  anything but a list variable, and a `range` inside another, which
+  writes a list's length squared, or to the power of how deep it goes;
 - an empty subject or text, an HTML part on Teams or Slack, a part over
   1 KB (subject), 20 KB (text) or 200 KB (HTML);
 - a template that fails, or writes nothing, with the kind's sample data.
@@ -87,6 +88,12 @@ If an edited template still fails when a notification is sent, such as
 one written into the database by hand, rvav logs a warning and sends the
 built-in template: a template never stops a notification.
 
+What a template writes is bounded too, since the sample's lists are
+short and a real one can be long: the subject and text fail past 64 KB
+written, the HTML past 512 KB. `printf` is Go's with widths and
+precisions of 100 at most, and none taken from the data (`*`): a width
+of a million builds a megabyte in one call, before the limit counts it.
+
 ### Escaping per channel
 Values reach templates escaped for the channel; what the administrator
 wrote is kept as markup:
@@ -95,7 +102,8 @@ wrote is kept as markup:
 - Teams: values are escaped for Markdown.
 - Slack: values have `&`, `<` and `>` escaped, so `<!channel>` in a title
   stays text; a composite's message (`step_message`) is sent as plain
-  text, as before.
+  text, as before. The message's top-level text, which Slack shows in
+  its notifications, is the subject with `&`, `<` and `>` escaped.
 - Subjects are plain text everywhere; line breaks are folded.
 
 ### Branding

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/slack-go/slack"
+
 	"github.com/damhau/rvav/internal/api"
 )
 
@@ -195,6 +197,11 @@ func TestCheck(t *testing.T) {
 			"the items of .Approval.Reasons are text: they have no field Text"},
 		{"request_failed", "slack", Parts{Subject: "x", Text: "{{range .Request}}a{{end}}"}, "text", "range goes over a list"},
 		{"request_failed", "slack", Parts{Subject: "x", Text: "{{range 100000000}}a{{end}}"}, "text", "range goes over a list"},
+		{"approval_needed", "slack", Parts{Subject: "x", Text: "{{range .Approval.Reasons}}{{range $.Approval.Reasons}}a{{end}}{{end}}"},
+			"text", "a range can't be inside another"},
+		{"request_failed", "slack", Parts{Subject: `{{printf "%999999d" 1}}`, Text: "x"}, "subject", "printf pads to 100 characters at most"},
+		{"request_failed", "slack", Parts{Subject: `{{printf "%.101s" .Request.Title}}`, Text: "x"}, "subject", "printf pads to 100"},
+		{"request_failed", "slack", Parts{Subject: `{{printf "%[1]*d" 1000 1}}`, Text: "x"}, "subject", "not from *"},
 		{"request_failed", "slack", Parts{Subject: "x", Text: `{{define "a"}}b{{end}}c`}, "text", "can't define others"},
 		{"request_failed", "slack", Parts{Subject: "x", Text: `{{template "subject" .}}`}, "text", "can't call another"},
 		{"request_failed", "slack", Parts{Subject: "x", Text: "x", HTML: "<p>x</p>"}, "html", "only emails"},
@@ -212,10 +219,35 @@ func TestCheck(t *testing.T) {
 		}
 	}
 	// Functions and variables are fine wherever they are.
-	ok := Parts{Subject: `{{$.Request.Number}} {{printf "%s" .Request.Title | len}}`,
+	ok := Parts{Subject: `{{$.Request.Number}} {{printf "%s" .Request.Title | len}} {{printf "%-100s|%5.2f%%" "a" 1.5}}`,
 		Text: `{{with $p := .Project}}{{$p.Name}} {{.Environment}}{{end}}{{range $i, $r := .Approval.Reasons}}{{$i}} {{$r}}{{end}}`}
 	if problems := Check("approval_needed", "teams", "fr", ok); len(problems) > 0 {
 		t.Fatalf("a good template: %v", problems)
+	}
+}
+
+// A template within its size can still write far more over a long list:
+// it stops at the limit, and the built-in template is sent (ADR-0059).
+func TestTemplateWritesAtMost(t *testing.T) {
+	d := Data{Kind: string(api.KindApprovalNeeded), Locale: "en", Portal: "rvav",
+		Approval: Approval{Name: "Managers", Reasons: []string{"a", "b", "c", "d"}}}
+	each := func(n int) string { return "{{range .Approval.Reasons}}" + strings.Repeat("x", n) + "{{end}}" }
+	for _, c := range []struct {
+		channel string
+		p       Parts
+		part    string
+	}{
+		{"slack", Parts{Subject: "x", Text: each(MaxText - 100)}, "text: it writes more than 64 KB"},
+		{"teams", Parts{Subject: each(MaxSubject - 100), Text: "x"}, ""},
+		{"email", Parts{Subject: "x", Text: "x", HTML: each(MaxHTML - 100)}, "html: it writes more than 512 KB"},
+	} {
+		_, err := render(c.channel, c.p, d, Brand{}, "")
+		switch {
+		case c.part == "" && err != nil:
+			t.Errorf("%s: %v", c.channel, err)
+		case c.part != "" && (err == nil || !strings.HasSuffix(err.Error(), c.part)):
+			t.Errorf("%s: %v; want %s", c.channel, err, c.part)
+		}
 	}
 }
 
@@ -274,6 +306,16 @@ func TestStepMessageEscapes(t *testing.T) {
 	}
 	if b, _ := json.Marshal(Blocks(m)); !strings.Contains(string(b), `"mrkdwn"`) || m.Short != "*REQ-1* &lt;!channel&gt; &amp; co" {
 		t.Fatalf("a failure's blocks = %s", b)
+	}
+	// The message's top-level text, its subject, is mrkdwn too.
+	m, err = render("slack", Parts{Subject: "{{.Request.Title}} failed", Text: "x"}, Data{Kind: string(api.KindRequestFailed),
+		Locale: "en", Request: Request{Number: "REQ-1", Title: "<!channel> & <https://evil.example|co>"}}, Brand{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, v, err := slack.UnsafeApplyMsgOptions("xoxb", "D1", "https://slack.example/api/", post(m)...); err != nil ||
+		v.Get("text") != "&lt;!channel&gt; &amp; &lt;https://evil.example|co&gt; failed" {
+		t.Fatalf("the top-level text = %q, %v", v.Get("text"), err)
 	}
 }
 

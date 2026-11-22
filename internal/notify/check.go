@@ -21,7 +21,9 @@ type checker struct {
 	vars  map[string]bool
 	lists map[string]bool
 	scope []map[string]node
-	err   error
+	// ranges is how many ranges the node walked is in.
+	ranges int
+	err    error
 }
 
 func newChecker(kind string, tree *parse.Tree) *checker {
@@ -165,6 +167,10 @@ func (c *checker) walk(dot node, n parse.Node) {
 		if over.any || !c.lists[over.path] {
 			c.fail(n, "range goes over a list variable of this kind, such as .Approval.Reasons of approvals")
 		}
+		// A list in a list writes its length squared.
+		if c.ranges > 0 {
+			c.fail(n, "a range can't be inside another")
+		}
 		elem := node{path: over.path + "[]"}
 		if len(n.Pipe.Decl) > 0 {
 			last := n.Pipe.Decl[len(n.Pipe.Decl)-1].Ident[0]
@@ -173,7 +179,9 @@ func (c *checker) walk(dot node, n parse.Node) {
 				c.scope[len(c.scope)-1][n.Pipe.Decl[0].Ident[0]] = node{any: true}
 			}
 		}
+		c.ranges++
 		c.list(elem, n.List)
+		c.ranges--
 		c.scope = c.scope[:len(c.scope)-1]
 		c.list(dot, n.ElseList)
 	case *parse.TemplateNode:

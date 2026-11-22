@@ -9,6 +9,7 @@ import (
 	htmltemplate "html/template"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	texttemplate "text/template"
@@ -116,9 +117,45 @@ var Functions = []Variable{
 
 func funcs(locale string) map[string]any {
 	return map[string]any{
-		"date": func(t *time.Time) string { return date(locale, t) },
-		"join": strings.Join,
+		"date":   func(t *time.Time) string { return date(locale, t) },
+		"join":   strings.Join,
+		"printf": printf,
 	}
+}
+
+// MaxWidth is the most a printf verb pads or a precision writes.
+const MaxWidth = 100
+
+// printf is text/template's, with widths and precisions of at most
+// MaxWidth: {{printf "%999999d" 1}} builds a megabyte in one call, before
+// what a template writes is counted.
+func printf(format string, a ...any) (string, error) {
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' {
+			continue
+		}
+		// Flags, argument indexes, width and precision, up to the verb.
+		for i++; i < len(format) && strings.IndexByte("+-# 0123456789.*[]", format[i]) >= 0; i++ {
+			switch c := format[i]; {
+			case c == '*':
+				return "", errors.New("printf takes its width and precision from the template, not from * and the data")
+			case c == '[':
+				if j := strings.IndexByte(format[i:], ']'); j > 0 {
+					i += j
+				}
+			case c >= '1' && c <= '9':
+				j := i
+				for j < len(format) && format[j] >= '0' && format[j] <= '9' {
+					j++
+				}
+				if n, err := strconv.Atoi(format[i:j]); err != nil || n > MaxWidth {
+					return "", fmt.Errorf("printf pads to %d characters at most", MaxWidth)
+				}
+				i = j - 1
+			}
+		}
+	}
+	return fmt.Sprintf(format, a...), nil
 }
 
 // Size limits of a template's parts, in bytes.
@@ -126,6 +163,14 @@ const (
 	MaxSubject = 1 << 10
 	MaxText    = 20 << 10
 	MaxHTML    = 200 << 10
+)
+
+// The most a template's subject or text, and its HTML, write, in bytes: a
+// range over a long list stops there with an error, and the built-in
+// template is sent instead.
+const (
+	MaxWrittenText = 64 << 10
+	MaxWrittenHTML = 512 << 10
 )
 
 var errDefine = errors.New("a template can't define others ({{define}} or {{block}})")
@@ -190,12 +235,26 @@ type executor interface {
 	Execute(w io.Writer, data any) error
 }
 
-func run(t executor, d any) (string, error) {
-	var b bytes.Buffer
-	if err := t.Execute(&b, d); err != nil {
+// run executes t, failing once it writes more than limit bytes (none
+// when 0).
+func run(t executor, d any, limit int) (string, error) {
+	b := &capped{limit: limit}
+	if err := t.Execute(b, d); err != nil {
 		return "", execError(err)
 	}
 	return b.String(), nil
+}
+
+type capped struct {
+	bytes.Buffer
+	limit int
+}
+
+func (c *capped) Write(p []byte) (int, error) {
+	if c.limit > 0 && c.Len()+len(p) > c.limit {
+		return 0, fmt.Errorf("it writes more than %d KB", c.limit>>10)
+	}
+	return c.Buffer.Write(p)
 }
 
 // compiled is a template's parts parsed.
@@ -255,8 +314,8 @@ type written struct{ Subject, Text, HTML string }
 func (c compiled) write(channel string, d Data) (written, []Problem) {
 	var out written
 	var problems []Problem
-	try := func(part string, t executor, d Data, dst *string) {
-		s, err := run(t, d)
+	try := func(part string, t executor, d Data, dst *string, limit int) {
+		s, err := run(t, d, limit)
 		if err != nil {
 			problems = append(problems, Problem{part, err.Error()})
 			return
@@ -270,10 +329,10 @@ func (c compiled) write(channel string, d Data) (written, []Problem) {
 	case "slack":
 		textData = d.escaped(escape)
 	}
-	try("subject", c.subject, d, &out.Subject)
-	try("text", c.text, textData, &out.Text)
+	try("subject", c.subject, d, &out.Subject, MaxWrittenText)
+	try("text", c.text, textData, &out.Text, MaxWrittenText)
 	if c.html != nil {
-		try("html", c.html, d, &out.HTML)
+		try("html", c.html, d, &out.HTML, MaxWrittenHTML)
 	}
 	out.Subject = strings.Join(strings.Fields(out.Subject), " ")
 	out.Text = strings.TrimSpace(out.Text)
@@ -395,10 +454,10 @@ func compose(channel string, w written, d Data, b Brand, logoSrc string) (Messag
 		Accent: htmltemplate.CSS(b.Accent), AccentFg: htmltemplate.CSS(b.AccentFg), //nolint:gosec
 		// A content ID or a data URL of a checked picture.
 		LogoSrc: htmltemplate.URL(logoSrc)} //nolint:gosec
-	if m.Text, err = run(l.text.Lookup("text"), ld); err != nil {
+	if m.Text, err = run(l.text.Lookup("text"), ld, 0); err != nil {
 		return m, err
 	}
-	if m.HTML, err = run(l.html.Lookup("html"), ld); err != nil {
+	if m.HTML, err = run(l.html.Lookup("html"), ld, 0); err != nil {
 		return m, err
 	}
 	if b.Logo != nil && strings.HasPrefix(logoSrc, "cid:") {

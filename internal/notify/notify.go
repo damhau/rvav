@@ -233,7 +233,8 @@ func (n *Notifier) Render(ctx context.Context, d store.Delivery) (Message, error
 	if err != nil {
 		return Message{}, err
 	}
-	b, err := n.Store.GetBranding(ctx, true)
+	// Only emails carry the logo.
+	b, err := n.Store.GetBranding(ctx, d.Channel == "email")
 	if err != nil {
 		return Message{}, err
 	}
