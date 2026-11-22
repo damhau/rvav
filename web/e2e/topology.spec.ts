@@ -29,12 +29,14 @@ test("a three-tier item's topology beside its YAML, as it is edited", async ({ p
   await expect(page.getByText(/^Draft [\d.]+ made from the published version/)).toBeVisible();
   await page.getByRole("tab", { name: "Definition" }).click();
 
-  // Its tiers, their segment, their groups and the rules between them.
+  // Its tiers, their disks, their segment, their groups and the rules
+  // between them. A draft's graph is the VM designer's: a disk is a node.
   const topology = page.getByRole("region", { name: "Topology of Three-tier application" });
   const node = (name: RegExp) => topology.getByRole("button", { name });
   await expect(node(/^VMs Web\. web\. Count: inputs\.web_nodes\..*On separate hosts\..*In Web$/)).toBeVisible();
   await expect(node(/^1 VM Application\. app\./)).toBeVisible();
-  await expect(node(/^1 VM Database\. db\..*Disks: system, 200 GB \(gold\)\..*In grp-backup-clients$/)).toBeVisible();
+  await expect(node(/^1 VM Database\. db\..*Disk Disk 1, 200 GB\..*In grp-backup-clients$/)).toBeVisible();
+  await expect(node(/^Disk Disk 1\. Size: 200 GB\. Policy: gold\. Attached to Database$/)).toBeVisible();
   await expect(node(/^Segment Application\. app\. Made for each deployment\./)).toBeVisible();
   await expect(
     node(/^Group Database\..*Allows PostgreSQL from Application\. Drops any service from Any/),
