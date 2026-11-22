@@ -95,7 +95,7 @@ func TestBranding(t *testing.T) {
 			t.Fatalf("the same branding again = %d %s", code, body)
 		}
 
-		write := api.BrandingWrite{Name: "  Corp   Cloud ", Accent: "#ffcc00"}
+		write := api.BrandingWrite{Name: "  Corp \t\n  Cloud\r\n", Accent: "#ffcc00"}
 		h.json("PUT", "/api/v1/admin/branding", "tnguyen", write, 403, nil)
 		h.json("PUT", "/api/v1/admin/branding", "lmartin", write, 403, nil)
 		var problem struct{ Errors []api.FieldError }
@@ -117,6 +117,10 @@ func TestBranding(t *testing.T) {
 		h.json("PUT", "/api/v1/admin/branding", admin, api.BrandingWrite{Name: strings.Repeat("x", 41), Accent: ""}, 422, &problem)
 		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/name" {
 			t.Fatalf("a long name = %+v", problem)
+		}
+		h.json("PUT", "/api/v1/admin/branding", admin, api.BrandingWrite{Name: "Corp\x1bCloud", Accent: ""}, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/name" || deref(problem.Errors[0].Code) != "invalid" {
+			t.Fatalf("a name with an escape = %+v", problem)
 		}
 		h.json("PUT", "/api/v1/admin/branding", admin, api.BrandingWrite{Name: "", Accent: "purple"}, 422, &problem)
 		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/accent" || deref(problem.Errors[0].Code) != "invalid" {

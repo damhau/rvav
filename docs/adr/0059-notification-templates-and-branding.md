@@ -114,8 +114,9 @@ wrote is kept as markup:
 ### Branding
 **Administration › Branding** (`PUT /api/v1/admin/branding`) sets:
 
-- **Portal name:** 40 characters at most, no control characters; empty
-  is rvav. It shows in the menu, the sign-in page, the browser's title,
+- **Portal name:** 40 characters at most; spaces, tabs and line breaks
+  collapse to single spaces, and any other control character is
+  refused; empty is rvav. It shows in the menu, the sign-in page, the browser's title,
   emails (the logo's alternative text, the footer, and the sender's name
   when `RVAV_SMTP_FROM` is an address alone) and the chat buttons
   (**Open in Corp Cloud**).

@@ -13731,7 +13731,11 @@ components:
         name:
           type: string
           maxLength: 40
-          description: Empty for rvav. Its spaces are collapsed; a control character, such as a tab or a line break, is refused.
+          description: >-
+            Empty for rvav. Spaces, tabs and line breaks are trimmed at
+            either end, and each run of them inside becomes one space. Any
+            other control character, such as an escape, is refused with the
+            code `invalid`.
         accent:
           type: string
           pattern: "^(#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3})?$"

@@ -4910,7 +4910,7 @@ type BrandingWrite struct {
 	// Examples: #5b2a86
 	Accent string `json:"accent"`
 
-	// Name Empty for rvav. Its spaces are collapsed; a control character, such as a tab or a line break, is refused.
+	// Name Empty for rvav. Spaces, tabs and line breaks are trimmed at either end, and each run of them inside becomes one space. Any other control character, such as an escape, is refused with the code `invalid`.
 	Name string `json:"name"`
 }
 

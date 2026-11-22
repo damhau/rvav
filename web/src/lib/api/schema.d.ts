@@ -10525,7 +10525,7 @@ export interface components {
             logo_dark_url?: string;
         };
         BrandingWrite: {
-            /** @description Empty for rvav. Its spaces are collapsed; a control character, such as a tab or a line break, is refused. */
+            /** @description Empty for rvav. Spaces, tabs and line breaks are trimmed at either end, and each run of them inside becomes one space. Any other control character, such as an escape, is refused with the code `invalid`. */
             name: string;
             /**
              * @description #rrggbb or #rgb; empty for rvav's own. One that isn't a colour is refused with the code `invalid`, one that doesn't read with `contrast`.

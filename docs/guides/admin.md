@@ -2492,7 +2492,9 @@ sign-in page, in the browser's title and in emails.
 
 1. Go to **Branding**.
 2. In **Portal name**, enter up to 40 characters. Left empty, the portal
-   is called rvav.
+   is called rvav. rvav trims spaces, tabs and line breaks at either
+   end and turns each run of them inside into one space. It refuses any
+   other control character.
 3. In **Accent colour**, enter a colour as `#rrggbb`, or pick one. The
    note under the field says how it reads:
    - Text in the colour must reach a contrast of 4.5:1 in the light
