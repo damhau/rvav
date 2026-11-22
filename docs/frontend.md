@@ -1290,17 +1290,18 @@ and each area's texts are in `locales/<language>/<namespace>.json`.
   ([ADR-0061](adr/0061-web-app-languages.md#what-stays-english)). A whole
   element holding one on a French page says `lang="en"`.
 - **Checks:** `lib/i18n/resources.test.ts` compares the two languages;
-  ESLint's `i18next/no-literal-string` refuses literal text in the
-  folders listed in `translated` in `web/eslint.config.js`; the unit
+  ESLint's `i18next/no-literal-string` refuses literal text anywhere
+  in `web/src` (`translated` in `web/eslint.config.js`); the unit
   tests run in English (`lng: "en"`), Playwright in `en-GB`, and the
   French specs (`e2e/french*.spec.ts`) in French.
 
 ### Translating a folder
 
-To convert a folder:
+Every folder is converted, and a new one is checked from its first
+text. To write a folder's texts:
 
-1. Add the folder to `translated` in `web/eslint.config.js`, and run
-   `pnpm lint` to list its literal texts.
+1. Run `pnpm lint` to list its literal texts: the rule covers all of
+   `src` (`translated` in `web/eslint.config.js`).
 2. Add each text to the folder's namespace, in English first (the types
    come from it), then in French. Name keys by what the text is for:
    `tokens.revokeTitle`, not `revokeToken2`.

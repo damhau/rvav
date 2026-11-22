@@ -83,8 +83,9 @@ formatter per language and options. Elsewhere, ESLint refuses
 - **ESLint's `i18next/no-literal-string`** refuses literal text in JSX
   and in the attributes a person reads or hears (`aria-label`, `title`,
   `placeholder`, `alt`, and the text props of rvav's building blocks). It
-  also refuses a toast's literal text. It runs in the folders listed in
-  `translated` in `web/eslint.config.js`, each added once converted.
+  also refuses a toast's literal text. It runs on all of `web/src`
+  (`translated` in `web/eslint.config.js`): each folder was added once
+  converted, until every one was.
   Names that read the same in every language (`rvav`, `vCenter`, `AWX`
   and the like) are allowed.
 - **The unit tests run in English.** The vitest setup pins `lng: "en"`

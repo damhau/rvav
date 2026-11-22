@@ -6,54 +6,9 @@ import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
-// Folders whose text is translated (ADR-0061): a literal string a person
-// reads is refused there. Add a folder once it is converted; when every
-// folder is, this becomes "src/**".
-const translated = [
-  "src/main.tsx",
-  "src/lib/**",
-  "src/routes/**",
-  "src/components/ui/**",
-  "src/components/common/**",
-  "src/components/shell/**",
-  "src/components/canvas/**",
-  "src/forms/**",
-  "src/features/account/**",
-  "src/features/overview/**",
-  "src/features/notifications/**",
-  "src/features/catalog/**",
-  "src/features/approvals/**",
-  "src/features/reports/**",
-  "src/features/resources/**",
-  "src/features/requests/**",
-  "src/features/admin/access/**",
-  "src/features/admin/notifications/**",
-  "src/features/admin/governance/**",
-  "src/features/admin/Applying.tsx",
-  "src/features/admin/AuditForwardingPage.tsx",
-  "src/features/admin/AuditPage.tsx",
-  "src/features/admin/BrandingPage.tsx",
-  "src/features/admin/CatalogItemsPage.tsx",
-  "src/features/admin/Day2ActionsPage.tsx",
-  "src/features/admin/Day2FormPage.tsx",
-  "src/features/admin/IdentityProvider.tsx",
-  "src/features/admin/IntegrationPage.tsx",
-  "src/features/admin/IntegrationSettings.tsx",
-  "src/features/admin/IntegrationsPage.tsx",
-  "src/features/admin/InventoryToken.tsx",
-  "src/features/admin/NSXManagers.tsx",
-  "src/features/admin/OnboardingPage.tsx",
-  "src/features/admin/ServerCertificate.tsx",
-  "src/features/admin/ServiceNow.tsx",
-  "src/features/admin/SetupPage.tsx",
-  "src/features/admin/SystemPage.tsx",
-  "src/features/admin/VCenters.tsx",
-  "src/features/admin/VraImportPage.tsx",
-  "src/features/deployments/**",
-  "src/features/admin/onboarding/**",
-  "src/features/admin/catalog/**",
-  "src/features/admin/extensibility/**",
-];
+// Text is translated everywhere (ADR-0061): a literal string a person reads
+// is refused.
+const translated = ["src/**"];
 
 // The props of rvav's building blocks and the attributes a person reads or
 // hears. Other attributes (className, variant, to, id…) hold no text.
