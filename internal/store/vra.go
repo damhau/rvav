@@ -222,20 +222,20 @@ func (s *Store) SetVRAMoved(ctx context.Context, vraID string, moved bool, note,
 	return err
 }
 
-// TryLock takes a session advisory lock, if it is free: it holds one
-// connection until unlock.
+// TryLock takes a session advisory lock, if it is free, on its own
+// connection (LockConn) until unlock.
 func (s *Store) TryLock(ctx context.Context, key int64) (unlock func(), ok bool, err error) {
-	conn, err := s.Pool.Acquire(ctx)
+	conn, err := s.LockConn(ctx)
 	if err != nil {
 		return nil, false, err
 	}
 	if err := conn.QueryRow(ctx, `select pg_try_advisory_lock($1)`, key).Scan(&ok); err != nil || !ok {
-		conn.Release()
+		_ = conn.Close(context.WithoutCancel(ctx))
 		return nil, false, err
 	}
 	return func() {
 		_, _ = conn.Exec(context.WithoutCancel(ctx), `select pg_advisory_unlock($1)`, key)
-		conn.Release()
+		_ = conn.Close(context.WithoutCancel(ctx))
 	}, true, nil
 }
 

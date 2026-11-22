@@ -46,6 +46,25 @@ never in the ConfigMap or a file in Git. Durations are Go durations (`90s`,
 | `RVAV_DRAIN_TIMEOUT` | `5m` | | install | How long a process applying newer connection settings lets its running work finish before it exits; a worker's activity still running then is retried by the next worker. Also how long a worker stopped by Kubernetes or Compose waits for its activities, within their grace period. |
 | `RVAV_FIPS` | `off` | | install | FIPS 140-3 mode: `off`, `on` (the Go Cryptographic Module's approved algorithms where rvav and Go choose) or `only` (also refuses every algorithm the module doesn't approve). Give every process, `rvav migrate` included, the same mode. See [FIPS 140-3 mode](fips.md). |
 
+**Database connections:** each process keeps a pool of at most
+`pool_max_conns` connections, a parameter of `RVAV_DATABASE_URL`
+(`…/rvav?sslmode=verify-full&pool_max_conns=8`). Without it, the pool has
+as many connections as the process's CPUs, and at least 4, which is enough
+for every role. A process also opens a connection of its own, outside its
+pool, for each PostgreSQL advisory lock it holds or waits for, and closes it
+with the lock:
+
+- a sync process: the inventory sync's, kept while the process runs (active
+  or standby), and one for each of the EfficientIP, AWX, NSX and catalog
+  repository syncs while it runs, so up to 5;
+- an API: up to 5 at once, while it changes who administers rvav or a
+  project, places a request again, settles a conflict or reads the catalog's
+  repository, syncs AWX's templates, or imports from vRA;
+- a worker: 1, while it places a request again.
+
+To size PostgreSQL's `max_connections`, count each process's pool plus 5,
+and Temporal's own connections.
+
 Traces use OpenTelemetry's standard variables, read by every process:
 `OTEL_EXPORTER_OTLP_ENDPOINT` (an OTLP/HTTP collector, for example
 `http://otel-collector:4318`; without it nothing is traced),

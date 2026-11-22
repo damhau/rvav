@@ -12,7 +12,7 @@ the inventory keeps following vCenter.
 | **API** (`rvav api`) | 2 or more, behind a load balancer | Stateless. Sessions are OIDC tokens; console tokens and idempotency keys are in PostgreSQL. Live updates come from PostgreSQL (`LISTEN`), so every replica streams every event. |
 | **Web app** (nginx) | 2 or more | Static files. It proxies `/api/` to the API service; with several addresses it skips one that is gone and retries idempotent requests on the next. |
 | **Worker** (`rvav worker`) | 2 or more | Temporal hands each workflow task and activity to one worker. An activity on a worker that dies runs again elsewhere after its heartbeat or start-to-close timeout: activities are idempotent. Subscription deliveries and notifications are claimed row by row (`for update skip locked`). |
-| **Sync** (`rvav sync`) | 2 | One active, holding a PostgreSQL advisory lock; the other checks every 5 seconds and takes over as soon as the active one's connection is gone. The EfficientIP subnet sync and the AWX catalog sync run one at a time under their own locks. |
+| **Sync** (`rvav sync`) | 2 | One active, holding a PostgreSQL advisory lock; the other checks every 5 seconds and takes over as soon as the active one's connection is gone. The EfficientIP subnet sync, the AWX catalog sync, the NSX tag sync and the catalog's repository sync each run one at a time, under their own lock. |
 | **Temporal** | a cluster of 3 or more nodes, or Temporal Cloud | See below. |
 | **PostgreSQL** | a primary and a synchronous standby, with automatic failover | rvav's database and Temporal's. See backups (S14.3). |
 | **Identity provider** | the organisation's | Tokens are checked against its published keys, which rvav caches. |

@@ -154,12 +154,20 @@ const (
 	LockPlacement int64 = 0x7276_6176_0007
 )
 
+// LockConn is a connection of its own for a session advisory lock, outside
+// the pool; closing it releases what it holds. Were locks held on pooled
+// connections, as many holders as the pool has connections would leave
+// their own queries none (#195).
+func (s *Store) LockConn(ctx context.Context) (*pgx.Conn, error) {
+	return pgx.ConnectConfig(ctx, s.Pool.Config().ConnConfig)
+}
+
 // WithLock runs fn holding a PostgreSQL advisory lock, waiting for whoever
-// holds it (another process included).
+// holds it (another process included). The lock is on its own connection
+// (LockConn), and fn's queries use the pool.
 func (s *Store) WithLock(ctx context.Context, key int64, fn func() error) error {
-	// Callers in this process wait their turn without a connection: as many
-	// waiting on the advisory lock as the pool has connections would leave
-	// the holder none for fn's queries (O1.2).
+	// Callers in this process wait their turn without a connection, so that
+	// a process opens one connection at most for each key (O1.2).
 	turn, _ := s.held.LoadOrStore(key, make(chan struct{}, 1))
 	select {
 	case turn.(chan struct{}) <- struct{}{}:
@@ -167,11 +175,11 @@ func (s *Store) WithLock(ctx context.Context, key int64, fn func() error) error 
 		return ctx.Err()
 	}
 	defer func() { <-turn.(chan struct{}) }()
-	conn, err := s.Pool.Acquire(ctx)
+	conn, err := s.LockConn(ctx)
 	if err != nil {
 		return err
 	}
-	defer conn.Release()
+	defer func() { _ = conn.Close(context.WithoutCancel(ctx)) }()
 	if _, err := conn.Exec(ctx, `select pg_advisory_lock($1)`, key); err != nil {
 		return err
 	}

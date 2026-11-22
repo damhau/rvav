@@ -87,11 +87,11 @@ var lockKey = func() int64 {
 // Run syncs until ctx is done. Only the process holding the advisory lock
 // syncs; others wait and take over if it stops.
 func (s *Syncer) Run(ctx context.Context) error {
-	conn, err := s.Store.Pool.Acquire(ctx)
+	conn, err := s.Store.LockConn(ctx)
 	if err != nil {
 		return err
 	}
-	defer conn.Release()
+	defer func() { _ = conn.Close(context.Background()) }()
 	for {
 		var got bool
 		if err := conn.QueryRow(ctx, `select pg_try_advisory_lock($1)`, lockKey).Scan(&got); err != nil {
@@ -115,9 +115,12 @@ func (s *Syncer) Run(ctx context.Context) error {
 	// standby takes over. This process then stops syncing, and exits to be
 	// started again as a standby (S14 review).
 	lost := make(chan error, 1)
+	var watching sync.WaitGroup
+	// Before the unlock: a connection runs one query at a time.
+	defer watching.Wait()
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
-	go func() {
+	watching.Go(func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -130,7 +133,7 @@ func (s *Syncer) Run(ctx context.Context) error {
 				return
 			}
 		}
-	}()
+	})
 	defer s.running.Wait() // the watchers stop with ctx
 	s.Log.Info("inventory sync started", "interval", every(ctx, s.Interval, s.IntervalNow).String())
 	for {
