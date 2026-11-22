@@ -99,7 +99,10 @@ Linux do too.
 The step is `ad` in the plan, after DNS and before the clone, in every
 place a plan is built (a VM, a component's VMs, a composite's own VMs),
 behind `workflow.GetVersion("ad-computers")` so that runs started before
-it replay. Its activity records an `ad.computer` resource first, then
+it replay; a component's VMs, in a multi-VM item or a composite's step
+that is one, behind a change of their own, `ad-computers-components`
+(I1.6: until then their plan showed the step but their build made no
+object). Its activity records an `ad.computer` resource first, then
 adds the object: an activity tried again finds the object it made by its
 DN and description and goes on. An object of the same name that rvav
 didn't make, whoever's it is (one made since the request was evaluated),

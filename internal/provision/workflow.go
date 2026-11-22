@@ -273,6 +273,11 @@ func rollbackStops(ctx workflow.Context) bool {
 // (ADR-0064): runs started before don't.
 const versionADComputers = "ad-computers"
 
+// versionADComponents does it for the VMs of components too. A change of
+// its own: a composite run that made a single VM's object at
+// "ad-computers" may have built a multi-VM item's without.
+const versionADComponents = "ad-computers-components"
+
 // rollBack deletes what a failed request made: its custom resources first,
 // then the rest, which stays when one of those wasn't deleted (ADR-0056).
 // It says why it didn't finish; "" when it did.

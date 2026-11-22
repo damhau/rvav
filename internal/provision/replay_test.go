@@ -24,7 +24,9 @@ import (
 // then a poll whose last check was read after its deadline (#125); then a
 // build in two rounds, a database on DHCP and web servers reading its
 // address, with a generated key (T1.7); then a composite's loop and catch
-// path, and its wait for a signal across continue-as-new (E1.5). A change
+// path, and its wait for a signal across continue-as-new (E1.5); then VMs
+// with computer objects and addresses of rvav's ranges, one of them
+// released after a refused clone, and a multi-VM item's (I1.6). A change
 // to workflow code goes
 // behind workflow.GetVersion until no workflow in flight can predate it.
 func TestReplayHistories(t *testing.T) {

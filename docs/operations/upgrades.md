@@ -79,7 +79,11 @@ workflows in flight fails there, not in production. The histories in
 - a deployment's life after it is built (X1.6): an update that grows a
   disk on each VM and adds one, a disk removed, a VM unregistered, an
   onboarding plan's run that adopts it again, and a deletion that goes on
-  past a VM it can't delete, recorded by `TestX1Acceptance`.
+  past a VM it can't delete, recorded by `TestX1Acceptance`;
+- Active Directory and rvav's IP ranges (I1.6): a VM with its computer
+  object and an address of a range, one whose clone vCenter refuses and
+  that gives both back, and a multi-VM item whose VMs get their objects,
+  recorded by `TestActiveDirectoryThroughTemporal`.
 
 Add a history whenever a workflow gains a path:
 

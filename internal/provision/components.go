@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -177,6 +178,8 @@ func buildRound(ctx workflow.Context, info Info, vms []VMUnit, units []Component
 	}
 	built := make([]builtVM, len(p.VMs))
 	fresh := make([]bool, len(p.VMs)) // built again in this run
+	computers := slices.ContainsFunc(p.VMs, func(vm VMUnit) bool { return vm.AD != nil }) &&
+		workflow.GetVersion(ctx, versionADComponents, workflow.DefaultVersion, 1) == 1
 
 	// A component's step runs until its post-configuration is done; when
 	// one fails, the others that hadn't finished are cancelled, so a retry
@@ -234,10 +237,25 @@ func buildRound(ctx workflow.Context, info Info, vms []VMUnit, units []Component
 				return in.Key, err
 			}
 		}
+		computer := computers && vm.AD != nil
+		if computer {
+			in.Key = keys.vm(c, KeyAD, vm)
+			if !info.done(in.Key) || newVM {
+				if err := workflow.ExecuteActivity(ctx, a.CreateComputer, in).Get(ctx, nil); err != nil {
+					return in.Key, err
+				}
+			}
+		}
 		in.Key = keys.vm(c, KeyClone, vm)
 		in.Moref = before.Moref
 		if newVM {
 			if err := workflow.ExecuteActivity(ctx, a.CloneVM, in).Get(ctx, &in.Moref); err != nil {
+				if computer && !temporal.IsCanceledError(err) {
+					// No VM, so no computer object: a retry makes it again.
+					release := in
+					release.Key = keys.vm(c, KeyAD, vm)
+					_ = workflow.ExecuteActivity(ctx, a.ReleaseComputer, release).Get(ctx, nil)
+				}
 				return in.Key, err
 			}
 		}
