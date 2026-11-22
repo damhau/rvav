@@ -212,7 +212,9 @@ func (s *Store) ResetForRetry(ctx context.Context, db DB, requestID string, all 
 	}
 	children := `parent_id in (select id from request_steps where ` + reset + `)`
 	if all {
-		keep = nil
+		// Not nil: `key = any(NULL)` is null, and the delete below would
+		// keep every done sub-step.
+		keep = []string{}
 		// Everything runs again: a step's message is sent again (ADR-0033).
 		if _, err := db.Exec(ctx, `update notifications set dedupe_key = null where request_id = $1 and kind = 'step_message'`, requestID); err != nil {
 			return err

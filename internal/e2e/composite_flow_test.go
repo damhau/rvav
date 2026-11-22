@@ -218,7 +218,8 @@ func TestCompositeFlow(t *testing.T) {
 
 // TestSignalRetryAfterRollback: a Retry after a rollback runs everything
 // again, a wait for a signal too: the signal the run before read is its
-// own, so the step waits for another (E1.6, ADR-0057).
+// own, so the step waits for another; the VM step's own steps run again
+// too, its post-configuration job on the VM built again (E1.6, ADR-0057).
 func TestSignalRetryAfterRollback(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -243,6 +244,15 @@ func TestSignalRetryAfterRollback(t *testing.T) {
 			steps["rollback"].Status != api.StepStatusDone {
 			t.Fatalf("the first run: %s, cab %s, rollback %s", r.Status, steps["step:cab"].Status, steps["rollback"].Status)
 		}
+		baseline := func() string {
+			t.Helper()
+			st, err := h.store.GetStepByKey(ctx, req.Id, "step:vm/awx.job:linux-baseline")
+			if err != nil || st.Status != "done" || st.ExternalID == nil {
+				t.Fatalf("the VM's baseline job = %+v (%v)", st, err)
+			}
+			return *st.ExternalID
+		}
+		first := baseline()
 
 		change.script(state("new"))
 		h.json("POST", "/api/v1/requests/"+req.Id+"/retry", requester, nil, 202, nil)
@@ -254,6 +264,10 @@ func TestSignalRetryAfterRollback(t *testing.T) {
 		}})
 		if r := rig.get(req.Id, requester); !waited || r.Status != api.RequestStatusSucceeded || rig.outputs(req.Id, "step:cab")["change"] != "CHG-2" {
 			t.Fatalf("the retry: waited %v, %s, cab outputs %v", waited, r.Status, rig.outputs(req.Id, "step:cab"))
+		}
+		// The VM built again is configured again.
+		if again := baseline(); again == first {
+			t.Fatalf("the retry kept the baseline job %s of the VM rolled back", first)
 		}
 	})
 }
