@@ -19,7 +19,8 @@ describe("IP ranges", () => {
     expect(row).toHaveTextContent("dvpg-app-tst-vl410vc01.corp.example");
     expect(row).toHaveTextContent("10.41.10.200 – 10.41.10.239");
     expect(row).toHaveTextContent("10.41.10.0/24 via 10.41.10.1, 2 excluded");
-    expect(row).toHaveTextContent("30 free4 / 34");
+    // lab-tst-build01 holds .230, which the range didn't give it: skipped.
+    expect(row).toHaveTextContent("29 free5 / 34");
     expect(row).toHaveTextContent("lab.corp.example");
 
     await user.click(within(region).getByRole("button", { name: "Actions for Test lab" }));
@@ -29,7 +30,49 @@ describe("IP ranges", () => {
     expect(backup).toHaveTextContent("web-tst-lab002adapter backup");
     expect(backup).toHaveTextContent("web-tst-lab");
     expect(within(sheet).getByRole("row", { name: /10\.41\.10\.205/ })).toHaveTextContent("Gone");
+    expect(sheet).toHaveTextContent("rvav skips 1 address of this range");
   });
+
+  it("refuses a domain with its final dot, a DNS server it would give, and an address a VM holds", async () => {
+    rangeState(db).inventory.push({ vm: "db-prd-old01", address: "10.22.30.120" });
+    const user = userEvent.setup();
+    const region = await rangesRegion();
+    await user.click(await within(region).findByRole("button", { name: "New IP range" }));
+    const sheet = await screen.findByRole("dialog", { name: "New IP range" });
+    const box = (name: string) => within(sheet).getByRole("textbox", { name });
+    await user.type(box("Name"), "Prod lab");
+    await user.click(within(sheet).getByRole("combobox", { name: "Network" }));
+    await user.click(await screen.findByRole("option", { name: "dvpg-db-prd-vl230" }));
+    await user.type(box("Subnet"), "10.22.30.0/25");
+    await user.type(box("Gateway"), "10.22.30.1");
+    await user.type(box("First address"), "10.22.30.100");
+    await user.type(box("Last address"), "10.22.30.126");
+    await user.type(box("DNS servers"), "10.22.30.110");
+    await user.type(box("DNS domain"), "prd.corp.example.");
+    const save = () => user.click(within(sheet).getByRole("button", { name: "Save range" }));
+    await save();
+    expect(await within(sheet).findByText("Without the final dot: prd.corp.example.")).toBeInTheDocument();
+
+    await user.type(box("DNS domain"), "{Backspace}");
+    await save();
+    expect(
+      await within(sheet).findByText("The range would give 10.22.30.110, a DNS server, to a VM: exclude it."),
+    ).toBeInTheDocument();
+
+    await user.clear(box("DNS servers"));
+    await user.type(box("DNS servers"), "10.22.30.53");
+    await save();
+    expect(
+      await within(sheet).findByText(
+        "A VM holds an address the range would give: 10.22.30.120 (db-prd-old01, as vCenter reports). Exclude it, or keep the range apart from it.",
+      ),
+    ).toBeInTheDocument();
+
+    await user.type(box("Excluded addresses"), "10.22.30.120");
+    await save();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(await within(region).findByRole("row", { name: /Prod lab/ })).toHaveTextContent("26 free0 / 26");
+  }, 20_000);
 
   it("adds a range after the refusals its fields show, and the network shows its source", async () => {
     const user = userEvent.setup();
@@ -107,9 +150,18 @@ describe("IP ranges", () => {
     expect(within(strays).getByRole("row", { name: /lab-tst-build01/ })).toHaveTextContent("No VM");
     expect(within(strays).getByRole("row", { name: /web-tst-old01/ })).toHaveTextContent("web-tst-lab002");
 
+    // vCenter still reports the VM on it: not given back yet.
+    rangeState(db).inventory.push({ vm: "web-tst-lab009", address: "10.41.10.205" });
     await user.click(within(orphans).getByRole("button", { name: "Actions for 10.41.10.205" }));
     await user.click(await screen.findByRole("menuitem", { name: "Give back" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Give back 10.41.10.205?" });
+    await user.click(within(confirm).getByRole("button", { name: "Give back address" }));
+    expect(
+      await screen.findByText(
+        "vCenter vc01.corp.example still reports VM web-tst-lab009 on 10.41.10.205: delete the VM, or change its address, first.",
+      ),
+    ).toBeInTheDocument();
+    rangeState(db).inventory.pop();
     await user.click(within(confirm).getByRole("button", { name: "Give back address" }));
     await waitFor(() => expect(within(reconcile).queryByRole("region", { name: /no longer has/ })).toBeNull());
     expect(rangeState(db).allocations.map((a) => a.address)).not.toContain("10.41.10.205");

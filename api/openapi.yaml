@@ -12627,7 +12627,7 @@ components:
     IpRange:
       type: object
       required: [id, name, vcenter, network, cidr, start_address, end_address, gateway, dns_servers, dns_search_domains,
-        dns_domain, excluded, size, used, free, created_at, updated_at]
+        dns_domain, excluded, size, used, taken, free, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string, examples: [Lab apps] }
@@ -12651,8 +12651,12 @@ components:
           items: { type: string }
           description: Addresses never handed out, each one address or a span such as 10.51.0.50-10.51.0.59.
         size: { type: integer, description: "The addresses the range can hand out: its exclusions, the gateway, and the subnet's network and broadcast addresses left out." }
-        used: { type: integer, description: The addresses VMs hold. }
-        free: { type: integer }
+        used: { type: integer, description: The addresses the range gave VMs. }
+        taken:
+          type: integer
+          description: "The addresses of the range it didn't give that it skips: those EfficientIP gave a deployment's VMs, those
+            vCenter reports for its VMs, and its DNS servers."
+        free: { type: integer, description: "`size`, less `used` and `taken`." }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     IpRangeWrite:
@@ -12668,10 +12672,14 @@ components:
         start_address: { type: string }
         end_address: { type: string }
         gateway: { type: string }
-        dns_servers: { type: array, items: { type: string } }
+        dns_servers: { type: array, items: { type: string }, description: "Not addresses the range gives: exclude them." }
         dns_search_domains: { type: array, items: { type: string } }
-        dns_domain: { type: string }
-        excluded: { type: array, items: { type: string } }
+        dns_domain: { type: string, description: Without a final dot., examples: [lab.corp.example] }
+        excluded:
+          type: array
+          items: { type: string }
+          description: "Each one address, or two joined by a dash, the first lower, as the range returns them: 10.51.0.12, or
+            10.51.0.50-10.51.0.59, never 10.51.0.12-10.51.0.12."
     IpRangeList:
       type: object
       required: [items]

@@ -598,6 +598,8 @@
     "addressesLead": "{{network}} in {{vcenter}}. rvav gives an address back when its VM or adapter goes.",
     "free_one": "{{count}} free",
     "free_other": "{{count}} free",
+    "skipped_one": "rvav skips {{count}} address of this range: a VM holds it that the range didn't give it to, or a DNS server is on it.",
+    "skipped_other": "rvav skips {{count}} addresses of this range: VMs hold them that the range didn't give them to, or DNS servers are on them.",
     "addressesGiven": "Addresses given",
     "noneGiven": "No address given yet",
     "noneGivenBody": "The network's next VM gets the range's first free address.",

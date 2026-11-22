@@ -41,10 +41,19 @@ optional DNS domain, and excluded addresses (one address or a span
 `a-b`). It gives every address from start to end but the excluded ones,
 the gateway, and the subnet's network and broadcast addresses.
 
+A range is saved as written (I1.6). A DNS domain with its final dot, or an
+exclusion not written as rvav writes it (`a` for one address, `a-b` with
+no spaces), is refused with the code `not_canonical` and the value to
+write, so that a client that compares what it sent with what it reads
+back, as Terraform does, finds them equal. A DNS server the range would
+give is refused (`in_range`): exclude it, or keep it out of the span.
+
 The ranges of one network agree on subnet, gateway, DNS servers, search
 domains and domain: they are the network's, and VMs get them whichever
 range gives their address. Ranges of one vCenter don't overlap. Each is
-refused with the other range's name. A range from which VMs hold
+refused with the other range's name. The saves of one vCenter's ranges
+take turns (a transaction advisory lock on the vCenter's name), so two
+overlapping ranges saved at once aren't both accepted. A range from which VMs hold
 addresses keeps its vCenter, network, subnet and gateway, and keeps those
 addresses in, and can't be deleted (409).
 
@@ -72,6 +81,25 @@ adapter no address, as a move between EfficientIP networks doesn't.
 Renaming a VM whose addresses all come from ranges renames their
 allocations and asks EfficientIP nothing.
 
+### Addresses VMs hold otherwise
+A range never gives an address a VM holds that the range didn't give it
+(I1.6): the address of an `ipam.address` resource of a deployment not
+deleted, whatever its source (EfficientIP's, an adopted VM's, or another
+range's of the same vCenter), the address vCenter reports for a VM of the
+range's vCenter, and a DNS server of the range (one saved before the
+`in_range` check). These are the range's `taken` addresses: skipped when an
+address is given, refused when a subscription asks for one, and left out
+of `free` and of the free addresses a request is evaluated against.
+
+A save that would make such an address one the range gives is refused
+(422 on `/excluded`, code `held`, naming the addresses and their VMs), for
+a new range as for a changed one: the administrator excludes them or keeps
+the range apart from them. Refused rather than saved with a warning, since
+a warning on an API save is easy to miss and the range would otherwise
+list as free an address a VM uses. Addresses held after the range was
+saved, as when EfficientIP gives one later or a VM changes its address,
+don't stop the range from saving again: they are skipped.
+
 A static address a subscription asks for (ADR-0054) must be one the
 network's ranges give and no other VM holds. A request is refused when it
 is evaluated if the network's ranges don't have the free addresses its VMs
@@ -98,7 +126,9 @@ The reconcile report, which needed EfficientIP, also runs without it
 
 An administrator gives an orphan back with `DELETE
 /admin/ip-ranges/{id}/allocations/{address}`, audited; it is refused (409)
-for an address a deployment's VM holds. rvav gives addresses back itself in
+for an address a deployment's VM holds, and while vCenter still reports a
+VM of the range's vCenter on the address (as the inventory last saw it),
+so that the address isn't given to a new VM while the old one uses it. rvav gives addresses back itself in
 every other case, so this is the only manual release. An unallocated VM is
 fixed by excluding its address, or by moving the VM.
 
@@ -119,6 +149,7 @@ PowerShell does it with `Invoke-RvavApi`.
 - A network with ranges and an EfficientIP subnet uses the ranges; the
   EfficientIP subnet sync goes on, unused for that vCenter.
 - Moving a network from EfficientIP to ranges doesn't move the addresses
-  EfficientIP gave: they stay there until their VMs go.
+  EfficientIP gave: they stay there until their VMs go, and the ranges
+  don't give them meanwhile.
 - Not done: the vRA importer reads no network profile, so vRA's internal
   IP ranges aren't imported; DNS registration for ranges; IPv6 ranges.

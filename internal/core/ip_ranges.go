@@ -24,7 +24,7 @@ func presentIPRange(r store.IPRange) api.IpRange {
 	out := api.IpRange{Id: r.ID, Name: r.Name, Vcenter: r.VCenter, Network: r.Network, Cidr: r.CIDR,
 		StartAddress: r.StartAddress, EndAddress: r.EndAddress, Gateway: r.Gateway, DnsServers: nonNilStrings(r.DNSServers),
 		DnsSearchDomains: nonNilStrings(r.DNSSearchDomains), DnsDomain: r.DNSDomain, Excluded: nonNilStrings(r.Excluded),
-		Size: size, Used: r.Used, Free: max(0, size-r.Used), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		Size: size, Used: r.Used, Taken: len(r.Taken), Free: max(0, size-r.Used-len(r.Taken)), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 	if r.Description != "" {
 		out.Description = &r.Description
 	}
@@ -104,7 +104,7 @@ func ipRangeOf(w api.IpRangeWrite) (store.IPRange, iprange.Range, []api.FieldErr
 	r := store.IPRange{Name: strings.TrimSpace(w.Name), Description: strings.TrimSpace(deref(w.Description)),
 		VCenter: strings.TrimSpace(w.Vcenter), Network: strings.TrimSpace(w.Network),
 		DNSServers: trimAll(derefSlice(w.DnsServers)), DNSSearchDomains: trimAll(derefSlice(w.DnsSearchDomains)),
-		DNSDomain: strings.TrimSuffix(strings.TrimSpace(deref(w.DnsDomain)), "."), Excluded: trimAll(derefSlice(w.Excluded))}
+		DNSDomain: strings.TrimSpace(deref(w.DnsDomain)), Excluded: trimAll(derefSlice(w.Excluded))}
 	var errs []api.FieldError
 	bad := func(field, code, format string, args ...any) {
 		errs = append(errs, fieldErr(field, code, fmt.Sprintf(format, args...)))
@@ -155,8 +155,13 @@ func ipRangeOf(w api.IpRangeWrite) (store.IPRange, iprange.Range, []api.FieldErr
 			bad(fmt.Sprintf("/dns_search_domains/%d", i), "invalid", "A domain such as lab.corp.example.")
 		}
 	}
-	if r.DNSDomain != "" && !domainName.MatchString(r.DNSDomain) {
+	// What is saved is what is given, so that a client that compares them,
+	// as Terraform does, finds them equal.
+	switch d := strings.TrimSuffix(r.DNSDomain, "."); {
+	case r.DNSDomain != "" && (d == "" || !domainName.MatchString(d)):
 		bad("/dns_domain", "invalid", "A domain such as lab.corp.example, or empty for the blueprint's.")
+	case d != r.DNSDomain:
+		bad("/dns_domain", "not_canonical", "Without the final dot: %s.", d)
 	}
 	for i, e := range r.Excluded {
 		sp, err := iprange.ParseSpan(e)
@@ -165,8 +170,17 @@ func ipRangeOf(w api.IpRangeWrite) (store.IPRange, iprange.Range, []api.FieldErr
 			bad(fmt.Sprintf("/excluded/%d", i), "invalid", "An IPv4 address, or two joined by a dash such as 10.51.0.50-10.51.0.59.")
 		case prefix.IsValid() && (!prefix.Contains(sp.From) || !prefix.Contains(sp.To)):
 			bad(fmt.Sprintf("/excluded/%d", i), "outside", "The addresses must be in the subnet %s.", prefix)
+		case sp.String() != e:
+			bad(fmt.Sprintf("/excluded/%d", i), "not_canonical", "Write it %s.", sp)
 		default:
-			rg.Excluded, r.Excluded[i] = append(rg.Excluded, sp), sp.String()
+			rg.Excluded = append(rg.Excluded, sp)
+		}
+	}
+	if len(errs) == 0 {
+		for i, d := range r.DNSServers {
+			if a, _ := netip.ParseAddr(d); rg.Usable(a) {
+				bad(fmt.Sprintf("/dns_servers/%d", i), "in_range", "The range would give %s, a DNS server, to a VM: exclude it.", d)
+			}
 		}
 	}
 	if len(errs) == 0 && rg.Size() == 0 {
@@ -175,12 +189,19 @@ func ipRangeOf(w api.IpRangeWrite) (store.IPRange, iprange.Range, []api.FieldErr
 	return r, rg, errs
 }
 
-// checkIPRange checks a range against the others and, when it gave
-// addresses, against what it was.
-func checkIPRange(r store.IPRange, rg iprange.Range, old *store.IPRange, others []store.IPRange, given []string) []api.FieldError {
+// checkIPRange checks a range against the others, against the addresses
+// VMs hold otherwise (taken) and, when it gave addresses, against what it
+// was.
+func checkIPRange(r store.IPRange, rg iprange.Range, old *store.IPRange, others []store.IPRange, given []string,
+	taken []store.HeldAddress) []api.FieldError {
 	var errs []api.FieldError
 	bad := func(field, code, format string, args ...any) {
 		errs = append(errs, fieldErr(field, code, fmt.Sprintf(format, args...)))
+	}
+	if held := newlyTaken(rg, old, taken); len(held) == 1 {
+		bad("/excluded", "held", "A VM holds an address the range would give: %s. Exclude it, or keep the range apart from it.", heldList(held))
+	} else if len(held) > 1 {
+		bad("/excluded", "held", "VMs hold addresses the range would give: %s. Exclude them, or keep the range apart from them.", heldList(held))
 	}
 	for _, o := range others {
 		if o.VCenter != r.VCenter {
@@ -225,6 +246,40 @@ func checkIPRange(r store.IPRange, rg iprange.Range, old *store.IPRange, others 
 	return errs
 }
 
+// newlyTaken are the addresses VMs hold otherwise that the range gives
+// and didn't before: those it had stay, skipped, so that a range still
+// saves once EfficientIP gave one of its addresses.
+func newlyTaken(rg iprange.Range, old *store.IPRange, taken []store.HeldAddress) []store.HeldAddress {
+	var was iprange.Range
+	if old != nil {
+		was = old.Range()
+	}
+	var out []store.HeldAddress
+	for _, h := range taken {
+		if h.From != "dns" && rg.Usable(h.Address) && (old == nil || !was.Usable(h.Address)) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// heldList says which addresses which VMs hold, five at most.
+func heldList(held []store.HeldAddress) string {
+	var parts []string
+	for i, h := range held {
+		if i == 5 {
+			parts = append(parts, fmt.Sprintf("and %d more", len(held)-5))
+			break
+		}
+		how := "a deployment's address"
+		if h.From == "vcenter" {
+			how = "as vCenter reports"
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s, %s)", h.Address, h.Holder, how))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // SaveIPRange creates a range (no id) or changes one.
 func (s *Service) SaveIPRange(ctx context.Context, p *auth.Principal, id string, w api.IpRangeWrite) (api.IpRange, error) {
 	if !p.Everywhere(auth.InfrastructureManage) {
@@ -244,8 +299,9 @@ func (s *Service) SaveIPRange(ctx context.Context, p *auth.Principal, id string,
 		return api.IpRange{}, &ValidationError{Errors: errs}
 	}
 	r.ID = id
-	saved, err := s.Store.SaveIPRange(ctx, r, func(old *store.IPRange, others []store.IPRange, given []string) error {
-		if errs := checkIPRange(r, rg, old, others, given); len(errs) > 0 {
+	saved, err := s.Store.SaveIPRange(ctx, r, func(old *store.IPRange, others []store.IPRange, given []string,
+		taken []store.HeldAddress) error {
+		if errs := checkIPRange(r, rg, old, others, given, taken); len(errs) > 0 {
 			return &ValidationError{Errors: errs}
 		}
 		return nil

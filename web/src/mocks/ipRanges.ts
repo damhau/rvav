@@ -17,7 +17,7 @@ type Allocation = S["IpAllocation"] & {
 };
 
 interface RangeState {
-  ranges: Omit<S["IpRange"], "size" | "used" | "free">[];
+  ranges: Omit<S["IpRange"], "size" | "used" | "taken" | "free">[];
   allocations: Allocation[];
   /** VMs of the inventory on a range's address, as vCenter reports them. */
   inventory: { vm: string; address: string; deployment_id?: string; deployment_name?: string }[];
@@ -119,10 +119,32 @@ export function rangeState(db: Db): RangeState {
   return d.ipRanges;
 }
 
+interface Held {
+  address: string;
+  holder: string;
+  from: "vcenter" | "dns";
+}
+
+/** The addresses the range would give that it didn't, as the server's takenIn: a VM of the inventory holds them, or a DNS server is on them. */
+function takenIn(st: RangeState, r: Parameters<typeof usable>[0] & { id?: string; dns_servers: string[] }): Held[] {
+  const ok = usable(r);
+  const given = new Set(st.allocations.filter((a) => a.rangeId === r.id).map((a) => a.address));
+  const out: Held[] = [];
+  const add = (address: string, holder: string, from: Held["from"]) => {
+    const n = toInt(address);
+    if (n === undefined || !ok(n) || given.has(address) || out.some((h) => h.address === address)) return;
+    out.push({ address, holder, from });
+  };
+  r.dns_servers.forEach((d) => add(d, d, "dns"));
+  st.inventory.forEach((v) => add(v.address, v.vm, "vcenter"));
+  return out.sort((a, b) => toInt(a.address)! - toInt(b.address)!);
+}
+
 function present(st: RangeState, r: RangeState["ranges"][number]): S["IpRange"] {
   const size = sizeOf(r);
   const used = st.allocations.filter((a) => a.rangeId === r.id).length;
-  return { ...r, size, used, free: Math.max(0, size - used) };
+  const taken = takenIn(st, r).length;
+  return { ...r, size, used, taken, free: Math.max(0, size - used - taken) };
 }
 
 /** The networks with ranges, once per vCenter, as the network mappings list shows them. */
@@ -220,17 +242,29 @@ function check(st: RangeState, w: S["IpRangeWrite"], id?: string): S["FieldError
   trimAll(w.dns_servers).forEach((d, i) => {
     if (toInt(d) === undefined && !d.includes(":")) out.push(err(`/dns_servers/${i}`, "invalid", "An IP address."));
   });
+  const domain = (w.dns_domain ?? "").trim();
+  if (domain.endsWith(".") && domain.length > 1)
+    out.push(err("/dns_domain", "not_canonical", `Without the final dot: ${domain.slice(0, -1)}.`));
   trimAll(w.excluded).forEach((e, i) => {
     const s = spanOf(e);
+    const canonical = s && (s[0] === s[1] ? toAddr(s[0]) : `${toAddr(s[0])}-${toAddr(s[1])}`);
     if (!s)
       out.push(
         err(`/excluded/${i}`, "invalid", "An IPv4 address, or two joined by a dash such as 10.51.0.50-10.51.0.59."),
       );
     else if (p && (s[0] < p.base || s[1] > p.last))
       out.push(err(`/excluded/${i}`, "outside", `The addresses must be in the subnet ${subnet}.`));
+    else if (canonical !== e) out.push(err(`/excluded/${i}`, "not_canonical", `Write it ${canonical}.`));
   });
   if (out.length > 0) return out;
   const r = { ...w, excluded: trimAll(w.excluded) };
+  const inSpan = usable({ ...r, cidr: subnet });
+  trimAll(w.dns_servers).forEach((d, i) => {
+    const n = toInt(d);
+    if (n !== undefined && inSpan(n))
+      out.push(err(`/dns_servers/${i}`, "in_range", `The range would give ${d}, a DNS server, to a VM: exclude it.`));
+  });
+  if (out.length > 0) return out;
   if (sizeOf(r) === 0)
     out.push(
       err("/end_address", "no_address", "The range gives no address: its exclusions and the gateway take them all."),
@@ -258,6 +292,28 @@ function check(st: RangeState, w: S["IpRangeWrite"], id?: string): S["FieldError
   }
   const given = st.allocations.filter((a) => a.rangeId === id);
   const old = st.ranges.find((o) => o.id === id);
+  const was = old ? usable(old) : () => false;
+  const held = takenIn(st, { ...r, id, cidr: subnet, dns_servers: [] }).filter((h) => !was(toInt(h.address)!));
+  const heldList = [
+    ...held.slice(0, 5).map((h) => `${h.address} (${h.holder}, as vCenter reports)`),
+    ...(held.length > 5 ? [`and ${held.length - 5} more`] : []),
+  ].join(", ");
+  if (held.length === 1)
+    out.push(
+      err(
+        "/excluded",
+        "held",
+        `A VM holds an address the range would give: ${heldList}. Exclude it, or keep the range apart from it.`,
+      ),
+    );
+  else if (held.length > 1)
+    out.push(
+      err(
+        "/excluded",
+        "held",
+        `VMs hold addresses the range would give: ${heldList}. Exclude them, or keep the range apart from them.`,
+      ),
+    );
   if (old && given.length > 0) {
     if (old.vcenter !== w.vcenter || old.network !== w.network || old.cidr !== subnet || old.gateway !== w.gateway)
       out.push(
@@ -298,7 +354,7 @@ export function ipRangeHandlers(db: Db, base: string, wait: () => Promise<void>)
       gateway: w.gateway.trim(),
       dns_servers: trimAll(w.dns_servers),
       dns_search_domains: trimAll(w.dns_search_domains),
-      dns_domain: (w.dns_domain ?? "").trim().replace(/\.$/, ""),
+      dns_domain: (w.dns_domain ?? "").trim(),
       excluded: trimAll(w.excluded),
       created_at: old?.created_at ?? now,
       updated_at: now,
@@ -358,6 +414,17 @@ export function ipRangeHandlers(db: Db, base: string, wait: () => Promise<void>)
           "Conflict",
           undefined,
           `${a.hostname} still holds ${a.address}: delete the VM, or move its adapter, and rvav gives the address back.`,
+        );
+      const seen = st()
+        .inventory.filter((v) => v.address === a.address)
+        .map((v) => v.vm)
+        .sort()[0];
+      if (seen)
+        return problem(
+          409,
+          "Conflict",
+          undefined,
+          `vCenter ${r.vcenter} still reports VM ${seen} on ${a.address}: delete the VM, or change its address, first.`,
         );
       st().allocations.splice(st().allocations.indexOf(a), 1);
       audited(db, "ip_range.release", "ip_range", r.id, { address: a.address, hostname: a.hostname });

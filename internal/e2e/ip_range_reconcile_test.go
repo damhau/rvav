@@ -105,8 +105,8 @@ func TestIPRangeReconcile(t *testing.T) {
 			t.Fatalf("unallocated = %+v", r.Unallocated)
 		}
 
-		// An administrator gives the orphan back; the address of a VM a
-		// deployment has stays.
+		// An administrator gives the orphan back once vCenter no longer
+		// reports its VM; the address of a VM a deployment has stays.
 		base := "/api/v1/admin/ip-ranges/" + rg.Id + "/allocations/"
 		h.json("DELETE", base+goneIP, user, nil, 403, nil)
 		code, b, _ := h.do("DELETE", base+keptIP, admin, nil)
@@ -114,8 +114,15 @@ func TestIPRangeReconcile(t *testing.T) {
 			t.Fatalf("releasing a held address = %d %s", code, b)
 		}
 		h.json("DELETE", base+"10.32.20.18", admin, nil, 404, nil)
+		code, b, _ = h.do("DELETE", base+goneIP, admin, nil)
+		if code != 409 || !strings.Contains(string(b), "still reports VM "+goneVM+" on "+goneIP) {
+			t.Fatalf("releasing an orphan vCenter still reports = %d %s", code, b)
+		}
+		if _, err := h.store.DeleteInventoryVM(ctx, rangeVCenter, "vm-"+goneVM); err != nil {
+			t.Fatal(err)
+		}
 		h.json("DELETE", base+goneIP, admin, nil, 204, nil)
-		if r := report(); len(r.OrphanAllocations) != 0 || len(r.Unallocated) != 3 {
+		if r := report(); len(r.OrphanAllocations) != 0 || len(r.Unallocated) != 2 {
 			t.Fatalf("after the release = %+v", r)
 		}
 		var audit struct{ Items []api.AuditEvent }
@@ -126,7 +133,7 @@ func TestIPRangeReconcile(t *testing.T) {
 
 		// Without EfficientIP, the ranges are compared still.
 		h.svc.IPAM = efficientip.NotSet{}
-		if r := report(); r.Efficientip || r.ManagedAddresses != 0 || len(r.OrphanAddresses) != 0 || len(r.Unallocated) != 3 {
+		if r := report(); r.Efficientip || r.ManagedAddresses != 0 || len(r.OrphanAddresses) != 0 || len(r.Unallocated) != 2 {
 			t.Fatalf("without EfficientIP = %+v", r)
 		}
 	})

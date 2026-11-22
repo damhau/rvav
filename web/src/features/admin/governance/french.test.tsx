@@ -39,7 +39,7 @@ describe("templates and networks, in French", () => {
     const ranges = await screen.findByRole("region", { name: "Plages IP" });
     const lab = await within(ranges).findByRole("row", { name: /Test lab/ });
     expect(lab).toHaveTextContent("10.41.10.0/24 via 10.41.10.1, 2 exclues");
-    expect(lab).toHaveTextContent("30 libres");
+    expect(lab).toHaveTextContent("29 libres");
 
     await user.click(screen.getByRole("tab", { name: "Objets vCenter" }));
     const objects = await screen.findByRole("region", { name: "Objets vCenter" });

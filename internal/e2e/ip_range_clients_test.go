@@ -123,6 +123,24 @@ func TestTerraformIPRanges(t *testing.T) {
 			ProtoV6ProviderFactories: tf.factories,
 			Steps: []resource.TestStep{
 				{
+					// rvav saves what is written, or refuses it: no
+					// inconsistent result after apply.
+					Config: tf.config(`
+resource "rvav_ip_range" "lab" {
+  name          = "Lab"
+  vcenter       = %q
+  network       = %q
+  cidr          = "10.32.20.0/24"
+  start_address = "10.32.20.10"
+  end_address   = "10.32.20.19"
+  gateway       = "10.32.20.1"
+  dns_domain    = "lab.corp.example."
+  excluded      = ["10.32.20.11-10.32.20.11"]
+}
+`, rangeVCenter, rangeNetwork),
+					ExpectError: regexp.MustCompile(`Without the final dot`),
+				},
+				{
 					Config: v1,
 					Check: resource.ComposeAggregateTestCheckFunc(
 						grab("rvav_ip_range.lab", "id", &id),

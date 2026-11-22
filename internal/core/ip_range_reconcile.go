@@ -102,13 +102,16 @@ func (s *Service) ReleaseIPAllocation(ctx context.Context, p *auth.Principal, id
 	if err != nil {
 		return err
 	}
-	al, err := s.Store.ReleaseOrphanAllocation(ctx, id, address)
+	al, seen, err := s.Store.ReleaseOrphanAllocation(ctx, id, address)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	case errors.Is(err, store.ErrInUse):
 		return &ConflictError{Msg: fmt.Sprintf("%s still holds %s: delete the VM, or move its adapter, and rvav gives the address back.",
 			al.Hostname, al.Address)}
+	case errors.Is(err, store.ErrAddressReported):
+		return &ConflictError{Msg: fmt.Sprintf("vCenter %s still reports VM %s on %s: delete the VM, or change its address, first.",
+			r.Vcenter, seen, al.Address)}
 	case err != nil:
 		return err
 	}

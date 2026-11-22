@@ -655,15 +655,23 @@ To add a range:
 5. Enter the range's first and last addresses.
 6. Optional: under **Excluded addresses**, enter the addresses the range
    never gives, one a line: an address, or a span such as
-   `10.51.0.50-10.51.0.59`.
+   `10.51.0.50-10.51.0.59`, without spaces.
 7. Optional: enter the DNS servers and search domains that VMs get, and
-   the DNS domain that they're named in. Without a domain, VMs take the
-   blueprint's.
+   the DNS domain that they're named in, without its final dot. Without a
+   domain, VMs take the blueprint's. A DNS server inside the range must be
+   excluded.
 8. Click **Save range**.
+
+rvav refuses a range that would give an address a VM already holds: one
+that EfficientIP gave a deployment's VM, or one that vCenter reports for
+a VM. The message names each address and its VM. Exclude the addresses,
+or choose a span apart from them.
 
 A network can have several ranges, all with the same subnet, gateway and
 DNS settings; ranges of a vCenter don't overlap. rvav gives the first free address of
-the network's ranges, in the order you made them. The **Networks** tab
+the network's ranges, in the order you made them. It skips an address that a
+VM got some other way after you saved the range, and the range's
+**Addresses given** shows how many it skips. The **Networks** tab
 shows each network's source: **rvav IP ranges**, **EfficientIP** or **By
 hand**.
 
@@ -684,8 +692,10 @@ Under **Reconcile the IP ranges** on the **IP ranges** tab, or in
 
 - **Addresses of VMs rvav no longer has**, such as an unregistered VM's.
   If the VM is gone from vCenter, select **Give back** in the row's
-  **Actions** menu: the range can then give the address again. If it
-  still runs on the address, exclude the address from the range instead.
+  **Actions** menu: the range can then give the address again. While
+  vCenter still reports a VM on the address, rvav refuses to give it
+  back: delete the VM or change its address first, or exclude the address
+  from the range instead.
 - **VMs on an address their range didn't give**: vCenter VMs, such as
   adopted ones, on an address of a range. Select **Exclude from** the
   range in the row's **Actions** menu, so that the range never gives the

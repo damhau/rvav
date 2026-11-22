@@ -248,7 +248,8 @@ function AddressesSheet({ range, onClose }: { range: S["IpRange"]; onClose: () =
       title={t("ipRanges.addressesOf", { name: range.name })}
       description={t("ipRanges.addressesLead", { network: range.network, vcenter: range.vcenter })}
     >
-      <Meter label={t("ipRanges.free", { count: range.free })} used={range.used} total={range.size} />
+      <Meter label={t("ipRanges.free", { count: range.free })} used={range.used + range.taken} total={range.size} />
+      {range.taken > 0 && <p className="text-secondary text-muted">{t("ipRanges.skipped", { count: range.taken })}</p>}
       <DataTable
         label={t("ipRanges.addressesGiven")}
         columns={columns}
@@ -494,9 +495,9 @@ export function IPRanges({ canEdit }: { canEdit: boolean }) {
     {
       id: "usage",
       header: t("ipRanges.given"),
-      sortValue: (r) => (r.size ? r.used / r.size : 0),
+      sortValue: (r) => (r.size ? (r.used + r.taken) / r.size : 0),
       className: "min-w-40",
-      cell: (r) => <Meter label={t("ipRanges.free", { count: r.free })} used={r.used} total={r.size} />,
+      cell: (r) => <Meter label={t("ipRanges.free", { count: r.free })} used={r.used + r.taken} total={r.size} />,
     },
     {
       id: "dns",

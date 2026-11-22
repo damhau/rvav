@@ -9633,8 +9633,11 @@ export interface components {
             excluded: string[];
             /** @description The addresses the range can hand out: its exclusions, the gateway, and the subnet's network and broadcast addresses left out. */
             size: number;
-            /** @description The addresses VMs hold. */
+            /** @description The addresses the range gave VMs. */
             used: number;
+            /** @description The addresses of the range it didn't give that it skips: those EfficientIP gave a deployment's VMs, those vCenter reports for its VMs, and its DNS servers. */
+            taken: number;
+            /** @description `size`, less `used` and `taken`. */
             free: number;
             /** Format: date-time */
             created_at: string;
@@ -9650,9 +9653,15 @@ export interface components {
             start_address: string;
             end_address: string;
             gateway: string;
+            /** @description Not addresses the range gives: exclude them. */
             dns_servers?: string[];
             dns_search_domains?: string[];
+            /**
+             * @description Without a final dot.
+             * @example lab.corp.example
+             */
             dns_domain?: string;
+            /** @description Each one address, or two joined by a dash, the first lower, as the range returns them: 10.51.0.12, or 10.51.0.50-10.51.0.59, never 10.51.0.12-10.51.0.12. */
             excluded?: string[];
         };
         IpRangeList: {

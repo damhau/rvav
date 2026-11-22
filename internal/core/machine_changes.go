@@ -602,6 +602,13 @@ func (c *machineChange) inRanges(ctx context.Context, vm provision.VMUnit, netwo
 			return refuse("%s is taken: rvav gave it to %s.", addr, a.Hostname)
 		}
 	}
+	for _, r := range rs {
+		for _, h := range r.Taken {
+			if h.Address == addr && !strings.EqualFold(h.Holder, vm.Name) {
+				return refuse("%s is taken: %s holds it.", addr, h.Holder)
+			}
+		}
+	}
 	return nil
 }
 

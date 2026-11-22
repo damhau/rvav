@@ -7075,7 +7075,9 @@ type IpRange struct {
 
 	// Excluded Addresses never handed out, each one address or a span such as 10.51.0.50-10.51.0.59.
 	Excluded []string `json:"excluded"`
-	Free     int      `json:"free"`
+
+	// Free `size`, less `used` and `taken`.
+	Free int `json:"free"`
 
 	// Gateway Examples: 10.51.0.1
 	Gateway string `json:"gateway"`
@@ -7093,10 +7095,13 @@ type IpRange struct {
 	Size int `json:"size"`
 
 	// StartAddress Examples: 10.51.0.10
-	StartAddress string    `json:"start_address"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	StartAddress string `json:"start_address"`
 
-	// Used The addresses VMs hold.
+	// Taken The addresses of the range it didn't give that it skips: those EfficientIP gave a deployment's VMs, those vCenter reports for its VMs, and its DNS servers.
+	Taken     int       `json:"taken"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Used The addresses the range gave VMs.
 	Used int `json:"used"`
 
 	// Vcenter The vCenter the network is in.
@@ -7112,18 +7117,26 @@ type IpRangeList struct {
 
 // IpRangeWrite defines model for IpRangeWrite.
 type IpRangeWrite struct {
-	Cidr             string    `json:"cidr"`
-	Description      *string   `json:"description,omitempty"`
+	Cidr        string  `json:"cidr"`
+	Description *string `json:"description,omitempty"`
+
+	// DnsDomain Without a final dot.
+	//
+	// Examples: lab.corp.example
 	DnsDomain        *string   `json:"dns_domain,omitempty"`
 	DnsSearchDomains *[]string `json:"dns_search_domains,omitempty"`
-	DnsServers       *[]string `json:"dns_servers,omitempty"`
-	EndAddress       string    `json:"end_address"`
-	Excluded         *[]string `json:"excluded,omitempty"`
-	Gateway          string    `json:"gateway"`
-	Name             string    `json:"name"`
-	Network          string    `json:"network"`
-	StartAddress     string    `json:"start_address"`
-	Vcenter          string    `json:"vcenter"`
+
+	// DnsServers Not addresses the range gives: exclude them.
+	DnsServers *[]string `json:"dns_servers,omitempty"`
+	EndAddress string    `json:"end_address"`
+
+	// Excluded Each one address, or two joined by a dash, the first lower, as the range returns them: 10.51.0.12, or 10.51.0.50-10.51.0.59, never 10.51.0.12-10.51.0.12.
+	Excluded     *[]string `json:"excluded,omitempty"`
+	Gateway      string    `json:"gateway"`
+	Name         string    `json:"name"`
+	Network      string    `json:"network"`
+	StartAddress string    `json:"start_address"`
+	Vcenter      string    `json:"vcenter"`
 }
 
 // IpamMissing defines model for IpamMissing.

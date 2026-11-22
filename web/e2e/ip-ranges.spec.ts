@@ -48,7 +48,7 @@ async function rangesFlow(page: Page, check: (where: string) => Promise<void>) {
   await expect(page.getByRole("heading", { name: "Templates and networks", level: 1 })).toBeVisible();
   const ranges = page.getByRole("region", { name: "IP ranges", exact: true });
   const lab = ranges.getByRole("row", { name: /Test lab/ });
-  await expect(lab).toContainText("30 free");
+  await expect(lab).toContainText("29 free");
   await expect(lab).toContainText("10.41.10.200 – 10.41.10.239");
   await check("the IP ranges");
 
@@ -104,7 +104,7 @@ async function rangesFlow(page: Page, check: (where: string) => Promise<void>) {
   await confirm.getByRole("button", { name: "Give back address" }).click();
   await expect(page.getByText("10.41.10.205 given back")).toBeVisible();
   await expect(orphans).toBeHidden();
-  await expect(lab).toContainText("31 free");
+  await expect(lab).toContainText("30 free");
 
   await toastsGone(page);
   await strays.getByRole("button", { name: "Actions for lab-tst-build01" }).click();

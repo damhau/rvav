@@ -79,6 +79,13 @@ func TestIPRanges(t *testing.T) {
 		other := labRange("Other", "10.32.20.18", "10.32.20.30")
 		other.Gateway = "10.32.20.254"
 		refused("POST", "/api/v1/admin/ip-ranges", other, "/gateway differs, /start_address overlaps")
+		// What is saved is what was written (a client such as Terraform
+		// compares them), and a DNS server is no address to give.
+		odd := labRange("Odd", "10.32.20.40", "10.32.20.60", "10.32.20.41-10.32.20.41", " 10.32.20.42 - 10.32.20.43")
+		odd.DnsDomain, odd.DnsServers = new("lab.corp.example."), &[]string{"10.32.20.53"}
+		refused("POST", "/api/v1/admin/ip-ranges", odd, "/dns_domain not_canonical, /excluded/0 not_canonical, /excluded/1 not_canonical")
+		odd = labRange("Odd", "10.32.20.40", "10.32.20.60")
+		refused("POST", "/api/v1/admin/ip-ranges", odd, "/dns_servers/0 in_range")
 		code, b, _ := h.do("POST", "/api/v1/admin/ip-ranges", admin, map[string]any{"name": "x", "colour": "red"})
 		if code != 400 {
 			t.Errorf("an unknown field = %d %s", code, b)
@@ -176,8 +183,14 @@ func TestIPRanges(t *testing.T) {
 		if code != 409 || !strings.Contains(string(b), "VMs hold addresses from Lab apps") {
 			t.Errorf("deleting a range in use = %d %s", code, b)
 		}
-		if _, err := h.store.ReleaseRequestAddresses(ctx, "req_lab", nil); err != nil {
+		left, err := h.store.IPAllocations(ctx, a.Id)
+		if err != nil {
 			t.Fatal(err)
+		}
+		for _, al := range left {
+			if err := h.store.ReleaseAddress(ctx, h.store.Pool, al.ID); err != nil {
+				t.Fatal(err)
+			}
 		}
 		h.json("DELETE", "/api/v1/admin/ip-ranges/"+a.Id, admin, nil, 204, nil)
 		var audit struct{ Items []api.AuditEvent }

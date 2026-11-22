@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -30,8 +31,11 @@ type IPRange struct {
 	Excluded         []string  `db:"excluded"`
 	CreatedAt        time.Time `db:"created_at"`
 	UpdatedAt        time.Time `db:"updated_at"`
-	// Used is how many of its addresses VMs hold.
+	// Used is how many of its addresses it gave VMs.
 	Used int `db:"used"`
+	// Taken are the addresses it would give that it didn't: they are not
+	// given (ADR-0063).
+	Taken []HeldAddress `db:"-"`
 }
 
 // Range is its arithmetic; the store keeps only ranges that parse.
@@ -63,6 +67,8 @@ var (
 	ErrAddressOutside = errors.New("the address is not one the network's IP ranges give")
 	// ErrAddressHeld is an address another VM holds.
 	ErrAddressHeld = errors.New("another VM holds the address")
+	// ErrAddressReported is an address vCenter still reports a VM on.
+	ErrAddressReported = errors.New("vCenter reports a VM on the address")
 )
 
 const ipRangeSelect = `select r.id, r.name, r.description, r.vcenter, r.network, r.cidr, r.start_address, r.end_address,
@@ -75,21 +81,40 @@ const ipRangeOrder = ` order by r.vcenter, r.network, r.created_at, r.id`
 // IPRanges lists every range, by vCenter and network.
 func (s *Store) IPRanges(ctx context.Context) ([]IPRange, error) {
 	rows, _ := s.Pool.Query(ctx, ipRangeSelect+ipRangeOrder)
-	return pgx.CollectRows(rows, pgx.RowToStructByName[IPRange])
+	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[IPRange])
+	if err != nil {
+		return nil, err
+	}
+	return list, withTaken(ctx, s.Pool, list)
 }
 
 func (s *Store) IPRange(ctx context.Context, id string) (IPRange, error) {
 	rows, _ := s.Pool.Query(ctx, ipRangeSelect+` where r.id = $1`, id)
 	r, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[IPRange])
-	return r, notFound(err)
+	if err != nil {
+		return r, notFound(err)
+	}
+	list := []IPRange{r}
+	err = withTaken(ctx, s.Pool, list)
+	return list[0], err
 }
 
+// ipRangeLock serialises the saves of a vCenter's ranges: a range added
+// meanwhile isn't locked by "for update", and two that overlap would both
+// be accepted.
+const ipRangeLock = 0x1b72_0063
+
 // SaveIPRange creates the range (no ID) or replaces it, once check, given
-// the range as it was (nil for a new one), every other range and the
-// addresses the range gave, accepts it. Ranges
-// stay locked meanwhile, so that no address is given while it checks.
-func (s *Store) SaveIPRange(ctx context.Context, r IPRange, check func(old *IPRange, others []IPRange, given []string) error) (IPRange, error) {
+// the range as it was (nil for a new one), every other range, the
+// addresses the range gave and those of the range as saved that VMs hold
+// otherwise, accepts it. Ranges stay locked meanwhile, so that no address
+// is given while it checks, and so do the saves of the vCenter's ranges.
+func (s *Store) SaveIPRange(ctx context.Context, r IPRange,
+	check func(old *IPRange, others []IPRange, given []string, taken []HeldAddress) error) (IPRange, error) {
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock($1, hashtext($2))`, ipRangeLock, r.VCenter); err != nil {
+			return err
+		}
 		rows, _ := tx.Query(ctx, ipRangeSelect+ipRangeOrder+` for update of r`)
 		all, err := pgx.CollectRows(rows, pgx.RowToStructByName[IPRange])
 		if err != nil {
@@ -114,7 +139,15 @@ func (s *Store) SaveIPRange(ctx context.Context, r IPRange, check func(old *IPRa
 				return err
 			}
 		}
-		if err := check(old, others, given); err != nil {
+		held, err := heldAddresses(ctx, tx, []string{r.VCenter})
+		if err != nil {
+			return err
+		}
+		mine := map[string]bool{}
+		for _, g := range given {
+			mine[g] = true
+		}
+		if err := check(old, others, given, takenIn(r, held, mine)); err != nil {
 			return err
 		}
 		if r.ID == "" {
@@ -218,6 +251,18 @@ func (s *Store) AllocateAddress(ctx context.Context, q AllocationRequest) (IPAll
 				held[a] = true
 			}
 		}
+		// Nor one another VM holds some other way, as when EfficientIP gave it.
+		others, err := heldAddresses(ctx, tx, []string{q.VCenter})
+		if err != nil {
+			return err
+		}
+		for _, r := range ranges {
+			for _, h := range takenIn(r, others, nil) {
+				if !strings.EqualFold(h.Holder, q.Hostname) {
+					held[h.Address] = true
+				}
+			}
+		}
 		var ip netip.Addr
 		if q.Address != "" {
 			a, err := netip.ParseAddr(q.Address)
@@ -280,15 +325,6 @@ func (s *Store) RenameAllocation(ctx context.Context, db DB, id, hostname, fqdn 
 	return err
 }
 
-// ReleaseRequestAddresses gives back the addresses a request's VMs got
-// from ranges, but for the VMs in keep.
-func (s *Store) ReleaseRequestAddresses(ctx context.Context, requestID string, keep []string) ([]IPAllocation, error) {
-	rows, _ := s.Pool.Query(ctx, `delete from ip_allocations where request_id = $1 and not hostname = any($2)
-		returning id, range_id, address, request_id, deployment_id, hostname, nic, fqdn, created_at, null::text as deployment_name`,
-		requestID, nonNil(keep))
-	return pgx.CollectRows(rows, pgx.RowToStructByName[IPAllocation])
-}
-
 // orphanAllocation: no deployment has the allocation's VM, and the request
 // that took it has ended.
 const orphanAllocation = ` not exists (select 1 from resources r join deployments rd on rd.id = r.deployment_id
@@ -304,9 +340,12 @@ func (s *Store) OrphanIPAllocations(ctx context.Context) ([]IPAllocation, error)
 }
 
 // ReleaseOrphanAllocation gives back the address a range gave, when it is
-// an orphan (ErrInUse otherwise), with the resource that records it.
-func (s *Store) ReleaseOrphanAllocation(ctx context.Context, rangeID, address string) (IPAllocation, error) {
+// an orphan (ErrInUse otherwise) that no VM of the range's vCenter is
+// reported on (ErrAddressReported, with the VM), with the resource that
+// records it.
+func (s *Store) ReleaseOrphanAllocation(ctx context.Context, rangeID, address string) (IPAllocation, string, error) {
 	var out IPAllocation
+	var seen string
 	err := s.Tx(ctx, func(tx pgx.Tx) error {
 		rows, _ := tx.Query(ctx, ipAllocationSelect+` where a.range_id = $1 and a.address = $2 for update of a`, rangeID, address)
 		al, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[IPAllocation])
@@ -324,10 +363,18 @@ func (s *Store) ReleaseOrphanAllocation(ctx context.Context, rangeID, address st
 		if tag.RowsAffected() == 0 {
 			return ErrInUse
 		}
+		err = tx.QueryRow(ctx, `select v.name from inv_vms v join ip_ranges r on r.vcenter = v.vcenter
+			where r.id = $1 and v.ip_address = $2 order by v.name limit 1`, rangeID, al.Address).Scan(&seen)
+		switch {
+		case err == nil:
+			return ErrAddressReported
+		case !errors.Is(err, pgx.ErrNoRows):
+			return err
+		}
 		_, err = tx.Exec(ctx, `delete from resources where type = 'ipam.address' and external_id = $1`, "rvav:"+al.ID)
 		return err
 	})
-	return out, err
+	return out, seen, err
 }
 
 // AddressedVM is a VM of the inventory with the address vCenter reports

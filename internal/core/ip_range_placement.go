@@ -59,7 +59,7 @@ func (pl *placement) rangeSearch(vcenter, network string) []string {
 func freeIn(rs []store.IPRange) int {
 	n := 0
 	for _, r := range rs {
-		n += max(0, r.Range().Size()-r.Used)
+		n += max(0, r.Range().Size()-r.Used-len(r.Taken))
 	}
 	return n
 }
@@ -81,6 +81,11 @@ func (pl *placement) nextInRanges(rs []store.IPRange) string {
 		ip, err := netip.ParseAddr(a.Address)
 		if err == nil && slices.ContainsFunc(rs, func(r store.IPRange) bool { return r.ID == a.RangeID }) {
 			taken[ip] = true
+		}
+	}
+	for _, r := range rs {
+		for _, h := range r.Taken {
+			taken[h.Address] = true
 		}
 	}
 	for _, r := range rs {
