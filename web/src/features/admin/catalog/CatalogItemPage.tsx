@@ -429,13 +429,20 @@ function DefinitionTab({
   // After the effect above, which shows the draft as fetched: a publish
   // refused shows its problems as a save refused does, once.
   const problemList = useRef<HTMLUListElement>(null);
+  const focusProblems = useRef(false);
   useEffect(() => {
     if (!refusal || refusal.versionId !== shown?.id || !version.data || pending) return;
     setProblems(problemsOnLines(original, refusal.errors));
     setRefused({ text: original, errors: refusal.errors });
     onRefusalShown();
-    requestAnimationFrame(() => problemList.current?.focus());
+    focusProblems.current = true;
   }, [refusal, shown?.id, version.data, pending, original, onRefusalShown]);
+  // Once the list is drawn: a frame asked for before may come first.
+  useEffect(() => {
+    if (!focusProblems.current || problems.length === 0) return;
+    focusProblems.current = false;
+    problemList.current?.focus();
+  }, [problems]);
   const dirty = text !== original || Boolean(pending);
   // What may not work as meant in the version as saved (ADR-0035), on its lines.
   const warnings = useMemo(
