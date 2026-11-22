@@ -1,1 +1,91 @@
-{}
+{
+  "channel": {
+    "email": "Email",
+    "teams": "Teams",
+    "slack": "Slack"
+  },
+  "locale": {
+    "en": "English",
+    "fr": "French"
+  },
+  "localeInText": {
+    "en": "English",
+    "fr": "French"
+  },
+  "list": {
+    "lead": "What each notification says, by email, in Teams and in Slack, in English and in French. An edited template replaces the built-in one for the notifications sent from then on; the greeting, the facts and the button stay rvav's.",
+    "notification": "Notification",
+    "edited": "Edited",
+    "changed": "Changed",
+    "builtIn": "Built-in templates",
+    "editedIn": "{{channel}}, {{locale}}",
+    "changedBy": "{{when}} by {{who}}",
+    "never": "Never"
+  },
+  "editor": {
+    "textHint": {
+      "email": "The email's text part, for mail clients that don't show HTML.",
+      "teams": "The card's text, in Markdown: what variables hold is escaped, so it can't add links or emphasis.",
+      "slack": "The message's text, in Slack's mrkdwn: what variables hold is escaped."
+    },
+    "variable": "Variable",
+    "type": "Type",
+    "holds": "What it holds",
+    "function": "Function",
+    "does": "What it does",
+    "saved": "Template saved",
+    "savedBody": "Notifications sent from now on use it.",
+    "notSaved": "The template wasn't saved",
+    "reset": "Built-in template back",
+    "notReset": "The template wasn't reset",
+    "edited": "Edited.",
+    "editedBy": "Edited by {{who}}.",
+    "editedWhen": "Edited, {{when}}.",
+    "editedByWhen": "Edited by {{who}}, {{when}}.",
+    "builtIn": "The built-in template.",
+    "template": "Template",
+    "templateLead": "A Go template: <code>{{write}}</code> writes a variable, <code>{{when}}</code> writes what it holds when the variable has a value.",
+    "notSavedYet": "Not saved yet.",
+    "resetToBuiltIn": "Reset to built-in",
+    "saving": "Saving…",
+    "save": "Save template",
+    "subject": "Subject",
+    "title": "Title",
+    "subjectHint": "The email's subject.",
+    "titleHint": "The bold first line.",
+    "text": "Text",
+    "html": "HTML",
+    "htmlHint": "What the email shows between the greeting and the facts. What variables hold is escaped as HTML.",
+    "preview": "Preview",
+    "previewEmail": "With sample data, as an email in {{locale}} would show it.",
+    "previewMessage": "With sample data, as a {{channel}} message in {{locale}} would show it.",
+    "resetTitle": "Go back to the built-in template?",
+    "resetBody": "The edited {{channel}} template in {{locale}} is removed.",
+    "resetConsequences": "Notifications sent from then on use rvav's built-in template.",
+    "variables": "Variables",
+    "variablesLead": "What a template of {{kind}} can write. A template that names another is refused.",
+    "functions": "Functions",
+    "functionsLead": "Besides Go's own, such as <code>eq</code>, <code>printf</code> and <code>range</code>.",
+    "fallback": "Notification template",
+    "channelLabel": "Channel",
+    "languageLabel": "Language",
+    "loading": "Loading the template…"
+  },
+  "preview": {
+    "cantWrite": "The template can't be written:",
+    "problem": "{{field}}: {{message}}",
+    "failed": "The preview failed.",
+    "writing": "Writing the preview…",
+    "subject": "Subject: ",
+    "title": "Title: ",
+    "email": "Email preview",
+    "emailHtml": "The email as HTML",
+    "emailText": "The email as text",
+    "teams": "Teams preview",
+    "card": "Card",
+    "cardJson": "The card's JSON",
+    "slack": "Slack preview",
+    "message": "Message",
+    "blocks": "The message's blocks"
+  }
+}

@@ -2,6 +2,8 @@
 // language, the built-in one until an administrator edits it.
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { Badge } from "@/components/ui/badge";
@@ -15,10 +17,10 @@ import { channelLabel, localeLabel } from "./templateLabels";
 
 const edited = (k: NotificationTemplateKind) => k.templates.filter((t) => t.edited);
 
-const columns: Column<NotificationTemplateKind>[] = [
+const columns = (t: TFunction<"admin-notifications">): Column<NotificationTemplateKind>[] => [
   {
     id: "kind",
-    header: "Notification",
+    header: t("list.notification"),
     sortValue: (k) => k.name,
     cell: (k) => (
       <>
@@ -35,16 +37,16 @@ const columns: Column<NotificationTemplateKind>[] = [
   },
   {
     id: "edited",
-    header: "Edited",
+    header: t("list.edited"),
     sortValue: (k) => edited(k).length,
     cell: (k) => {
       const list = edited(k);
-      if (!list.length) return <span className="text-secondary text-muted">Built-in templates</span>;
+      if (!list.length) return <span className="text-secondary text-muted">{t("list.builtIn")}</span>;
       return (
         <div className="flex flex-wrap gap-1">
-          {list.map((t) => (
-            <Badge key={`${t.channel}-${t.locale}`} tone="accent">
-              {channelLabel[t.channel]}, {localeLabel[t.locale]}
+          {list.map((e) => (
+            <Badge key={`${e.channel}-${e.locale}`} tone="accent">
+              {t("list.editedIn", { channel: channelLabel(e.channel), locale: localeLabel(e.locale) })}
             </Badge>
           ))}
         </div>
@@ -53,7 +55,7 @@ const columns: Column<NotificationTemplateKind>[] = [
   },
   {
     id: "changed",
-    header: "Changed",
+    header: t("list.changed"),
     sortValue: (k) =>
       edited(k)
         .map((t) => t.updated_at ?? "")
@@ -64,8 +66,10 @@ const columns: Column<NotificationTemplateKind>[] = [
       return (
         <span className="text-secondary text-muted">
           {last?.updated_at
-            ? `${relative(last.updated_at)}${last.updated_by ? ` by ${last.updated_by}` : ""}`
-            : "Never"}
+            ? last.updated_by
+              ? t("list.changedBy", { when: relative(last.updated_at), who: last.updated_by })
+              : relative(last.updated_at)
+            : t("list.never")}
         </span>
       );
     },
@@ -73,17 +77,15 @@ const columns: Column<NotificationTemplateKind>[] = [
 ];
 
 export function NotificationTemplatesPage() {
+  const { t } = useTranslation(["admin-notifications", "shell"]);
   const catalog = useQuery(adm.notificationTemplates());
   return (
     <Page>
-      <PageHeader
-        title="Notification templates"
-        description="What each notification says, by email, in Teams and in Slack, in English and in French. An edited template replaces the built-in one for the notifications sent from then on; the greeting, the facts and the button stay rvav's."
-      />
+      <PageHeader title={t("shell:nav.admin.notificationTemplates")} description={t("list.lead")} />
       <Panel flush>
         <DataTable
-          label="Notification templates"
-          columns={columns}
+          label={t("shell:nav.admin.notificationTemplates")}
+          columns={columns(t)}
           rows={catalog.data?.kinds}
           rowKey={(k) => k.kind}
           rowLinks

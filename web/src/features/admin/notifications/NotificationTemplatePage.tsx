@@ -3,7 +3,9 @@
 // be sent, and reset to the built-in one.
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -30,13 +32,7 @@ import { useDebounced } from "@/lib/hooks";
 import { adm } from "@/lib/query";
 import { relative } from "@/lib/format";
 import { TemplatePreview } from "./TemplatePreview";
-import { channelLabel, channels, localeLabel, locales } from "./templateLabels";
-
-const textHint: Record<TemplateChannel, string> = {
-  email: "The email's text part, for mail clients that don't show HTML.",
-  teams: "The card's text, in Markdown: what variables hold is escaped, so it can't add links or emphasis.",
-  slack: "The message's text, in Slack's mrkdwn: what variables hold is escaped.",
-};
+import { channelLabel, channels, localeInText, localeLabel, locales } from "./templateLabels";
 
 const partsOf = (t: TemplateParts, channel: TemplateChannel): TemplateParts => ({
   subject: t.subject,
@@ -47,20 +43,39 @@ const partsOf = (t: TemplateParts, channel: TemplateChannel): TemplateParts => (
 const same = (a: TemplateParts, b: TemplateParts) =>
   a.subject === b.subject && a.text === b.text && (a.html ?? "") === (b.html ?? "");
 
-const variableColumns: Column<TemplateVariable>[] = [
-  {
-    id: "name",
-    header: "Variable",
-    cell: (v) => <code className="font-mono text-secondary break-all">{v.name}</code>,
-  },
-  { id: "type", header: "Type", cell: (v) => <span className="text-secondary text-muted">{v.type}</span> },
-  { id: "description", header: "What it holds", cell: (v) => <span className="text-secondary">{v.description}</span> },
+const nameColumn = (header: string): Column<TemplateVariable> => ({
+  id: "name",
+  header,
+  cell: (v) => <code className="font-mono text-secondary break-all">{v.name}</code>,
+});
+
+const descriptionColumn = (header: string): Column<TemplateVariable> => ({
+  id: "description",
+  header,
+  cell: (v) => <span className="text-secondary">{v.description}</span>,
+});
+
+const variableColumns = (t: TFunction<"admin-notifications">): Column<TemplateVariable>[] => [
+  nameColumn(t("editor.variable")),
+  { id: "type", header: t("editor.type"), cell: (v) => <span className="text-secondary text-muted">{v.type}</span> },
+  descriptionColumn(t("editor.holds")),
 ];
 
-const functionColumns: Column<TemplateVariable>[] = [
-  { ...variableColumns[0]!, header: "Function" },
-  { ...variableColumns[2]!, header: "What it does" },
+const functionColumns = (t: TFunction<"admin-notifications">): Column<TemplateVariable>[] => [
+  nameColumn(t("editor.function")),
+  descriptionColumn(t("editor.does")),
 ];
+
+/** Whether and when the template was edited, and by whom. */
+function statusText(t: TFunction<"admin-notifications">, template: NotificationTemplate) {
+  if (!template.edited) return t("editor.builtIn");
+  const who = template.updated_by;
+  const when = template.updated_at ? relative(template.updated_at) : undefined;
+  if (who && when) return t("editor.editedByWhen", { who, when });
+  if (who) return t("editor.editedBy", { who });
+  if (when) return t("editor.editedWhen", { when });
+  return t("editor.edited");
+}
 
 function Editor({
   kind,
@@ -71,6 +86,7 @@ function Editor({
   template: NotificationTemplate;
   onChanged: (t: NotificationTemplate) => void;
 }) {
+  const { t } = useTranslation("admin-notifications");
   const { channel, locale } = template;
   const saved = partsOf(template, channel);
   const [draft, setDraft] = useState<TemplateParts>(saved);
@@ -79,14 +95,14 @@ function Editor({
   const body = { ...draft, channel, locale };
   const save = useMutation({
     mutationFn: () => call(api.PUT("/admin/notification-templates/{kind}", { params: { path: { kind } }, body })),
-    onSuccess: (t) => {
+    onSuccess: (saved) => {
       setErrors({});
-      onChanged(t);
-      toast.success("Template saved", { description: "Notifications sent from now on use it." });
+      onChanged(saved);
+      toast.success(t("editor.saved"), { description: t("editor.savedBody") });
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The template wasn't saved");
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, t("editor.notSaved"));
     },
   });
   const reset = useMutation({
@@ -96,14 +112,14 @@ function Editor({
           params: { path: { kind }, query: { channel, locale } },
         }),
       ),
-    onSuccess: (t) => {
+    onSuccess: (back) => {
       setResetting(false);
-      onChanged(t);
-      toast.success("Built-in template back");
+      onChanged(back);
+      toast.success(t("editor.reset"));
     },
     onError: (e) => {
       setResetting(false);
-      failed(e, "The template wasn't reset");
+      failed(e, t("editor.notReset"));
     },
   });
   const shown = useDebounced(body, 400);
@@ -120,34 +136,33 @@ function Editor({
     setDraft((d) => ({ ...d, [part]: e.target.value }));
   const dirty = !same(draft, saved);
   const isDefault = same(draft, partsOf(template.default, channel));
-  const status = template.edited
-    ? `Edited${template.updated_by ? ` by ${template.updated_by}` : ""}${template.updated_at ? `, ${relative(template.updated_at)}` : ""}.`
-    : "The built-in template.";
+  const status = statusText(t, template);
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-2">
       <Panel
-        title="Template"
+        title={t("editor.template")}
         description={
-          <>
-            A Go template: <code className="font-mono">{"{{.Request.Number}}"}</code> writes a variable,{" "}
-            <code className="font-mono">{"{{if .Approval.Name}}…{{end}}"}</code> writes what it holds when the variable
-            has a value.
-          </>
+          <Trans
+            t={t}
+            i18nKey="editor.templateLead"
+            values={{ write: "{{.Request.Number}}", when: "{{if .Approval.Name}}…{{end}}" }}
+            components={{ code: <code className="font-mono" /> }}
+          />
         }
         footer={
           <>
-            <span className="mr-auto">{dirty ? "Not saved yet." : status}</span>
+            <span className="mr-auto">{dirty ? t("editor.notSavedYet") : status}</span>
             {(template.edited || !isDefault) && (
               <Button
                 type="button"
                 variant="quiet"
                 onClick={() => (template.edited ? setResetting(true) : setDraft(partsOf(template.default, channel)))}
               >
-                Reset to built-in
+                {t("editor.resetToBuiltIn")}
               </Button>
             )}
             <Button type="submit" form="template-editor" variant="primary" disabled={save.isPending || !dirty}>
-              {save.isPending ? "Saving…" : "Save template"}
+              {save.isPending ? t("editor.saving") : t("editor.save")}
             </Button>
           </>
         }
@@ -161,9 +176,9 @@ function Editor({
           }}
         >
           <Field
-            label={channel === "email" ? "Subject" : "Title"}
+            label={channel === "email" ? t("editor.subject") : t("editor.title")}
             htmlFor="template-subject"
-            hint={channel === "email" ? "The email's subject." : "The bold first line."}
+            hint={channel === "email" ? t("editor.subjectHint") : t("editor.titleHint")}
             error={errors["/subject"]}
           >
             <Input
@@ -174,7 +189,12 @@ function Editor({
               onChange={set("subject")}
             />
           </Field>
-          <Field label="Text" htmlFor="template-text" hint={textHint[channel]} error={errors["/text"]}>
+          <Field
+            label={t("editor.text")}
+            htmlFor="template-text"
+            hint={t(`editor.textHint.${channel}`)}
+            error={errors["/text"]}
+          >
             <Textarea
               id="template-text"
               className="font-mono"
@@ -185,12 +205,7 @@ function Editor({
             />
           </Field>
           {channel === "email" && (
-            <Field
-              label="HTML"
-              htmlFor="template-html"
-              hint="What the email shows between the greeting and the facts. What variables hold is escaped as HTML."
-              error={errors["/html"]}
-            >
+            <Field label={t("editor.html")} htmlFor="template-html" hint={t("editor.htmlHint")} error={errors["/html"]}>
               <Textarea
                 id="template-html"
                 className="font-mono"
@@ -204,8 +219,12 @@ function Editor({
         </form>
       </Panel>
       <Panel
-        title="Preview"
-        description={`With sample data, as ${channel === "email" ? "an email" : `a ${channelLabel[channel]} message`} in ${localeLabel[locale]} would show it.`}
+        title={t("editor.preview")}
+        description={
+          channel === "email"
+            ? t("editor.previewEmail", { locale: localeInText(locale) })
+            : t("editor.previewMessage", { channel: channelLabel(channel), locale: localeInText(locale) })
+        }
       >
         <TemplatePreview channel={channel} preview={preview} />
       </Panel>
@@ -213,10 +232,10 @@ function Editor({
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setResetting(false)}
-          title="Go back to the built-in template?"
-          description={`The edited ${channelLabel[channel]} template in ${localeLabel[locale]} is removed.`}
-          consequences="Notifications sent from then on use rvav's built-in template."
-          confirmLabel="Reset to built-in"
+          title={t("editor.resetTitle")}
+          description={t("editor.resetBody", { channel: channelLabel(channel), locale: localeInText(locale) })}
+          consequences={t("editor.resetConsequences")}
+          confirmLabel={t("editor.resetToBuiltIn")}
           pending={reset.isPending}
           onConfirm={() => reset.mutate()}
         />
@@ -226,32 +245,36 @@ function Editor({
 }
 
 function Variables({ kind, functions }: { kind: NotificationTemplateKind; functions: TemplateVariable[] }) {
+  const { t } = useTranslation("admin-notifications");
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[3fr_2fr]">
       <Panel
-        title="Variables"
-        description={`What a template of ${kind.name.toLowerCase()} can write. A template that names another is refused.`}
+        title={t("editor.variables")}
+        description={t("editor.variablesLead", { kind: kind.name.toLowerCase() })}
         flush
       >
         <DataTable
-          label="Variables"
-          columns={variableColumns}
+          label={t("editor.variables")}
+          columns={variableColumns(t)}
           rows={kind.variables}
           rowKey={(v) => v.name}
           minWidth={520}
         />
       </Panel>
       <Panel
-        title="Functions"
+        title={t("editor.functions")}
         description={
-          <>
-            Besides Go&apos;s own, such as <code className="font-mono">eq</code>,{" "}
-            <code className="font-mono">printf</code> and <code className="font-mono">range</code>.
-          </>
+          <Trans t={t} i18nKey="editor.functionsLead" components={{ code: <code className="font-mono" /> }} />
         }
         flush
       >
-        <DataTable label="Functions" columns={functionColumns} rows={functions} rowKey={(v) => v.name} minWidth={360} />
+        <DataTable
+          label={t("editor.functions")}
+          columns={functionColumns(t)}
+          rows={functions}
+          rowKey={(v) => v.name}
+          minWidth={360}
+        />
       </Panel>
     </div>
   );
@@ -266,6 +289,7 @@ export function NotificationTemplatePage({
   channel?: TemplateChannel;
   locale?: TemplateLocale;
 }) {
+  const { t } = useTranslation(["admin-notifications", "shell"]);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const catalog = useQuery(adm.notificationTemplates());
@@ -273,8 +297,8 @@ export function NotificationTemplatePage({
   const info = catalog.data?.kinds.find((k) => k.kind === kind);
   const go = (search: { channel: TemplateChannel; locale: TemplateLocale }) =>
     void navigate({ to: "/admin/notification-templates/$kind", params: { kind }, search, replace: true });
-  const changed = (t: NotificationTemplate) => {
-    qc.setQueryData(adm.notificationTemplate(kind, channel, locale).queryKey, t);
+  const changed = (next: NotificationTemplate) => {
+    qc.setQueryData(adm.notificationTemplate(kind, channel, locale).queryKey, next);
     void qc.invalidateQueries({ queryKey: adm.notificationTemplates().queryKey });
   };
   const error = catalog.error ?? template.error;
@@ -283,23 +307,23 @@ export function NotificationTemplatePage({
       <PageHeader
         breadcrumbs={
           <Breadcrumbs>
-            <Link to="/admin/notification-templates">Notification templates</Link>
+            <Link to="/admin/notification-templates">{t("shell:nav.admin.notificationTemplates")}</Link>
           </Breadcrumbs>
         }
-        title={info?.name ?? "Notification template"}
+        title={info?.name ?? t("editor.fallback")}
         description={info?.when}
       />
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <Segmented
-          label="Channel"
+          label={t("editor.channelLabel")}
           value={channel}
-          options={channels.map((c) => ({ value: c, label: channelLabel[c] }))}
+          options={channels.map((c) => ({ value: c, label: channelLabel(c) }))}
           onChange={(c) => go({ channel: c, locale })}
         />
         <Segmented
-          label="Language"
+          label={t("editor.languageLabel")}
           value={locale}
-          options={locales.map((l) => ({ value: l, label: localeLabel[l] }))}
+          options={locales.map((l) => ({ value: l, label: localeLabel(l) }))}
           onChange={(l) => go({ channel, locale: l })}
         />
       </div>
@@ -312,7 +336,7 @@ export function NotificationTemplatePage({
           }}
         />
       ) : !template.data || !info ? (
-        <p className="text-secondary text-muted">Loading the template…</p>
+        <p className="text-secondary text-muted">{t("editor.loading")}</p>
       ) : (
         <>
           <Editor

@@ -1,1 +1,91 @@
-{}
+{
+  "channel": {
+    "email": "E-mail",
+    "teams": "Teams",
+    "slack": "Slack"
+  },
+  "locale": {
+    "en": "Anglais",
+    "fr": "Français"
+  },
+  "localeInText": {
+    "en": "anglais",
+    "fr": "français"
+  },
+  "list": {
+    "lead": "Ce que dit chaque notification, par e-mail, dans Teams et dans Slack, en anglais et en français. Un modèle modifié remplace le modèle intégré pour les notifications envoyées dès lors\u00a0; la salutation, les faits et le bouton restent ceux de rvav.",
+    "notification": "Notification",
+    "edited": "Modifiés",
+    "changed": "Changé",
+    "builtIn": "Modèles intégrés",
+    "editedIn": "{{channel}}, {{locale}}",
+    "changedBy": "{{when}} par {{who}}",
+    "never": "Jamais"
+  },
+  "editor": {
+    "textHint": {
+      "email": "La partie texte de l'e-mail, pour les messageries qui n'affichent pas le HTML.",
+      "teams": "Le texte de la carte, en Markdown\u00a0: le contenu des variables est échappé, il ne peut donc ajouter ni lien ni mise en valeur.",
+      "slack": "Le texte du message, dans le mrkdwn de Slack\u00a0: le contenu des variables est échappé."
+    },
+    "variable": "Variable",
+    "type": "Type",
+    "holds": "Ce qu'elle contient",
+    "function": "Fonction",
+    "does": "Ce qu'elle fait",
+    "saved": "Modèle enregistré",
+    "savedBody": "Les notifications envoyées à partir de maintenant l'utilisent.",
+    "notSaved": "Le modèle n'a pas été enregistré",
+    "reset": "Modèle intégré rétabli",
+    "notReset": "Le modèle n'a pas été rétabli",
+    "edited": "Modifié.",
+    "editedBy": "Modifié par {{who}}.",
+    "editedWhen": "Modifié, {{when}}.",
+    "editedByWhen": "Modifié par {{who}}, {{when}}.",
+    "builtIn": "Le modèle intégré.",
+    "template": "Modèle",
+    "templateLead": "Un modèle Go\u00a0: <code>{{write}}</code> écrit une variable, <code>{{when}}</code> écrit son contenu quand la variable a une valeur.",
+    "notSavedYet": "Pas encore enregistré.",
+    "resetToBuiltIn": "Rétablir le modèle intégré",
+    "saving": "Enregistrement…",
+    "save": "Enregistrer le modèle",
+    "subject": "Objet",
+    "title": "Titre",
+    "subjectHint": "L'objet de l'e-mail.",
+    "titleHint": "La première ligne, en gras.",
+    "text": "Texte",
+    "html": "HTML",
+    "htmlHint": "Ce que l'e-mail affiche entre la salutation et les faits. Le contenu des variables est échappé en HTML.",
+    "preview": "Aperçu",
+    "previewEmail": "Avec des données d'exemple, comme l'afficherait un e-mail en {{locale}}.",
+    "previewMessage": "Avec des données d'exemple, comme l'afficherait un message {{channel}} en {{locale}}.",
+    "resetTitle": "Revenir au modèle intégré\u00a0?",
+    "resetBody": "Le modèle {{channel}} modifié en {{locale}} est supprimé.",
+    "resetConsequences": "Les notifications envoyées dès lors utilisent le modèle intégré de rvav.",
+    "variables": "Variables",
+    "variablesLead": "Ce que peut écrire un modèle de la notification «\u00a0{{kind}}\u00a0». Un modèle qui en nomme une autre est refusé.",
+    "functions": "Fonctions",
+    "functionsLead": "En plus de celles de Go, comme <code>eq</code>, <code>printf</code> et <code>range</code>.",
+    "fallback": "Modèle de notification",
+    "channelLabel": "Canal",
+    "languageLabel": "Langue",
+    "loading": "Chargement du modèle…"
+  },
+  "preview": {
+    "cantWrite": "Le modèle ne peut pas être écrit\u00a0:",
+    "problem": "{{field}}\u00a0: {{message}}",
+    "failed": "L'aperçu a échoué.",
+    "writing": "Écriture de l'aperçu…",
+    "subject": "Objet\u00a0: ",
+    "title": "Titre\u00a0: ",
+    "email": "Aperçu de l'e-mail",
+    "emailHtml": "L'e-mail en HTML",
+    "emailText": "L'e-mail en texte",
+    "teams": "Aperçu Teams",
+    "card": "Carte",
+    "cardJson": "Le JSON de la carte",
+    "slack": "Aperçu Slack",
+    "message": "Message",
+    "blocks": "Les blocs du message"
+  }
+}

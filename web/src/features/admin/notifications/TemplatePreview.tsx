@@ -3,6 +3,7 @@
 // message drawn simply, and their JSON.
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Fragment, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isApiError } from "@/lib/api/client";
 import type { NotificationTemplatePreview, TemplateChannel } from "@/lib/api/types";
@@ -208,38 +209,38 @@ export function TemplatePreview({
   channel: TemplateChannel;
   preview: UseQueryResult<NotificationTemplatePreview>;
 }) {
+  const { t } = useTranslation("admin-notifications");
+  const partName = (field: string) =>
+    field === "/subject"
+      ? channel === "email"
+        ? t("editor.subject")
+        : t("editor.title")
+      : field === "/text"
+        ? t("editor.text")
+        : t("editor.html");
   if (preview.isError && !preview.isFetching) {
     const e = preview.error;
     const problems = isApiError(e) ? e.fieldErrors : [];
     return (
       <div role="status" className="flex flex-col gap-1 text-secondary">
-        <p className="font-medium text-bad">The template can&apos;t be written:</p>
+        <p className="font-medium text-bad">{t("preview.cantWrite")}</p>
         {problems.length ? (
           <ul className="m-0 list-disc pl-5 text-bad">
             {problems.map((p) => (
-              <li key={p.field}>
-                {p.field === "/subject"
-                  ? channel === "email"
-                    ? "Subject"
-                    : "Title"
-                  : p.field === "/text"
-                    ? "Text"
-                    : "HTML"}
-                : {p.message}
-              </li>
+              <li key={p.field}>{t("preview.problem", { field: partName(p.field), message: p.message })}</li>
             ))}
           </ul>
         ) : (
-          <p className="text-bad">{isApiError(e) ? (e.problem.detail ?? e.problem.title) : "The preview failed."}</p>
+          <p className="text-bad">{isApiError(e) ? (e.problem.detail ?? e.problem.title) : t("preview.failed")}</p>
         )}
       </div>
     );
   }
   const p = preview.data;
-  if (!p) return <p className="text-secondary text-muted">Writing the preview…</p>;
+  if (!p) return <p className="text-secondary text-muted">{t("preview.writing")}</p>;
   const subject = (
     <p className="text-secondary">
-      <span className="text-muted">{channel === "email" ? "Subject: " : "Title: "}</span>
+      <span className="text-muted">{channel === "email" ? t("preview.subject") : t("preview.title")}</span>
       <span className="font-medium">{p.subject}</span>
     </p>
   );
@@ -248,21 +249,21 @@ export function TemplatePreview({
       <div className="flex min-w-0 flex-col gap-3">
         {subject}
         <Views
-          label="Email preview"
+          label={t("preview.email")}
           views={[
             {
               value: "html",
-              label: "HTML",
+              label: t("editor.html"),
               body: (
                 <iframe
-                  title="The email as HTML"
+                  title={t("preview.emailHtml")}
                   sandbox=""
                   srcDoc={p.html ?? ""}
                   className="h-[520px] w-full rounded-md border border-line bg-white"
                 />
               ),
             },
-            { value: "text", label: "Text", body: <Code label="The email as text">{p.text}</Code> },
+            { value: "text", label: t("editor.text"), body: <Code label={t("preview.emailText")}>{p.text}</Code> },
           ]}
         />
       </div>
@@ -272,13 +273,13 @@ export function TemplatePreview({
       <div className="flex min-w-0 flex-col gap-3">
         {subject}
         <Views
-          label="Teams preview"
+          label={t("preview.teams")}
           views={[
-            { value: "card", label: "Card", body: <TeamsCard card={p.card ?? {}} /> },
+            { value: "card", label: t("preview.card"), body: <TeamsCard card={p.card ?? {}} /> },
             {
               value: "json",
               label: "JSON",
-              body: <Code label="The card's JSON">{JSON.stringify(p.card, null, 2)}</Code>,
+              body: <Code label={t("preview.cardJson")}>{JSON.stringify(p.card, null, 2)}</Code>,
             },
           ]}
         />
@@ -288,13 +289,13 @@ export function TemplatePreview({
     <div className="flex min-w-0 flex-col gap-3">
       {subject}
       <Views
-        label="Slack preview"
+        label={t("preview.slack")}
         views={[
-          { value: "message", label: "Message", body: <SlackMessage blocks={p.blocks ?? []} /> },
+          { value: "message", label: t("preview.message"), body: <SlackMessage blocks={p.blocks ?? []} /> },
           {
             value: "json",
             label: "JSON",
-            body: <Code label="The message's blocks">{JSON.stringify(p.blocks, null, 2)}</Code>,
+            body: <Code label={t("preview.blocks")}>{JSON.stringify(p.blocks, null, 2)}</Code>,
           },
         ]}
       />
