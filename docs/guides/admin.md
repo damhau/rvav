@@ -1652,6 +1652,62 @@ An item's tabs:
   component that reads another is built after it. When you save, rvav
   refuses a reference to a component that doesn't exist and components
   that would each be built after the other, with the line in the YAML.
+- **Designing a VM blueprint:** in a VM item's draft, the graph edits the
+  YAML beside it, and the YAML the graph
+  ([ADR-0066](../adr/0066-vm-designer.md)). A published version's graph
+  is read-only.
+  - To add a part, drag it from **Add to the topology** onto the graph, or
+    select it: a **VM**, a **Network**, a **Segment**, a **Security
+    group**, an **NSX group**, a **Disk** or a **Custom resource**. Its
+    dialog asks for what the part needs: a key, a network's CEL
+    (`inputs.network`, or a quoted name such as `"dvpg-web"`), a disk's
+    size in GB, a resource's type. A network, an NSX group or a disk goes
+    on the VM you drop it on, or the one in **Connected to**, the
+    selected VM by default. To add a second VM to an item with one, give
+    the item's VM a key in **Key of the VM there is**: it becomes the
+    first of `components`, and the blueprint's settings, such as its
+    template and guest settings, stay the defaults of both.
+  - To connect two nodes, drag from one node's dot to the other, or select
+    a node and pick the other in **Connect to**, which says what
+    **Connect** will write, or why it can't, before you click. A VM
+    connected to a network or a segment gets an adapter there (the first
+    in `bindings.network`, the others in `nics`), to a security group or
+    an NSX group puts its VMs in it, and to a disk takes the disk. A VM
+    connected to another builds the other after it (`depends_on`). rvav
+    refuses other connections and says what to do instead: write a
+    firewall rule, with its services, under `security_groups` in the
+    YAML; bind a custom resource's inputs to a component's, such as
+    `components.web.addresses`, to make it after that component.
+  - A selected node's details edit its fields: a VM's key, title, count
+    (a number, or CEL over the inputs), template, naming and
+    anti-affinity; a network's CEL; a disk's key, size, storage policy and
+    datastore; a segment's, a group's or a resource's key and title. When
+    you rename a key, what reads it follows (`depends_on`, adapters,
+    groups, rules and CEL). Guest settings, a rule's services and a
+    resource's inputs stay in the YAML.
+  - **Disconnect**, beside each of a node's connections, removes what
+    writes it. **Remove** removes the node and what names it: a network's
+    adapters, a group's members and rules, a VM's place in the others'
+    `depends_on`. An item keeps at least one VM.
+  - A VM without its own disks, adapters or groups takes the blueprint's.
+    When you edit those of one VM, it gets its own copy first, and the
+    others keep the blueprint's.
+  - **Undo** and **Redo** (Ctrl+Z, Ctrl+Shift+Z) go back through the
+    graph's edits and your typing alike.
+
+  rvav refuses an edit the definition can't hold before it writes
+  anything, and says why under the field or in the dialog: a key that is
+  taken or malformed, more than 20 VMs, 4 segments or 8 security groups,
+  a disk without a size, a VM built after itself. A refusal of a save is
+  on the node it is about. When the YAML has something the graph can't
+  tell apart, such as two components with the same key or `components`
+  that isn't a list, the graph is read-only and says why: fix it in the
+  YAML, and the graph is editable again.
+
+  Your comments in the YAML stay through the graph's edits, except those
+  on a node you remove, but not through a save, as for a composite. A
+  text indented otherwise than rvav writes it is re-indented on the
+  graph's first edit, and keys the graph adds go in rvav's order.
 - **Designing a composite:** in a composite's draft, the graph edits the
   YAML beside it, and the YAML the graph. Your comments in the YAML stay
   through the graph's edits, but not through a save: rvav stores the

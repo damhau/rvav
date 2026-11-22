@@ -3,7 +3,9 @@
 ## Status
 Accepted (2026-11-05). Revises [ADR-0007](0007-extensibility-model.md)'s
 "There is no visual workflow designer": composite items get one, on a
-canvas whose source of truth stays the YAML.
+canvas whose source of truth stays the YAML. VM items get theirs on the
+same canvas, with the same edits and history, in
+[ADR-0066](0066-vm-designer.md).
 
 ## Context
 ADR-0007 chose no visual designer: simple chains are composite items

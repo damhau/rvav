@@ -485,6 +485,22 @@ Catalog admins and administrators build items under **Catalog items**
   (`setNotifyField`), its text a textarea that commits on blur, as Enter is a new line. Those problems,
   and the server's last refusal of a save while the text is the one it
   refused, go on their step (`addProblems`). ADR-0032 records why.
+- A **VM item draft's** graph is the **VM designer**
+  (`vm/VmDesigner.tsx`, loaded lazily with the tab): the same graph,
+  drawn with each disk a node (`designed`), with a palette over it
+  (`DefinitionGraph`'s `toolbar`), **Undo** and **Redo**, and the
+  selected node's details under it: its fields, its connections with a
+  **Disconnect** each, **Connect to** and **Remove**. Each edit is a
+  function from the text to a new one (`vm/edits.ts`), on the Document
+  helpers it shares with the composite's (`yamlDoc.ts`), refusing with an
+  `EditError` before anything is written; `connection` says what a
+  connection writes, for the preview. The designer's state, history
+  buttons, heading and focus handling are the composite designer's,
+  shared in `components/canvas/designer.tsx` (`useDesigner`,
+  `HistoryButtons`, `PanelHeading`). A palette entry dropped on the
+  canvas carries its part under `partType`; `edits.designable` makes the
+  designer read-only, with its reason, for YAML it can't tell apart.
+  ADR-0066 records why.
 - The **form designer** has three panes: the fields by section (add from
   any widget, move fields and sections with buttons, so by keyboard), a
   live preview, and the selected field's or section's properties (label,
@@ -827,7 +843,8 @@ nothing about it (positions, layout) is stored.
 - **Where it is used:** an item's Definition tab, beside the YAML
   (`features/admin/catalog/DefinitionGraph.tsx`), where a composite
   draft's is the composite designer
-  (`features/admin/catalog/composite/CompositeDesigner.tsx`), and the
+  (`features/admin/catalog/composite/CompositeDesigner.tsx`) and a VM
+  item draft's the VM designer (`features/admin/catalog/vm/VmDesigner.tsx`), and the
   request form, under its fields (`features/requests/RequestTopology.tsx`;
   see Multi-VM items), a composite request's page (below), and a
   deployment's Topology tab (below).
@@ -838,8 +855,11 @@ nothing about it (positions, layout) is stored.
   default `NodeDetails`, all the node shows), `actions` (the caller's
   buttons beside the view switch), `defaultView`, or `view` and
   `onViewChange` (controlled), `list` (the caller's own list view, named
-  by its button; no node details under it) and `height`. Read only:
-  the designer edits the YAML, and the graph drawn from it again comes
+  by its button; no node details under it), `height`, and `design`: a
+  dot on each node to drag a connection from (`onConnect(source,
+  target)`) and what may be dropped on the canvas (`drop`: a data type
+  and `onDrop(value, node)`). The canvas itself changes nothing: the
+  designer edits the YAML, and the graph drawn from it again comes
   back. `addProblems(graph, errors)` puts more problems (JSON pointers) on
   the nodes, or the parallel groups, they fall in.
 - **Keyboard:** the graph is one Tab stop, on the node last visited. The
