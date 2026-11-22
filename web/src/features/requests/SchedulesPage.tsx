@@ -28,7 +28,7 @@ import type { Me, Schedule, ScheduleRun } from "@/lib/api/types";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
-import { fullDate } from "@/lib/format";
+import { fullDate, relative } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
 
 const units = [
@@ -123,9 +123,18 @@ const columnsFor = (t: TFunction<"requests">): Column<Schedule>[] => [
     id: "owner",
     header: t("schedules.columns.owner"),
     className: "whitespace-nowrap text-muted",
-    cell: (s) => s.owner.name,
+    cell: (s) => (
+      <div className="flex flex-col gap-0.5">
+        <span>{s.owner.name}</span>
+        <span className="text-caption">{ownerSeen(t, s)}</span>
+      </div>
+    ),
   },
 ];
+
+/** When the owner last signed in: a run has the groups of that sign-in, and none runs once it is too old. */
+const ownerSeen = (t: TFunction<"requests">, s: Schedule) =>
+  s.owner_seen_at ? t("schedules.ownerSeen", { when: relative(s.owner_seen_at) }) : t("schedules.ownerNeverSeen");
 
 function RunsSheet({ id, onClose }: { id: string; onClose: () => void }) {
   const { t } = useTranslation("requests");
@@ -156,7 +165,12 @@ function RunsSheet({ id, onClose }: { id: string; onClose: () => void }) {
               <dt className="text-muted">{t("schedules.repeats")}</dt>
               <dd>{repeatText(s)}</dd>
               <dt className="text-muted">{t("schedules.runsAs")}</dt>
-              <dd>{s.owner.name}</dd>
+              <dd className="flex flex-col gap-0.5">
+                <span>
+                  {s.owner.name} <span className="text-muted">· {ownerSeen(t, s)}</span>
+                </span>
+                <span className="text-caption text-muted">{t("schedules.ownerIdle")}</span>
+              </dd>
               {s.accept_warnings && (
                 <>
                   <dt className="text-muted">{t("schedules.warnings")}</dt>

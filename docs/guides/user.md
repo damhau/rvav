@@ -303,11 +303,15 @@ item that makes deployments can't run on a schedule, because each run
 would make another.
 
 **Schedules**, on the **Requests** page, lists the schedules you own in the
-project, or all of them if you manage the project's requests. Each row
-shows how the schedule repeats, its next run, and its last run, with the
-request it started or why it didn't start one:
+project, or all of them if you manage the project's requests or see all of
+its deployments. Each row shows how the schedule repeats, its next run,
+and its last run, with the request it started or why it didn't start one:
 - A run is skipped while the request of the run before hasn't finished,
   waiting for approval included, and while the schedule is paused.
+- A run is skipped while its owner hasn't signed in for 90 days, as each
+  run would have the groups of their last sign-in. The row says when the
+  owner last signed in; the schedule runs again once they sign in. Your
+  administrator may set another number of days, or none.
 - A run that a policy, the quota or the form refuses, or that your access
   no longer allows, starts nothing and says why.
 - A request that a schedule started names it at the top of its page.

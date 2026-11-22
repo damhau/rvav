@@ -38,12 +38,14 @@ describe("Schedules", () => {
     expect(tls).toHaveTextContent(/in \d+ (day|hour|minute)s?|tomorrow/);
     expect(within(tls).getByRole("link", { name: "REQ-10458" })).toHaveAttribute("href", "/requests/REQ-10458");
     expect(tls).toHaveTextContent("Léa Martin");
+    expect(tls).toHaveTextContent("Signed in 5 minutes ago");
     const dns = within(table).getByRole("row", { name: /DNS zone audit/ });
     expect(dns).toHaveTextContent("Every 4 hours");
     expect(dns).toHaveTextContent("Paused");
     expect(dns).toHaveTextContent("Until the zone has moved to the new DDI.");
     expect(dns).toHaveTextContent("It was paused.");
     expect(dns).toHaveTextContent("Marc Keller");
+    expect(dns).toHaveTextContent("Signed in 12 days ago");
   });
 
   it("shows a member their own schedules, and not another's", async () => {
@@ -60,6 +62,8 @@ describe("Schedules", () => {
     renderApp("/schedules");
     await act(user, "Weekly TLS renewal", "Show its runs");
     const sheet = await screen.findByRole("dialog", { name: "Weekly TLS renewal" });
+    expect(sheet).toHaveTextContent("Léa Martin · Signed in 5 minutes ago");
+    expect(sheet).toHaveTextContent("a run is skipped once they haven't signed in for 90 days");
     const next = await within(sheet).findByRole("region", { name: "Next runs" });
     expect(within(next).getAllByRole("listitem")).toHaveLength(5);
     const runs = within(sheet).getByRole("region", { name: "Runs" });
