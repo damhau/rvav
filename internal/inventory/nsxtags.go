@@ -34,9 +34,11 @@ type NSXTagSync struct {
 
 func (s *NSXTagSync) Run(ctx context.Context) error {
 	for {
-		err := s.Store.WithLock(ctx, store.LockNSXSync, func() error { return s.SyncOnce(ctx) })
-		if err != nil && ctx.Err() == nil {
-			s.Log.Warn("NSX tag sync failed", "err", err)
+		if s.anyManager(ctx) {
+			err := s.Store.WithLock(ctx, store.LockNSXSync, func() error { return s.SyncOnce(ctx) })
+			if err != nil && ctx.Err() == nil {
+				s.Log.Warn("NSX tag sync failed", "err", err)
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -44,6 +46,22 @@ func (s *NSXTagSync) Run(ctx context.Context) error {
 		case <-time.After(every(ctx, s.Interval, s.IntervalNow)):
 		}
 	}
+}
+
+// anyManager says whether an NSX Manager is set. Without one the sync
+// takes no lock: each of the sync process's jobs holds its lock's
+// connection while its queries take another, and one job more used up a
+// pool of four (pgx's default up to four CPUs), the inventory sync waiting
+// for good (I1.1).
+func (s *NSXTagSync) anyManager(ctx context.Context) bool {
+	if s.NSX != nil {
+		return true
+	}
+	added, err := s.Store.NSXManagers(ctx)
+	if err != nil && ctx.Err() == nil {
+		s.Log.Warn("NSX tag sync can't list the NSX Managers", "err", err)
+	}
+	return len(added) > 0
 }
 
 // membership is what a VM was given to join its groups, as the worker

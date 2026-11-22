@@ -79,13 +79,19 @@ func startInstall(t *testing.T, ctx context.Context, ts *testsuite.DevServer, en
 	}
 	addr := l.Addr().String()
 	_ = l.Close()
+	// Four connections per process, pgx's default up to four CPUs, as CI
+	// has: more would hide a process whose jobs use them all up (I1.1).
+	small := databaseURL + "?pool_max_conns=4"
+	if strings.Contains(databaseURL, "?") {
+		small = databaseURL + "&pool_max_conns=4"
+	}
 
 	// Nothing Administration sets, nor a fake.
 	for _, v := range append(config.Variables(), "RVAV_FAKE_AWX", "RVAV_FAKE_EFFICIENTIP", "RVAV_ALLOW_DEV_AUTH", "RVAV_SECRETS_OLD_KEYS") {
 		t.Setenv(v, "")
 	}
 	settings := map[string]string{
-		"RVAV_DATABASE_URL": databaseURL, "RVAV_SECRETS_KEY": base64.StdEncoding.EncodeToString([]byte("e2e-only-secrets-key-32-bytes!!!")),
+		"RVAV_DATABASE_URL": small, "RVAV_SECRETS_KEY": base64.StdEncoding.EncodeToString([]byte("e2e-only-secrets-key-32-bytes!!!")),
 		"RVAV_TEMPORAL_ADDRESS": ts.FrontendHostPort(), "RVAV_TEMPORAL_TASK_QUEUE": "rvav-install-" + uuid.NewString()[:8],
 		"RVAV_HTTP_ADDR": addr, "RVAV_PUBLIC_URL": "http://" + addr, "RVAV_METRICS_ADDR": "off",
 		"RVAV_AUTH_MODE": "oidc", "RVAV_ADMIN_PASSWORD": installPassword, "RVAV_DRAIN_TIMEOUT": "1m",
