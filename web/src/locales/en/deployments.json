@@ -192,5 +192,379 @@
     "none": "No actions apply",
     "approval": "approval",
     "warns": "warns"
+  },
+  "none": "None",
+  "noneReported": "None reported",
+  "notKnown": "Not known",
+  "vmPower": {
+    "on": "On",
+    "off": "Off",
+    "suspended": "Suspended"
+  },
+  "detail": {
+    "missing": "Missing in vCenter",
+    "owner": "Owner {{name}}",
+    "sections": "Deployment sections",
+    "tabs": {
+      "overview": "Overview",
+      "topology": "Topology",
+      "history": "History",
+      "inputs": "Inputs"
+    },
+    "history": "History",
+    "inputs": "Inputs",
+    "inputsLead": "What it was requested or last updated with, as passed to the blueprint and to AWX as <code>extra_vars</code>.",
+    "vms": "Virtual machines",
+    "vmsLead": "Live from vCenter",
+    "network": "Network and addresses",
+    "security": "Security groups",
+    "details": "Details",
+    "lease": "Lease",
+    "placement": "Placement"
+  },
+  "vms": {
+    "none": "No VMs yet. They appear here as soon as vCenter creates them.",
+    "name": "Name",
+    "address": "Address",
+    "size": "Size",
+    "usage": "CPU · Memory",
+    "actions": "Actions",
+    "group_one": "{{component}} · {{count}} VM",
+    "group_other": "{{component}} · {{count}} VMs",
+    "properties": "{{name}} properties",
+    "state": {
+      "toolsRunning": "on · tools running",
+      "toolsNotRunning": "on · tools not running",
+      "off": "off",
+      "suspended": "suspended"
+    },
+    "waitingForIp": "waiting for IP",
+    "sizeValue": "{{cpu}} vCPU · {{memory}} · {{disk}}",
+    "mem": "Mem",
+    "power": "Power",
+    "powerLabel": "{{action}} {{name}}",
+    "console": "Console",
+    "openConsole": "Open the console of {{name}}",
+    "poweredOff": "The VM is powered off"
+  },
+  "network": {
+    "none": "No network resources yet.",
+    "addressNotKnown": "Address not known yet",
+    "segment": "NSX segment · {{tier1}} · {{subnet}}"
+  },
+  "security": {
+    "anywhere": "anywhere",
+    "anyService": "any service",
+    "allow": {
+      "from": "Allows {{services}} from {{where}}",
+      "to": "Allows {{services}} to {{where}}"
+    },
+    "drop": {
+      "from": "Drops {{services}} from {{where}}",
+      "to": "Drops {{services}} to {{where}}"
+    },
+    "reject": {
+      "from": "Rejects {{services}} from {{where}}",
+      "to": "Rejects {{services}} to {{where}}"
+    },
+    "noGroup": "No group",
+    "aGroup": "a group",
+    "tagsRemoved": "Its tags for {{groups}} were removed in NSX, so the group's firewall rules no longer apply to it. Use Add to a security group to put it back."
+  },
+  "placement": {
+    "notYet": "Placement is decided when the VM is cloned.",
+    "cluster": {
+      "single": "Cluster",
+      "several": "Clusters"
+    },
+    "datastore": {
+      "single": "Datastore",
+      "several": "Datastores"
+    },
+    "folder": {
+      "single": "Folder",
+      "several": "Folders"
+    },
+    "network": {
+      "single": "Network",
+      "several": "Networks"
+    },
+    "template": {
+      "single": "Template",
+      "several": "Templates"
+    },
+    "vcenter": {
+      "single": "vCenter",
+      "several": "vCenters"
+    },
+    "separate": "Kept on separate hosts",
+    "separateHosts": "<name>{{component}}</name> on separate hosts: <vms>{{vms}}</vms>",
+    "drsRule": "DRS rule {{name}} in {{cluster}}"
+  },
+  "lease": {
+    "thenDeleted": "Then it is deleted.",
+    "thenTold": "Then you are told; nothing is deleted.",
+    "thenOff_one": "Then its VMs are powered off, and deleted {{count}} day later.",
+    "thenOff_other": "Then its VMs are powered off, and deleted {{count}} days later.",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "lifetime": {
+      "endedSoft_one": "Its {{count}}-day lifetime ended on {{date}}: extending it warns you.",
+      "endedSoft_other": "Its {{count}}-day lifetime ended on {{date}}: extending it warns you.",
+      "endsSoft_one": "Its {{count}}-day lifetime ends on {{date}}: extending it warns you.",
+      "endsSoft_other": "Its {{count}}-day lifetime ends on {{date}}: extending it warns you.",
+      "endedHard_one": "Its {{count}}-day lifetime ended on {{date}}: extending it needs approval.",
+      "endedHard_other": "Its {{count}}-day lifetime ended on {{date}}: extending it needs approval.",
+      "endsHard_one": "Its {{count}}-day lifetime ends on {{date}}: extending it needs approval.",
+      "endsHard_other": "Its {{count}}-day lifetime ends on {{date}}: extending it needs approval.",
+      "livesSoft_one": "It lives {{count}} day at most, until {{date}}: {{left}} left. Extending it past that warns you.",
+      "livesSoft_other": "It lives {{count}} days at most, until {{date}}: {{left}} left. Extending it past that warns you.",
+      "livesHard_one": "It lives {{count}} day at most, until {{date}}: {{left}} left. Extending it past that needs approval.",
+      "livesHard_other": "It lives {{count}} days at most, until {{date}}: {{left}} left. Extending it past that needs approval."
+    },
+    "extensions_one": "{{count}} of {{max}} extensions used",
+    "extensions_other": "{{count}} of {{max}} extensions used",
+    "extensionsSoft": "{{used}}. The lease policy is soft: going beyond warns you, and needs no approval.",
+    "extensionsSoftUpTo_one": "{{used}}; up to {{count}} day. The lease policy is soft: going beyond warns you, and needs no approval.",
+    "extensionsSoftUpTo_other": "{{used}}; up to {{count}} days. The lease policy is soft: going beyond warns you, and needs no approval.",
+    "extensionsHard": "{{used}}.",
+    "extensionsUpTo_one": "{{used}}; up to {{count}} day without approval.",
+    "extensionsUpTo_other": "{{used}}; up to {{count}} days without approval.",
+    "noExpiry": "No expiry: the lease policy keeps it until someone deletes it.",
+    "ended": "The lease ended on {{date}} and its VMs were powered off.",
+    "endedDeletes": "The lease ended on {{date}} and its VMs were powered off. It is deleted on {{deletes}} unless you extend the lease.",
+    "expires": "{{when}} ({{date}}). {{then}}",
+    "setBy": "Set by {{policy}}.",
+    "tip": {
+      "approval": "Needs approval",
+      "warns": "A policy warns, and you may go on",
+      "extend": "Extend"
+    },
+    "extend": "Extend the lease"
+  },
+  "drift": {
+    "title": "Changed outside rvav",
+    "lead_one": "This VM differs in vCenter from how rvav left it. Change it back in vCenter, or accept the changes.",
+    "lead_other": "These VMs differ in vCenter from how rvav left them. Change them back in vCenter, or accept the changes.",
+    "take": "Take the VM as it is in vCenter",
+    "notNow": "Not now",
+    "accept": "Accept the changes",
+    "how": "How {{name}} differs",
+    "what": "What",
+    "asLeft": "As rvav left it",
+    "inVcenter": "In vCenter",
+    "none": "none",
+    "removed": "removed"
+  },
+  "details": {
+    "item": "Catalog item",
+    "version": "Version",
+    "project": "Project",
+    "created": "Created",
+    "description": "Description",
+    "createdBy": "Created by",
+    "vms": "VMs",
+    "vmsValue_one": "{{total}}, {{count}} powered on",
+    "vmsValue_other": "{{total}}, {{count}} powered on"
+  },
+  "history": {
+    "none": "No day-2 action has run on it yet.",
+    "noneCreatedBy": "No day-2 action has run on it yet. <request>{{number}}</request> created it.",
+    "updated": "Updated",
+    "created": "Created",
+    "deployment": "deployment"
+  },
+  "custom": {
+    "title": "Custom resources",
+    "lead": "Made by their resource types"
+  },
+  "access": {
+    "how": {
+      "ssh_key": "With the SSH key given for it",
+      "generated_key": "With the deployment's key",
+      "password": "With the password given for it"
+    },
+    "notCome": "The private key didn't come",
+    "copied": "Copied",
+    "notCopied": "Not copied",
+    "notCopiedBody": "Your browser refused: select the key and copy it, or save it.",
+    "done": "Done",
+    "show": "Show the private key",
+    "yours": "Your private key",
+    "download": "Download the private key",
+    "for": "For {{username}}, key {{fingerprint}}",
+    "saveNow": "Save it now: rvav no longer has it.",
+    "privateKey": "Private key",
+    "saveAs": "Save as {{file}}",
+    "copy": "Copy",
+    "signIn": "Then sign in with it:",
+    "once": "rvav gives the private key once. As it shows it to you, it forgets it: no one, you included, can download it again.",
+    "where": "Save it where only you can read it, such as <path>~/.ssh</path> or your password manager.",
+    "leaveTitle": "Close without the private key?",
+    "leaveBody": "You haven't saved or copied it, and rvav no longer has it: once you close, no one can download it again.",
+    "leave": "Close without it",
+    "back": "Back to the key",
+    "onlyOwner": "Only the deployment's owner, {{name}}, can download its private key.",
+    "madePair": "rvav made a key pair for this deployment. You can download its private key once.",
+    "someone": "Someone",
+    "downloaded": "{{name}} downloaded the private key <time/>. rvav no longer has it.",
+    "forgotten": "rvav no longer has the private key: it was forgotten when the VMs were deleted.",
+    "title": "Remote access",
+    "lead": "The user you sign in to the VMs as",
+    "component": "{{component}}: "
+  },
+  "vm": {
+    "tools": {
+      "running": "Running",
+      "not_running": "Not running",
+      "unknown": "Not known"
+    },
+    "provisioning": {
+      "thin": "Thin",
+      "thick_lazy_zeroed": "Thick, lazily zeroed",
+      "thick_eager_zeroed": "Thick, eagerly zeroed"
+    },
+    "fixed": "Fixed",
+    "network": "Network",
+    "mac": "MAC address",
+    "addressFrom": "Address from",
+    "adapterN": "Network adapter {{n}}",
+    "cluster": "Cluster",
+    "host": "Host",
+    "pool": "Resource pool",
+    "rootPool": "The cluster's root pool",
+    "folder": "Folder",
+    "datastore": "Datastore",
+    "datastores": "Datastores",
+    "guestOs": "Guest OS",
+    "notReported": "Not reported",
+    "power": "Power",
+    "size": "Size",
+    "sizeValue": "{{cpu}} vCPU · {{memory}} memory",
+    "template": "Template",
+    "component": "Component",
+    "noIso": "None mounted",
+    "moref": "Managed object",
+    "description": "Properties of the VM in {{vcenter}}",
+    "openVsphere": "Open {{name}} in the vSphere Client",
+    "newTab": "(opens in a new tab)",
+    "noLink": "No vSphere Client link yet: it needs the instance UUID of {{vcenter}}, which rvav reads at its next inventory sync.",
+    "adapters": "Network adapters",
+    "noAdapter": "No network adapter.",
+    "disks": "Disks",
+    "noDisk": "No disk.",
+    "datastoreNotKnown": "Datastore not known",
+    "snapshots": "Snapshots",
+    "noSnapshots": "No snapshots.",
+    "placement": "Placement",
+    "tags": "vSphere tags",
+    "tagsNotRead": "Not read yet: rvav reads them at its next inventory sync.",
+    "noTags": "No tags.",
+    "custom": "Custom properties",
+    "noCustom": "None: it was built without custom properties, or before rvav kept them.",
+    "maskedNote": "{{masked}} marks a property that reads a secret input: its value isn't kept."
+  },
+  "console": {
+    "couldNotLoad": "Could not load {{src}}",
+    "noWmks": "The console client did not load (no WMKS).",
+    "state": {
+      "loading": "Loading the console client…",
+      "connecting": "Connecting…",
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "failed": "Could not open the console"
+    },
+    "web": "Web console",
+    "cad": "Ctrl+Alt+Del",
+    "fullScreen": "Full screen",
+    "reconnect": "Reconnect",
+    "noVmrc": "Could not open VMRC",
+    "title": "Console · {{name}}",
+    "openVmrc": "Open in VMRC",
+    "notSetUp": "The web console is not set up here: an administrator can set it up in Integrations › vCenter, with VMware's WebMKS SDK scripts. Open the console in VMware Remote Console instead; it needs VMRC installed and access to vCenter and the ESXi hosts."
+  },
+  "topology": {
+    "title": "Topology",
+    "lead": "What the deployment holds, as rvav last read it from vCenter and NSX.",
+    "empty": "Nothing to draw: the deployment holds no VMs or NSX resources.",
+    "label": "Topology of {{name}}",
+    "showProperties": "Show the properties of {{name}}",
+    "vmsOf": "VMs of {{title}}",
+    "openVm": "Open a VM's properties:",
+    "line": {
+      "power": "Power",
+      "address": "Address",
+      "size": "Size",
+      "disks": "Disks",
+      "subnet": "Subnet",
+      "tier1": "Tier-1",
+      "names": "Names"
+    },
+    "sizeValue": "{{cpu}} vCPU · {{memory}}",
+    "drifted": "Changed outside rvav.",
+    "missing": "Missing in vCenter.",
+    "vmProblem": "{{name}}: {{problem}}",
+    "badge": {
+      "segment": "Segment",
+      "network": "Network",
+      "group": "Group",
+      "vms_one": "{{count}} VM",
+      "vms_other": "{{count}} VMs"
+    },
+    "madeFor": "Made for the deployment",
+    "existing": "Existing, in NSX",
+    "namesRange": "{{first}} to {{last}}",
+    "mixedSizes": "Not all the same",
+    "in": "In {{group}}",
+    "onSegment": "segment {{name}}",
+    "onNetwork": "network {{name}}",
+    "adapterLabel": "Adapter {{n}}",
+    "adapterLabelDhcp": "Adapter {{n}} · DHCP",
+    "adapterEdge": "{{title}}: adapter {{n}} on {{network}}",
+    "adapterEdgeDhcp": "{{title}}: adapter {{n}} on {{network}}, by DHCP",
+    "adapter": "Adapter {{n}} on {{network}}",
+    "adapterDhcp": "Adapter {{n}} on {{network}}, by DHCP",
+    "adapterOf": "{{title}}: adapter {{n}}",
+    "tagsDrifted": "Its NSX tags changed outside rvav.",
+    "memberEdge": "{{title}} in {{group}}",
+    "holds": "Holds {{title}}",
+    "any": "Any",
+    "anywhere": "Anywhere",
+    "ruleLabel": {
+      "drop": "{{services}} · drop",
+      "reject": "{{services}} · reject",
+      "other": "{{services}} · {{action}}"
+    },
+    "rule": {
+      "allow": {
+        "edge": "Allows {{services}} from {{from}} to {{to}}",
+        "into": "Allows {{services}} from {{from}}",
+        "out": "Allows {{services}} to {{to}}"
+      },
+      "drop": {
+        "edge": "Drops {{services}} from {{from}} to {{to}}",
+        "into": "Drops {{services}} from {{from}}",
+        "out": "Drops {{services}} to {{to}}"
+      },
+      "reject": {
+        "edge": "Rejects {{services}} from {{from}} to {{to}}",
+        "into": "Rejects {{services}} from {{from}}",
+        "out": "Rejects {{services}} to {{to}}"
+      },
+      "other": {
+        "edge": "{{action}} {{services}} from {{from}} to {{to}}",
+        "into": "{{action}} {{services}} from {{from}}",
+        "out": "{{action}} {{services}} to {{to}}"
+      }
+    },
+    "builtAfterEdge": "{{to}} built after {{from}}",
+    "builtAfter": "Built after {{names}}",
+    "madeAfterEdge": "{{title}} made after {{from}}",
+    "madeAfter": "Made after {{names}}"
+  },
+  "ad": {
+    "title": "Active Directory",
+    "lead": "Computer objects rvav made before the VMs were built",
+    "groups": "Groups: {{groups}}"
   }
 }

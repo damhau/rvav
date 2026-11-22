@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Power, SquareTerminal } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { CopyText, Time } from "@/components/common/misc";
 import { KeyValues, Page } from "@/components/common/page";
@@ -27,7 +28,8 @@ import type {
   VmResource,
 } from "@/lib/api/types";
 import { cn, newIdempotencyKey } from "@/lib/utils";
-import { fullDate, leaseLabel } from "@/lib/format";
+import { formatPercent, formatSize, fullDate, leaseLabel } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { q } from "@/lib/query";
 import { ActionDialog, ActionsMenu, DeploymentActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
 import { CustomResourcesPanel } from "./CustomResources";
@@ -58,7 +60,7 @@ function Usage({ label, pct, on }: { label: string; pct?: number; on: boolean })
       <span className="h-1 overflow-hidden rounded-full bg-sunken" aria-hidden>
         <span className={cn("block h-full", (v ?? 0) > 80 ? "bg-warn" : "bg-accent")} style={{ width: `${v ?? 0}%` }} />
       </span>
-      <span>{v === null ? "–" : `${v}%`}</span>
+      <span>{v === null ? "–" : formatPercent(v / 100)}</span>
     </>
   );
 }
@@ -76,12 +78,9 @@ function VmTable({
   onPick: Pick;
   onOpen: Open;
 }) {
+  const { t } = useTranslation("deployments");
   if (vms.length === 0) {
-    return (
-      <p className="px-4 py-6 text-secondary text-muted">
-        No VMs yet. They appear here as soon as vCenter creates them.
-      </p>
-    );
+    return <p className="px-4 py-6 text-secondary text-muted">{t("vms.none")}</p>;
   }
   // By component, in the order they come; one group without components.
   const groups: [string | undefined, VmResource[]][] = [];
@@ -97,19 +96,19 @@ function VmTable({
         <thead>
           <tr className="label text-left">
             <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-              Name
+              {t("vms.name")}
             </th>
             <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-              Address
+              {t("vms.address")}
             </th>
             <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-              Size
+              {t("vms.size")}
             </th>
             <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-              CPU · Memory
+              {t("vms.usage")}
             </th>
             <th scope="col" className="border-b border-line px-4 py-2 text-right font-medium">
-              Actions
+              {t("vms.actions")}
             </th>
           </tr>
         </thead>
@@ -123,7 +122,7 @@ function VmTable({
                   colSpan={5}
                   className="border-b border-line bg-sunken px-4 py-1.5 text-left text-caption font-medium text-muted"
                 >
-                  {component} · {list.length} VM{list.length === 1 ? "" : "s"}
+                  {t("vms.group", { component, count: list.length })}
                 </th>
               </tr>
             )}
@@ -145,39 +144,43 @@ function VmTable({
                           type="button"
                           className="self-start text-left font-medium hover:text-accent hover:underline"
                           onClick={() => onOpen(r)}
+                          aria-label={t("vms.properties", { name })}
                         >
-                          <span>{name}</span>
-                          <span className="sr-only"> properties</span>
+                          {name}
                         </button>
                         <span className="font-mono text-caption text-faint">
                           {vm.moref} ·{" "}
                           {on
-                            ? `on · tools ${vm.guest_state === "running" ? "running" : "not running"}`
-                            : vm.power_state}
+                            ? t(vm.guest_state === "running" ? "vms.state.toolsRunning" : "vms.state.toolsNotRunning")
+                            : t(vm.power_state === "suspended" ? "vms.state.suspended" : "vms.state.off")}
                         </span>
                       </span>
                     </span>
                   </td>
                   <td className="border-b border-line px-3 py-2.5">
-                    {ip ? <CopyText value={ip} /> : <span className="text-faint">waiting for IP</span>}
+                    {ip ? <CopyText value={ip} /> : <span className="text-faint">{t("vms.waitingForIp")}</span>}
                     {vm.fqdn && <div className="font-mono text-caption text-faint">{vm.fqdn}</div>}
                   </td>
                   <td className="tnum border-b border-line px-3 py-2.5">
-                    {vm.cpu_count} vCPU · {Math.round(vm.memory_mb / 1024)} GB · {disk} GB
+                    {t("vms.sizeValue", {
+                      cpu: vm.cpu_count,
+                      memory: formatSize(Math.round(vm.memory_mb / 1024), "GB"),
+                      disk: formatSize(disk, "GB"),
+                    })}
                   </td>
                   <td className="border-b border-line px-3 py-2.5">
                     <div className="tnum grid grid-cols-[30px_72px_32px] items-center gap-x-1.5 gap-y-0.5 text-caption text-faint">
                       <Usage label="CPU" pct={vm.usage?.cpu_pct} on={on} />
-                      <Usage label="Mem" pct={vm.usage?.memory_pct} on={on} />
+                      <Usage label={t("vms.mem")} pct={vm.usage?.memory_pct} on={on} />
                     </div>
                   </td>
                   <td className="border-b border-line px-4 py-2.5 text-right whitespace-nowrap">
                     <span className="inline-flex gap-1">
-                      <Tip content={powerBtn?.enabled ? powerBtn.name : (powerBtn?.disabled_reason ?? "Power")}>
+                      <Tip content={powerBtn?.enabled ? powerBtn.name : (powerBtn?.disabled_reason ?? t("vms.power"))}>
                         <span>
                           <Button
                             size="icon"
-                            aria-label={`${powerBtn?.name ?? "Power"} ${name}`}
+                            aria-label={t("vms.powerLabel", { action: powerBtn?.name ?? t("vms.power"), name })}
                             disabled={!powerBtn?.enabled}
                             onClick={() => powerBtn && onPick(powerBtn)}
                           >
@@ -186,21 +189,21 @@ function VmTable({
                         </span>
                       </Tip>
                       {on && consoleAction?.enabled ? (
-                        <Tip content="Console">
+                        <Tip content={t("vms.console")}>
                           <Button size="icon" asChild>
                             <Link
                               to="/deployments/$deploymentId/console/$resourceId"
                               params={{ deploymentId, resourceId: id }}
-                              aria-label={`Open the console of ${name}`}
+                              aria-label={t("vms.openConsole", { name })}
                             >
                               <SquareTerminal />
                             </Link>
                           </Button>
                         </Tip>
                       ) : (
-                        <Tip content={consoleAction?.disabled_reason ?? (on ? "Console" : "The VM is powered off")}>
+                        <Tip content={consoleAction?.disabled_reason ?? (on ? t("vms.console") : t("vms.poweredOff"))}>
                           <span>
-                            <Button size="icon" aria-label={`Open the console of ${name}`} disabled>
+                            <Button size="icon" aria-label={t("vms.openConsole", { name })} disabled>
                               <SquareTerminal />
                             </Button>
                           </span>
@@ -208,7 +211,7 @@ function VmTable({
                       )}
                       <ActionsMenu
                         actions={mine}
-                        label={`More actions for ${name}`}
+                        label={t("moreActionsFor", { name })}
                         onPick={onPick}
                         consoleLink={{ deploymentId, resourceId: id }}
                       />
@@ -235,8 +238,9 @@ function Network({
   segments: SegmentResource[];
   dhcp: VmResource[];
 }) {
+  const { t } = useTranslation("deployments");
   if (ips.length + dns.length + segments.length + dhcp.length === 0)
-    return <p className="text-secondary text-muted">No network resources yet.</p>;
+    return <p className="text-secondary text-muted">{t("network.none")}</p>;
   return (
     <ul className="flex flex-col gap-1.5">
       {/* A VM whose first adapter is on DHCP: the address it reports, once it has one (ADR-0039). */}
@@ -247,9 +251,11 @@ function Network({
             {ip ? (
               <span className="font-mono text-secondary">{ip}</span>
             ) : (
-              <span className="text-secondary text-muted">Address not known yet</span>
+              <span className="text-secondary text-muted">{t("network.addressNotKnown")}</span>
             )}
-            <span className="text-caption text-faint">DHCP · {r.name}</span>
+            <span className="text-caption text-faint">
+              {"DHCP"} · {r.name}
+            </span>
           </li>
         );
       })}
@@ -258,14 +264,16 @@ function Network({
         <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3">
           <span className="min-w-0 font-mono text-secondary break-all">{r.name}</span>
           <span className="text-caption text-faint">
-            NSX segment · {r.segment.tier1} · {r.segment.subnet}
+            {t("network.segment", { tier1: r.segment.tier1, subnet: r.segment.subnet })}
           </span>
         </li>
       ))}
       {ips.map((r) => (
         <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3">
           <span className="font-mono text-secondary">{r.address}</span>
-          <span className="text-caption text-faint">EfficientIP · {r.subnet}</span>
+          <span className="text-caption text-faint">
+            {"EfficientIP"} · {r.subnet}
+          </span>
         </li>
       ))}
       {dns.map((r) => (
@@ -283,6 +291,7 @@ function Network({
 /** The NSX security groups made for the deployment, the firewall rules into
  * them, and the groups each VM is in; tags removed in NSX are drift (ADR-0028). */
 function Computers({ computers }: { computers: AdComputerResource[] }) {
+  const { t } = useTranslation("deployments");
   return (
     <ul className="flex flex-col gap-2 text-secondary">
       {computers.map((c) => (
@@ -293,7 +302,9 @@ function Computers({ computers }: { computers: AdComputerResource[] }) {
           </div>
           <p className="font-mono text-caption break-all text-faint">{c.computer.dn}</p>
           {c.computer.groups.length > 0 && (
-            <p className="text-caption break-all text-muted">Groups: {c.computer.groups.join("; ")}</p>
+            <p className="text-caption break-all text-muted">
+              {t("ad.groups", { groups: c.computer.groups.join("; ") })}
+            </p>
           )}
         </li>
       ))}
@@ -310,12 +321,13 @@ function SecurityGroups({
   policies: FirewallRulesResource[];
   members: GroupMembershipResource[];
 }) {
+  const { t } = useTranslation("deployments");
   // NSX rule IDs are unique within their policy.
   const rules = policies.flatMap((p) => p.rules.map((r) => ({ ...r, key: `${p.id}/${r.id}` })));
   // The deployment's groups by their titles; ANY as people say it.
   const title = (id: string) => groups.find((g) => g.group.id === id)?.group.title ?? id;
-  const where = (ids: string[]) => (ids.includes("ANY") ? "anywhere" : ids.map(title).join(", "));
-  const what = (services: string[]) => (services.includes("ANY") ? "any service" : services.join(", "));
+  const where = (ids: string[]) => (ids.includes("ANY") ? t("security.anywhere") : ids.map(title).join(", "));
+  const what = (services: string[]) => (services.includes("ANY") ? t("security.anyService") : services.join(", "));
   return (
     <div className="flex flex-col gap-3 text-secondary">
       {groups.length > 0 && (
@@ -332,8 +344,9 @@ function SecurityGroups({
                   .filter((r) => [...r.from, ...r.to, ...(r.scope ?? [])].includes(g.group.id))
                   .map((r) => (
                     <li key={r.key}>
-                      {r.action === "ALLOW" ? "Allows" : r.action === "DROP" ? "Drops" : "Rejects"} {what(r.services)}{" "}
-                      {r.to.includes(g.group.id) ? `from ${where(r.from)}` : `to ${where(r.to)}`}
+                      {r.to.includes(g.group.id)
+                        ? t(`security.${verb(r.action)}.from`, { services: what(r.services), where: where(r.from) })
+                        : t(`security.${verb(r.action)}.to`, { services: what(r.services), where: where(r.to) })}
                     </li>
                   ))}
               </ul>
@@ -347,7 +360,7 @@ function SecurityGroups({
             <div className="flex flex-wrap items-baseline justify-between gap-x-3">
               <span className="font-mono text-secondary">{m.membership.vm}</span>
               <span className="min-w-0 text-caption break-all text-faint">
-                {m.membership.groups.map((g) => g.name).join(", ") || "No group"}
+                {m.membership.groups.map((g) => g.name).join(", ") || t("security.noGroup")}
               </span>
             </div>
             {m.sync_state === "drifted" && m.membership.missing && (
@@ -356,8 +369,9 @@ function SecurityGroups({
                 title={m.membership.missing.join(", ")}
                 className="mt-1 rounded-md bg-warn-soft px-2 py-1 text-caption text-warn"
               >
-                Its tags for {m.membership.out_of?.map((g) => title(g.id)).join(", ") || "a group"} were removed in NSX,
-                so the group's firewall rules no longer apply to it. Use Add to a security group to put it back.
+                {t("security.tagsRemoved", {
+                  groups: m.membership.out_of?.map((g) => title(g.id)).join(", ") || t("security.aGroup"),
+                })}
               </p>
             )}
           </li>
@@ -367,6 +381,8 @@ function SecurityGroups({
   );
 }
 
+const verb = (action: string) => (action === "ALLOW" ? "allow" : action === "DROP" ? "drop" : "reject");
+
 /** A multi-VM deployment: its VMs belong to blueprint components (ADR-0024). */
 const isMulti = (vms: VmResource[]) => vms.some((v) => v.vm.component && v.vm.component !== "vm");
 
@@ -375,33 +391,37 @@ const distinct = (vms: VmResource[], of: (v: VmResource) => string | undefined) 
   [...new Set(vms.map(of).filter((x): x is string => Boolean(x)))].join(", ");
 
 function Placement({ vms, rules }: { vms: VmResource[]; rules: DrsRuleResource[] }) {
+  const { t } = useTranslation("deployments");
   const vm = vms[0];
-  if (!vm) return <p className="text-secondary text-muted">Placement is decided when the VM is cloned.</p>;
+  if (!vm) return <p className="text-secondary text-muted">{t("placement.notYet")}</p>;
   // Several VMs may be in several places: each value once, the label plural then.
-  const row = (one: string, value: string) => [value.includes(", ") ? `${one}s` : one, value];
+  const row = (key: "cluster" | "datastore" | "folder" | "network" | "template" | "vcenter", value: string) => [
+    t(value.includes(", ") ? `placement.${key}.several` : `placement.${key}.single`),
+    value,
+  ];
   const rows = [
     row(
-      "Cluster",
+      "cluster",
       distinct(vms, (v) => v.vm.cluster),
     ),
     row(
-      "Datastore",
+      "datastore",
       distinct(vms, (v) => v.vm.disks[0]?.datastore),
     ),
     row(
-      "Folder",
+      "folder",
       distinct(vms, (v) => v.vm.folder),
     ),
     row(
-      "Network",
+      "network",
       distinct(vms, (v) => v.vm.nics[0]?.network),
     ),
     row(
-      "Template",
+      "template",
       distinct(vms, (v) => v.vm.template),
     ),
     row(
-      "vCenter",
+      "vcenter",
       distinct(vms, (v) => v.vm.vcenter),
     ),
   ].filter((r): r is [string, string] => Boolean(r[1]));
@@ -416,15 +436,22 @@ function Placement({ vms, rules }: { vms: VmResource[]; rules: DrsRuleResource[]
         ))}
       </dl>
       {rules.length > 0 && (
-        <ul className="flex flex-col gap-1.5 border-t border-line pt-3" aria-label="Kept on separate hosts">
+        <ul className="flex flex-col gap-1.5 border-t border-line pt-3" aria-label={t("placement.separate")}>
           {rules.map((r) => (
             <li key={r.id} className="flex flex-col">
               <span className="text-body">
-                <span className="font-medium">{r.rule.component}</span> on separate hosts:{" "}
-                <span className="font-mono text-secondary">{r.rule.vms.join(", ")}</span>
+                <Trans
+                  t={t}
+                  i18nKey="placement.separateHosts"
+                  values={{ component: r.rule.component, vms: r.rule.vms.join(", ") }}
+                  components={{
+                    name: <span className="font-medium" />,
+                    vms: <span className="font-mono text-secondary" />,
+                  }}
+                />
               </span>
               <span className="text-caption text-faint">
-                DRS rule {r.name} in {r.rule.cluster}
+                {t("placement.drsRule", { name: r.name, cluster: r.rule.cluster })}
               </span>
             </li>
           ))}
@@ -451,62 +478,76 @@ function toYaml(value: unknown, indent = 0): string {
 
 const afterExpiry = (d: DeploymentDetail) =>
   d.lease.expiry_action === "delete"
-    ? "Then it is deleted."
+    ? i18n.t("deployments:lease.thenDeleted")
     : d.lease.expiry_action === "notify_only"
-      ? "Then you are told; nothing is deleted."
-      : `Then its VMs are powered off, and deleted ${d.lease.grace_days ?? 7} days later.`;
+      ? i18n.t("deployments:lease.thenTold")
+      : i18n.t("deployments:lease.thenOff", { count: d.lease.grace_days ?? 7 });
 
 /** How long the deployment may still live (ADR-0048), and what extending past that does. */
 function lifetime(l: DeploymentDetail["lease"]): string | null {
   if (l.max_lifetime_days == null || !l.lifetime_ends_at) return null;
   const ends = Date.parse(l.lifetime_ends_at);
   const left = Math.max(Math.floor((ends - Date.now()) / 86_400_000), 0);
-  const past = l.enforcement === "soft" ? "warns you" : "needs approval";
-  if (left === 0)
-    return `Its ${l.max_lifetime_days}-day lifetime ${ends <= Date.now() ? "ended" : "ends"} on ${fullDate(l.lifetime_ends_at)}: extending it ${past}.`;
-  return `It lives ${l.max_lifetime_days} days at most, until ${fullDate(l.lifetime_ends_at)}: ${left === 1 ? "1 day" : `${left} days`} left. Extending it past that ${past}.`;
+  const t = i18n.getFixedT(null, "deployments");
+  const soft = l.enforcement === "soft";
+  const vars = { count: l.max_lifetime_days, date: fullDate(l.lifetime_ends_at) };
+  if (left === 0) {
+    const ended = ends <= Date.now();
+    if (soft) return t(ended ? "lease.lifetime.endedSoft" : "lease.lifetime.endsSoft", vars);
+    return t(ended ? "lease.lifetime.endedHard" : "lease.lifetime.endsHard", vars);
+  }
+  const days = t("lease.days", { count: left });
+  return t(soft ? "lease.lifetime.livesSoft" : "lease.lifetime.livesHard", { ...vars, left: days });
+}
+
+/** The extensions used, and how far the lease policy lets it go. */
+function extensions(l: DeploymentDetail["lease"]): string {
+  const t = i18n.getFixedT(null, "deployments");
+  const used = t("lease.extensions", { count: l.extensions_used ?? 0, max: l.extensions_max ?? 0 });
+  if (l.enforcement === "soft")
+    return l.max_days
+      ? t("lease.extensionsSoftUpTo", { used, count: l.max_days })
+      : t("lease.extensionsSoft", { used });
+  return l.max_days ? t("lease.extensionsUpTo", { used, count: l.max_days }) : t("lease.extensionsHard", { used });
 }
 
 function LeasePanel({ d, extend, onPick }: { d: DeploymentDetail; extend?: Day2Action; onPick: Pick }) {
+  const { t } = useTranslation("deployments");
   const l = d.lease;
   if (!l.expires_at) {
-    return <p className="text-secondary text-muted">No expiry: the lease policy keeps it until someone deletes it.</p>;
+    return <p className="text-secondary text-muted">{t("lease.noExpiry")}</p>;
   }
   return (
     <div className="flex flex-col gap-2.5 text-secondary">
       {l.expired_at ? (
         <p role="status" className="rounded-md bg-warn-soft px-3 py-2 text-warn">
-          The lease ended on {fullDate(l.expires_at)} and its VMs were powered off.
-          {l.deletes_at && ` It is deleted on ${fullDate(l.deletes_at)} unless you extend the lease.`}
+          {l.deletes_at
+            ? t("lease.endedDeletes", { date: fullDate(l.expires_at), deletes: fullDate(l.deletes_at) })
+            : t("lease.ended", { date: fullDate(l.expires_at) })}
         </p>
       ) : (
         <p className="text-muted">
-          {leaseLabel(l.expires_at)} ({fullDate(l.expires_at)}). {afterExpiry(d)}
+          {t("lease.expires", { when: leaseLabel(l.expires_at), date: fullDate(l.expires_at), then: afterExpiry(d) })}
         </p>
       )}
-      <p className="text-faint">
-        {l.extensions_used ?? 0} of {l.extensions_max ?? 0} extensions used
-        {l.enforcement === "soft"
-          ? `${l.max_days ? `; up to ${l.max_days} days` : ""}. The lease policy is soft: going beyond warns you, and needs no approval.`
-          : `${l.max_days ? `; up to ${l.max_days} days without approval` : ""}.`}
-      </p>
+      <p className="text-faint">{extensions(l)}</p>
       {lifetime(l) && <p className="text-faint">{lifetime(l)}</p>}
-      {l.policy && <p className="text-faint">Set by {l.policy}.</p>}
+      {l.policy && <p className="text-faint">{t("lease.setBy", { policy: l.policy })}</p>}
       {extend && (
         <Tip
           content={
             !extend.enabled
               ? extend.disabled_reason
               : extend.approval.required
-                ? "Needs approval"
+                ? t("lease.tip.approval")
                 : extend.warnings?.length
-                  ? "A policy warns, and you may go on"
-                  : "Extend"
+                  ? t("lease.tip.warns")
+                  : t("lease.tip.extend")
           }
         >
           <span className="self-start">
             <Button size="sm" disabled={!extend.enabled} onClick={() => onPick(extend)}>
-              Extend the lease
+              {t("lease.extend")}
             </Button>
           </span>
         </Tip>
@@ -517,15 +558,12 @@ function LeasePanel({ d, extend, onPick }: { d: DeploymentDetail; extend?: Day2A
 
 /** VMs changed in vCenter outside rvav, with what differs (S13.2). */
 function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Action[]; onPick: Pick }) {
+  const { t } = useTranslation("deployments");
   const drifted = vms.filter((v) => v.sync_state === "drifted" && v.drift?.length);
   if (drifted.length === 0) return null;
   return (
-    <Panel title="Changed outside rvav" flush className="border-warn/40">
-      <p className="px-4 pt-2.5 text-secondary text-muted">
-        {drifted.length === 1 ? "This VM differs" : "These VMs differ"} in vCenter from how rvav left{" "}
-        {drifted.length === 1 ? "it" : "them"}. Change {drifted.length === 1 ? "it" : "them"} back in vCenter, or accept
-        the changes.
-      </p>
+    <Panel title={t("drift.title")} flush className="border-warn/40">
+      <p className="px-4 pt-2.5 text-secondary text-muted">{t("drift.lead", { count: drifted.length })}</p>
       {drifted.map((v) => {
         const accept = actions.find((a) => a.key === "accept_changes" && a.resource_id === v.id);
         return (
@@ -533,28 +571,29 @@ function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Actio
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-medium">{v.name}</span>
               {accept && (
-                <Tip
-                  content={accept.enabled ? "Take the VM as it is in vCenter" : (accept.disabled_reason ?? "Not now")}
-                >
+                <Tip content={accept.enabled ? t("drift.take") : (accept.disabled_reason ?? t("drift.notNow"))}>
                   <span>
                     <Button size="sm" disabled={!accept.enabled} onClick={() => onPick(accept)}>
-                      Accept the changes
+                      {t("drift.accept")}
                     </Button>
                   </span>
                 </Tip>
               )}
             </div>
-            <table className="mt-1.5 w-full border-collapse text-secondary" aria-label={`How ${v.name} differs`}>
+            <table
+              className="mt-1.5 w-full border-collapse text-secondary"
+              aria-label={t("drift.how", { name: v.name })}
+            >
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className="py-1 pr-3 font-medium">
-                    What
+                    {t("drift.what")}
                   </th>
                   <th scope="col" className="py-1 pr-3 font-medium">
-                    As rvav left it
+                    {t("drift.asLeft")}
                   </th>
                   <th scope="col" className="py-1 font-medium">
-                    In vCenter
+                    {t("drift.inVcenter")}
                   </th>
                 </tr>
               </thead>
@@ -564,8 +603,8 @@ function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Actio
                     <th scope="row" className="py-1 pr-3 text-left font-normal">
                       {x.label}
                     </th>
-                    <td className="tnum py-1 pr-3 text-muted">{x.rvav ?? "none"}</td>
-                    <td className="tnum py-1 font-medium">{x.vcenter ?? "removed"}</td>
+                    <td className="tnum py-1 pr-3 text-muted">{x.rvav ?? t("drift.none")}</td>
+                    <td className="tnum py-1 font-medium">{x.vcenter ?? t("drift.removed")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -579,24 +618,28 @@ function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Actio
 
 /** What the deployment is, each fact only when it has one. */
 function Details({ d }: { d: DeploymentDetail }) {
+  const { t } = useTranslation("deployments");
   const items: { label: string; value: React.ReactNode }[] = [
     {
-      label: "Catalog item",
+      label: t("details.item"),
       value: (
         <Link to="/catalog/$itemId" params={{ itemId: d.catalog_item.slug }} className="text-accent hover:underline">
           {d.catalog_item.name}
         </Link>
       ),
     },
-    { label: "Version", value: <span className="font-mono text-secondary">{d.version.number}</span> },
-    { label: "Project", value: d.project.name },
-    { label: "Created", value: <Time iso={d.created_at} /> },
+    { label: t("details.version"), value: <span className="font-mono text-secondary">{d.version.number}</span> },
+    { label: t("details.project"), value: d.project.name },
+    { label: t("details.created"), value: <Time iso={d.created_at} /> },
   ];
   if (d.description)
-    items.unshift({ label: "Description", value: <span className="whitespace-pre-line">{d.description}</span> });
+    items.unshift({
+      label: t("details.description"),
+      value: <span className="whitespace-pre-line">{d.description}</span>,
+    });
   if (d.created_by_request_id)
     items.push({
-      label: "Created by",
+      label: t("details.createdBy"),
       value: (
         <Link
           to="/requests/$requestId"
@@ -607,7 +650,11 @@ function Details({ d }: { d: DeploymentDetail }) {
         </Link>
       ),
     });
-  if (d.vm_count > 0) items.push({ label: "VMs", value: `${d.vm_count}, ${d.vms_powered_on} powered on` });
+  if (d.vm_count > 0)
+    items.push({
+      label: t("details.vms"),
+      value: t("details.vmsValue", { total: d.vm_count, count: d.vms_powered_on }),
+    });
   return <KeyValues items={items} />;
 }
 
@@ -622,6 +669,7 @@ function Overview({
   onPick: Pick;
   onOpen: Open;
 }) {
+  const { t } = useTranslation("deployments");
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const rules = d.resources.filter((r): r is DrsRuleResource => r.type === "vsphere.drs_rule");
   if (isMulti(vms)) {
@@ -640,7 +688,7 @@ function Overview({
     <div className="flex flex-wrap items-start gap-4">
       <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-4">
         <Drift vms={vms} actions={actions} onPick={onPick} />
-        <Panel title="Virtual machines" description="Live from vCenter" flush>
+        <Panel title={t("detail.vms")} description={t("detail.vmsLead")} flush>
           <VmTable deploymentId={d.id} vms={vms} actions={actions} onPick={onPick} onOpen={onOpen} />
         </Panel>
         <CustomResourcesPanel
@@ -648,29 +696,29 @@ function Overview({
           actions={actions}
           onPick={onPick}
         />
-        <Panel title="Network and addresses">
+        <Panel title={t("detail.network")}>
           <Network ips={ips} dns={dns} segments={segments} dhcp={vms.filter((v) => v.vm.dhcp)} />
         </Panel>
         {groups.length + members.length > 0 && (
-          <Panel title="Security groups">
+          <Panel title={t("detail.security")}>
             <SecurityGroups groups={groups} policies={policies} members={members} />
           </Panel>
         )}
         {computers.length > 0 && (
-          <Panel title="Active Directory" description="Computer objects rvav made before the VMs were built">
+          <Panel title={t("ad.title")} description={t("ad.lead")}>
             <Computers computers={computers} />
           </Panel>
         )}
       </div>
       <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
-        <Panel title="Details">
+        <Panel title={t("detail.details")}>
           <Details d={d} />
         </Panel>
         <RemoteAccessPanel d={d} />
-        <Panel title="Lease">
+        <Panel title={t("detail.lease")}>
           <LeasePanel d={d} extend={actions.find((a) => a.key === "extend_lease")} onPick={onPick} />
         </Panel>
-        <Panel title="Placement">
+        <Panel title={t("detail.placement")}>
           <Placement vms={vms} rules={rules} />
         </Panel>
       </aside>
@@ -679,21 +727,22 @@ function Overview({
 }
 
 function History({ deploymentId, createdBy }: { deploymentId: string; createdBy?: string }) {
+  const { t } = useTranslation("deployments");
   const history = useQuery(q.deploymentHistory(deploymentId));
   if (history.isError) return <ErrorState error={history.error} onRetry={() => void history.refetch()} />;
   if (!history.data) return <SkeletonRows rows={3} cols={3} />;
   if (history.data.items.length === 0)
     return (
       <p className="text-secondary text-muted">
-        No day-2 action has run on it yet.
-        {createdBy && (
-          <>
-            {" "}
-            <Link to="/requests/$requestId" params={{ requestId: createdBy }}>
-              {createdBy}
-            </Link>{" "}
-            created it.
-          </>
+        {createdBy ? (
+          <Trans
+            t={t}
+            i18nKey="history.noneCreatedBy"
+            values={{ number: createdBy }}
+            components={{ request: <Link to="/requests/$requestId" params={{ requestId: createdBy }} /> }}
+          />
+        ) : (
+          t("history.none")
         )}
       </p>
     );
@@ -709,12 +758,17 @@ function History({ deploymentId, createdBy }: { deploymentId: string; createdBy?
           </span>
           <span className="min-w-0">
             <Link to="/requests/$requestId" params={{ requestId: r.number }} className="font-medium">
-              {r.kind === "day2" ? (r.action?.name ?? r.title) : r.kind === "update" ? "Updated" : "Created"}
+              {r.kind === "day2"
+                ? (r.action?.name ?? r.title)
+                : r.kind === "update"
+                  ? t("history.updated")
+                  : t("history.created")}
             </Link>
             <span className="text-muted">
               {" "}
-              · {r.kind === "day2"
-                ? (r.resource?.name ?? "deployment")
+              ·{" "}
+              {r.kind === "day2"
+                ? (r.resource?.name ?? t("history.deployment"))
                 : `${r.catalog_item.name} ${r.version.number}`}{" "}
               · {r.requester.name} · <span className="font-mono text-caption">{r.number}</span>
             </span>
@@ -728,6 +782,7 @@ function History({ deploymentId, createdBy }: { deploymentId: string; createdBy?
 }
 
 export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: string; tab: DeploymentTab }) {
+  const { t } = useTranslation("deployments");
   const navigate = useNavigate();
   const dep = useQuery(q.deployment(deploymentId));
   const actionsQ = useQuery(q.deploymentActions(deploymentId));
@@ -763,7 +818,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
       <PageHeader
         breadcrumbs={
           <Breadcrumbs>
-            <Link to="/deployments">Deployments</Link>
+            <Link to="/deployments">{t("list.title")}</Link>
           </Breadcrumbs>
         }
         title={d?.name ?? <Skeleton className="h-5 w-48" />}
@@ -774,10 +829,10 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
               <EnvBadge env={d.environment} />
               {d.sync_state !== "in_sync" && (
                 <span className="rounded-sm bg-warn-soft px-1.5 py-px text-caption font-medium text-warn">
-                  {d.sync_state === "drifted" ? "Changed outside rvav" : "Missing in vCenter"}
+                  {d.sync_state === "drifted" ? t("drift.title") : t("detail.missing")}
                 </span>
               )}
-              <span>Owner {d.owner.name}</span>
+              <span>{t("detail.owner", { name: d.owner.name })}</span>
             </>
           )
         }
@@ -807,11 +862,11 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
           })
         }
       >
-        <TabsList aria-label="Deployment sections">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="topology">Topology</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="inputs">Inputs</TabsTrigger>
+        <TabsList aria-label={t("detail.sections")}>
+          <TabsTrigger value="overview">{t("detail.tabs.overview")}</TabsTrigger>
+          <TabsTrigger value="topology">{t("detail.tabs.topology")}</TabsTrigger>
+          <TabsTrigger value="history">{t("detail.tabs.history")}</TabsTrigger>
+          <TabsTrigger value="inputs">{t("detail.tabs.inputs")}</TabsTrigger>
         </TabsList>
         {!d ? (
           <div className="mt-4 rounded-lg border border-line bg-surface">
@@ -834,18 +889,15 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
               </Suspense>
             </TabsContent>
             <TabsContent value="history" className="pt-4">
-              <Panel title="History">
+              <Panel title={t("detail.history")}>
                 <History deploymentId={deploymentId} createdBy={d?.created_by_request_id} />
               </Panel>
             </TabsContent>
             <TabsContent value="inputs" className="pt-4">
               <Panel
-                title="Inputs"
+                title={t("detail.inputs")}
                 description={
-                  <>
-                    What it was requested or last updated with, as passed to the blueprint and to AWX as{" "}
-                    <span className="font-mono">extra_vars</span>.
-                  </>
+                  <Trans t={t} i18nKey="detail.inputsLead" components={{ code: <span className="font-mono" /> }} />
                 }
                 flush
               >

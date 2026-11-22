@@ -4,6 +4,7 @@
 // Flow stays out of the page's other tabs.
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Canvas, NodeDetails } from "@/components/canvas";
 import type { CanvasNode } from "@/components/canvas/graph";
 import { Panel } from "@/components/ui/panel";
@@ -12,14 +13,15 @@ import { q } from "@/lib/query";
 import { deploymentGraph, vmNodeId, vmsByComponent } from "./topology";
 
 function VmButton({ vm, onOpen }: { vm: VmResource; onOpen: (vm: VmResource) => void }) {
+  const { t } = useTranslation("deployments");
   return (
     <button
       type="button"
       onClick={() => onOpen(vm)}
+      aria-label={t("vms.properties", { name: vm.name })}
       className="text-left font-mono text-accent underline underline-offset-2"
     >
       {vm.name}
-      <span className="sr-only"> properties</span>
     </button>
   );
 }
@@ -31,6 +33,7 @@ export default function DeploymentTopology({
   deployment: DeploymentDetail;
   onOpen: (vm: VmResource) => void;
 }) {
+  const { t, i18n } = useTranslation("deployments");
   const byComponent = useMemo(() => vmsByComponent(d), [d]);
   const request = d.created_by_request_id;
   // Only a deployment of several components, or with custom resources, has titles and a build order to learn from it.
@@ -39,7 +42,11 @@ export default function DeploymentTopology({
     enabled: Boolean(request) && (byComponent.size > 1 || d.resources.some((r) => r.type === "custom")),
     retry: false,
   });
-  const graph = useMemo(() => deploymentGraph(d, topology.data?.topology), [d, topology.data]);
+  const graph = useMemo(
+    () => deploymentGraph(d, topology.data?.topology),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deploymentGraph writes its words in the language shown
+    [d, topology.data, i18n.language],
+  );
   const vms = useMemo(() => new Map([...byComponent.values()].flat().map((v) => [vmNodeId(v.id), v])), [byComponent]);
   const [selected, setSelected] = useState<string | null>(null);
   const select = (id: string | null) => {
@@ -59,12 +66,12 @@ export default function DeploymentTopology({
             onClick={() => onOpen(vm)}
             className="self-start text-secondary text-accent underline underline-offset-2"
           >
-            Show the properties of {vm.name}
+            {t("topology.showProperties", { name: vm.name })}
           </button>
         )}
         {grouped && (
-          <section aria-label={`VMs of ${n.title}`} className="flex flex-col gap-1 text-secondary">
-            <span className="text-muted">Open a VM's properties:</span>
+          <section aria-label={t("topology.vmsOf", { title: n.title })} className="flex flex-col gap-1 text-secondary">
+            <span className="text-muted">{t("topology.openVm")}</span>
             <ul className="flex flex-wrap gap-x-3 gap-y-1">
               {grouped.map((v) => (
                 <li key={v.id}>
@@ -78,13 +85,13 @@ export default function DeploymentTopology({
     );
   };
   return (
-    <Panel title="Topology" description="What the deployment holds, as rvav last read it from vCenter and NSX.">
+    <Panel title={t("topology.title")} description={t("topology.lead")}>
       {graph.nodes.length === 0 ? (
-        <p className="text-secondary text-muted">Nothing to draw: the deployment holds no VMs or NSX resources.</p>
+        <p className="text-secondary text-muted">{t("topology.empty")}</p>
       ) : (
         <Canvas
           graph={graph}
-          label={`Topology of ${d.name}`}
+          label={t("topology.label", { name: d.name })}
           selected={selected}
           onSelect={select}
           renderDetails={details}

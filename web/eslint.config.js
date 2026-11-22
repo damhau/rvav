@@ -34,6 +34,14 @@ const translated = [
   "src/features/deployments/PersonFilter.tsx",
   "src/features/deployments/bulk.tsx",
   "src/features/deployments/actions.tsx",
+  "src/features/deployments/DeploymentDetailPage.tsx",
+  "src/features/deployments/CustomResources.tsx",
+  "src/features/deployments/properties.ts",
+  "src/features/deployments/RemoteAccess.tsx",
+  "src/features/deployments/VmProperties.tsx",
+  "src/features/deployments/ConsolePage.tsx",
+  "src/features/deployments/topology.ts",
+  "src/features/deployments/DeploymentTopology.tsx",
 ];
 
 // The props of rvav's building blocks and the attributes a person reads or

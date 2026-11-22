@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { KeyValues } from "@/components/common/page";
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
@@ -15,9 +16,10 @@ export function CustomResourcesPanel({
   actions: Day2Action[];
   onPick: (a: Day2Action) => void;
 }) {
+  const { t } = useTranslation("deployments");
   if (resources.length === 0) return null;
   return (
-    <Panel title="Custom resources" description="Made by their resource types" flush>
+    <Panel title={t("custom.title")} description={t("custom.lead")} flush>
       <ul className="divide-y divide-line">
         {resources.map((r) => (
           <li key={r.id} aria-labelledby={`res-${r.id}`} className="flex items-start gap-3 px-4 py-3">
@@ -43,7 +45,7 @@ export function CustomResourcesPanel({
             </div>
             <ActionsMenu
               actions={actions.filter((a) => a.resource_id === r.id)}
-              label={`More actions for ${r.name}`}
+              label={t("moreActionsFor", { name: r.name })}
               onPick={onPick}
             />
           </li>

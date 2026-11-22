@@ -2,6 +2,7 @@
 // rvav made for it, handed to its owner once (ADR-0039).
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { CopyText, Time } from "@/components/common/misc";
 import { Button } from "@/components/ui/button";
@@ -10,21 +11,19 @@ import { Field, Textarea } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call, isApiError } from "@/lib/api/client";
-import type { DeploymentDetail, GeneratedKey, PrivateKey, RemoteAccess as Access } from "@/lib/api/types";
+import type { DeploymentDetail, GeneratedKey, PrivateKey } from "@/lib/api/types";
 import { useCurrentProject } from "@/lib/project";
 import { keys } from "@/lib/query";
 import { copyText } from "@/lib/utils";
-
-const how: Record<Access["kind"], string> = {
-  ssh_key: "With the SSH key given for it",
-  generated_key: "With the deployment's key",
-  password: "With the password given for it",
-};
 
 /** A file name for the key: the deployment's name, as ssh-keygen would name it. */
 function keyFile(d: DeploymentDetail) {
   return `${d.name.replace(/[^A-Za-z0-9._-]+/g, "-")}.pem`;
 }
+
+/** The shell commands that sign in with the key: the same in every language. */
+const signIn = (file: string, username: string, host: string) =>
+  `chmod 600 ${file} && ssh -i ${file} ${username}@${host}`;
 
 function save(name: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: "application/x-pem-file" }));
@@ -46,6 +45,7 @@ function KeySheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation("deployments");
   const qc = useQueryClient();
   const [key, setKey] = useState<PrivateKey | null>(null);
   const [taking, setTaking] = useState(false);
@@ -58,7 +58,7 @@ function KeySheet({
         await call(api.POST("/deployments/{deploymentId}/private-key", { params: { path: { deploymentId: d.id } } })),
       );
     } catch (e) {
-      toast.error(isApiError(e) ? (e.problem.detail ?? e.problem.title) : "The private key didn't come");
+      toast.error(isApiError(e) ? (e.problem.detail ?? e.problem.title) : t("access.notCome"));
     } finally {
       setTaking(false);
       void qc.invalidateQueries({ queryKey: keys.deployments.detail(d.id) });
@@ -87,9 +87,9 @@ function KeySheet({
     copyText(text).then(
       () => {
         setKept(true);
-        toast.success("Copied");
+        toast.success(t("access.copied"));
       },
-      () => toast.error("Not copied", { description: "Your browser refused: select the key and copy it, or save it." }),
+      () => toast.error(t("access.notCopied"), { description: t("access.notCopiedBody") }),
     );
   const host = d.primary_address?.fqdn ?? d.primary_address?.ip ?? "<address>";
   const file = keyFile(d);
@@ -97,25 +97,25 @@ function KeySheet({
     ? {
         footer: (
           <Button variant="primary" onClick={() => close(false)}>
-            Done
+            {t("access.done")}
           </Button>
         ),
       }
-    : { onSubmit: () => void take(), submitLabel: "Show the private key", pending: taking };
+    : { onSubmit: () => void take(), submitLabel: t("access.show"), pending: taking };
   return (
     <Sheet
       open={open}
       onOpenChange={close}
-      title={key ? "Your private key" : "Download the private key"}
-      description={`For ${generated.username}, key ${generated.fingerprint}`}
+      title={key ? t("access.yours") : t("access.download")}
+      description={t("access.for", { username: generated.username, fingerprint: generated.fingerprint })}
       {...shown}
     >
       {key ? (
         <>
           <p role="status" className="rounded-md border border-ok bg-ok-soft p-3 text-secondary">
-            Save it now: rvav no longer has it.
+            {t("access.saveNow")}
           </p>
-          <Field label="Private key" htmlFor="private-key">
+          <Field label={t("access.privateKey")} htmlFor="private-key">
             <Textarea
               ref={keyRef}
               id="private-key"
@@ -134,36 +134,30 @@ function KeySheet({
                 setKept(true);
               }}
             >
-              Save as {file}
+              {t("access.saveAs", { file })}
             </Button>
-            <Button onClick={() => void copy(key.private_key)}>Copy</Button>
+            <Button onClick={() => void copy(key.private_key)}>{t("access.copy")}</Button>
           </div>
           <div className="flex flex-col gap-1 text-secondary">
-            <span className="text-muted">Then sign in with it:</span>
-            <code className="rounded bg-sunken px-2 py-1 font-mono break-all">
-              chmod 600 {file} && ssh -i {file} {key.username}@{host}
-            </code>
+            <span className="text-muted">{t("access.signIn")}</span>
+            <code className="rounded bg-sunken px-2 py-1 font-mono break-all">{signIn(file, key.username, host)}</code>
           </div>
         </>
       ) : (
         <>
-          <p className="text-body">
-            rvav gives the private key once. As it shows it to you, it forgets it: no one, you included, can download it
-            again.
-          </p>
+          <p className="text-body">{t("access.once")}</p>
           <p className="text-secondary text-muted">
-            Save it where only you can read it, such as <span className="font-mono">~/.ssh</span> or your password
-            manager.
+            <Trans t={t} i18nKey="access.where" components={{ path: <span className="font-mono" /> }} />
           </p>
         </>
       )}
       <ConfirmDialog
         open={leaving}
         onOpenChange={setLeaving}
-        title="Close without the private key?"
-        description="You haven't saved or copied it, and rvav no longer has it: once you close, no one can download it again."
-        confirmLabel="Close without it"
-        cancelLabel="Back to the key"
+        title={t("access.leaveTitle")}
+        description={t("access.leaveBody")}
+        confirmLabel={t("access.leave")}
+        cancelLabel={t("access.back")}
         onConfirm={() => {
           setLeaving(false);
           setKey(null);
@@ -177,54 +171,50 @@ function KeySheet({
 
 /** Who may still download the private key, or who did. */
 function KeyState({ d, generated, onTake }: { d: DeploymentDetail; generated: GeneratedKey; onTake: () => void }) {
+  const { t } = useTranslation("deployments");
   const { me } = useCurrentProject();
   if (generated.available) {
     if (me.user.id !== d.owner.id)
-      return (
-        <p className="text-secondary text-muted">
-          Only the deployment's owner, {d.owner.name}, can download its private key.
-        </p>
-      );
+      return <p className="text-secondary text-muted">{t("access.onlyOwner", { name: d.owner.name })}</p>;
     return (
       <div className="flex flex-col items-start gap-2">
-        <p className="text-secondary text-muted">
-          rvav made a key pair for this deployment. You can download its private key once.
-        </p>
-        <Button onClick={onTake}>Download the private key</Button>
+        <p className="text-secondary text-muted">{t("access.madePair")}</p>
+        <Button onClick={onTake}>{t("access.download")}</Button>
       </div>
     );
   }
   if (generated.downloaded_at)
     return (
       <p className="text-secondary text-muted">
-        {generated.downloaded_by?.name ?? "Someone"} downloaded the private key <Time iso={generated.downloaded_at} />.
-        rvav no longer has it.
+        <Trans
+          t={t}
+          i18nKey="access.downloaded"
+          values={{ name: generated.downloaded_by?.name ?? t("access.someone") }}
+          components={{ time: <Time iso={generated.downloaded_at} /> }}
+        />
       </p>
     );
-  return (
-    <p className="text-secondary text-muted">
-      rvav no longer has the private key: it was forgotten when the VMs were deleted.
-    </p>
-  );
+  return <p className="text-secondary text-muted">{t("access.forgotten")}</p>;
 }
 
 /** The Remote access panel: shown when the blueprint gave the VMs a user. */
 export function RemoteAccessPanel({ d }: { d: DeploymentDetail }) {
+  const { t } = useTranslation("deployments");
   const [open, setOpen] = useState(false);
   const access = d.remote_access ?? [];
   if (access.length === 0) return null;
   const multi = access.length > 1 || access[0]!.component !== "vm";
   return (
-    <Panel title="Remote access" description="The user you sign in to the VMs as">
+    <Panel title={t("access.title")} description={t("access.lead")}>
       <div className="flex flex-col gap-3">
         <ul className="flex flex-col gap-2">
           {access.map((a) => (
             <li key={a.component} className="flex min-w-0 flex-col gap-0.5">
               <span className="text-body">
-                {multi && <span className="text-muted">{a.component}: </span>}
+                {multi && <span className="text-muted">{t("access.component", { component: a.component })}</span>}
                 <span className="font-mono">{a.username}</span>
               </span>
-              <span className="text-secondary text-muted">{how[a.kind]}</span>
+              <span className="text-secondary text-muted">{t(`access.how.${a.kind}`)}</span>
               {a.fingerprint && <CopyText value={a.fingerprint} className="text-caption" />}
             </li>
           ))}

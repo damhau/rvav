@@ -1,9 +1,11 @@
 import type { CustomResource } from "@/lib/api/types";
+import { i18n } from "@/lib/i18n";
 
 /** A custom resource's property as the page says it: lists joined, objects as JSON. */
 export function propertyText(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "None";
-  if (Array.isArray(v) && v.every((x) => x === null || typeof x !== "object")) return v.join(", ") || "None";
+  if (v === null || v === undefined || v === "") return i18n.t("deployments:none");
+  if (Array.isArray(v) && v.every((x) => x === null || typeof x !== "object"))
+    return v.join(", ") || i18n.t("deployments:none");
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   return JSON.stringify(v);

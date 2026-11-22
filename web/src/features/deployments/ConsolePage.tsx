@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink, Maximize, Power, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -11,6 +12,7 @@ import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { ConsoleSession, VmResource } from "@/lib/api/types";
+import { i18n } from "@/lib/i18n";
 import { q } from "@/lib/query";
 
 // VMware's HTML console client (WMKS), loaded from where the organisation
@@ -44,7 +46,7 @@ function loadScript(src: string): Promise<void> {
       const s = document.createElement("script");
       s.src = src;
       s.onload = () => resolve();
-      s.onerror = () => reject(new Error(`Could not load ${src}`));
+      s.onerror = () => reject(new Error(i18n.t("deployments:console.couldNotLoad", { src })));
       document.head.appendChild(s);
     });
     loaded.set(src, p);
@@ -60,6 +62,7 @@ function wsUrl(path: string) {
 type State = "loading" | "connecting" | "connected" | "disconnected" | "failed";
 
 function WebConsole({ session, onReconnect }: { session: ConsoleSession; onReconnect: () => void }) {
+  const { t } = useTranslation("deployments");
   const web = session.web!;
   const wmks = useRef<Wmks | null>(null);
   const [state, setState] = useState<State>("loading");
@@ -72,7 +75,7 @@ function WebConsole({ session, onReconnect }: { session: ConsoleSession; onRecon
         for (const src of web.sdk_urls) await loadScript(src);
         if (cancelled) return;
         const W = window.WMKS;
-        if (!W) throw new Error("The console client did not load (no WMKS).");
+        if (!W) throw new Error(i18n.t("deployments:console.noWmks"));
         setState("connecting");
         wmks.current = W.createWMKS("rvav-wmks", {}).register(W.CONST.Events.CONNECTION_STATE_CHANGE, (_e, data) => {
           if (data.state === W.CONST.ConnectionState.CONNECTED) setState("connected");
@@ -93,30 +96,23 @@ function WebConsole({ session, onReconnect }: { session: ConsoleSession; onRecon
     };
   }, [web]);
 
-  const label: Record<State, string> = {
-    loading: "Loading the console client…",
-    connecting: "Connecting…",
-    connected: "Connected",
-    disconnected: "Disconnected",
-    failed: "Could not open the console",
-  };
   return (
     <Panel
-      title="Web console"
+      title={t("console.web")}
       flush
       actions={
         <span className="flex items-center gap-2">
           <span className="text-caption text-faint" role="status">
-            {label[state]}
+            {t(`console.state.${state}`)}
           </span>
           <Button size="sm" disabled={state !== "connected"} onClick={() => wmks.current?.sendCAD()}>
-            Ctrl+Alt+Del
+            {t("console.cad")}
           </Button>
           <Button size="sm" disabled={state !== "connected"} onClick={() => wmks.current?.enterFullScreen()}>
-            <Maximize /> Full screen
+            <Maximize /> {t("console.fullScreen")}
           </Button>
           <Button size="sm" disabled={state === "loading" || state === "connecting"} onClick={onReconnect}>
-            <RotateCcw /> Reconnect
+            <RotateCcw /> {t("console.reconnect")}
           </Button>
         </span>
       }
@@ -128,6 +124,7 @@ function WebConsole({ session, onReconnect }: { session: ConsoleSession; onRecon
 }
 
 export function ConsolePage({ deploymentId, resourceId }: { deploymentId: string; resourceId: string }) {
+  const { t } = useTranslation("deployments");
   const dep = useQuery(q.deployment(deploymentId));
   const vm = dep.data?.resources.find((r): r is VmResource => r.id === resourceId && r.type === "vsphere.vm");
   const params = { path: { deploymentId, resourceId } };
@@ -140,7 +137,7 @@ export function ConsolePage({ deploymentId, resourceId }: { deploymentId: string
     onSuccess: (s) => {
       globalThis.location.assign(s.vmrc_url);
     },
-    onError: (e) => toast.error(isApiError(e) ? e.problem.title : "Could not open VMRC"),
+    onError: (e) => toast.error(isApiError(e) ? e.problem.title : t("console.noVmrc")),
   });
   const { mutate: open } = session;
   const opened = useRef(false);
@@ -156,17 +153,17 @@ export function ConsolePage({ deploymentId, resourceId }: { deploymentId: string
       <PageHeader
         breadcrumbs={
           <Breadcrumbs>
-            <Link to="/deployments">Deployments</Link>
+            <Link to="/deployments">{t("list.title")}</Link>
             <Link to="/deployments/$deploymentId" params={{ deploymentId }}>
               {dep.data?.name ?? "…"}
             </Link>
           </Breadcrumbs>
         }
-        title={name ? `Console · ${name}` : <Skeleton className="h-5 w-48" />}
+        title={name ? t("console.title", { name }) : <Skeleton className="h-5 w-48" />}
         meta={vm && <span className="font-mono text-caption">{vm.vm.moref}</span>}
         actions={
           <Button onClick={() => vmrc.mutate()} disabled={vmrc.isPending}>
-            <ExternalLink /> Open in VMRC
+            <ExternalLink /> {t("console.openVmrc")}
           </Button>
         }
       />
@@ -181,14 +178,10 @@ export function ConsolePage({ deploymentId, resourceId }: { deploymentId: string
       ) : session.data.web ? (
         <WebConsole session={session.data} onReconnect={() => session.mutate()} />
       ) : (
-        <Panel title="Web console">
+        <Panel title={t("console.web")}>
           <p className="flex items-start gap-2 text-secondary text-muted">
             <Power className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-            <span>
-              The web console is not set up here: an administrator can set it up in Integrations › vCenter, with
-              VMware&apos;s WebMKS SDK scripts. Open the console in VMware Remote Console instead; it needs VMRC
-              installed and access to vCenter and the ESXi hosts.
-            </span>
+            <span>{t("console.notSetUp")}</span>
           </p>
         </Panel>
       )}
