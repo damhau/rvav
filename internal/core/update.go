@@ -1233,6 +1233,9 @@ func (s *Service) addVMs(ctx context.Context, tx pgx.Tx, u *updatePlan) ([]provi
 				return nil, nil, nil, names.err
 			}
 			name := p.naming.Name(p.prefix, seq)
+			if err := checkComputerName(p, name, true); err != nil {
+				return nil, nil, nil, err
+			}
 			names.rvav[name], given[name] = true, true
 			vms = append(vms, vmUnit(ev, p, u.d.ID, name, a.first+i))
 		}

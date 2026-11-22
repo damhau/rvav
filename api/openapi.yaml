@@ -3900,6 +3900,14 @@ paths:
       tags: [admin]
       operationId: createAdPlacement
       summary: Give a project, an environment or both an OU for computer objects
+      description: |
+        Those who manage placement for all of rvav save any row. Those who
+        manage it in a project only save that project's rows: the OU under
+        the OU of the row for every project (in the row's environment,
+        else in any), and each group under the row's own OU or one of that
+        row's groups; an OU or group the row already had stays. Once the
+        Active Directory integration is set, the OU and groups must be in
+        the directory; one that can't be reached answers 502 (ADR-0064).
       requestBody:
         required: true
         content:
@@ -3915,6 +3923,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
 
   /admin/ad-placements/{id}:
     parameters:
@@ -3923,6 +3932,7 @@ paths:
       tags: [admin]
       operationId: updateAdPlacement
       summary: Change an OU, its groups, or whether blueprints may choose theirs
+      description: Held to the rules of createAdPlacement.
       requestBody:
         required: true
         content:
@@ -3939,6 +3949,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
     delete:
       tags: [admin]
       operationId: deleteAdPlacement

@@ -754,19 +754,11 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	for _, n := range part.names {
 		given[n] = true
 	}
+	long := slices.IndexFunc(part.names, func(n string) bool { return len(n) > ad.MaxName })
 	if len(part.names) > 0 && !naming.Valid(part.names[0]) {
-		def := ""
-		if !multi {
-			def = "/inputs/role"
-		}
-		add(def, "invalid_name", fmt.Sprintf("%s is not a valid host name.", part.names[0]))
-	} else if len(part.names) > 0 && part.ad != nil && len(part.names[0]) > ad.MaxName {
-		def := ""
-		if !multi {
-			def = "/inputs/role"
-		}
-		add(def, "invalid_name", fmt.Sprintf("%s is longer than the %d characters of a computer name in Active Directory, where its VMs get computer objects.",
-			part.names[0], ad.MaxName))
+		add(nameField(multi), "invalid_name", fmt.Sprintf("%s is not a valid host name.", part.names[0]))
+	} else if part.ad != nil && long >= 0 {
+		add(nameField(multi), "invalid_name", computerNameTooLong(part.names[long]))
 	}
 
 	// Addresses from IP ranges are counted across components; their
@@ -1196,6 +1188,32 @@ func replanVMs(ev *Evaluation, plan *provision.Plan) error {
 	return nil
 }
 
+// nameField is the field a VM name's error is on: the role its naming
+// reads, for a single VM.
+func nameField(multi bool) string {
+	if multi {
+		return ""
+	}
+	return "/inputs/role"
+}
+
+// computerNameTooLong says a VM that gets a computer object can't have
+// the name: every VM's, as a later one's number may be longer.
+func computerNameTooLong(name string) string {
+	return fmt.Sprintf("%s is longer than the %d characters of a computer name in Active Directory, where its VMs get computer objects.",
+		name, ad.MaxName)
+}
+
+// checkComputerName refuses a name given for good that a computer
+// object can't have: another request may have taken the names the
+// evaluation counted on.
+func checkComputerName(p vmPart, name string, multi bool) error {
+	if p.ad == nil || len(name) <= ad.MaxName {
+		return nil
+	}
+	return &ValidationError{Errors: []api.FieldError{fieldErr(nameField(multi), "invalid_name", computerNameTooLong(name))}}
+}
+
 // reserveVMs names a VM item's VMs for good, inside the submit
 // transaction, and makes their deployments: one per VM, or one for every
 // component's VMs. It returns the multi-VM plan's components too.
@@ -1257,6 +1275,9 @@ func (s *Service) reserveVMs(ctx context.Context, tx pgx.Tx, ev *Evaluation, req
 				return nil, nil, nil, names.err
 			}
 			name := p.naming.Name(p.prefix, seq)
+			if err := checkComputerName(p, name, multi); err != nil {
+				return nil, nil, nil, err
+			}
 			// Names given in this request count as taken (components, or a
 			// composite with two VM steps, of one naming).
 			names.rvav[name], given[name] = true, true

@@ -764,7 +764,16 @@ To give a project an OU:
    blueprint's `active_directory` name another OU, or none. Otherwise
    rvav ignores it.
 7. Click **Save OU**. rvav checks that the directory has the OU and the
-   groups.
+   groups. If the directory can't be reached, the OU isn't saved: try
+   again once it is.
+
+A role that manages placement in one project only, rather than for all
+of rvav, is held to what you delegate: the project's OU goes under the
+OU for every project (in that environment, or in any), and each group
+under the project's own OU, or among the groups of that OU for every
+project. Give every project an OU first: with none, such a role can't
+save one. Groups that an administrator for all of rvav gave the
+project's OU stay when the role saves it.
 
 To give an environment an OU in every project, or every VM one, do the
 same under **Projects › Environments › Active Directory**. A project's
@@ -781,10 +790,14 @@ timeline shows the step, **Create the computer object**, with the
 object's DN. A Windows VM that joins the domain takes the object, in its
 OU. The deployment's page lists its objects under **Active Directory**.
 
-- A name Active Directory already has is passed over: the VM gets the
-  next number. A rename to such a name is refused.
+- A name Active Directory already has, anywhere in the domain, is passed
+  over: the VM gets the next number. A rename to such a name is refused.
 - A VM name longer than 15 characters is refused, as Active Directory
-  allows no longer computer names.
+  allows no longer computer names. This holds for every VM of a request:
+  a later VM's number can make its name longer.
+- The object is enabled, with a random password that no one is told. A
+  domain join resets it. Over plain LDAP, Active Directory doesn't take a
+  password, and the object has none.
 - rvav never takes over an object it didn't make. When one with the VM's
   name appears after the request was submitted, the step fails: remove
   the object, then retry the request.
@@ -794,7 +807,12 @@ OU. The deployment's page lists its objects under **Active Directory**.
   account's rights, the request fails and says so. Fix the rights, then
   retry it.
 - Renaming the VM renames its object. Rename a joined Windows VM in
-  Windows too, and join a Linux one again.
+  Windows too, and join a Linux one again. When the object is gone from
+  Active Directory, the rename goes on and the deployment no longer lists
+  it.
+- rvav deletes or renames only an object where it made it, with the
+  description it wrote. One that someone moved to another OU or
+  described again is left, and the step says so.
 
 ## ServiceNow
 

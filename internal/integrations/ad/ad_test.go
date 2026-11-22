@@ -59,6 +59,13 @@ func TestComputerObjects(t *testing.T) {
 	if !slices.Contains(s.Entry(group)["member"], comp.DN) {
 		t.Fatalf("group = %v", s.Entry(group))
 	}
+	// A password no one is told, of the length and kinds of characters a
+	// complexity policy wants.
+	pw := s.ComputerPassword(comp.DN)
+	if len(pw) != 120 || !strings.ContainsAny(pw, "ABCDEFGHJKLMNPQRSTUVWXYZ") || !strings.ContainsAny(pw, "abcdefghijkmnopqrstuvwxyz") ||
+		!strings.ContainsAny(pw, "23456789") || !strings.ContainsAny(pw, "!#%+-./:=?@_~") {
+		t.Fatalf("password = %q", pw)
+	}
 	// Made again by a retry: the same object, made once.
 	if err := c.Create(ctx, comp, []string{group}); err != nil || s.Adds() != 1 {
 		t.Fatalf("again = %v, %d adds", err, s.Adds())
@@ -87,12 +94,48 @@ func TestComputerObjects(t *testing.T) {
 	if err := c.Create(ctx, comp, nil); err != nil {
 		t.Fatal(err)
 	}
+	if again := s.ComputerPassword(comp.DN); again == "" || again == pw {
+		t.Fatalf("made again with password %q, first %q", again, pw)
+	}
 	if err := c.Delete(ctx, comp.DN); err == nil {
 		t.Fatal("a delete refused succeeded")
 	}
 }
 
+// TestComputerNames: a name is looked for in the whole domain, though
+// the base DN is an OU in it; over plain LDAP, on which Active Directory
+// sets no password, the object is made with none.
+func TestComputerNames(t *testing.T) {
+	web, other := "OU=Web,"+adtest.BaseDN, "OU=Other,"+adtest.BaseDN
+	s := adtest.Start(t, []string{web, other})
+	ctx := context.Background()
+	s.Put("CN=WEB-DEV-APP01,"+other, map[string][]string{"objectClass": {"computer"}, "sAMAccountName": {"WEB-DEV-APP01$"}})
+	c := ad.New(ad.Config{URL: s.LDAPS, Username: s.BindDN, Password: s.Password, BaseDN: web,
+		TLS: trust.Options{Pin: trust.Fingerprint(s.Cert)}})
+	if found, err := c.Find(ctx, "web-dev-app01"); err != nil || found == nil || !ad.SameDN(found.DN, "cn=web-dev-app01, ou=other,"+adtest.BaseDN) {
+		t.Fatalf("a name outside the base DN = %+v, %v", found, err)
+	}
+	plain := ad.New(ad.Config{URL: s.StartTLS, Username: s.BindDN, Password: s.Password, BaseDN: adtest.BaseDN, PlainLDAP: true})
+	comp := ad.Computer{Name: "web-dev-app02", DN: ad.ComputerDN("web-dev-app02", web)}
+	if err := plain.Create(ctx, comp, nil); err != nil || s.Entry(comp.DN) == nil || s.ComputerPassword(comp.DN) != "" {
+		t.Fatalf("over plain LDAP = %v, password %q", err, s.ComputerPassword(comp.DN))
+	}
+}
+
 func TestNames(t *testing.T) {
+	for dn, want := range map[string]string{
+		"OU=Web,DC=corp,DC=example":    "DC=corp,DC=example",
+		`CN=x\,y,OU=Web,DC=Corp,DC=ex`: "DC=Corp,DC=ex",
+		"DC=corp,DC=example":           "DC=corp,DC=example",
+		"OU=Web":                       "OU=Web",
+	} {
+		if got := ad.DomainDN(dn); got != want {
+			t.Errorf("DomainDN(%q) = %q, want %q", dn, got, want)
+		}
+	}
+	if !ad.SameDN("CN=A,OU=Web,DC=corp,DC=example", "cn=a, ou=web,dc=CORP,dc=example") || ad.SameDN("CN=A,OU=Web", "CN=A,OU=Other") {
+		t.Error("SameDN")
+	}
 	if d := ad.Domain("OU=Servers,DC=Corp,DC=Example"); d != "corp.example" {
 		t.Errorf("domain = %q", d)
 	}

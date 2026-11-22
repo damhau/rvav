@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/binary"
 	"fmt"
 	"math/big"
 	"net"
@@ -21,6 +22,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf16"
 
 	ber "github.com/go-asn1-ber/asn1-ber"
 	"github.com/go-ldap/ldap/v3"
@@ -50,6 +52,8 @@ type Server struct {
 type entry struct {
 	dn    string
 	attrs map[string][]string
+	// password is its unicodePwd, which Active Directory never reads back.
+	password string
 }
 
 // BaseDN is the directory's.
@@ -149,6 +153,34 @@ func (s *Server) Entry(dn string) map[string][]string {
 		return e.attrs
 	}
 	return nil
+}
+
+// ComputerPassword is the password an entry was made with, "" for none.
+func (s *Server) ComputerPassword(dn string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e := s.entries[key(dn)]; e != nil {
+		return e.password
+	}
+	return ""
+}
+
+// decodePassword reads a unicodePwd as Active Directory does: one value,
+// UTF-16LE, in double quotes.
+func decodePassword(vals []string) (string, bool) {
+	if len(vals) != 1 || len(vals[0])%2 != 0 {
+		return "", false
+	}
+	b := []byte(vals[0])
+	u := make([]uint16, len(b)/2)
+	for i := range u {
+		u[i] = binary.LittleEndian.Uint16(b[2*i:])
+	}
+	s := string(utf16.Decode(u))
+	if len(s) < 2 || s[0] != '"' || s[len(s)-1] != '"' {
+		return "", false
+	}
+	return s[1 : len(s)-1], true
 }
 
 // Computers are the DNs of the computer objects, in order.
@@ -338,6 +370,14 @@ func (s *Server) add(w *gldap.ResponseWriter, r *gldap.Request) {
 	for _, a := range m.Attributes {
 		attrs[a.Type] = a.Vals
 	}
+	var password string
+	if pw, ok := attrs["unicodePwd"]; ok {
+		delete(attrs, "unicodePwd")
+		if password, ok = decodePassword(pw); !ok {
+			resp.SetResultCode(gldap.ResultConstraintViolation)
+			return
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.entries[key(parent(m.DN))] == nil {
@@ -357,7 +397,7 @@ func (s *Server) add(w *gldap.ResponseWriter, r *gldap.Request) {
 			return
 		}
 	}
-	s.entries[key(m.DN)] = &entry{dn: m.DN, attrs: attrs}
+	s.entries[key(m.DN)] = &entry{dn: m.DN, attrs: attrs, password: password}
 	if slices.Contains(attrs["objectClass"], "computer") {
 		s.adds++
 	}

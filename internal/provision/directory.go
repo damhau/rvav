@@ -128,6 +128,13 @@ func (a *Activities) ReleaseComputer(ctx context.Context, in VMInput) error {
 	})
 }
 
+// ours says whether the object found is still the one rvav made: where
+// rvav made it, with the description rvav wrote. One an administrator
+// moved or described again is theirs now.
+func (p computerProps) ours(found *ad.Computer) bool {
+	return found.Description == p.Description && ad.SameDN(found.DN, p.DN)
+}
+
 // deleteComputer deletes a VM's computer object when it is still the one
 // rvav made; one that is someone else's now is left, and said so.
 func (a *Activities) deleteComputer(ctx context.Context, r store.Resource) (string, error) {
@@ -143,7 +150,7 @@ func (a *Activities) deleteComputer(ctx context.Context, r store.Resource) (stri
 		return "", err
 	case found == nil:
 		return "computer object " + p.Account + " already gone", nil
-	case found.Description != p.Description:
+	case !p.ours(found):
 		return "left computer object " + p.Account + ", which is no longer rvav's", nil
 	}
 	if err := d.Delete(ctx, found.DN); err != nil {
@@ -186,7 +193,7 @@ func (a *Activities) checkComputer(ctx context.Context, in OpInput) (string, err
 	if err != nil {
 		return "", err
 	}
-	if p.Description == "" || found.Description != p.Description {
+	if p.Description == "" || !p.ours(found) {
 		return "", permanent("Active Directory already has a computer %s, %s. Pick another name.", ad.Account(name), found.DN)
 	}
 	return "Already renamed", nil
@@ -216,10 +223,16 @@ func (a *Activities) renameComputer(ctx context.Context, in OpInput) (string, er
 		if found, err = d.Find(ctx, name); err != nil {
 			return "", err
 		}
-		if found == nil || found.Description != p.Description {
-			return "", permanent("Active Directory no longer has the computer object %s.", p.Account)
+		if found == nil || found.Description != p.Description || !ad.SameDN(ad.ParentDN(found.DN), ad.ParentDN(p.DN)) {
+			// Deleted by an administrator: the VM is renamed already, and
+			// its addresses and records are to follow.
+			if err := a.Store.DeleteResource(ctx, a.Store.Pool, r.ID); err != nil {
+				return "", err
+			}
+			a.Events.Deployment(ctx, in.DeploymentID)
+			return "Active Directory no longer has " + p.Account + ": the deployment no longer holds it", nil
 		}
-	case found.Description != p.Description:
+	case !p.ours(found):
 		return "Left " + p.Account + ", which is no longer rvav's", nil
 	default:
 		dns := ""

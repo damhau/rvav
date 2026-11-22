@@ -70,7 +70,8 @@ group is a DN, or a DN relative to the base DN (`OU=Servers`, as vRA's
 relative DNs are: one with no `DC=` part), and must be under the base
 DN. Saving a row checks this and, once the integration is set, that the
 directory has the OU and the groups; a directory that can't be reached
-refuses the row. A request's evaluation checks the DNs again, as the base
+answers 502, and the row isn't saved (I1.6: it answered 422, as if the
+row were wrong). A request's evaluation checks the DNs again, as the base
 DN may have changed.
 
 A project's rows are on its Placement tab, with those of every project
@@ -79,6 +80,23 @@ Environments. Those who manage placement (`placement.manage`) manage
 them: in the project for its rows, for all of rvav for every project's.
 Removing a row leaves the objects made: they go with their VMs. The API is
 `/admin/ad-placements`. There is no Terraform resource yet.
+
+**Placement managed in one project only** (a custom role; the built-in
+ones hold `placement.manage` for all of rvav). A group gives its
+members' rights to the VMs' computer accounts, so such a role is held to
+what an administrator for all of rvav delegated (I1.6), with nothing to
+store: the rows of every project, which only they save, are the
+delegation. A project's row's OU goes under the OU of the row for every
+project in its environment, else of the one in any environment; each of
+its groups goes under the row's own OU, or is one of that row's groups,
+the allow-list. Without such a row, the role saves none. What the row had
+already, as an administrator for all of rvav saved it, stays when the
+role saves it again. The OU had to be held too: a role choosing its OU
+freely could choose `CN=Users` and so name Domain Admins "under its own
+OU". The cost is that delegating needs a row for every project, in an
+environment or in all, which puts every project's VMs of it in the
+directory; a site that wants only some projects' VMs there keeps
+placement with administrators for all of rvav.
 
 A blueprint's guest may set `active_directory: { ou, skip }` (one or the
 other; the OU a DN as the rows' are). The row's `allow_blueprint_ou`
@@ -96,6 +114,33 @@ a Windows VM joining the domain takes the existing object (its domain
 join's OU becomes the object's), and `realm join` or `adcli join` on
 Linux do too.
 
+**Its password** (I1.6). An enabled account (4096) made with no
+password is refused by a domain controller whose password policy sets a
+minimum length, and `Refused` made that permanent. The choices were:
+4128 (4096 with `PASSWD_NOTREQD`), which is enabled with an empty
+password, an account anyone who knows its name may try; disabled
+(4098), which a join must enable; or a random password. rvav sets
+`unicodePwd` to 120 random characters with upper and lower case letters,
+digits and symbols, as a complexity policy wants, which it keeps nowhere
+and tells no one: the account is enabled and can't be signed in to.
+Active Directory sets a password only over an encrypted connection, so
+over plain LDAP (labs only) the object has none, as before. The service
+account needs **Reset password** on the objects it makes for it.
+
+**What a Windows join onto it needs.** The customization's domain join
+names the object's OU (`DomainOU`), so the join finds the account where
+rvav made it. Windows reuses an account of the computer's name instead
+of making one, and sets a new password with the join account's rights:
+rvav's random one never has to be known. Since KB5020276 the join
+account must be allowed to reuse it: the object's owner (rvav's service
+account, which made it), a member of Domain Admins, or an account the
+policy "Domain controller: Allow computer account re-use during domain
+join" names. It needs **Reset password** and the validated writes to
+`dNSHostName` and `servicePrincipalName` on the object, which its
+owner has. `realm join` and `adcli join` reset the password the same
+way. I1.6's acceptance checks both against a real domain controller,
+which the tests' in-process directory isn't.
+
 The step is `ad` in the plan, after DNS and before the clone, in every
 place a plan is built (a VM, a component's VMs, a composite's own VMs),
 behind `workflow.GetVersion("ad-computers")` so that runs started before
@@ -108,16 +153,21 @@ DN and description and goes on. An object of the same name that rvav
 didn't make, whoever's it is (one made since the request was evaluated),
 fails the step without retry and is forgotten, and rvav deletes nothing
 it didn't make: before deleting or renaming an object it reads it again,
-and leaves one whose description isn't the one it wrote, saying so in
-the step. The resource, `ad.computer`, shows on the deployment's page
+and leaves one that is no longer at the DN rvav recorded, or whose
+description isn't the one it wrote, saying so in the step. An object an
+administrator moved to another OU is theirs now (I1.6: only the
+description was compared). The resource, `ad.computer`, shows on the deployment's page
 under Active Directory, with its DN and groups. The activities reach the
 directory through a `Directory` interface, read from the integration on
 every use.
 
 ### When a name is taken
 A name is checked when the request is evaluated, as its DNS name is
-(ADR-0038): a computer object of that name anywhere under the base DN
-makes it taken, so a naming rule skips to the next number, as it does
+(ADR-0038): a computer object of that name anywhere in the domain makes
+it taken, searched from the DC parts of the base DN, since a
+`sAMAccountName` is unique in the domain and a base DN may be one OU of
+it (I1.6: only the base DN was searched, and a name taken outside it
+failed the step instead of being passed over), so a naming rule skips to the next number, as it does
 past a name vCenter or DNS has (ADR-0020), with the reason `ad`. Every
 VM name rvav gives comes from a naming rule with a counter, so a request
 is never refused for it; a name the requester gives, a day-2 rename's,
@@ -125,7 +175,11 @@ is refused when it is submitted ("Active Directory already has a
 computer NAME$."), and checked again when the rename runs (`ad.check`),
 before anything is renamed. A name longer than 15 characters, NetBIOS's
 limit, is refused when an object is to be made, for a request and a
-rename. A Windows domain join naming another domain than the base DN's
+rename: every name a request gives, since a later VM's number may be
+longer than the first's (`-99`, then `-100`), and again when the names
+are given for good, in the submission or an update adding VMs, as
+another request may have taken those the evaluation counted on (I1.6:
+only the first name was checked). A Windows domain join naming another domain than the base DN's
 is refused. A directory that can't be reached refuses the submission,
 as EfficientIP's DNS does; the preview only logs it.
 
@@ -158,7 +212,11 @@ retried once the rights are fixed.
 **Rename.** The day-2 rename renames the object too (`ad.rename`): its CN,
 `sAMAccountName` and `dNSHostName`. The guest's own name and its secure
 channel are its own: a joined Windows VM must be renamed in Windows too,
-and a Linux one joined again.
+and a Linux one joined again. When the object is gone, an administrator
+having deleted it, the rename goes on: vCenter has renamed the VM
+already, and its addresses and records follow. The step says so and the
+deployment no longer holds the object (I1.6: the step failed for good,
+leaving the VM renamed and the rest not).
 
 ### Events
 No new topic. The object is made between `network.configure` and
@@ -188,10 +246,12 @@ integration page.
 
 ## Consequences
 - The service account needs, on the OUs the placements name only: create
-  and delete computer objects, rename them, write their `cn`,
-  `sAMAccountName`, `userAccountControl`, `dNSHostName` and
-  `description`; write `member` on the groups listed; read the base DN
-  to find taken names. Nothing on the domain itself.
+  and delete computer objects, and delete their subtree (Windows may put
+  a cluster's or BitLocker's objects under one), rename them, write
+  their `cn`, `sAMAccountName`, `userAccountControl`, `dNSHostName` and
+  `description`, reset their password; write `member` on the groups
+  listed; read the domain to find taken names, which every authenticated
+  user may. Nothing else on the domain itself.
 - The in-process directory of the tests can't serve a modify DN request:
   the rename's is checked against a real directory in I1.6's acceptance,
   as are a Windows join and a `realm join` onto the objects made.

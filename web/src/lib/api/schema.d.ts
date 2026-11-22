@@ -3006,7 +3006,16 @@ export interface paths {
          */
         get: operations["listAdPlacements"];
         put?: never;
-        /** Give a project, an environment or both an OU for computer objects */
+        /**
+         * Give a project, an environment or both an OU for computer objects
+         * @description Those who manage placement for all of rvav save any row. Those who
+         *     manage it in a project only save that project's rows: the OU under
+         *     the OU of the row for every project (in the row's environment,
+         *     else in any), and each group under the row's own OU or one of that
+         *     row's groups; an OU or group the row already had stays. Once the
+         *     Active Directory integration is set, the OU and groups must be in
+         *     the directory; one that can't be reached answers 502 (ADR-0064).
+         */
         post: operations["createAdPlacement"];
         delete?: never;
         options?: never;
@@ -3024,7 +3033,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Change an OU, its groups, or whether blueprints may choose theirs */
+        /**
+         * Change an OU, its groups, or whether blueprints may choose theirs
+         * @description Held to the rules of createAdPlacement.
+         */
         put: operations["updateAdPlacement"];
         post?: never;
         /**
@@ -16638,6 +16650,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
         };
     };
     updateAdPlacement: {
@@ -16669,6 +16682,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
+            502: components["responses"]["UpstreamError"];
         };
     };
     deleteAdPlacement: {

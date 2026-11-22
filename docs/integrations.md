@@ -433,14 +433,17 @@ other networks keep EfficientIP. One VM can have adapters on both.
   base DN). One domain.
 - **Makes, for each VM placed in an OU:** its computer object before it
   is cloned, `CN=<NAME>` with `sAMAccountName` `<NAME>$`,
-  `userAccountControl` 4096, `dNSHostName` and a description naming the
-  request and the deployment; then adds it to the placement's groups.
+  `userAccountControl` 4096, `dNSHostName`, a description naming the
+  request and the deployment, and a random 120-character `unicodePwd`
+  (none over plain LDAP, on which Active Directory sets no password);
+  then adds it to the placement's groups.
 - **Deletes** the objects it made, found by their DN and description,
   with their VM: deleted, rolled back, scaled in, or not made because its
   clone failed. Renames them with their VM (modify DN, then
   `sAMAccountName` and `dNSHostName`).
-- **Reads** the base DN for computer objects whose name a new VM would
-  take.
+- **Reads** the domain, the DC parts of the base DN, for computer
+  objects whose name a new VM would take: a `sAMAccountName` is unique
+  in the domain, under the base DN or not.
 
 ### Active Directory permissions (service account)
 Delegate on each OU the placements name, to the service account only:
@@ -449,11 +452,14 @@ Delegate on each OU the placements name, to the service account only:
   object and all descendant objects);
 - on descendant Computer objects: **Write** `cn`, `name`,
   `sAMAccountName`, `dNSHostName`, `description` and
-  `userAccountControl`, and **Reset password** is not needed;
+  `userAccountControl`, **Reset password** (for the random password an
+  object is made with), and **Delete subtree**, for an object under
+  which Windows put others (a cluster's or BitLocker's), which rvav
+  deletes with the tree-delete control;
 - on each group listed: **Write Members** (`member`).
 
 Read access to the domain, which every authenticated user has, finds
-names taken anywhere under the base DN. The account needs no domain-wide
+names taken anywhere in the domain. The account needs no domain-wide
 right, and should not be a member of Domain Admins or Account Operators.
 
 For a Windows VM to join onto its pre-made object, its join account must

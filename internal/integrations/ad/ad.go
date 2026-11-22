@@ -7,13 +7,16 @@ package ad
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	"github.com/go-ldap/ldap/v3"
 
@@ -25,7 +28,8 @@ import (
 const MaxName = 15
 
 // UserAccountControl is a computer object's: a workstation or member
-// server's trust account (WORKSTATION_TRUST_ACCOUNT).
+// server's trust account (WORKSTATION_TRUST_ACCOUNT), enabled, its
+// password required.
 const UserAccountControl = "4096"
 
 // Config is where the directory is and how rvav binds there.
@@ -146,8 +150,8 @@ func (c *Client) Exists(ctx context.Context, dn string) (bool, error) {
 }
 
 // Find is the object whose sAMAccountName is the computer's (NAME$),
-// anywhere under the base DN: names are unique in a domain, whatever the
-// OU. Nil when there is none.
+// anywhere in the domain, under the base DN or not: names are unique in a
+// domain, whatever the OU. Nil when there is none.
 func (c *Client) Find(ctx context.Context, name string) (*Computer, error) {
 	conn, done, err := c.dial(ctx)
 	if err != nil {
@@ -158,7 +162,7 @@ func (c *Client) Find(ctx context.Context, name string) (*Computer, error) {
 }
 
 func find(conn *ldap.Conn, base, name string) (*Computer, error) {
-	res, err := conn.Search(ldap.NewSearchRequest(base, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 2, 30, false,
+	res, err := conn.Search(ldap.NewSearchRequest(DomainDN(base), ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 2, 30, false,
 		"(sAMAccountName="+ldap.EscapeFilter(Account(name))+")", []string{"dNSHostName", "description"}, nil))
 	if err != nil && !ldap.IsErrorWithCode(err, ldap.LDAPResultNoSuchObject) {
 		return nil, err
@@ -174,6 +178,13 @@ func find(conn *ldap.Conn, base, name string) (*Computer, error) {
 // Create makes the computer object, then adds it to the groups. An object
 // at that DN already made by this same call before (its description the
 // same) is the one made: a retried activity doesn't make it twice.
+//
+// Over TLS, the object gets a random password no one is told: enabled,
+// with a password a domain's policy accepts, it can't be signed in to
+// until a domain join, whose account resets it, takes it. Active
+// Directory sets a password only over an encrypted connection: over plain
+// LDAP the object has none, which a domain controller whose policy needs
+// one refuses.
 func (c *Client) Create(ctx context.Context, comp Computer, groups []string) error {
 	conn, done, err := c.dial(ctx)
 	if err != nil {
@@ -191,13 +202,20 @@ func (c *Client) Create(ctx context.Context, comp Computer, groups []string) err
 	if comp.Description != "" {
 		add.Attribute("description", []string{comp.Description})
 	}
+	if !c.cfg.PlainLDAP {
+		pw, err := password()
+		if err != nil {
+			return err
+		}
+		add.Attribute("unicodePwd", []string{pw})
+	}
 	err = conn.Add(add)
 	if exists(err) {
 		found, ferr := find(conn, c.cfg.BaseDN, comp.Name)
 		if ferr != nil {
 			return ferr
 		}
-		if found == nil || !strings.EqualFold(found.DN, comp.DN) || found.Description != comp.Description {
+		if found == nil || !SameDN(found.DN, comp.DN) || found.Description != comp.Description {
 			return fmt.Errorf("%w: %s", ErrExists, Account(comp.Name))
 		}
 		err = nil
@@ -215,6 +233,36 @@ func (c *Client) Create(ctx context.Context, comp Computer, groups []string) err
 		}
 	}
 	return nil
+}
+
+const passwordLength = 120
+
+// password is a random password as unicodePwd takes it: in double quotes,
+// UTF-16LE. It has upper and lower case letters, digits and symbols, as
+// a complexity policy wants.
+func password() (string, error) {
+	const (
+		upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+		lower   = "abcdefghijkmnopqrstuvwxyz"
+		digits  = "23456789"
+		symbols = "!#%+-./:=?@_~"
+	)
+	sets := []string{upper, lower, digits, symbols, upper + lower + digits + symbols}
+	b := make([]byte, passwordLength)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	pw := make([]rune, passwordLength)
+	for i := range pw {
+		set := sets[min(i, len(sets)-1)]
+		pw[i] = rune(set[int(b[i])%len(set)])
+	}
+	encoded := utf16.Encode([]rune(`"` + string(pw) + `"`))
+	out := make([]byte, 2*len(encoded))
+	for i, u := range encoded {
+		binary.LittleEndian.PutUint16(out[2*i:], u)
+	}
+	return string(out), nil
 }
 
 // Refused says the directory refused what was asked for good: the
@@ -297,6 +345,43 @@ func Account(name string) string { return strings.ToUpper(name) + "$" }
 // ComputerDN is the DN of the computer's object in an OU.
 func ComputerDN(name, ou string) string {
 	return "CN=" + ldap.EscapeDN(strings.ToUpper(name)) + "," + ou
+}
+
+// DomainDN is the domain a DN is in, its DC parts: OU=Web,DC=corp,DC=example
+// is in DC=corp,DC=example. A DN with none is itself.
+func DomainDN(dn string) string {
+	parsed, err := ldap.ParseDN(dn)
+	if err != nil {
+		return dn
+	}
+	for i, rdn := range parsed.RDNs {
+		if len(rdn.Attributes) > 0 && strings.EqualFold(rdn.Attributes[0].Type, "dc") {
+			return dnFrom(dn, i)
+		}
+	}
+	return dn
+}
+
+// dnFrom is a DN without its first n parts, as it is written.
+func dnFrom(dn string, n int) string {
+	for range n {
+		dn = ParentDN(dn)
+	}
+	return dn
+}
+
+// SameDN says whether two DNs name the same entry, whatever their case
+// and spacing.
+func SameDN(a, b string) bool {
+	da, err := ldap.ParseDN(a)
+	if err != nil {
+		return strings.EqualFold(a, b)
+	}
+	db, err := ldap.ParseDN(b)
+	if err != nil {
+		return false
+	}
+	return da.EqualFold(db)
 }
 
 // Domain is a DN's DNS domain, its DC parts: DC=corp,DC=example is

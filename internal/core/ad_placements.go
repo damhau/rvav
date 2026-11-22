@@ -142,14 +142,17 @@ func (s *Service) SaveADPlacement(ctx context.Context, p *auth.Principal, id str
 		return api.AdPlacement{}, ErrForbidden
 	}
 	action := "ad.placement.update"
+	var was *store.ADPlacement
 	if id == "" {
 		id, action = ids.New("adp"), "ad.placement.create"
-	} else if was, err := s.Store.GetADPlacement(ctx, id); errors.Is(err, store.ErrNotFound) {
+	} else if row, err := s.Store.GetADPlacement(ctx, id); errors.Is(err, store.ErrNotFound) {
 		return api.AdPlacement{}, ErrNotFound
 	} else if err != nil {
 		return api.AdPlacement{}, err
-	} else if !mayPlaceIn(p, was.ProjectID) {
+	} else if !mayPlaceIn(p, row.ProjectID) {
 		return api.AdPlacement{}, ErrForbidden
+	} else {
+		was = &row
 	}
 	var environment *string
 	if w.Environment != nil && *w.Environment != "" {
@@ -200,8 +203,18 @@ func (s *Service) SaveADPlacement(ctx context.Context, p *auth.Principal, id str
 			dns[ptr] = ad.Resolve(groups[i], base)
 		}
 	}
+	if len(errs) == 0 && !p.In(auth.PlacementManage, "") {
+		delegated, err := s.Store.ADPlacementFor(ctx, "", deref(environment))
+		if err != nil {
+			return api.AdPlacement{}, err
+		}
+		errs = projectPlacement(delegated, was, ou, groups, base)
+	}
 	if configured && len(errs) == 0 {
-		errs = missingEntries(ctx, dir, dns)
+		var err error
+		if errs, err = missingEntries(ctx, dir, dns); err != nil {
+			return api.AdPlacement{}, err
+		}
 	}
 	if len(errs) > 0 {
 		return api.AdPlacement{}, &ValidationError{Errors: errs}
@@ -218,20 +231,53 @@ func (s *Service) SaveADPlacement(ctx context.Context, p *auth.Principal, id str
 	return presentADPlacement(row, base), err
 }
 
+// projectPlacement holds a row saved by someone who manages placement in
+// its project only to what an administrator for all of rvav delegated
+// (ADR-0064): its OU under the OU of the row for every project (in its
+// environment, else in any), and each group under its own OU or one of
+// that row's groups. What the row had already stays.
+func projectPlacement(delegated, was *store.ADPlacement, ou string, groups []string, base string) []api.FieldError {
+	if delegated == nil {
+		return []api.FieldError{fieldErr("/ou", "not_allowed", "Your role manages this project's placement only, and its OU goes under "+
+			"the one set for every project, which there isn't. Ask an administrator for all of rvav to set one.")}
+	}
+	under := func(dn, parent string) bool { return ad.CheckDN(ad.Resolve(dn, base), ad.Resolve(parent, base)) == "" }
+	had := func(dn string, of []string) bool {
+		return slices.ContainsFunc(of, func(g string) bool { return ad.SameDN(ad.Resolve(g, base), ad.Resolve(dn, base)) })
+	}
+	var errs []api.FieldError
+	if !under(ou, delegated.OU) && (was == nil || !ad.SameDN(ad.Resolve(was.OU, base), ad.Resolve(ou, base))) {
+		errs = append(errs, fieldErr("/ou", "not_allowed", "Your role manages this project's placement only: its OU goes under "+
+			delegated.OU+", the one set for every project."))
+	}
+	for i, g := range groups {
+		if under(g, ou) || had(g, delegated.Groups) || was != nil && had(g, was.Groups) {
+			continue
+		}
+		msg := "Your role manages this project's placement only: a group goes under the project's OU"
+		if len(delegated.Groups) > 0 {
+			msg += ", or is one of those set for every project: " + strings.Join(delegated.Groups, "; ")
+		}
+		errs = append(errs, fieldErr(fmt.Sprintf("/groups/%d", i), "not_allowed", msg+"."))
+	}
+	return errs
+}
+
 // missingEntries says which of the OU and groups the directory doesn't
-// have, by their field.
-func missingEntries(ctx context.Context, dir *ad.Client, dns map[string]string) []api.FieldError {
+// have, by their field. A directory that can't be reached is an
+// UpstreamError: the row isn't wrong.
+func missingEntries(ctx context.Context, dir *ad.Client, dns map[string]string) ([]api.FieldError, error) {
 	var errs []api.FieldError
 	for _, ptr := range slices.Sorted(maps.Keys(dns)) {
 		ok, err := dir.Exists(ctx, dns[ptr])
 		switch {
 		case err != nil:
-			return []api.FieldError{fieldErr(ptr, "directory", "Active Directory can't be reached: "+err.Error())}
+			return nil, &UpstreamError{System: "Active Directory", Err: err}
 		case !ok:
 			errs = append(errs, fieldErr(ptr, "unknown", "Active Directory has no "+dns[ptr]+"."))
 		}
 	}
-	return errs
+	return errs, nil
 }
 
 func (s *Service) DeleteADPlacement(ctx context.Context, p *auth.Principal, id string) error {

@@ -14228,12 +14228,28 @@ type ClientInterface interface {
 
 	// CreateAdPlacementWithBody Give a project, an environment or both an OU for computer objects
 	//
+	// Those who manage placement for all of rvav save any row. Those who
+	// manage it in a project only save that project's rows: the OU under
+	// the OU of the row for every project (in the row's environment,
+	// else in any), and each group under the row's own OU or one of that
+	// row's groups; an OU or group the row already had stays. Once the
+	// Active Directory integration is set, the OU and groups must be in
+	// the directory; one that can't be reached answers 502 (ADR-0064).
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
 	CreateAdPlacementWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateAdPlacement Give a project, an environment or both an OU for computer objects
+	//
+	// Those who manage placement for all of rvav save any row. Those who
+	// manage it in a project only save that project's rows: the OU under
+	// the OU of the row for every project (in the row's environment,
+	// else in any), and each group under the row's own OU or one of that
+	// row's groups; an OU or group the row already had stays. Once the
+	// Active Directory integration is set, the OU and groups must be in
+	// the directory; one that can't be reached answers 502 (ADR-0064).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -14249,12 +14265,16 @@ type ClientInterface interface {
 
 	// UpdateAdPlacementWithBody Change an OU, its groups, or whether blueprints may choose theirs
 	//
+	// Held to the rules of createAdPlacement.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
 	UpdateAdPlacementWithBody(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateAdPlacement Change an OU, its groups, or whether blueprints may choose theirs
+	//
+	// Held to the rules of createAdPlacement.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -18286,6 +18306,14 @@ func (c *Client) ListAdPlacements(ctx context.Context, params *ListAdPlacementsP
 
 // CreateAdPlacementWithBody Give a project, an environment or both an OU for computer objects
 //
+// Those who manage placement for all of rvav save any row. Those who
+// manage it in a project only save that project's rows: the OU under
+// the OU of the row for every project (in the row's environment,
+// else in any), and each group under the row's own OU or one of that
+// row's groups; an OU or group the row already had stays. Once the
+// Active Directory integration is set, the OU and groups must be in
+// the directory; one that can't be reached answers 502 (ADR-0064).
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
@@ -18302,6 +18330,14 @@ func (c *Client) CreateAdPlacementWithBody(ctx context.Context, contentType stri
 }
 
 // CreateAdPlacement Give a project, an environment or both an OU for computer objects
+//
+// Those who manage placement for all of rvav save any row. Those who
+// manage it in a project only save that project's rows: the OU under
+// the OU of the row for every project (in the row's environment,
+// else in any), and each group under the row's own OU or one of that
+// row's groups; an OU or group the row already had stays. Once the
+// Active Directory integration is set, the OU and groups must be in
+// the directory; one that can't be reached answers 502 (ADR-0064).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -18337,6 +18373,8 @@ func (c *Client) DeleteAdPlacement(ctx context.Context, id IdPath, reqEditors ..
 
 // UpdateAdPlacementWithBody Change an OU, its groups, or whether blueprints may choose theirs
 //
+// Held to the rules of createAdPlacement.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
@@ -18353,6 +18391,8 @@ func (c *Client) UpdateAdPlacementWithBody(ctx context.Context, id IdPath, conte
 }
 
 // UpdateAdPlacement Change an OU, its groups, or whether blueprints may choose theirs
+//
+// Held to the rules of createAdPlacement.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -40477,12 +40517,28 @@ type ClientWithResponsesInterface interface {
 
 	// CreateAdPlacementWithBodyWithResponse Give a project, an environment or both an OU for computer objects
 	//
+	// Those who manage placement for all of rvav save any row. Those who
+	// manage it in a project only save that project's rows: the OU under
+	// the OU of the row for every project (in the row's environment,
+	// else in any), and each group under the row's own OU or one of that
+	// row's groups; an OU or group the row already had stays. Once the
+	// Active Directory integration is set, the OU and groups must be in
+	// the directory; one that can't be reached answers 502 (ADR-0064).
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
 	CreateAdPlacementWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAdPlacementResponse, error)
 
 	// CreateAdPlacementWithResponse Give a project, an environment or both an OU for computer objects
+	//
+	// Those who manage placement for all of rvav save any row. Those who
+	// manage it in a project only save that project's rows: the OU under
+	// the OU of the row for every project (in the row's environment,
+	// else in any), and each group under the row's own OU or one of that
+	// row's groups; an OU or group the row already had stays. Once the
+	// Active Directory integration is set, the OU and groups must be in
+	// the directory; one that can't be reached answers 502 (ADR-0064).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -40500,12 +40556,16 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateAdPlacementWithBodyWithResponse Change an OU, its groups, or whether blueprints may choose theirs
 	//
+	// Held to the rules of createAdPlacement.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
 	UpdateAdPlacementWithBodyWithResponse(ctx context.Context, id IdPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAdPlacementResponse, error)
 
 	// UpdateAdPlacementWithResponse Change an OU, its groups, or whether blueprints may choose theirs
+	//
+	// Held to the rules of createAdPlacement.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -45005,6 +45065,8 @@ type CreateAdPlacementResponse struct {
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationFailed
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *UpstreamError
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -45030,6 +45092,11 @@ func (r CreateAdPlacementResponse) GetApplicationproblemJSON409() *Conflict {
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r CreateAdPlacementResponse) GetApplicationproblemJSON422() *ValidationFailed {
 	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r CreateAdPlacementResponse) GetApplicationproblemJSON502() *UpstreamError {
+	return r.ApplicationproblemJSON502
 }
 
 // GetBody returns the raw response body bytes
@@ -45131,6 +45198,8 @@ type UpdateAdPlacementResponse struct {
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationFailed
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *UpstreamError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -45161,6 +45230,11 @@ func (r UpdateAdPlacementResponse) GetApplicationproblemJSON409() *Conflict {
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r UpdateAdPlacementResponse) GetApplicationproblemJSON422() *ValidationFailed {
 	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r UpdateAdPlacementResponse) GetApplicationproblemJSON502() *UpstreamError {
+	return r.ApplicationproblemJSON502
 }
 
 // GetBody returns the raw response body bytes
@@ -64835,6 +64909,14 @@ func (c *ClientWithResponses) ListAdPlacementsWithResponse(ctx context.Context, 
 
 // CreateAdPlacementWithBodyWithResponse Give a project, an environment or both an OU for computer objects
 //
+// Those who manage placement for all of rvav save any row. Those who
+// manage it in a project only save that project's rows: the OU under
+// the OU of the row for every project (in the row's environment,
+// else in any), and each group under the row's own OU or one of that
+// row's groups; an OU or group the row already had stays. Once the
+// Active Directory integration is set, the OU and groups must be in
+// the directory; one that can't be reached answers 502 (ADR-0064).
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /admin/ad-placements (the `CreateAdPlacement` operationId).
@@ -64847,6 +64929,14 @@ func (c *ClientWithResponses) CreateAdPlacementWithBodyWithResponse(ctx context.
 }
 
 // CreateAdPlacementWithResponse Give a project, an environment or both an OU for computer objects
+//
+// Those who manage placement for all of rvav save any row. Those who
+// manage it in a project only save that project's rows: the OU under
+// the OU of the row for every project (in the row's environment,
+// else in any), and each group under the row's own OU or one of that
+// row's groups; an OU or group the row already had stays. Once the
+// Active Directory integration is set, the OU and groups must be in
+// the directory; one that can't be reached answers 502 (ADR-0064).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -64876,6 +64966,8 @@ func (c *ClientWithResponses) DeleteAdPlacementWithResponse(ctx context.Context,
 
 // UpdateAdPlacementWithBodyWithResponse Change an OU, its groups, or whether blueprints may choose theirs
 //
+// Held to the rules of createAdPlacement.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PUT /admin/ad-placements/{id} (the `UpdateAdPlacement` operationId).
@@ -64888,6 +64980,8 @@ func (c *ClientWithResponses) UpdateAdPlacementWithBodyWithResponse(ctx context.
 }
 
 // UpdateAdPlacementWithResponse Change an OU, its groups, or whether blueprints may choose theirs
+//
+// Held to the rules of createAdPlacement.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -72002,6 +72096,13 @@ func ParseCreateAdPlacementResponse(rsp *http.Response) (*CreateAdPlacementRespo
 		}
 		response.ApplicationproblemJSON422 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UpstreamError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
 	}
 
 	return response, nil
@@ -72105,6 +72206,13 @@ func ParseUpdateAdPlacementResponse(rsp *http.Response) (*UpdateAdPlacementRespo
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UpstreamError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
 
 	}
 
