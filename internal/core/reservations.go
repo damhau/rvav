@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/jackc/pgx/v5"
@@ -64,19 +65,68 @@ func (ev *Evaluation) seenOn() map[string]reservedSeen {
 // with ev, it is errPlacementMoved when others took some on a cluster
 // ev's strategy chose since.
 func (s *Service) holdPlacement(ctx context.Context, tx pgx.Tx, ev *Evaluation, requestID string, rows []store.Reservation) error {
+	var seen map[string]reservedSeen
+	if ev != nil {
+		seen = ev.seenOn()
+	}
+	return s.holdSeen(ctx, tx, seen, requestID, rows)
+}
+
+// holdSeen is holdPlacement given what others held on each cluster when
+// it was chosen.
+func (s *Service) holdSeen(ctx context.Context, tx pgx.Tx, seen map[string]reservedSeen, requestID string, rows []store.Reservation) error {
+	keys, err := s.lockRows(ctx, tx, rows)
+	if err != nil {
+		return err
+	}
+	if err := s.placedStill(ctx, tx, seen, keys, requestID); err != nil {
+		return err
+	}
+	return s.Store.Reserve(ctx, tx, requestID, rows)
+}
+
+func (s *Service) lockRows(ctx context.Context, tx pgx.Tx, rows []store.Reservation) ([]string, error) {
 	var keys []string
 	for _, r := range rows {
 		keys = append(keys, r.VCenter+"/"+r.Cluster)
 	}
-	if err := s.Store.LockClusters(ctx, tx, keys); err != nil {
+	return keys, s.Store.LockClusters(ctx, tx, keys)
+}
+
+// holdRoomAgain reserves again the room of a request's VMs where they were
+// placed, as a retry does, once their clusters still have it, counting what
+// others reserved since; a ConflictError otherwise.
+func (s *Service) holdRoomAgain(ctx context.Context, tx pgx.Tx, pl *placement, r store.RequestRow, rows []store.Reservation) error {
+	if _, err := s.lockRows(ctx, tx, rows); err != nil {
 		return err
 	}
-	if ev != nil {
-		if err := s.placedStill(ctx, tx, ev.seenOn(), keys, requestID); err != nil {
+	if len(rows) > 0 {
+		var err error
+		if pl.reserved, err = s.Store.Reservations(ctx, tx, r.ID); err != nil {
 			return err
 		}
+		need := map[string]int64{}
+		var order []string
+		for _, x := range rows {
+			k := x.VCenter + "/" + x.Cluster
+			if _, ok := need[k]; !ok {
+				order = append(order, k)
+			}
+			need[k] += x.MemoryMB
+		}
+		for _, k := range order {
+			i := slices.IndexFunc(pl.all, func(c store.InvCluster) bool { return c.VCenter+"/"+c.Name == k })
+			if i < 0 {
+				continue
+			}
+			if free := pl.freeOn(&pl.all[i], ""); free < need[k] {
+				return &ConflictError{Msg: fmt.Sprintf("%s has %d MB of memory free, counting what other requests reserved; "+
+					"this request's VMs not built yet need %d MB there. Retry once it has room, or request the VMs again.",
+					pl.all[i].Name, max(free, 0), need[k])}
+			}
+		}
 	}
-	return s.Store.Reserve(ctx, tx, requestID, rows)
+	return s.Store.Reserve(ctx, tx, r.ID, rows)
 }
 
 // placedStill is errPlacementMoved when others hold more on one of these
@@ -114,17 +164,25 @@ func (s *Service) placedStill(ctx context.Context, tx pgx.Tx, seen map[string]re
 // second time, one at a time, so that each counts what those before it
 // reserved.
 func (s *Service) placing(ctx context.Context, place func() (store.RequestRow, error)) (store.RequestRow, error) {
-	out, err := place()
-	for try := 1; errors.Is(err, errPlacementMoved) && try < placementTries; try++ {
-		err = s.Store.WithLock(ctx, store.LockPlacement, func() error {
-			var err error
-			out, err = place()
-			return err
-		})
-	}
+	var out store.RequestRow
+	err := s.placeAgain(ctx, func() error {
+		var err error
+		out, err = place()
+		return err
+	})
 	if errors.Is(err, errPlacementMoved) {
 		return store.RequestRow{}, &ConflictError{Msg: "Requests placed at the same time keep taking the room chosen for these VMs. Try again.",
 			Retry: true}
 	}
 	return out, err
+}
+
+// placeAgain runs place again, up to placementTries times, while it is
+// errPlacementMoved: from the second time, one at a time.
+func (s *Service) placeAgain(ctx context.Context, place func() error) error {
+	err := place()
+	for try := 1; errors.Is(err, errPlacementMoved) && try < placementTries; try++ {
+		err = s.Store.WithLock(ctx, store.LockPlacement, place)
+	}
+	return err
 }

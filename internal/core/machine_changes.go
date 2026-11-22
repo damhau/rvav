@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -24,6 +25,20 @@ import (
 // allow with room for the VM, a network of its cluster, a free address of
 // the network's subnet. It refuses a change with a *provision.RefusedChange.
 func (s *Service) ChangeMachine(ctx context.Context, ch provision.MachineChange) (provision.VMUnit, []string, error) {
+	var vm provision.VMUnit
+	var did []string
+	err := s.placeAgain(ctx, func() error {
+		var err error
+		vm, did, err = s.changeMachine(ctx, ch)
+		return err
+	})
+	if errors.Is(err, errPlacementMoved) {
+		return vm, nil, refuse("Requests placed at the same time keep taking the room chosen for %s.", ch.VM.Name)
+	}
+	return vm, did, err
+}
+
+func (s *Service) changeMachine(ctx context.Context, ch provision.MachineChange) (provision.VMUnit, []string, error) {
 	vm := ch.VM
 	var did []string
 	err := s.Store.Tx(ctx, func(tx pgx.Tx) error {
@@ -78,8 +93,9 @@ func (s *Service) ChangeMachine(ctx context.Context, ch provision.MachineChange)
 		if err := s.Store.SetRequestPlan(ctx, tx, req.ID, raw); err != nil {
 			return err
 		}
-		// Its VMs hold their room where they go now (ADR-0036).
-		return s.holdPlacement(ctx, tx, nil, req.ID, plan.Reservations())
+		// Its VMs hold their room where they go now (ADR-0036), unless
+		// others took it since it was counted.
+		return s.holdSeen(ctx, tx, c.seen, req.ID, plan.Reservations())
 	})
 	return vm, did, err
 }
@@ -95,6 +111,8 @@ type machineChange struct {
 	vms  []*provision.VMUnit
 	pl   *placement
 	did  []string
+	// seen is what others held on the cluster a move counted room on.
+	seen map[string]reservedSeen
 }
 
 func refuse(format string, args ...any) error {
@@ -338,6 +356,9 @@ func (c *machineChange) place(ctx context.Context, p provision.PlacementAnswer) 
 			}
 			return refuse("%s has %d MB of memory free; the VM needs %d MB.", where, max(free, 0), need)
 		}
+		mb, vms := pl.reservedOn(cl, "")
+		key := cl.VCenter + "/" + cl.Name
+		c.seen = map[string]reservedSeen{key: {key: key, mb: mb, vms: vms}}
 	}
 	folder := vm.Folder
 	if p.Folder != nil {

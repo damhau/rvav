@@ -3,7 +3,9 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -23,8 +25,11 @@ import (
 // with room for only some of them: each counts what the others reserved,
 // so they spread over both instead of all choosing the one with the most
 // free memory. A reservation ends when it expires, its VM is in the
-// inventory, its request is cancelled, or its build fails or is rolled
-// back; a retry and a build starting reserve again (#189, ADR-0036).
+// inventory, its request is cancelled (not while it is being cancelled),
+// or its build fails or is rolled back; a retry and a build starting
+// reserve again, a retry only while the room is still there. Two
+// subscriptions moving VMs at once onto room for one: one is refused
+// (#189, ADR-0036).
 func TestPlacementReservations(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -135,6 +140,16 @@ func TestPlacementReservations(t *testing.T) {
 		// Cancelled before it ran.
 		h.json("POST", "/api/v1/requests/"+two[0]+"/cancel", "tnguyen", nil, 202, nil)
 		reserved(16, 8)
+		// Being cancelled, a request may still build its VM.
+		status := func(id, s string) {
+			t.Helper()
+			if _, err := h.store.Pool.Exec(ctx, `update requests set status = $2 where id = $1`, id, s); err != nil {
+				t.Fatal(err)
+			}
+		}
+		status(one[3], "cancelling")
+		reserved(16, 8)
+		status(one[3], "queued")
 
 		// Its clone failing: nothing built, nothing held.
 		h.runWorkflow(two[1], func(env *testsuite.TestWorkflowEnvironment) {
@@ -161,6 +176,20 @@ func TestPlacementReservations(t *testing.T) {
 			t.Fatalf("rolled back = %s (steps %v)", rolled.Status, keysOf(steps))
 		}
 		reserved(8, 0)
+		free := func(cluster string, gb int) {
+			t.Helper()
+			if _, err := h.store.Pool.Exec(ctx, `update inv_clusters set memory_used_mb = memory_total_mb - $2 * 1024
+				where name = $1`, cluster, gb); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// GVA-PRD-CL01 filled meanwhile: 12 GB free, 8 of them reserved.
+		free("GVA-PRD-CL01", 12)
+		code, b, _ := h.do("POST", "/api/v1/requests/"+one[2]+"/retry", "tnguyen", nil)
+		if code != 409 || !strings.Contains(string(b), "GVA-PRD-CL01 has 4096 MB of memory free, counting what other requests reserved") {
+			t.Fatalf("a retry without room = %d %s", code, b)
+		}
+		free("GVA-PRD-CL01", 38)
 		h.json("POST", "/api/v1/requests/"+one[2]+"/retry", "tnguyen", nil, 202, nil)
 		reserved(16, 0)
 
@@ -196,6 +225,49 @@ func TestPlacementReservations(t *testing.T) {
 		}
 		if rows.Close(); !slices.Equal(left, []string{one[3]}) {
 			t.Fatalf("left after the sweep: %v, want %s", left, one[3])
+		}
+
+		// Two subscriptions move a VM each onto GVA-PRD-CL02 at once, with
+		// room for one.
+		var moving []string
+		for _, role := range []string{"g", "h"} {
+			var req api.Request
+			h.json("POST", "/api/v1/requests", "tnguyen", draft(role), 202, &req, "Idempotency-Key", uuid.NewString())
+			moving = append(moving, req.Id)
+		}
+		free("GVA-PRD-CL02", 12)
+		vmOf := func(id string) provision.VMUnit {
+			t.Helper()
+			r, err := h.store.GetRequest(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var plan provision.Plan
+			if err := json.Unmarshal(r.Plan, &plan); err != nil {
+				t.Fatal(err)
+			}
+			return plan.VMs[0]
+		}
+		move := func(id, cluster, datastore string) error {
+			_, _, err := h.svc.ChangeMachine(ctx, provision.MachineChange{RequestID: id, Topic: "compute.provision.pre", VM: vmOf(id),
+				Answer: provision.MachineAnswer{Placement: &provision.PlacementAnswer{Cluster: &cluster, Datastore: &datastore}}})
+			return err
+		}
+		for try := range 10 {
+			errs := make([]error, 2)
+			for i, id := range moving {
+				wg.Go(func() { errs[i] = move(id, "GVA-PRD-CL02", "vsan-gva-prd-cl02") })
+			}
+			wg.Wait()
+			var refusedMove *provision.RefusedChange
+			won := slices.IndexFunc(errs, func(err error) bool { return err == nil })
+			lost := slices.IndexFunc(errs, func(err error) bool { return errors.As(err, &refusedMove) })
+			if won < 0 || lost < 0 || !strings.Contains(refusedMove.Reason, "GVA-PRD-CL02 has 4096 MB of memory free") {
+				t.Fatalf("try %d: moved at once = %v", try, errs)
+			}
+			if err := move(moving[won], "GVA-PRD-CL01", "vsan-gva-prd-cl01"); err != nil {
+				t.Fatal(err)
+			}
 		}
 	})
 }

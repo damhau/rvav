@@ -97,7 +97,8 @@ resource pool: a row of `placement_reservations` per VM, by request.
   expiry, when the build starts (`MarkRunning`), after an approval or a
   schedule. Plans without a vCenter in their VMs reserve nothing.
 - **Counted** while its request waits (`pending_approval`, `scheduled`,
-  `queued`) or runs, until it expires, and until its VM exists: in the
+  `queued`) or runs (`running`, and `cancelling`: a request being
+  cancelled may still build its VM), until it expires, and until its VM exists: in the
   inventory (`inv_vms`, from the full read or a change notification), or
   recorded as its deployment's VM resource right after the clone. So a
   build that fails, is rolled back, is cancelled or is rejected stops
@@ -120,7 +121,12 @@ resource pool: a row of `placement_reservations` per VM, by request.
   counts what those before it reserved; after five tries it is a 409.
   More reserved elsewhere doesn't make a chosen cluster overfill, so only
   the chosen clusters are checked; a bound cluster is locked, not
-  checked.
+  checked. A subscription's move (ADR-0054) records what others held on
+  the cluster it counted room on and is checked the same way: placed
+  again up to five times, then refused. A retry, which places nothing,
+  reserves its VMs again where they were placed, under the same locks,
+  once each of their clusters still has the room they need, counting
+  what others reserved there; a 409 naming the cluster otherwise (I1.6).
 - **Seen** in Administration › Templates and networks › vCenter objects:
   a cluster's memory free, and how much of it is held for VMs not built
   yet (`memory_reserved_gb`).
@@ -203,7 +209,8 @@ without hosts in the inventory are matched by their own tags, as before.
 - Requests placed at once count each other's VMs (#189): they spread over
   the clusters with room instead of all choosing the one that looked
   freest. Memory still never refuses a placement, it ranks clusters; only
-  a subscription moving a VM is refused when the cluster has no room.
+  a subscription moving a VM is refused when the cluster has no room, and
+  a retry when the cluster its VMs were placed on no longer has it.
 - From a VM's clone to the inventory's next full read, at most one sync
   interval, its memory counts neither as reserved nor as used by vCenter;
   and vCenter's used memory is what VMs consume, not their size.
@@ -212,4 +219,4 @@ without hosts in the inventory are matched by their own tags, as before.
   its use).
 - A reservation left by a build that is gone steers placement for at most
   six hours; of placements, it can refuse only a subscription's move of a
-  VM onto its cluster.
+  VM onto its cluster, or a retry of VMs placed there.

@@ -346,6 +346,15 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 			}
 		}
 	}
+	// Read before the transaction: under its locks, only what others
+	// reserve is read again, and through it (each retry at once holding a
+	// connection and waiting for another used up the pool).
+	var pl *placement
+	if len(plan.Reservations()) > 0 {
+		if pl, err = s.placement(ctx, r.ProjectID, r.Environment); err != nil {
+			return r, err
+		}
+	}
 	yes := true
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
 		if err := asConflict(s.holdChange(ctx, tx, change, overSoft, &yes, nil)); err != nil {
@@ -409,8 +418,8 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 			return err
 		}
 		// Its VMs not built, or rolled back, hold their room again where
-		// they were placed (ADR-0036).
-		return s.holdPlacement(ctx, tx, nil, r.ID, plan.Reservations())
+		// they were placed, if it is still there (ADR-0036).
+		return s.holdRoomAgain(ctx, tx, pl, r, plan.Reservations())
 	})
 	if err != nil {
 		return r, err

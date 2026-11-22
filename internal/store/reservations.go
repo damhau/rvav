@@ -35,11 +35,12 @@ type Reserved struct {
 }
 
 // liveReservation is a reservation r that counts: its request waits or
-// runs, it hasn't expired, and its VM is neither in the inventory nor
-// recorded as its deployment's resource.
+// runs (a request being cancelled may still build its VM), it hasn't
+// expired, and its VM is neither in the inventory nor recorded as its
+// deployment's resource.
 const liveReservation = `r.expires_at > now()
 	and exists (select 1 from requests q where q.id = r.request_id
-		and q.status in ('pending_approval', 'scheduled', 'queued', 'running'))
+		and q.status in ('pending_approval', 'scheduled', 'queued', 'running', 'cancelling'))
 	and not exists (select 1 from inv_vms v where v.vcenter = r.vcenter and v.name = r.vm_name)
 	and not exists (select 1 from resources x where x.deployment_id = r.deployment_id and x.type = 'vsphere.vm'
 		and x.name = r.vm_name)`
