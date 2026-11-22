@@ -70,12 +70,24 @@
     "rolledBack": "Retour en arrière effectué\u00a0: {{detail}}. Réessayer exécute de nouveau la demande depuis sa première étape, sans redemander d'approbation.",
     "createdDeleted": "ce qu'elle avait créé a été supprimé",
     "rollbackFailed": "Le retour en arrière ne s'est pas terminé : {{error}} Ce qu'il n'a pas supprimé est conservé. Revenir en arrière réessaie ; Réessayer exécute l'étape en échec et celles qui la suivent.",
-    "keptForLook": "Ce qui a été créé est conservé pour que vous puissiez l'examiner. Réessayer exécute l'étape en échec et celles qui la suivent\u00a0; Revenir en arrière supprime la VM, son adresse IP et ses enregistrements DNS.",
+    "keptForLook": "Ce qui a été créé est conservé pour que vous puissiez l'examiner. Réessayer exécute l'étape en échec et celles qui la suivent\u00a0; Revenir en arrière supprime {{what}}.",
+    "made": {
+      "general": "ce qu'elle a créé",
+      "vms_one": "la VM",
+      "vms_many": "les {{count}} VM",
+      "vms_other": "les {{count}} VM",
+      "vmsAddresses_one": "la VM et son adresse IP",
+      "vmsAddresses_many": "les {{count}} VM et leurs adresses IP",
+      "vmsAddresses_other": "les {{count}} VM et leurs adresses IP",
+      "vmsAddressesRecords_one": "la VM, son adresse IP et ses enregistrements DNS",
+      "vmsAddressesRecords_many": "les {{count}} VM, leurs adresses IP et leurs enregistrements DNS",
+      "vmsAddressesRecords_other": "les {{count}} VM, leurs adresses IP et leurs enregistrements DNS"
+    },
     "retry": "Réessayer",
     "retryFromFailed": "Réessayer depuis l'étape en échec",
     "rollBack": "Revenir en arrière",
     "confirmTitle": "Revenir en arrière sur {{number}}\u00a0?",
-    "confirmBody": "Supprime ce qu'elle a créé\u00a0: la VM, son adresse IP et ses enregistrements DNS. Vous pourrez la réessayer ensuite.",
+    "confirmBody": "Supprime {{what}}. Vous pourrez la réessayer ensuite.",
     "keep": "La garder"
   },
   "preview": {

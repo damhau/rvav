@@ -8,6 +8,7 @@ import { api, call, isApiError } from "@/lib/api/client";
 import type { Me, ServiceRequest, Step } from "@/lib/api/types";
 import { can } from "@/lib/can";
 import { keys } from "@/lib/query";
+import { failedRollbackOf, rollbackOf, vmsMade } from "./run";
 
 /**
  * Retry from the failed step, or roll back what a failed provisioning request
@@ -18,22 +19,34 @@ import { keys } from "@/lib/query";
  * The box is an alert, read out when it appears, unless `announce` is false
  * when it mounts: a page that moves it (a run's, with the selection) has it
  * read once. Without `mayAct` (an auditor's), it says only what failed.
+ *
+ * What a rollback deletes is named for a VM item: its VMs and what its steps
+ * made for them. A composite makes more than its VMs (custom resources, NSX
+ * objects), and a request that made no VM can't say: what it created.
  */
 export function FailureActions({
   request,
-  rolledBack,
-  rollbackFailed,
+  steps,
   announce = true,
   mayAct = true,
 }: {
   request: ServiceRequest;
-  rolledBack?: Step;
-  rollbackFailed?: Step;
+  steps: Step[];
   announce?: boolean;
   mayAct?: boolean;
 }) {
   const { t } = useTranslation("requests");
-  const undone = request.kind === "provision" && rolledBack;
+  const undone = request.kind === "provision" && rollbackOf(steps);
+  const rollbackFailed = failedRollbackOf(steps);
+  const vms = vmsMade(steps);
+  const made =
+    request.catalog_item.type === "composite" || vms.vms === 0
+      ? t("failure.made.general")
+      : vms.records
+        ? t("failure.made.vmsAddressesRecords", { count: vms.vms })
+        : vms.addresses
+          ? t("failure.made.vmsAddresses", { count: vms.vms })
+          : t("failure.made.vms", { count: vms.vms });
   const [alert] = useState(announce);
   const qc = useQueryClient();
   const [confirmRollback, setConfirmRollback] = useState(false);
@@ -79,7 +92,7 @@ export function FailureActions({
                 ? t("failure.rolledBack", { detail: undone.detail || t("failure.createdDeleted") })
                 : rollbackFailed
                   ? t("failure.rollbackFailed", { error: rollbackFailed.error ?? "" })
-                  : t("failure.keptForLook")}
+                  : t("failure.keptForLook", { what: made })}
           </span>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="primary" onClick={() => retry.mutate()} disabled={retry.isPending}>
@@ -94,7 +107,7 @@ export function FailureActions({
                   open={confirmRollback}
                   onOpenChange={setConfirmRollback}
                   title={t("failure.confirmTitle", { number: request.number })}
-                  description={t("failure.confirmBody")}
+                  description={t("failure.confirmBody", { what: made })}
                   confirmLabel={t("failure.rollBack")}
                   cancelLabel={t("failure.keep")}
                   pending={rollback.isPending}

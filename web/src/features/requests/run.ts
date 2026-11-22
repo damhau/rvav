@@ -40,6 +40,22 @@ export const rollbackOf = (steps: Step[]) => steps.find((s) => s.key === "rollba
 /** The timeline's "Roll back failed": a rollback that didn't finish, so what it didn't delete stays. */
 export const failedRollbackOf = (steps: Step[]) => steps.find((s) => s.key === "rollback" && s.status === "failed");
 
+// A VM's steps are `<base>`, `<base>@<vm>` or under a component's, `<component>/<base>@<vm>` (ADR-0024).
+const vmStep = (base: string) => new RegExp(`(^|/)${base.replace(".", "\\.")}(@|$)`);
+const clone = vmStep("vsphere.clone");
+const reserve = vmStep("ipam.reserve");
+const records = vmStep("dns.create");
+
+/** What a request's VM steps made, those that started: its VMs, their IP addresses and DNS records. */
+export function vmsMade(steps: Step[]): { vms: number; addresses: boolean; records: boolean } {
+  const started = flatten(steps).filter((s) => s.status !== "pending" && s.status !== "skipped");
+  return {
+    vms: started.filter((s) => clone.test(s.key)).length,
+    addresses: started.some((s) => reserve.test(s.key)),
+    records: started.some((s) => records.test(s.key)),
+  };
+}
+
 /**
  * A step's status on the graph. Undone, where the request said so: a step
  * whose undo ran (cancelled, with its `/undo` step done), or the VMs of a

@@ -70,12 +70,21 @@
     "rolledBack": "It was rolled back: {{detail}}. Retry runs it again from its first step, without asking for approval again.",
     "createdDeleted": "what it created was deleted",
     "rollbackFailed": "Rolling it back didn't finish: {{error}} What it didn't delete is kept. Roll back tries again; Retry runs the failed step and the ones after it.",
-    "keptForLook": "What was created is kept so you can look at it. Retry runs the failed step and the ones after it; Roll back deletes the VM, its IP address and DNS records.",
+    "keptForLook": "What was created is kept so you can look at it. Retry runs the failed step and the ones after it; Roll back deletes {{what}}.",
+    "made": {
+      "general": "what it created",
+      "vms_one": "the VM",
+      "vms_other": "the {{count}} VMs",
+      "vmsAddresses_one": "the VM and its IP address",
+      "vmsAddresses_other": "the {{count}} VMs and their IP addresses",
+      "vmsAddressesRecords_one": "the VM, its IP address and DNS records",
+      "vmsAddressesRecords_other": "the {{count}} VMs, their IP addresses and DNS records"
+    },
     "retry": "Retry",
     "retryFromFailed": "Retry from the failed step",
     "rollBack": "Roll back",
     "confirmTitle": "Roll back {{number}}?",
-    "confirmBody": "Deletes what it created: the VM, its IP address and DNS records. You can retry it afterwards.",
+    "confirmBody": "Deletes {{what}}. You can retry it afterwards.",
     "keep": "Keep it"
   },
   "preview": {
