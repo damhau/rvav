@@ -155,7 +155,7 @@ The API records what it sees, and the clients report what only they see:
 | Action | When | Recorded by |
 |---|---|---|
 | `auth.sign_in` | The web app or rvavctl got a token from the provider (browser, device code or loopback), or the local administrator signed in | The API, from the token the client reports with, or from the password checked |
-| `auth.sign_in_failed` | The provider redirected back with an error (a disabled or unknown user, a refused consent, a group the client requires), the state didn't match, or the code couldn't be exchanged | The client, before it has a token: `reported_by: client` |
+| `auth.sign_in_failed` | The provider redirected back with an error (a refused consent, or any refusal it sends back rather than shows), the state didn't match, or the code couldn't be exchanged | The client, before it has a token: `reported_by: client` |
 | `auth.sign_in_failed` | The client reported with a token rvav refuses (expired, signed by another key, a reserved subject), an expired API token was used, or the local administrator's password was wrong | The API |
 | `auth.sign_out` | The web app signed out, or `rvavctl logout` ran | The API, from the token it sent |
 | `auth.token_used` | An API token's first use of the day (UTC) | The API |
@@ -185,8 +185,12 @@ since anyone may send one, and are recorded as `unknown`: a password
 typed in the username field would otherwise reach the SIEM.
 
 rvav has no gate of its own for disabled users or required groups: the
-provider refuses them, and the client reports its error. A token that
-reaches rvav for someone rvav doesn't know signs them in, as before.
+provider refuses them. The client reports a refusal only when the
+provider sends the browser back with it. One it shows on its own page
+never reaches rvav: Keycloak keeps a disabled user, or a wrong password,
+on its sign-in form, and records the attempt in its own login events
+(found on O1.7's stack). A token that reaches rvav for someone rvav
+doesn't know signs them in, as before.
 
 ### No secrets in the audit log
 Clients send neither the code, the state, the device code nor any token:

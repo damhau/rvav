@@ -2634,7 +2634,7 @@ sign-ins**.
 | Action | What it records |
 |---|---|
 | `auth.sign_in` | A sign-in: the user, their roles and groups, the client (`web` or `rvavctl`) and the method (`oidc`, `device`, `token`, `local`, or `dev` in development mode). |
-| `auth.sign_in_failed` | A refusal. **Who** is **Unknown** when the identity provider refused before rvav knew who it was. The detail says the stage (`state`, `provider` or `token`), the reason, and the provider's error and description, such as `access_denied` and `User is disabled`. |
+| `auth.sign_in_failed` | A refusal. **Who** is **Unknown** when the identity provider refused before rvav knew who it was. The detail says the stage (`state`, `provider` or `token`), the reason, and the provider's error and description, such as `access_denied` for a refused consent. |
 | `auth.sign_out` | A sign-out from the web app, or `rvavctl logout`. |
 | `auth.token_used` | An API token's first use of the day (UTC), with its name. An expired token's use is a failure, once a day. |
 
@@ -2648,6 +2648,12 @@ sign-ins**.
   /64) and 300 in all. The same limits apply to the local administrator's
   sign-ins with an unknown username, recorded as `unknown` rather than
   what was typed.
+- **Refused at the provider:** a refusal that the identity provider
+  shows on its own page doesn't reach rvav, since the browser never comes
+  back. Keycloak refuses a disabled user and a wrong password this way.
+  To see those attempts, read the provider's own sign-in log: in
+  Keycloak, turn on the realm's user events (**Realm settings** ›
+  **Events**).
 - **No secrets:** the audit log never records a token, a code or a
   password.
 
