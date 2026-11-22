@@ -892,6 +892,9 @@ function Networks({ canEdit }: { canEdit: boolean }) {
     call(api.DELETE("/admin/network-mappings/{network}", { params: { path: { network } } })),
   );
   const items = mappings.data?.items;
+  // Where a network has IP ranges, its VMs take their addresses from them, not from its other subnet (ADR-0063).
+  const rangedIn = (network: string) =>
+    (items ?? []).filter((m) => m.source === "rvav" && m.network === network && m.vcenter).map((m) => m.vcenter!);
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
       {t("infra.networks.add")}
@@ -950,7 +953,14 @@ function Networks({ canEdit }: { canEdit: boolean }) {
             {t("infra.networks.from.rvav")}
           </Link>
         ) : (
-          <Badge tone={m.source === "manual" ? "accent" : "neutral"}>{t(`infra.networks.from.${m.source}`)}</Badge>
+          <>
+            <Badge tone={m.source === "manual" ? "accent" : "neutral"}>{t(`infra.networks.from.${m.source}`)}</Badge>
+            {rangedIn(m.network).length > 0 && (
+              <span className="mt-1 block text-caption text-muted">
+                {t("infra.networks.rangesWin", { vcenters: rangedIn(m.network).join(", ") })}
+              </span>
+            )}
+          </>
         ),
     },
   ];

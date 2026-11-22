@@ -79,19 +79,60 @@ export function openerOf(el: Element | null): HTMLElement | null {
 }
 
 /**
+ * What stands in for a control of a table's row once its row went: the
+ * same control of the row now at its place, else of the last row, else the
+ * table (a DataTable's wrapper) itself.
+ */
+export function rowStandIn(table: HTMLElement | null | undefined, index: number): HTMLElement | null {
+  if (!table?.isConnected) return null;
+  const rows = [...table.querySelectorAll("tbody tr")];
+  for (const row of [rows[index], rows.at(-1)]) {
+    const control =
+      row?.querySelector<HTMLElement>("[aria-haspopup=menu]") ??
+      row?.querySelector<HTMLElement>(`${focusable}, a[href]`);
+    if (control) return control;
+  }
+  table.tabIndex = -1;
+  return table;
+}
+
+/** The DataTable and row index of a control in a row, for `rowStandIn`. */
+function rowOf(el: HTMLElement | null) {
+  const row = el?.closest("tr");
+  const table = row?.closest<HTMLElement>("[data-table]");
+  return row && table ? { table, index: [...row.parentElement!.children].indexOf(row) } : null;
+}
+
+/**
  * The opener, read on the first render of a dialog's content: Radix gives the
  * focus back to a Dialog.Trigger only, and by the time its open-autofocus
  * runs, a menu item that opened the dialog has left the page. `instead` names
- * another element for when the dialog's action removes its opener.
+ * another element for when the dialog's action removes its opener; a row's
+ * menu button that went hands the focus to the row at its place.
  */
 export function useOpener(instead?: () => HTMLElement | null | undefined) {
   const [opener] = useState(() => openerOf(document.activeElement));
+  const [row] = useState(() => rowOf(opener));
   return (e: Event) => {
     if (e.defaultPrevented) return;
-    const target = instead?.() ?? (opener?.isConnected ? opener : null);
+    const target = instead?.() ?? (opener?.isConnected ? opener : row ? rowStandIn(row.table, row.index) : null);
     if (target) {
       e.preventDefault();
       target.focus();
     }
   };
+}
+
+/**
+ * Once `settled` (a list refetched after an action), a focus that fell to the
+ * page, what had it having gone with its list, goes to `then`.
+ */
+export async function catchFocus(settled: Promise<unknown>, then: () => HTMLElement | null | undefined) {
+  await settled.catch(() => undefined);
+  // The list's new rows are drawn a task later.
+  await new Promise((r) => setTimeout(r));
+  requestAnimationFrame(() => {
+    const now = document.activeElement;
+    if (!now || now === document.body) then()?.focus();
+  });
 }

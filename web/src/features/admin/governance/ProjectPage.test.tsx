@@ -121,6 +121,28 @@ describe("a project's placement and quotas", () => {
     expect(row).toHaveTextContent("Binpack");
   });
 
+  it("shows Any environment as chosen, and saves it as no environment", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=placement");
+    const directory = await screen.findByRole("region", { name: "Active Directory" });
+    const row = await within(directory).findByRole("row", { name: /^Any environment/ });
+    await user.click(within(row).getByRole("button", { name: /^Actions for the OU/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+    const sheet = await screen.findByRole("dialog", { name: "Change the Active Directory OU for Web Platform" });
+    const environment = within(sheet).getByRole("combobox", { name: "Environment" });
+    expect(environment).toHaveTextContent("Any environment");
+    expect(environment).not.toHaveAttribute("data-placeholder");
+    await user.click(environment);
+    await user.click(await screen.findByRole("option", { name: "dev" }));
+    await user.click(environment);
+    await user.click(await screen.findByRole("option", { name: "Any environment" }));
+    expect(environment).toHaveTextContent("Any environment");
+    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    expect(await screen.findByText("OU saved")).toBeInTheDocument();
+    const anyRows = adminState(db).adPlacements.filter((r) => r.project_id === "prj_web" && r.environment === null);
+    expect(anyRows).toHaveLength(1);
+  });
+
   it("gives the project an OU in Active Directory for an environment, with groups (ADR-0064)", async () => {
     const user = userEvent.setup();
     renderApp("/admin/projects/prj_web?tab=placement");

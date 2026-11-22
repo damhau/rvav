@@ -224,6 +224,13 @@ function Report({ report }: { report: IpamReconcile }) {
   );
 }
 
+const toReconcile = (r: IpamReconcile) =>
+  r.orphan_addresses.length +
+  r.orphan_records.length +
+  r.missing.length +
+  r.orphan_allocations.length +
+  r.unallocated.length;
+
 function Reconcile() {
   const { t } = useTranslation("admin");
   const [run, setRun] = useState(false);
@@ -248,6 +255,13 @@ function Reconcile() {
         </Button>
       }
     >
+      <p role="status" className="sr-only">
+        {report.data &&
+          !report.isFetching &&
+          (toReconcile(report.data)
+            ? t("integrations.reconcile.found", { count: toReconcile(report.data) })
+            : t("integrations.reconcile.foundNone"))}
+      </p>
       {!run && <p className="px-4 py-3 text-secondary text-muted">{t("integrations.reconcile.about")}</p>}
       {run && report.isPending && <SkeletonRows rows={3} cols={4} />}
       {report.isError && <ErrorState error={report.error} onRetry={() => void report.refetch()} />}

@@ -77,6 +77,9 @@ describe("vRA import", () => {
 
     await user.click(screen.getByRole("button", { name: "Import…" }));
     const sheet = await screen.findByRole("dialog", { name: "Import from vRA" });
+    expect(within(sheet).getByRole("checkbox", { name: "Deployments" })).toHaveAccessibleDescription(
+      /to adopt through onboarding, every project's/,
+    );
     expect(sheet).toHaveTextContent(/2 property groups to make from vRA's;/);
     expect(sheet).toHaveTextContent(/1 form library entry to make from vRO's actions;/);
     await user.click(within(sheet).getByRole("button", { name: "Import" }));

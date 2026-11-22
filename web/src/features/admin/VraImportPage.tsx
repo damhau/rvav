@@ -17,7 +17,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { CheckField } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Field, Textarea } from "@/components/ui/input";
@@ -1223,24 +1223,22 @@ function ImportSheet({
       submitLabel={run.isPending ? t("vra.importSheet.importing") : t("vra.importSheet.submit")}
       submitDisabled={!catalog && !deployments}
     >
-      <label htmlFor="vra-catalog" className="flex items-start gap-2 text-body">
-        <Checkbox id="vra-catalog" className="mt-0.5" checked={catalog} onChange={setCatalog} />
-        <span>
-          <span className="font-medium">{t("vra.importSheet.catalog")}</span>
-          <span className="block text-secondary text-muted">{catalogHint}</span>
-        </span>
-      </label>
-      <label htmlFor="vra-deployments" className="flex items-start gap-2 text-body">
-        <Checkbox id="vra-deployments" className="mt-0.5" checked={deployments} onChange={setDeployments} />
-        <span>
-          <span className="font-medium">{t("vra.importSheet.deployments")}</span>
-          <span className="block text-secondary text-muted">
-            {t("vra.importSheet.deploymentsHint", {
-              deployments: t("vra.n.deployment", { count: s.deployments_adopt }),
-            })}
-          </span>
-        </span>
-      </label>
+      <CheckField
+        id="vra-catalog"
+        label={<span className="font-medium">{t("vra.importSheet.catalog")}</span>}
+        hint={catalogHint}
+        checked={catalog}
+        onChange={setCatalog}
+      />
+      <CheckField
+        id="vra-deployments"
+        label={<span className="font-medium">{t("vra.importSheet.deployments")}</span>}
+        hint={t("vra.importSheet.deploymentsHint", {
+          deployments: t("vra.n.deployment", { count: s.deployments_adopt }),
+        })}
+        checked={deployments}
+        onChange={setDeployments}
+      />
       {!catalog && !deployments && <p className="text-secondary text-muted">{t("vra.importSheet.choose")}</p>}
     </Sheet>
   );

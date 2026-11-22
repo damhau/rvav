@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { CheckField } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
@@ -24,7 +24,9 @@ import { errorAt, failed, fieldErrors } from "./common";
 
 type S = components["schemas"];
 
-const ANY = "";
+// Radix Select takes "" for no value at all: "*" stands for any environment,
+// which no environment's key can be.
+const ANY = "*";
 const ouExample = "OU=Servers,OU=Web";
 const groupExample = "CN=Web servers,OU=Groups";
 
@@ -64,7 +66,7 @@ function PlacementSheet({
     mutationFn: () => {
       const body: S["AdPlacementWrite"] = {
         project_id: project?.id ?? null,
-        environment: f.environment || null,
+        environment: f.environment === ANY ? null : f.environment,
         ou: f.ou.trim(),
         groups: f.groups
           .split("\n")
@@ -142,13 +144,13 @@ function PlacementSheet({
           onChange={(e) => setF({ ...f, groups: e.target.value })}
         />
       </Field>
-      <label htmlFor="adp-allow" className="flex items-start gap-2 text-body">
-        <Checkbox id="adp-allow" checked={f.allow} onChange={(allow) => setF({ ...f, allow })} className="mt-0.5" />
-        <span>
-          {t("placements.allow")}
-          <span className="block text-secondary text-muted">{t("placements.allowNote")}</span>
-        </span>
-      </label>
+      <CheckField
+        id="adp-allow"
+        label={t("placements.allow")}
+        hint={t("placements.allowNote")}
+        checked={f.allow}
+        onChange={(allow) => setF({ ...f, allow })}
+      />
     </Sheet>
   );
 }

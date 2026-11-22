@@ -302,8 +302,6 @@ function Network({
   );
 }
 
-/** The NSX security groups made for the deployment, the firewall rules into
- * them, and the groups each VM is in; tags removed in NSX are drift (ADR-0028). */
 function Computers({ computers }: { computers: AdComputerResource[] }) {
   const { t } = useTranslation("deployments");
   return (
@@ -326,6 +324,8 @@ function Computers({ computers }: { computers: AdComputerResource[] }) {
   );
 }
 
+/** The NSX security groups made for the deployment, the firewall rules into
+ * them, and the groups each VM is in; tags removed in NSX are drift (ADR-0028). */
 function SecurityGroups({
   groups,
   policies,

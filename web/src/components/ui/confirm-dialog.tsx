@@ -19,6 +19,8 @@ interface ConfirmProps {
   pending?: boolean;
   /** "danger" for what can't be undone. */
   tone?: "danger" | "primary";
+  /** Where the focus goes on closing, when not back to what opened it: its action removes it. */
+  returnFocus?: () => HTMLElement | null | undefined;
 }
 
 /** Asks before a change that removes or breaks something, saying what depends on it. */
@@ -47,9 +49,10 @@ function ConfirmContent({
   onConfirm,
   pending,
   tone = "danger",
+  returnFocus,
 }: ConfirmProps & { ref?: React.Ref<HTMLDivElement> }) {
   const { t } = useTranslation();
-  const giveFocusBack = useOpener();
+  const giveFocusBack = useOpener(returnFocus);
   return (
     <A.Content
       ref={ref}

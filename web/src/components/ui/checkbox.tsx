@@ -39,3 +39,46 @@ export function Checkbox({
     </C.Root>
   );
 }
+
+/**
+ * A checkbox with its label and a hint below: the label names it and the
+ * hint describes it, so the hint isn't read as part of its name.
+ */
+export function CheckField({
+  id,
+  label,
+  hint,
+  checked,
+  onChange,
+  disabled,
+  className,
+}: {
+  id: string;
+  label: React.ReactNode;
+  hint?: React.ReactNode;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex items-start gap-2 text-body", className)}>
+      <Checkbox
+        id={id}
+        className="mt-0.5"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        aria-describedby={hint ? `${id}-hint` : undefined}
+      />
+      <span>
+        <label htmlFor={id}>{label}</label>
+        {hint && (
+          <span id={`${id}-hint`} className="block text-secondary text-muted">
+            {hint}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}

@@ -4,13 +4,15 @@
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, ListOrdered } from "lucide-react";
-import { useState } from "react";
+import type { TFunction } from "i18next";
+import { useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { catchFocus } from "@/components/ui/opener";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -266,11 +268,18 @@ function AddressesSheet({ range, onClose }: { range: S["IpRange"]; onClose: () =
   );
 }
 
+/** What a check found, said as it ends. */
+const found = (t: TFunction<"admin-governance">, count: number) =>
+  count ? t("ipRanges.reconcile.found", { count }) : t("ipRanges.reconcile.foundNone");
+
 function Reconcile() {
   const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const [run, setRun] = useState(false);
   const report = useQuery({ ...q.ipamReconcile(), enabled: run });
+  const runButton = useRef<HTMLButtonElement>(null);
+  // An address given back or excluded leaves its list, the list's section with its last one.
+  const refetched = () => void catchFocus(report.refetch(), () => runButton.current);
   const [releasing, setReleasing] = useState<S["IpamOrphanAllocation"] | null>(null);
   const release = useMutation({
     mutationFn: (o: S["IpamOrphanAllocation"]) =>
@@ -281,7 +290,7 @@ function Reconcile() {
       ),
     onSuccess: (_, o) => {
       invalidate(qc);
-      void report.refetch();
+      refetched();
       toast.success(t("ipRanges.givenBack", { address: o.address }));
       setReleasing(null);
     },
@@ -308,7 +317,7 @@ function Reconcile() {
     },
     onSuccess: (_, u) => {
       invalidate(qc);
-      void report.refetch();
+      refetched();
       toast.success(t("ipRanges.excludedFrom", { address: u.address, range: u.range_name }));
     },
     onError: (e) => failed(e, t("ipRanges.notExcluded")),
@@ -326,7 +335,12 @@ function Reconcile() {
       description={t("ipRanges.reconcile.lead")}
       flush
       actions={
-        <Button size="sm" disabled={report.isFetching} onClick={() => (run ? void report.refetch() : setRun(true))}>
+        <Button
+          ref={runButton}
+          size="sm"
+          disabled={report.isFetching}
+          onClick={() => (run ? void report.refetch() : setRun(true))}
+        >
           {report.isFetching
             ? t("ipRanges.reconcile.checking")
             : data
@@ -335,6 +349,9 @@ function Reconcile() {
         </Button>
       }
     >
+      <p role="status" className="sr-only">
+        {data && !report.isFetching && found(t, data.orphan_allocations.length + data.unallocated.length)}
+      </p>
       {!run && <p className="px-4 py-3 text-secondary text-muted">{t("ipRanges.reconcile.intro")}</p>}
       {run && report.isPending && <SkeletonRows rows={3} cols={4} />}
       {report.isError && <ErrorState error={report.error} onRetry={() => void report.refetch()} />}

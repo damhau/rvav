@@ -81,7 +81,12 @@ describe("Onboarding", () => {
     await choose(user, "Environment", "dev");
     await choose(user, "Owner", "Léa Martin");
     await choose(user, "Catalog item", "RHEL 9 server");
-    await user.click(within(sheet).getByRole("checkbox", { name: /Keep from deletion/ }));
+    // Named by its label, its hint describing it.
+    const keep = within(sheet).getByRole("checkbox", { name: "Keep from deletion" });
+    expect(keep).toHaveAccessibleDescription(
+      /^Deleting their deployment is refused .* Use it for VMs that vRA keeps from deletion\.$/,
+    );
+    await user.click(keep);
     await user.click(within(sheet).getByRole("button", { name: "Adopt 1 VM" }));
 
     expect(await screen.findByRole("region", { name: "Adopted 1 VM into 1 deployment" })).toBeInTheDocument();

@@ -121,7 +121,12 @@ describe("integration settings", () => {
   it("signs in to ServiceNow over https as an OAuth client", async () => {
     const user = open("servicenow");
     const snow = await screen.findByRole("region", { name: "ServiceNow connection" });
-    expect(within(snow).getByRole("textbox", { name: "Sign-in" })).toHaveValue("oauth");
+    // The two ways the server takes, to choose from.
+    const signIn = within(snow).getByRole("combobox", { name: "Sign-in" });
+    expect(signIn).toHaveTextContent("oauth");
+    await user.click(signIn);
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["basic", "oauth"]);
+    await user.click(screen.getByRole("option", { name: "oauth" }));
     await user.click(within(snow).getByRole("button", { name: "Test connection" }));
     expect(
       await within(snow).findByText(

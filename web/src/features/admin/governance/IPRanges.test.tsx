@@ -111,6 +111,10 @@ describe("IP ranges", () => {
     const ranged = await within(networks).findByRole("row", { name: /dvpg-db-prd-vl230.*rvav IP ranges/ });
     expect(ranged).toHaveTextContent("dvpg-db-prd-vl230vc01.corp.example10.22.30.0/25");
     expect(ranged).toHaveTextContent("No DNS records");
+    // Its EfficientIP subnet is there too: the ranges win.
+    expect(within(networks).getByRole("row", { name: /dvpg-db-prd-vl230.*EfficientIP/ })).toHaveTextContent(
+      "Not used in vc01.corp.example: rvav's IP ranges give its addresses there.",
+    );
     await user.click(within(ranged).getByRole("link", { name: "rvav IP ranges" }));
     expect(await screen.findByRole("region", { name: "IP ranges" })).toBeInTheDocument();
   }, 20_000);
@@ -149,6 +153,8 @@ describe("IP ranges", () => {
     const strays = within(reconcile).getByRole("region", { name: "VMs on an address their range didn't give" });
     expect(within(strays).getByRole("row", { name: /lab-tst-build01/ })).toHaveTextContent("No VM");
     expect(within(strays).getByRole("row", { name: /web-tst-old01/ })).toHaveTextContent("web-tst-lab002");
+    // Said as the check ends, the button that ran it keeping the focus.
+    expect(within(reconcile).getByRole("status")).toHaveTextContent("Checked: 3 to reconcile.");
 
     // vCenter still reports the VM on it: not given back yet.
     rangeState(db).inventory.push({ vm: "web-tst-lab009", address: "10.41.10.205" });
@@ -165,12 +171,17 @@ describe("IP ranges", () => {
     await user.click(within(confirm).getByRole("button", { name: "Give back address" }));
     await waitFor(() => expect(within(reconcile).queryByRole("region", { name: /no longer has/ })).toBeNull());
     expect(rangeState(db).allocations.map((a) => a.address)).not.toContain("10.41.10.205");
+    // Its list gone with it, the focus goes to the check.
+    await waitFor(() => expect(within(reconcile).getByRole("button", { name: "Check again" })).toHaveFocus());
+    expect(within(reconcile).getByRole("status")).toHaveTextContent("Checked: 2 to reconcile.");
 
     // Another VM holds .201: one of the two moves, nothing to exclude.
     expect(within(strays).queryByRole("button", { name: "Actions for web-tst-old01" })).toBeNull();
     await user.click(within(strays).getByRole("button", { name: "Actions for lab-tst-build01" }));
     await user.click(await screen.findByRole("menuitem", { name: "Exclude from Test lab" }));
     await waitFor(() => expect(within(strays).queryByRole("row", { name: /lab-tst-build01/ })).toBeNull());
+    // The row at its place has no menu: the focus stays in the list, not on the page.
+    await waitFor(() => expect(strays).toContainElement(document.activeElement as HTMLElement));
     expect(rangeState(db).ranges[0]?.excluded).toEqual(["10.41.10.210", "10.41.10.220-10.41.10.224", "10.41.10.230"]);
   }, 15_000);
 

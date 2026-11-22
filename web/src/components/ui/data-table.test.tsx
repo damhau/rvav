@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ConfirmDialog } from "./confirm-dialog";
 import { MenuItem, MenuLabel } from "./dropdown-menu";
 import { DataTable, PHONE, TableSearch, type Column } from "./data-table";
 import { EmptyState } from "./empty-state";
@@ -107,6 +108,72 @@ describe("DataTable", () => {
     await user.click(screen.getByRole("button", { name: "Actions for web-10" }));
     await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
     expect(remove).toHaveBeenCalledWith("web-10");
+  });
+
+  it("hands the focus to the row at its place when a row's menu removes it, or to the last row", async () => {
+    const user = userEvent.setup();
+    function Removing() {
+      const [rows, setRows] = useState(vms);
+      return (
+        <DataTable
+          label="VMs"
+          columns={columns}
+          rows={rows}
+          rowKey={(v) => v.name}
+          rowMenuLabel={(v) => `Actions for ${v.name}`}
+          rowMenu={(v) => (
+            <MenuItem danger onSelect={() => setRows((r) => r.filter((x) => x !== v))}>
+              Remove
+            </MenuItem>
+          )}
+        />
+      );
+    }
+    render(<Removing />);
+    await user.click(screen.getByRole("button", { name: "Actions for web-10" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Actions for db-01" })).toHaveFocus());
+    await user.keyboard("{Enter}");
+    await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Actions for web-02" })).toHaveFocus());
+  });
+
+  it("hands the focus to the row at its place when a dialog a row opened removes it", async () => {
+    const user = userEvent.setup();
+    function Asking() {
+      const [rows, setRows] = useState(vms);
+      const [asking, setAsking] = useState<Vm | null>(null);
+      return (
+        <>
+          <DataTable
+            label="VMs"
+            columns={columns}
+            rows={rows}
+            rowKey={(v) => v.name}
+            rowMenuLabel={(v) => `Actions for ${v.name}`}
+            rowMenu={(v) => <MenuItem onSelect={() => setAsking(v)}>Remove</MenuItem>}
+          />
+          {asking && (
+            <ConfirmDialog
+              open
+              onOpenChange={(o) => !o && setAsking(null)}
+              title={`Remove ${asking.name}?`}
+              description="It goes."
+              confirmLabel="Remove VM"
+              onConfirm={() => {
+                setRows((r) => r.filter((x) => x !== asking));
+                setAsking(null);
+              }}
+            />
+          )}
+        </>
+      );
+    }
+    render(<Asking />);
+    await user.click(screen.getByRole("button", { name: "Actions for web-02" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    await user.click(await screen.findByRole("button", { name: "Remove VM" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Actions for web-10" })).toHaveFocus());
   });
 
   it("follows a row's link from anywhere in the row", async () => {

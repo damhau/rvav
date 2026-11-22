@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { formatList, fullDate, relative } from "@/lib/format";
@@ -70,6 +71,8 @@ interface Setting {
   wide?: boolean;
   // A checkbox's warning, shown while it is ticked.
   warn?: string;
+  // The values the server takes, offered in a select.
+  choices?: string[];
 }
 
 interface Definition {
@@ -393,6 +396,7 @@ function definition(kind: Kind): Definition {
             env: "RVAV_SERVICENOW_AUTH",
             type: "string",
             hint: t("integrations.hint.snowAuth"),
+            choices: ["basic", "oauth"],
           },
           user("RVAV_SERVICENOW_USERNAME", t("integrations.hint.snowUser")),
           {
@@ -756,6 +760,19 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
                     </span>
                   )}
                 </div>
+              );
+            if (f.choices)
+              return (
+                <Field key={f.name} label={f.label} htmlFor={id} hint={hint} error={error}>
+                  <Select
+                    id={id}
+                    disabled={locked}
+                    listLabel={f.label}
+                    value={String(values[f.name] ?? "")}
+                    onChange={(v) => setValues({ ...values, [f.name]: v })}
+                    options={f.choices.map((c) => ({ value: c, label: c }))}
+                  />
+                </Field>
               );
             if (f.multiline)
               return (

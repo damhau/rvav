@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { ExternalLink } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
@@ -28,10 +28,13 @@ export function ServiceNowToken() {
   const qc = useQueryClient();
   const q = useQuery(adm.serviceNowToken());
   const [asking, setAsking] = useState(false);
+  const [renewing, setRenewing] = useState(false);
+  const makeButton = useRef<HTMLButtonElement>(null);
   const refresh = () => void qc.invalidateQueries({ queryKey: ["admin", "servicenow-token"] });
   const make = useMutation({
     mutationFn: () => call(api.POST("/admin/integrations/servicenow/token")),
     onSuccess: () => {
+      setRenewing(false);
       refresh();
       toast.success(t("serviceNow.token.madeToast"));
     },
@@ -96,7 +99,11 @@ export function ServiceNowToken() {
           )}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => make.mutate()} disabled={make.isPending}>
+          <Button
+            ref={makeButton}
+            onClick={() => (token ? setRenewing(true) : make.mutate())}
+            disabled={make.isPending}
+          >
             {make.isPending
               ? t("serviceNow.token.making")
               : token
@@ -109,18 +116,30 @@ export function ServiceNowToken() {
             </Button>
           )}
         </div>
-        {done && (
-          <section
-            aria-label={t("serviceNow.token.madeLabel")}
-            aria-live="polite"
-            className="flex flex-col gap-1.5 rounded-md border border-line p-3 text-secondary"
-          >
-            <p>{t("serviceNow.token.putIt")}</p>
-            <CopyText value={done.secret} className="max-w-full" />
-            {done.revoked ? <p>{t("serviceNow.token.revoked")}</p> : null}
-          </section>
-        )}
+        {/* Live before the token comes, for it to be read out as it does. */}
+        <div aria-live="polite">
+          {done && (
+            <section
+              aria-label={t("serviceNow.token.madeLabel")}
+              className="flex flex-col gap-1.5 rounded-md border border-line p-3 text-secondary"
+            >
+              <p>{t("serviceNow.token.putIt")}</p>
+              <CopyText value={done.secret} className="max-w-full" />
+              {done.revoked ? <p>{t("serviceNow.token.revoked")}</p> : null}
+            </section>
+          )}
+        </div>
       </div>
+      <ConfirmDialog
+        open={renewing}
+        onOpenChange={setRenewing}
+        title={t("serviceNow.token.renewTitle")}
+        description={t("serviceNow.token.renewDescription")}
+        consequences={t("serviceNow.token.renewConsequences")}
+        confirmLabel={t("serviceNow.token.makeNew")}
+        pending={make.isPending}
+        onConfirm={() => make.mutate()}
+      />
       <ConfirmDialog
         open={asking}
         onOpenChange={setAsking}
@@ -130,6 +149,7 @@ export function ServiceNowToken() {
         confirmLabel={t("serviceNow.token.revokeConfirm")}
         pending={revoke.isPending}
         onConfirm={() => revoke.mutate()}
+        returnFocus={() => makeButton.current}
       />
     </Panel>
   );
@@ -179,9 +199,16 @@ const orphanColumns = (t: TFunction<"admin">): Column<S["ServiceNowOrphan"]>[] =
   {
     id: "updated",
     header: t("serviceNow.cmdb.changed"),
-    cell: (o) => (o.updated_at ? t("serviceNow.cmdb.utc", { when: o.updated_at }) : "—"),
+    cell: (o) => <Changed at={o.updated_at} />,
   },
 ];
+
+/** A time as ServiceNow writes it, "2026-11-22 14:05:31" in UTC, shown as the page's other times. */
+function Changed({ at }: { at?: string }) {
+  if (!at) return "—";
+  if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(at)) return at;
+  return <Time iso={`${at.replace(" ", "T")}Z`} />;
+}
 
 export function ServiceNowCmdb() {
   const { t } = useTranslation("admin");
@@ -234,7 +261,7 @@ export function ServiceNowCmdb() {
               value: (
                 <span className="tnum">
                   {t("serviceNow.cmdb.deployments", { count: c.queued })}
-                  {c.failing > 0 && t("serviceNow.cmdb.refusedAgain", { n: c.failing })}
+                  {c.failing > 0 && t("serviceNow.cmdb.refusedAgain", { count: c.failing })}
                 </span>
               ),
             },

@@ -33,8 +33,9 @@ describe("integrations, in French", () => {
     await user.click(within(panel).getByRole("button", { name: "Lancer la vérification" }));
     expect(await within(panel).findByRole("table", { name: "Adresses qu'aucun déploiement ne possède" })).toBeVisible();
     expect(panel).toHaveTextContent(
-      "Plages IP de rvav : 1 adresse de VM que rvav n'a plus, 2 VM sur une adresse que leur plage n'a pas donnée.",
+      "Plages IP de rvav : 1 adresse de VM que rvav n'a plus, 2 VM sur une adresse que leur plage n'a pas attribuée.",
     );
+    expect(within(panel).getByRole("status")).toHaveTextContent("Vérifié : 6 à rapprocher.");
   });
 
   it("tests vCenter's connection and lists the vCenters", { timeout: 15_000 }, async () => {
@@ -60,10 +61,14 @@ describe("integrations, in French", () => {
     expect(await within(token).findByText(/ServiceNow a appelé rvav pour la dernière fois/)).toBeInTheDocument();
     expect(token).toHaveTextContent(/Accepté depuis n'importe quelle adresse, jusqu'à \d+ requêtes par minute/);
     await user.click(within(token).getByRole("button", { name: "Créer un nouveau jeton" }));
+    const renew = await screen.findByRole("alertdialog", { name: "Créer un nouveau jeton\u00a0?" });
+    expect(renew).toHaveTextContent("Le jeton qu'il a maintenant est révoqué aussitôt.");
+    await user.click(within(renew).getByRole("button", { name: "Créer un nouveau jeton" }));
     const made = await within(token).findByRole("region", { name: "Jeton de ServiceNow créé" });
     expect(made).toHaveTextContent("Le jeton créé auparavant est révoqué.");
     const cmdb = screen.getByRole("region", { name: "CMDB" });
     expect(await within(cmdb).findByText("Tous les projets")).toBeInTheDocument();
+    expect(within(cmdb).getByText("0 déploiement ; 1 refusé, à réessayer")).toBeInTheDocument();
     expect(within(cmdb).getByRole("table", { name: "Déploiements refusés par ServiceNow" })).toBeInTheDocument();
     expect(within(cmdb).getByRole("table", { name: "CI que rvav n'a plus" })).toHaveTextContent(
       "(s'ouvre dans un nouvel onglet)",

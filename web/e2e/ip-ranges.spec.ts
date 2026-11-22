@@ -85,6 +85,9 @@ async function rangesFlow(page: Page, check: (where: string) => Promise<void>) {
   const networks = page.getByRole("region", { name: "Network mappings" });
   const ranged = networks.getByRole("row", { name: /dvpg-db-prd-vl230.*rvav IP ranges/ });
   await expect(ranged).toContainText("No DNS records");
+  await expect(networks.getByRole("row", { name: /dvpg-db-prd-vl230.*EfficientIP/ })).toContainText(
+    "Not used in vc01.corp.example: rvav's IP ranges give its addresses there.",
+  );
   await toastsGone(page);
   await check("the networks with their source");
   await ranged.getByRole("link", { name: "rvav IP ranges" }).click();
@@ -96,6 +99,10 @@ async function rangesFlow(page: Page, check: (where: string) => Promise<void>) {
   await expect(orphans.getByRole("row", { name: /10\.41\.10\.205/ })).toContainText("web-tst-lab009");
   const strays = reconcile.getByRole("region", { name: "VMs on an address their range didn't give" });
   await expect(strays.getByRole("row", { name: /web-tst-old01/ })).toContainText("web-tst-lab002");
+  // Said as it ends, the check's button keeping the focus.
+  const again = reconcile.getByRole("button", { name: "Check again" });
+  await expect(reconcile.getByRole("status")).toHaveText("Checked: 3 to reconcile.");
+  await expect(again).toBeFocused();
   await check("the reconcile report");
   await orphans.getByRole("button", { name: "Actions for 10.41.10.205" }).click();
   await page.getByRole("menuitem", { name: "Give back" }).click();
@@ -104,6 +111,9 @@ async function rangesFlow(page: Page, check: (where: string) => Promise<void>) {
   await confirm.getByRole("button", { name: "Give back address" }).click();
   await expect(page.getByText("10.41.10.205 given back")).toBeVisible();
   await expect(orphans).toBeHidden();
+  // Its list gone with it, the focus goes back to the check.
+  await expect(again).toBeFocused();
+  await expect(reconcile.getByRole("status")).toHaveText("Checked: 2 to reconcile.");
   await expect(lab).toContainText("30 free");
 
   await toastsGone(page);
@@ -111,6 +121,8 @@ async function rangesFlow(page: Page, check: (where: string) => Promise<void>) {
   await page.getByRole("menuitem", { name: "Exclude from Test lab" }).click();
   await expect(page.getByText("10.41.10.230 excluded from Test lab")).toBeVisible();
   await expect(strays.getByRole("row", { name: /lab-tst-build01/ })).toBeHidden();
+  // The row now at its place has nothing to focus: the list takes the focus, not the page.
+  await expect(strays.locator("[data-table]")).toBeFocused();
   await expect(lab).toContainText("30 free");
   await expect(lab).toContainText("3 excluded");
 }

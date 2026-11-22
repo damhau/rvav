@@ -14,7 +14,7 @@ import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { PowerDot } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { CheckField } from "@/components/ui/checkbox";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
@@ -145,13 +145,14 @@ function AdoptSheet({
             </li>
           ))}
         </ul>
-        <label htmlFor="ob-keep" className="mt-1 flex items-start gap-2 text-body">
-          <Checkbox id="ob-keep" className="mt-0.5" checked={keep} onChange={setKeep} />
-          <span>
-            <span className="font-medium">{t("onboarding.keep")}</span>
-            <span className="block text-secondary text-muted">{t("onboarding.keepHint")}</span>
-          </span>
-        </label>
+        <CheckField
+          id="ob-keep"
+          className="mt-1"
+          label={<span className="font-medium">{t("onboarding.keep")}</span>}
+          hint={t("onboarding.keepHint")}
+          checked={keep}
+          onChange={setKeep}
+        />
       </section>
     </Sheet>
   );

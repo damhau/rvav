@@ -10,7 +10,7 @@ import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { CheckField, Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, TableSearch, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
@@ -525,18 +525,13 @@ function EnvironmentSheet({
           onChange={(e) => setF({ ...f, name: e.target.value })}
         />
       </Field>
-      <label htmlFor="env-production" className="flex items-start gap-2 text-body">
-        <Checkbox
-          id="env-production"
-          checked={f.production}
-          onChange={(on) => setF({ ...f, production: on })}
-          className="mt-0.5"
-        />
-        <span>
-          {t("projects.environments.production")}
-          <span className="block text-secondary text-muted">{t("projects.environments.productionNote")}</span>
-        </span>
-      </label>
+      <CheckField
+        id="env-production"
+        label={t("projects.environments.production")}
+        hint={t("projects.environments.productionNote")}
+        checked={f.production}
+        onChange={(on) => setF({ ...f, production: on })}
+      />
       <Field
         label={t("projects.environments.snapshots")}
         htmlFor="env-snapshots"

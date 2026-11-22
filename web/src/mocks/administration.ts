@@ -2649,6 +2649,9 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         const cls = w.settings.cmdb_class;
         if (typeof cls === "string" && cls && !/^cmdb_ci[a-z0-9_]*$/.test(cls))
           bad.push(err("/settings/cmdb_class", "A CMDB class's table name, for example cmdb_ci_vmware_instance."));
+        const auth = w.settings.auth;
+        if (typeof auth === "string" && auth && auth !== "basic" && auth !== "oauth")
+          bad.push(err("/settings/auth", "basic or oauth."));
         const projects = w.settings.projects;
         const unknown = Array.isArray(projects)
           ? (projects as unknown[]).map(String).find((x) => !db.projects.some((p) => p.id === x || p.code === x))

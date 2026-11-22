@@ -1,10 +1,11 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, Ellipsis, Search } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Menu, MenuContent, MenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { rowStandIn } from "@/components/ui/opener";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
@@ -123,6 +124,23 @@ export function DataTable<T>({
       ? [...rows].sort((a, b) => compare(by.sortValue!(a), by.sortValue!(b)) * (sort?.desc ? -1 : 1))
       : rows;
   const menus = rowMenu && sorted ? new Map(sorted.map((r) => [rowKey(r), rowMenu(r)])) : undefined;
+  const wrapper = useRef<HTMLDivElement>(null);
+  // The row the focus was last in, for when its action removes it (given
+  // back, deleted): the focus then goes to the row now at its place.
+  const focusedRow = useRef<{ key: string; index: number } | null>(null);
+  const keys = sorted?.map(rowKey);
+  useLayoutEffect(() => {
+    const was = focusedRow.current;
+    if (!was || !keys || keys.includes(was.key)) return;
+    focusedRow.current = null;
+    const standIn = () => {
+      const now = document.activeElement;
+      if (!now || now === document.body) rowStandIn(wrapper.current, was.index)?.focus();
+    };
+    standIn();
+    // A menu item that removed its row: the menu gives the focus back to its gone button as it closes.
+    requestAnimationFrame(standIn);
+  });
   const hasMenu = menus !== undefined && [...menus.values()].some((m) => m !== null && m !== undefined && m !== false);
   const width = columns.length + (selection ? 1 : 0) + (hasMenu ? 1 : 0);
   const allSelected = Boolean(sorted?.length) && sorted!.every((r) => selection?.selected.has(rowKey(r)));
@@ -267,6 +285,11 @@ export function DataTable<T>({
                     <tr
                       key={key}
                       role={role("row")}
+                      // The row's menu too: it is portalled out of the row, its focus bubbling here.
+                      onFocus={(e) => {
+                        const row = e.currentTarget;
+                        focusedRow.current = { key, index: [...row.parentElement!.children].indexOf(row) };
+                      }}
                       className={cn(
                         "border-b border-line last:border-b-0",
                         stacked && "grid gap-x-3 gap-y-1 px-4 py-3",
@@ -361,7 +384,17 @@ export function DataTable<T>({
   }
 
   return (
-    <div className={cn("min-w-0", className)}>
+    <div
+      ref={wrapper}
+      data-table=""
+      className={cn("min-w-0", className)}
+      onBlur={(e) => {
+        // Kept while the focus is in what a row opened (its menu, a dialog), or falls to the page as its row goes.
+        const to = e.relatedTarget;
+        if (to && !wrapper.current?.contains(to) && !to.closest('[role="menu"], [role="dialog"], [role="alertdialog"]'))
+          focusedRow.current = null;
+      }}
+    >
       {toolbar && <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">{toolbar}</div>}
       {body}
     </div>

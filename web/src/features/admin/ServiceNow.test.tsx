@@ -17,17 +17,30 @@ describe("ServiceNow's integration", () => {
     const panel = await screen.findByRole("region", { name: "ServiceNow's token" });
     expect(await within(panel).findByText(/ServiceNow last called rvav/)).toBeInTheDocument();
     expect(within(panel).getByText(/any address/)).toBeInTheDocument();
+    // ServiceNow's calls fail from then on: asked first.
     await user.click(within(panel).getByRole("button", { name: "Make a new token" }));
+    const renew = await screen.findByRole("alertdialog", { name: "Make a new token?" });
+    expect(renew).toHaveTextContent(
+      "ServiceNow's calls fail until you put the new token in the API Key credential of its rvav alias.",
+    );
+    await user.click(within(renew).getByRole("button", { name: "Make a new token" }));
     const made = await within(panel).findByRole("region", { name: "ServiceNow's token made" });
     expect(within(made).getByText(/^rvav_pat_/)).toBeInTheDocument();
     expect(within(made).getByText("The token made before is revoked.")).toBeInTheDocument();
+    expect(renew).not.toBeInTheDocument();
 
     await user.click(within(panel).getByRole("button", { name: "Revoke" }));
     const ask = await screen.findByRole("alertdialog", { name: "Revoke ServiceNow's token?" });
     await user.click(within(ask).getByRole("button", { name: "Revoke token" }));
     expect(await within(panel).findByText("None made: ServiceNow can't call rvav.")).toBeInTheDocument();
     expect(within(panel).queryByRole("region", { name: "ServiceNow's token made" })).not.toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: "Make a token" })).toBeInTheDocument();
+    // The Revoke button went with the token: the focus goes to the one that makes the next.
+    expect(within(panel).getByRole("button", { name: "Make a token" })).toHaveFocus();
+
+    // None to revoke: made at once.
+    await user.click(within(panel).getByRole("button", { name: "Make a token" }));
+    expect(await within(panel).findByRole("region", { name: "ServiceNow's token made" })).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   }, 20_000);
 
   it("reports the CIs kept, what ServiceNow refused and the CIs rvav no longer has", async () => {
@@ -38,11 +51,15 @@ describe("ServiceNow's integration", () => {
     const refused = within(cmdb).getByRole("table", { name: "Deployments ServiceNow refused" });
     expect(within(refused).getByRole("link", { name: "web-dev-worker" })).toBeInTheDocument();
     expect(within(refused).getByText(/Insufficient rights/)).toBeInTheDocument();
+    expect(within(cmdb).getByText("0 deployments; 1 refused, to be tried again")).toBeInTheDocument();
     const orphans = within(cmdb).getByRole("table", { name: "CIs rvav no longer has" });
     expect(within(orphans).getByRole("link", { name: /web-dev-old001/ })).toHaveAttribute(
       "href",
       "https://corp.service-now.com/cmdb_ci_vmware_instance.do?sys_id=b7e2c4a91b3d6010a8f1c0d5e04bcb21",
     );
+    // As ServiceNow writes it, in UTC: shown as the page's other times.
+    const changed = within(within(orphans).getByRole("row", { name: /web-dev-old001/ })).getByText(/ago$/);
+    expect(changed).toHaveAttribute("datetime", "2026-10-28T09:14:52Z");
     await user.click(within(cmdb).getByRole("button", { name: "Reconcile now" }));
     expect(await screen.findByText("rvav reconciles within seconds")).toBeInTheDocument();
   });

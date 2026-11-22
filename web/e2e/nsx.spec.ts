@@ -178,4 +178,6 @@ async function managersFlow(page: Page, check: (where: string) => Promise<void>)
   await confirm.getByRole("button", { name: "Stop managing it" }).click();
   await expect(added).toBeHidden();
   await expect(page.getByText("nsx02.corp.example removed")).toBeVisible();
+  // Its row gone, the focus goes to the row now last, not to the page.
+  await expect(menu).toBeFocused();
 }
