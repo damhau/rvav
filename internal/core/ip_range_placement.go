@@ -64,15 +64,6 @@ func freeIn(rs []store.IPRange) int {
 	return n
 }
 
-// holds says whether a VM's adapter (nic "" for its first) holds an
-// address from one of the ranges already, as an updated deployment's VMs
-// do.
-func (pl *placement) holds(rs []store.IPRange, hostname, nic string) bool {
-	return slices.ContainsFunc(pl.held, func(a store.IPAllocation) bool {
-		return a.Hostname == hostname && a.NIC == nic && slices.ContainsFunc(rs, func(r store.IPRange) bool { return r.ID == a.RangeID })
-	})
-}
-
 // nextInRanges is the address a network's ranges would give next, "" when
 // they are full.
 func (pl *placement) nextInRanges(rs []store.IPRange) string {
@@ -116,8 +107,9 @@ func (s *Service) nextInRanges(ctx context.Context, network string) (string, boo
 
 // takeFromRanges counts the addresses a component's VMs need from the IP
 // ranges of a network for one of their adapters, and refuses, on the
-// component that goes past them, more than the ranges have left.
-func (pl *placement) takeFromRanges(p vmPart, network, nic, at string, add func(field, code, msg string)) {
+// component that goes past them, more than the ranges have left. The VMs
+// an update keeps hold theirs already: only those it adds need one.
+func (pl *placement) takeFromRanges(p vmPart, network, at string, add func(field, code, msg string)) {
 	rs := pl.rangesOf(p.vcenter, network)
 	if len(rs) == 0 {
 		return
@@ -127,12 +119,7 @@ func (pl *placement) takeFromRanges(p vmPart, network, nic, at string, add func(
 	}
 	key := p.vcenter + "/" + network
 	before := pl.rangeNeed[key]
-	for i := range p.count {
-		if i < len(p.names) && pl.holds(rs, p.names[i], nic) {
-			continue
-		}
-		pl.rangeNeed[key]++
-	}
+	pl.rangeNeed[key] += max(0, p.count-p.kept)
 	free, need := freeIn(rs), pl.rangeNeed[key]
 	switch {
 	case need <= free || before > free:

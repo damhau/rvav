@@ -103,7 +103,8 @@ don't stop the range from saving again: they are skipped.
 A static address a subscription asks for (ADR-0054) must be one the
 network's ranges give and no other VM holds. A request is refused when it
 is evaluated if the network's ranges don't have the free addresses its VMs
-need, with the code `no_free_address`.
+need, with the code `no_free_address`. An update needs addresses only for
+the VMs it adds: the VMs it keeps hold theirs (I1.6).
 
 ### No DNS
 rvav writes no DNS record for an address from a range: the plan has no DNS

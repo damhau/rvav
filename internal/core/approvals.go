@@ -523,7 +523,7 @@ func (s *Service) applyEdits(ctx context.Context, tx pgx.Tx, by *auth.Principal,
 	}
 	// The request keeps the version it was submitted with, even if the item
 	// was republished or withdrawn since.
-	ev, err := s.evaluateKeeping(ctx, requester, draft, true, true, true, filesOf(req.Inputs), edit)
+	ev, err := s.evaluateKeeping(ctx, requester, draft, true, true, true, filesOf(req.Inputs), nil, edit)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

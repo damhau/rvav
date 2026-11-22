@@ -292,5 +292,37 @@ func TestIPRangeProvisioning(t *testing.T) {
 			pv.Addresses == nil || len(*pv.Addresses) == 0 || slices.Contains(taken, (*pv.Addresses)[0]) {
 			t.Fatalf("four = %+v, hint %v", pv.Errors, pv.Addresses)
 		}
+
+		// An update needs addresses only for the VMs it adds: those it
+		// keeps hold theirs.
+		farmItem := publish("ranged-farm", webFarm(false))
+		farmIn := map[string]any{"app": "farm", "web_nodes": 2, "size": "S", "cluster": "GVA-DEV-CL01", "network": rangeNetwork}
+		farm := submit(api.RequestDraft{CatalogItemId: farmItem.Id, VersionId: farmItem.DraftVersion.Id, ProjectId: "prj_web",
+			Environment: "dev", Inputs: farmIn})
+		h.runWorkflow(farm.Id, nil)
+		farm = h.waitStatus(farm.Id, user, api.RequestStatusSucceeded)
+		grown := maps.Clone(farmIn)
+		grown["web_nodes"] = 3
+		growErrors := func() []api.FieldError {
+			t.Helper()
+			var up api.UpdatePreview
+			h.json("POST", "/api/v1/deployments/"+(*farm.DeploymentIds)[0]+"/update/preview", user,
+				api.UpdateDraft{VersionId: farmItem.DraftVersion.Id, Inputs: grown}, 200, &up)
+			return up.Errors
+		}
+		noFree := func(e api.FieldError) bool { return deref(e.Code) == "no_free_address" }
+		if errs := growErrors(); slices.ContainsFunc(errs, noFree) || len(held()) != 6 {
+			t.Fatalf("adding a third web server with 2 free addresses: %+v, held %v", errs, held())
+		}
+		full := draft(ranged, "full", rangeNetwork)
+		full.Count = new(2)
+		filled := submit(full)
+		h.runWorkflow(filled.Id, cloudInitGuest(h, c))
+		h.waitStatus(filled.Id, user, api.RequestStatusSucceeded)
+		errs := growErrors()
+		if i := slices.IndexFunc(errs, noFree); i < 0 ||
+			errs[i].Message != "Web servers: The IP ranges of "+rangeNetwork+" have no free address. Pick another network, or ask an administrator to add a range." {
+			t.Fatalf("adding a third web server with no free address: %+v, held %v", errs, held())
+		}
 	})
 }

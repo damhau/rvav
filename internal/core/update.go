@@ -360,8 +360,14 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 		_ = json.Unmarshal(u.from.UISchema, &ui)
 		keepEmptied(ui, had, inputs)
 	}
+	vms := map[string]int{}
+	for _, t := range all[1:] {
+		if t.Type == "vsphere.vm" {
+			vms[cmp.Or(deref(t.VM.Component), blueprint.SingleKey)]++
+		}
+	}
 	ev, err := s.evaluateKeeping(ctx, p, api.RequestDraft{CatalogItemId: d.ItemID, VersionId: draft.VersionId, ProjectId: d.ProjectID,
-		Environment: d.Environment, Inputs: inputs, Justification: draft.Justification}, strict, false, strict, filesOf(d.Inputs), nil)
+		Environment: d.Environment, Inputs: inputs, Justification: draft.Justification}, strict, false, strict, filesOf(d.Inputs), vms, nil)
 	if errors.Is(err, ErrNotFound) {
 		return nil, &ConflictError{Msg: d.ItemName + " is no longer offered in " + d.ProjectName + ": its deployments can't be updated."}
 	}

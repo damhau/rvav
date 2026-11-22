@@ -55,8 +55,10 @@ func Topology(raw json.RawMessage) *map[string]any {
 type vmPart struct {
 	comp blueprint.Component
 	// label starts its messages ("Web servers: "); empty for a single VM.
-	label  string
+	label string
+	// count are its VMs, kept those of them an update keeps.
 	count  int
+	kept   int
 	vm     blueprint.VMPlan
 	guest  blueprint.Guest
 	rule   *store.PlacementRule
@@ -243,7 +245,7 @@ func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) e
 func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placement, c blueprint.Component, templates []store.InvTemplate,
 	given map[string]bool, strict bool) (vmPart, error) {
 	multi := ev.Blueprint.Multi()
-	part := vmPart{comp: c, guest: *c.Guest, count: ev.Count}
+	part := vmPart{comp: c, guest: *c.Guest, count: ev.Count, kept: ev.keptVMs[c.Key]}
 	if multi {
 		part.label = part.title() + ": "
 	}
@@ -764,7 +766,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	// Addresses from IP ranges are counted across components; their
 	// next one is a hint as EfficientIP's is.
 	if fromRanges(part.subnet) {
-		pl.takeFromRanges(part, plan.Network, "", field("network"), add)
+		pl.takeFromRanges(part, plan.Network, field("network"), add)
 		if !strict {
 			if ip := pl.nextInRanges(pl.rangesOf(part.vcenter, plan.Network)); ip != "" {
 				part.addresses = []string{ip}
@@ -773,7 +775,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	}
 	for i, sn := range part.nicSubnets {
 		if fromRanges(sn) {
-			pl.takeFromRanges(part, plan.NICs[i].Network, plan.NICs[i].Key, bindingField(c.NICs[i].Network, ""), add)
+			pl.takeFromRanges(part, plan.NICs[i].Network, bindingField(c.NICs[i].Network, ""), add)
 		}
 	}
 	if !strict && part.subnet != nil && !fromRanges(part.subnet) && s.IPAM != nil {

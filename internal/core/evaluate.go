@@ -114,6 +114,9 @@ type Evaluation struct {
 	// kept are the files of the deployment an update evaluates: its
 	// inputs may name them again, and they stay its first request's.
 	kept map[string]bool
+	// keptVMs are how many VMs that deployment has, by component: they
+	// keep their addresses.
+	keptVMs map[string]int
 	// edit is set when an approver's edit evaluates a request again.
 	edit *requestEdit
 }
@@ -175,7 +178,7 @@ func (s *Service) evaluate(ctx context.Context, p *auth.Principal, d api.Request
 // evaluateWith is evaluate; with validate, the form's validations run once
 // its inputs pass its own checks.
 func (s *Service) evaluateWith(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest, validate bool) (*Evaluation, error) {
-	return s.evaluateKeeping(ctx, p, d, strict, ofRequest, validate, nil, nil)
+	return s.evaluateKeeping(ctx, p, d, strict, ofRequest, validate, nil, nil, nil)
 }
 
 // maxJustification is the most characters of the reason a requester
@@ -190,10 +193,11 @@ func justificationErrs(j *string) []api.FieldError {
 }
 
 // evaluateKeeping is evaluateWith for an update, whose inputs may name
-// the deployment's files, kept, or for an approver's edit.
+// the deployment's files, kept, and whose deployment has keptVMs, or for
+// an approver's edit.
 func (s *Service) evaluateKeeping(ctx context.Context, p *auth.Principal, d api.RequestDraft, strict, ofRequest, validate bool,
-	kept map[string]bool, edit *requestEdit) (*Evaluation, error) {
-	ev := &Evaluation{Inputs: map[string]any{}, validate: validate, kept: kept, edit: edit}
+	kept map[string]bool, keptVMs map[string]int, edit *requestEdit) (*Evaluation, error) {
+	ev := &Evaluation{Inputs: map[string]any{}, validate: validate, kept: kept, keptVMs: keptVMs, edit: edit}
 	o := orderOf(ctx)
 	ev.via, ev.orderedBy = o.via, o.by
 	for k, v := range d.Inputs {
