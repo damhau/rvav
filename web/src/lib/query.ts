@@ -238,6 +238,7 @@ export const adm = {
   inventoryToken: () =>
     get(["admin", "inventory-token"], (signal) => call(api.GET("/admin/integrations/awx/inventory-token", { signal }))),
   vcenters: () => get(["admin", "vcenters"], (signal) => call(api.GET("/admin/vcenters", { signal }))),
+  nsxManagers: () => get(["admin", "nsx-managers"], (signal) => call(api.GET("/admin/nsx-managers", { signal }))),
   auditDestinations: () =>
     get(["admin", "audit-destinations"], (signal) => call(api.GET("/admin/audit-destinations", { signal }))),
   // Events, subscriptions and custom workflows (S10, ADR-0021 and ADR-0022).

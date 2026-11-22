@@ -43,6 +43,7 @@ const pages = [
   "/admin/integrations?tab=checks",
   "/admin/integrations/oidc",
   "/admin/integrations/vcenter",
+  "/admin/integrations/nsx",
   "/admin/integrations/awx",
   "/admin/infrastructure",
   "/admin/property-groups",

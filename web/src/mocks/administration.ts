@@ -66,6 +66,10 @@ interface AdminState {
   >;
   /** vCenters added besides the integration's (ADR-0024). */
   vcenters: S["VCenter"][];
+  /** NSX Managers added besides the integration's (ADR-0062), without their vCenters. */
+  nsxManagers: Omit<S["NsxManager"], "vcenters">[];
+  /** The NSX Manager serving each vCenter: "" the integration's, for both. */
+  nsxLinks: Record<string, string>;
   /** rvav's processes (ADR-0030), and the settings revision. */
   processes: MockProcess[];
   revision: number;
@@ -399,6 +403,8 @@ export function adminState(db: Db): AdminState {
       },
     ], // prettier-ignore
     vcenters: [],
+    nsxManagers: [],
+    nsxLinks: { "": "" },
     inventory: {},
     revision: 1,
     processes: [
@@ -428,7 +434,15 @@ export function adminState(db: Db): AdminState {
   if (db.fresh) {
     // A new install: nothing set but what rvav starts with.
     const a = d.administration;
-    Object.assign(a, { groups: [], mappings: [], templates: [], quotas: {}, vcenters: [], inventory: {} });
+    Object.assign(a, {
+      groups: [],
+      mappings: [],
+      templates: [],
+      quotas: {},
+      vcenters: [],
+      nsxManagers: [],
+      inventory: {},
+    });
     for (const it of Object.values(a.integrations)) {
       for (const [k, v] of Object.entries(it.settings)) {
         const address =
@@ -819,6 +833,55 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     applying: !LIVE_KINDS.includes(kind) && processesNow(st()).some((p) => p.revision < revision),
   });
   const primaryVCenter = () => (st().integrations.vcenter?.settings.name as string | undefined) ?? "";
+  // The NSX integration's is named by its address's host (ADR-0062).
+  const primaryNSX = () => {
+    try {
+      return new URL(text(st().integrations.nsx?.settings.url)).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  };
+  const vcenterKey = (name: string) => (name === primaryVCenter() ? "" : name);
+  const vcenterName = (key: string) => (key === "" ? primaryVCenter() : key);
+  const nsxManagersOf = (): S["NsxManager"][] => {
+    const served = (key: string) =>
+      Object.entries(st().nsxLinks)
+        .filter(([vc, m]) => m === key && (vc === "" ? primaryVCenter() : st().vcenters.some((v) => v.name === vc)))
+        .map(([vc]) => vc)
+        .sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)))
+        .map(vcenterName);
+    const nsx = st().integrations.nsx;
+    const primary: S["NsxManager"][] = primaryNSX()
+      ? [
+          {
+            name: primaryNSX(),
+            url: text(nsx?.settings.url),
+            username: text(nsx?.settings.username),
+            ...(text(nsx?.settings.cert_file) ? { cert_file: text(nsx?.settings.cert_file) } : {}),
+            ...(text(nsx?.settings.key_file) ? { key_file: text(nsx?.settings.key_file) } : {}),
+            insecure: nsx?.settings.insecure === true,
+            ...(text(nsx?.settings.cert_sha256) ? { cert_sha256: text(nsx?.settings.cert_sha256) } : {}),
+            password_set: nsx?.secret ?? false,
+            primary: true,
+            vcenters: served(""),
+          },
+        ]
+      : [];
+    return [...primary, ...st().nsxManagers.map((m) => ({ ...m, vcenters: served(m.name) }))];
+  };
+  const unknownVCenters = (names: string[]) =>
+    names.flatMap((n, i) =>
+      n === primaryVCenter() || st().vcenters.some((v) => v.name === n)
+        ? []
+        : [err(`/vcenters/${i}`, `rvav manages no vCenter ${n}.`)],
+    );
+  // A vCenter linked moves from the NSX Manager that served it.
+  const linkNSX = (manager: string, names: string[]) => {
+    const keys = names.map(vcenterKey);
+    for (const [vc, m] of Object.entries(st().nsxLinks))
+      if (m === manager || keys.includes(vc)) delete st().nsxLinks[vc];
+    for (const k of keys) st().nsxLinks[k] = manager;
+  };
   const templateSourceErrors = (sources: S["VmTemplateSourceWrite"][]) => {
     const out: S["FieldError"][] = [];
     if (sources.length === 0) out.push(err("/sources", "Name the template in a vCenter at least."));
@@ -2149,6 +2212,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const i = st().vcenters.findIndex((v) => v.name === params.name);
       if (i < 0) return problem(404, "Not found");
       st().vcenters.splice(i, 1);
+      delete st().nsxLinks[String(params.name)];
       audited(db, "vcenter.delete", "vcenter", String(params.name));
       return new HttpResponse(null, { status: 204 });
     }),
@@ -2171,6 +2235,127 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
               { name: "Inventory", ok: true, message: "2 clusters, 2 datastores, 3 networks and 1 templates." },
             ]
           : [{ name: "Settings", ok: false, message: "Its SDK address over HTTPS." }],
+        ...cert,
+      });
+    }),
+
+    // ── NSX Managers (ADR-0062) ──
+    http.get(`${base}/admin/nsx-managers`, async () => {
+      await wait();
+      return HttpResponse.json({ items: nsxManagersOf() });
+    }),
+    ...(["post", "put"] as const).map((method) =>
+      http[method](`${base}/admin/nsx-managers${method === "put" ? "/:name" : ""}`, async ({ params, request }) => {
+        await wait();
+        const w = (await request.json()) as S["NsxManagerWrite"];
+        const name = method === "put" ? String(params.name) : w.name;
+        if (method === "put" && name === primaryNSX())
+          return problem(409, "Conflict", undefined, `${name} is the NSX integration's: change it in Integrations.`);
+        const current = st().nsxManagers.find((m) => m.name === name);
+        if (method === "put" && !current) return problem(404, "Not found");
+        const errors: S["FieldError"][] = [];
+        if (!/^[a-z0-9][a-z0-9.-]{1,62}$/.test(name))
+          errors.push(err("/name", "Its host name in lower case, for example nsx02.corp.example."));
+        else if (name === primaryNSX())
+          errors.push(err("/name", `${name} is the NSX integration's: change it in Integrations.`));
+        if (!/^https:\/\/[^/]+/.test(w.url))
+          errors.push(err("/url", "Its address over HTTPS, for example https://nsx02.corp.example."));
+        const pin = normalFingerprint(w.cert_sha256 ?? "");
+        if ((w.cert_sha256 ?? "").trim() && !pin)
+          errors.push(err("/cert_sha256", "A certificate's SHA-256: 32 bytes in hex, with or without colons."));
+        const certFile = (w.cert_file ?? "").trim();
+        const keyFile = (w.key_file ?? "").trim();
+        if (certFile && !keyFile) errors.push(err("/key_file", "Give the certificate's private key too."));
+        else if (keyFile && !certFile)
+          errors.push(err("/cert_file", "Give the certificate this private key goes with."));
+        else if (!certFile) {
+          if (!(w.username ?? "").trim())
+            errors.push(err("/username", "Give the account rvav signs in with, or a principal-identity certificate."));
+          if ((!current || !current.password_set) && !w.password)
+            errors.push(err("/password", "Give the account's password."));
+          else if (
+            current &&
+            !w.password &&
+            (w.url !== current.url || (w.insecure && !current.insecure) || (pin && pin !== (current.cert_sha256 ?? "")))
+          )
+            errors.push(
+              err(
+                "/password",
+                "A new address, a certificate pinned, or the certificate not checked, needs the password again: the saved one only goes where it was given for.",
+              ),
+            );
+        }
+        errors.push(...unknownVCenters(w.vcenters ?? []));
+        if (errors.length) return invalid(errors);
+        if (method === "post" && current)
+          return problem(409, "Conflict", undefined, `rvav already manages an NSX Manager named ${name}.`);
+        const m: Omit<S["NsxManager"], "vcenters"> = {
+          name,
+          url: w.url,
+          username: certFile ? "" : (w.username ?? ""),
+          ...(certFile ? { cert_file: certFile, key_file: keyFile } : {}),
+          insecure: w.insecure ?? false,
+          ...(pin ? { cert_sha256: pin } : {}),
+          password_set: certFile ? false : Boolean(w.password) || (current?.password_set ?? false),
+          primary: false,
+        };
+        st().nsxManagers = [...st().nsxManagers.filter((x) => x.name !== name), m];
+        if (w.vcenters) linkNSX(name, w.vcenters);
+        audited(db, `nsx_manager.${method === "put" ? "update" : "create"}`, "nsx_manager", name);
+        return HttpResponse.json(
+          nsxManagersOf().find((x) => x.name === name),
+          { status: method === "post" ? 201 : 200 },
+        );
+      }),
+    ),
+    http.put(`${base}/admin/nsx-managers/:name/vcenters`, async ({ params, request }) => {
+      await wait();
+      const name = String(params.name);
+      const key = name === primaryNSX() ? "" : name;
+      if (key && !st().nsxManagers.some((m) => m.name === name)) return problem(404, "Not found");
+      const w = (await request.json()) as S["NsxManagerVCenters"];
+      const errors = unknownVCenters(w.vcenters);
+      if (errors.length) return invalid(errors);
+      linkNSX(key, w.vcenters);
+      audited(db, "nsx_manager.link", "nsx_manager", name);
+      return HttpResponse.json(nsxManagersOf().find((x) => x.name === name));
+    }),
+    http.delete(`${base}/admin/nsx-managers/:name`, async ({ params }) => {
+      await wait();
+      const name = String(params.name);
+      if (name === primaryNSX())
+        return problem(409, "Conflict", undefined, `${name} is the NSX integration's: clear it in Integrations.`);
+      const i = st().nsxManagers.findIndex((m) => m.name === name);
+      if (i < 0) return problem(404, "Not found");
+      st().nsxManagers.splice(i, 1);
+      for (const [vc, m] of Object.entries(st().nsxLinks)) if (m === name) delete st().nsxLinks[vc];
+      audited(db, "nsx_manager.delete", "nsx_manager", name);
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.post(`${base}/admin/nsx-managers/:name/test`, async ({ params, request }) => {
+      await wait();
+      const name = String(params.name);
+      const raw = await request.text();
+      if (name === primaryNSX() && raw)
+        return problem(409, "Conflict", undefined, `${name} is the NSX integration's: test what you change there.`);
+      const saved = st().nsxManagers.find((m) => m.name === name);
+      const w = raw ? (JSON.parse(raw) as S["NsxManagerWrite"]) : saved;
+      if (!w) return problem(404, "Not found");
+      const ok = /^https:\/\/[^/]+/.test(w.url);
+      const tls = certificateCheck(text(st().integrations.trust!.settings.ca_bundle), w.url, { ...w }, true);
+      const cert = tls.certificate ? { certificate: tls.certificate } : {};
+      if (ok && !tls.goOn) return HttpResponse.json({ ok: false, checks: [tls.check!], ...cert });
+      return HttpResponse.json({
+        ok,
+        checks: ok
+          ? [
+              ...(tls.check ? [tls.check] : []),
+              { name: "Sign in", ok: true, message: "Signed in to NSX 4.2.1.0.0." },
+              { name: "Tier-1 gateways", ok: true, message: "3 Tier-1 gateways, for segments made for deployments." },
+              { name: "Segments", ok: true, message: "12 segments." },
+              { name: "Groups", ok: true, message: "8 groups in the default domain." },
+            ]
+          : [{ name: "Settings", ok: false, message: "Its address over HTTPS." }],
         ...cert,
       });
     }),

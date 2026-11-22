@@ -26,7 +26,7 @@ import { ServerCertificate } from "./ServerCertificate";
 type S = components["schemas"];
 type VCenter = S["VCenter"];
 
-function TestResult({ test }: { test: S["IntegrationTest"] }) {
+export function TestResult({ test }: { test: S["IntegrationTest"] }) {
   return (
     <ul
       aria-label="Test"

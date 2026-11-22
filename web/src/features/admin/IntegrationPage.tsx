@@ -11,13 +11,14 @@ import { adm } from "@/lib/query";
 import { IdentityProvider } from "./IdentityProvider";
 import { Integration, integrationAbout, integrationKinds, integrationTitle } from "./IntegrationSettings";
 import { InventoryToken } from "./InventoryToken";
+import { NSXManagers } from "./NSXManagers";
 import { VCenters } from "./VCenters";
 
 type Kind = (typeof integrationKinds)[number];
 
 const isKind = (k: string): k is Kind => (integrationKinds as readonly string[]).includes(k) && k !== "console";
 
-/** One integration's page: its settings, test and what goes with it (the console and other vCenters, AWX's inventory token). */
+/** One integration's page: its settings, test and what goes with it (the console and other vCenters, AWX's inventory token, other NSX Managers). */
 export function IntegrationPage({ kind }: { kind: string }) {
   const list = useQuery(adm.integrations());
   const known = isKind(kind);
@@ -57,6 +58,7 @@ export function IntegrationPage({ kind }: { kind: string }) {
       {console && <Integration key={console.updated_at ?? "unsaved"} it={{ ...console, kind: "console" }} />}
       {it && kind === "vcenter" && <VCenters />}
       {it && kind === "awx" && <InventoryToken />}
+      {it && kind === "nsx" && <NSXManagers />}
     </Page>
   );
 }
