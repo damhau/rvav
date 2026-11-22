@@ -90,6 +90,9 @@ type Activities struct {
 	// REST makes a composite's REST calls (ADR-0033): to the hosts allowed
 	// for REST value sources.
 	REST *restcall.Caller
+	// Directory is Active Directory as saved now, nil without it
+	// (ADR-0064).
+	Directory func(ctx context.Context) Directory
 }
 
 // VCenterSet is the vCenters rvav manages, by name ("" for the first).
@@ -954,9 +957,13 @@ func (a *Activities) Customize(ctx context.Context, in VMInput) error {
 					return "", "", err
 				}
 				cu.JoinDomain, cu.DomainOU, cu.DomainUser, cu.DomainPassword = j.Domain, j.OU, user, pw
+				// It joins onto the computer object made for it (ADR-0064).
+				if in.VM.AD != nil {
+					cu.DomainOU = in.VM.AD.OU
+				}
 				detail += ", joins " + j.Domain
-				if j.OU != "" {
-					detail += " in " + j.OU
+				if cu.DomainOU != "" {
+					detail += " in " + cu.DomainOU
 				}
 			}
 		}
@@ -1976,6 +1983,8 @@ func (a *Activities) deleteOne(ctx context.Context, r store.Resource) (string, e
 		what = "released " + p.Address
 	case AccessResource:
 		err = a.Store.ForgetDeploymentKey(ctx, a.Store.Pool, r.DeploymentID, nil)
+	case ComputerResource:
+		what, err = a.deleteComputer(ctx, r)
 	}
 	if err != nil {
 		return "", err
@@ -1999,12 +2008,12 @@ func (a *Activities) Rollback(ctx context.Context, requestID, projectID string) 
 		return nil
 	}
 	var done []string
-	// VMs out of their NSX groups first; the firewall rules after the VMs,
-	// then the groups they name; NSX segments after the VMs and addresses
-	// on them, their subnets last.
-	order := map[string]int{"vsphere.drs_rule": 0, "nsx.membership": 1, "vsphere.vm": 2, "dns.record": 3, "ipam.address": 4,
-		"nsx.policy": 5, "nsx.group": 6, "nsx.segment": 7, "ipam.subnet": 8, AccessResource: 9}
-	for pass := 0; pass < 10; pass++ {
+	// VMs out of their NSX groups first; their computer objects after
+	// them; the firewall rules after the VMs, then the groups they name;
+	// NSX segments after the VMs and addresses on them, their subnets last.
+	order := map[string]int{"vsphere.drs_rule": 0, "nsx.membership": 1, "vsphere.vm": 2, ComputerResource: 3, "dns.record": 4,
+		"ipam.address": 5, "nsx.policy": 6, "nsx.group": 7, "nsx.segment": 8, "ipam.subnet": 9, AccessResource: 10}
+	for pass := 0; pass < 11; pass++ {
 		for _, r := range list {
 			// Custom resources are their type's to delete, before (ADR-0056).
 			if order[r.Type] != pass || r.Type == CustomResource {

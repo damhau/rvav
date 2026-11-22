@@ -7446,10 +7446,10 @@ export interface components {
             title: string;
             detail?: string;
             /**
-             * @description Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person, `wait` its wait for a time or a condition and `branch` its choice between sides (ADR-0033).
+             * @description Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person, `wait` its wait for a time or a condition and `branch` its choice between sides (ADR-0033); `ad` is Active Directory (ADR-0064).
              * @enum {string}
              */
-            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx" | "rest" | "person" | "wait" | "branch";
+            system?: "rvav" | "policy" | "vcenter" | "efficientip" | "awx" | "nsx" | "rest" | "person" | "wait" | "branch" | "ad";
             status: components["schemas"]["StepStatus"];
             /** Format: date-time */
             started_at?: string | null;
@@ -7705,7 +7705,7 @@ export interface components {
         DeploymentPage: components["schemas"]["PageInfo"] & {
             items: components["schemas"]["Deployment"][];
         };
-        Resource: components["schemas"]["VmResource"] | components["schemas"]["IpAddressResource"] | components["schemas"]["DnsRecordResource"] | components["schemas"]["DrsRuleResource"] | components["schemas"]["SegmentResource"] | components["schemas"]["SubnetResource"] | components["schemas"]["SecurityGroupResource"] | components["schemas"]["FirewallRulesResource"] | components["schemas"]["GroupMembershipResource"] | components["schemas"]["CustomResource"];
+        Resource: components["schemas"]["VmResource"] | components["schemas"]["IpAddressResource"] | components["schemas"]["DnsRecordResource"] | components["schemas"]["DrsRuleResource"] | components["schemas"]["SegmentResource"] | components["schemas"]["SubnetResource"] | components["schemas"]["SecurityGroupResource"] | components["schemas"]["FirewallRulesResource"] | components["schemas"]["GroupMembershipResource"] | components["schemas"]["AdComputerResource"] | components["schemas"]["CustomResource"];
         ResourceBase: {
             id: string;
             type: string;
@@ -8659,6 +8659,29 @@ export interface components {
             services: string[];
             /** @enum {string} */
             action: "ALLOW" | "DROP" | "REJECT";
+        };
+        /** @description A VM's computer object in Active Directory (ADR-0064): made before the VM is cloned, deleted after it. */
+        AdComputerResource: components["schemas"]["ResourceBase"] & {
+            /** @constant */
+            type: "ad.computer";
+            computer: {
+                /** @description The VM's name. */
+                vm: string;
+                /** @example CN=WEB-DEV-WEB01,OU=Web,OU=Servers,DC=corp,DC=example */
+                dn: string;
+                /** @example WEB-DEV-WEB01$ */
+                sam_account_name: string;
+                /** @example web-dev-web01.corp.example */
+                dns_host_name?: string;
+                /** @description The DNs of the groups it was added to. */
+                groups: string[];
+            };
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "ad.computer";
         };
         /** @description The NSX security groups a VM of the deployment is in, by the tags rvav set on it (ADR-0028). */
         GroupMembershipResource: components["schemas"]["ResourceBase"] & {

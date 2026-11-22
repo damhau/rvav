@@ -452,7 +452,7 @@ func stillUsed(list []store.Resource) map[string]string {
 	out := map[string]string{}
 	for _, vm := range vms {
 		for _, r := range day2.OwnResources(vm, append([]day2.Resource{vm}, rest...)) {
-			if r.Type == "ipam.address" || r.Type == "dns.record" {
+			if r.Type == "ipam.address" || r.Type == "dns.record" || r.Type == ComputerResource {
 				out[r.ID] = vm.Name
 			}
 		}

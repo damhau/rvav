@@ -1,9 +1,11 @@
 package day2
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/integrations/ad"
 )
 
 // Access and lifecycle: rename, ISO images, the deployment's name, owner
@@ -11,6 +13,18 @@ import (
 
 // NamePattern is what a VM name may be: a DNS label.
 const NamePattern = `^[a-z][a-z0-9-]{0,61}[a-z0-9]$`
+
+// ComputerType is a VM's computer object in Active Directory, and
+// MaxComputerName the most characters of its name (ADR-0064).
+const (
+	ComputerType    = "ad.computer"
+	MaxComputerName = ad.MaxName
+)
+
+// HasComputer says the target VM has a computer object.
+func HasComputer(t Target) bool {
+	return slices.ContainsFunc(t.Resources, func(r Resource) bool { return r.Type == ComputerType && r.Name == t.ResourceName })
+}
 
 // The most characters of a deployment's name and of what it is for
 // (ADR-0046).
@@ -26,12 +40,20 @@ func init() {
 			name := text("name", "New name", 63, t.ResourceName)
 			name.schema["pattern"] = NamePattern
 			help := "Renames the VM in vCenter, its address in EfficientIP and its DNS records. The guest's own hostname does not change."
+			if HasComputer(t) {
+				help = "Renames the VM in vCenter, its address in EfficientIP, its DNS records and its computer object in Active Directory. " +
+					"The guest's own hostname does not change: rename a joined Windows VM in Windows too, and join a Linux one again."
+			}
 			name.ui.Help = &help
 			return form("Name", name)
 		},
 		Validate: func(t Target, in map[string]any) []api.FieldError {
-			if strInput(in, "name") == t.ResourceName {
+			name := strInput(in, "name")
+			if name == t.ResourceName {
 				return invalid("name", "no_change", "This is the VM's current name.")
+			}
+			if len(name) > MaxComputerName && HasComputer(t) {
+				return invalid("name", "too_long", "The VM has a computer object in Active Directory, whose names have at most %d characters.", MaxComputerName)
 			}
 			return nil
 		},
@@ -52,7 +74,16 @@ func init() {
 			if old != "" {
 				ops = append(ops, Op{Key: "dns.check", Title: "Check " + fqdn + " is free", System: "efficientip", Op: "check_name", Args: args})
 			}
+			computer := HasComputer(t)
+			if computer {
+				ops = append(ops, Op{Key: "ad.check", Title: "Check " + strings.ToUpper(name) + "$ is free in Active Directory",
+					System: "ad", Op: "check_computer", Args: args})
+			}
 			ops = append(ops, vcenter("vsphere.rename", "Rename "+t.ResourceName+" to "+name+" in vCenter", "rename_vm", args))
+			if computer {
+				ops = append(ops, Op{Key: "ad.rename", Title: "Rename the computer object", Detail: strings.ToUpper(t.ResourceName) + "$ → " + strings.ToUpper(name) + "$",
+					System: "ad", Op: "rename_computer", Args: args})
+			}
 			if old != "" {
 				ops = append(ops, Op{Key: "ipam.rename", Title: "Rename the address in EfficientIP", Detail: old + " → " + fqdn,
 					System: "efficientip", Op: "rename_address", Args: args},
@@ -306,6 +337,7 @@ func deleteOps(t Target, in map[string]any) []Op {
 	// made for the deployment after the addresses on them, their
 	// subnets last (ADR-0028).
 	for _, typ := range []struct{ typ, key, title, system string }{
+		{ComputerType, "ad.computer.delete", "Delete the computer objects", "ad"},
 		{"dns.record", "dns.delete", "Delete the DNS records", "efficientip"},
 		{"ipam.address", "ipam.release", "Release the IP addresses", "efficientip"},
 		{"nsx.policy", "nsx.policy.delete", "Delete the firewall rules", "nsx"},

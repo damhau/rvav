@@ -2414,6 +2414,7 @@ func (e StepExternalRefKind) Valid() bool {
 
 // Defines values for StepSystem.
 const (
+	StepSystemAd          StepSystem = "ad"
 	StepSystemAwx         StepSystem = "awx"
 	StepSystemBranch      StepSystem = "branch"
 	StepSystemEfficientip StepSystem = "efficientip"
@@ -2429,6 +2430,8 @@ const (
 // Valid indicates whether the value is a known member of the StepSystem enum.
 func (e StepSystem) Valid() bool {
 	switch e {
+	case StepSystemAd:
+		return true
 	case StepSystemAwx:
 		return true
 	case StepSystemBranch:
@@ -3786,6 +3789,34 @@ type ActionForm struct {
 	// Schema JSON Schema of `inputs`.
 	Schema   map[string]interface{} `json:"schema"`
 	UiSchema UiSchema               `json:"ui_schema"`
+}
+
+// AdComputerResource A VM's computer object in Active Directory (ADR-0064): made before the VM is cloned, deleted after it.
+type AdComputerResource struct {
+	Computer struct {
+		// Dn Examples: CN=WEB-DEV-WEB01,OU=Web,OU=Servers,DC=corp,DC=example
+		Dn string `json:"dn"`
+
+		// DnsHostName Examples: web-dev-web01.corp.example
+		DnsHostName *string `json:"dns_host_name,omitempty"`
+
+		// Groups The DNs of the groups it was added to.
+		Groups []string `json:"groups"`
+
+		// SamAccountName Examples: WEB-DEV-WEB01$
+		SamAccountName string `json:"sam_account_name"`
+
+		// Vm The VM's name.
+		Vm string `json:"vm"`
+	} `json:"computer"`
+	Id   string `json:"id"`
+	Name string `json:"name"`
+
+	// SyncState `drifted`: changed in vCenter outside rvav (size, disks, adapters'
+	// networks or power), until changed back or accepted. `missing`: no
+	// longer found in vCenter.
+	SyncState SyncState   `json:"sync_state"`
+	Type      interface{} `json:"type"`
 }
 
 // AdPlacement defines model for AdPlacement.
@@ -10002,7 +10033,7 @@ type Step struct {
 	StartedAt *time.Time `json:"started_at,omitempty"`
 	Status    StepStatus `json:"status"`
 
-	// System Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person, `wait` its wait for a time or a condition and `branch` its choice between sides (ADR-0033).
+	// System Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person, `wait` its wait for a time or a condition and `branch` its choice between sides (ADR-0033); `ad` is Active Directory (ADR-0064).
 	System *StepSystem `json:"system,omitempty"`
 	Title  string      `json:"title"`
 }
@@ -10010,7 +10041,7 @@ type Step struct {
 // StepExternalRefKind defines model for Step.ExternalRef.Kind.
 type StepExternalRefKind string
 
-// StepSystem Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person, `wait` its wait for a time or a condition and `branch` its choice between sides (ADR-0033).
+// StepSystem Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person, `wait` its wait for a time or a condition and `branch` its choice between sides (ADR-0033); `ad` is Active Directory (ADR-0064).
 type StepSystem string
 
 // StepData defines model for StepData.
@@ -13584,6 +13615,40 @@ func (t *Resource) MergeGroupMembershipResource(v GroupMembershipResource) error
 	return err
 }
 
+// AsAdComputerResource returns the union data inside the Resource as a AdComputerResource
+func (t Resource) AsAdComputerResource() (AdComputerResource, error) {
+	var body AdComputerResource
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAdComputerResource overwrites any union data inside the Resource as the provided AdComputerResource
+func (t *Resource) FromAdComputerResource(v AdComputerResource) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"ad.computer"}`))
+	t.union = b
+	return err
+}
+
+// MergeAdComputerResource performs a merge with any union data inside the Resource, using the provided AdComputerResource
+func (t *Resource) MergeAdComputerResource(v AdComputerResource) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"ad.computer"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 // AsCustomResource returns the union data inside the Resource as a CustomResource
 func (t Resource) AsCustomResource() (CustomResource, error) {
 	var body CustomResource
@@ -13632,6 +13697,8 @@ func (t Resource) ValueByDiscriminator() (interface{}, error) {
 		return nil, err
 	}
 	switch discriminator {
+	case "ad.computer":
+		return t.AsAdComputerResource()
 	case "custom":
 		return t.AsCustomResource()
 	case "dns.record":

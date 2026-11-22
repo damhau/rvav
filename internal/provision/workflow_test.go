@@ -375,6 +375,15 @@ func TestPlanSteps(t *testing.T) {
 	if steps[2].System != "efficientip" || steps[3].Key != KeyDNS || ranged.VMs[0].dnsDetail() != "web-backup.corp.example" {
 		t.Fatalf("ranged, with an EfficientIP adapter: %+v", steps)
 	}
+
+	// The computer object comes after DNS and before the clone (ADR-0064).
+	joined := vmPlan(true).Plan
+	joined.VMs[0].AD = &ADUnit{OU: "OU=Web,DC=corp,DC=example"}
+	steps = joined.Steps("Production")
+	if s := steps[4]; steps[3].Key != KeyDNS || s.Key != KeyAD || s.System != "ad" || s.Detail != "CN=WEB-DEV-APP001,OU=Web,DC=corp,DC=example" ||
+		steps[5].Key != KeyClone {
+		t.Fatalf("with a computer object: %+v", steps)
+	}
 }
 
 func TestErrMessage(t *testing.T) {

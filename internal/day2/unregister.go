@@ -71,9 +71,9 @@ func init() {
 }
 
 // OwnResources are a VM's resource, then those that are its own among the
-// deployment's: its addresses and their DNS records, and its NSX group
-// memberships. An address another of the deployment's VMs has too stays
-// with them.
+// deployment's: its addresses and their DNS records, its NSX group
+// memberships and its computer object. An address another of the
+// deployment's VMs has too stays with them.
 func OwnResources(vm Resource, all []Resource) []Resource {
 	shared := map[string]bool{}
 	for _, r := range all {
@@ -120,7 +120,7 @@ func OwnResources(vm Resource, all []Resource) []Resource {
 			if names[p.FQDN] || names[strings.TrimSuffix(p.Value, ".")] {
 				out = append(out, r)
 			}
-		case "nsx.membership":
+		case "nsx.membership", ComputerType:
 			if r.Name == vm.Name {
 				out = append(out, r)
 			}

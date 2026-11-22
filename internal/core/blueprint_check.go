@@ -9,6 +9,7 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/integrations/ad"
 	"github.com/damhau/rvav/internal/naming"
 	"github.com/damhau/rvav/internal/policy"
 )
@@ -505,6 +506,13 @@ func checkGuest(ptr string, g blueprint.Guest, publish bool) []api.FieldError {
 		}
 		if strings.TrimSpace(j.Credential) == "" {
 			add(ptr+"/domain_join/credential", "required", "Name the basic secret with the account that joins VMs to the domain.")
+		}
+	}
+	if a := g.ActiveDirectory; a != nil && a.OU != "" {
+		if msg := ad.CheckDN(a.OU, ""); msg != "" {
+			add(ptr+"/active_directory/ou", "pattern", msg)
+		} else if a.Skip {
+			add(ptr+"/active_directory", "invalid", "Give an OU or skip, not both.")
 		}
 	}
 	if g.AdminPassword != "" && !windows {

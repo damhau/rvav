@@ -13,6 +13,7 @@ import (
 
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/integrations/ad"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 )
 
@@ -165,6 +166,7 @@ func componentSteps(vms []VMUnit, comps []ComponentUnit, keys vmKeys, parent str
 			steps = append(steps, vm.addressSteps(
 				StepDef{Key: keys.vm(c, KeyIPAM, vm), Title: vm.ipTitle() + " · " + vm.Name, Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: under},
 				StepDef{Key: keys.vm(c, KeyDNS, vm), Title: vm.dnsTitle() + " · " + vm.Name, Detail: vm.dnsDetail(), System: "efficientip", Status: "pending", Parent: under})...)
+			steps = append(steps, adStep(keys.vm(c, KeyAD, vm), adTitle+" · "+vm.Name, vm, under)...)
 			steps = append(steps,
 				StepDef{Key: keys.vm(c, KeyClone, vm), Title: vm.cloneTitle() + " · " + vm.Name, Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: under},
 				StepDef{Key: keys.vm(c, KeyCustomize, vm), Title: "Apply guest customization · " + vm.Name, Detail: vm.customizeDetail(), System: "vcenter", Status: "pending", Parent: under},
@@ -284,6 +286,7 @@ func (c CompositeStep) ownStepDefs() []StepDef {
 			steps = append(steps, vm.addressSteps(
 				StepDef{Key: c.VMKey(KeyIPAM, vm), Title: vmTitle(c.VMs, vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending", Parent: parent},
 				StepDef{Key: c.VMKey(KeyDNS, vm), Title: vmTitle(c.VMs, vm.dnsTitle(), vm), Detail: vm.dnsDetail(), System: "efficientip", Status: "pending", Parent: parent})...)
+			steps = append(steps, adStep(c.VMKey(KeyAD, vm), vmTitle(c.VMs, adTitle, vm), vm, parent)...)
 			steps = append(steps,
 				StepDef{Key: c.VMKey(KeyClone, vm), Title: vmTitle(c.VMs, vm.cloneTitle(), vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending", Parent: parent},
 				StepDef{Key: c.VMKey(KeyCustomize, vm), Title: vmTitle(c.VMs, "Apply guest customization", vm), Detail: vm.customizeDetail(), System: "vcenter", Status: "pending", Parent: parent},
@@ -385,6 +388,7 @@ func (p Plan) vmSteps() []StepDef {
 		steps = append(steps, vm.addressSteps(
 			StepDef{Key: p.VMKey(KeyIPAM, vm), Title: p.vmTitle(vm.ipTitle(), vm), Detail: vm.subnets(), System: "efficientip", Status: "pending"},
 			StepDef{Key: p.VMKey(KeyDNS, vm), Title: p.vmTitle(vm.dnsTitle(), vm), Detail: vm.dnsDetail(), System: "efficientip", Status: "pending"})...)
+		steps = append(steps, adStep(p.VMKey(KeyAD, vm), p.vmTitle(adTitle, vm), vm, "")...)
 		steps = append(steps,
 			StepDef{Key: p.VMKey(KeyClone, vm), Title: p.vmTitle(vm.cloneTitle(), vm), Detail: vm.Cluster + " · " + vm.Datastore, System: "vcenter", Status: "pending"},
 			StepDef{Key: p.VMKey(KeyCustomize, vm), Title: p.vmTitle("Apply guest customization", vm), Detail: vm.customizeDetail(), System: "vcenter", Status: "pending"},
@@ -514,6 +518,24 @@ type VMUnit struct {
 	// notes; PreventDelete keeps it from being deleted (ADR-0038).
 	Properties    map[string]string `json:"properties,omitempty"`
 	PreventDelete bool              `json:"prevent_delete,omitempty"`
+	// AD is its computer object in Active Directory, made before it is
+	// cloned; nil for none (ADR-0064).
+	AD *ADUnit `json:"ad,omitempty"`
+}
+
+// ADUnit is a VM's computer object: the DN of the OU it goes in, those of
+// the groups it joins, and its DNS name.
+type ADUnit struct {
+	OU          string   `json:"ou"`
+	Groups      []string `json:"groups,omitempty"`
+	DNSHostName string   `json:"dns_host_name"`
+}
+
+// ComputerDescription is what a computer object rvav makes says: the
+// request that made it and the deployment it is for, by which rvav knows
+// it is its own.
+func ComputerDescription(requestID, deploymentID string) string {
+	return "rvav: request " + requestID + ", deployment " + deploymentID
 }
 
 // Notes are what a VM's notes (its vSphere annotation) say: that rvav
@@ -826,6 +848,8 @@ const (
 	KeyPlacement = "placement"
 	KeyIPAM      = "ipam.reserve"
 	KeyDNS       = "dns.create"
+	// KeyAD makes a VM's computer object in Active Directory (ADR-0064).
+	KeyAD        = "ad.computer"
 	KeyClone     = "vsphere.clone"
 	KeyCustomize = "vsphere.customize"
 	KeyPowerOn   = "vsphere.power_on"
@@ -871,6 +895,16 @@ func (p Plan) securitySteps() []StepDef {
 		steps = append(steps, StepDef{Key: p.SecurityKey(s), Title: "Make NSX security groups", Detail: detail, System: "nsx", Status: "pending"})
 	}
 	return steps
+}
+
+const adTitle = "Create the computer object"
+
+// adStep is the step making a VM's computer object, none when it gets none.
+func adStep(key, title string, vm VMUnit, parent string) []StepDef {
+	if vm.AD == nil {
+		return nil
+	}
+	return []StepDef{{Key: key, Title: title, Detail: ad.ComputerDN(vm.Name, vm.AD.OU), System: "ad", Status: "pending", Parent: parent}}
 }
 
 // tagStep is a VM's step joining its NSX groups, if it joins any.

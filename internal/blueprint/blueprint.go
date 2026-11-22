@@ -180,6 +180,16 @@ type Guest struct {
 	CloudInit     *CloudInit  `json:"cloud_init,omitempty"`
 	// RemoteAccess is the user people sign in as (ADR-0039).
 	RemoteAccess *RemoteAccess `json:"remote_access,omitempty"`
+	// ActiveDirectory chooses the OU of the VM's computer object, or none,
+	// where the OU's row allows it (ADR-0064).
+	ActiveDirectory *ActiveDirectory `json:"active_directory,omitempty"`
+}
+
+// ActiveDirectory is a blueprint's choice for its VMs' computer objects:
+// an OU (a DN, or one relative to the directory's base DN), or none.
+type ActiveDirectory struct {
+	OU   string `json:"ou,omitempty"`
+	Skip bool   `json:"skip,omitempty"`
 }
 
 // DomainJoin joins a Windows VM to an Active Directory domain with the
@@ -212,6 +222,9 @@ func (g Guest) merge(o *Guest) Guest {
 	}
 	if o.CloudInit != nil {
 		g.CloudInit = o.CloudInit
+	}
+	if o.ActiveDirectory != nil {
+		g.ActiveDirectory = o.ActiveDirectory
 	}
 	if o.RemoteAccess != nil {
 		g.RemoteAccess = o.RemoteAccess

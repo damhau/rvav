@@ -9,6 +9,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/day2"
+	"github.com/damhau/rvav/internal/integrations/ad"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -279,6 +280,26 @@ func (s *Service) checkAction(ctx context.Context, a *day2.Action, d store.Deplo
 		if exists {
 			return []api.FieldError{fieldErr("/inputs/name", "taken", fqdn+" is already in DNS.")}, nil
 		}
+	}
+	return s.checkComputerName(ctx, t, name)
+}
+
+// checkComputerName refuses a new name Active Directory has a computer
+// object of, when the VM's own object would be renamed to it (ADR-0064).
+func (s *Service) checkComputerName(ctx context.Context, t day2.Target, name string) ([]api.FieldError, error) {
+	if !day2.HasComputer(t) {
+		return nil, nil
+	}
+	dir, _, ok := s.directory(ctx)
+	if !ok {
+		return nil, nil
+	}
+	found, err := dir.Find(ctx, name)
+	if err != nil {
+		return nil, &UpstreamError{System: "Active Directory", Err: err}
+	}
+	if found != nil {
+		return []api.FieldError{fieldErr("/inputs/name", "taken", "Active Directory already has a computer "+ad.Account(name)+".")}, nil
 	}
 	return nil, nil
 }

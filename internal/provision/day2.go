@@ -60,6 +60,8 @@ func (a *Activities) RunOp(ctx context.Context, in OpInput) error {
 				return "", "", permanent("%v", err)
 			case isPermanent(err):
 				return "", "", err
+			case in.Op.System == "ad":
+				return "", "", fmt.Errorf("Active Directory: %w", err)
 			}
 			return "", "", fmt.Errorf("vCenter: %w", err)
 		}
@@ -116,6 +118,10 @@ func (a *Activities) op(ctx context.Context, in OpInput) (string, error) {
 		return a.renameDNS(ctx, in)
 	case "rename_records":
 		return a.renameRecords(ctx, in)
+	case "check_computer":
+		return a.checkComputer(ctx, in)
+	case "rename_computer":
+		return a.renameComputer(ctx, in)
 	case "mount_iso":
 		return "", v.MountISO(ctx, in.Moref, argStr(args, "iso"))
 	case "unmount_iso":

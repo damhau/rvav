@@ -16,6 +16,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/integrations/ad"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/naming"
 	"github.com/damhau/rvav/internal/policy"
@@ -56,6 +57,11 @@ type Evaluation struct {
 	// "" the integration's, once nsxFound (ADR-0062).
 	nsxManager string
 	nsxFound   bool
+	// adRow is the OU row its VMs' computer objects follow, in adDir under
+	// adBase; nil for none (ADR-0064).
+	adRow  *store.ADPlacement
+	adDir  *ad.Client
+	adBase string
 	// Composite are a composite item's steps, evaluated.
 	Composite []compositePart
 	// GroupCatch and OnError are its parallel groups' catch paths and its

@@ -498,7 +498,7 @@ func (s *Service) builtinValues(ctx context.Context, p *auth.Principal, proj sto
 				zone = sn.DNSZone
 			}
 		}
-		next, _, names, err := s.peekNames(ctx, spec, prefix, zone, 1, nil)
+		next, _, names, err := s.peekNames(ctx, spec, prefix, zone, 1, nil, nil)
 		if err != nil {
 			return out, err
 		}

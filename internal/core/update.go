@@ -709,6 +709,10 @@ func (c componentChange) scaleIn(u *componentPlan, refuse func(setting, reason s
 		}
 		u.remove = append(u.remove, day2.Op{Key: "vsphere.destroy@" + name, Title: "Delete VM " + name, System: "vcenter",
 			Op: "destroy_vm", Args: map[string]any{"resource": vm.t.ResourceID}})
+		if ids := day2.OwnResourceIDs(self, c.resources, day2.ComputerType); len(ids) > 0 {
+			u.remove = append(u.remove, day2.Op{Key: "ad.computer.delete@" + name, Title: "Delete the computer object of " + name,
+				System: "ad", Op: "delete_resources", Args: map[string]any{"type": day2.ComputerType, "resources": ids}})
+		}
 		if ids := day2.OwnResourceIDs(self, c.resources, "dns.record"); len(ids) > 0 {
 			u.remove = append(u.remove, day2.Op{Key: "dns.delete@" + name, Title: "Delete the DNS records of " + name,
 				System: "efficientip", Op: "delete_resources", Args: map[string]any{"type": "dns.record", "resources": ids}})
@@ -1200,9 +1204,9 @@ func (s *Service) addVMs(ctx context.Context, tx pgx.Tx, u *updatePlan) ([]provi
 		for n := range given {
 			ours[n] = true
 		}
-		names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, rvav: ours, zone: p.zone()}
+		names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, rvav: ours, zone: p.zone(), dir: p.dir()}
 		if p.check != nil {
-			names.dns = p.check.dns
+			names.dns, names.computers = p.check.dns, p.check.computers
 		}
 		for i := range a.n {
 			seq, err := s.Store.NextName(ctx, tx, p.counter, p.naming.Start(), p.naming.Step(), func(n int) bool { return names.taken(p.naming.Name(p.prefix, n)) })

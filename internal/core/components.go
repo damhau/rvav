@@ -17,6 +17,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/blueprint"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/integrations/ad"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/naming"
@@ -84,6 +85,10 @@ type vmPart struct {
 	check    *nameCheck
 	// addresses is the next free address of its network, as a hint.
 	addresses []string
+	// ad is the computer object its VMs get, their names aside, in adDir
+	// (ADR-0064); nil for none.
+	ad    *provision.ADUnit
+	adDir *ad.Client
 	// cloned is the catalogue template its VMs are cloned from: the one
 	// the form chose, or the one with the blueprint's template as a
 	// source; nil for none.
@@ -170,6 +175,9 @@ func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) e
 	}
 	pl, err := s.placement(ctx, ev.Project.ID, ev.Env.Key)
 	if err != nil {
+		return err
+	}
+	if err := s.evaluateDirectory(ctx, ev); err != nil {
 		return err
 	}
 	var self string
@@ -692,6 +700,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	}
 	part.vm = plan
 
+	part.ad, part.adDir = computerOf(ev, part.guest, add), ev.adDir
 	spec, err := s.namingFor(ctx, ev.Project.ID, ev.Env.Key, c.Naming)
 	if err != nil {
 		return part, err
@@ -721,7 +730,7 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 	}
 	part.prefix, part.counter = prefix, spec.counterKey(prefix)
 	zone := part.zone()
-	if part.names, _, part.check, err = s.peekNames(ctx, spec, prefix, zone, part.count, given); err != nil {
+	if part.names, _, part.check, err = s.peekNames(ctx, spec, prefix, zone, part.count, given, part.dir()); err != nil {
 		return part, err
 	}
 	if err := part.check.err; err != nil {
@@ -739,6 +748,13 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			def = "/inputs/role"
 		}
 		add(def, "invalid_name", fmt.Sprintf("%s is not a valid host name.", part.names[0]))
+	} else if len(part.names) > 0 && part.ad != nil && len(part.names[0]) > ad.MaxName {
+		def := ""
+		if !multi {
+			def = "/inputs/role"
+		}
+		add(def, "invalid_name", fmt.Sprintf("%s is longer than the %d characters of a computer name in Active Directory, where its VMs get computer objects.",
+			part.names[0], ad.MaxName))
 	}
 
 	// Addresses from IP ranges are counted across components; their
@@ -1056,6 +1072,14 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 	}
 	vm.DNSSearch = p.dnsSearch
 	vm.Tags = p.vm.Tags
+	if p.ad != nil {
+		u := *p.ad
+		u.DNSHostName = strings.ToLower(vm.FQDN)
+		if !strings.Contains(u.DNSHostName, ".") {
+			u.DNSHostName = name + "." + ad.Domain(ev.adBase)
+		}
+		vm.AD = &u
+	}
 	// Worked out as it is cloned, over the inputs it reads (a secret one
 	// sealed) (ADR-0024).
 	if expr := p.comp.Bindings["tags"]; expr != "" && p.comp.Refs().BuildTags {
@@ -1208,9 +1232,9 @@ func (s *Service) reserveVMs(ctx context.Context, tx pgx.Tx, ev *Evaluation, req
 			ours[n] = true
 		}
 		zone := p.zone()
-		names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, rvav: ours, zone: zone}
+		names := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: taken, rvav: ours, zone: zone, dir: p.dir()}
 		if p.check != nil {
-			names.dns = p.check.dns
+			names.dns, names.computers = p.check.dns, p.check.computers
 		}
 		for i := range p.count {
 			seq, err := s.Store.NextName(ctx, tx, p.counter, p.naming.Start(), p.naming.Step(), func(n int) bool { return names.taken(p.naming.Name(p.prefix, n)) })

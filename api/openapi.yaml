@@ -9983,9 +9983,9 @@ components:
         detail: { type: string }
         system:
           type: string
-          description: Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person, `wait` its wait for a time or a condition and `branch` its choice between sides (ADR-0033).
-          enum: [rvav, policy, vcenter, efficientip, awx, nsx, rest, person, wait, branch]
-          x-enum-varnames: [StepSystemRvav, StepSystemPolicy, StepSystemVcenter, StepSystemEfficientip, StepSystemAwx, StepSystemNsx, StepSystemRest, StepSystemPerson, StepSystemWait, StepSystemBranch]
+          description: Who does the step; `rest` is a composite's REST call to another system, `person` its wait for a person, `wait` its wait for a time or a condition and `branch` its choice between sides (ADR-0033); `ad` is Active Directory (ADR-0064).
+          enum: [rvav, policy, vcenter, efficientip, awx, nsx, rest, person, wait, branch, ad]
+          x-enum-varnames: [StepSystemRvav, StepSystemPolicy, StepSystemVcenter, StepSystemEfficientip, StepSystemAwx, StepSystemNsx, StepSystemRest, StepSystemPerson, StepSystemWait, StepSystemBranch, StepSystemAd]
         status: { $ref: "#/components/schemas/StepStatus" }
         started_at: { type: [string, "null"], format: date-time }
         finished_at: { type: [string, "null"], format: date-time }
@@ -10352,6 +10352,7 @@ components:
         - $ref: "#/components/schemas/SecurityGroupResource"
         - $ref: "#/components/schemas/FirewallRulesResource"
         - $ref: "#/components/schemas/GroupMembershipResource"
+        - $ref: "#/components/schemas/AdComputerResource"
         - $ref: "#/components/schemas/CustomResource"
       discriminator:
         propertyName: type
@@ -10365,6 +10366,7 @@ components:
           nsx.group: "#/components/schemas/SecurityGroupResource"
           nsx.policy: "#/components/schemas/FirewallRulesResource"
           nsx.membership: "#/components/schemas/GroupMembershipResource"
+          ad.computer: "#/components/schemas/AdComputerResource"
           custom: "#/components/schemas/CustomResource"
 
     ResourceBase:
@@ -11439,6 +11441,26 @@ components:
         scope: { type: array, items: { type: string }, description: "The groups it is enforced on (applied to); none: everywhere." }
         services: { type: array, items: { type: string }, description: "NSX service IDs, or ANY." }
         action: { type: string, enum: [ALLOW, DROP, REJECT] }
+    AdComputerResource:
+      description: "A VM's computer object in Active Directory (ADR-0064): made before the VM is cloned, deleted after it."
+      allOf:
+        - $ref: "#/components/schemas/ResourceBase"
+        - type: object
+          required: [type, computer]
+          properties:
+            type: { const: ad.computer }
+            computer:
+              type: object
+              required: [vm, dn, sam_account_name, groups]
+              properties:
+                vm: { type: string, description: The VM's name. }
+                dn: { type: string, examples: ["CN=WEB-DEV-WEB01,OU=Web,OU=Servers,DC=corp,DC=example"] }
+                sam_account_name: { type: string, examples: [WEB-DEV-WEB01$] }
+                dns_host_name: { type: string, examples: [web-dev-web01.corp.example] }
+                groups:
+                  type: array
+                  description: The DNs of the groups it was added to.
+                  items: { type: string }
     GroupMembershipResource:
       description: "The NSX security groups a VM of the deployment is in, by the tags rvav set on it (ADR-0028)."
       allOf:

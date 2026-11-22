@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/damhau/rvav/internal/integrations/ad"
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 )
 
@@ -15,9 +16,10 @@ import (
 // a person to look at it.
 const maxDNSChecks = 100
 
-// nameCheck says whether a VM name is taken: in vCenter, or in DNS under
-// the zone the VM's FQDN goes in. DNS answers are kept; when DNS can't be
-// asked the name counts as free and err says why.
+// nameCheck says whether a VM name is taken: in vCenter, in Active
+// Directory when its VMs get computer objects there, or in DNS under the
+// zone the VM's FQDN goes in. Answers are kept; when DNS can't be asked
+// the name counts as free and err says why.
 type nameCheck struct {
 	ctx     context.Context
 	ipam    efficientip.Client
@@ -25,20 +27,28 @@ type nameCheck struct {
 	// rvav holds the names of every deployment rvav made, deleted ones too:
 	// a name is never given twice (ADR-0020).
 	rvav map[string]bool
-	zone string
-	dns  map[string]bool
-	err  error
+	// dir is the directory its VMs get computer objects in (ADR-0064), and
+	// computers its answers.
+	dir       *ad.Client
+	computers map[string]bool
+	zone      string
+	dns       map[string]bool
+	err       error
 }
 
 func (c *nameCheck) taken(name string) bool { return c.takenIn(name) != "" }
 
-// takenIn says where a name is taken: vcenter, rvav or dns ("" when free).
+// takenIn says where a name is taken: vcenter, rvav, ad or dns ("" when
+// free).
 func (c *nameCheck) takenIn(name string) string {
 	if c.vcenter[name] {
 		return "vcenter"
 	}
 	if c.rvav[name] {
 		return "rvav"
+	}
+	if c.computerTaken(name) {
+		return "ad"
 	}
 	if c.ipam == nil || c.zone == "" || c.err != nil {
 		return ""
@@ -60,6 +70,27 @@ func (c *nameCheck) takenIn(name string) string {
 	}
 	c.dns[name] = exists
 	return map[bool]string{true: "dns"}[exists]
+}
+
+// computerTaken says Active Directory has a computer object of that name:
+// rvav never takes over one it didn't make, so the name is passed over.
+func (c *nameCheck) computerTaken(name string) bool {
+	if c.dir == nil || c.err != nil {
+		return false
+	}
+	if taken, ok := c.computers[name]; ok {
+		return taken
+	}
+	found, err := c.dir.Find(c.ctx, name)
+	if err != nil {
+		c.err = &UpstreamError{System: "Active Directory", Err: err}
+		return false
+	}
+	if c.computers == nil {
+		c.computers = map[string]bool{}
+	}
+	c.computers[name] = found != nil
+	return found != nil
 }
 
 // submitting counts the submissions under way in this process for each

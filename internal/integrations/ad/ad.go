@@ -182,7 +182,7 @@ func (c *Client) Create(ctx context.Context, comp Computer, groups []string) err
 	defer done()
 	add := ldap.NewAddRequest(comp.DN, nil)
 	add.Attribute("objectClass", []string{"top", "person", "organizationalPerson", "user", "computer"})
-	add.Attribute("cn", []string{comp.Name})
+	add.Attribute("cn", []string{strings.ToUpper(comp.Name)})
 	add.Attribute("sAMAccountName", []string{Account(comp.Name)})
 	add.Attribute("userAccountControl", []string{UserAccountControl})
 	if comp.DNSHostName != "" {
@@ -215,6 +215,13 @@ func (c *Client) Create(ctx context.Context, comp Computer, groups []string) err
 		}
 	}
 	return nil
+}
+
+// Refused says the directory refused what was asked for good: the
+// service account may not, or the object breaks a constraint.
+func Refused(err error) bool {
+	return ldap.IsErrorAnyOf(err, ldap.LDAPResultInsufficientAccessRights, ldap.LDAPResultUnwillingToPerform,
+		ldap.LDAPResultConstraintViolation, ldap.LDAPResultObjectClassViolation, ldap.LDAPResultNoSuchObject)
 }
 
 // exists: Active Directory answers 68 for a DN taken and for a
@@ -251,10 +258,10 @@ func (c *Client) Rename(ctx context.Context, dn, name, dnsHostName string) (stri
 	if err != nil || len(parsed.RDNs) < 2 {
 		return "", fmt.Errorf("%q is not a computer object's DN", dn)
 	}
-	parent := (&ldap.DN{RDNs: parsed.RDNs[1:]}).String()
+	parent := ParentDN(dn)
 	newDN := ComputerDN(name, parent)
 	if !strings.EqualFold(dn, newDN) {
-		if err := conn.ModifyDN(ldap.NewModifyDNRequest(dn, "CN="+ldap.EscapeDN(name), true, "")); err != nil &&
+		if err := conn.ModifyDN(ldap.NewModifyDNRequest(dn, "CN="+ldap.EscapeDN(strings.ToUpper(name)), true, "")); err != nil &&
 			!ldap.IsErrorWithCode(err, ldap.LDAPResultNoSuchObject) {
 			return "", fmt.Errorf("rename %s: %w", dn, err)
 		}
@@ -268,6 +275,20 @@ func (c *Client) Rename(ctx context.Context, dn, name, dnsHostName string) (stri
 		return "", fmt.Errorf("rename %s: %w", newDN, err)
 	}
 	return newDN, nil
+}
+
+// ParentDN is a DN without its first part, as it is written: go-ldap's
+// String lower-cases the attribute types.
+func ParentDN(dn string) string {
+	for i := 0; i < len(dn); i++ {
+		switch dn[i] {
+		case '\\':
+			i++
+		case ',':
+			return strings.TrimSpace(dn[i+1:])
+		}
+	}
+	return ""
 }
 
 // Account is a computer's sAMAccountName.

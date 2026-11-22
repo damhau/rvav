@@ -436,8 +436,9 @@ other networks keep EfficientIP. One VM can have adapters on both.
   `userAccountControl` 4096, `dNSHostName` and a description naming the
   request and the deployment; then adds it to the placement's groups.
 - **Deletes** the objects it made, found by their DN and description,
-  with their VM: deleted, rolled back or scaled in. Renames them with
-  their VM.
+  with their VM: deleted, rolled back, scaled in, or not made because its
+  clone failed. Renames them with their VM (modify DN, then
+  `sAMAccountName` and `dNSHostName`).
 - **Reads** the base DN for computer objects whose name a new VM would
   take.
 

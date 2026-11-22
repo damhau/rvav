@@ -269,6 +269,10 @@ func rollbackStops(ctx workflow.Context) bool {
 	return workflow.GetVersion(ctx, versionRollbackStops, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 }
 
+// versionADComputers makes VMs' computer objects before they are cloned
+// (ADR-0064): runs started before don't.
+const versionADComputers = "ad-computers"
+
 // rollBack deletes what a failed request made: its custom resources first,
 // then the rest, which stays when one of those wasn't deleted (ADR-0056).
 // It says why it didn't finish; "" when it did.
@@ -544,10 +548,25 @@ func buildVMs(ctx workflow.Context, info Info, list []VMUnit, guest blueprint.Gu
 				return nil, in.Key, err
 			}
 		}
+		computer := vm.AD != nil && workflow.GetVersion(ctx, versionADComputers, workflow.DefaultVersion, 1) == 1
+		if computer {
+			in.Key = key(KeyAD, vm)
+			if !info.done(in.Key) || newVM {
+				if err := workflow.ExecuteActivity(ctx, a.CreateComputer, in).Get(ctx, nil); err != nil {
+					return nil, in.Key, err
+				}
+			}
+		}
 		in.Key = key(KeyClone, vm)
 		in.Moref = before.Moref
 		if newVM {
 			if err := workflow.ExecuteActivity(ctx, a.CloneVM, in).Get(ctx, &in.Moref); err != nil {
+				if computer && !temporal.IsCanceledError(err) {
+					// No VM, so no computer object: a retry makes it again.
+					release := in
+					release.Key = key(KeyAD, vm)
+					_ = workflow.ExecuteActivity(ctx, a.ReleaseComputer, release).Get(ctx, nil)
+				}
 				return nil, in.Key, err
 			}
 		}

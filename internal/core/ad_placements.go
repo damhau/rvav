@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -10,19 +11,84 @@ import (
 
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
+	"github.com/damhau/rvav/internal/blueprint"
+	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/ids"
 	"github.com/damhau/rvav/internal/integrations/ad"
+	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/store"
 )
+
+// Directory is a client of the directory the settings name, nil when
+// they name none.
+func Directory(c config.ADConfig) *ad.Client {
+	if !c.Configured() {
+		return nil
+	}
+	return ad.New(DirectoryConfig(c, nil))
+}
 
 // directory is a client of the directory as saved now, and its base DN;
 // false when there is none.
 func (s *Service) directory(ctx context.Context) (*ad.Client, string, bool) {
 	c := s.liveConfig(ctx).AD
-	if !c.Configured() {
-		return nil, "", false
+	return Directory(c), c.BaseDN, c.Configured()
+}
+
+// evaluateDirectory finds the OU row a request's VMs follow, once rvav has
+// a directory: without one, no row applies (ADR-0064).
+func (s *Service) evaluateDirectory(ctx context.Context, ev *Evaluation) error {
+	ev.adRow, ev.adDir, ev.adBase = nil, nil, ""
+	dir, base, ok := s.directory(ctx)
+	if !ok {
+		return nil
 	}
-	return ad.New(DirectoryConfig(c, nil)), c.BaseDN, true
+	row, err := s.Store.ADPlacementFor(ctx, ev.Project.ID, ev.Env.Key)
+	if err != nil || row == nil {
+		return err
+	}
+	ev.adRow, ev.adDir, ev.adBase = row, dir, base
+	return nil
+}
+
+// computerOf is the computer object a component's VMs get, nil for none:
+// in the row's OU, or the one the blueprint chooses where the row lets it.
+func computerOf(ev *Evaluation, g blueprint.Guest, add func(field, code, msg string)) *provision.ADUnit {
+	row := ev.adRow
+	if row == nil {
+		return nil
+	}
+	ou := row.OU
+	if b := g.ActiveDirectory; b != nil && row.AllowBlueprintOU {
+		if b.Skip {
+			return nil
+		}
+		ou = cmp.Or(b.OU, ou)
+	}
+	u := &provision.ADUnit{OU: ad.Resolve(ou, ev.adBase)}
+	for _, dn := range append([]string{u.OU}, row.Groups...) {
+		if msg := ad.CheckDN(ad.Resolve(dn, ev.adBase), ev.adBase); msg != "" {
+			add("", "invalid", "Its VMs' computer objects can't be made: "+msg+" Ask an administrator to check the OUs in Active Directory.")
+			return nil
+		}
+	}
+	for _, g := range row.Groups {
+		u.Groups = append(u.Groups, ad.Resolve(g, ev.adBase))
+	}
+	if j := g.DomainJoin; j != nil && !strings.EqualFold(strings.TrimSuffix(j.Domain, "."), ad.Domain(ev.adBase)) {
+		add("", "invalid", fmt.Sprintf("Its VMs join %s, and rvav makes their computer objects in %s. Ask a catalog admin to check this item.",
+			j.Domain, ad.Domain(ev.adBase)))
+	}
+	return u
+}
+
+// dir is the directory its VMs' names are checked in: the one they get
+// computer objects in.
+func (p vmPart) dir() *ad.Client {
+	if p.ad == nil {
+		return nil
+	}
+	return p.adDir
 }
 
 // ADPlacements are the rows that may apply to a project, or every row.

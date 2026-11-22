@@ -9,6 +9,7 @@ import (
 	"github.com/damhau/rvav/internal/api"
 	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/ids"
+	"github.com/damhau/rvav/internal/integrations/ad"
 	"github.com/damhau/rvav/internal/naming"
 	"github.com/damhau/rvav/internal/store"
 )
@@ -52,9 +53,10 @@ func (s *Service) namingFor(ctx context.Context, projectID, environment, bluepri
 type skippedName struct{ Name, In string }
 
 // peekNames are the next names a spec gives with this prefix, those taken
-// in vCenter, rvav or DNS (under zone) passed over, and those given (to
-// earlier components); nothing is reserved.
-func (s *Service) peekNames(ctx context.Context, spec namingSpec, prefix, zone string, count int, given map[string]bool) ([]string, []skippedName, *nameCheck, error) {
+// in vCenter, rvav, the directory (dir, when its VMs get computer objects)
+// or DNS (under zone) passed over, and those given (to earlier
+// components); nothing is reserved.
+func (s *Service) peekNames(ctx context.Context, spec namingSpec, prefix, zone string, count int, given map[string]bool, dir *ad.Client) ([]string, []skippedName, *nameCheck, error) {
 	vcenter, err := s.Store.InventoryVMNames(ctx, s.Store.Pool, prefix)
 	if err != nil {
 		return nil, nil, nil, err
@@ -70,7 +72,7 @@ func (s *Service) peekNames(ctx context.Context, spec namingSpec, prefix, zone s
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	check := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: vcenter, rvav: ours, zone: zone}
+	check := &nameCheck{ctx: ctx, ipam: s.IPAM, vcenter: vcenter, rvav: ours, zone: zone, dir: dir}
 	var names []string
 	var skipped []skippedName
 	for len(names) < count && check.err == nil {
@@ -243,7 +245,7 @@ func (s *Service) PreviewNaming(ctx context.Context, p *auth.Principal, q api.Na
 	if q.Count != nil {
 		count = *q.Count
 	}
-	names, skipped, check, err := s.peekNames(ctx, spec, prefix, "", count, nil)
+	names, skipped, check, err := s.peekNames(ctx, spec, prefix, "", count, nil, nil)
 	if err != nil {
 		return out, err
 	}

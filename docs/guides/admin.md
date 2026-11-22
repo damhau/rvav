@@ -719,6 +719,29 @@ same under **Projects › Environments › Active Directory**. A project's
 Removing an OU stops rvav making objects there. The objects already made
 stay, and rvav deletes them with their VMs.
 
+### What a request does in Active Directory
+
+Before a VM in an OU is cloned, rvav creates its computer object, for
+Linux and Windows VMs alike, and adds it to the groups. The request's
+timeline shows the step, **Create the computer object**, with the
+object's DN. A Windows VM that joins the domain takes the object, in its
+OU. The deployment's page lists its objects under **Active Directory**.
+
+- A name Active Directory already has is passed over: the VM gets the
+  next number. A rename to such a name is refused.
+- A VM name longer than 15 characters is refused, as Active Directory
+  allows no longer computer names.
+- rvav never takes over an object it didn't make. When one with the VM's
+  name appears after the request was submitted, the step fails: remove
+  the object, then retry the request.
+- When the clone fails, rvav deletes the object, and makes it again on a
+  retry. A rollback and the deployment's deletion delete it too.
+- When Active Directory refuses a delete, usually for the service
+  account's rights, the request fails and says so. Fix the rights, then
+  retry it.
+- Renaming the VM renames its object. Rename a joined Windows VM in
+  Windows too, and join a Linux one again.
+
 ## Projects
 
 **Projects** has three tabs:

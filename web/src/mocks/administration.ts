@@ -226,6 +226,23 @@ const text = (v: unknown): string => (typeof v === "string" ? v : "");
 const seedProperties: Record<string, Record<string, string>> = { prj_web: { backupPolicy: "gold" } };
 
 /** The administration's state, made on first use from the projects the mock holds then. */
+/** The DN of a VM's computer object and its groups, from the OU row that
+ * applies to it once the directory is set; null for none (ADR-0064). */
+export function computerObject(db: Db, projectId: string, env: string, name: string) {
+  const st = adminState(db);
+  const base = st.integrations.ad?.settings.base_dn;
+  if (typeof base !== "string" || !base) return null;
+  const rows = st.adPlacements;
+  const row =
+    rows.find((r) => r.project_id === projectId && r.environment === env) ??
+    rows.find((r) => r.project_id === projectId && r.environment === null) ??
+    rows.find((r) => r.project_id === null && r.environment === env) ??
+    rows.find((r) => r.project_id === null && r.environment === null);
+  if (!row) return null;
+  const resolve = (dn: string) => (/(^|,)\s*dc=/i.test(dn) ? dn : `${dn},${base}`);
+  return { dn: `CN=${name.toUpperCase()},${resolve(row.ou)}`, groups: row.groups.map(resolve) };
+}
+
 export function adminState(db: Db): AdminState {
   const d = db as Db & { administration?: AdminState };
   if (d.administration) return d.administration;

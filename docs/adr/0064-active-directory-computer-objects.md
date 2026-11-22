@@ -63,7 +63,8 @@ each; one row applies to a VM, the first of:
 4. the row for any project in any environment.
 
 None means no computer object: placement is opt-in, so a site that turns
-the integration on changes nothing until it says where. The row that
+the integration on changes nothing until it says where, and rows count
+only while the integration is set. The row that
 applies gives everything: its OU, its groups, its override. An OU or
 group is a DN, or a DN relative to the base DN (`OU=Servers`, as vRA's
 relative DNs are: one with no `DC=` part), and must be under the base
@@ -79,9 +80,10 @@ them: in the project for its rows, for all of rvav for every project's.
 Removing a row leaves the objects made: they go with their VMs. The API is
 `/admin/ad-placements`. There is no Terraform resource yet.
 
-A blueprint's guest may set `active_directory: { ou, skip }`. The row's
-`allow_blueprint_ou` makes them count; otherwise they are ignored, as
-vRA does, and the plan shows the OU used.
+A blueprint's guest may set `active_directory: { ou, skip }` (one or the
+other; the OU a DN as the rows' are). The row's `allow_blueprint_ou`
+makes them count; otherwise they are ignored, as vRA does, and the plan
+shows the OU used: the step's detail is the object's DN.
 
 ### The object
 Before the VM is cloned, after its DNS records, rvav adds
@@ -100,17 +102,29 @@ behind `workflow.GetVersion("ad-computers")` so that runs started before
 it replay. Its activity records an `ad.computer` resource first, then
 adds the object: an activity tried again finds the object it made by its
 DN and description and goes on. An object of the same name that rvav
-didn't make, whoever's it is, fails the step without retry, and rvav
-deletes nothing it didn't make.
+didn't make, whoever's it is (one made since the request was evaluated),
+fails the step without retry and is forgotten, and rvav deletes nothing
+it didn't make: before deleting or renaming an object it reads it again,
+and leaves one whose description isn't the one it wrote, saying so in
+the step. The resource, `ad.computer`, shows on the deployment's page
+under Active Directory, with its DN and groups. The activities reach the
+directory through a `Directory` interface, read from the integration on
+every use.
 
 ### When a name is taken
 A name is checked when the request is evaluated, as its DNS name is
 (ADR-0038): a computer object of that name anywhere under the base DN
-makes it taken, so a naming rule skips to the next number and a name
-given by the requester is refused, with the reason `ad`. A name longer
-than 15 characters, NetBIOS's limit, is refused when an object is to be
-made. A Windows domain join naming another domain than the base DN's is
-refused.
+makes it taken, so a naming rule skips to the next number, as it does
+past a name vCenter or DNS has (ADR-0020), with the reason `ad`. Every
+VM name rvav gives comes from a naming rule with a counter, so a request
+is never refused for it; a name the requester gives, a day-2 rename's,
+is refused when it is submitted ("Active Directory already has a
+computer NAME$."), and checked again when the rename runs (`ad.check`),
+before anything is renamed. A name longer than 15 characters, NetBIOS's
+limit, is refused when an object is to be made, for a request and a
+rename. A Windows domain join naming another domain than the base DN's
+is refused. A directory that can't be reached refuses the submission,
+as EfficientIP's DNS does; the preview only logs it.
 
 There is no "reuse": rvav can't tell a stale account from a live one of
 another machine, and taking over an object resets its trust with the
@@ -123,13 +137,20 @@ The object goes when its VM does:
 - deleting the deployment: `ad.computer.delete`, after the VMs and
   before the DNS records, retried as a failed delete is, so the
   deployment stays to be deleted again;
-- a build that fails after the object was made: the rollback deletes it
-  with the VM;
+- a clone that fails after the object was made: there is no VM, so the
+  object is deleted at once and forgotten, rollback or not, and the
+  step says so ("Removed computer object NAME$"); a retry makes it
+  again. When the directory refuses, the step fails with why and the
+  deployment keeps the object, to be deleted with it;
+- a build that fails later, with rollback on: the rollback deletes it
+  with the VM, after the VM and before the DNS records;
 - scaling in, or an update that removes a VM: its own object;
 - an object already gone counts as deleted.
 
-With rollback off, a failed build keeps its object for the retry, as it
-keeps the VM.
+With rollback off, a build that fails once the VM exists keeps its
+object for the retry, as it keeps the VM. A delete the directory
+refuses fails the request without retry, and says so; the request is
+retried once the rights are fixed.
 
 **Rename.** The day-2 rename renames the object too (`ad.rename`): its CN,
 `sAMAccountName` and `dNSHostName`. The guest's own name and its secure
@@ -152,9 +173,13 @@ them, and suggests the placements; a blueprint's
 
 ## Consequences
 - The service account needs, on the OUs the placements name only: create
-  and delete computer objects, write their `cn`, `sAMAccountName`,
-  `dNSHostName` and `description`; write `member` on the groups listed;
-  read the base DN to find taken names. Nothing on the domain itself.
+  and delete computer objects, rename them, write their `cn`,
+  `sAMAccountName`, `userAccountControl`, `dNSHostName` and
+  `description`; write `member` on the groups listed; read the base DN
+  to find taken names. Nothing on the domain itself.
+- The in-process directory of the tests can't serve a modify DN request:
+  the rename's is checked against a real directory in I1.6's acceptance,
+  as are a Windows join and a `realm join` onto the objects made.
 - A Windows domain join onto a pre-made object needs the join account to
   be allowed to reuse it (since KB5020276, its owner, or the policy
   "Domain controller: Allow computer account re-use during domain

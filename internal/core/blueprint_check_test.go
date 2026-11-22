@@ -71,6 +71,15 @@ func TestCheckVMBlueprint(t *testing.T) {
 		t.Fatalf("errors =\n%v\nwant\n%v", got, want)
 	}
 
+	// A computer object's OU, or none (ADR-0064).
+	if got := check(`{"kind": "vm", "template": "t", "guest": {"os_family": "linux", "active_directory": {"ou": "OU=Linux"}},
+		"components": [{"key": "a", "count": 1, "guest": {"active_directory": {"skip": true}}},
+		  {"key": "b", "count": 1, "guest": {"active_directory": {"ou": "OU=x,,"}}},
+		  {"key": "c", "count": 1, "guest": {"active_directory": {"ou": "OU=Linux", "skip": true}}}]}`, true); !slices.Equal(got,
+		[]string{"/blueprint/components/1/guest/active_directory/ou pattern", "/blueprint/components/2/guest/active_directory invalid"}) {
+		t.Fatalf("active_directory = %v", got)
+	}
+
 	// At most 20 VMs in all.
 	if got := check(`{"kind": "vm", "template": "t", "guest": {"os_family": "linux"},
 		"components": [{"key": "a", "count": 15}, {"key": "b", "count": 6}]}`, true); !slices.Equal(got, []string{"/blueprint/components out_of_range"}) {

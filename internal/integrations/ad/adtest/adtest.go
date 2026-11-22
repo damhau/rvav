@@ -26,6 +26,8 @@ import (
 	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/go-hclog"
 	"github.com/jimlambrt/gldap"
+
+	"github.com/damhau/rvav/internal/integrations/ad"
 )
 
 // Server is the directory.
@@ -168,6 +170,29 @@ func (s *Server) Adds() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.adds
+}
+
+// RenameEntry gives an entry a new CN in its OU, as a modify DN request
+// would, which gldap can't serve; groups follow it. It returns its new DN.
+func (s *Server) RenameEntry(dn, cn string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.entries[key(dn)]
+	to := "CN=" + ldap.EscapeDN(cn) + "," + ad.ParentDN(dn)
+	if e == nil {
+		return to
+	}
+	delete(s.entries, key(dn))
+	e.dn, e.attrs["cn"] = to, []string{cn}
+	s.entries[key(to)] = e
+	for _, g := range s.entries {
+		for i, m := range g.attrs["member"] {
+			if strings.EqualFold(m, dn) {
+				g.attrs["member"][i] = to
+			}
+		}
+	}
+	return to
 }
 
 // FailDelete makes deletes fail, as when the service account may not.

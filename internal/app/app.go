@@ -531,6 +531,13 @@ func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
 	}
 	acts.NSX = client
 	acts.NSXManagers = &nsxmanagers.Set{Store: a.Store, Secrets: a.Secrets, Primary: client}
+	// Active Directory as saved now (ADR-0064).
+	acts.Directory = func(ctx context.Context) provision.Directory {
+		if c := core.Directory(a.live(ctx).AD); c != nil {
+			return c
+		}
+		return nil
+	}
 	return acts, nil
 }
 

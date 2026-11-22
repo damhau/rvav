@@ -23,6 +23,7 @@ import type {
   SecurityGroupResource,
   FirewallRulesResource,
   GroupMembershipResource,
+  AdComputerResource,
   VmResource,
 } from "@/lib/api/types";
 import { cn, newIdempotencyKey } from "@/lib/utils";
@@ -281,6 +282,25 @@ function Network({
 
 /** The NSX security groups made for the deployment, the firewall rules into
  * them, and the groups each VM is in; tags removed in NSX are drift (ADR-0028). */
+function Computers({ computers }: { computers: AdComputerResource[] }) {
+  return (
+    <ul className="flex flex-col gap-2 text-secondary">
+      {computers.map((c) => (
+        <li key={c.id}>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <span className="font-mono text-body">{c.computer.sam_account_name}</span>
+            <span className="text-caption text-muted">{c.computer.dns_host_name}</span>
+          </div>
+          <p className="font-mono text-caption break-all text-faint">{c.computer.dn}</p>
+          {c.computer.groups.length > 0 && (
+            <p className="text-caption break-all text-muted">Groups: {c.computer.groups.join("; ")}</p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function SecurityGroups({
   groups,
   policies,
@@ -615,6 +635,7 @@ function Overview({
   const groups = d.resources.filter((r): r is SecurityGroupResource => r.type === "nsx.group");
   const policies = d.resources.filter((r): r is FirewallRulesResource => r.type === "nsx.policy");
   const members = d.resources.filter((r): r is GroupMembershipResource => r.type === "nsx.membership");
+  const computers = d.resources.filter((r): r is AdComputerResource => r.type === "ad.computer");
   return (
     <div className="flex flex-wrap items-start gap-4">
       <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-4">
@@ -633,6 +654,11 @@ function Overview({
         {groups.length + members.length > 0 && (
           <Panel title="Security groups">
             <SecurityGroups groups={groups} policies={policies} members={members} />
+          </Panel>
+        )}
+        {computers.length > 0 && (
+          <Panel title="Active Directory" description="Computer objects rvav made before the VMs were built">
+            <Computers computers={computers} />
           </Panel>
         )}
       </div>

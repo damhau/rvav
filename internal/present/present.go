@@ -548,6 +548,15 @@ func Resource(r store.Resource, links map[string]store.VCenterLink) (api.Resourc
 		}
 		err := out.FromCustomResource(v)
 		return out, err == nil
+	case "ad.computer":
+		var v api.AdComputerResource
+		_ = json.Unmarshal(r.Properties, &v.Computer)
+		if v.Computer.Groups == nil {
+			v.Computer.Groups = []string{}
+		}
+		v.Id, v.Name, v.SyncState, v.Type = r.ID, r.Name, api.SyncState(r.SyncState), "ad.computer"
+		err := out.FromAdComputerResource(v)
+		return out, err == nil
 	case "vsphere.drs_rule":
 		var v api.DrsRuleResource
 		_ = json.Unmarshal(r.Properties, &v)

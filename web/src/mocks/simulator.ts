@@ -1,6 +1,7 @@
 // Simulates the Temporal provisioning workflow: steps advance on a timer,
 // resources appear in the deployment, and every change is published as an event.
 import type {
+  AdComputerResource,
   ApprovalQuestionField,
   DeploymentDetail,
   DnsRecordResource,
@@ -29,6 +30,7 @@ import { clusters, DOMAIN, networks, sizes, templates, VCENTER, vsphereUrl, type
 import { multiName, multiParts } from "./components";
 import { reserveIp, summarize, vmNames } from "./logic";
 import { db, type StoredItem, type StoredRequest } from "./seed";
+import { computerObject } from "./administration";
 import { variableValues } from "./variables";
 
 export const timing = { tickMs: 900 };
@@ -456,9 +458,11 @@ export function planSteps(
         : item.slug === "windows-server"
           ? templates.windows
           : templates.rhel9;
+    const computer = computerObject(db, project.id, env, name);
     steps.push(
       step("ipam.reserve", "Reserve an IP address", "efficientip", { detail: `Subnet ${subnet}` }),
       step("dns.create", "Create A and PTR records", "efficientip", { detail: `${name}.${DOMAIN}` }),
+      ...(computer ? [step("ad.computer", "Create the computer object", "ad", { detail: computer.dn })] : []),
       step("vsphere.clone", `Clone from ${template.name}`, "vcenter", {
         detail: `${text(inputs.cluster)} · ${text(inputs.datastore)}`,
       }),
@@ -676,6 +680,27 @@ function completeStep(r: StoredRequest, s: Step) {
       };
       d.resources.push(a);
       publishResource(r, d, a);
+      break;
+    }
+    case "ad.computer": {
+      const computer = computerObject(db, r.request.project.id, r.request.environment, host);
+      if (!computer) break;
+      s.title = `Created computer object ${host.toUpperCase()}$`;
+      const res: AdComputerResource = {
+        id: newId("res"),
+        type: "ad.computer",
+        name: host,
+        sync_state: "in_sync",
+        computer: {
+          vm: host,
+          dn: computer.dn,
+          sam_account_name: `${host.toUpperCase()}$`,
+          dns_host_name: `${host}.${DOMAIN}`,
+          groups: computer.groups,
+        },
+      };
+      d.resources.push(res);
+      publishResource(r, d, res);
       break;
     }
     case "vsphere.clone": {

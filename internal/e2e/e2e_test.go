@@ -351,7 +351,14 @@ func setupWith(t *testing.T, ctx context.Context, c *vim25.Client, seeded bool) 
 		// The hosts REST value sources may call, as in the app.
 		REST: &restcall.Caller{Client: restcall.NewClient(provision.RESTTimeout),
 			HostsNow: func(context.Context) []string { return svc.REST.Hosts }},
-		NSXManagers: &nsxmanagers.Set{Store: st, Secrets: box}}
+		NSXManagers: &nsxmanagers.Set{Store: st, Secrets: box},
+		// The directory a test sets in svc.Config.AD, as the app reads it.
+		Directory: func(context.Context) provision.Directory {
+			if c := core.Directory(svc.Config.AD); c != nil {
+				return c
+			}
+			return nil
+		}}
 	// Subscriptions (ADR-0021): webhooks to hosts a test allows with allowWebhooks.
 	disp := &dispatch.Dispatcher{Store: st, Log: log, Targets: dispatch.Targets{
 		Webhook: &dispatch.Webhook{Secret: dispatch.StoredSecret(st, box)},

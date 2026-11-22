@@ -200,6 +200,29 @@ describe("a deployment's page against the mock API", () => {
       "Address not known yetDHCP · web-prd-edge002",
     ]);
   });
+
+  it("shows the computer objects rvav made in Active Directory, with their groups", async () => {
+    const dep = db.deployments.find((d) => d.name === "web-dev-api")!;
+    const dn = "CN=WEB-DEV-API001,OU=Web,DC=corp,DC=example";
+    dep.resources.push({
+      id: "res_computer",
+      type: "ad.computer",
+      name: "web-dev-api001",
+      sync_state: "in_sync",
+      computer: {
+        vm: "web-dev-api001",
+        dn,
+        sam_account_name: "WEB-DEV-API001$",
+        dns_host_name: "web-dev-api001.corp.example",
+        groups: ["CN=Web servers,OU=Web,DC=corp,DC=example"],
+      },
+    });
+    renderApp(`/deployments/${dep.id}`);
+    const panel = await screen.findByRole("region", { name: "Active Directory" }, { timeout: 5000 });
+    expect(within(panel).getByText("WEB-DEV-API001$")).toBeVisible();
+    expect(within(panel).getByText(dn)).toBeVisible();
+    expect(within(panel).getByText("Groups: CN=Web servers,OU=Web,DC=corp,DC=example")).toBeVisible();
+  });
 });
 
 // The "member" persona: Web Platform shares its deployments with their
