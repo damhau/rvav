@@ -338,10 +338,10 @@ A command's exit code says how it went:
 | Code | What happened |
 |---|---|
 | `0` | The command succeeded, and the request it waited for ended as asked. |
-| `1` | The request didn't succeed: it failed, was rejected or was cancelled. A dry run that rvav would refuse, and other errors, also exit with `1`. |
+| `1` | The request didn't succeed: it failed, was rejected or was cancelled. rvav refusing the call, such as `Not found` or `Forbidden`, a dry run that rvav would refuse, and other errors also exit with `1`. |
 | `2` | The command, a flag or an input isn't right, such as a missing `--yes` or `--comment`. rvavctl changed nothing. |
 | `3` | `--timeout` ended the wait. rvav goes on with the request. |
-| `4` | Calling rvav, or its identity provider, failed: rvav refused the call, you aren't signed in, or no answer came. |
+| `4` | rvavctl couldn't call rvav as you: rvav or its identity provider didn't answer or answered with a server error (`5xx`), or you have no valid sign-in (not signed in, expired, or refused). Trying again later, or after `rvavctl login`, can help. |
 | `130` | You pressed Ctrl-C. |
 
 For example, to wait for each of your running requests in turn:

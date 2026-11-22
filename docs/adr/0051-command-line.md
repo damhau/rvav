@@ -116,9 +116,11 @@ the terminal's cursor. `--wait` reads the request every two seconds until
 it ends, or until `--timeout`, and goes on through errors that don't last.
 
 **Exit codes**, for scripts: `0` for success, `1` for a request that
-didn't succeed (and other errors), `2` for a command used wrongly, `3`
-for a wait that `--timeout` ended, `4` for a call to rvav or its identity
-provider that failed, `130` for Ctrl-C. `requests cancel --wait`
+didn't succeed, a call rvav refused (a `4xx` answer other than `401`) and
+other errors, `2` for a command used wrongly, `3` for a wait that
+`--timeout` ended, `4` when rvav or its identity provider didn't answer,
+answered `5xx`, or took no sign-in (`401`, not signed in, expired), and
+`130` for Ctrl-C. `requests cancel --wait`
 succeeds when the request ends cancelled.
 
 Every create sends a new `Idempotency-Key`.

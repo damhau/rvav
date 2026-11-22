@@ -57,14 +57,15 @@ type app struct {
 // rvavctl's exit codes, for scripts (docs/guides/cli.md).
 const (
 	// exitFailed is a request that didn't succeed, a dry run rvav would
-	// refuse, or any error without a code of its own.
+	// refuse, a call rvav refused (not found, forbidden, a conflict), or
+	// any error without a code of its own.
 	exitFailed = 1
 	// exitUsage is a command, a flag or an input that isn't right.
 	exitUsage = 2
 	// exitTimeout is a wait that --timeout ended.
 	exitTimeout = 3
-	// exitRvav is a call to rvav, or to its identity provider, that failed:
-	// refused, not signed in, or no answer.
+	// exitRvav is rvav, or its identity provider, out of reach or answering
+	// 5xx, or no sign-in it takes: not signed in, expired, refused.
 	exitRvav = 4
 	// exitInterrupted is Ctrl-C, as a shell reports a process it ends.
 	exitInterrupted = 130
@@ -123,10 +124,13 @@ func exitCode(err error, ran bool) int {
 
 func callingRvav(err error) bool {
 	var e *rvavclient.Error
+	if errors.As(err, &e) {
+		return e.Status == http.StatusUnauthorized || rvavclient.Transient(err)
+	}
 	var ue *url.Error
 	var se *signInError
 	var re *oauth2.RetrieveError
-	return errors.As(err, &e) || errors.As(err, &ue) || errors.As(err, &se) || errors.As(err, &re) ||
+	return errors.As(err, &ue) || errors.As(err, &se) || errors.As(err, &re) ||
 		errors.Is(err, rvavclient.ErrSignInExpired) || errors.Is(err, errNotSignedIn) || rvavclient.Transient(err)
 }
 

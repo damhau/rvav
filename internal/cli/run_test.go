@@ -95,7 +95,7 @@ func TestWaitRetries(t *testing.T) {
 	gone := newFake(t, func(w http.ResponseWriter, r *http.Request) {
 		answer(w, 404, `{"title":"Not found","status":404}`)
 	})
-	if code, _, stderr := gone.run("requests", "wait", "REQ-1"); code != exitRvav || strings.Contains(stderr, "trying again") {
+	if code, _, stderr := gone.run("requests", "wait", "REQ-1"); code != exitFailed || strings.Contains(stderr, "trying again") {
 		t.Fatalf("a request rvav doesn't know = %d\n%s", code, stderr)
 	}
 }
@@ -126,6 +126,10 @@ func TestExitCodes(t *testing.T) {
 			answer(w, 202, requestAs("req_4", "REQ-4", "running"))
 		case "/api/v1/requests/req_4":
 			answer(w, 200, requestAs("req_4", "REQ-4", "succeeded"))
+		case "/api/v1/requests/REQ-5":
+			answer(w, 404, `{"title":"Not found","status":404,"detail":"It does not exist, or you cannot see it."}`)
+		case "/api/v1/requests/REQ-6":
+			answer(w, 502, "<html>502 Bad Gateway</html>")
 		default:
 			answer(w, 401, `{"title":"Unauthorized","status":401}`)
 		}
@@ -153,7 +157,9 @@ func TestExitCodes(t *testing.T) {
 		{name: "bad --data", args: []string{"requests", "signal", "REQ-1", "go", "--data", "[1]"}, want: exitUsage},
 		{name: "timeout", args: []string{"requests", "wait", "REQ-3", "--timeout", "30ms"}, want: exitTimeout,
 			says: "REQ-3 hasn't finished after 30ms"},
-		{name: "refused", args: []string{"whoami"}, want: exitRvav, says: "run rvavctl login"},
+		{name: "sign-in refused", args: []string{"whoami"}, want: exitRvav, says: "run rvavctl login"},
+		{name: "call refused", args: []string{"requests", "show", "REQ-5"}, want: exitFailed, says: "Not found"},
+		{name: "5xx", args: []string{"requests", "show", "REQ-6"}, want: exitRvav, says: "502"},
 		{name: "no answer", env: map[string]string{"RVAV_URL": closed.URL, "RVAV_TOKEN": "rvav_pat_x"},
 			args: []string{"requests", "show", "REQ-1"}, want: exitRvav},
 		{name: "not signed in", env: map[string]string{}, args: []string{"whoami"}, want: exitRvav, says: "not signed in"},
