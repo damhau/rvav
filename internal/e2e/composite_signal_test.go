@@ -134,5 +134,8 @@ func TestCompositeSignalThroughTemporal(t *testing.T) {
 		if len(got) != 3 || got[2]["number"] != other.Number {
 			t.Fatalf("after the event = %v (the other is %s)", got, other.Number)
 		}
+		if ev := rig.steps(req.Id, requester)["step:ev"]; deref(ev.Detail) != "The event request.submitted came." || ev.DueAt != nil {
+			t.Fatalf("the step that got its event says %q, due %v", deref(ev.Detail), ev.DueAt)
+		}
 	})
 }

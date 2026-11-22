@@ -71,11 +71,18 @@ func (s *Store) SignalWaitFor(ctx context.Context, requestID, stepKey string) (S
 	return w, err
 }
 
+// stepCame says on a wait's step that what it waited for came: it no
+// longer waits until its timeout.
+const stepCame = `update request_steps st set detail = 'The ' || coalesce('event ' || w.topic, 'signal ' || w.name) || ' came.',
+	due_at = null from w where st.request_id = w.request_id and st.key = w.step_key and st.status = 'running'`
+
 // ReceiveSignal gives a request's open wait for the signal name what came;
 // ErrNotFound when none waits for it.
 func (s *Store) ReceiveSignal(ctx context.Context, requestID, name string, payload json.RawMessage) (SignalWait, error) {
-	rows, _ := s.Pool.Query(ctx, `update signal_waits set payload = $3, received_at = now()
-		where request_id = $1 and name = $2 and received_at is null and closed_at is null returning `+signalCols, requestID, name, payload)
+	rows, _ := s.Pool.Query(ctx, `with w as (update signal_waits set payload = $3, received_at = now()
+		where request_id = $1 and name = $2 and received_at is null and closed_at is null returning `+signalCols+`),
+		st as (`+stepCame+`)
+		select `+signalCols+` from w`, requestID, name, payload)
 	w, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[SignalWait])
 	if errors.Is(err, pgx.ErrNoRows) {
 		return w, ErrNotFound
@@ -104,7 +111,8 @@ func (s *Store) EventWaits(ctx context.Context, tx pgx.Tx, topic string) ([]Sign
 
 // ReceiveEvent gives an open wait the event it waited for.
 func (s *Store) ReceiveEvent(ctx context.Context, tx pgx.Tx, requestID, stepKey string, payload json.RawMessage) error {
-	_, err := tx.Exec(ctx, `update signal_waits set payload = $3, received_at = now()
-		where request_id = $1 and step_key = $2 and received_at is null and closed_at is null`, requestID, stepKey, payload)
+	_, err := tx.Exec(ctx, `with w as (update signal_waits set payload = $3, received_at = now()
+		where request_id = $1 and step_key = $2 and received_at is null and closed_at is null returning `+signalCols+`)
+		`+stepCame, requestID, stepKey, payload)
 	return err
 }

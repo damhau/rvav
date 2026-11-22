@@ -269,6 +269,9 @@ func TestSignalRetryAfterRollback(t *testing.T) {
 		if again := baseline(); again == first {
 			t.Fatalf("the retry kept the baseline job %s of the VM rolled back", first)
 		}
+		if cab := rig.steps(req.Id, requester)["step:cab"]; deref(cab.Detail) != "The signal cab-approved came." || cab.DueAt != nil {
+			t.Fatalf("the step that got its signal says %q, due %v", deref(cab.Detail), cab.DueAt)
+		}
 	})
 }
 
