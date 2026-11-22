@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
+import { i18n, initI18n, LOCALE_KEY } from "@/lib/i18n";
 import { resetMocks, server } from "@/mocks/node";
 
 // The whole suite runs its files in parallel, and under that load a page can
@@ -36,10 +37,22 @@ window.matchMedia ??= (query: string) =>
     dispatchEvent: () => false,
   }) as MediaQueryList;
 
+// The tests read the English texts, whatever the machine's language; a key
+// without an English text fails the test that shows it.
+await initI18n({
+  lng: "en",
+  saveMissing: true,
+  missingKeyHandler: (_lngs, ns, key) => {
+    throw new Error(`No English text for ${ns}:${key}`);
+  },
+});
+
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => resetMocks());
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   server.resetHandlers();
+  localStorage.removeItem(LOCALE_KEY);
+  if (i18n.language !== "en") await i18n.changeLanguage("en");
 });
 afterAll(() => server.close());

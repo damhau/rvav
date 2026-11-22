@@ -6,6 +6,7 @@ import { isApiError } from "@/lib/api/client";
 import { initAuth } from "@/lib/auth";
 import { loadBranding } from "@/lib/branding";
 import { isMock } from "@/lib/env";
+import { initI18n } from "@/lib/i18n";
 import { applyTheme, getStoredTheme } from "@/lib/theme";
 import { createAppRouter } from "./router";
 // Fonts served with the app, not from a third party (S14.6).
@@ -34,7 +35,7 @@ async function boot() {
     const { startMocks } = await import("./mocks/browser");
     await startMocks();
   }
-  const [state] = await Promise.all([initAuth(), loadBranding()]);
+  const [state] = await Promise.all([initAuth(), loadBranding(), initI18n()]);
   if (state === "redirecting") return;
   if (state === "trial") {
     const { TrialWindowPage } = await import("@/features/account/SignIn");

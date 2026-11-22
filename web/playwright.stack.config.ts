@@ -13,6 +13,13 @@ export default defineConfig({
     baseURL: process.env.RVAV_WEB_URL ?? "http://localhost:3000",
     trace: "retain-on-failure",
     viewport: { width: 1440, height: 1000 },
+    // The specs read the English texts (ADR-0061).
+    locale: "en-GB",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 }, locale: "en-GB" },
+    },
+  ],
 });

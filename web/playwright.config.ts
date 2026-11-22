@@ -14,8 +14,15 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     trace: "retain-on-failure",
     viewport: { width: 1440, height: 1000 },
+    // The specs read the English texts (ADR-0061); french.spec.ts sets its own.
+    locale: "en-GB",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 }, locale: "en-GB" },
+    },
+  ],
   webServer: {
     // `pnpm e2e` puts node_modules/.bin on the PATH; no global pnpm needed.
     command: `vite --port ${PORT} --strictPort`,
