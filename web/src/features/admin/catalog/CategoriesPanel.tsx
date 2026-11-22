@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shapes } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,9 @@ import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { AdminCatalogCategory } from "@/lib/api/types";
 import { keys, q } from "@/lib/query";
+
+// A key, the same in every language.
+const keyExample = "storage";
 
 /** The catalog's own category list (cached for minutes) changes too. */
 function useRefresh() {
@@ -35,6 +39,7 @@ function CategorySheet({
   next: number;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const refresh = useRefresh();
   const [key, setKey] = useState(existing?.key ?? "");
   const [name, setName] = useState(existing?.name ?? "");
@@ -54,12 +59,12 @@ function CategorySheet({
     },
     onSuccess: () => {
       refresh();
-      toast.success(existing ? `${name} saved` : `${name} added`);
+      toast.success(existing ? t("categories.saved", { name }) : t("categories.added", { name }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The category wasn't saved");
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, t("categories.notSaved"));
     },
   });
   return (
@@ -67,34 +72,39 @@ function CategorySheet({
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={existing ? `Change ${existing.name}` : "New category"}
-      description="The catalog groups its items by category, in this order."
-      submitLabel={save.isPending ? "Saving…" : existing ? "Save category" : "Add category"}
+      title={existing ? t("categories.change", { name: existing.name }) : t("categories.new")}
+      description={t("categories.sheetDescription")}
+      submitLabel={save.isPending ? t("categories.saving") : existing ? t("categories.save") : t("categories.add")}
       submitDisabled={!key || !name}
       onSubmit={() => {
         setErrors({});
         save.mutate();
       }}
     >
-      <Field
-        label="Key"
-        htmlFor="category-key"
-        hint="In items' YAML: lower case, digits and dashes. It can't change later."
-        error={errors["/key"]}
-      >
+      <Field label={t("categories.key")} htmlFor="category-key" hint={t("categories.keyHint")} error={errors["/key"]}>
         <Input
           id="category-key"
           className="font-mono"
           value={key}
           disabled={Boolean(existing)}
           onChange={(e) => setKey(e.target.value)}
-          placeholder="storage"
+          placeholder={keyExample}
         />
       </Field>
-      <Field label="Name" htmlFor="category-name" hint="What the catalog shows." error={errors["/name"]}>
+      <Field
+        label={t("categories.name")}
+        htmlFor="category-name"
+        hint={t("categories.nameHint")}
+        error={errors["/name"]}
+      >
         <Input id="category-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <Field label="Order" htmlFor="category-order" hint="Lower comes first." error={errors["/sort_order"]}>
+      <Field
+        label={t("categories.order")}
+        htmlFor="category-order"
+        hint={t("categories.orderHint")}
+        error={errors["/sort_order"]}
+      >
         <Input
           id="category-order"
           type="number"
@@ -108,6 +118,7 @@ function CategorySheet({
 }
 
 export function CategoriesPanel() {
+  const { t } = useTranslation("admin-catalog");
   const refresh = useRefresh();
   const categories = useQuery(q.adminCatalogCategories());
   const [editing, setEditing] = useState<AdminCatalogCategory | "new" | null>(null);
@@ -116,35 +127,35 @@ export function CategoriesPanel() {
     mutationFn: (key: string) => call(api.DELETE("/admin/catalog/categories/{key}", { params: { path: { key } } })),
     onSuccess: () => {
       refresh();
-      toast.success(`${removing?.name ?? "The category"} removed`);
+      toast.success(t("categories.removed", { name: removing?.name ?? t("categories.theCategory") }));
       setRemoving(null);
     },
-    onError: (e) => failed(e, "The category wasn't removed"),
+    onError: (e) => failed(e, t("categories.notRemoved")),
   });
   const list = categories.data?.items;
   const columns: Column<AdminCatalogCategory>[] = [
     {
       id: "order",
-      header: "Order",
+      header: t("categories.order"),
       sortValue: (c) => c.sort_order ?? 0,
       cell: (c) => <span className="text-muted tabular-nums">{c.sort_order ?? 0}</span>,
       className: "w-20",
     },
     {
       id: "name",
-      header: "Name",
+      header: t("categories.name"),
       sortValue: (c) => c.name,
       cell: (c) => <span className="font-medium">{c.name}</span>,
     },
     {
       id: "key",
-      header: "Key",
+      header: t("categories.key"),
       sortValue: (c) => c.key,
       cell: (c) => <span className="font-mono text-secondary text-muted">{c.key}</span>,
     },
     {
       id: "items",
-      header: "Items",
+      header: t("categories.items"),
       align: "end",
       sortValue: (c) => c.items ?? 0,
       cell: (c) => <span className="tabular-nums">{c.items ?? 0}</span>,
@@ -152,40 +163,33 @@ export function CategoriesPanel() {
   ];
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New category
+      {t("categories.new")}
     </Button>
   );
   const next = Math.max(0, ...(list ?? []).map((c) => c.sort_order ?? 0)) + 1;
   return (
     <Panel
-      title="Categories"
-      description="How the catalog groups its items."
+      title={t("categories.title")}
+      description={t("categories.description")}
       flush
       actions={list?.length ? add : undefined}
     >
       <DataTable
-        label="Categories"
+        label={t("categories.title")}
         columns={columns}
         rows={list}
         rowKey={(c) => c.key}
         minWidth={520}
         loading={categories.isPending}
         error={categories.isError && <ErrorState error={categories.error} onRetry={() => void categories.refetch()} />}
-        empty={
-          <EmptyState
-            icon={Shapes}
-            title="No categories yet"
-            body="Every item is in a category: add one before the first item."
-            action={add}
-          />
-        }
-        rowMenuLabel={(c) => `Actions for ${c.name}`}
+        empty={<EmptyState icon={Shapes} title={t("categories.empty")} body={t("categories.emptyBody")} action={add} />}
+        rowMenuLabel={(c) => t("categories.actionsFor", { name: c.name })}
         rowMenu={(c) => (
           <>
-            <MenuItem onSelect={() => setEditing(c)}>Change</MenuItem>
+            <MenuItem onSelect={() => setEditing(c)}>{t("categories.changeAction")}</MenuItem>
             <MenuSeparator />
             <MenuItem danger disabled={(c.items ?? 0) > 0} onSelect={() => setRemoving(c)}>
-              {(c.items ?? 0) > 0 ? "Remove: move its items first" : "Remove"}
+              {(c.items ?? 0) > 0 ? t("categories.removeFirst") : t("categories.remove")}
             </MenuItem>
           </>
         )}
@@ -201,10 +205,10 @@ export function CategoriesPanel() {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.name}?`}
-          description="It leaves the catalog's list of categories."
-          consequences="No item is in it."
-          confirmLabel="Remove category"
+          title={t("categories.removeTitle", { name: removing.name })}
+          description={t("categories.removeBody")}
+          consequences={t("categories.removeConsequences")}
+          confirmLabel={t("categories.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing.key)}
         />

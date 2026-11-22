@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { GitBranch } from "lucide-react";
 import { useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Panel } from "@/components/ui/panel";
@@ -20,20 +21,15 @@ import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { relative } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 
 type CatalogGitStatus = components["schemas"]["CatalogGitStatus"];
 
 type State = CatalogItemGit["state"];
 
-export const gitStateLabel: Record<State, string> = {
-  synced: "In Git",
-  waiting: "Waiting to be committed",
-  failing: "Commit failing",
-  draft: "Draft from Git",
-  conflict: "Conflict in Git",
-  refused: "Refused from Git",
-  deleted: "Deleted in Git",
-};
+const tr = i18n.getFixedT(null, "admin-catalog");
+
+export const gitStateLabel = (state: State) => tr(`git.state.${state}`);
 
 const gitTone = {
   synced: "outline",
@@ -45,17 +41,17 @@ const gitTone = {
   deleted: "neutral",
 } as const;
 
+const needing = ["failing", "draft", "conflict", "refused", "deleted"] as const;
+
 /** What someone has to do about a file, by state. */
-const needs: Partial<Record<State, string>> = {
-  failing: "rvav can't commit it: check the repository's settings and credentials.",
-  draft: "The repository changed it: review the draft, then publish or discard it.",
-  conflict: "rvav and the repository both changed it: choose which to keep.",
-  refused: "The repository's file can't be imported: fix it there.",
-  deleted: "The repository deleted it: rvav keeps the item.",
-};
+function needs(state: State): string | undefined {
+  const s = needing.find((n) => n === state);
+  return s && tr(`git.needs.${s}`);
+}
 
 export function GitBadge({ git }: { git: CatalogItemGit }) {
-  return <Badge tone={gitTone[git.state]}>{gitStateLabel[git.state]}</Badge>;
+  useTranslation();
+  return <Badge tone={gitTone[git.state]}>{gitStateLabel(git.state)}</Badge>;
 }
 
 const short = (sha: string) => sha.slice(0, 8);
@@ -87,16 +83,17 @@ const where = (url: string) => url.replace(/^[a-z+]+:\/\//, "").replace(/\.git$/
 /** The catalog's repository in a line above the items: where it is, when it
  * was read, and how many files need someone; its details in a side panel. */
 export function GitBanner() {
+  const { t } = useTranslation("admin-catalog");
   const status = useQuery(q.catalogGit());
   const [open, setOpen] = useState(false);
   if (status.isPending) return <Skeleton className="h-11" />;
   if (status.isError) return <ErrorState error={status.error} onRetry={() => void status.refetch()} />;
   const s = status.data;
   if (!s.configured) return null;
-  const attention = s.files.filter((f) => needs[f.state]).length;
+  const attention = s.files.filter((f) => needs(f.state)).length;
   return (
     <section
-      aria-label="Git repository"
+      aria-label={t("git.repository")}
       className={cn(
         "flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border bg-surface py-2 pr-2 pl-3.5 text-secondary",
         s.error || attention > 0 ? "border-warn/50" : "border-line",
@@ -109,20 +106,23 @@ export function GitBanner() {
         </span>
       </span>
       <span className="text-muted">
-        <span className="font-mono">{s.branch}</span>, in <span className="font-mono">{s.dir}/</span>
+        <Trans
+          t={t}
+          i18nKey="git.branchIn"
+          values={{ branch: s.branch, dir: s.dir }}
+          components={{ branch: <span className="font-mono" />, dir: <span className="font-mono" /> }}
+        />
       </span>
-      <span className="text-muted">{s.read_at ? `Read ${relative(s.read_at)}` : "Not read yet"}</span>
+      <span className="text-muted">{s.read_at ? t("git.read", { when: relative(s.read_at) }) : t("git.notRead")}</span>
       {s.error ? (
-        <Badge tone="bad">The last read failed</Badge>
+        <Badge tone="bad">{t("git.lastReadFailed")}</Badge>
       ) : attention > 0 ? (
-        <Badge tone="warn">
-          {attention} file{attention === 1 ? " needs" : "s need"} you
-        </Badge>
+        <Badge tone="warn">{t("git.filesNeedYou", { count: attention })}</Badge>
       ) : (
-        <span className="text-muted">All in step</span>
+        <span className="text-muted">{t("git.allInStep")}</span>
       )}
       <Button size="sm" variant="quiet" className="ml-auto" onClick={() => setOpen(true)}>
-        Details<span className="sr-only"> of the Git repository</span>
+        <Trans t={t} i18nKey="git.details" components={{ sr: <span className="sr-only" /> }} />
       </Button>
       {open && <GitSheet status={s} onClose={() => setOpen(false)} />}
     </section>
@@ -131,6 +131,7 @@ export function GitBanner() {
 
 /** The repository as last read, what needs someone, and a read now. */
 function GitSheet({ status: s, onClose }: { status: CatalogGitStatus; onClose: () => void }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const { me } = useCurrentProject();
   const read = useMutation({
@@ -138,63 +139,66 @@ function GitSheet({ status: s, onClose }: { status: CatalogGitStatus; onClose: (
     onSuccess: (next) => {
       qc.setQueryData(keys.catalogAdmin.git, next);
       void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
-      if (next.error) toast.error("The repository couldn't be read", { description: next.error });
-      else toast.success("Repository read", { description: next.head ? `At ${short(next.head)}` : "It is empty." });
+      if (next.error) toast.error(t("git.notReadToast"), { description: next.error });
+      else
+        toast.success(t("git.readToast"), {
+          description: next.head ? t("git.at", { sha: short(next.head) }) : t("git.empty"),
+        });
     },
     onError: (e) =>
-      toast.error(isApiError(e) ? e.problem.title : "The read failed", {
+      toast.error(isApiError(e) ? e.problem.title : t("git.readFailed"), {
         description: isApiError(e) ? e.problem.detail : undefined,
       }),
   });
   const latest = useQuery(q.catalogGit()).data ?? s;
-  const attention = latest.files.filter((f) => needs[f.state]);
+  const attention = latest.files.filter((f) => needs(f.state));
   return (
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
-      title="Git repository"
-      description="rvav commits each item's published version here, and reads the repository's changes back as drafts."
+      title={t("git.repository")}
+      description={t("git.sheetDescription")}
       footer={
         <>
           {can(me, "integrations.manage") && (
             <Button variant="quiet" asChild className="mr-auto">
               <Link to="/admin/integrations/$kind" params={{ kind: "git" }}>
-                Change or disconnect
+                {t("git.change")}
               </Link>
             </Button>
           )}
           <Button variant="primary" onClick={() => read.mutate()} disabled={read.isPending}>
-            {read.isPending ? "Reading…" : "Read the repository now"}
+            {read.isPending ? t("git.reading") : t("git.readNow")}
           </Button>
         </>
       }
     >
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-secondary">
-        <dt className="text-muted">Repository</dt>
+        <dt className="text-muted">{t("git.repositoryTerm")}</dt>
         <dd className="font-mono break-all">{latest.url}</dd>
-        <dt className="text-muted">Branch</dt>
+        <dt className="text-muted">{t("git.branch")}</dt>
         <dd className="font-mono">{latest.branch}</dd>
-        <dt className="text-muted">Directory</dt>
+        <dt className="text-muted">{t("git.directory")}</dt>
         <dd className="font-mono">{latest.dir}/</dd>
-        <dt className="text-muted">Last read</dt>
+        <dt className="text-muted">{t("git.lastRead")}</dt>
         <dd>
-          {latest.read_at ? relative(latest.read_at) : "Not yet"}
-          {latest.head && <span className="font-mono text-muted"> at {short(latest.head)}</span>}
-          {latest.read_requested && <span className="text-muted">, and a read is on its way</span>}
+          {latest.read_at ? relative(latest.read_at) : t("git.notYet")}
+          {latest.head && <span className="font-mono text-muted">{t("git.atSha", { sha: short(latest.head) })}</span>}
+          {latest.read_requested && <span className="text-muted">{t("git.readComing")}</span>}
         </dd>
       </dl>
       {latest.error && (
         <p role="alert" className="rounded-md border border-bad/40 bg-bad-soft px-3 py-2 text-secondary">
-          The last read failed: {latest.error}
+          {t("git.lastReadFailedWith", { error: latest.error })}
         </p>
       )}
       <p className="text-secondary text-muted">
-        {latest.files.length} file{latest.files.length === 1 ? "" : "s"} in the repository.{" "}
-        {attention.length === 0 ? "All in step." : `${attention.length} need${attention.length === 1 ? "s" : ""} you:`}
+        {t("git.files", { count: latest.files.length })}{" "}
+        {attention.length === 0 ? t("git.allInStepDot") : t("git.needYou", { count: attention.length })}
       </p>
       {attention.length > 0 && (
         <ul
-          aria-label="Files that need you"
+          aria-label={t("git.filesThatNeedYou")}
           className="flex flex-col divide-y divide-line rounded-md border border-line"
         >
           {attention.map((f) => (
@@ -207,6 +211,7 @@ function GitSheet({ status: s, onClose }: { status: CatalogGitStatus; onClose: (
 }
 
 function AttentionRow({ f }: { f: CatalogGitFile }) {
+  const { t } = useTranslation("admin-catalog");
   return (
     <li className="flex flex-col gap-1 px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -222,13 +227,14 @@ function AttentionRow({ f }: { f: CatalogGitFile }) {
         ) : null}
         <span className="font-mono text-caption text-faint">{f.path}</span>
       </div>
-      <span className="text-secondary text-muted">{f.error ?? f.note ?? needs[f.state]}</span>
-      {f.problems && <Problems problems={f.problems} label={`Problems of ${f.path}`} />}
+      <span className="text-secondary text-muted">{f.error ?? f.note ?? needs(f.state)}</span>
+      {f.problems && <Problems problems={f.problems} label={t("git.problemsOf", { path: f.path })} />}
     </li>
   );
 }
 
 function Diff({ lines, label }: { lines: DiffLine[]; label: string }) {
+  const { t } = useTranslation("admin-catalog");
   const sign = { same: " ", added: "+", removed: "-" } as const;
   const tone = { same: "text-muted", added: "bg-ok-soft text-fg", removed: "bg-bad-soft text-fg" } as const;
   return (
@@ -244,7 +250,7 @@ function Diff({ lines, label }: { lines: DiffLine[]; label: string }) {
         {lines.map((l, i) => (
           <div key={i} className={`px-3 ${tone[l.op]}`}>
             <span aria-hidden>{sign[l.op]} </span>
-            <span className="sr-only">{l.op === "same" ? "" : `${l.op}: `}</span>
+            <span className="sr-only">{l.op === "same" ? "" : t(`git.diffOp.${l.op}`)}</span>
             {l.text}
           </div>
         ))}
@@ -255,6 +261,7 @@ function Diff({ lines, label }: { lines: DiffLine[]; label: string }) {
 
 /** The item's file in the repository. */
 export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const git = item.git!;
   const detail = useQuery(q.catalogItemGit(item.id));
@@ -272,15 +279,11 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
     // and focus goes to the file's state.
     onSuccess: async (_, take) => {
       await qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
-      toast.success(
-        take === "rvav"
-          ? "rvav's file will be committed over the repository's change"
-          : "The repository's change is a draft",
-      );
+      toast.success(take === "rvav" ? t("git.committed") : t("git.takenDraft"));
       status.current?.focus();
     },
     onError: (e) =>
-      toast.error(isApiError(e) ? e.problem.title : "Not settled", {
+      toast.error(isApiError(e) ? e.problem.title : t("git.notSettled"), {
         description: isApiError(e) ? (e.fieldErrors[0]?.message ?? e.problem.detail) : undefined,
       }),
   });
@@ -297,45 +300,34 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
         </div>
         {git.last_commit && (
           <p className="flex flex-wrap gap-1 text-secondary">
-            <span className="text-muted">Last commit:</span> <Commit c={git.last_commit} />
+            <span className="text-muted">{t("git.lastCommit")}</span> <Commit c={git.last_commit} />
           </p>
         )}
         {git.state === "failing" && (
           <p role="alert" className="rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-secondary">
-            Committing failed {git.attempts} time{git.attempts === 1 ? "" : "s"}: {git.error}.
-            {git.next_attempt_at && <> Tried again {relative(git.next_attempt_at)}.</>}
+            {t("git.failingTimes", { count: git.attempts, error: git.error })}
+            {git.next_attempt_at && t("git.triedAgain", { when: relative(git.next_attempt_at) })}
           </p>
         )}
-        {git.state === "waiting" && (
-          <p className="text-secondary text-muted">
-            rvav's change will be committed at the next read of the repository.
-          </p>
-        )}
+        {git.state === "waiting" && <p className="text-secondary text-muted">{t("git.waiting")}</p>}
         {git.note && <p className="text-secondary text-muted">{git.note}</p>}
-        {git.problems && <Problems problems={git.problems} label="Why the repository's file was refused" />}
+        {git.problems && <Problems problems={git.problems} label={t("git.refusedWhy")} />}
         {ownDraft && item.draft_version && (
-          <p className="text-secondary">
-            The repository's change is draft {item.draft_version.number}: review it in Versions, then publish it (rvav
-            commits it back) or discard it (rvav's file is committed again).
-          </p>
+          <p className="text-secondary">{t("git.ownDraft", { number: item.draft_version.number })}</p>
         )}
         {git.state === "conflict" && (
           <div className="flex flex-col gap-2">
-            <p className="text-secondary">
-              {deletedThere
-                ? "The repository deleted the file: keep rvav's to add it back."
-                : "Keep rvav's file, committed over the repository's change; or take the repository's, as a draft (an open draft in rvav is discarded)."}
-            </p>
+            <p className="text-secondary">{deletedThere ? t("git.deletedThere") : t("git.conflict")}</p>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="primary" disabled={resolve.isPending} onClick={() => resolve.mutate("rvav")}>
-                Keep rvav's
+                {t("git.keepRvav")}
               </Button>
               <Button
                 size="sm"
                 disabled={resolve.isPending || deletedThere}
                 onClick={() => (item.draft_version ? setTaking(true) : resolve.mutate("repository"))}
               >
-                Take the repository's
+                {t("git.takeRepository")}
               </Button>
             </div>
           </div>
@@ -344,10 +336,10 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
           <ConfirmDialog
             open
             onOpenChange={(o) => !o && setTaking(false)}
-            title={`Discard draft ${item.draft_version.number}?`}
-            description="The repository's change becomes the item's draft, in place of rvav's."
-            consequences={`What draft ${item.draft_version.number} changed is lost. The published version stays as it is.`}
-            confirmLabel="Take the repository's"
+            title={t("git.discardTitle", { number: item.draft_version.number })}
+            description={t("git.discardBody")}
+            consequences={t("git.discardConsequences", { number: item.draft_version.number })}
+            confirmLabel={t("git.takeRepository")}
             onConfirm={() => {
               // Closed before it runs: once settled, the focus goes to the
               // file's state, not back to a button that is gone.
@@ -360,11 +352,9 @@ export function ItemGitTab({ item }: { item: AdminCatalogItem }) {
         {d && d.diff.some((l) => l.op !== "same") && (
           <div className="flex flex-col gap-1">
             <h3 className="text-secondary font-semibold">
-              {git.state === "draft"
-                ? "From rvav's file to the repository's draft"
-                : "From rvav's file to the repository's"}
+              {git.state === "draft" ? t("git.fromToDraft") : t("git.fromTo")}
             </h3>
-            <Diff lines={d.diff} label="Changes from rvav's file to the repository's" />
+            <Diff lines={d.diff} label={t("git.changes")} />
           </div>
         )}
       </div>

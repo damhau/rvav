@@ -2,6 +2,7 @@ import { keepPreviousData, type Query, useMutation, useQuery, useQueryClient } f
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Package } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
@@ -19,35 +20,42 @@ import { GitBadge } from "@/features/admin/catalog/GitPanels";
 import { failed, fieldErrors } from "@/features/admin/governance/common";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { AdminCatalogItem, CatalogItemType } from "@/lib/api/types";
+import { formatList } from "@/lib/format";
 import { useSearchBox } from "@/lib/hooks";
+import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q, type AdminItemFilters } from "@/lib/query";
 import { draftCopy } from "./designer/draftStore";
 
 const types = ["vm_blueprint", "awx_job_template", "awx_workflow", "workflow", "composite"] as const;
 
+const tr = i18n.getFixedT(null, "admin-catalog");
+const yamlStart = "apiVersion: rvav.dev/v1";
+
 /** Who may request an item, in words. */
 export function openToText(it: AdminCatalogItem): string {
   const n = it.entitlements.project_ids.length;
-  if (it.entitlements.all_projects) return "Every project";
-  return n === 0 ? "No project" : `${n} project${n > 1 ? "s" : ""}`;
+  if (it.entitlements.all_projects) return tr("items.openTo.every");
+  return n === 0 ? tr("items.openTo.none") : tr("items.openTo.count", { count: n });
 }
 
 export function ItemState({ it }: { it: AdminCatalogItem }) {
+  const { t } = useTranslation("admin-catalog");
   return (
     <div className="flex flex-wrap gap-1">
       {it.published_version ? (
-        <Badge tone="ok">Published {it.published_version.number}</Badge>
+        <Badge tone="ok">{t("items.published", { number: it.published_version.number })}</Badge>
       ) : (
-        <Badge tone="neutral">Not published</Badge>
+        <Badge tone="neutral">{t("items.notPublished")}</Badge>
       )}
-      {it.draft_version && <Badge tone="accent">Draft {it.draft_version.number}</Badge>}
+      {it.draft_version && <Badge tone="accent">{t("items.draft", { number: it.draft_version.number })}</Badge>}
       {it.git && it.git.state !== "synced" && <GitBadge git={it.git} />}
     </div>
   );
 }
 
 function NewItemSheet({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const navigate = useNavigate();
   const categories = useQuery(q.adminCatalogCategories());
@@ -63,12 +71,12 @@ function NewItemSheet({ onClose }: { onClose: () => void }) {
     mutationFn: () => call(api.POST("/admin/catalog/items", { body: form })),
     onSuccess: (it) => {
       void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
-      toast.success(`${it.name} created, with a draft 1.0`);
+      toast.success(t("items.new.created", { name: it.name }));
       void navigate({ to: "/admin/catalog-items/$itemId", params: { itemId: it.slug } });
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The item wasn't created");
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, t("items.new.notCreated"));
     },
   });
   const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -77,24 +85,19 @@ function NewItemSheet({ onClose }: { onClose: () => void }) {
       open
       onOpenChange={(o) => !o && onClose()}
       pending={create.isPending}
-      title="New item"
-      description="It starts as a draft 1.0; publish it when its form and blueprint are ready."
-      submitLabel={create.isPending ? "Creating…" : "Create"}
+      title={t("items.new.title")}
+      description={t("items.new.description")}
+      submitLabel={create.isPending ? t("items.new.creating") : t("items.new.create")}
       submitDisabled={!form.name || !form.slug || !form.summary}
       onSubmit={() => {
         setErrors({});
         create.mutate();
       }}
     >
-      <Field label="Name" htmlFor="new-item-name" error={errors["/name"]}>
+      <Field label={t("items.new.name")} htmlFor="new-item-name" error={errors["/name"]}>
         <Input id="new-item-name" value={form.name} onChange={(e) => set("name")(e.target.value)} maxLength={80} />
       </Field>
-      <Field
-        label="Slug"
-        htmlFor="new-item-slug"
-        hint="In URLs and YAML: lower case, digits and dashes. It can't change later."
-        error={errors["/slug"]}
-      >
+      <Field label={t("items.new.slug")} htmlFor="new-item-slug" hint={t("items.new.slugHint")} error={errors["/slug"]}>
         <Input
           id="new-item-slug"
           value={form.slug}
@@ -103,9 +106,9 @@ function NewItemSheet({ onClose }: { onClose: () => void }) {
         />
       </Field>
       <Field
-        label="Summary"
+        label={t("items.new.summary")}
         htmlFor="new-item-summary"
-        hint="One line on the catalog's card."
+        hint={t("items.new.summaryHint")}
         error={errors["/summary"]}
       >
         <Textarea
@@ -116,7 +119,7 @@ function NewItemSheet({ onClose }: { onClose: () => void }) {
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Category" htmlFor="new-item-category" error={errors["/category"]}>
+        <Field label={t("items.new.category")} htmlFor="new-item-category" error={errors["/category"]}>
           <Select
             id="new-item-category"
             value={form.category}
@@ -125,12 +128,12 @@ function NewItemSheet({ onClose }: { onClose: () => void }) {
             options={(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name }))}
           />
         </Field>
-        <Field label="Type" htmlFor="new-item-type">
+        <Field label={t("items.new.type")} htmlFor="new-item-type">
           <Select
             id="new-item-type"
             value={form.type}
             onChange={set("type")}
-            options={types.map((t) => ({ value: t, label: itemTypeLabel(t) }))}
+            options={types.map((ty) => ({ value: ty, label: itemTypeLabel(ty) }))}
           />
         </Field>
       </div>
@@ -139,6 +142,7 @@ function NewItemSheet({ onClose }: { onClose: () => void }) {
 }
 
 function ImportSheet({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [text, setText] = useState("");
@@ -154,14 +158,14 @@ function ImportSheet({ onClose }: { onClose: () => void }) {
       ),
     onSuccess: (out) => {
       void qc.invalidateQueries({ queryKey: keys.catalogAdmin.all });
-      toast.success("Imported as a draft");
+      toast.success(t("items.import.done"));
       void navigate({ to: "/admin/catalog-items/$itemId", params: { itemId: out.item_id } });
     },
     onError: (e) =>
       setProblems(
         isApiError(e) && e.fieldErrors.length
           ? e.fieldErrors.map((x) => x.message)
-          : [isApiError(e) ? (e.problem.detail ?? e.problem.title) : "The import failed."],
+          : [isApiError(e) ? (e.problem.detail ?? e.problem.title) : t("items.import.failed")],
       ),
   });
   return (
@@ -169,16 +173,16 @@ function ImportSheet({ onClose }: { onClose: () => void }) {
       open
       onOpenChange={(o) => !o && onClose()}
       pending={run.isPending}
-      title="Import an item"
-      description="Paste or open an item exported as YAML. It comes in as a draft; nothing is published."
-      submitLabel={run.isPending ? "Importing…" : "Import"}
+      title={t("items.import.title")}
+      description={t("items.import.description")}
+      submitLabel={run.isPending ? t("items.import.importing") : t("items.import.import")}
       submitDisabled={!text.trim()}
       onSubmit={() => {
         setProblems([]);
         run.mutate();
       }}
     >
-      <Field label="YAML file" htmlFor="import-file">
+      <Field label={t("items.import.file")} htmlFor="import-file">
         <input
           id="import-file"
           type="file"
@@ -187,17 +191,17 @@ function ImportSheet({ onClose }: { onClose: () => void }) {
           onChange={async (e) => setText((await e.target.files?.[0]?.text()) ?? "")}
         />
       </Field>
-      <Field label="YAML" htmlFor="import-yaml">
+      <Field label={t("items.import.yaml")} htmlFor="import-yaml">
         <Textarea
           id="import-yaml"
           className="min-h-80 font-mono text-secondary"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="apiVersion: rvav.dev/v1"
+          placeholder={yamlStart}
         />
       </Field>
       {problems.length > 0 && (
-        <ul aria-label="Import problems" className="flex flex-col gap-1 text-secondary text-bad">
+        <ul aria-label={t("items.import.problems")} className="flex flex-col gap-1 text-secondary text-bad">
           {problems.map((p) => (
             <li key={p}>{p}</li>
           ))}
@@ -216,6 +220,7 @@ const itemPageOf = (it: AdminCatalogItem) => (query: Query) => {
 };
 
 function useItemChange() {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ it, action }: Change) => {
@@ -240,13 +245,13 @@ function useItemChange() {
       void qc.invalidateQueries({ queryKey: keys.catalog.all });
       toast.success(
         {
-          publish: `${it.name} ${it.draft_version?.number} published`,
-          withdraw: `${it.name} withdrawn`,
-          delete: `${it.name} deleted`,
+          publish: t("items.toast.published", { name: it.name, number: it.draft_version?.number }),
+          withdraw: t("items.toast.withdrawn", { name: it.name }),
+          delete: t("items.toast.deleted", { name: it.name }),
         }[action],
       );
     },
-    onError: (e) => failed(e, "That didn't work"),
+    onError: (e) => failed(e, t("items.toast.failed")),
   });
 }
 
@@ -264,6 +269,7 @@ export function requestableIn(it: AdminCatalogItem, projectId: string | undefine
 }
 
 export function ItemsPanel() {
+  const { t } = useTranslation("admin-catalog");
   const navigate = useNavigate();
   const { projectId } = useCurrentProject();
   const [filters, setFilters] = useState<AdminItemFilters>({});
@@ -284,7 +290,7 @@ export function ItemsPanel() {
   const columns: Column<AdminCatalogItem>[] = [
     {
       id: "item",
-      header: "Item",
+      header: t("items.col.item"),
       sortValue: (it) => it.name,
       cell: (it) => (
         <div className="flex items-center gap-2.5">
@@ -304,25 +310,25 @@ export function ItemsPanel() {
     },
     {
       id: "kind",
-      header: "Kind",
+      header: t("items.col.kind"),
       sortValue: (it) => itemTypeLabel(it.type),
       cell: (it) => (
         <span className="text-secondary">
           {itemTypeLabel(it.type)}
-          {it.source.kind === "awx" && <span className="block text-muted">from AWX</span>}
+          {it.source.kind === "awx" && <span className="block text-muted">{t("items.col.fromAwx")}</span>}
         </span>
       ),
     },
     {
       id: "category",
-      header: "Category",
+      header: t("items.col.category"),
       sortValue: (it) => categoryName(it.category),
       cell: (it) => <span className="text-secondary">{categoryName(it.category)}</span>,
     },
-    { id: "state", header: "State", cell: (it) => <ItemState it={it} /> },
+    { id: "state", header: t("items.col.state"), cell: (it) => <ItemState it={it} /> },
     {
       id: "open",
-      header: "Open to",
+      header: t("items.col.openTo"),
       sortValue: (it) => openToText(it),
       cell: (it) => <span className="text-secondary text-muted">{openToText(it)}</span>,
     },
@@ -330,25 +336,25 @@ export function ItemsPanel() {
 
   const add = (
     <Button size="sm" variant="primary" onClick={() => setSheet("new")}>
-      New item
+      {t("items.newItem")}
     </Button>
   );
   return (
     <Panel
-      title="Items"
-      description="What people can request, and the version of each they get."
+      title={t("items.title")}
+      description={t("items.description")}
       flush
       actions={
         <>
           <Button size="sm" onClick={() => setSheet("import")}>
-            Import YAML
+            {t("items.importYaml")}
           </Button>
           {listed && add}
         </>
       }
     >
       <DataTable
-        label="Items"
+        label={t("items.title")}
         columns={columns}
         rows={rows}
         rowKey={(it) => it.id}
@@ -358,37 +364,42 @@ export function ItemsPanel() {
         error={items.isError && <ErrorState error={items.error} onRetry={() => void items.refetch()} />}
         toolbar={
           <>
-            <TableSearch label="Search items" placeholder="Search by name or slug" value={text} onChange={setText} />
+            <TableSearch
+              label={t("items.search")}
+              placeholder={t("items.searchPlaceholder")}
+              value={text}
+              onChange={setText}
+            />
             <Select
-              aria-label="Kind"
+              aria-label={t("items.kind")}
               value={kind}
               onChange={(v) => setKind(v as CatalogItemType | "any")}
               options={[
-                { value: "any", label: "All kinds" },
-                ...types.map((t) => ({ value: t, label: itemTypeLabel(t) })),
+                { value: "any", label: t("items.allKinds") },
+                ...types.map((ty) => ({ value: ty, label: itemTypeLabel(ty) })),
               ]}
               className="w-44"
             />
             <Select
-              aria-label="Category"
+              aria-label={t("items.category")}
               value={filters.category ?? "any"}
               onChange={(v) => setFilters((f) => ({ ...f, category: v === "any" ? undefined : v }))}
               options={[
-                { value: "any", label: "All categories" },
+                { value: "any", label: t("items.allCategories") },
                 ...(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name })),
               ]}
               className="w-44"
             />
             <Select
-              aria-label="State"
+              aria-label={t("items.state")}
               value={filters.state ?? "any"}
               onChange={(v) =>
                 setFilters((f) => ({ ...f, state: v === "any" ? undefined : (v as AdminItemFilters["state"]) }))
               }
               options={[
-                { value: "any", label: "Any state" },
-                { value: "published", label: "Published" },
-                { value: "unpublished", label: "Not published" },
+                { value: "any", label: t("items.anyState") },
+                { value: "published", label: t("items.statePublished") },
+                { value: "unpublished", label: t("items.stateUnpublished") },
               ]}
               className="w-40"
             />
@@ -398,8 +409,8 @@ export function ItemsPanel() {
           filtered ? (
             <EmptyState
               icon={Package}
-              title="No item matches"
-              body="Nothing in the catalog has this name, kind, category and state."
+              title={t("items.noMatch")}
+              body={t("items.noMatchBody")}
               action={
                 <Button
                   size="sm"
@@ -408,30 +419,25 @@ export function ItemsPanel() {
                     setKind("any");
                   }}
                 >
-                  Clear the filters
+                  {t("items.clearFilters")}
                 </Button>
               }
             />
           ) : (
-            <EmptyState
-              icon={Package}
-              title="No items yet"
-              body="An item is what people request: a VM, an AWX job, a workflow, or several of them together."
-              action={add}
-            />
+            <EmptyState icon={Package} title={t("items.empty")} body={t("items.emptyBody")} action={add} />
           )
         }
-        rowMenuLabel={(it) => `Actions for ${it.name}`}
+        rowMenuLabel={(it) => t("items.actionsFor", { name: it.name })}
         rowMenu={(it) => (
           <>
             <MenuItem
               onSelect={() => void navigate({ to: "/admin/catalog-items/$itemId", params: { itemId: it.slug } })}
             >
-              Open
+              {t("items.open")}
             </MenuItem>
             {requestable(it) && (
               <MenuItem onSelect={() => void navigate({ to: "/catalog/$itemId/request", params: { itemId: it.slug } })}>
-                Open the request form
+                {t("items.openForm")}
               </MenuItem>
             )}
             {(it.draft_version || it.published_version) && <MenuSeparator />}
@@ -441,20 +447,20 @@ export function ItemsPanel() {
                 onSelect={() => change.mutate({ it, action: "publish" })}
               >
                 {unsavedDraft(it)
-                  ? "Publish: the designer has changes to save"
+                  ? t("items.publishUnsaved")
                   : change.isPending
-                    ? `Publish ${it.draft_version.number}: waits for the change running`
-                    : `Publish ${it.draft_version.number}`}
+                    ? t("items.publishWaits", { number: it.draft_version.number })
+                    : t("items.publish", { number: it.draft_version.number })}
               </MenuItem>
             )}
             {it.published_version && (
-              <MenuItem onSelect={() => setAsking({ it, action: "withdraw" })}>Withdraw</MenuItem>
+              <MenuItem onSelect={() => setAsking({ it, action: "withdraw" })}>{t("items.withdraw")}</MenuItem>
             )}
             {!it.requested && (
               <>
                 <MenuSeparator />
                 <MenuItem danger onSelect={() => setAsking({ it, action: "delete" })}>
-                  Delete
+                  {t("items.delete")}
                 </MenuItem>
               </>
             )}
@@ -481,6 +487,7 @@ export function ItemChangeDialog({
   /** Called once it is done; the deleted item's page is forgotten once what it returns settles. */
   onDone?: () => Promise<unknown> | void;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const run = useItemChange();
   const { it, action } = change;
@@ -498,10 +505,10 @@ export function ItemChangeDialog({
     <ConfirmDialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Withdraw ${it.name}?`}
-      description={`Nobody can request it until a version is published again. ${staysText(it)}`}
+      title={t("items.withdrawTitle", { name: it.name })}
+      description={t("items.withdrawBody", { stays: staysText(it) })}
       consequences={withdrawConsequences(it)}
-      confirmLabel="Withdraw"
+      confirmLabel={t("items.withdraw")}
       pending={run.isPending}
       onConfirm={confirm}
     />
@@ -509,10 +516,12 @@ export function ItemChangeDialog({
     <ConfirmDialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Delete ${it.name}?`}
-      description={`The item and its ${n} version${n === 1 ? "" : "s"} are deleted. This can't be undone.`}
-      consequences={`Nobody has requested it, so no deployment depends on it. It is open to ${openToText(it).toLowerCase()}${it.published_version ? ", and leaves their catalog" : ""}.`}
-      confirmLabel="Delete item"
+      title={t("items.deleteTitle", { name: it.name })}
+      description={t("items.deleteBody", { count: n })}
+      consequences={t(it.published_version ? "items.deleteConsequencesPublished" : "items.deleteConsequences", {
+        openTo: openToText(it).toLowerCase(),
+      })}
+      confirmLabel={t("items.deleteItem")}
       pending={run.isPending}
       onConfirm={confirm}
     />
@@ -523,18 +532,18 @@ export function ItemChangeDialog({
 function staysText(it: AdminCatalogItem): string {
   const offered = it.versions.filter((v) => v.state === "published").map((v) => v.number);
   return offered.length > 1
-    ? `Versions ${offered.slice(0, -1).join(", ")} and ${offered.at(-1)} stay, to roll back to.`
-    : `Version ${it.published_version?.number} stays, to roll back to.`;
+    ? tr("items.staysMany", { versions: formatList(offered) })
+    : tr("items.staysOne", { number: it.published_version?.number });
 }
 
 /** What a withdrawal leaves: the deployments built from the version, and who loses it. */
 function withdrawConsequences(it: AdminCatalogItem): string {
   const offered = it.versions.filter((v) => v.state === "published");
   const n = offered.reduce((sum, v) => sum + v.deployments, 0);
-  const them = offered.length > 1 ? "them" : "it";
+  const many = offered.length > 1;
   const deployments =
     n === 0
-      ? `No deployment was built from ${them}.`
-      : `The ${n} deployment${n === 1 ? "" : "s"} built from ${them} keep${n === 1 ? "s" : ""} running, with their day-2 actions.`;
-  return `${deployments} It leaves the catalog of ${openToText(it).toLowerCase()}.`;
+      ? tr(many ? "items.builtNoneMany" : "items.builtNoneOne")
+      : tr(many ? "items.builtMany" : "items.builtOne", { count: n });
+  return tr("items.leaves", { deployments, openTo: openToText(it).toLowerCase() });
 }

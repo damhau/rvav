@@ -4,6 +4,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button, IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,12 +27,18 @@ import type {
   RoleRef,
   UserRef,
 } from "@/lib/api/types";
+import { formatList } from "@/lib/format";
 import { useDebounced } from "@/lib/hooks";
+import { i18n } from "@/lib/i18n";
 import { keys } from "@/lib/query";
 import { cn } from "@/lib/utils";
 
 /** The share that applies in every project, those made later included. */
 const EVERY = "*";
+
+const tr = i18n.getFixedT(null, "admin-catalog");
+const userNoteId = "share-user-note";
+const groupNoteId = "share-group-note";
 
 const nobody = (): CatalogAudience => ({ user_ids: [], groups: [], roles: [] });
 const named = (a: CatalogAudience | undefined) => !!a && a.user_ids.length + a.groups.length + a.roles.length > 0;
@@ -53,10 +60,10 @@ function failed(e: unknown, fallback: string) {
 
 /** Who an audience names, in a sentence: all members when nobody. */
 export function audienceText(a: CatalogAudience | undefined, users: UserRef[], roles: RoleRef[]): string {
-  if (!named(a)) return "All members";
+  if (!named(a)) return tr("sharing.allMembers");
   const parts = [
     ...a!.user_ids.map((id) => users.find((u) => u.id === id)?.name ?? id),
-    ...a!.groups.map((g) => `group ${g}`),
+    ...a!.groups.map((g) => tr("sharing.group", { name: g })),
     ...a!.roles.map((k) => roles.find((r) => r.key === k)?.name ?? k),
   ];
   return parts.join(", ");
@@ -76,6 +83,7 @@ export function SharingTab({ item }: { item: AdminCatalogItem }) {
 }
 
 function ProjectsPanel({ item }: { item: AdminCatalogItem }) {
+  const { t } = useTranslation("admin-catalog");
   const refresh = useRefresh(item.id);
   const [all, setAll] = useState(item.entitlements.all_projects);
   const [chosen, setChosen] = useState(new Set(item.entitlements.project_ids));
@@ -90,26 +98,26 @@ function ProjectsPanel({ item }: { item: AdminCatalogItem }) {
       ),
     onSuccess: () => {
       refresh();
-      toast.success("Projects saved");
+      toast.success(t("sharing.projectsSaved"));
     },
-    onError: (e) => failed(e, "Saving failed"),
+    onError: (e) => failed(e, t("sharing.savingFailed")),
   });
   const projects = item.entitlements.projects ?? [];
   return (
     <Panel
-      title="Projects"
-      description="The projects whose catalog has it. Who may request it in each is below."
+      title={t("sharing.projects")}
+      description={t("sharing.projectsDescription")}
       footer={
         <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>
-          {save.isPending ? "Saving…" : "Save projects"}
+          {save.isPending ? t("sharing.saving") : t("sharing.saveProjects")}
         </Button>
       }
     >
       <div className="flex max-w-xl flex-col gap-3 text-body">
-        <div role="radiogroup" aria-label="Open to" className="flex flex-col gap-1.5">
+        <div role="radiogroup" aria-label={t("sharing.openTo")} className="flex flex-col gap-1.5">
           {[
-            { v: true, label: "Every project", hint: "projects made later included" },
-            { v: false, label: "Chosen projects", hint: "" },
+            { v: true, label: t("sharing.everyProject"), hint: t("sharing.everyProjectHint") },
+            { v: false, label: t("sharing.chosenProjects"), hint: "" },
           ].map((o) => (
             <label key={o.label} className="flex items-center gap-2">
               <input type="radio" name="open-to" checked={all === o.v} onChange={() => setAll(o.v)} />
@@ -119,13 +127,10 @@ function ProjectsPanel({ item }: { item: AdminCatalogItem }) {
           ))}
         </div>
         {all && chosen.size > 0 && (
-          <p className="text-secondary text-muted">
-            {chosen.size === 1 ? "1 project keeps its own share" : `${chosen.size} projects keep their own share`},
-            which adds to every project&apos;s.
-          </p>
+          <p className="text-secondary text-muted">{t("sharing.ownShares", { count: chosen.size })}</p>
         )}
         {!all && (
-          <ul aria-label="Projects" className="flex flex-col gap-1 rounded-md border border-line p-2">
+          <ul aria-label={t("sharing.projects")} className="flex flex-col gap-1 rounded-md border border-line p-2">
             {projects.map((p) => (
               <li key={p.id} className="flex min-h-7 items-center gap-2">
                 <Checkbox
@@ -161,7 +166,7 @@ interface Share {
 function sharesOf(e: CatalogEntitlements): Share[] {
   const projects = e.projects ?? [];
   const rows: Share[] = e.all_projects
-    ? [{ key: EVERY, name: "Every project", audience: e.everywhere ?? nobody() }]
+    ? [{ key: EVERY, name: tr("sharing.everyProject"), audience: e.everywhere ?? nobody() }]
     : [];
   for (const id of e.project_ids) {
     const p = projects.find((x) => x.id === id);
@@ -172,13 +177,14 @@ function sharesOf(e: CatalogEntitlements): Share[] {
 }
 
 function AudiencesPanel({ item }: { item: AdminCatalogItem }) {
+  const { t } = useTranslation("admin-catalog");
   const e = item.entitlements;
   const [editing, setEditing] = useState<string | null>(null);
   const rows = sharesOf(e);
   const columns: Column<Share>[] = [
     {
       id: "project",
-      header: "Project",
+      header: t("sharing.project"),
       cell: (s) => (
         <span className="flex items-baseline gap-2">
           {s.name}
@@ -188,7 +194,7 @@ function AudiencesPanel({ item }: { item: AdminCatalogItem }) {
     },
     {
       id: "who",
-      header: "Who may request it",
+      header: t("sharing.whoMay"),
       cell: (s) => (
         <span className={named(s.audience) ? "" : "text-muted"}>
           {audienceText(s.audience, e.users ?? [], e.roles ?? [])}
@@ -198,24 +204,19 @@ function AudiencesPanel({ item }: { item: AdminCatalogItem }) {
   ];
   return (
     <Panel
-      title="Who may request it"
-      description="In each project, all the members who may request there, or only the users, groups and roles you choose. Shares add up."
-      actions={<Button onClick={() => setEditing("")}>Share</Button>}
+      title={t("sharing.whoMay")}
+      description={t("sharing.whoMayDescription")}
+      actions={<Button onClick={() => setEditing("")}>{t("sharing.share")}</Button>}
       flush
     >
       <DataTable
-        label="Shares"
+        label={t("sharing.shares")}
         columns={columns}
         rows={rows}
         rowKey={(s) => s.key}
-        rowMenuLabel={(s) => `Actions for ${s.name}`}
-        rowMenu={(s) => <MenuItem onSelect={() => setEditing(s.key)}>Change who may request it</MenuItem>}
-        empty={
-          <EmptyState
-            title="Not shared"
-            body="No project's catalog has it: nobody can request it. Share it with a project."
-          />
-        }
+        rowMenuLabel={(s) => t("sharing.actionsFor", { name: s.name })}
+        rowMenu={(s) => <MenuItem onSelect={() => setEditing(s.key)}>{t("sharing.changeWho")}</MenuItem>}
+        empty={<EmptyState title={t("sharing.notShared")} body={t("sharing.notSharedBody")} />}
       />
       {editing !== null && <ShareSheet item={item} initial={editing} onClose={() => setEditing(null)} />}
     </Panel>
@@ -271,6 +272,7 @@ function useChipFocus() {
 }
 
 function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initial: string; onClose: () => void }) {
+  const { t } = useTranslation("admin-catalog");
   const e = item.entitlements;
   const refresh = useRefresh(item.id);
   const audienceIn = (key: string) =>
@@ -299,8 +301,7 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
     setRoles(a.roles);
   };
   const audience: CatalogAudience = chosen ? { user_ids: users.map((u) => u.id), groups, roles } : nobody();
-  const projectName =
-    project === EVERY ? "every project" : ((e.projects ?? []).find((p) => p.id === project)?.name ?? project);
+  const projectName = (e.projects ?? []).find((p) => p.id === project)?.name ?? project;
   const addGroup = () => {
     const g = group.trim();
     if (g && !groups.includes(g)) {
@@ -315,13 +316,16 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
       call(api.PUT("/admin/catalog/items/{itemId}/entitlements", { params: { path: { itemId: item.id } }, body })),
     onSuccess: () => {
       refresh();
-      toast.success(`Shared in ${projectName}`);
+      toast.success(
+        project === EVERY ? t("sharing.sharedEverywhere") : t("sharing.sharedIn", { project: projectName }),
+      );
       onClose();
     },
     onError: (err, { prefix, sent }) => {
       const { placed, unplaced } = shareErrors(isApiError(err) ? err.fieldErrors : [], prefix, sent);
       setErrors(placed);
-      if (!isApiError(err) || unplaced.length > 0 || err.fieldErrors.length === 0) failed(err, "Sharing failed");
+      if (!isApiError(err) || unplaced.length > 0 || err.fieldErrors.length === 0)
+        failed(err, t("sharing.sharingFailed"));
       const first =
         (placed.project && "share-project") ||
         (Object.keys(placed.users).length > 0 && "share-user") ||
@@ -345,38 +349,45 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
   };
 
   const options = [
-    ...(e.all_projects ? [{ value: EVERY, label: "Every project" }] : []),
+    ...(e.all_projects ? [{ value: EVERY, label: t("sharing.everyProject") }] : []),
     ...(e.projects ?? []).map((p) => ({ value: p.id, label: p.name, meta: p.code })),
   ];
-  const userNote = Object.entries(errors.users).map(([id, m]) => `${users.find((u) => u.id === id)?.name ?? id}: ${m}`);
-  const groupNote = Object.entries(errors.groups).map(([g, m]) => (g.trim() ? `${g}: ${m}` : m));
-  const roleNote = Object.entries(errors.roles).map(
-    ([k, m]) => `${(e.roles ?? []).find((r) => r.key === k)?.name ?? k}: ${m}`,
+  const note = (name: string, message: string) => t("sharing.note", { name, message });
+  const userNote = Object.entries(errors.users).map(([id, m]) => note(users.find((u) => u.id === id)?.name ?? id, m));
+  const groupNote = Object.entries(errors.groups).map(([g, m]) => (g.trim() ? note(g, m) : m));
+  const roleNote = Object.entries(errors.roles).map(([k, m]) =>
+    note((e.roles ?? []).find((r) => r.key === k)?.name ?? k, m),
   );
   return (
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Share ${item.name}`}
-      description="Pick a project, then who may request the item there."
+      title={t("sharing.shareTitle", { name: item.name })}
+      description={t("sharing.shareDescription")}
       onSubmit={share}
-      submitLabel="Share"
+      submitLabel={t("sharing.share")}
       submitDisabled={!project || (chosen && !named(audience))}
       pending={save.isPending}
     >
       <Field
-        label="Project"
+        label={t("sharing.project")}
         htmlFor="share-project"
         error={errors.project}
-        hint={project === EVERY ? "Who may request it in each project, those made later included." : undefined}
+        hint={project === EVERY ? t("sharing.projectEveryHint") : undefined}
       >
-        <Select id="share-project" value={project} onChange={pick} options={options} placeholder="Choose a project" />
+        <Select
+          id="share-project"
+          value={project}
+          onChange={pick}
+          options={options}
+          placeholder={t("sharing.chooseProject")}
+        />
       </Field>
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-secondary font-medium text-fg">Who may request it</legend>
+        <legend className="mb-1 text-secondary font-medium text-fg">{t("sharing.whoMay")}</legend>
         {[
-          { v: false, label: "All members", hint: "everyone who may request in the project" },
-          { v: true, label: "Chosen people", hint: "the users, groups and roles below" },
+          { v: false, label: t("sharing.allMembers"), hint: t("sharing.allMembersHint") },
+          { v: true, label: t("sharing.chosenPeople"), hint: t("sharing.chosenPeopleHint") },
         ].map((o) => (
           <label key={o.label} className="flex items-center gap-2 text-body">
             <input
@@ -397,7 +408,7 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
         <>
           <div className="flex flex-col gap-2">
             <UserPicker
-              label="Add a person"
+              label={t("sharing.addPerson")}
               id="share-user"
               onPick={(u) => {
                 edited();
@@ -405,13 +416,13 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
               }}
             />
             {users.length > 0 && (
-              <ul ref={peopleList} aria-label="People" className="flex flex-wrap gap-1.5">
+              <ul ref={peopleList} aria-label={t("sharing.people")} className="flex flex-wrap gap-1.5">
                 {users.map((u, i) => (
                   <Chip
                     key={u.id}
                     label={u.name}
-                    remove={`Remove ${u.name}`}
-                    error={errors.users[u.id] ? "share-user-note" : undefined}
+                    remove={t("sharing.remove", { name: u.name })}
+                    error={errors.users[u.id] ? userNoteId : undefined}
                     onRemove={() => {
                       edited();
                       refocus(peopleList.current, i, "share-user");
@@ -421,14 +432,14 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
                 ))}
               </ul>
             )}
-            <FieldNote id="share-user-note" error={userNote.join(" ") || undefined} />
+            <FieldNote id={userNoteId} error={userNote.join(" ") || undefined} />
           </div>
           <div className="flex flex-col gap-2">
             <Field
-              label="OIDC group"
+              label={t("sharing.oidcGroup")}
               htmlFor="share-group"
               error={groupNote.join(" ") || undefined}
-              hint="As the identity provider's token names it. Press Enter to add it."
+              hint={t("sharing.oidcGroupHint")}
             >
               <Input
                 id="share-group"
@@ -445,17 +456,17 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
             </Field>
             <div>
               <Button type="button" disabled={!group.trim()} onClick={addGroup}>
-                Add group
+                {t("sharing.addGroup")}
               </Button>
             </div>
             {groups.length > 0 && (
-              <ul ref={groupList} aria-label="Groups" className="flex flex-wrap gap-1.5">
+              <ul ref={groupList} aria-label={t("sharing.groups")} className="flex flex-wrap gap-1.5">
                 {groups.map((g, i) => (
                   <Chip
                     key={g}
                     label={g}
-                    remove={`Remove group ${g}`}
-                    error={errors.groups[g] ? "share-group-note" : undefined}
+                    remove={t("sharing.removeGroup", { name: g })}
+                    error={errors.groups[g] ? groupNoteId : undefined}
                     onRemove={() => {
                       edited();
                       refocus(groupList.current, i, "share-group");
@@ -467,7 +478,7 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
             )}
           </div>
           <fieldset className="flex flex-col gap-1" aria-describedby="share-roles-note">
-            <legend className="mb-1 text-secondary font-medium text-fg">Project roles</legend>
+            <legend className="mb-1 text-secondary font-medium text-fg">{t("sharing.projectRoles")}</legend>
             <div className="flex flex-wrap gap-x-4 gap-y-1.5">
               {(e.roles ?? []).map((r) => (
                 <div key={r.key} className="flex items-center gap-1.5">
@@ -489,7 +500,7 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
             <FieldNote
               id="share-roles-note"
               error={roleNote.join(" ") || undefined}
-              hint="Whoever holds one in the project, themselves or through a group."
+              hint={t("sharing.projectRolesHint")}
             />
           </fieldset>
         </>
@@ -503,9 +514,7 @@ function ShareSheet({ item, initial, onClose }: { item: AdminCatalogItem; initia
           roles={e.roles ?? []}
         />
       )}
-      {project === EVERY && (
-        <p className="text-secondary text-muted">Who can request is shown for one project at a time: pick one.</p>
-      )}
+      {project === EVERY && <p className="text-secondary text-muted">{t("sharing.pickOne")}</p>}
     </Sheet>
   );
 }
@@ -551,6 +560,7 @@ function WhoCanRequest({
   users: UserRef[];
   roles: RoleRef[];
 }) {
+  const { t } = useTranslation("admin-catalog");
   const asked = useDebounced(audience, 300);
   const who = useQuery({
     queryKey: [...keys.catalogAdmin.all, "requesters", itemId, asked],
@@ -567,12 +577,12 @@ function WhoCanRequest({
   return (
     <section aria-labelledby="who-can-request" className="flex flex-col gap-2 rounded-md border border-line p-3">
       <h3 id="who-can-request" className="text-secondary font-medium text-fg">
-        Who can request it
+        {t("sharing.whoCan")}
       </h3>
       <div aria-live="polite" className="flex flex-col gap-2 text-secondary">
-        {who.isError && <p className="text-bad">Who can request couldn't be worked out.</p>}
+        {who.isError && <p className="text-bad">{t("sharing.whoCanFailed")}</p>}
         {who.data && <Requesters r={who.data} chosen={chosen} users={users} roles={roles} />}
-        {!who.data && !who.isError && <p className="text-muted">Working out who can request…</p>}
+        {!who.data && !who.isError && <p className="text-muted">{t("sharing.whoCanLoading")}</p>}
       </div>
     </section>
   );
@@ -589,12 +599,13 @@ function Requesters({
   users: UserRef[];
   roles: RoleRef[];
 }) {
+  const { t } = useTranslation("admin-catalog");
   const why = (p: CatalogRequesters["people"][number]) =>
     [
-      p.named ? "named" : "",
-      ...p.groups.map((g) => `in ${g}`),
+      p.named ? t("sharing.why.named") : "",
+      ...p.groups.map((g) => t("sharing.why.in", { group: g })),
       ...p.roles.map((x) => x.name),
-      chosen && p.everywhere ? "shared with every project" : "",
+      chosen && p.everywhere ? t("sharing.why.everywhere") : "",
     ]
       .filter(Boolean)
       .join(", ");
@@ -602,17 +613,18 @@ function Requesters({
     <>
       <p>
         {r.people.length === 0
-          ? `Nobody in ${r.project.name} can request it.`
-          : `${r.people.length} ${r.people.length === 1 ? "person" : "people"} in ${r.project.name} can request it.`}
+          ? t("sharing.nobodyCan", { project: r.project.name })
+          : t("sharing.peopleCan", { count: r.people.length, project: r.project.name })}
       </p>
       {r.everywhere && chosen && (
         <p className="text-muted">
-          Also shared with every project:{" "}
-          {named(r.everywhere) ? audienceText(r.everywhere, users, roles) : "all members"}. Shares add up.
+          {t("sharing.alsoEverywhere", {
+            who: named(r.everywhere) ? audienceText(r.everywhere, users, roles) : t("sharing.allMembersLower"),
+          })}
         </p>
       )}
       {r.people.length > 0 && (
-        <ul aria-label="Can request it" className="flex flex-col gap-0.5">
+        <ul aria-label={t("sharing.canRequest")} className="flex flex-col gap-0.5">
           {r.people.map((p) => (
             <li key={p.user.id}>
               {p.user.name}
@@ -621,18 +633,22 @@ function Requesters({
           ))}
         </ul>
       )}
-      {r.left_out.length > 0 && <p className="text-muted">Left out: {r.left_out.map((u) => u.name).join(", ")}.</p>}
+      {r.left_out.length > 0 && (
+        <p className="text-muted">{t("sharing.leftOut", { names: formatList(r.left_out.map((u) => u.name)) })}</p>
+      )}
       {r.not_requesters.length > 0 && (
         <p className="text-warn">
-          {r.not_requesters.map((u) => u.name).join(", ")} may not request in {r.project.name}: give them a role that
-          may.
+          {t("sharing.notRequesters", {
+            names: formatList(r.not_requesters.map((u) => u.name)),
+            project: r.project.name,
+          })}
         </p>
       )}
       {r.groups
         .filter((g) => g.seen === 0)
         .map((g) => (
           <p key={g.name} className="text-warn">
-            Nobody rvav has seen is in {g.name} yet: check its name in the identity provider.
+            {t("sharing.unseenGroup", { group: g.name })}
           </p>
         ))}
     </>

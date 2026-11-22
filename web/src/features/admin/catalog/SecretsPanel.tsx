@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Button } from "@/components/ui/button";
@@ -21,13 +22,16 @@ import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { keys } from "@/lib/query";
 import { relative } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 
 type Secret = components["schemas"]["Secret"];
 type SecretWrite = components["schemas"]["SecretWrite"];
 type ProjectRef = NonNullable<components["schemas"]["SecretList"]["projects"]>[number];
 
 const secretsKey = [...keys.catalogAdmin.all, "secrets"] as const;
-const kindLabel = { token: "Bearer token", basic: "Basic (user and password)", header: "Header" } as const;
+const kinds = ["token", "basic", "header"] as const;
+const tr = i18n.getFixedT(null, "admin-catalog");
+const kindLabel = (kind: Secret["kind"]) => tr(`secrets.kind.${kind}`);
 // Radix's select has no empty value: the global scope stands as this.
 const global = "*";
 const scopeQuery = (s: Secret) => (s.project_id ? { project_id: s.project_id } : {});
@@ -41,6 +45,7 @@ function SecretSheet({
   projects: ProjectRef[];
   onClose: () => void;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const [w, setW] = useState<SecretWrite>({
     name: existing?.name ?? "",
@@ -73,12 +78,12 @@ function SecretSheet({
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: secretsKey });
-      toast.success(existing ? `${w.name} replaced` : `${w.name} stored`);
+      toast.success(existing ? t("secrets.replaced", { name: w.name }) : t("secrets.stored", { name: w.name }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The secret wasn't stored");
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, t("secrets.notStored"));
     },
   });
   const set = (k: keyof SecretWrite) => (v: string) => setW((x) => ({ ...x, [k]: v }));
@@ -87,16 +92,16 @@ function SecretSheet({
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={existing ? `Replace ${existing.name}` : "New secret"}
-      description='Stored encrypted. Its value is never shown again. A REST value source or call names it, cloud-init user data reads it as {{ secret "name" }}, an AWX step as ${secret.name}.'
-      submitLabel={save.isPending ? "Storing…" : existing ? "Replace" : "Store"}
+      title={existing ? t("secrets.replaceTitle", { name: existing.name }) : t("secrets.new")}
+      description={t("secrets.sheetDescription", { userData: '{{ secret "name" }}', awx: "${secret.name}" })}
+      submitLabel={save.isPending ? t("secrets.storing") : existing ? t("secrets.replace") : t("secrets.store")}
       submitDisabled={!w.name || !w.value}
       onSubmit={() => {
         setErrors({});
         save.mutate();
       }}
     >
-      <Field label="Name" htmlFor="secret-name" hint="Lower case letters, digits and dashes." error={errors["/name"]}>
+      <Field label={t("secrets.name")} htmlFor="secret-name" hint={t("secrets.nameHint")} error={errors["/name"]}>
         <Input
           id="secret-name"
           className="font-mono"
@@ -106,9 +111,9 @@ function SecretSheet({
         />
       </Field>
       <Field
-        label="Project"
+        label={t("secrets.project")}
         htmlFor="secret-project"
-        hint="A project's own secret is opened by its requests rather than the global one of the same name. Other projects never open it."
+        hint={t("secrets.projectHint")}
         error={errors["/project_id"]}
       >
         <Select
@@ -117,33 +122,38 @@ function SecretSheet({
           disabled={Boolean(existing)}
           onChange={setScope}
           options={[
-            { value: global, label: "Every project (global)" },
+            { value: global, label: t("secrets.everyProjectGlobal") },
             ...projects.map((p) => ({ value: p.id, label: p.name, meta: p.code })),
           ]}
         />
       </Field>
-      <Field label="Kind" htmlFor="secret-kind">
+      <Field label={t("secrets.kindLabel")} htmlFor="secret-kind">
         <Select
           id="secret-kind"
           value={w.kind}
           onChange={set("kind")}
-          options={Object.entries(kindLabel).map(([value, label]) => ({ value, label }))}
+          options={kinds.map((value) => ({ value, label: kindLabel(value) }))}
         />
       </Field>
       {w.kind === "basic" && (
-        <Field label="User name" htmlFor="secret-username" error={errors["/username"]}>
+        <Field label={t("secrets.username")} htmlFor="secret-username" error={errors["/username"]}>
           <Input id="secret-username" value={w.username} onChange={(e) => set("username")(e.target.value)} />
         </Field>
       )}
       {w.kind === "header" && (
-        <Field label="Header" htmlFor="secret-header" hint="For example X-API-Key." error={errors["/header"]}>
+        <Field
+          label={t("secrets.header")}
+          htmlFor="secret-header"
+          hint={t("secrets.headerHint")}
+          error={errors["/header"]}
+        >
           <Input id="secret-header" value={w.header} onChange={(e) => set("header")(e.target.value)} />
         </Field>
       )}
       <Field
-        label={w.kind === "basic" ? "Password" : "Value"}
+        label={w.kind === "basic" ? t("secrets.password") : t("secrets.value")}
         htmlFor="secret-value"
-        hint={existing ? "The new value replaces the stored one at once, in every item that uses it." : undefined}
+        hint={existing ? t("secrets.valueHint") : undefined}
         error={errors["/value"]}
       >
         <Input
@@ -154,7 +164,7 @@ function SecretSheet({
           onChange={(e) => set("value")(e.target.value)}
         />
       </Field>
-      <Field label="Description" htmlFor="secret-description">
+      <Field label={t("secrets.description")} htmlFor="secret-description">
         <Input
           id="secret-description"
           value={w.description}
@@ -170,6 +180,7 @@ const usedBy = (s: Secret) => s.used_by ?? [];
 const secretKey = (s: Secret) => `${s.project_id ?? ""}/${s.name}`;
 
 export function SecretsPanel() {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const secrets = useQuery({
     queryKey: secretsKey,
@@ -182,10 +193,10 @@ export function SecretsPanel() {
       call(api.DELETE("/admin/secrets/{name}", { params: { path: { name: s.name }, query: scopeQuery(s) } })),
     onSuccess: (_, s) => {
       void qc.invalidateQueries({ queryKey: secretsKey });
-      toast.success(`${s.name} removed`);
+      toast.success(t("secrets.removed", { name: s.name }));
       setRemoving(null);
     },
-    onError: (e) => failed(e, "The secret wasn't removed"),
+    onError: (e) => failed(e, t("secrets.notRemoved")),
   });
   const list = secrets.data?.items;
   const projects = secrets.data?.projects ?? [];
@@ -197,7 +208,7 @@ export function SecretsPanel() {
   const columns: Column<Secret>[] = [
     {
       id: "name",
-      header: "Name",
+      header: t("secrets.name"),
       sortValue: (s) => s.name,
       cell: (s) => (
         <>
@@ -208,71 +219,72 @@ export function SecretsPanel() {
     },
     {
       id: "project",
-      header: "Project",
+      header: t("secrets.project"),
       sortValue: (s) => (s.project_id ? projectName(s.project_id) : ""),
       cell: (s) => (
         <>
-          <div className="text-secondary text-muted">{s.project_id ? projectName(s.project_id) : "Every project"}</div>
-          {shadows(s) && <div className="text-caption text-muted">Opened instead of the global one</div>}
+          <div className="text-secondary text-muted">
+            {s.project_id ? projectName(s.project_id) : t("secrets.everyProject")}
+          </div>
+          {shadows(s) && <div className="text-caption text-muted">{t("secrets.shadows")}</div>}
         </>
       ),
     },
     {
       id: "kind",
-      header: "Kind",
-      sortValue: (s) => kindLabel[s.kind],
-      cell: (s) => <span className="text-secondary text-muted">{kindLabel[s.kind]}</span>,
+      header: t("secrets.kindLabel"),
+      sortValue: (s) => kindLabel(s.kind),
+      cell: (s) => <span className="text-secondary text-muted">{kindLabel(s.kind)}</span>,
     },
     {
       id: "used",
-      header: "Used by",
+      header: t("secrets.usedBy"),
       sortValue: (s) => usedBy(s).length,
       cell: (s) => (
-        <span className="text-secondary text-muted">{usedBy(s).length ? usedBy(s).join(", ") : "Nothing"}</span>
+        <span className="text-secondary text-muted">
+          {usedBy(s).length ? usedBy(s).join(", ") : t("secrets.nothing")}
+        </span>
       ),
     },
     {
       id: "changed",
-      header: "Changed",
+      header: t("secrets.changed"),
       sortValue: (s) => s.updated_at,
       cell: (s) => <span className="text-secondary text-muted">{relative(s.updated_at)}</span>,
     },
   ];
   const add = (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New secret
+      {t("secrets.new")}
     </Button>
   );
   return (
     <Panel
-      title="Secrets"
-      description="What REST value sources and calls sign in with, and what Windows guests, cloud-init and AWX steps are given."
+      title={t("secrets.title")}
+      description={t("secrets.panelDescription")}
       flush
       actions={list?.length ? add : undefined}
     >
       <DataTable
-        label="Secrets"
+        label={t("secrets.title")}
         columns={columns}
         rows={list}
         rowKey={secretKey}
         minWidth={760}
         loading={secrets.isPending}
         error={secrets.isError && <ErrorState error={secrets.error} onRetry={() => void secrets.refetch()} />}
-        empty={
-          <EmptyState
-            icon={KeyRound}
-            title="No secrets yet"
-            body="Store the token or password a REST call, a guest or an AWX step needs; its value is never shown again."
-            action={add}
-          />
+        empty={<EmptyState icon={KeyRound} title={t("secrets.empty")} body={t("secrets.emptyBody")} action={add} />}
+        rowMenuLabel={(s) =>
+          s.project_id
+            ? t("secrets.actionsForOf", { name: s.name, project: projectName(s.project_id) })
+            : t("secrets.actionsFor", { name: s.name })
         }
-        rowMenuLabel={(s) => `Actions for ${s.name}${s.project_id ? ` of ${projectName(s.project_id)}` : ""}`}
         rowMenu={(s) => (
           <>
-            <MenuItem onSelect={() => setEditing(s)}>Replace the value</MenuItem>
+            <MenuItem onSelect={() => setEditing(s)}>{t("secrets.replaceValue")}</MenuItem>
             <MenuSeparator />
             <MenuItem danger disabled={inUse(s)} onSelect={() => setRemoving(s)}>
-              {inUse(s) ? "Remove: in use" : "Remove"}
+              {inUse(s) ? t("secrets.removeInUse") : t("secrets.remove")}
             </MenuItem>
           </>
         )}
@@ -290,16 +302,16 @@ export function SecretsPanel() {
           onOpenChange={(o) => !o && setRemoving(null)}
           title={
             removing.project_id
-              ? `Remove ${removing.name} of ${projectName(removing.project_id)}?`
-              : `Remove ${removing.name}?`
+              ? t("secrets.removeTitleOf", { name: removing.name, project: projectName(removing.project_id) })
+              : t("secrets.removeTitle", { name: removing.name })
           }
-          description="Its value is deleted. Storing a secret of the same name later doesn't bring it back."
+          description={t("secrets.removeBody")}
           consequences={
             shadows(removing)
-              ? `${projectName(removing.project_id ?? "")}'s requests open the global ${removing.name} instead.`
-              : "No item or template uses it today."
+              ? t("secrets.removeShadows", { project: projectName(removing.project_id ?? ""), name: removing.name })
+              : t("secrets.removeUnused")
           }
-          confirmLabel="Remove secret"
+          confirmLabel={t("secrets.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing)}
         />

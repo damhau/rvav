@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Variable as VariableIcon } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -24,15 +25,22 @@ import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { relative } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 
 type Kind = "text" | "number" | "boolean" | "json";
 
-const kinds: { value: Kind; label: string }[] = [
-  { value: "text", label: "Text" },
-  { value: "number", label: "Number" },
-  { value: "boolean", label: "True or false" },
-  { value: "json", label: "List or object (JSON)" },
-];
+const tr = i18n.getFixedT(null, "admin-catalog");
+
+const kinds = (): { value: Kind; label: string }[] =>
+  (["text", "number", "boolean", "json"] as const).map((value) => ({ value, label: tr(`variables.kind.${value}`) }));
+
+// Code placeholders, the same in every language.
+const groupSlot = "<group>";
+const nameSlot = "<name>";
+const listExample = '["10.20.0.53", "10.20.0.54"]';
+
+/** Code inside a sentence: Trans leaves its text alone. */
+const Expr = ({ text }: { text: string }) => <code className="font-mono">{text}</code>;
 
 function kindOf(v: unknown): Kind {
   if (typeof v === "number") return "number";
@@ -41,8 +49,10 @@ function kindOf(v: unknown): Kind {
   return "json";
 }
 
-const kindLabel = (v: unknown) =>
-  Array.isArray(v) ? "List" : kindOf(v) === "json" ? "Object" : kinds.find((k) => k.value === kindOf(v))!.label;
+const kindLabel = (v: unknown) => {
+  const k = kindOf(v);
+  return tr(Array.isArray(v) ? "variables.kind.list" : k === "json" ? "variables.kind.object" : `variables.kind.${k}`);
+};
 
 /** A value as the form edits it. */
 function editable(v: unknown): string {
@@ -67,17 +77,21 @@ function parsed(kind: Kind, text: string): { value: unknown } | { error: string 
       return { value: text };
     case "number": {
       const n = Number(text);
-      return text.trim() !== "" && Number.isFinite(n) ? { value: n } : { error: "A number, such as 14 or 0.5." };
+      return text.trim() !== "" && Number.isFinite(n) ? { value: n } : { error: tr("variables.error.number") };
     }
     case "boolean":
       return { value: text === "true" };
     case "json":
       try {
         const v: unknown = JSON.parse(text);
-        if (v === null || typeof v !== "object") return { error: "A list in [ ] or an object in { }." };
+        if (v === null || typeof v !== "object") return { error: tr("variables.error.json") };
         return { value: v };
       } catch (e) {
-        return { error: `Not JSON: ${e instanceof Error ? e.message : "it can't be read"}.` };
+        return {
+          error: tr("variables.error.notJson", {
+            reason: e instanceof Error ? e.message : tr("variables.error.unreadable"),
+          }),
+        };
       }
   }
 }
@@ -85,6 +99,7 @@ function parsed(kind: Kind, text: string): { value: unknown } | { error: string 
 const refOf = (v: Pick<Variable, "group" | "name">) => `vars.${v.group}.${v.name}`;
 
 function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: () => void }) {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const [group, setGroup] = useState(existing?.group ?? "");
   const [name, setName] = useState(existing?.name ?? "");
@@ -104,12 +119,12 @@ function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: ()
         : call(api.POST("/admin/variables", { body: { group, name, value, description } })),
     onSuccess: (v) => {
       void qc.invalidateQueries({ queryKey: adm.variables().queryKey });
-      toast.success(existing ? `${refOf(v)} saved` : `${refOf(v)} added`);
+      toast.success(existing ? t("variables.saved", { ref: refOf(v) }) : t("variables.added", { ref: refOf(v) }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The variable wasn't saved");
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, t("variables.notSaved"));
     },
   });
   const changeKind = (k: string) => {
@@ -122,9 +137,9 @@ function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: ()
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={existing ? `Change ${refOf(existing)}` : "New variable"}
-      description="Steps that run from then on read the value saved, in requests already running too. It isn't masked anywhere: store a password, a token or a key as a secret instead."
-      submitLabel={save.isPending ? "Saving…" : existing ? "Save" : "Add"}
+      title={existing ? t("variables.change", { ref: refOf(existing) }) : t("variables.new")}
+      description={t("variables.sheetDescription")}
+      submitLabel={save.isPending ? t("variables.saving") : existing ? t("variables.save") : t("variables.add")}
       submitDisabled={!group || !name}
       onSubmit={() => {
         const p = parsed(kind, text);
@@ -137,9 +152,9 @@ function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: ()
       }}
     >
       <Field
-        label="Group"
+        label={t("variables.group")}
         htmlFor="variable-group"
-        hint="Lower-case letters, digits and underscores, starting with a letter, such as network."
+        hint={t("variables.groupHint")}
         error={errors["/group"]}
       >
         <Input
@@ -151,16 +166,14 @@ function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: ()
         />
       </Field>
       <Field
-        label="Name"
+        label={t("variables.name")}
         htmlFor="variable-name"
         hint={
-          <>
-            Steps and conditions read it as{" "}
-            <code className="font-mono">
-              vars.{group || "<group>"}.{name || "<name>"}
-            </code>
-            .
-          </>
+          <Trans
+            t={t}
+            i18nKey="variables.readAs"
+            components={{ expr: <Expr text={`vars.${group || groupSlot}.${name || nameSlot}`} /> }}
+          />
         }
         error={errors["/name"]}
       >
@@ -172,26 +185,26 @@ function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: ()
           onChange={(e) => setName(e.target.value)}
         />
       </Field>
-      <Field label="Type" htmlFor="variable-kind">
-        <Select id="variable-kind" value={kind} onChange={changeKind} options={kinds} />
+      <Field label={t("variables.type")} htmlFor="variable-kind">
+        <Select id="variable-kind" value={kind} onChange={changeKind} options={kinds()} />
       </Field>
       {kind === "boolean" ? (
-        <Field label="Value" htmlFor="variable-value" error={errors["/value"]}>
+        <Field label={t("variables.value")} htmlFor="variable-value" error={errors["/value"]}>
           <Select
             id="variable-value"
             value={text === "false" ? "false" : "true"}
             onChange={setText}
             options={[
-              { value: "true", label: "True" },
-              { value: "false", label: "False" },
+              { value: "true", label: t("variables.true") },
+              { value: "false", label: t("variables.false") },
             ]}
           />
         </Field>
       ) : kind === "json" ? (
         <Field
-          label="Value"
+          label={t("variables.value")}
           htmlFor="variable-value"
-          hint='A list, such as ["10.20.0.53", "10.20.0.54"], or an object.'
+          hint={t("variables.jsonHint", { example: listExample })}
           error={errors["/value"]}
         >
           <Textarea
@@ -203,7 +216,7 @@ function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: ()
           />
         </Field>
       ) : (
-        <Field label="Value" htmlFor="variable-value" error={errors["/value"]}>
+        <Field label={t("variables.value")} htmlFor="variable-value" error={errors["/value"]}>
           <Input
             id="variable-value"
             className={kind === "text" ? "font-mono" : undefined}
@@ -213,7 +226,7 @@ function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: ()
           />
         </Field>
       )}
-      <Field label="Description" htmlFor="variable-description" error={errors["/description"]}>
+      <Field label={t("variables.description")} htmlFor="variable-description" error={errors["/description"]}>
         <Input
           id="variable-description"
           value={description}
@@ -225,10 +238,10 @@ function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: ()
   );
 }
 
-const columns: Column<Variable>[] = [
+const columns = (): Column<Variable>[] => [
   {
     id: "name",
-    header: "Variable",
+    header: tr("variables.col.variable"),
     sortValue: (v) => v.key,
     cell: (v) => (
       <>
@@ -239,7 +252,7 @@ const columns: Column<Variable>[] = [
   },
   {
     id: "value",
-    header: "Value",
+    header: tr("variables.col.value"),
     cell: (v) => (
       <>
         <div className="font-mono break-all">{shown(v.value)}</div>
@@ -249,26 +262,29 @@ const columns: Column<Variable>[] = [
   },
   {
     id: "used",
-    header: "Read by",
+    header: tr("variables.col.readBy"),
     sortValue: (v) => v.used_by.length,
     cell: (v) => (
-      <span className="text-secondary text-muted">{v.used_by.length ? v.used_by.join(", ") : "Nothing"}</span>
+      <span className="text-secondary text-muted">
+        {v.used_by.length ? v.used_by.join(", ") : tr("variables.nothing")}
+      </span>
     ),
   },
   {
     id: "changed",
-    header: "Changed",
+    header: tr("variables.col.changed"),
     sortValue: (v) => v.updated_at,
     cell: (v) => (
       <span className="text-secondary text-muted">
         {relative(v.updated_at)}
-        {v.updated_by && ` by ${v.updated_by}`}
+        {v.updated_by && tr("variables.changedBy", { name: v.updated_by })}
       </span>
     ),
   },
 ];
 
 export function VariablesPage() {
+  const { t } = useTranslation("admin-catalog");
   const qc = useQueryClient();
   const { me } = useCurrentProject();
   // Auditors read them (extensibility.read); changing one is the catalog's (ADR-0057).
@@ -280,38 +296,38 @@ export function VariablesPage() {
     mutationFn: (v: Variable) => call(api.DELETE("/admin/variables/{key}", { params: { path: { key: v.key } } })),
     onSuccess: (_, v) => {
       void qc.invalidateQueries({ queryKey: adm.variables().queryKey });
-      toast.success(`${refOf(v)} removed`);
+      toast.success(t("variables.removed", { ref: refOf(v) }));
       setRemoving(null);
     },
     onError: (e) => {
       void qc.invalidateQueries({ queryKey: adm.variables().queryKey });
       setRemoving(null);
-      failed(e, "The variable wasn't removed");
+      failed(e, t("variables.notRemoved"));
     },
   });
   const list = variables.data?.items;
   const add = canEdit && (
     <Button variant="primary" onClick={() => setEditing("new")}>
-      New variable
+      {t("variables.new")}
     </Button>
   );
   return (
     <Page>
       <PageHeader
-        title="Variables"
+        title={t("variables.title")}
         description={
-          <>
-            Values that aren't secret and that several items share, such as a site&apos;s DNS servers. Composite steps
-            and conditions read them as <code className="font-mono">vars.&lt;group&gt;.&lt;name&gt;</code> each time
-            they run. Store passwords and tokens as secrets instead.
-          </>
+          <Trans
+            t={t}
+            i18nKey="variables.lead"
+            components={{ expr: <Expr text={`vars.${groupSlot}.${nameSlot}`} /> }}
+          />
         }
         actions={list?.length ? add : undefined}
       />
-      <Panel title="Shared variables" flush>
+      <Panel title={t("variables.shared")} flush>
         <DataTable
-          label="Variables"
-          columns={columns}
+          label={t("variables.title")}
+          columns={columns()}
           rows={list}
           rowKey={(v) => v.key}
           minWidth={760}
@@ -320,24 +336,20 @@ export function VariablesPage() {
           empty={
             <EmptyState
               icon={VariableIcon}
-              title="No variables yet"
-              body={
-                canEdit
-                  ? "Add a value several items share, such as a site's DNS servers, so that each reads it from one place."
-                  : "No value is shared between items yet."
-              }
+              title={t("variables.empty")}
+              body={canEdit ? t("variables.emptyEdit") : t("variables.emptyRead")}
               action={add || undefined}
             />
           }
-          rowMenuLabel={(v) => `Actions for ${refOf(v)}`}
+          rowMenuLabel={(v) => t("variables.actionsFor", { ref: refOf(v) })}
           rowMenu={
             canEdit
               ? (v) => (
                   <>
-                    <MenuItem onSelect={() => setEditing(v)}>Change the value</MenuItem>
+                    <MenuItem onSelect={() => setEditing(v)}>{t("variables.changeValue")}</MenuItem>
                     <MenuSeparator />
                     <MenuItem danger disabled={v.used_by.length > 0} onSelect={() => setRemoving(v)}>
-                      {v.used_by.length > 0 ? "Remove: in use" : "Remove"}
+                      {v.used_by.length > 0 ? t("variables.removeInUse") : t("variables.remove")}
                     </MenuItem>
                   </>
                 )
@@ -350,10 +362,10 @@ export function VariablesPage() {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${refOf(removing)}?`}
-          description="Steps can no longer read it. Adding a variable of the same name later brings its use back."
-          consequences="No item reads it today."
-          confirmLabel="Remove variable"
+          title={t("variables.removeTitle", { ref: refOf(removing) })}
+          description={t("variables.removeBody")}
+          consequences={t("variables.removeConsequences")}
+          confirmLabel={t("variables.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing)}
         />
