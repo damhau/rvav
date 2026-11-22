@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -210,5 +210,53 @@ describe("the form designer, in French", () => {
       "Règles (CEL sur inputs, environment, project et user)",
     );
     expect(within(properties).getByRole("button", { name: "Retirer Interrupteur" })).toBeInTheDocument();
+  });
+});
+
+describe("the composite designer, in French", () => {
+  // Nodes are clicked with fireEvent: user-event's mousedown reaches d3-zoom, which jsdom can't serve.
+  const node = (name: RegExp) =>
+    within(screen.getByRole("application"))
+      .getAllByRole("button")
+      .find((b) => b.classList.contains("react-flow__node") && name.test(b.getAttribute("aria-label") ?? ""))!;
+
+  it("names a step's details and the way to add one, the server's words kept", { timeout: 30_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/catalog-items/postgres-cluster");
+    await user.click(await screen.findByRole("button", { name: "Nouveau brouillon" }));
+    await user.click(await screen.findByRole("tab", { name: "Définition" }));
+    await waitFor(() => expect(node(/^Élément Database nodes\./)).toBeDefined(), { timeout: 10_000 });
+    expect(screen.getByRole("button", { name: "Défaire" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Refaire" })).toBeDisabled();
+
+    fireEvent.click(node(/^Élément Database nodes\./));
+    const details = await screen.findByRole("region", { name: "Sélection\u00a0: Database nodes" });
+    expect(within(details).getByRole("combobox", { name: "Exécute" })).toHaveAccessibleDescription(
+      "Un élément VM\u00a0: ses VM sont planifiées avec la demande, à partir des entrées du formulaire.",
+    );
+    expect(within(details).getByRole("button", { name: "Retirer l'étape" })).toBeInTheDocument();
+    expect(within(details).getByRole("textbox", { name: "Clé" })).toHaveAccessibleDescription(
+      "Les étapes suivantes lisent ses sorties par steps.nodes.",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Ajouter une étape" }));
+    const dialog = await screen.findByRole("dialog", { name: "Ajouter une étape" });
+    expect(within(dialog).getByRole("radio", { name: "Après Database nodes" })).toBeChecked();
+    expect(within(dialog).getByRole("radio", { name: "À la fin" })).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Ce qu'elle exécute" })).toBeEnabled());
+    await user.click(within(dialog).getByRole("combobox", { name: "Ce qu'elle exécute" }));
+    expect(
+      await screen.findByRole("option", { name: "Une attente d'un signal ou d'un événement" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "Un appel REST" }));
+    expect(within(dialog).getByRole("textbox", { name: "Clé" })).toHaveValue("rest_call");
+    await user.click(within(dialog).getByRole("button", { name: "Ajouter l'étape" }));
+
+    const call = await screen.findByRole("region", { name: "Sélection\u00a0: rest_call" });
+    expect(within(call).getByRole("group", { name: "Appel REST" })).toHaveTextContent("Elle peut lire inputs.");
+    expect(within(call).getByRole("group", { name: "Chemin de rattrapage" })).toHaveTextContent(
+      "Elles lisent error.step et error.message.",
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Défaire" })).toBeEnabled());
   });
 });

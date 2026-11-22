@@ -26,6 +26,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type CanvasNode, NodeDetails, within } from "@/components/canvas";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ import type {
   FieldError,
 } from "@/lib/api/types";
 import { eventTopics, loopRefused, maxStepMessage } from "@/lib/composite";
+import { i18n } from "@/lib/i18n";
 import { adm, q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import DefinitionGraph from "../DefinitionGraph";
@@ -71,6 +73,44 @@ const keyPattern = /^[a-z][a-z0-9_]{0,40}$/;
 const variablePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const panel = "flex flex-col gap-3 rounded-md border border-line bg-surface p-3 text-secondary";
 const legend = "mb-1.5 text-caption font-medium tracking-wide text-muted uppercase";
+const tr = i18n.getFixedT(null, "admin-catalog");
+
+/** Code in a sentence: a path, an expression or a name, as written. */
+const Code = ({ text }: { text: string }) => <code className="font-mono">{text}</code>;
+
+/** Codes in a sentence, separated by commas. */
+function Codes({ list }: { list: string[] }) {
+  return (
+    <>
+      {list.map((r, i) => (
+        <span key={r}>
+          {i > 0 && ", "}
+          <code className="font-mono">{r}</code>
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** What a catch path's steps read of the failure. */
+const errorCodes = { step: <Code text="error.step" />, message: <Code text="error.message" /> };
+
+/** The examples fields show, written as the YAML has them. */
+const examples = {
+  when: 'inputs.environment == "prd"',
+  url: "https://cmdb.corp.example/api/ci/${steps.vm.name}",
+  body: "{'name': steps.vm.fqdn, 'owner': inputs.owner}",
+  keep: "$.result",
+  duration: "72h",
+  window: "inputs.window",
+  every: "10m",
+  event: "item.slug == 'backup-host'",
+  signal: "cab-approved",
+  items: "inputs.hosts",
+  caseWhen: "inputs.size == 'L'",
+  askTimeout: "48h",
+};
+const pollExample = (own: string) => `${own}.json == 'approved'`;
 
 /** The definition in a text, or undefined when it doesn't parse. Shared with the graph's: read only. */
 function parseDefinition(text: string): Raw | undefined {
@@ -101,19 +141,21 @@ export interface Design {
   serverProblems?: { text: string; errors: FieldError[] };
 }
 
-const kindGroup: Record<StepTarget["kind"], string> = {
-  item: "Items",
-  awx: "AWX templates",
-  workflow: "Custom workflows",
-  rest: "REST APIs",
-  ask: "People",
-  wait: "Waits",
-  poll: "Waits",
-  signal: "Waits",
-  branch: "The way it goes",
-  notify: "People",
-  resource: "Custom resources",
+type KindGroup = "items" | "awx" | "workflows" | "rest" | "people" | "waits" | "way" | "resources";
+const kindGroups: Record<StepTarget["kind"], KindGroup> = {
+  item: "items",
+  awx: "awx",
+  workflow: "workflows",
+  rest: "rest",
+  ask: "people",
+  wait: "waits",
+  poll: "waits",
+  signal: "waits",
+  branch: "way",
+  notify: "people",
+  resource: "resources",
 };
+const kindGroup = (kind: StepTarget["kind"]) => tr(`composite.kind.${kindGroups[kind]}`);
 const byName = "awx-by-name";
 const restValue = targetValue({ kind: "rest", ref: "" });
 const askValue = targetValue({ kind: "ask", ref: "" });
@@ -142,8 +184,8 @@ function targetOptions(
     .map((t) => ({
       value: targetValue(listedTarget(t)),
       label: t.title,
-      meta: t.awx_workflow ? `${t.ref} (workflow)` : t.ref,
-      group: kindGroup[t.kind],
+      meta: t.awx_workflow ? tr("composite.target.workflow", { ref: t.ref }) : t.ref,
+      group: kindGroup(t.kind),
     }));
   if (current?.ref && !findTarget(targets, current))
     out.unshift({
@@ -151,25 +193,24 @@ function targetOptions(
       label: current.ref,
       meta:
         current.kind === "item"
-          ? "not published"
+          ? tr("composite.target.notPublished")
           : current.kind === "awx"
-            ? "not imported"
+            ? tr("composite.target.notImported")
             : current.kind === "resource"
-              ? "not defined or turned off"
-              : "not registered",
-      group: kindGroup[current.kind],
+              ? tr("composite.target.notDefined")
+              : tr("composite.target.notRegistered"),
+      group: kindGroup(current.kind),
     });
-  out.push({ value: byName, label: "Another AWX template, by its name", group: kindGroup.awx });
-  out.push({ value: restValue, label: "A REST call", group: kindGroup.rest });
-  if (!onCatch) out.push({ value: askValue, label: "A person", group: kindGroup.ask });
-  out.push({ value: notifyValue, label: "A message to people", group: kindGroup.notify });
+  out.push({ value: byName, label: tr("composite.target.byName"), group: kindGroup("awx") });
+  out.push({ value: restValue, label: tr("composite.target.rest"), group: kindGroup("rest") });
+  if (!onCatch) out.push({ value: askValue, label: tr("composite.target.ask"), group: kindGroup("ask") });
+  out.push({ value: notifyValue, label: tr("composite.target.notify"), group: kindGroup("notify") });
   if (!onCatch) {
-    out.push({ value: waitValue, label: "A wait for a time", group: kindGroup.wait });
-    out.push({ value: pollValue, label: "A wait for a condition, polling a REST API", group: kindGroup.poll });
-    out.push({ value: signalValue, label: "A wait for a signal or an event", group: kindGroup.signal });
+    out.push({ value: waitValue, label: tr("composite.target.wait"), group: kindGroup("wait") });
+    out.push({ value: pollValue, label: tr("composite.target.poll"), group: kindGroup("poll") });
+    out.push({ value: signalValue, label: tr("composite.target.signal"), group: kindGroup("signal") });
   }
-  if (branchHere)
-    out.push({ value: branchValue, label: "A branch: cases, each with its steps", group: kindGroup.branch });
+  if (branchHere) out.push({ value: branchValue, label: tr("composite.target.branch"), group: kindGroup("branch") });
   return out;
 }
 
@@ -232,6 +273,7 @@ export default function CompositeDesigner({
   /** Who may request the composite: a step whose target isn't offered to them all is flagged. */
   entitlements?: CatalogEntitlements;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const { text, onEdit, history } = design;
   const targetsQuery = useQuery(q.compositeStepTargets());
   const targets = useMemo(() => targetsQuery.data?.items ?? [], [targetsQuery.data]);
@@ -338,7 +380,7 @@ export default function CompositeDesigner({
       return (
         <div className="flex flex-col gap-2">
           <p role="note" className="text-secondary text-warn">
-            The YAML doesn't parse: fix it in the editor to change the steps here.
+            {t("composite.noParse")}
           </p>
           <NodeDetails node={node} />
         </div>
@@ -361,11 +403,11 @@ export default function CompositeDesigner({
         }}
       >
         <Plus aria-hidden />
-        Add a step
+        {t("composite.addStep")}
       </Button>
       <Button size="sm" variant="quiet" disabled={!history.canUndo} onClick={design.undo} aria-keyshortcuts="Control+Z">
         <Undo2 aria-hidden />
-        Undo
+        {t("composite.undo")}
       </Button>
       <Button
         size="sm"
@@ -375,7 +417,7 @@ export default function CompositeDesigner({
         aria-keyshortcuts="Control+Shift+Z Control+Y"
       >
         <Redo2 aria-hidden />
-        Redo
+        {t("composite.redo")}
       </Button>
     </>
   );
@@ -434,7 +476,7 @@ interface SideRef {
 }
 
 /** Where a step added from a step's or Done's details goes: a side of a branch, a step's catch path (its group's, in one), or the error handler. */
-type Into = SideRef | { catchOf: string; label: string } | { onError: true; label: string };
+type Into = SideRef | { catchOf: string } | { onError: true };
 
 const whereOf = (into: Into): edits.Where =>
   "taken" in into ? { side: into.id, taken: into.taken } : "catchOf" in into ? { catchOf: into.catchOf } : "onError";
@@ -479,37 +521,47 @@ function PanelHeading({ badge, children }: { badge?: string; children: ReactNode
 }
 
 function InputsPanel({ ctx }: { ctx: PanelContext }) {
+  const { t } = useTranslation(["admin-catalog", "canvas"]);
   useFocusNext(ctx.focusNext);
   const inputs = formInputsOf(ctx.def);
+  const request = t("canvas:composite.request");
   return (
-    <section aria-label="Selected: Request" className={panel}>
-      <PanelHeading>Request</PanelHeading>
+    <section aria-label={t("canvas:selected", { title: request })} className={panel}>
+      <PanelHeading>{request}</PanelHeading>
       <p className="text-muted">
-        Steps bind to the form's inputs as <code className="font-mono">inputs.&lt;name&gt;</code>, and to the request's{" "}
-        <code className="font-mono">environment</code> and <code className="font-mono">project</code>. The form is
-        changed in the Form designer tab.
+        <Trans
+          t={t}
+          i18nKey="composite.inputs.body"
+          components={{
+            inputs: <Code text="inputs.<name>" />,
+            environment: <Code text="environment" />,
+            project: <Code text="project" />,
+          }}
+        />
       </p>
       {inputs.length > 0 ? (
-        <ul aria-label="The form's inputs" className="flex flex-col gap-0.5">
+        <ul aria-label={t("composite.inputs.list")} className="flex flex-col gap-0.5">
           {inputs.map((i) => (
             <li key={i.name}>
-              <code className="font-mono">inputs.{i.name}</code> <span className="text-muted">{i.title}</span>
+              <Code text={`inputs.${i.name}`} /> <span className="text-muted">{i.title}</span>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-muted">The form has no inputs yet.</p>
+        <p className="text-muted">{t("composite.inputs.none")}</p>
       )}
     </section>
   );
 }
 
 function EndPanel({ ctx }: { ctx: PanelContext }) {
+  const { t } = useTranslation(["admin-catalog", "canvas"]);
   useFocusNext(ctx.focusNext);
   const on = obj(ctx.def.blueprint).rollback_on_failure === true;
+  const done = t("canvas:composite.done");
   return (
-    <section aria-label="Selected: Done" className={panel}>
-      <PanelHeading>Done</PanelHeading>
+    <section aria-label={t("canvas:selected", { title: done })} className={panel}>
+      <PanelHeading>{done}</PanelHeading>
       <div className="flex items-start gap-2 text-body">
         <Checkbox
           id="cd-rollback"
@@ -518,18 +570,14 @@ function EndPanel({ ctx }: { ctx: PanelContext }) {
           className="mt-0.5"
         />
         <div>
-          <label htmlFor="cd-rollback">Undo what was built when a step fails</label>
-          <p className="text-secondary text-muted">
-            The VMs built are deleted and each step done is undone by its undo, if it has one, the last first.
-          </p>
+          <label htmlFor="cd-rollback">{t("composite.end.rollback")}</label>
+          <p className="text-secondary text-muted">{t("composite.end.rollbackHint")}</p>
         </div>
       </div>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>Error handler</legend>
+        <legend className={legend}>{t("composite.end.handler")}</legend>
         <p className="text-muted">
-          Its steps run in order when a failure nothing catches fails the request, before the undo steps and the
-          rollback: an AWX job, a custom workflow, a REST call or a message. They read{" "}
-          <code className="font-mono">error.step</code> and <code className="font-mono">error.message</code>.
+          {t("composite.end.handlerBody")} <Trans t={t} i18nKey="composite.theyReadError" components={errorCodes} />
         </p>
         <SideSteps
           steps={
@@ -537,8 +585,8 @@ function EndPanel({ ctx }: { ctx: PanelContext }) {
               ? (obj(ctx.def.blueprint).on_error as unknown[]).map(obj)
               : []
           }
-          side={{ onError: true, label: "the error handler" }}
-          empty="None yet: a failure just fails the request."
+          side={{ onError: true }}
+          empty={t("composite.end.handlerEmpty")}
           ctx={ctx}
         />
       </fieldset>
@@ -553,30 +601,33 @@ const onlyVMStep = "-";
  * when several come before it, else the only one.
  */
 function ResourceDeployment({ step, g, id, ctx }: { step: Raw; g: number; id: string; ctx: PanelContext }) {
+  const { t } = useTranslation("admin-catalog");
   const { def, targets, text, apply } = ctx;
   const named = str(obj(step.resource).deployment);
   const vms = flatten(obj(def.blueprint)).filter(
     (s) => s.g < g && s.key && findTarget(targets, targetOf(s.step))?.planned,
   );
-  const hint =
-    vms.length === 0
-      ? "It joins the deployment of a VM step before it: add one first."
-      : "Deleting that deployment runs its type's delete step.";
+  const hint = vms.length === 0 ? t("composite.resource.noVm") : t("composite.resource.deleting");
   if (vms.length <= 1 && !named)
     return (
       <p className="text-muted md:col-span-2">
-        {vms.length === 1 ? `It joins the deployment of ${vms[0]!.name}. ` : ""}
+        {vms.length === 1 ? `${t("composite.resource.joins", { name: vms[0]!.name })} ` : ""}
         {hint}
       </p>
     );
   const options: Option[] = [
-    { value: onlyVMStep, label: "The only VM step before it" },
+    { value: onlyVMStep, label: t("composite.resource.only") },
     ...vms.map((s) => ({ value: s.key, label: s.name, meta: s.key })),
   ];
   if (named && !vms.some((s) => s.key === named))
-    options.push({ value: named, label: named, meta: "not a VM step before it" });
+    options.push({ value: named, label: named, meta: t("composite.resource.notBefore") });
   return (
-    <Field label="Deployment" htmlFor="cd-resource-deployment" className="md:col-span-2" hint={hint}>
+    <Field
+      label={t("composite.resource.deployment")}
+      htmlFor="cd-resource-deployment"
+      className="md:col-span-2"
+      hint={hint}
+    >
       <Select
         id="cd-resource-deployment"
         value={named || onlyVMStep}
@@ -587,7 +638,32 @@ function ResourceDeployment({ step, g, id, ctx }: { step: Raw; g: number; id: st
   );
 }
 
+/** A step named in a sentence, as a button that selects it. */
+function PickStep({
+  label,
+  text,
+  mono = false,
+  onPick,
+}: {
+  label: string;
+  text: string;
+  mono?: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      className={mono ? "font-mono text-accent hover:underline" : "text-accent hover:underline"}
+      onClick={onPick}
+    >
+      {text}
+    </button>
+  );
+}
+
 function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
+  const { t } = useTranslation(["admin-catalog", "canvas"]);
   const { text, def, targets, apply, focusNext, setSelected } = ctx;
   useFocusNext(ctx.focusNext);
   const [byNameOpen, setByNameOpen] = useState(false);
@@ -660,7 +736,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         : "";
 
   return (
-    <section aria-label={`Selected: ${title}`} className={panel}>
+    <section aria-label={t("canvas:selected", { title })} className={panel}>
       <div className="flex flex-wrap items-center gap-2">
         <PanelHeading badge={node.badge}>{title}</PanelHeading>
         <div className="ml-auto flex flex-wrap gap-1">
@@ -672,7 +748,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             onClick={() => move(-1)}
           >
             <ArrowUp aria-hidden />
-            {j === null ? "Move earlier" : "Run before the others"}
+            {j === null ? t("composite.step.earlier") : t("composite.step.beforeOthers")}
           </Button>
           <Button
             id="cd-later"
@@ -688,7 +764,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             onClick={() => move(1)}
           >
             <ArrowDown aria-hidden />
-            {j === null ? "Move later" : "Run after the others"}
+            {j === null ? t("composite.step.later") : t("composite.step.afterOthers")}
           </Button>
           {j === null &&
             g > 0 &&
@@ -704,17 +780,17 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
                 variant="quiet"
                 onClick={() => apply(() => edits.joinPrevious(text, id), { focus: "cd-later" })}
               >
-                Run with the step before
+                {t("composite.step.join")}
               </Button>
             )}
           <Button id="cd-remove" size="sm" variant="danger" onClick={remove}>
             <Trash2 aria-hidden />
-            Remove step
+            {t("composite.step.remove")}
           </Button>
         </div>
       </div>
       {node.problems.length > 0 && (
-        <ul aria-label="Problems with this step" className="flex flex-col gap-0.5 text-bad">
+        <ul aria-label={t("composite.step.problems")} className="flex flex-col gap-0.5 text-bad">
           {node.problems.map((p, i) => (
             <li key={i}>{p}</li>
           ))}
@@ -722,63 +798,70 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
       )}
       {side && (
         <p className="text-muted">
-          On a side of{" "}
-          <button
-            type="button"
-            aria-label={`Select the branch ${side.branch}`}
-            className="font-mono text-accent hover:underline"
-            onClick={() => {
-              focusNext.current = "cd-heading";
-              setSelected(edits.stepId(side.branch));
+          <Trans
+            t={t}
+            i18nKey="composite.step.onSide"
+            components={{
+              branch: (
+                <PickStep
+                  label={t("composite.step.selectBranch", { name: side.branch })}
+                  text={side.branch}
+                  mono
+                  onPick={() => {
+                    focusNext.current = "cd-heading";
+                    setSelected(edits.stepId(side.branch));
+                  }}
+                />
+              ),
             }}
-          >
-            {side.branch}
-          </button>
-          : it runs only when that side is taken, and is skipped otherwise.
+          />
         </p>
       )}
       {caught && (
         <p className="text-muted">
           {caught.of === "on_error" ? (
-            <>
-              In the{" "}
-              <button
-                type="button"
-                aria-label="Select Done, whose error handler it is in"
-                className="text-accent hover:underline"
-                onClick={() => {
-                  focusNext.current = "cd-heading";
-                  setSelected("end");
-                }}
-              >
-                error handler
-              </button>
-              : it runs only when a failure nothing catches fails the request.
-            </>
+            <Trans
+              t={t}
+              i18nKey="composite.step.inHandler"
+              components={{
+                handler: (
+                  <PickStep
+                    label={t("composite.step.selectDone")}
+                    text={t("composite.step.handler")}
+                    onPick={() => {
+                      focusNext.current = "cd-heading";
+                      setSelected("end");
+                    }}
+                  />
+                ),
+              }}
+            />
           ) : caught.of ? (
-            <>
-              On the catch path of{" "}
-              <button
-                type="button"
-                aria-label={`Select ${caught.of}, whose catch path it is on`}
-                className="font-mono text-accent hover:underline"
-                onClick={() => {
-                  focusNext.current = "cd-heading";
-                  setSelected(edits.stepId(caught.of));
-                }}
-              >
-                {caught.of}
-              </button>
-              : it runs only if that step fails, and the request goes on.
-            </>
+            <Trans
+              t={t}
+              i18nKey="composite.step.onCatchOf"
+              components={{
+                step: (
+                  <PickStep
+                    label={t("composite.step.selectCaught", { name: caught.of })}
+                    text={caught.of}
+                    mono
+                    onPick={() => {
+                      focusNext.current = "cd-heading";
+                      setSelected(edits.stepId(caught.of));
+                    }}
+                  />
+                ),
+              }}
+            />
           ) : (
-            `On the catch path of step group ${g + 1}: it runs only if one of its steps fails, and the request goes on.`
+            t("composite.step.onGroupCatch", { number: g + 1 })
           )}{" "}
-          It reads <code className="font-mono">error.step</code> and <code className="font-mono">error.message</code>.
+          <Trans t={t} i18nKey="composite.itReadsError" components={errorCodes} />
         </p>
       )}
       <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Key" htmlFor="cd-key" hint={key ? `Later steps read its outputs as steps.${key}.` : undefined}>
+        <Field label={t("composite.key")} htmlFor="cd-key" hint={key ? t("composite.keyHint", { key }) : undefined}>
           <CommitInput
             id="cd-key"
             value={key}
@@ -786,18 +869,18 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             onCommit={(v) => {
               const next = v.trim();
               if (!keyPattern.test(next)) {
-                toast.error("A key of lower-case letters, digits and underscores.");
+                toast.error(t("composite.keyFormat"));
                 return;
               }
               if (next !== key && flat.some((s) => s.key === next)) {
-                toast.error(`Another step has the key ${next}.`);
+                toast.error(t("composite.keyTaken", { key: next }));
                 return;
               }
               apply(() => edits.setStepField(text, id, "key", next), { select: edits.stepId(next), focus: "cd-key" });
             }}
           />
         </Field>
-        <Field label="Title" htmlFor="cd-title">
+        <Field label={t("composite.title")} htmlFor="cd-title">
           <CommitInput
             id="cd-title"
             value={str(step.title)}
@@ -806,14 +889,14 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
           />
         </Field>
         <Field
-          label="Runs"
+          label={t("composite.step.runs")}
           htmlFor="cd-runs"
           className="md:col-span-2"
           hint={
             ctx.targetsQuery.isError
-              ? "What steps can run couldn't be loaded."
+              ? t("composite.step.runsError")
               : planned
-                ? "A VM item: its VMs are planned with the request, from the form's inputs."
+                ? t("composite.step.runsVm")
                 : listed?.summary
           }
         >
@@ -821,7 +904,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
             id="cd-runs"
             value={runsValue}
             loading={ctx.targetsQuery.isPending}
-            placeholder="Choose what it runs"
+            placeholder={t("composite.chooseRuns")}
             options={targetOptions(targets, target, !side && !caught && j === null, Boolean(caught))}
             onCloseAutoFocus={runsFocus.onCloseAutoFocus}
             onChange={(v) => {
@@ -837,7 +920,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
           />
         </Field>
         {byNameOpen && (
-          <Field label="AWX template's name" htmlFor="cd-awx-name" className="md:col-span-2">
+          <Field label={t("composite.awxName")} htmlFor="cd-awx-name" className="md:col-span-2">
             <CommitInput
               id="cd-awx-name"
               value=""
@@ -852,22 +935,22 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         )}
         {(!branch || str(step.when)) && (
           <Field
-            label="When"
+            label={t("composite.when")}
             htmlFor="cd-when"
             className="md:col-span-2"
             hint={
               planned
-                ? "A VM step has no condition: its VMs are planned when the request is submitted."
+                ? t("composite.step.whenVm")
                 : branch
-                  ? "A branch has no condition of its own: empty this, and use its cases."
-                  : "A CEL condition: the step is skipped when it is false. Empty: it always runs."
+                  ? t("composite.step.whenBranch")
+                  : t("composite.step.whenHint")
             }
           >
             <CommitInput
               id="cd-when"
               value={str(step.when)}
               className="font-mono text-secondary"
-              placeholder={planned ? undefined : 'inputs.environment == "prd"'}
+              placeholder={planned ? undefined : examples.when}
               disabled={planned && !str(step.when)}
               onCommit={(v) => apply(() => edits.setStepField(text, id, "when", v))}
             />
@@ -878,7 +961,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
 
       {rest && (
         <fieldset className="flex flex-col gap-2">
-          <legend className={legend}>REST call</legend>
+          <legend className={legend}>{t("composite.step.rest")}</legend>
           <RestCallFields
             prefix="cd-rest"
             call={obj(step.rest)}
@@ -916,11 +999,11 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
 
       {!rest && !ask && !wait && !poll && !signal && !branch && !notify && (
         <fieldset className="flex flex-col gap-2">
-          <legend className={legend}>Inputs</legend>
-          {target?.kind === "item" && !listed && (
-            <p className="text-muted">Its inputs are known once the item it runs is published.</p>
+          <legend className={legend}>{t("composite.step.inputs")}</legend>
+          {target?.kind === "item" && !listed && <p className="text-muted">{t("composite.step.itemInputs")}</p>}
+          {inputs.length === 0 && others.length === 0 && listed && (
+            <p className="text-muted">{t("composite.step.noInputs")}</p>
           )}
-          {inputs.length === 0 && others.length === 0 && listed && <p className="text-muted">It takes no inputs.</p>}
           {inputs.map((input) => (
             <BindingRow
               key={input.name}
@@ -943,27 +1026,19 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
                 setExtra((x) => x.filter((n) => n !== name));
                 if (name in withMap) bind(name, "with")(undefined);
               }}
-              note={target?.kind === "item" && listed ? "Not an input of its form." : undefined}
+              note={target?.kind === "item" && listed ? t("composite.step.notFormInput") : undefined}
             />
           ))}
           {open.length > 0 && (
             <p className="text-muted">
-              A custom workflow gives what it returns, a custom resource its properties, a wait for a signal what came:
-              write{" "}
-              {open.map((k, i) => (
-                <span key={k}>
-                  {i > 0 && ", "}
-                  <code className="font-mono">steps.{k}.&lt;name&gt;</code>
-                </span>
-              ))}{" "}
-              as a CEL expression.
+              <Trans t={t} i18nKey="composite.step.open" components={{ reads: <Codes list={openReads(open)} /> }} />
             </p>
           )}
           {(target?.kind !== "item" || !listed) && (
             <AddVariable
               id="cd-add-input"
               rowId={(n) => `cd-in-${n}`}
-              label={target?.kind === "awx" ? "Add a variable" : "Add an input"}
+              label={target?.kind === "awx" ? t("composite.step.addVariable") : t("composite.step.addInput")}
               taken={[...inputs.map((i) => i.name), ...others]}
               onAdd={(n) => setExtra((x) => [...x, n])}
             />
@@ -971,7 +1046,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         </fieldset>
       )}
 
-      {resource && <p className="text-muted">If a later step fails, its type&apos;s delete step undoes it.</p>}
+      {resource && <p className="text-muted">{t("composite.resource.undo")}</p>}
 
       {!planned &&
         !ask &&
@@ -983,7 +1058,7 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
         !resource &&
         ((!caught && step.for_each === undefined) || undo !== undefined) && (
           <fieldset className="flex flex-col gap-2">
-            <legend className={legend}>Undo</legend>
+            <legend className={legend}>{t("composite.step.undo")}</legend>
             <UndoEditor
               undo={undo}
               targets={targets}
@@ -1001,18 +1076,15 @@ function StepPanel({ node, ctx }: { node: CanvasNode; ctx: PanelContext }) {
 
       {!caught && !branch && !resource && !planned && (
         <fieldset className="flex flex-col gap-2">
-          <legend className={legend}>{j === null ? "Catch path" : "Catch path of its group"}</legend>
+          <legend className={legend}>{j === null ? t("composite.step.catch") : t("composite.step.groupCatch")}</legend>
           <p className="text-muted">
-            {j === null
-              ? "Steps that run in order if it fails; the request then goes on."
-              : "Steps that run in order if a step of its group fails; the request then goes on."}{" "}
-            They read <code className="font-mono">error.step</code> and <code className="font-mono">error.message</code>
-            .
+            {j === null ? t("composite.step.catchBody") : t("composite.step.groupCatchBody")}{" "}
+            <Trans t={t} i18nKey="composite.theyReadError" components={errorCodes} />
           </p>
           <SideSteps
             steps={Array.isArray(catchSteps) ? catchSteps.map(obj) : []}
-            side={{ catchOf: id, label: "the catch path" }}
-            empty={j === null ? "None: if it fails, the request fails." : "None: if one fails, the request fails."}
+            side={{ catchOf: id }}
+            empty={j === null ? t("composite.step.catchEmpty") : t("composite.step.groupCatchEmpty")}
             ctx={ctx}
           />
         </fieldset>
@@ -1044,6 +1116,7 @@ function UndoEditor({
   onRest: (field: edits.RestField, value: string | number[]) => void;
   reads: string[];
 }) {
+  const { t } = useTranslation("admin-catalog");
   const [byNameOpen, setByNameOpen] = useState(false);
   const focus = useFocusAfterSelect();
   const current = undo
@@ -1054,7 +1127,7 @@ function UndoEditor({
         : ({ kind: "awx", ref: str(undo.job_template) } as const)
     : undefined;
   const options: Option[] = [
-    { value: "none", label: "Nothing" },
+    { value: "none", label: t("composite.undoBy.nothing") },
     // An undo is launched as a job template, by its name.
     ...targetOptions(
       targets.filter((t) => t.kind !== "item" && !t.awx_workflow),
@@ -1065,11 +1138,7 @@ function UndoEditor({
   const names = [...new Set([...Object.keys(withMap), ...extra])];
   return (
     <>
-      <Field
-        label="Undone by"
-        htmlFor="cd-undo"
-        hint="What runs when a later step fails and the request's changes are undone."
-      >
+      <Field label={t("composite.undoBy.label")} htmlFor="cd-undo" hint={t("composite.undoBy.hint")}>
         <Select
           id="cd-undo"
           value={byNameOpen ? byName : current ? targetValue(current) : "none"}
@@ -1090,7 +1159,7 @@ function UndoEditor({
         />
       </Field>
       {byNameOpen && (
-        <Field label="AWX template's name" htmlFor="cd-undo-name">
+        <Field label={t("composite.awxName")} htmlFor="cd-undo-name">
           <CommitInput
             id="cd-undo-name"
             value=""
@@ -1125,7 +1194,7 @@ function UndoEditor({
           <AddVariable
             id="cd-undo-add"
             rowId={(n) => `cd-undo-in-${n}`}
-            label="Add a variable to the undo"
+            label={t("composite.undoBy.addVariable")}
             taken={names}
             onAdd={onExtra}
           />
@@ -1148,18 +1217,15 @@ function undoReads(key: string, own: { outputs: CompositeStepOutput[]; open: boo
   return [...own.outputs.map((o) => `steps.${key}.${o.name}`), ...(own.open ? [`steps.${key}.<name>`] : [])];
 }
 
+/** How later steps read what these give, whatever it is: a custom workflow, a custom resource, a wait for a signal. */
+const openReads = (keys: string[]) => keys.map((k) => `steps.${k}.<name>`);
+
 /** What a field's CEL can read at that point. */
 function Reads({ reads }: { reads: string[] }) {
+  const { t } = useTranslation("admin-catalog");
   return (
     <p className="text-muted">
-      It can read{" "}
-      {reads.map((r, i) => (
-        <span key={r}>
-          {i > 0 && ", "}
-          <code className="font-mono">{r}</code>
-        </span>
-      ))}
-      .
+      <Trans t={t} i18nKey="composite.reads" components={{ reads: <Codes list={reads} /> }} />
     </p>
   );
 }
@@ -1184,27 +1250,29 @@ function RestCallFields({
   reads: string[];
   onChange: (field: edits.RestField, value: string | number[]) => void;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const secrets = useQuery(adm.secrets());
   const method = str(call.method);
+  const own = `steps.${stepKey || "<key>"}`;
   const secret = str(call.secret);
   const accept = Array.isArray(call.accept) ? call.accept.join(", ") : "";
   // A name stored globally and by projects is one choice: the request's project picks which opens.
   const stored = [...new Map((secrets.data?.items ?? []).map((s) => [s.name, s])).values()];
   const secretOptions: Option[] = [
-    { value: "none", label: "No secret" },
+    { value: "none", label: t("composite.rest.noSecret") },
     ...stored.map((s) => ({ value: s.name, label: s.name, meta: s.kind })),
     ...(secret && !stored.some((s) => s.name === secret)
-      ? [{ value: secret, label: secret, meta: secrets.isPending ? undefined : "not stored" }]
+      ? [{ value: secret, label: secret, meta: secrets.isPending ? undefined : t("composite.rest.notStored") }]
       : []),
   ];
   return (
     <>
       <div className="grid gap-3 md:grid-cols-[8rem_minmax(0,1fr)]">
-        <Field label={undo ? "Undo's method" : "Method"} htmlFor={`${prefix}-method`}>
+        <Field label={t(undo ? "composite.rest.undoMethod" : "composite.rest.method")} htmlFor={`${prefix}-method`}>
           <Select
             id={`${prefix}-method`}
             value={method}
-            placeholder="Choose"
+            placeholder={t("composite.choose")}
             // A method written in the YAML that it may not use shows, and the step says why.
             options={[...new Set([...(poll ? pollMethods : restMethods), ...(method ? [method] : [])])].map((m) => ({
               value: m,
@@ -1214,42 +1282,38 @@ function RestCallFields({
           />
         </Field>
         <Field
-          label={undo ? "Undo's URL" : "URL"}
+          label={t(undo ? "composite.rest.undoUrl" : "composite.rest.url")}
           htmlFor={`${prefix}-url`}
-          hint="The host is fixed, and on the allowed hosts. ${...} fills its path or query, escaped."
+          hint={t("composite.rest.urlHint")}
         >
           <CommitInput
             id={`${prefix}-url`}
             value={str(call.url)}
             className="font-mono text-secondary"
-            placeholder="https://cmdb.corp.example/api/ci/${steps.vm.name}"
+            placeholder={examples.url}
             onCommit={(v) => onChange("url", v)}
           />
         </Field>
         <Field
-          label={undo ? "Undo's body" : "Body"}
+          label={t(undo ? "composite.rest.undoBody" : "composite.rest.body")}
           htmlFor={`${prefix}-body`}
           className="md:col-span-2"
-          hint={method === "GET" ? "A GET has no body." : "A CEL expression, sent as JSON. Empty: no body."}
+          hint={method === "GET" ? t("composite.rest.bodyGet") : t("composite.rest.bodyHint")}
         >
           <CommitInput
             id={`${prefix}-body`}
             value={str(call.body)}
             className="font-mono text-secondary"
-            placeholder={method === "GET" ? undefined : "{'name': steps.vm.fqdn, 'owner': inputs.owner}"}
+            placeholder={method === "GET" ? undefined : examples.body}
             disabled={method === "GET" && !str(call.body)}
             onCommit={(v) => onChange("body", v)}
           />
         </Field>
         <Field
-          label={undo ? "Undo's secret" : "Secret"}
+          label={t(undo ? "composite.rest.undoSecret" : "composite.rest.secret")}
           htmlFor={`${prefix}-secret`}
           className="md:col-span-2"
-          hint={
-            secrets.isError
-              ? "The stored secrets couldn't be loaded."
-              : "Sent as a bearer token, basic credentials or a header, as stored."
-          }
+          hint={secrets.isError ? t("composite.rest.secretsError") : t("composite.rest.secretHint")}
         >
           <Select
             id={`${prefix}-secret`}
@@ -1260,10 +1324,10 @@ function RestCallFields({
           />
         </Field>
         <Field
-          label={undo ? "Undo's accepted statuses" : "Accepted statuses"}
+          label={t(undo ? "composite.rest.undoAccept" : "composite.rest.accept")}
           htmlFor={`${prefix}-accept`}
           className={undo ? "md:col-span-2" : undefined}
-          hint={poll ? "Empty: any 2xx." : "Others fail the step. Empty: any 2xx."}
+          hint={poll ? t("composite.rest.acceptPoll") : t("composite.rest.acceptHint")}
         >
           <CommitInput
             id={`${prefix}-accept`}
@@ -1273,38 +1337,33 @@ function RestCallFields({
             onCommit={(v) => {
               const statuses = writtenStatuses(v);
               if (statuses) onChange("accept", statuses);
-              else toast.error("HTTP statuses, as numbers: 200, 201.");
+              else toast.error(t("composite.rest.statuses"));
             }}
           />
         </Field>
         {!undo && (
           <Field
-            label="Keep"
+            label={t("composite.rest.keep")}
             htmlFor={`${prefix}-keep`}
             hint={
-              <>
-                A JSONPath into the answer. Empty: all of it. Later steps read{" "}
-                <code className="font-mono">steps.{stepKey || "<key>"}.json</code> and{" "}
-                <code className="font-mono">.status</code>.
-              </>
+              <Trans
+                t={t}
+                i18nKey="composite.rest.keepHint"
+                components={{ json: <Code text={`${own}.json`} />, status: <Code text=".status" /> }}
+              />
             }
           >
             <CommitInput
               id={`${prefix}-keep`}
               value={str(call.keep)}
               className="font-mono text-secondary"
-              placeholder="$.result"
+              placeholder={examples.keep}
               onCommit={(v) => onChange("keep", v)}
             />
           </Field>
         )}
       </div>
-      {poll && (
-        <p className="text-muted">
-          No answer, a 5xx, a 429 or a 408 only waits for the next check. Another status it doesn't accept fails the
-          step: list a 404 to mean not yet.
-        </p>
-      )}
+      {poll && <p className="text-muted">{t("composite.rest.pollNote")}</p>}
       <Reads reads={reads} />
     </>
   );
@@ -1314,45 +1373,42 @@ function RestCallFields({
 const writtenUsers = (text: string) => text.split(/[\s,]+/).filter(Boolean);
 const listText = (v: unknown) => (Array.isArray(v) ? v.map(String).join(", ") : "");
 
-const questionTypes: Option[] = [
-  { value: "string", label: "Text" },
-  { value: "number", label: "A number" },
-  { value: "boolean", label: "Yes or no" },
-  { value: "choice", label: "A choice" },
+const questionTypes = (): Option[] => [
+  { value: "string", label: tr("composite.question.string") },
+  { value: "number", label: tr("composite.question.number") },
+  { value: "boolean", label: tr("composite.question.boolean") },
+  { value: "choice", label: tr("composite.question.choice") },
 ];
-const onTimeoutOptions: Option[] = [
-  { value: "fail", label: "The step fails" },
-  { value: "continue", label: "It goes on with no answer" },
-  { value: "escalate", label: "It escalates" },
+const onTimeoutOptions = (): Option[] => [
+  { value: "fail", label: tr("composite.onTimeout.fail") },
+  { value: "continue", label: tr("composite.onTimeout.continue") },
+  { value: "escalate", label: tr("composite.onTimeout.escalate") },
 ];
 
 /** A wait for a time: how long, or until when. Writing one removes the other. */
 function WaitFields({ wait, id, reads, ctx }: { wait: Raw; id: string; reads: string[]; ctx: PanelContext }) {
+  const { t } = useTranslation("admin-catalog");
   const { text, apply } = ctx;
   const set = (field: "for" | "until", v: string) => apply(() => edits.setWaitField(text, id, field, v));
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className={legend}>How long it waits</legend>
+      <legend className={legend}>{t("composite.wait.legend")}</legend>
       <div className="grid gap-3 md:grid-cols-[8rem_minmax(0,1fr)]">
-        <Field label="For" htmlFor="cd-wait-for" hint="A duration such as 72h.">
+        <Field label={t("composite.wait.for")} htmlFor="cd-wait-for" hint={t("composite.wait.forHint")}>
           <CommitInput
             id="cd-wait-for"
             value={str(wait.for)}
             className="font-mono text-secondary"
-            placeholder="72h"
+            placeholder={examples.duration}
             onCommit={(v) => set("for", v)}
           />
         </Field>
-        <Field
-          label="Or until"
-          htmlFor="cd-wait-until"
-          hint="A CEL expression giving a time: a timestamp, or text such as 2027-03-01T22:00:00Z, read as UTC if it has no zone. A time already passed goes on at once."
-        >
+        <Field label={t("composite.wait.until")} htmlFor="cd-wait-until" hint={t("composite.wait.untilHint")}>
           <CommitInput
             id="cd-wait-until"
             value={str(wait.until)}
             className="font-mono text-secondary"
-            placeholder="inputs.window"
+            placeholder={examples.window}
             onCommit={(v) => set("until", v)}
           />
         </Field>
@@ -1362,9 +1418,9 @@ function WaitFields({ wait, id, reads, ctx }: { wait: Raw; id: string; reads: st
   );
 }
 
-const pollThenOptions: Option[] = [
-  { value: "fail", label: "The step fails" },
-  { value: "continue", label: "It goes on" },
+const pollThenOptions = (): Option[] => [
+  { value: "fail", label: tr("composite.onTimeout.fail") },
+  { value: "continue", label: tr("composite.onTimeout.goesOn") },
 ];
 
 /** A poll: the call it repeats, what it waits for, how often and how long. */
@@ -1381,13 +1437,14 @@ function PollFields({
   reads: string[];
   ctx: PanelContext;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const { text, apply } = ctx;
   const set = (field: edits.PollField, v: string) => apply(() => edits.setPollField(text, id, field, v));
   const own = `steps.${stepKey || "<key>"}`;
   return (
     <>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>The call it repeats</legend>
+        <legend className={legend}>{t("composite.poll.repeats")}</legend>
         <RestCallFields
           prefix="cd-poll-rest"
           call={obj(poll.rest)}
@@ -1398,54 +1455,55 @@ function PollFields({
         />
       </fieldset>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>What it waits for</legend>
+        <legend className={legend}>{t("composite.poll.waitsFor")}</legend>
         <div className="grid gap-3 md:grid-cols-[8rem_minmax(0,1fr)]">
-          <Field label="Every" htmlFor="cd-poll-every" hint="How often it checks: at least 1m.">
+          <Field label={t("composite.poll.every")} htmlFor="cd-poll-every" hint={t("composite.poll.everyHint")}>
             <CommitInput
               id="cd-poll-every"
               value={str(poll.every)}
               className="font-mono text-secondary"
-              placeholder="10m"
+              placeholder={examples.every}
               onCommit={(v) => set("every", v)}
             />
           </Field>
           <Field
-            label="Until"
+            label={t("composite.poll.until")}
             htmlFor="cd-poll-until"
             hint={
-              <>
-                A CEL condition on the last answer: <code className="font-mono">{own}.json</code> and{" "}
-                <code className="font-mono">{own}.status</code>.
-              </>
+              <Trans
+                t={t}
+                i18nKey="composite.poll.untilHint"
+                components={{ json: <Code text={`${own}.json`} />, status: <Code text={`${own}.status`} /> }}
+              />
             }
           >
             <CommitInput
               id="cd-poll-until"
               value={str(poll.until)}
               className="font-mono text-secondary"
-              placeholder={`${own}.json == 'approved'`}
+              placeholder={pollExample(own)}
               onCommit={(v) => set("until", v)}
             />
           </Field>
         </div>
       </fieldset>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>If it never holds</legend>
+        <legend className={legend}>{t("composite.poll.never")}</legend>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Deadline" htmlFor="cd-poll-timeout" hint="A duration such as 72h, from when it begins.">
+          <Field label={t("composite.poll.deadline")} htmlFor="cd-poll-timeout" hint={t("composite.poll.deadlineHint")}>
             <CommitInput
               id="cd-poll-timeout"
               value={str(poll.timeout)}
               className="font-mono text-secondary"
-              placeholder="72h"
+              placeholder={examples.duration}
               onCommit={(v) => set("timeout", v)}
             />
           </Field>
-          <Field label="Then" htmlFor="cd-poll-on-timeout">
+          <Field label={t("composite.then")} htmlFor="cd-poll-on-timeout">
             <Select
               id="cd-poll-on-timeout"
               value={str(poll.on_timeout) || "fail"}
-              options={pollThenOptions}
+              options={pollThenOptions()}
               onChange={(v) => set("on_timeout", v)}
             />
           </Field>
@@ -1456,28 +1514,30 @@ function PollFields({
 }
 
 const signalByName = "signal:";
-const eventOptions: Option[] = [
-  { value: signalByName, label: "A signal sent to this request" },
-  ...eventTopics.map((t) => ({ value: `event:${t}`, label: t, group: "An event of rvav's" })),
+const eventOptions = (): Option[] => [
+  { value: signalByName, label: tr("composite.signal.sent") },
+  ...eventTopics.map((topic) => ({ value: `event:${topic}`, label: topic, group: tr("composite.signal.events") })),
 ];
 
 /** A wait for a signal or an event (ADR-0057): which, the event's condition, and its deadline. */
 function SignalFields({ signal, id, stepKey, ctx }: { signal: Raw; id: string; stepKey: string; ctx: PanelContext }) {
+  const { t } = useTranslation("admin-catalog");
   const { text, apply } = ctx;
   const set = (field: edits.SignalField, v: string) => apply(() => edits.setSignalField(text, id, field, v));
   const event = str(signal.event);
   const name = str(signal.name);
   const own = `steps.${stepKey || "<key>"}`;
+  const sentTo = `/requests/<number>/signal/${name || "<name>"}`;
   return (
     <>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>What it waits for</legend>
+        <legend className={legend}>{t("composite.poll.waitsFor")}</legend>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Waits for" htmlFor="cd-signal-for">
+          <Field label={t("composite.signal.waitsFor")} htmlFor="cd-signal-for">
             <Select
               id="cd-signal-for"
               value={event ? `event:${event}` : signalByName}
-              options={eventOptions}
+              options={eventOptions()}
               onChange={(v) => {
                 if (v === signalByName) set("name", name || edits.newSignal(stepKey).name);
                 else set("event", v.slice("event:".length));
@@ -1486,77 +1546,79 @@ function SignalFields({ signal, id, stepKey, ctx }: { signal: Raw; id: string; s
           </Field>
           {event ? (
             <Field
-              label="Condition"
+              label={t("composite.signal.condition")}
               htmlFor="cd-signal-when"
               hint={
-                <>
-                  CEL over the event, as a subscription&apos;s condition reads it, and{" "}
-                  <code className="font-mono">waiting</code>: this request and its steps before this one. Empty: the
-                  first event of the topic in the request&apos;s project.
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="composite.signal.conditionHint"
+                  components={{ waiting: <Code text="waiting" /> }}
+                />
               }
             >
               <CommitInput
                 id="cd-signal-when"
                 value={str(signal.when)}
                 className="font-mono text-secondary"
-                placeholder="item.slug == 'backup-host'"
+                placeholder={examples.event}
                 onCommit={(v) => set("when", v)}
               />
             </Field>
           ) : (
             <Field
-              label="Signal name"
+              label={t("composite.signal.name")}
               htmlFor="cd-signal-name"
               hint={
-                <>
-                  Sent to <code className="font-mono">/requests/&lt;number&gt;/signal/{name || "<name>"}</code> by
-                  someone who manages the project&apos;s requests, or with{" "}
-                  <code className="font-mono">rvavctl requests signal</code>.
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="composite.signal.nameHint"
+                  components={{ path: <Code text={sentTo} />, cli: <Code text="rvavctl requests signal" /> }}
+                />
               }
             >
               <CommitInput
                 id="cd-signal-name"
                 value={name}
                 className="font-mono text-secondary"
-                placeholder="cab-approved"
+                placeholder={examples.signal}
                 onCommit={(v) => set("name", v)}
               />
             </Field>
           )}
         </div>
         <p className="text-muted">
-          What comes is its outputs: later steps read <code className="font-mono">{own}.&lt;field&gt;</code>.
+          <Trans t={t} i18nKey="composite.signal.outputs" components={{ field: <Code text={`${own}.<field>`} /> }} />
         </p>
       </fieldset>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>If nothing comes</legend>
+        <legend className={legend}>{t("composite.signal.nothing")}</legend>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Timeout" htmlFor="cd-signal-timeout" hint="From 1m to 2160h (90 days), from when it begins.">
+          <Field label={t("composite.timeout")} htmlFor="cd-signal-timeout" hint={t("composite.signal.timeoutHint")}>
             <CommitInput
               id="cd-signal-timeout"
               value={str(signal.timeout)}
               className="font-mono text-secondary"
-              placeholder="72h"
+              placeholder={examples.duration}
               onCommit={(v) => set("timeout", v)}
             />
           </Field>
           <Field
-            label="Then"
+            label={t("composite.then")}
             htmlFor="cd-signal-on-timeout"
             hint={
               str(signal.on_timeout) === "continue" ? (
-                <>
-                  Later steps read <code className="font-mono">has({own}.timed_out)</code>.
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="composite.laterReads"
+                  components={{ path: <Code text={`has(${own}.timed_out)`} /> }}
+                />
               ) : undefined
             }
           >
             <Select
               id="cd-signal-on-timeout"
               value={str(signal.on_timeout) || "fail"}
-              options={pollThenOptions}
+              options={pollThenOptions()}
               onChange={(v) => set("on_timeout", v)}
             />
           </Field>
@@ -1578,33 +1640,39 @@ function LoopFields({
   stepKey: string;
   ctx: PanelContext;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const { text, apply } = ctx;
   const own = `steps.${stepKey || "<key>"}`;
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className={legend}>Loop</legend>
+      <legend className={legend}>{t("composite.loop.legend")}</legend>
       {forEach ? (
         <>
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_8rem]">
             <Field
-              label="For each item of"
+              label={t("composite.loop.items")}
               htmlFor="cd-loop-items"
               hint={
-                <>
-                  CEL giving a list of at most 100 items. Each pass reads <code className="font-mono">each</code>, its
-                  item, and <code className="font-mono">index</code>, from 0.
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="composite.loop.itemsHint"
+                  components={{ each: <Code text="each" />, index: <Code text="index" /> }}
+                />
               }
             >
               <CommitInput
                 id="cd-loop-items"
                 value={str(forEach.items)}
                 className="font-mono text-secondary"
-                placeholder="inputs.hosts"
+                placeholder={examples.items}
                 onCommit={(v) => apply(() => edits.setForEach(text, id, "items", v))}
               />
             </Field>
-            <Field label="At a time" htmlFor="cd-loop-parallel" hint="Up to 10. 1: one after the other.">
+            <Field
+              label={t("composite.loop.atATime")}
+              htmlFor="cd-loop-parallel"
+              hint={t("composite.loop.atATimeHint")}
+            >
               <CommitInput
                 id="cd-loop-parallel"
                 value={typeof forEach.parallel === "number" ? String(forEach.parallel) : str(forEach.parallel) || "1"}
@@ -1614,8 +1682,11 @@ function LoopFields({
             </Field>
           </div>
           <p className="text-muted">
-            Later steps read <code className="font-mono">{own}.items</code>, each pass&apos;s outputs in the list&apos;s
-            order, and <code className="font-mono">{own}.count</code>. A loop has no undo.
+            <Trans
+              t={t}
+              i18nKey="composite.loop.reads"
+              components={{ items: <Code text={`${own}.items`} />, count: <Code text={`${own}.count`} /> }}
+            />
           </p>
           <div>
             <Button
@@ -1625,13 +1696,13 @@ function LoopFields({
               onClick={() => apply(() => edits.removeForEach(text, id), { focus: "cd-loop-add" })}
             >
               <Trash2 aria-hidden />
-              Run it once
+              {t("composite.loop.once")}
             </Button>
           </div>
         </>
       ) : (
         <div className="flex flex-col gap-1.5">
-          <p className="text-muted">It runs once.</p>
+          <p className="text-muted">{t("composite.loop.runsOnce")}</p>
           <div>
             <Button
               id="cd-loop-add"
@@ -1640,7 +1711,7 @@ function LoopFields({
               onClick={() => apply(() => edits.setForEach(text, id, "items", ""), { focus: "cd-loop-items" })}
             >
               <Plus aria-hidden />
-              Repeat it for each item of a list
+              {t("composite.loop.repeat")}
             </Button>
           </div>
         </div>
@@ -1650,21 +1721,14 @@ function LoopFields({
 }
 
 /** The steps of a side of a branch, a catch path or the error handler: each a button that selects it, and the way to add another. */
-function SideSteps({
-  steps,
-  side,
-  empty = "No steps yet: it goes on to what comes after the branch.",
-  ctx,
-}: {
-  steps: Raw[];
-  side: Into;
-  empty?: string;
-  ctx: PanelContext;
-}) {
+function SideSteps({ steps, side, empty, ctx }: { steps: Raw[]; side: Into; empty?: string; ctx: PanelContext }) {
+  const { t } = useTranslation(["admin-catalog", "canvas"]);
+  const which = "taken" in side ? "side" : "catchOf" in side ? "catch" : "handler";
+  const label = "taken" in side ? side.label : "";
   return (
     <div className="flex flex-col gap-1.5">
       {steps.length > 0 ? (
-        <ol aria-label={`Steps of ${side.label}`} className="flex flex-col gap-0.5">
+        <ol aria-label={t(`composite.side.stepsOf.${which}`, { label })} className="flex flex-col gap-0.5">
           {steps.map((s, i) => {
             const key = str(s.key);
             return (
@@ -1678,24 +1742,26 @@ function SideSteps({
                     ctx.setSelected(edits.stepId(key));
                   }}
                 >
-                  {str(s.title) || key || "(no key)"}
+                  {str(s.title) || key || t("canvas:composite.noKey")}
                 </button>
               </li>
             );
           })}
         </ol>
       ) : (
-        <p className="text-muted">{empty}</p>
+        <p className="text-muted">{empty ?? t("composite.side.empty")}</p>
       )}
       <div>
         <Button size="sm" variant="secondary" onClick={() => ctx.addInto(side)}>
           <Plus aria-hidden />
-          Add a step to {side.label}
+          {t(`composite.side.addTo.${which}`, { label })}
         </Button>
       </div>
     </div>
   );
 }
+
+const casePrefix = (i: number) => `cd-case${i}`;
 
 /** A branch: its cases, the first whose condition holds being taken, each with its steps, and what runs otherwise. */
 function BranchFields({
@@ -1711,7 +1777,9 @@ function BranchFields({
   reads: string[];
   ctx: PanelContext;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const { text, apply } = ctx;
+  const own = `steps.${stepKey || "<key>"}`;
   const cases = Array.isArray(branch.cases) ? (branch.cases as unknown[]).map(obj) : [];
   const otherwise = Array.isArray(branch.else) ? (branch.else as unknown[]).map(obj) : [];
   const moveCase = (i: number, dir: -1 | 1) => {
@@ -1728,35 +1796,30 @@ function BranchFields({
   return (
     <>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>Its cases</legend>
-        <p className="text-muted">
-          The first whose condition holds is taken, once: its steps run, and the steps of the other sides are skipped.
-        </p>
+        <legend className={legend}>{t("composite.branch.cases")}</legend>
+        <p className="text-muted">{t("composite.branch.casesBody")}</p>
         {cases.map((c, i) => {
-          const prefix = `cd-case${i}`;
-          const label = str(c.title) || `Case ${i + 1}`;
+          const prefix = casePrefix(i);
+          const number = t("composite.branch.case", { number: i + 1 });
+          const label = str(c.title) || number;
           return (
             <fieldset key={i} className="flex flex-col gap-2 rounded-md border border-line p-2">
-              <legend className="px-1 text-secondary font-medium">Case {i + 1}</legend>
+              <legend className="px-1 text-secondary font-medium">{number}</legend>
               <div className="grid gap-3 md:grid-cols-2">
-                <Field
-                  label="Title"
-                  htmlFor={`${prefix}-title`}
-                  hint="Said on the graph and in the request's timeline."
-                >
+                <Field label={t("composite.title")} htmlFor={`${prefix}-title`} hint={t("composite.branch.titleHint")}>
                   <CommitInput
                     id={`${prefix}-title`}
                     value={str(c.title)}
-                    placeholder={`Case ${i + 1}`}
+                    placeholder={number}
                     onCommit={(v) => apply(() => edits.setBranchCase(text, id, i, "title", v))}
                   />
                 </Field>
-                <Field label="When" htmlFor={`${prefix}-when`} hint="A CEL condition: true or false.">
+                <Field label={t("composite.when")} htmlFor={`${prefix}-when`} hint={t("composite.branch.whenHint")}>
                   <CommitInput
                     id={`${prefix}-when`}
                     value={str(c.when)}
                     className="font-mono text-secondary"
-                    placeholder="inputs.size == 'L'"
+                    placeholder={examples.caseWhen}
                     onCommit={(v) => apply(() => edits.setBranchCase(text, id, i, "when", v))}
                   />
                 </Field>
@@ -1772,31 +1835,31 @@ function BranchFields({
                   size="sm"
                   variant="quiet"
                   disabled={i === 0}
-                  aria-label={`Move case ${i + 1} earlier`}
+                  aria-label={t("composite.branch.moveEarlier", { number: i + 1 })}
                   onClick={() => moveCase(i, -1)}
                 >
                   <ArrowUp aria-hidden />
-                  Earlier
+                  {t("composite.branch.earlier")}
                 </Button>
                 <Button
                   id={`${prefix}-later`}
                   size="sm"
                   variant="quiet"
                   disabled={i === cases.length - 1}
-                  aria-label={`Move case ${i + 1} later`}
+                  aria-label={t("composite.branch.moveLater", { number: i + 1 })}
                   onClick={() => moveCase(i, 1)}
                 >
                   <ArrowDown aria-hidden />
-                  Later
+                  {t("composite.branch.later")}
                 </Button>
                 <Button
                   size="sm"
                   variant="quiet"
-                  aria-label={`Remove case ${i + 1}, with its steps`}
+                  aria-label={t("composite.branch.remove", { number: i + 1 })}
                   onClick={() => apply(() => edits.removeBranchCase(text, id, i), { focus: "cd-case-add" })}
                 >
                   <Trash2 aria-hidden />
-                  Remove
+                  {t("composite.remove")}
                 </Button>
               </div>
             </fieldset>
@@ -1810,20 +1873,26 @@ function BranchFields({
             onClick={() => apply(() => edits.addBranchCase(text, id), { focus: `cd-case${cases.length}-title` })}
           >
             <Plus aria-hidden />
-            Add a case
+            {t("composite.branch.addCase")}
           </Button>
         </div>
         <Reads reads={reads} />
       </fieldset>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>Otherwise</legend>
-        <p className="text-muted">What runs when no case holds.</p>
-        <SideSteps steps={otherwise} side={{ id, taken: 0, label: "Otherwise" }} ctx={ctx} />
+        <legend className={legend}>{t("composite.branch.otherwise")}</legend>
+        <p className="text-muted">{t("composite.branch.otherwiseBody")}</p>
+        <SideSteps steps={otherwise} side={{ id, taken: 0, label: t("composite.branch.otherwise") }} ctx={ctx} />
       </fieldset>
       <p className="text-muted">
-        Later steps read <code className="font-mono">steps.{stepKey || "<key>"}.case</code>: 1 for the first case, 0 if
-        none held. They read a step on a side as one <code className="font-mono">when</code> skipped: it is there only
-        if it ran, so ask <code className="font-mono">has(steps.&lt;key&gt;)</code> first.
+        <Trans
+          t={t}
+          i18nKey="composite.branch.reads"
+          components={{
+            case: <Code text={`${own}.case`} />,
+            when: <Code text="when" />,
+            has: <Code text="has(steps.<key>)" />,
+          }}
+        />
       </p>
     </>
   );
@@ -1873,13 +1942,15 @@ function NotifyFields({
   reads: string[];
   ctx: PanelContext;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const { text, apply } = ctx;
   const set = (field: edits.NotifyField, v: string | string[] | boolean) =>
     apply(() => edits.setNotifyField(text, id, field, v));
+  const own = `steps.${stepKey || "<key>"}`;
   return (
     <>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>Who is told</legend>
+        <legend className={legend}>{t("composite.notify.who")}</legend>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="flex items-center gap-2">
             <Checkbox
@@ -1887,13 +1958,17 @@ function NotifyFields({
               checked={notify.requester === true}
               onChange={(v) => set("requester", v)}
             />
-            <label htmlFor="cd-notify-requester">The requester</label>
+            <label htmlFor="cd-notify-requester">{t("composite.requester")}</label>
           </div>
           <div className="flex items-center gap-2">
             <Checkbox id="cd-notify-owner" checked={notify.owner === true} onChange={(v) => set("owner", v)} />
-            <label htmlFor="cd-notify-owner">The owner</label>
+            <label htmlFor="cd-notify-owner">{t("composite.owner")}</label>
           </div>
-          <Field label="OIDC groups" htmlFor="cd-notify-groups" hint="Separated by commas. Its known members.">
+          <Field
+            label={t("composite.notify.groups")}
+            htmlFor="cd-notify-groups"
+            hint={t("composite.notify.groupsHint")}
+          >
             <CommitInput
               id="cd-notify-groups"
               value={listText(notify.groups)}
@@ -1908,7 +1983,7 @@ function NotifyFields({
               }
             />
           </Field>
-          <Field label="People" htmlFor="cd-notify-users" hint="User IDs, separated by commas.">
+          <Field label={t("composite.notify.people")} htmlFor="cd-notify-users" hint={t("composite.usersHint")}>
             <CommitInput
               id="cd-notify-users"
               value={listText(notify.users)}
@@ -1917,24 +1992,20 @@ function NotifyFields({
             />
           </Field>
         </div>
-        <p className="text-muted">
-          On the channels each of them keeps on: the app, email, Teams and Slack, those set up. If nobody is there to
-          tell when it runs, it goes on and says so.
-        </p>
+        <p className="text-muted">{t("composite.notify.channels")}</p>
       </fieldset>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>What it says</legend>
+        <legend className={legend}>{t("composite.notify.says")}</legend>
         <Field
-          label="Message"
+          label={t("composite.message")}
           htmlFor="cd-notify-message"
-          hint={`At most ${maxStepMessage} characters. \${...} fills in a value: text, a number or true or false. It can't show a secret input.`}
+          hint={t("composite.notify.messageHint", { max: maxStepMessage })}
         >
           <CommitText id="cd-notify-message" value={str(notify.message)} onCommit={(v) => set("message", v)} />
         </Field>
         <Reads reads={reads} />
         <p className="text-muted">
-          It is sent once. Later steps read <code className="font-mono">steps.{stepKey || "<key>"}.told</code>, how many
-          it told, never what it said.
+          <Trans t={t} i18nKey="composite.notify.sentOnce" components={{ told: <Code text={`${own}.told`} /> }} />
         </p>
       </fieldset>
     </>
@@ -1952,6 +2023,7 @@ export function writtenDefault(type: string, text: string): string | number | bo
 
 /** A wait for a person: who it asks, what it says and asks, how long it waits and what happens then. */
 function AskFields({ ask, id, stepKey, ctx }: { ask: Raw; id: string; stepKey: string; ctx: PanelContext }) {
+  const { t } = useTranslation("admin-catalog");
   const { text, apply } = ctx;
   const set = (field: edits.AskField, v: string | string[] | boolean) =>
     apply(() => edits.setAskField(text, id, field, v));
@@ -1963,15 +2035,15 @@ function AskFields({ ask, id, stepKey, ctx }: { ask: Raw; id: string; stepKey: s
   return (
     <>
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>Who is asked</legend>
+        <legend className={legend}>{t("composite.ask.who")}</legend>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="OIDC group" htmlFor="cd-ask-group" hint="Its members, but for the requester.">
+          <Field label={t("composite.ask.group")} htmlFor="cd-ask-group" hint={t("composite.ask.groupHint")}>
             <CommitInput id="cd-ask-group" value={str(ask.group)} onCommit={(v) => set("group", v)} />
           </Field>
           <Field
-            label="Approvers"
+            label={t("composite.ask.approvers")}
             htmlFor="cd-ask-approvers"
-            hint="User IDs, separated by commas. Nobody answers their own request unless it asks the requester."
+            hint={t("composite.ask.approversHint")}
           >
             <CommitInput
               id="cd-ask-approvers"
@@ -1982,27 +2054,21 @@ function AskFields({ ask, id, stepKey, ctx }: { ask: Raw; id: string; stepKey: s
           </Field>
           <div className="flex items-center gap-2">
             <Checkbox id="cd-ask-requester" checked={ask.requester === true} onChange={(v) => set("requester", v)} />
-            <label htmlFor="cd-ask-requester">The requester</label>
+            <label htmlFor="cd-ask-requester">{t("composite.requester")}</label>
           </div>
           <div className="flex items-center gap-2">
             <Checkbox id="cd-ask-owner" checked={ask.owner === true} onChange={(v) => set("owner", v)} />
-            <label htmlFor="cd-ask-owner">The owner</label>
+            <label htmlFor="cd-ask-owner">{t("composite.owner")}</label>
           </div>
         </div>
       </fieldset>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>What they answer</legend>
-        <Field
-          label="Message"
-          htmlFor="cd-ask-message"
-          hint="Fixed text, for those asked: nothing of the request is filled in."
-        >
+        <legend className={legend}>{t("composite.ask.answer")}</legend>
+        <Field label={t("composite.message")} htmlFor="cd-ask-message" hint={t("composite.ask.messageHint")}>
           <CommitInput id="cd-ask-message" value={str(ask.message)} onCommit={(v) => set("message", v)} />
         </Field>
-        {form.length === 0 && (
-          <p className="text-muted">No questions: they approve or reject, and a reject fails it.</p>
-        )}
+        {form.length === 0 && <p className="text-muted">{t("composite.ask.noQuestions")}</p>}
         {form.map((f, i) => (
           <AskQuestion key={i} index={i} question={f} id={id} stepKey={stepKey} ctx={ctx} />
         ))}
@@ -2014,49 +2080,46 @@ function AskFields({ ask, id, stepKey, ctx }: { ask: Raw; id: string; stepKey: s
             onClick={() => apply(() => edits.addAskQuestion(text, id), { focus: `cd-ask-q${form.length}-key` })}
           >
             <Plus aria-hidden />
-            Add a question
+            {t("composite.ask.addQuestion")}
           </Button>
         </div>
         <p className="text-muted">
-          Later steps read <code className="font-mono">{reads}.answered</code>,{" "}
-          <code className="font-mono">{reads}.by</code>, <code className="font-mono">{reads}.comment</code>
-          {form.length > 0 && (
-            <>
-              {" "}
-              and <code className="font-mono">{reads}.answer.&lt;key&gt;</code>
-            </>
-          )}
-          .
+          <Trans
+            t={t}
+            i18nKey={form.length > 0 ? "composite.ask.readsForm" : "composite.ask.reads"}
+            components={{
+              answered: <Code text={`${reads}.answered`} />,
+              by: <Code text={`${reads}.by`} />,
+              comment: <Code text={`${reads}.comment`} />,
+              answer: <Code text={`${reads}.answer.<key>`} />,
+            }}
+          />
         </p>
       </fieldset>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className={legend}>If nobody answers</legend>
+        <legend className={legend}>{t("composite.ask.nobody")}</legend>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field
-            label="Timeout"
-            htmlFor="cd-ask-timeout"
-            hint="A duration such as 48h. Empty: it waits until answered."
-          >
+          <Field label={t("composite.timeout")} htmlFor="cd-ask-timeout" hint={t("composite.ask.timeoutHint")}>
             <CommitInput
               id="cd-ask-timeout"
               value={timeout}
               className="font-mono text-secondary"
-              placeholder="48h"
+              placeholder={examples.askTimeout}
               onCommit={(v) => set("timeout", v)}
             />
           </Field>
-          <Field label="Then" htmlFor="cd-ask-on-timeout">
+          <Field label={t("composite.then")} htmlFor="cd-ask-on-timeout">
             <Select
               id="cd-ask-on-timeout"
               value={onTimeout || "fail"}
-              options={onTimeoutOptions}
+              options={onTimeoutOptions()}
               onChange={(v) => set("on_timeout", v)}
             />
           </Field>
           {onTimeout === "escalate" && (
             <>
-              <Field label="Escalate to OIDC group" htmlFor="cd-ask-esc-group">
+              <Field label={t("composite.ask.escGroup")} htmlFor="cd-ask-esc-group">
                 <CommitInput
                   id="cd-ask-esc-group"
                   value={str(escalate.group)}
@@ -2064,9 +2127,9 @@ function AskFields({ ask, id, stepKey, ctx }: { ask: Raw; id: string; stepKey: s
                 />
               </Field>
               <Field
-                label="Escalate to approvers"
+                label={t("composite.ask.escApprovers")}
                 htmlFor="cd-ask-esc-approvers"
-                hint="They get one more timeout; then the step fails."
+                hint={t("composite.ask.escHint")}
               >
                 <CommitInput
                   id="cd-ask-esc-approvers"
@@ -2097,20 +2160,24 @@ function AskQuestion({
   stepKey: string;
   ctx: PanelContext;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const { text, apply } = ctx;
   const prefix = `cd-ask-q${index}`;
   const type = str(question.type);
   const set = (field: edits.QuestionField, v: string | number | boolean | string[] | undefined) =>
     apply(() => edits.setAskQuestion(text, id, index, field, v));
   const key = str(question.key);
+  const answer = `steps.${stepKey || "<key>"}.answer.${key}`;
   return (
     <fieldset className="flex flex-col gap-2 rounded-md border border-line p-2">
-      <legend className="px-1 text-secondary font-medium">Question {index + 1}</legend>
+      <legend className="px-1 text-secondary font-medium">
+        {t("composite.question.legend", { number: index + 1 })}
+      </legend>
       <div className="grid gap-3 md:grid-cols-2">
         <Field
-          label="Key"
+          label={t("composite.key")}
           htmlFor={`${prefix}-key`}
-          hint={key ? `Later steps read steps.${stepKey || "<key>"}.answer.${key}.` : undefined}
+          hint={key ? t("composite.laterRead", { path: answer }) : undefined}
         >
           <CommitInput
             id={`${prefix}-key`}
@@ -2119,20 +2186,24 @@ function AskQuestion({
             onCommit={(v) => set("key", v)}
           />
         </Field>
-        <Field label="Question" htmlFor={`${prefix}-label`}>
+        <Field label={t("composite.question.label")} htmlFor={`${prefix}-label`}>
           <CommitInput id={`${prefix}-label`} value={str(question.label)} onCommit={(v) => set("label", v)} />
         </Field>
-        <Field label="Type" htmlFor={`${prefix}-type`}>
+        <Field label={t("composite.question.type")} htmlFor={`${prefix}-type`}>
           <Select
             id={`${prefix}-type`}
             value={type}
-            placeholder="Choose"
-            options={questionTypes}
+            placeholder={t("composite.choose")}
+            options={questionTypes()}
             onChange={(v) => v !== type && set("type", v)}
           />
         </Field>
         {type === "choice" && (
-          <Field label="Options" htmlFor={`${prefix}-options`} hint="What it may be, separated by commas.">
+          <Field
+            label={t("composite.question.options")}
+            htmlFor={`${prefix}-options`}
+            hint={t("composite.question.optionsHint")}
+          >
             <CommitInput
               id={`${prefix}-options`}
               value={listText(question.options)}
@@ -2148,7 +2219,11 @@ function AskQuestion({
             />
           </Field>
         )}
-        <Field label="Default" htmlFor={`${prefix}-default`} hint="What it reads if left blank, or if nobody answers.">
+        <Field
+          label={t("composite.question.default")}
+          htmlFor={`${prefix}-default`}
+          hint={t("composite.question.defaultHint")}
+        >
           <CommitInput
             id={`${prefix}-default`}
             value={shown(question.default)}
@@ -2161,18 +2236,18 @@ function AskQuestion({
             checked={question.required === true}
             onChange={(v) => set("required", v)}
           />
-          <label htmlFor={`${prefix}-required`}>An answer is required</label>
+          <label htmlFor={`${prefix}-required`}>{t("composite.question.required")}</label>
         </div>
       </div>
       <div>
         <Button
           size="sm"
           variant="quiet"
-          aria-label={`Remove question ${index + 1}`}
+          aria-label={t("composite.question.remove", { number: index + 1 })}
           onClick={() => apply(() => edits.removeAskQuestion(text, id, index), { focus: "cd-ask-add" })}
         >
           <Trash2 aria-hidden />
-          Remove
+          {t("composite.remove")}
         </Button>
       </div>
     </fieldset>
@@ -2193,12 +2268,13 @@ function AddVariable({
   taken: string[];
   onAdd: (name: string) => void;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
   const add = () => {
     const n = name.trim();
-    if (!variablePattern.test(n)) return setError("Letters, digits and underscores, not starting with a digit.");
-    if (taken.includes(n)) return setError(`${n} is there already.`);
+    if (!variablePattern.test(n)) return setError(t("composite.variable.format"));
+    if (taken.includes(n)) return setError(t("composite.variable.there", { name: n }));
     setError(undefined);
     setName("");
     onAdd(n);
@@ -2221,7 +2297,7 @@ function AddVariable({
         />
       </Field>
       <Button size="sm" variant="secondary" onClick={add} aria-label={label}>
-        Add
+        {t("composite.add")}
       </Button>
     </div>
   );
@@ -2248,13 +2324,14 @@ function BindingRow({
   onRemove?: () => void;
   note?: string;
 }) {
+  const { t } = useTranslation("admin-catalog");
   const [writing, setWriting] = useState(false);
   const focus = useFocusAfterSelect();
   const matched = typeof value === "string" && !writing ? sources.find((s) => s.value === value) : undefined;
   const mode = matched ? matched.value : value === undefined && !writing ? unbound : written;
   const options: Option[] = [
-    { value: unbound, label: "Not bound" },
-    { value: written, label: "A value or CEL expression" },
+    { value: unbound, label: t("composite.binding.notBound") },
+    { value: written, label: t("composite.binding.written") },
     ...sources.map((s) => ({ value: s.value, label: s.label, meta: s.value, group: s.group })),
   ];
   const missing = input.required && value === undefined;
@@ -2267,7 +2344,7 @@ function BindingRow({
         </label>
         {(missing || note || input.description) && (
           <span id={`${id}-note`} className={cn("text-caption", missing ? "text-warn" : "text-muted")}>
-            {missing ? "Required, and not bound." : (note ?? input.description)}
+            {missing ? t("composite.binding.required") : (note ?? input.description)}
           </span>
         )}
       </div>
@@ -2293,8 +2370,8 @@ function BindingRow({
             <CommitInput
               id={`${id}-cel`}
               value={shown(value)}
-              label={`${input.title}: value or CEL expression`}
-              placeholder={'"a value" or inputs.name + "_x"'}
+              label={t("composite.binding.cel", { title: input.title })}
+              placeholder={t("composite.binding.example")}
               className="font-mono text-secondary"
               onCommit={(t) => {
                 const v = writtenBinding(t);
@@ -2308,8 +2385,8 @@ function BindingRow({
           <Button
             size="icon"
             variant="quiet"
-            aria-label={`Remove ${input.name}`}
-            title={`Remove ${input.name}`}
+            aria-label={t("composite.removeName", { name: input.name })}
+            title={t("composite.removeName", { name: input.name })}
             onClick={onRemove}
           >
             <Trash2 aria-hidden />
@@ -2349,6 +2426,7 @@ function AddStepDialog({
   };
   onAdd: (step: Raw, where: edits.Where) => void;
 }) {
+  const { t } = useTranslation(["admin-catalog", "canvas", "common"]);
   const [choice, setChoice] = useState("");
   const [awxName, setAwxName] = useState("");
   const [key, setKey] = useState("");
@@ -2380,15 +2458,15 @@ function AddStepDialog({
     ? ([
         ...(target?.kind === "branch" && (selected.side || selected.caught)
           ? []
-          : [["after", `After ${selected.name}`] as const]),
+          : [["after", t("canvas:composite.after", { names: selected.name })] as const]),
         ...(target?.kind === "branch" ||
         selected.side ||
         selected.caught ||
         selected.step.branch !== undefined ||
         selected.step.catch !== undefined
           ? []
-          : [["with", `At the same time as ${selected.name}`] as const]),
-        ["end", "At the end"] as const,
+          : [["with", t("canvas:composite.sameTimeAs", { names: selected.name })] as const]),
+        ["end", t("composite.dialog.atEnd")] as const,
       ] as const)
     : [];
   const place = places.some(([v]) => v === where) ? where : (places[0]?.[0] ?? "end");
@@ -2422,9 +2500,9 @@ function AddStepDialog({
   };
   const submit = () => {
     const e: Record<string, string> = {};
-    if (!target) e.runs = choice === byName ? "Name the AWX template." : "Choose what it runs.";
-    if (!keyPattern.test(key)) e.key = "A key of lower-case letters, digits and underscores.";
-    else if (edits.stepKeys(text).includes(key)) e.key = `Another step has the key ${key}.`;
+    if (!target) e.runs = choice === byName ? t("composite.dialog.nameAwx") : t("composite.dialog.chooseRuns");
+    if (!keyPattern.test(key)) e.key = t("composite.keyFormat");
+    else if (edits.stepKeys(text).includes(key)) e.key = t("composite.keyTaken", { key });
     setErrors(e);
     if (Object.keys(e).length > 0 || !target) return;
     const step = newStep(key, title.trim() || listed?.title || "", target, listed?.inputs ?? [], def);
@@ -2443,8 +2521,8 @@ function AddStepDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="Add a step"
-        description="It runs one of the catalog's items, an AWX template or a custom workflow, calls a REST API, waits for a person, a time, a condition or a signal, sends a message, or branches. Inputs named as the form's are bound to them."
+        title={t("composite.addStep")}
+        description={t("composite.dialog.description")}
         onOpenAutoFocus={(e) => {
           reset();
           // What it runs first, rather than the close button.
@@ -2466,12 +2544,12 @@ function AddStepDialog({
             submit();
           }}
         >
-          <Field label="What it runs" htmlFor="cd-new-runs" error={errors.runs}>
+          <Field label={t("composite.dialog.whatRuns")} htmlFor="cd-new-runs" error={errors.runs}>
             <Select
               id="cd-new-runs"
               value={choice}
               loading={loading}
-              placeholder="Choose what it runs"
+              placeholder={t("composite.chooseRuns")}
               options={targetOptions(targets, undefined, !into, onCatch)}
               onCloseAutoFocus={focus.onCloseAutoFocus}
               onChange={(v) => {
@@ -2482,7 +2560,7 @@ function AddStepDialog({
             />
           </Field>
           {choice === byName && (
-            <Field label="AWX template's name" htmlFor="cd-new-awx">
+            <Field label={t("composite.awxName")} htmlFor="cd-new-awx">
               <Input
                 id="cd-new-awx"
                 value={awxName}
@@ -2496,10 +2574,10 @@ function AddStepDialog({
           )}
           <div className="grid gap-3">
             <Field
-              label="Key"
+              label={t("composite.key")}
               htmlFor="cd-new-key"
               error={errors.key}
-              hint="Later steps read its outputs as steps.<key>."
+              hint={t("composite.dialog.keyHint")}
             >
               <Input
                 id="cd-new-key"
@@ -2511,7 +2589,7 @@ function AddStepDialog({
                 }}
               />
             </Field>
-            <Field label="Title" htmlFor="cd-new-title">
+            <Field label={t("composite.title")} htmlFor="cd-new-title">
               <Input
                 id="cd-new-title"
                 value={title}
@@ -2523,15 +2601,14 @@ function AddStepDialog({
           {into ? (
             <p className="text-secondary text-muted">
               {"taken" in into
-                ? `It runs on the side ${into.label}`
+                ? t("composite.dialog.onSide", { label: into.label })
                 : "catchOf" in into
-                  ? "It runs on the catch path"
-                  : "It runs in the error handler"}
-              , after the steps there.
+                  ? t("composite.dialog.onCatch")
+                  : t("composite.dialog.onHandler")}
             </p>
           ) : selected ? (
             <fieldset className="flex flex-col gap-1.5 text-body">
-              <legend className="mb-1 text-secondary font-medium">When it runs</legend>
+              <legend className="mb-1 text-secondary font-medium">{t("composite.dialog.whenRuns")}</legend>
               {places.map(([v, label]) => (
                 <label
                   key={v}
@@ -2553,16 +2630,14 @@ function AddStepDialog({
               ))}
             </fieldset>
           ) : (
-            <p className="text-secondary text-muted">
-              It runs at the end. Select a step first to add one after it or beside it.
-            </p>
+            <p className="text-secondary text-muted">{t("composite.dialog.atEndNote")}</p>
           )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="quiet" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" variant="primary">
-              Add step
+              {t("composite.dialog.submit")}
             </Button>
           </div>
         </form>

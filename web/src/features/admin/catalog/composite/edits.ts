@@ -30,7 +30,10 @@ import {
   YAMLSeq,
 } from "yaml";
 import { catchRefused, caughtRefused, loopRefused, parseUrl } from "@/lib/composite";
+import { i18n } from "@/lib/i18n";
 import { parseText } from "../definitionYaml";
+
+const tr = i18n.getFixedT(null, "admin-catalog");
 
 type Raw = Record<string, unknown>;
 
@@ -116,7 +119,7 @@ const dataOf = (doc: Document, node: Node) => JSON.stringify(node.toJS(doc));
 function copyOf(doc: Document, node: unknown): unknown {
   if (isAlias(node)) {
     const target = node.resolve(doc);
-    if (!target) throw new EditError(`The alias *${node.source} names no anchor before it.`);
+    if (!target) throw new EditError(tr("composite.edit.alias", { alias: node.source }));
     return copyOf(doc, target);
   }
   if (!isNode(node)) return node;
@@ -139,7 +142,7 @@ function remember(doc: Document) {
   visit(doc, {
     Alias(_, a) {
       const target = a.resolve(doc);
-      if (!target) throw new EditError(`The alias *${a.source} names no anchor before it.`);
+      if (!target) throw new EditError(tr("composite.edit.alias", { alias: a.source }));
       now.set(a, { json: dataOf(doc, target), copy: copyOf(doc, target) });
     },
   });
@@ -148,7 +151,7 @@ function remember(doc: Document) {
 
 function load(text: string): Document {
   const doc = parseDocument(text);
-  if (doc.errors.length > 0) throw new EditError("The YAML doesn't parse.");
+  if (doc.errors.length > 0) throw new EditError(tr("composite.edit.noParse"));
   remember(doc);
   return doc;
 }
@@ -189,7 +192,7 @@ function own(doc: Document, map: YAMLMap, key: string): unknown {
 
 function blueprintOf(doc: Document): YAMLMap {
   const bp = doc.getIn(["blueprint"], true);
-  if (!isMap(bp)) throw new EditError("The definition has no blueprint.");
+  if (!isMap(bp)) throw new EditError(tr("composite.edit.noBlueprint"));
   return bp;
 }
 
@@ -200,7 +203,7 @@ function stepsOf(doc: Document, create = false): YAMLSeq {
   let seq: YAMLSeq;
   if (isSeq(found)) seq = found;
   else {
-    if (!create) throw new EditError("The blueprint has no steps.");
+    if (!create) throw new EditError(tr("composite.edit.noSteps"));
     seq = new YAMLSeq();
     put(doc, bp, "steps", seq, ["kind", "rollback_on_failure", "steps"]);
   }
@@ -211,7 +214,7 @@ function stepsOf(doc: Document, create = false): YAMLSeq {
 /** A slot's parallel list. */
 function parallelOf(slot: unknown): YAMLSeq {
   const list = isMap(slot) ? slot.get("parallel", true) : undefined;
-  if (!isSeq(list)) throw new EditError("That step isn't in a parallel group.");
+  if (!isSeq(list)) throw new EditError(tr("composite.edit.notParallel"));
   return list;
 }
 
@@ -296,7 +299,7 @@ function locate(doc: Document, id: string): Located {
     const matches = all.filter((s) => s.key === id.slice(5));
     if (matches.length === 1) found = matches[0];
   } else if (id.startsWith("step@")) found = all.find((s) => s.pointer === id.slice(5));
-  if (!found) throw new EditError("That step isn't in the definition any more.");
+  if (!found) throw new EditError(tr("composite.edit.gone"));
   return found;
 }
 
@@ -414,7 +417,7 @@ function sideList(doc: Document, id: string, taken: number): YAMLSeq {
   const key = taken === 0 ? "else" : "steps";
   if (taken > 0) {
     const c = casesOf(doc, branch).items[taken - 1];
-    if (!isMap(c)) throw new EditError("That case isn't there.");
+    if (!isMap(c)) throw new EditError(tr("composite.edit.noCase"));
     holder = c;
   }
   let list = own(doc, holder, key);
@@ -427,10 +430,10 @@ function sideList(doc: Document, id: string, taken: number): YAMLSeq {
   return seq;
 }
 
-const noBranchOnSide = "A branch can't be on a side of a branch: give it more cases instead, each with its conditions.";
-const noBranchInGroup = "A branch can't run in a parallel group: put it before or after the group.";
-const noGroupOnCatch = "A catch path lists steps in order: a parallel group can't be one of them.";
-const noCatchInGroup = "A step of a parallel group has no catch path of its own: put it on the group.";
+const noBranchOnSide = () => tr("composite.edit.noBranchOnSide");
+const noBranchInGroup = () => tr("composite.edit.noBranchInGroup");
+const noGroupOnCatch = () => tr("composite.edit.noGroupOnCatch");
+const noCatchInGroup = () => tr("composite.edit.noCatchInGroup");
 
 /** A list of a map's, made a block list, and made if it has none. */
 function listOf(doc: Document, holder: YAMLMap, key: string, order: string[]): YAMLSeq {
@@ -452,10 +455,10 @@ function mayCatch(step: Raw, handler = false) {
 
 /** The catch path of the step at, or of its group: the server's refusals said before it is written. */
 function catchListOf(doc: Document, at: Located): YAMLSeq {
-  if (at.caught) throw new EditError("A step of a catch path has no catch path of its own.");
+  if (at.caught) throw new EditError(tr("composite.edit.noCatchOnCatch"));
   const steps = stepsOf(doc);
   const holder = at.j === null ? at.node : steps.items[at.g];
-  if (!isMap(holder)) throw new EditError("That step isn't in the definition any more.");
+  if (!isMap(holder)) throw new EditError(tr("composite.edit.gone"));
   const caught = at.j === null ? [at.node] : parallelOf(holder).items.filter(isMap);
   for (const s of caught) {
     const why = caughtRefused(s.toJS(doc) as Raw);
@@ -477,7 +480,7 @@ export function addStep(text: string, step: Raw, where: Where): string {
     mayCatch(step);
     catchListOf(doc, locate(doc, where.catchOf)).items.push(node);
   } else if ("side" in where) {
-    if (step.branch !== undefined) throw new EditError(noBranchOnSide);
+    if (step.branch !== undefined) throw new EditError(noBranchOnSide());
     sideList(doc, where.side, where.taken).items.push(node);
   } else if ("after" in where) {
     const at = locate(doc, where.after);
@@ -485,16 +488,16 @@ export function addStep(text: string, step: Raw, where: Where): string {
       mayCatch(step, at.caught.of === "on_error");
       at.caught.list.items.splice(at.caught.index + 1, 0, node);
     } else if (at.side) {
-      if (step.branch !== undefined) throw new EditError(noBranchOnSide);
+      if (step.branch !== undefined) throw new EditError(noBranchOnSide());
       at.side.list.flow = false;
       at.side.list.items.splice(at.side.index + 1, 0, node);
     } else steps.items.splice(at.g + 1, 0, node);
   } else {
     const at = locate(doc, where.with);
-    if (at.caught) throw new EditError(noGroupOnCatch);
-    if (at.side) throw new EditError("A side of a branch lists steps in order: a parallel group can't be one of them.");
-    if (step.branch !== undefined || at.node.has("branch")) throw new EditError(noBranchInGroup);
-    if (step.catch !== undefined || (at.j === null && at.node.has("catch"))) throw new EditError(noCatchInGroup);
+    if (at.caught) throw new EditError(noGroupOnCatch());
+    if (at.side) throw new EditError(tr("composite.edit.noGroupOnSide"));
+    if (step.branch !== undefined || at.node.has("branch")) throw new EditError(noBranchInGroup());
+    if (step.catch !== undefined || (at.j === null && at.node.has("catch"))) throw new EditError(noCatchInGroup());
     if (at.j === null) {
       // On its own: it and the new one become a parallel group in its place.
       const group = doc.createNode({ parallel: [] }) as YAMLMap;
@@ -557,7 +560,7 @@ export function moveStep(text: string, id: string, dir: -1 | 1): string {
   if (at.caught) {
     const to = at.caught.index + dir;
     if (to < 0 || to >= at.caught.list.items.length)
-      throw new EditError(dir < 0 ? "It runs first on its catch path." : "It runs last on its catch path.");
+      throw new EditError(dir < 0 ? tr("composite.edit.firstOnCatch") : tr("composite.edit.lastOnCatch"));
     at.caught.list.items.splice(at.caught.index, 1);
     at.caught.list.items.splice(to, 0, at.node);
     return save(doc);
@@ -566,12 +569,13 @@ export function moveStep(text: string, id: string, dir: -1 | 1): string {
   if (at.side) {
     const to = at.side.index + dir;
     if (to < 0 || to >= at.side.list.items.length)
-      throw new EditError(dir < 0 ? "It runs first on its side." : "It runs last on its side.");
+      throw new EditError(dir < 0 ? tr("composite.edit.firstOnSide") : tr("composite.edit.lastOnSide"));
     at.side.list.items.splice(at.side.index, 1);
     at.side.list.items.splice(to, 0, at.node);
   } else if (at.j === null) {
     const to = at.g + dir;
-    if (to < 0 || to >= steps.items.length) throw new EditError(dir < 0 ? "It runs first." : "It runs last.");
+    if (to < 0 || to >= steps.items.length)
+      throw new EditError(dir < 0 ? tr("composite.edit.first") : tr("composite.edit.last"));
     const [slot] = steps.items.splice(at.g, 1);
     steps.items.splice(to, 0, slot);
   } else {
@@ -587,15 +591,15 @@ export function moveStep(text: string, id: string, dir: -1 | 1): string {
 export function joinPrevious(text: string, id: string): string {
   const doc = load(text);
   const at = locate(doc, id);
-  if (at.caught) throw new EditError(noGroupOnCatch);
-  if (at.side) throw new EditError("A side of a branch lists steps in order: a parallel group can't be one of them.");
-  if (at.j !== null) throw new EditError("It already runs at the same time as others.");
-  if (at.g === 0) throw new EditError("It runs first.");
+  if (at.caught) throw new EditError(noGroupOnCatch());
+  if (at.side) throw new EditError(tr("composite.edit.noGroupOnSide"));
+  if (at.j !== null) throw new EditError(tr("composite.edit.alreadyGroup"));
+  if (at.g === 0) throw new EditError(tr("composite.edit.first"));
   const steps = stepsOf(doc);
   const before = steps.items[at.g - 1];
-  if (at.node.has("branch") || (isMap(before) && before.has("branch"))) throw new EditError(noBranchInGroup);
+  if (at.node.has("branch") || (isMap(before) && before.has("branch"))) throw new EditError(noBranchInGroup());
   if (at.node.has("catch") || (isMap(before) && !before.has("parallel") && before.has("catch")))
-    throw new EditError(noCatchInGroup);
+    throw new EditError(noCatchInGroup());
   steps.items.splice(at.g, 1);
   const list = isMap(before) ? before.get("parallel", true) : undefined;
   if (isSeq(list)) list.items.push(at.node);
@@ -696,8 +700,8 @@ export const newSignal = (key: string) => ({ name: key.replace(/_/g, "-") || "go
 export function setTarget(text: string, id: string, t: Target): string {
   const doc = load(text);
   const { node, side, j } = locate(doc, id);
-  if (t.kind === "branch" && side) throw new EditError(noBranchOnSide);
-  if (t.kind === "branch" && j !== null) throw new EditError(noBranchInGroup);
+  if (t.kind === "branch" && side) throw new EditError(noBranchOnSide());
+  if (t.kind === "branch" && j !== null) throw new EditError(noBranchInGroup());
   for (const k of ["item", "awx", "workflow", "rest", "ask", "wait", "poll", "signal", "branch", "notify", "resource"])
     if (k !== t.kind) node.delete(k);
   if (["ask", "wait", "poll", "signal", "branch", "resource"].includes(t.kind)) node.delete("for_each");
@@ -778,7 +782,7 @@ export function setBinding(
   let holder: YAMLMap = node;
   if (scope === "undo") {
     const undo = own(doc, node, "undo");
-    if (!isMap(undo)) throw new EditError("The step has no undo.");
+    if (!isMap(undo)) throw new EditError(tr("composite.edit.noUndo"));
     holder = undo;
   }
   const order = scope === "undo" ? undoOrder : stepOrder;
@@ -844,12 +848,12 @@ export function setRestField(
   let holder: YAMLMap = node;
   if (scope === "undo") {
     const undo = own(doc, node, "undo");
-    if (!isMap(undo)) throw new EditError("The step has no undo.");
+    if (!isMap(undo)) throw new EditError(tr("composite.edit.noUndo"));
     holder = undo;
   }
   if (scope === "poll") holder = partOf(doc, id, "poll");
   const call = own(doc, holder, "rest");
-  if (!isMap(call)) throw new EditError("It makes no REST call.");
+  if (!isMap(call)) throw new EditError(tr("composite.edit.noRest"));
   if (typeof value === "string") {
     const v = value.trim();
     if (!v && field !== "method" && field !== "url") call.delete(field);
@@ -866,7 +870,7 @@ export function setRestField(
 /** A step's wait for a time or poll, from a document; `{}` as just added opens up as it fills. */
 function partOf(doc: Document, id: string, kind: "wait" | "poll"): YAMLMap {
   const part = own(doc, locate(doc, id).node, kind);
-  if (!isMap(part)) throw new EditError(kind === "wait" ? "It doesn't wait for a time." : "It doesn't poll.");
+  if (!isMap(part)) throw new EditError(kind === "wait" ? tr("composite.edit.noWait") : tr("composite.edit.noPoll"));
   part.flow = false;
   return part;
 }
@@ -875,7 +879,7 @@ function partOf(doc: Document, id: string, kind: "wait" | "poll"): YAMLMap {
 export function setResourceDeployment(text: string, id: string, step: string): string {
   const doc = load(text);
   const resource = own(doc, locate(doc, id).node, "resource");
-  if (!isMap(resource)) throw new EditError("It makes no custom resource.");
+  if (!isMap(resource)) throw new EditError(tr("composite.edit.noResource"));
   if (step.trim()) put(doc, resource, "deployment", step.trim(), ["type", "deployment"]);
   else resource.delete("deployment");
   return save(doc);
@@ -904,7 +908,7 @@ export type SignalField = "name" | "event" | "when" | "timeout" | "on_timeout";
 export function setSignalField(text: string, id: string, field: SignalField, value: string): string {
   const doc = load(text);
   const signal = own(doc, locate(doc, id).node, "signal");
-  if (!isMap(signal)) throw new EditError("It doesn't wait for a signal.");
+  if (!isMap(signal)) throw new EditError(tr("composite.edit.noSignal"));
   signal.flow = false;
   const v = value.trim();
   if (!v) signal.delete(field);
@@ -930,8 +934,7 @@ export function setForEach(text: string, id: string, field: "items" | "parallel"
   if (step.for_each === undefined) {
     const why = at.caught ? catchRefused({ for_each: {} }, at.caught.of === "on_error") : loopRefused(step);
     if (why) throw new EditError(why);
-    if (step.undo !== undefined)
-      throw new EditError("A loop has no undo: each pass would need its own. Remove its undo first.");
+    if (step.undo !== undefined) throw new EditError(tr("composite.edit.loopUndo"));
   }
   let forEach = own(doc, at.node, "for_each");
   if (!isMap(forEach)) {
@@ -978,7 +981,7 @@ function flowList(doc: Document, value: string[]): YAMLSeq {
 /** A step's wait for a person, from a document. */
 function askOf(doc: Document, id: string): YAMLMap {
   const ask = own(doc, locate(doc, id).node, "ask");
-  if (!isMap(ask)) throw new EditError("It doesn't wait for a person.");
+  if (!isMap(ask)) throw new EditError(tr("composite.edit.noAsk"));
   // `ask: {}` as just added opens up as it fills.
   ask.flow = false;
   return ask;
@@ -1048,7 +1051,7 @@ export function removeAskQuestion(text: string, id: string, index: number): stri
   const doc = load(text);
   const ask = askOf(doc, id);
   const form = own(doc, ask, "form");
-  if (!isSeq(form) || index < 0 || index >= form.items.length) throw new EditError("That question isn't there.");
+  if (!isSeq(form) || index < 0 || index >= form.items.length) throw new EditError(tr("composite.edit.noQuestion"));
   form.items.splice(index, 1);
   if (form.items.length === 0) ask.delete("form");
   return save(doc);
@@ -1071,7 +1074,7 @@ export function setAskQuestion(
   const ask = askOf(doc, id);
   const form = own(doc, ask, "form");
   const q = isSeq(form) ? form.items[index] : undefined;
-  if (!isMap(q)) throw new EditError("That question isn't there.");
+  if (!isMap(q)) throw new EditError(tr("composite.edit.noQuestion"));
   const v = typeof value === "string" ? value.trim() : value;
   if (field === "key" || field === "label" || field === "type") put(doc, q, field, v ?? "", questionOrder);
   else if (v === undefined || v === "" || v === false || (Array.isArray(v) && v.length === 0)) q.delete(field);
@@ -1086,7 +1089,7 @@ export function setAskQuestion(
 /** A step's branch, from a document. */
 function branchOf(doc: Document, id: string): YAMLMap {
   const branch = own(doc, locate(doc, id).node, "branch");
-  if (!isMap(branch)) throw new EditError("It isn't a branch.");
+  if (!isMap(branch)) throw new EditError(tr("composite.edit.notBranch"));
   branch.flow = false;
   return branch;
 }
@@ -1113,7 +1116,7 @@ export function addBranchCase(text: string, id: string): string {
 export function removeBranchCase(text: string, id: string, index: number): string {
   const doc = load(text);
   const cases = casesOf(doc, branchOf(doc, id));
-  if (index < 0 || index >= cases.items.length) throw new EditError("That case isn't there.");
+  if (index < 0 || index >= cases.items.length) throw new EditError(tr("composite.edit.noCase"));
   cases.items.splice(index, 1);
   return save(doc);
 }
@@ -1123,8 +1126,9 @@ export function moveBranchCase(text: string, id: string, index: number, dir: -1 
   const doc = load(text);
   const cases = casesOf(doc, branchOf(doc, id));
   const to = index + dir;
-  if (index < 0 || index >= cases.items.length) throw new EditError("That case isn't there.");
-  if (to < 0 || to >= cases.items.length) throw new EditError(dir < 0 ? "It comes first." : "It comes last.");
+  if (index < 0 || index >= cases.items.length) throw new EditError(tr("composite.edit.noCase"));
+  if (to < 0 || to >= cases.items.length)
+    throw new EditError(dir < 0 ? tr("composite.edit.caseFirst") : tr("composite.edit.caseLast"));
   const [c] = cases.items.splice(index, 1);
   cases.items.splice(to, 0, c);
   return save(doc);
@@ -1134,7 +1138,7 @@ export function moveBranchCase(text: string, id: string, index: number, dir: -1 
 export function setBranchCase(text: string, id: string, index: number, field: "title" | "when", value: string): string {
   const doc = load(text);
   const c = casesOf(doc, branchOf(doc, id)).items[index];
-  if (!isMap(c)) throw new EditError("That case isn't there.");
+  if (!isMap(c)) throw new EditError(tr("composite.edit.noCase"));
   const v = value.trim();
   if (!v && field === "title") c.delete(field);
   else put(doc, c, field, v, caseOrder);
@@ -1152,7 +1156,7 @@ export function setNotifyField(
 ): string {
   const doc = load(text);
   const notify = own(doc, locate(doc, id).node, "notify");
-  if (!isMap(notify)) throw new EditError("It sends no message.");
+  if (!isMap(notify)) throw new EditError(tr("composite.edit.noNotify"));
   // `notify: {}` as just added opens up as it fills.
   notify.flow = false;
   const v = typeof value === "string" ? value.trim() : value;

@@ -64,6 +64,7 @@ const translated = [
   "src/features/admin/catalog/PropertyGroupsPage.tsx",
   "src/features/admin/catalog/FormLibraryPage.tsx",
   "src/features/admin/catalog/designer/**",
+  "src/features/admin/catalog/composite/**",
 ];
 
 // The props of rvav's building blocks and the attributes a person reads or

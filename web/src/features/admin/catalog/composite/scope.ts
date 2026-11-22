@@ -14,8 +14,12 @@ import type {
   Variable,
 } from "@/lib/api/types";
 import { eachStep, secretInMessages, variablesRead } from "@/lib/composite";
+import { i18n } from "@/lib/i18n";
 
 type Raw = Record<string, unknown>;
+
+const tr = i18n.getFixedT(null, "admin-catalog");
+const tc = i18n.getFixedT(null, "canvas");
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const obj = (v: unknown): Raw => (v && typeof v === "object" && !Array.isArray(v) ? (v as Raw) : {});
@@ -99,31 +103,31 @@ export function notOfferedTo(t: CompositeStepTarget | undefined, offered: Catalo
 }
 
 /** What a REST call gives the steps after it (its answer's headers never). */
-export const restOutputs: CompositeStepOutput[] = [
-  { name: "status", type: "integer", description: "The status it answered" },
-  { name: "json", type: "object", description: "What it keeps of its JSON answer" },
+export const restOutputs = (): CompositeStepOutput[] => [
+  { name: "status", type: "integer", description: tr("composite.out.restStatus") },
+  { name: "json", type: "object", description: tr("composite.out.restJson") },
 ];
 
 /** What a wait for a time gives the steps after it. */
-export const waitOutputs: CompositeStepOutput[] = [
-  { name: "until", type: "string", description: "The time it waited until, in RFC 3339" },
+export const waitOutputs = (): CompositeStepOutput[] => [
+  { name: "until", type: "string", description: tr("composite.out.waitUntil") },
 ];
 
 /** What a poll gives the steps after it: its last answer, and whether its condition held (ADR-0033). */
-export const pollOutputs: CompositeStepOutput[] = [
-  { name: "status", type: "integer", description: "The status its last check answered, null if none did" },
-  { name: "json", type: "object", description: "What it keeps of its last answer, null if none" },
-  { name: "met", type: "boolean", description: "Whether its condition held: false if its deadline went on" },
+export const pollOutputs = (): CompositeStepOutput[] => [
+  { name: "status", type: "integer", description: tr("composite.out.pollStatus") },
+  { name: "json", type: "object", description: tr("composite.out.pollJson") },
+  { name: "met", type: "boolean", description: tr("composite.out.pollMet") },
 ];
 
 /** What a branch gives the steps after it: which side it took (ADR-0033). */
-export const branchOutputs: CompositeStepOutput[] = [
-  { name: "case", type: "integer", description: "Which case it took: 1 for the first, 0 if none" },
+export const branchOutputs = (): CompositeStepOutput[] => [
+  { name: "case", type: "integer", description: tr("composite.out.branchCase") },
 ];
 
 /** What a message gives the steps after it: never what it said (ADR-0033). */
-export const notifyOutputs: CompositeStepOutput[] = [
-  { name: "told", type: "integer", description: "How many people it told" },
+export const notifyOutputs = (): CompositeStepOutput[] => [
+  { name: "told", type: "integer", description: tr("composite.out.notifyTold") },
 ];
 
 const answerType: Record<string, string> = { number: "number", boolean: "boolean" };
@@ -132,9 +136,9 @@ const answerType: Record<string, string> = { number: "number", boolean: "boolean
 export function askOutputs(ask: Raw): CompositeStepOutput[] {
   const form = Array.isArray(ask.form) ? (ask.form as Raw[]) : [];
   return [
-    { name: "answered", type: "boolean", description: "Whether someone answered: false if its timeout went on" },
-    { name: "by", type: "string", description: "Who answered, by their email" },
-    { name: "comment", type: "string", description: "The comment they left" },
+    { name: "answered", type: "boolean", description: tr("composite.out.askAnswered") },
+    { name: "by", type: "string", description: tr("composite.out.askBy") },
+    { name: "comment", type: "string", description: tr("composite.out.askComment") },
     ...form
       .filter((f) => str(f.key))
       .map((f) => ({
@@ -146,15 +150,15 @@ export function askOutputs(ask: Raw): CompositeStepOutput[] {
 }
 
 /** What a loop gives the steps after it, whatever its step gives (ADR-0057). */
-export const loopOutputs: CompositeStepOutput[] = [
-  { name: "items", type: "array", description: "Each pass's outputs, in the list's order" },
-  { name: "count", type: "integer", description: "How many passes it had" },
+export const loopOutputs = (): CompositeStepOutput[] => [
+  { name: "items", type: "array", description: tr("composite.out.loopItems") },
+  { name: "count", type: "integer", description: tr("composite.out.loopCount") },
 ];
 
 /** What a step whose catch path ran gives the steps after it: read it with has() (ADR-0057). */
-export const caughtOutputs: CompositeStepOutput[] = [
-  { name: "caught", type: "boolean", description: "True when it failed and its catch path ran" },
-  { name: "error", type: "object", description: "What failed: its step and its message" },
+export const caughtOutputs = (): CompositeStepOutput[] => [
+  { name: "caught", type: "boolean", description: tr("composite.out.caught") },
+  { name: "error", type: "object", description: tr("composite.out.error") },
 ];
 
 /**
@@ -168,8 +172,8 @@ export function outputsOf(
   targets: CompositeStepTarget[],
 ): { outputs: CompositeStepOutput[]; open: boolean } {
   const own = ownOutputs(step, targets);
-  const caught = Array.isArray(step.catch) && step.catch.length > 0 ? caughtOutputs : [];
-  if (step.for_each !== undefined) return { outputs: [...loopOutputs, ...caught], open: false };
+  const caught = Array.isArray(step.catch) && step.catch.length > 0 ? caughtOutputs() : [];
+  if (step.for_each !== undefined) return { outputs: [...loopOutputs(), ...caught], open: false };
   return { outputs: [...own.outputs, ...caught], open: own.open };
 }
 
@@ -177,15 +181,15 @@ function ownOutputs(step: Raw, targets: CompositeStepTarget[]): { outputs: Compo
   const t = targetOf(step);
   const found = findTarget(targets, t);
   if (found) return { outputs: found.outputs, open: found.open_outputs };
-  if (t?.kind === "rest") return { outputs: restOutputs, open: false };
+  if (t?.kind === "rest") return { outputs: restOutputs(), open: false };
   if (t?.kind === "ask") return { outputs: askOutputs(obj(step.ask)), open: false };
-  if (t?.kind === "wait") return { outputs: waitOutputs, open: false };
-  if (t?.kind === "poll") return { outputs: pollOutputs, open: false };
-  if (t?.kind === "branch") return { outputs: branchOutputs, open: false };
-  if (t?.kind === "notify") return { outputs: notifyOutputs, open: false };
+  if (t?.kind === "wait") return { outputs: waitOutputs(), open: false };
+  if (t?.kind === "poll") return { outputs: pollOutputs(), open: false };
+  if (t?.kind === "branch") return { outputs: branchOutputs(), open: false };
+  if (t?.kind === "notify") return { outputs: notifyOutputs(), open: false };
   if (t?.kind === "signal") return { outputs: [], open: true };
   if (t?.kind === "awx")
-    return { outputs: [{ name: "job_id", type: "integer", description: "The AWX job's ID" }], open: false };
+    return { outputs: [{ name: "job_id", type: "integer", description: tr("composite.out.jobId") }], open: false };
   return { outputs: [], open: t?.kind === "workflow" || t?.kind === "resource" };
 }
 
@@ -230,8 +234,9 @@ export function flatten(blueprint: Raw, prefix = "/definition/blueprint"): FlatS
     out.push({
       step,
       key,
+      // The server's words for it, as its problems say them.
       label: str(step.title) || key || "(no key)",
-      name: str(step.title) || str(awx.title) || key || "(no key)",
+      name: str(step.title) || str(awx.title) || key || tc("composite.noKey"),
       g,
       j,
       pointer,
@@ -302,7 +307,8 @@ export interface Source {
   /** The CEL a binding to it is. */
   value: string;
   label: string;
-  group: "The form" | "Earlier steps" | "The request" | "Shared variables";
+  /** The picker's group, in the language shown. */
+  group: string;
 }
 
 /**
@@ -320,21 +326,25 @@ export function bindingSources(
   const out: Source[] = formInputsOf(def).map((i) => ({
     value: `inputs.${i.name}`,
     label: i.title,
-    group: "The form",
+    group: tr("composite.source.form"),
   }));
   if (!at.planned)
     for (const s of earlierSteps(obj(def.blueprint), at).filter((x) => x.key))
       for (const o of outputsOf(s.step, targets).outputs)
-        out.push({ value: `steps.${s.key}.${o.name}`, label: `${s.name}: ${o.description}`, group: "Earlier steps" });
+        out.push({
+          value: `steps.${s.key}.${o.name}`,
+          label: tr("composite.source.output", { step: s.name, output: o.description }),
+          group: tr("composite.source.steps"),
+        });
   out.push(
-    { value: "environment", label: "The environment's key", group: "The request" },
-    { value: "project.code", label: "The project's code", group: "The request" },
-    { value: "project.name", label: "The project's name", group: "The request" },
-    { value: "project.id", label: "The project's ID", group: "The request" },
+    { value: "environment", label: tr("composite.source.environment"), group: tr("composite.source.request") },
+    { value: "project.code", label: tr("composite.source.projectCode"), group: tr("composite.source.request") },
+    { value: "project.name", label: tr("composite.source.projectName"), group: tr("composite.source.request") },
+    { value: "project.id", label: tr("composite.source.projectId"), group: tr("composite.source.request") },
     ...variables.map((v): Source => ({
       value: `vars.${v.key}`,
       label: v.description || v.key,
-      group: "Shared variables",
+      group: tr("composite.source.variables"),
     })),
   );
   return out;
