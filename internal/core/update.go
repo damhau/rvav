@@ -372,6 +372,11 @@ func (s *Service) planUpdate(ctx context.Context, p *auth.Principal, deploymentI
 	if err := s.compare(ctx, u, resources, all[1:]); err != nil {
 		return nil, err
 	}
+	if m, ok := deploymentNSX(resources); ok && len(u.add) > 0 && ev.nsxFound && m != ev.nsxManager {
+		u.refused = append(u.refused, api.UpdateRefusal{Setting: present.Ptr("count"), Reason: fmt.Sprintf(
+			"The deployment's NSX security groups are on NSX Manager %s, but its vCenter is now served by %s: an update can't add VMs to them.",
+			s.nsxLabel(m), s.nsxLabel(ev.nsxManager))})
+	}
 	// A failed deployment's update with its own inputs is a repair: it
 	// builds what is missing and runs its jobs again.
 	u.same = d.Status != "failed" && ev.Version.ID == d.VersionID && sameInputs(ev.Version.UISchema, d.Inputs, ev.Inputs)

@@ -15,10 +15,16 @@ import (
 
 // NSXTagSync flags the VMs whose NSX tags were changed outside rvav
 // (ADR-0028): a tag rvav set that the VM no longer has in NSX takes it out
-// of a group, and its firewall rules no longer apply to it. Every interval.
+// of a group, and its firewall rules no longer apply to it. Every interval,
+// each VM on the NSX Manager its groups are on (ADR-0062).
 type NSXTagSync struct {
-	Store    *store.Store
-	NSX      *nsx.Client
+	Store *store.Store
+	// NSX is the NSX integration's Manager, nil without one; NSXManagers
+	// those added besides it.
+	NSX         *nsx.Client
+	NSXManagers interface {
+		Get(ctx context.Context, name string) (*nsx.Client, error)
+	}
 	Events   *events.Publisher
 	Log      *slog.Logger
 	Interval time.Duration
@@ -46,6 +52,36 @@ type membership struct {
 	InstanceUUID string    `json:"instance_uuid"`
 	Tags         []nsx.Tag `json:"tags"`
 	Missing      []nsx.Tag `json:"missing,omitempty"`
+	NSX          string    `json:"nsx_manager,omitempty"`
+}
+
+// vms are the VMs an NSX Manager sees, by instance UUID; nil when rvav
+// can't ask it.
+func (s *NSXTagSync) vms(ctx context.Context, manager string) (map[string]nsx.VM, error) {
+	client := s.NSX
+	if manager != "" {
+		if s.NSXManagers == nil {
+			return nil, nil
+		}
+		c, err := s.NSXManagers.Get(ctx, manager)
+		if err != nil {
+			s.Log.Warn("NSX tag sync can't reach an NSX Manager", "nsx_manager", manager, "err", err)
+			return nil, nil
+		}
+		client = c
+	}
+	if client == nil {
+		return nil, nil
+	}
+	vms, err := client.VMs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]nsx.VM{}
+	for _, v := range vms {
+		out[v.ExternalID] = v
+	}
+	return out, nil
 }
 
 // SyncOnce compares each VM's tags in NSX with those rvav set. A VM NSX
@@ -55,19 +91,19 @@ func (s *NSXTagSync) SyncOnce(ctx context.Context) error {
 	if err != nil || len(list) == 0 {
 		return err
 	}
-	vms, err := s.NSX.VMs(ctx)
-	if err != nil {
-		return err
-	}
-	byUUID := map[string]nsx.VM{}
-	for _, v := range vms {
-		byUUID[v.ExternalID] = v
-	}
+	seen := map[string]map[string]nsx.VM{}
 	for _, r := range list {
 		var props map[string]any
 		var m membership
 		if json.Unmarshal(r.Properties, &props) != nil || json.Unmarshal(r.Properties, &m) != nil {
 			continue
+		}
+		byUUID, asked := seen[m.NSX]
+		if !asked {
+			if byUUID, err = s.vms(ctx, m.NSX); err != nil {
+				return err
+			}
+			seen[m.NSX] = byUUID
 		}
 		vm, ok := byUUID[m.InstanceUUID]
 		if !ok {

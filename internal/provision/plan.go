@@ -493,6 +493,9 @@ type VMUnit struct {
 	// NSXOffered are the groups it may join by a day-2 action: its
 	// deployment's, and the existing groups its item's VMs join.
 	NSXOffered []VMGroup `json:"nsx_offered,omitempty"`
+	// NSX is the NSX Manager its groups are on, "" for the NSX
+	// integration's (ADR-0062).
+	NSX string `json:"nsx,omitempty"`
 	// ResourcePool is its pool's path below the cluster's root pool, Hosts
 	// those it may start on when they are narrowed, and DatastoreCluster
 	// the datastore cluster Datastore is in, whose PodDatastores Storage
@@ -535,6 +538,9 @@ type SecurityUnit struct {
 	Groups       []GroupUnit `json:"groups"`
 	Policy       string      `json:"policy"`
 	Rules        []nsx.Rule  `json:"rules,omitempty"`
+	// NSX is the NSX Manager they are made on, "" for the NSX
+	// integration's (ADR-0062).
+	NSX string `json:"nsx,omitempty"`
 }
 
 // GroupUnit is a group made for a deployment.
@@ -580,6 +586,9 @@ type SegmentUnit struct {
 	PrefixLength int      `json:"prefix_length"`
 	DNSZone      string   `json:"dns_zone"`
 	DNSServers   []string `json:"dns_servers,omitempty"`
+	// NSX is the NSX Manager it is made on, "" for the NSX integration's
+	// (ADR-0062).
+	NSX string `json:"nsx,omitempty"`
 }
 
 // SegmentName is the name, and NSX ID, of the segment made for a

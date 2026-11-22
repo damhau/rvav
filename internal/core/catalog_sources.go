@@ -641,7 +641,9 @@ func (s *Service) checkBlueprintSecrets(ctx context.Context, b blueprint.Bluepri
 
 // checkNSXRefs checks what a VM blueprint asks of NSX against it
 // (ADR-0028): an NSX Manager to ask; the existing groups it names, which
-// must select VMs by tag; the services of its rules.
+// must select VMs by tag; the services of its rules. With several NSX
+// Managers, each must be on one of them: the request's is checked when it
+// is evaluated (ADR-0062).
 func (s *Service) checkNSXRefs(ctx context.Context, b blueprint.Blueprint, ptr string) ([]api.FieldError, error) {
 	groups, services := map[string]string{}, map[string]string{} // pointer → ID
 	for i, g := range b.Groups {
@@ -680,26 +682,35 @@ func (s *Service) checkNSXRefs(ctx context.Context, b blueprint.Blueprint, ptr s
 	if len(b.Segments)+len(b.SecurityGroups)+len(groups) == 0 && !binds {
 		return nil, nil
 	}
-	if !s.Config.NSX.Configured() {
-		return []api.FieldError{fieldErr(ptr, "no_nsx", "This item asks NSX for networks or security groups, and rvav has no NSX Manager. Set one in Integrations first.")}, nil
-	}
-	client, err := s.nsx()
+	managers, err := s.allNSXManagers(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if len(managers) == 0 {
+		return []api.FieldError{fieldErr(ptr, "no_nsx", "This item asks NSX for networks or security groups, and rvav has no NSX Manager. Set one in Integrations first.")}, nil
+	}
+	clients := make([]*nsx.Client, len(managers))
+	for i, m := range managers {
+		if clients[i], err = s.nsxClient(ctx, m); err != nil {
+			return nil, err
+		}
 	}
 	var errs []api.FieldError
 	read := map[string]*nsx.Group{}
 	for _, at := range sortedKeys(groups) {
 		id := groups[at]
 		if _, done := read[id]; !done {
-			g, err := client.Group(ctx, id)
-			switch {
-			case errors.Is(err, nsx.ErrNotFound):
-				read[id] = nil
-			case err != nil:
-				return nil, &UpstreamError{System: "NSX", Err: err}
-			default:
+			read[id] = nil
+			for _, client := range clients {
+				g, err := client.Group(ctx, id)
+				if errors.Is(err, nsx.ErrNotFound) {
+					continue
+				}
+				if err != nil {
+					return nil, &UpstreamError{System: "NSX", Err: err}
+				}
 				read[id] = &g
+				break
 			}
 		}
 		switch g := read[id]; {
@@ -714,9 +725,13 @@ func (s *Service) checkNSXRefs(ctx context.Context, b blueprint.Blueprint, ptr s
 		}
 	}
 	if len(services) > 0 {
-		known, err := client.Services(ctx)
-		if err != nil {
-			return nil, &UpstreamError{System: "NSX", Err: err}
+		var known []nsx.Service
+		for _, client := range clients {
+			got, err := client.Services(ctx)
+			if err != nil {
+				return nil, &UpstreamError{System: "NSX", Err: err}
+			}
+			known = append(known, got...)
 		}
 		for _, at := range sortedKeys(services) {
 			if !slices.ContainsFunc(known, func(k nsx.Service) bool { return k.ID == services[at] }) {

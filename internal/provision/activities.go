@@ -25,6 +25,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/nsx"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
+	"github.com/damhau/rvav/internal/nsxmanagers"
 	"github.com/damhau/rvav/internal/observe"
 	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/restcall"
@@ -83,6 +84,9 @@ type Activities struct {
 	NSX        *nsx.Client
 	Instance   string
 	NSXTimeout time.Duration
+	// NSXManagers connects to the NSX Managers added besides NSX, by the
+	// name a plan or a resource gives (ADR-0062).
+	NSXManagers NSXSet
 	// REST makes a composite's REST calls (ADR-0033): to the hosts allowed
 	// for REST value sources.
 	REST *restcall.Caller
@@ -91,6 +95,39 @@ type Activities struct {
 // VCenterSet is the vCenters rvav manages, by name ("" for the first).
 type VCenterSet interface {
 	Get(ctx context.Context, name string) (vsphere.Driver, error)
+}
+
+// NSXSet is the NSX Managers added besides the NSX integration's, by name.
+type NSXSet interface {
+	Get(ctx context.Context, name string) (*nsx.Client, error)
+}
+
+// nsxClient connects to an NSX Manager by name, "" for the NSX
+// integration's; why says what can't be done without it.
+func (a *Activities) nsxClient(ctx context.Context, name, why string) (*nsx.Client, error) {
+	switch {
+	case name == "" && a.NSX != nil:
+		return a.NSX, nil
+	case name == "":
+		return nil, permanent("rvav has no NSX Manager: %s", why)
+	case a.NSXManagers == nil:
+		return nil, permanent("rvav has no NSX Manager %s: %s", name, why)
+	}
+	c, err := a.NSXManagers.Get(ctx, name)
+	if errors.Is(err, nsxmanagers.ErrUnknown) {
+		return nil, permanent("rvav no longer has NSX Manager %s: %s", name, why)
+	}
+	return c, err
+}
+
+// nsxManagerOf is the NSX Manager a resource is on, "" for the NSX
+// integration's, where everything was made before there were several.
+func nsxManagerOf(r store.Resource) string {
+	var p struct {
+		NSX string `json:"nsx_manager"`
+	}
+	_ = json.Unmarshal(r.Properties, &p)
+	return p.NSX
 }
 
 // vc connects to a vCenter by name ("" for the first).

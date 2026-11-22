@@ -38,8 +38,10 @@ func presentPlacementRule(r store.PlacementRuleRow) api.PlacementRule {
 }
 
 // checkSegments says what is wrong with a rule's segments made for
-// deployments (ADR-0028): NSX must be set up and have the Tier-1.
-func (s *Service) checkSegments(ctx context.Context, w *api.PlacementSegments) (*store.PlacementSegments, []api.FieldError) {
+// deployments (ADR-0028): NSX must be set up and have the Tier-1, on the
+// NSX Manager serving the rule's vCenter, else on every one serving a
+// vCenter (ADR-0062).
+func (s *Service) checkSegments(ctx context.Context, w *api.PlacementSegments, vcenter string) (*store.PlacementSegments, []api.FieldError) {
 	if w == nil {
 		return nil, nil
 	}
@@ -61,22 +63,50 @@ func (s *Service) checkSegments(ctx context.Context, w *api.PlacementSegments) (
 			add(fmt.Sprintf("dns_servers/%d", i), "pattern", fmt.Sprintf("%q is not an IP address.", ip))
 		}
 	}
-	switch {
-	case sg.Tier1 == "":
+	if sg.Tier1 == "" {
 		add("tier1", "required", "The Tier-1 gateway the segments connect to.")
-	case !s.Config.NSX.Configured():
+		return sg, errs
+	}
+	all, err := s.allNSXManagers(ctx)
+	if err != nil {
+		add("tier1", "nsx", "NSX Managers can't be read: "+err.Error())
+		return sg, errs
+	}
+	if len(all) == 0 {
 		add("tier1", "no_nsx", "rvav has no NSX Manager: set one in Integrations first.")
-	default:
-		client, err := s.nsx()
+		return sg, errs
+	}
+	var managers []string
+	if vcenter != "" {
+		m, ok, err := s.nsxManagerOf(ctx, vcenter)
+		switch {
+		case err != nil:
+			add("tier1", "nsx", "NSX Managers can't be read: "+err.Error())
+			return sg, errs
+		case !ok:
+			add("tier1", "no_nsx", "No NSX Manager serves vCenter "+vcenter+": link one to it in Integrations first.")
+			return sg, errs
+		}
+		managers = []string{m}
+	} else if managers, err = s.servingNSXManagers(ctx); err != nil {
+		add("tier1", "nsx", "NSX Managers can't be read: "+err.Error())
+		return sg, errs
+	}
+	for _, m := range managers {
+		what := "NSX"
+		if len(all) > 1 {
+			what = "NSX Manager " + s.nsxLabel(m)
+		}
+		client, err := s.nsxClient(ctx, m)
 		if err != nil {
-			add("tier1", "nsx", "NSX can't be reached: "+err.Error())
-			break
+			add("tier1", "nsx", what+" can't be reached: "+err.Error())
+			continue
 		}
 		tier1s, err := client.Tier1s(ctx)
 		if err != nil {
-			add("tier1", "nsx", "NSX can't be reached: "+err.Error())
+			add("tier1", "nsx", what+" can't be reached: "+err.Error())
 		} else if !slices.ContainsFunc(tier1s, func(t nsx.Tier1) bool { return t.ID == sg.Tier1 }) {
-			add("tier1", "unknown", "NSX has no Tier-1 gateway "+sg.Tier1+".")
+			add("tier1", "unknown", what+" has no Tier-1 gateway "+sg.Tier1+".")
 		}
 	}
 	return sg, errs
@@ -200,7 +230,7 @@ func (s *Service) SavePlacementRule(ctx context.Context, p *auth.Principal, id s
 			errs = append(errs, fieldErr("/storage_policy", "unknown", "vCenter has no storage policy "+policy+"."))
 		}
 	}
-	segments, segErrs := s.checkSegments(ctx, w.Segments)
+	segments, segErrs := s.checkSegments(ctx, w.Segments, vcenter)
 	errs = append(errs, segErrs...)
 	if len(errs) > 0 {
 		return api.PlacementRule{}, &ValidationError{Errors: errs}

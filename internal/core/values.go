@@ -534,7 +534,7 @@ func (s *Service) builtinValues(ctx context.Context, p *auth.Principal, proj sto
 		cache(60)
 
 	case "nsx.segments", "nsx.tier1s", "nsx.groups", "nsx.services":
-		opts, err := s.nsxOptions(ctx, *src.Name, params)
+		opts, err := s.nsxOptions(ctx, proj.ID, env, *src.Name, params)
 		if err != nil {
 			return out, err
 		}
@@ -637,15 +637,85 @@ func (s *Service) awxChoices(ctx context.Context, source string, params map[stri
 // nsxOptions are what NSX offers a form (ADR-0028): existing segments, by
 // the port group's name a network binding takes (on a Tier-1, with tier1);
 // Tier-1 gateways; groups VMs can join by tag, as nsx:<ID> a groups binding
-// takes; services. What rvav made for deployments isn't offered.
-func (s *Service) nsxOptions(ctx context.Context, name string, params map[string]string) ([]api.Option, error) {
-	if !s.Config.NSX.Configured() {
-		return nil, &BadRequestError{Msg: "rvav has no NSX Manager: " + name + " needs one, set in Integrations."}
-	}
-	client, err := s.nsx()
+// takes; services. What rvav made for deployments isn't offered. They are
+// those of the NSX Manager serving the vCenter of the cluster or vcenter
+// param, else of the vCenters the placement allows (ADR-0062).
+func (s *Service) nsxOptions(ctx context.Context, projectID, env, name string, params map[string]string) ([]api.Option, error) {
+	managers, err := s.offeredNSXManagers(ctx, projectID, env, name, params)
 	if err != nil {
 		return nil, err
 	}
+	opts := []api.Option{}
+	seen := map[string]bool{}
+	for _, m := range managers {
+		client, err := s.nsxClient(ctx, m)
+		if err != nil {
+			return nil, err
+		}
+		got, err := nsxOptionsOf(ctx, client, name, params)
+		if err != nil {
+			return nil, err
+		}
+		for _, o := range got {
+			if !seen[o.Value] {
+				seen[o.Value] = true
+				opts = append(opts, o)
+			}
+		}
+	}
+	sort.Slice(opts, func(i, j int) bool { return opts[i].Label < opts[j].Label })
+	return opts, nil
+}
+
+// offeredNSXManagers are the NSX Managers a form's NSX choices come from.
+func (s *Service) offeredNSXManagers(ctx context.Context, projectID, env, name string, params map[string]string) ([]string, error) {
+	all, err := s.allNSXManagers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(all) == 0 {
+		return nil, &BadRequestError{Msg: "rvav has no NSX Manager: " + name + " needs one, set in Integrations."}
+	}
+	vcenter := params["vcenter"]
+	var pl *placement
+	if env != "" && projectID != "" && (vcenter == "" || params["cluster"] != "") {
+		if pl, err = s.placement(ctx, projectID, env); err != nil {
+			return nil, err
+		}
+	}
+	if c := params["cluster"]; vcenter == "" && c != "" && pl != nil {
+		if cl := pl.cluster(c); cl != nil {
+			vcenter = cl.VCenter
+		}
+	}
+	if vcenter != "" {
+		m, ok, err := s.nsxManagerOf(ctx, vcenter)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, &BadRequestError{Msg: "No NSX Manager serves vCenter " + vcenter + "."}
+		}
+		return []string{m}, nil
+	}
+	if pl == nil {
+		return all, nil
+	}
+	var out []string
+	for _, c := range pl.clusters {
+		m, ok, err := s.nsxManagerOf(ctx, c.VCenter)
+		if err != nil {
+			return nil, err
+		}
+		if ok && !slices.Contains(out, m) {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+// nsxOptionsOf are what one NSX Manager offers.
+func nsxOptionsOf(ctx context.Context, client *nsx.Client, name string, params map[string]string) ([]api.Option, error) {
 	ours := func(tags []nsx.Tag) bool {
 		return slices.ContainsFunc(tags, func(t nsx.Tag) bool { return t.Scope == nsx.OwnerScope })
 	}
@@ -700,6 +770,5 @@ func (s *Service) nsxOptions(ctx context.Context, name string, params map[string
 			opts = append(opts, option(sv.ID, cmp.Or(sv.DisplayName, sv.ID), ""))
 		}
 	}
-	sort.Slice(opts, func(i, j int) bool { return opts[i].Label < opts[j].Label })
 	return opts, nil
 }

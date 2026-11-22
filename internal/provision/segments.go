@@ -54,11 +54,12 @@ func (a *Activities) MakeSegment(ctx context.Context, in SegmentInput) (SegmentR
 	var out SegmentResult
 	err := a.run(ctx, in.RequestID, in.ProjectID, in.Key, func() (string, string, error) {
 		sg := in.Segment
-		if a.NSX == nil {
-			return "", "", permanent("rvav has no NSX Manager: set one in Integrations")
+		client, err := a.nsxClient(ctx, sg.NSX, "set one in Integrations")
+		if err != nil {
+			return "", "", err
 		}
 		// A segment of that ID rvav didn't make is in the way.
-		existing, err := a.NSX.Segment(ctx, sg.ID)
+		existing, err := client.Segment(ctx, sg.ID)
 		switch {
 		case err == nil && !nsx.Owned(existing.Tags, a.instance()):
 			return "", "", permanent("NSX has a segment %s that rvav didn't make", sg.ID)
@@ -84,7 +85,7 @@ func (a *Activities) MakeSegment(ctx context.Context, in SegmentInput) (SegmentR
 			return "", "", err
 		}
 
-		err = a.NSX.PutSegment(ctx, nsx.Segment{ID: sg.ID, DisplayName: sg.Name, ConnectivityPath: nsx.Tier1Path + sg.Tier1,
+		err = client.PutSegment(ctx, nsx.Segment{ID: sg.ID, DisplayName: sg.Name, ConnectivityPath: nsx.Tier1Path + sg.Tier1,
 			Subnets: []nsx.SegmentSubnet{{GatewayAddress: fmt.Sprintf("%s/%d", out.Gateway, out.PrefixLength)}},
 			Tags:    []nsx.Tag{{Scope: nsx.OwnerScope, Tag: a.instance()}, {Scope: nsx.DeployScope, Tag: sg.DeploymentID}}})
 		var apiErr *nsx.APIError
@@ -93,8 +94,11 @@ func (a *Activities) MakeSegment(ctx context.Context, in SegmentInput) (SegmentR
 		} else if err != nil {
 			return "", "", fmt.Errorf("NSX: %w", err)
 		}
-		if err := a.recordSegmentResource(ctx, in, "nsx.segment", sg.Name, sg.ID, map[string]any{"segment_id": sg.ID,
-			"tier1": sg.Tier1, "subnet": out.CIDR, "gateway": out.Gateway, "key": sg.Key}); err != nil {
+		props := map[string]any{"segment_id": sg.ID, "tier1": sg.Tier1, "subnet": out.CIDR, "gateway": out.Gateway, "key": sg.Key}
+		if sg.NSX != "" {
+			props["nsx_manager"] = sg.NSX
+		}
+		if err := a.recordSegmentResource(ctx, in, "nsx.segment", sg.Name, sg.ID, props); err != nil {
 			return "", "", err
 		}
 
@@ -114,7 +118,7 @@ func (a *Activities) MakeSegment(ctx context.Context, in SegmentInput) (SegmentR
 		wait := a.nsxTimeout()
 		deadline := time.Now().Add(wait)
 		for {
-			state, err := a.NSX.SegmentState(ctx, sg.ID)
+			state, err := client.SegmentState(ctx, sg.ID)
 			if err != nil && !errors.Is(err, nsx.ErrNotFound) {
 				return "", "", fmt.Errorf("NSX: %w", err)
 			}
@@ -180,14 +184,15 @@ func (a *Activities) recordSegmentResource(ctx context.Context, in SegmentInput,
 // deleteSegment deletes a segment rvav made, and its mapping; one rvav
 // didn't make is left alone.
 func (a *Activities) deleteSegment(ctx context.Context, r store.Resource) (string, error) {
-	if a.NSX == nil {
-		return "", permanent("rvav has no NSX Manager: segment %s can't be deleted", r.Name)
+	client, err := a.nsxClient(ctx, nsxManagerOf(r), "segment "+r.Name+" can't be deleted")
+	if err != nil {
+		return "", err
 	}
 	id := r.Name
 	if r.ExternalID != nil {
 		id = *r.ExternalID
 	}
-	seg, err := a.NSX.Segment(ctx, id)
+	seg, err := client.Segment(ctx, id)
 	switch {
 	case errors.Is(err, nsx.ErrNotFound):
 	case err != nil:
@@ -202,7 +207,7 @@ func (a *Activities) deleteSegment(ctx context.Context, r store.Resource) (strin
 		// go within a while.
 		deadline := time.Now().Add(a.nsxTimeout())
 		for {
-			err := a.NSX.DeleteSegment(ctx, id)
+			err := client.DeleteSegment(ctx, id)
 			var apiErr *nsx.APIError
 			if err == nil {
 				break

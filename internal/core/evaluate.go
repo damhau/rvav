@@ -52,6 +52,10 @@ type Evaluation struct {
 	// by ID; joinable those its VMs join, in order (ADR-0028).
 	nsxGroups map[string]provision.VMGroup
 	joinable  []string
+	// nsxManager is the NSX Manager its segments and groups are made on,
+	// "" the integration's, once nsxFound (ADR-0062).
+	nsxManager string
+	nsxFound   bool
 	// Composite are a composite item's steps, evaluated.
 	Composite []compositePart
 	// GroupCatch and OnError are its parallel groups' catch paths and its
@@ -397,7 +401,7 @@ func (s *Service) evaluatePickers(ctx context.Context, p *auth.Principal, ev *Ev
 			// What NSX offers, without what rvav made for deployments
 			// (ADR-0028): a groups binding can't take another's group.
 			var opts []api.Option
-			opts, err = s.nsxOptions(ctx, *src.Name, resolveParams(src.Params, ev.Inputs))
+			opts, err = s.nsxOptions(ctx, ev.Project.ID, ev.Env.Key, *src.Name, resolveParams(src.Params, ev.Inputs))
 			for _, o := range opts {
 				allowed = append(allowed, o.Value)
 			}

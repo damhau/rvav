@@ -53,6 +53,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/efficientip"
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
+	"github.com/damhau/rvav/internal/nsxmanagers"
 	"github.com/damhau/rvav/internal/pgtest"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/restcall"
@@ -349,7 +350,8 @@ func setupWith(t *testing.T, ctx context.Context, c *vim25.Client, seeded bool) 
 		PollInterval: 20 * time.Millisecond, IPTimeout: 20 * time.Second, TaskQueue: "rvav-test", Secrets: box,
 		// The hosts REST value sources may call, as in the app.
 		REST: &restcall.Caller{Client: restcall.NewClient(provision.RESTTimeout),
-			HostsNow: func(context.Context) []string { return svc.REST.Hosts }}}
+			HostsNow: func(context.Context) []string { return svc.REST.Hosts }},
+		NSXManagers: &nsxmanagers.Set{Store: st, Secrets: box}}
 	// Subscriptions (ADR-0021): webhooks to hosts a test allows with allowWebhooks.
 	disp := &dispatch.Dispatcher{Store: st, Log: log, Targets: dispatch.Targets{
 		Webhook: &dispatch.Webhook{Secret: dispatch.StoredSecret(st, box)},

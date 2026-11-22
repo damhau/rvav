@@ -35,6 +35,7 @@ import (
 	"github.com/damhau/rvav/internal/integrations/vsphere"
 	"github.com/damhau/rvav/internal/inventory"
 	"github.com/damhau/rvav/internal/notify"
+	"github.com/damhau/rvav/internal/nsxmanagers"
 	"github.com/damhau/rvav/internal/provision"
 	"github.com/damhau/rvav/internal/restcall"
 	"github.com/damhau/rvav/internal/secrets"
@@ -529,6 +530,7 @@ func (a *App) Activities(ctx context.Context) (*provision.Activities, error) {
 		return nil, err
 	}
 	acts.NSX = client
+	acts.NSXManagers = &nsxmanagers.Set{Store: a.Store, Secrets: a.Secrets, Primary: client}
 	return acts, nil
 }
 
@@ -725,13 +727,14 @@ func (a *App) RunSync(ctx context.Context) error {
 		go func() { _ = a.awxCatalog().Run(ctx) }()
 	}
 	// VMs' tags changed in NSX are drift (ADR-0028).
-	if client, err := a.NSX(); err != nil {
+	primaryNSX, err := a.NSX()
+	if err != nil {
 		return err
-	} else if client != nil {
-		tags := &inventory.NSXTagSync{Store: a.Store, NSX: client, Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval,
-			IntervalNow: func(ctx context.Context) time.Duration { return a.live(ctx).SyncInterval }}
-		go func() { _ = tags.Run(ctx) }()
 	}
+	tags := &inventory.NSXTagSync{Store: a.Store, NSX: primaryNSX, Events: a.Events, Log: a.Log, Interval: a.Cfg.SyncInterval,
+		NSXManagers: &nsxmanagers.Set{Store: a.Store, Secrets: a.Secrets, Primary: primaryNSX},
+		IntervalNow: func(ctx context.Context) time.Duration { return a.live(ctx).SyncInterval }}
+	go func() { _ = tags.Run(ctx) }()
 	// The catalog's repository (ADR-0029).
 	if a.Cfg.Git.Configured() {
 		catalog := a.Core(nil)

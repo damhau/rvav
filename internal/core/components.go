@@ -203,6 +203,9 @@ func (s *Service) evaluateVM(ctx context.Context, ev *Evaluation, strict bool) e
 			add("", "out_of_range", "Every component has a count of 0: there would be nothing to build.")
 		}
 	}
+	if err := s.evaluateNSXManager(ctx, ev); err != nil {
+		return err
+	}
 	if err := s.evaluateNSXGroups(ctx, ev); err != nil {
 		return err
 	}
@@ -532,6 +535,20 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 			add(field("cluster"), "not_allowed", fmt.Sprintf("Cluster %s is not available to %s in %s.", plan.Cluster, ev.Project.Name, ev.Env.Name))
 		} else {
 			part.rule, part.vcenter = pl.rule(plan.Cluster), pl.cluster(plan.Cluster).VCenter
+			// The segments' Tier-1 is on the NSX Manager of the cluster's
+			// vCenter (ADR-0062).
+			if part.segments != nil {
+				sg, m, found, err := s.segmentsFor(ctx, pl, part.vcenter)
+				switch {
+				case err != nil:
+					return part, err
+				case sg != nil:
+					part.segments = sg
+				case !found:
+					add(segmentAt, "no_segments", fmt.Sprintf("No placement rule of %s in %s makes NSX segments on NSX Manager %s, "+
+						"which serves vCenter %s. Ask an administrator to add one.", ev.Project.Name, ev.Env.Name, s.nsxLabel(m), part.vcenter))
+				}
+			}
 			if part.image != nil {
 				if src, ok := sourceIn(*part.image, part.vcenter, pl.added); ok {
 					plan.Template, plan.Library = src.Template, src.Library
@@ -947,6 +964,7 @@ func vmUnit(ev *Evaluation, p vmPart, deploymentID, name string, index int) prov
 	// Those a day-2 action may put it in: its deployment's, and the
 	// existing ones its item's VMs join.
 	if len(vm.NSXGroups) > 0 {
+		vm.NSX = ev.nsxManager
 		for _, g := range ev.Blueprint.SecurityGroups {
 			id := provision.GroupName(deploymentID, g.Key)
 			vm.NSXOffered = append(vm.NSXOffered, provision.VMGroup{ID: id, Name: id, Key: g.Key, Tags: []nsx.Tag{provision.GroupTag(id)}})
@@ -1203,7 +1221,7 @@ func planSegments(ev *Evaluation, vms []provision.VMUnit) []provision.SegmentUni
 			seen[vm.DeploymentID+"/"+key] = true
 			sg, name := p.segments, provision.SegmentName(vm.DeploymentID, key)
 			out = append(out, provision.SegmentUnit{DeploymentID: vm.DeploymentID, Key: key, ID: name, Name: name, Tier1: sg.Tier1,
-				IPBlock: sg.IPBlock, PrefixLength: sg.PrefixLength, DNSZone: sg.DNSZone, DNSServers: sg.DNSServers})
+				IPBlock: sg.IPBlock, PrefixLength: sg.PrefixLength, DNSZone: sg.DNSZone, DNSServers: sg.DNSServers, NSX: ev.nsxManager})
 		}
 	}
 	return out
@@ -1257,11 +1275,10 @@ func (s *Service) evaluateNSXGroups(ctx context.Context, ev *Evaluation) error {
 	if len(b.SecurityGroups) == 0 && len(order) == 0 {
 		return nil
 	}
-	if s.Config.NSX.URL == "" {
-		add("no_nsx", "This item puts its VMs in NSX security groups, and rvav has no NSX Manager. Ask an administrator to set one in Integrations.")
-		return nil
+	if !ev.nsxFound {
+		return nil // refused by evaluateNSXManager
 	}
-	client, err := s.nsx()
+	client, err := s.nsxClient(ctx, ev.nsxManager)
 	if err != nil {
 		return err
 	}
@@ -1338,7 +1355,7 @@ func planSecurity(ev *Evaluation, vms []provision.VMUnit) []provision.SecurityUn
 			}
 			return list
 		}
-		u := provision.SecurityUnit{DeploymentID: dep, Policy: provision.PolicyName(dep)}
+		u := provision.SecurityUnit{DeploymentID: dep, Policy: provision.PolicyName(dep), NSX: ev.nsxManager}
 		seq := 0
 		for _, g := range b.SecurityGroups {
 			id := provision.GroupName(dep, g.Key)

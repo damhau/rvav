@@ -19,7 +19,8 @@ import (
 // deployment's, and recorded on it, so that rvav deletes them with it. A
 // group's security policies come with it when their rules name only the
 // deployment's groups; a group other rules use is left as it is, as NSX
-// wouldn't delete it.
+// wouldn't delete it. They are looked for on the NSX Manager serving the
+// VMs' vCenter (ADR-0062).
 func (s *Service) adoptNSX(ctx context.Context, depID string, pl vraimport.DeploymentPlan) ([]vraimport.Note, error) {
 	var notes []vraimport.Note
 	note := func(level, where, text string) {
@@ -28,11 +29,15 @@ func (s *Service) adoptNSX(ctx context.Context, depID string, pl vraimport.Deplo
 	if len(pl.NSXSegments)+len(pl.NSXGroups) == 0 {
 		return nil, nil
 	}
-	if !s.Config.NSX.Configured() {
-		note(vraimport.Warning, "nsx", "rvav has no NSX Manager: the deployment's NSX segments and groups stay as vRA left them, and aren't deleted with it.")
+	manager, why, err := s.adoptionNSX(ctx, pl.VMs)
+	if err != nil {
+		return nil, err
+	}
+	if why != "" {
+		note(vraimport.Warning, "nsx", why+": the deployment's NSX segments and groups stay as vRA left them, and aren't deleted with it.")
 		return notes, nil
 	}
-	client, err := s.nsx()
+	client, err := s.nsxClient(ctx, manager)
 	if err != nil {
 		return nil, err
 	}
@@ -43,6 +48,9 @@ func (s *Service) adoptNSX(ctx context.Context, depID string, pl vraimport.Deplo
 		return append(out, owner...)
 	}
 	record := func(typ, name, external string, props map[string]any) error {
+		if manager != "" {
+			props["nsx_manager"] = manager
+		}
 		raw, _ := json.Marshal(props)
 		_, err := s.Store.UpsertResource(ctx, s.Store.Pool, store.Resource{ID: ids.New(ids.Resource), DeploymentID: depID, Type: typ,
 			Name: name, ExternalID: &external, Properties: raw})
