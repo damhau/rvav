@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { i18n } from "@/lib/i18n";
@@ -164,7 +164,7 @@ describe("system, setup, branding and the audit log, in French", () => {
   });
 });
 
-describe("onboarding and AWX's templates, in French", () => {
+describe("onboarding, AWX's templates and day-2 actions, in French", () => {
   async function search(user: ReturnType<typeof userEvent.setup>, text: string, found: string) {
     const box = await screen.findByRole("textbox", { name: "Rechercher" });
     await user.clear(box);
@@ -204,6 +204,52 @@ describe("onboarding and AWX's templates, in French", () => {
     expect(i18n.t("admin:onboarding.adopted", { count: 1, vms: "1 VM", deployments: "1 déploiement" })).toBe(
       "1 VM intégrée dans 1 déploiement",
     );
+  });
+
+  it("changes an AWX day-2 action in its side panel", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/day2-actions");
+    expect(await screen.findByRole("heading", { level: 1, name: "Actions de jour 2" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "politiques de jour 2" })).toHaveAttribute(
+      "href",
+      "/admin/policies?tab=day2",
+    );
+    const table = await screen.findByRole("table", { name: "Actions de jour 2 d'AWX" });
+    const row = await within(table).findByRole("row", { name: /Install monitoring agent/ });
+    expect(within(row).getByText("Proposée")).toBeInTheDocument();
+    expect(row).toHaveTextContent(/(Workflow|Modèle de job) n° \d+/);
+    expect(within(screen.getByRole("main")).getByRole("link", { name: "Workflows personnalisés" })).toHaveAttribute(
+      "href",
+      "/admin/workflows",
+    );
+    await user.click(within(row).getByRole("button", { name: "Actions pour Install monitoring agent" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Modifier" }));
+    const sheet = await screen.findByRole("dialog", { name: "Modifier Install monitoring agent" });
+    expect(sheet).toHaveTextContent(/(Workflow AWX|Modèle de job AWX) \S+\. Son questionnaire est le formulaire/);
+    expect(sheet).toHaveTextContent(
+      "Proposée seulement là où cette expression CEL est vraie, par exemple resource.os_family == 'linux'. Vide : partout.",
+    );
+    expect(within(sheet).getByRole("group", { name: "S'exécute sur" })).toHaveTextContent("une VM à la fois");
+  });
+
+  it("opens a custom action's form designer", { timeout: 15_000 }, async () => {
+    renderApp("/admin/day2-actions/wf.lb-drain/form");
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Formulaire de Drain" }, { timeout: 5000 }),
+    ).toBeVisible();
+    expect(
+      within(screen.getByRole("navigation", { name: "Fil d'Ariane" })).getByRole("link", { name: "Actions de jour 2" }),
+    ).toHaveAttribute("href", "/admin/day2-actions");
+    await waitFor(() =>
+      expect(document.body).toHaveTextContent(
+        "Sur une ressource personnalisée (Load balancer), resource est son id, son type, son name, sa key et ses properties.",
+      ),
+    );
+    expect(document.body).toHaveTextContent(
+      /Une fois activé, .* lisent aussi ce sur quoi l'action s'exécute, comme resource et deployment\./,
+    );
+    expect(await screen.findByText(/^Pas encore conçu\s: voici le formulaire du schéma d'entrée/)).toBeInTheDocument();
+    expect(i18n.t("admin:day2Form.wouldHave", { count: 1 })).toBe("Une exécution avec ces entrées aurait 1 problème.");
   });
 
   it("lists AWX's templates with their catalog items", { timeout: 15_000 }, async () => {

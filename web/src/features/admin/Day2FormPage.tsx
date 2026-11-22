@@ -6,6 +6,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link } from "@tanstack/react-router";
 import { Ellipsis } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -24,6 +25,7 @@ import { mapFieldErrors } from "@/forms/errors";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { Day2FormDefinition, Day2FormDesign, FieldError, FieldStates, VmResource } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
+import { i18n } from "@/lib/i18n";
 import { adm, keys, q } from "@/lib/query";
 import { fullDate, relative } from "@/lib/format";
 import {
@@ -51,7 +53,8 @@ const toDefinition = ({ form_schema, ui_schema, initial_values }: Def): Day2Form
   initial_values,
 });
 /** What the action asks for while its designed form is off. */
-const baseForm = (d: Day2FormDesign) => (d.kind === "workflow" ? "the input schema's form" : "the AWX survey");
+const baseForm = (d: Day2FormDesign) =>
+  i18n.t(d.kind === "workflow" ? "admin:day2Form.baseWorkflow" : "admin:day2Form.baseAwx");
 // The target select's value for the whole deployment: a Radix select has no empty value.
 const whole = "deployment";
 
@@ -121,6 +124,7 @@ function Preview({
   showing?: string;
   def: Def;
 }) {
+  const { t } = useTranslation("admin");
   const onDeployment = design.types.includes("deployment");
   const onVM = design.types.includes("vsphere.vm");
   const inputs = useDebounced(ctx.values, 300);
@@ -155,34 +159,34 @@ function Preview({
   const d = target.deployment;
   return (
     <Panel
-      title="Preview"
+      title={t("day2Form.preview")}
       actions={
         <Button size="sm" variant="quiet" onClick={() => setCtx((c) => ({ ...c, values: { ...def.initial_values } }))}>
-          Reset inputs
+          {t("day2Form.resetInputs")}
         </Button>
       }
     >
       <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <Field label="Deployment" htmlFor="preview-deployment">
+        <Field label={t("day2Form.deployment")} htmlFor="preview-deployment">
           <Select
             id="preview-deployment"
             value={target.deploymentId}
-            placeholder="None"
+            placeholder={t("day2Form.none")}
             loading={target.deployments.isPending}
             onChange={(v) => setCtx((c) => ({ ...c, deploymentId: v, resource: "" }))}
             options={target.list.map((x) => ({ value: x.id, label: x.name, meta: x.project.name }))}
           />
         </Field>
         {onVM && (
-          <Field label="Runs on" htmlFor="preview-resource">
+          <Field label={t("day2Form.runsOn")} htmlFor="preview-resource">
             <Select
               id="preview-resource"
               value={target.resource}
-              placeholder="No VM"
+              placeholder={t("day2Form.noVm")}
               loading={target.vmsLoading}
               onChange={(v) => setCtx((c) => ({ ...c, resource: v }))}
               options={[
-                ...(onDeployment ? [{ value: whole, label: "The whole deployment" }] : []),
+                ...(onDeployment ? [{ value: whole, label: t("day2Form.whole") }] : []),
                 ...target.vms.map((v) => ({ value: v.id, label: v.name })),
               ]}
             />
@@ -190,10 +194,10 @@ function Preview({
         )}
       </div>
       {target.deployments.data && target.list.length === 0 && (
-        <p className="text-secondary text-muted">No deployment is ready to preview on.</p>
+        <p className="text-secondary text-muted">{t("day2Form.noneReady")}</p>
       )}
       {d && !target.vmsLoading && !target.ready && (
-        <p className="text-secondary text-muted">{d.name} has no VM to preview on: choose another deployment.</p>
+        <p className="text-secondary text-muted">{t("day2Form.noVmIn", { name: d.name })}</p>
       )}
       {preview.isPending && target.ready && <Skeleton className="h-48" />}
       {preview.isError && <ErrorState error={preview.error} onRetry={() => void preview.refetch()} />}
@@ -222,13 +226,11 @@ function Preview({
           />
           <div className="mt-3 flex items-center justify-between gap-2 text-secondary text-muted" role="status">
             <span>
-              {problemCount === 0
-                ? "A run with these inputs would pass."
-                : `A run with these inputs would have ${problemCount} problem${problemCount === 1 ? "" : "s"}.`}
+              {problemCount === 0 ? t("day2Form.wouldPass") : t("day2Form.wouldHave", { count: problemCount })}
             </span>
             {problemCount > 0 && !checkAll && (
               <Button size="sm" variant="quiet" onClick={() => setCheckAll(true)}>
-                Show them
+                {t("day2Form.showThem")}
               </Button>
             )}
           </div>
@@ -240,6 +242,7 @@ function Preview({
 
 /** What the page says about saving, and the choices a conflict needs. */
 function SaveStatus({ design, copy }: { design: Day2FormDesign; copy: DraftCopy }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const id = draftIdOf(design.action);
   const reload = useMutation({
@@ -251,7 +254,7 @@ function SaveStatus({ design, copy }: { design: Day2FormDesign; copy: DraftCopy 
       if (overwrite) saveOver(id, v.revision);
       else resetDraft(id, toDef(v.definition), v.revision);
     },
-    onError: (e) => failed(e, "The form could not be read again"),
+    onError: (e) => failed(e, t("day2Form.notReadAgain")),
   });
   if (copy.state === "conflict") {
     return (
@@ -259,14 +262,12 @@ function SaveStatus({ design, copy }: { design: Day2FormDesign; copy: DraftCopy 
         role="alert"
         className="flex flex-wrap items-center gap-2 rounded-md border border-warn bg-warn-soft px-3 py-2 text-secondary"
       >
-        <span className="min-w-0 flex-1">
-          Someone saved or dropped this form since you opened it. Your last changes are not saved.
-        </span>
+        <span className="min-w-0 flex-1">{t("day2Form.conflict")}</span>
         <Button size="sm" onClick={() => reload.mutate(false)} disabled={reload.isPending}>
-          Load theirs
+          {t("day2Form.loadTheirs")}
         </Button>
         <Button size="sm" variant="danger" onClick={() => reload.mutate(true)} disabled={reload.isPending}>
-          Save mine over theirs
+          {t("day2Form.saveMine")}
         </Button>
       </div>
     );
@@ -274,14 +275,12 @@ function SaveStatus({ design, copy }: { design: Day2FormDesign; copy: DraftCopy 
   const total = copy.problems.length;
   const text =
     copy.revision === 0 && !copy.dirty
-      ? `Not designed yet: this is ${baseForm(design)}, to start from. Your first change saves a draft.`
+      ? t("day2Form.notDesigned", { base: baseForm(design) })
       : {
-          saved: design.active
-            ? "Saved: people get this form from their next run."
-            : `Saved as a draft: people get ${baseForm(design)} until you turn this form on.`,
-          saving: "Saving…",
-          invalid: `Not saved, ${total} problem${total === 1 ? "" : "s"} to fix`,
-          failed: `Not saved (${copy.error ?? "the server didn't answer"}); the next change tries again`,
+          saved: design.active ? t("day2Form.savedActive") : t("day2Form.savedDraft", { base: baseForm(design) }),
+          saving: t("day2Form.saving"),
+          invalid: t("day2Form.invalid", { count: total }),
+          failed: t("day2Form.failed", { error: copy.error ?? t("day2Form.noAnswer") }),
         }[copy.state];
   return (
     <p role="status" className="text-secondary text-muted">
@@ -300,6 +299,7 @@ function Designer({
   /** Why turning the form on was refused, until the next change. */
   refusal: FieldError[];
 }) {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const id = draftIdOf(design.action);
   const def = copy.def;
@@ -354,10 +354,15 @@ function Designer({
     <div className="flex flex-col gap-3">
       <SaveStatus design={design} copy={copy} />
       {problems.other.length > 0 && (
-        <ul aria-label="Problems outside the fields" className="flex flex-col gap-0.5 text-secondary text-bad">
+        <ul aria-label={t("day2Form.problemsOutside")} className="flex flex-col gap-0.5 text-secondary text-bad">
           {problems.other.map((e, i) => (
             <li key={i}>
-              <span className="font-mono">{e.field.replace(/^\/definition/, "")}</span>: {e.message}
+              <Trans
+                t={t}
+                i18nKey="day2Form.problem"
+                values={{ field: e.field.replace(/^\/definition/, ""), message: e.message }}
+                components={{ mono: <span className="font-mono" /> }}
+              />
             </li>
           ))}
         </ul>
@@ -405,14 +410,12 @@ function Designer({
 }
 
 function Warnings({ design }: { design: Day2FormDesign }) {
+  const { t } = useTranslation("admin");
   if (design.warnings.length === 0) return null;
-  const of = design.kind === "workflow" ? "input schema" : "survey";
+  const differ = design.kind === "workflow" ? t("day2Form.differSchema") : t("day2Form.differSurvey");
   return (
-    <section
-      aria-label={`Where the form and the ${of} differ`}
-      className="rounded-md border border-warn bg-warn-soft px-3 py-2 text-secondary"
-    >
-      <p className="font-medium text-warn">Where the form and the {of} differ</p>
+    <section aria-label={differ} className="rounded-md border border-warn bg-warn-soft px-3 py-2 text-secondary">
+      <p className="font-medium text-warn">{differ}</p>
       <ul className="mt-1 flex list-disc flex-col gap-0.5 pl-5">
         {design.warnings.map((w) => (
           <li key={w}>{w}</li>
@@ -431,6 +434,7 @@ function Header({
   copy?: DraftCopy;
   onRefused: (errors: FieldError[]) => void;
 }) {
+  const { t } = useTranslation(["admin", "shell"]);
   const qc = useQueryClient();
   const id = draftIdOf(design.action);
   const [dropping, setDropping] = useState(false);
@@ -449,14 +453,16 @@ function Header({
       onRefused([]);
       void qc.invalidateQueries({ queryKey: keys.day2Forms, exact: true });
       toast.success(
-        v.active ? `${v.name} asks for this form from its next run` : `${v.name} asks for ${baseForm(v)} again`,
+        v.active
+          ? t("day2Form.asksForForm", { name: v.name })
+          : t("day2Form.asksForBase", { name: v.name, base: baseForm(v) }),
       );
     },
     onError: (e) => {
       if (isApiError(e) && e.status === 422) {
         onRefused(e.fieldErrors);
-        toast.error("Not turned on", { description: "Fix the problems the designer marks first." });
-      } else failed(e, "Not saved");
+        toast.error(t("day2Form.notTurnedOn"), { description: t("day2Form.fixFirst") });
+      } else failed(e, t("day2Form.notSaved"));
     },
   });
   const drop = useMutation({
@@ -466,9 +472,9 @@ function Header({
       closeDraft(id);
       onRefused([]);
       void qc.invalidateQueries({ queryKey: keys.day2Forms });
-      toast.success(`${design.name} asks for ${baseForm(design)} again`);
+      toast.success(t("day2Form.asksForBase", { name: design.name, base: baseForm(design) }));
     },
-    onError: (e) => failed(e, "Not dropped"),
+    onError: (e) => failed(e, t("day2Form.notDropped")),
   });
   const pending = !copy || copy.dirty || copy.state !== "saved";
   return (
@@ -476,22 +482,27 @@ function Header({
       <PageHeader
         breadcrumbs={
           <Breadcrumbs>
-            <Link to="/admin/day2-actions">Day-2 actions</Link>
+            <Link to="/admin/day2-actions">{t("shell:nav.admin.day2Actions")}</Link>
           </Breadcrumbs>
         }
-        title={`${design.name} form`}
+        title={t("day2Form.title", { name: design.name })}
         description={
           <>
-            Once you turn it on, the action&apos;s dialog asks for this form instead of {baseForm(design)}. Its rules
-            and sources also read what the action runs on, as <span className="font-mono">resource</span> and{" "}
-            <span className="font-mono">deployment</span>.
+            <Trans
+              t={t}
+              i18nKey="day2Form.description"
+              values={{ base: baseForm(design) }}
+              components={{ mono: <span className="font-mono" /> }}
+            />
             {offeredOn.length > 0 && (
               <>
                 {" "}
-                On a custom resource ({offeredOn.map((t) => t.title).join(", ")}),{" "}
-                <span className="font-mono">resource</span> is its <span className="font-mono">id</span>,{" "}
-                <span className="font-mono">type</span>, <span className="font-mono">name</span>,{" "}
-                <span className="font-mono">key</span> and <span className="font-mono">properties</span>.
+                <Trans
+                  t={t}
+                  i18nKey="day2Form.customResource"
+                  values={{ types: offeredOn.map((x) => x.title).join(", ") }}
+                  components={{ mono: <span className="font-mono" /> }}
+                />
               </>
             )}
           </>
@@ -499,14 +510,19 @@ function Header({
         meta={
           <>
             <Badge tone={design.active ? "ok" : design.revision ? "accent" : "neutral"}>
-              {design.active ? "On" : design.revision ? "Draft" : "Not designed"}
+              {design.active
+                ? t("day2Form.on")
+                : design.revision
+                  ? t("day2Form.draft")
+                  : t("day2Form.notDesignedBadge")}
             </Badge>
             <span className="font-mono">{design.action}</span>
-            <span>{design.kind === "workflow" ? "Custom workflow" : "AWX template"}</span>
+            <span>{design.kind === "workflow" ? t("day2Form.customWorkflow") : t("day2Form.awxTemplate")}</span>
             {design.updated_at && (
               <span title={fullDate(design.updated_at)}>
-                Saved {relative(design.updated_at)}
-                {design.updated_by ? ` by ${design.updated_by.name}` : ""}
+                {design.updated_by
+                  ? t("day2Form.savedBy", { when: relative(design.updated_at), name: design.updated_by.name })
+                  : t("day2Form.savedAt", { when: relative(design.updated_at) })}
               </span>
             )}
           </>
@@ -516,20 +532,20 @@ function Header({
             <Button
               variant={design.active ? "secondary" : "primary"}
               disabled={pending || turn.isPending}
-              title={pending ? "Wait for your changes to be saved." : undefined}
+              title={pending ? t("day2Form.wait") : undefined}
               onClick={() => copy && turn.mutate({ active: !design.active, c: copy })}
             >
-              {design.active ? "Turn off" : "Turn on"}
+              {design.active ? t("day2Form.turnOff") : t("day2Form.turnOn")}
             </Button>
             <Menu>
               <MenuTrigger asChild>
-                <IconButton label={`More actions for ${design.name} form`} variant="secondary" className="size-8">
+                <IconButton label={t("day2Form.more", { name: design.name })} variant="secondary" className="size-8">
                   <Ellipsis />
                 </IconButton>
               </MenuTrigger>
               <MenuContent>
                 <MenuItem danger disabled={design.revision === 0} onSelect={() => setDropping(true)}>
-                  Drop the form
+                  {t("day2Form.drop")}
                 </MenuItem>
               </MenuContent>
             </Menu>
@@ -539,10 +555,10 @@ function Header({
       <ConfirmDialog
         open={dropping}
         onOpenChange={(o) => !o && setDropping(false)}
-        title={`Drop the ${design.name} form?`}
-        description={`${design.name} asks for ${baseForm(design)} again, from its next run.`}
-        consequences="The form's fields, rules and sources are deleted."
-        confirmLabel="Drop the form"
+        title={t("day2Form.dropTitle", { name: design.name })}
+        description={t("day2Form.dropDescription", { name: design.name, base: baseForm(design) })}
+        consequences={t("day2Form.dropConsequences")}
+        confirmLabel={t("day2Form.drop")}
         pending={drop.isPending}
         onConfirm={() => drop.mutate()}
       />

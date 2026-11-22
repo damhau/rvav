@@ -225,6 +225,43 @@ test("onboarding and AWX's templates, in French", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("day-2 actions and a day-2 form, in French", async ({ page }) => {
+  test.setTimeout(150_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await inFrench(page);
+
+  await open(page, "Actions de jour 2");
+  const actions = page.getByRole("table", { name: "Actions de jour 2 d'AWX" });
+  const row = actions.getByRole("row", { name: /Install monitoring agent/ });
+  await expect(row).toContainText("Proposée");
+  await expect(page.getByRole("table", { name: "Actions de jour 2 des workflows" })).toBeVisible();
+  await bothThemes(page, "day-2 actions");
+  await row.getByRole("button", { name: "Actions pour Install monitoring agent" }).click();
+  await page.getByRole("menuitem", { name: "Modifier" }).click();
+  const sheet = page.getByRole("dialog", { name: "Modifier Install monitoring agent" });
+  await expect(sheet.getByRole("button", { name: "Enregistrer l'action" })).toBeVisible();
+  await expect(sheet.getByRole("group", { name: "S'exécute sur" })).toBeVisible();
+  await scan(page, "a day-2 action's sheet");
+  await sheet.getByRole("button", { name: "Annuler" }).click();
+  await expect(sheet).toBeHidden();
+
+  await row.getByRole("button", { name: "Actions pour Install monitoring agent" }).click();
+  await page.getByRole("menuitem", { name: "Concevoir le formulaire" }).click();
+  await expect(page.getByRole("heading", { name: "Formulaire de Install monitoring agent", level: 1 })).toBeVisible();
+  await expect(page.getByText(/^Pas encore conçu\s: voici le questionnaire AWX/)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Aperçu" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Activer" })).toBeVisible();
+  await bothThemes(page, "a day-2 form");
+
+  await page.getByRole("button", { name: /^Compte/ }).click();
+  await page.getByRole("menuitem", { name: "English" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.getByRole("heading", { name: "Install monitoring agent form", level: 1 })).toBeVisible();
+  await expect(page.getByText(/^Not designed yet: this is the AWX survey/)).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test.describe("a French browser, at 320 px", () => {
   test.use({ locale: "fr-CH", viewport: { width: 320, height: 640 } });
   for (const path of [
@@ -242,6 +279,8 @@ test.describe("a French browser, at 320 px", () => {
     "/admin/system",
     "/admin/onboarding",
     "/admin/catalog-items?tab=awx",
+    "/admin/day2-actions",
+    "/admin/day2-actions/awx.install-monitoring-agent/form",
   ]) {
     test(`no sideways scrolling: ${path}`, async ({ page }) => {
       await page.goto(path);

@@ -34,6 +34,8 @@ const translated = [
   "src/features/admin/AuditPage.tsx",
   "src/features/admin/BrandingPage.tsx",
   "src/features/admin/CatalogItemsPage.tsx",
+  "src/features/admin/Day2ActionsPage.tsx",
+  "src/features/admin/Day2FormPage.tsx",
   "src/features/admin/IdentityProvider.tsx",
   "src/features/admin/IntegrationPage.tsx",
   "src/features/admin/IntegrationSettings.tsx",

@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { Workflow, Wrench } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -24,13 +26,16 @@ import { failed, fieldErrors } from "./governance/common";
 
 type Target = AwxAction["types"][number];
 
-const targetLabel: Record<Target, string> = { "vsphere.vm": "VMs", deployment: "Deployments" };
+const targetKey = { "vsphere.vm": "vm", deployment: "deployment" } as const satisfies Record<Target, string>;
+const targetLabel = (t: TFunction<"admin">, x: Target) => t(`day2.target.${targetKey[x]}`);
+const celExample = "resource.os_family == 'linux'";
 
 function Status({ a }: { a: AwxAction }) {
-  if (a.gone) return <Badge tone="neutral">Not in AWX</Badge>;
-  if (!a.enabled) return <Badge tone="neutral">Off</Badge>;
-  if (a.warnings.length > 0) return <Badge tone="warn">Check settings</Badge>;
-  return <Badge tone="ok">Offered</Badge>;
+  const { t } = useTranslation("admin");
+  if (a.gone) return <Badge tone="neutral">{t("day2.notInAwx")}</Badge>;
+  if (!a.enabled) return <Badge tone="neutral">{t("day2.off")}</Badge>;
+  if (a.warnings.length > 0) return <Badge tone="warn">{t("day2.checkSettings")}</Badge>;
+  return <Badge tone="ok">{t("day2.offered")}</Badge>;
 }
 
 type WorkflowRegistration = components["schemas"]["WorkflowRegistration"];
@@ -38,19 +43,20 @@ type Forms = Map<string, Day2FormSummary>;
 
 /** Which form an action asks for: its designed one once turned on, else its survey's or schema's. */
 function FormState({ f, base }: { f?: Day2FormSummary; base: string }) {
+  const { t } = useTranslation("admin");
   if (f?.active)
     return (
       <div className="text-secondary">
-        <div>Designed</div>
+        <div>{t("day2.designed")}</div>
         <div className="text-caption text-faint" title={fullDate(f.updated_at)}>
-          Saved {relative(f.updated_at)}
+          {t("day2.saved", { when: relative(f.updated_at) })}
         </div>
       </div>
     );
   return (
     <div className="text-secondary">
       <div>{base}</div>
-      {f && <div className="text-caption text-faint">A designed form is a draft</div>}
+      {f && <div className="text-caption text-faint">{t("day2.draft")}</div>}
     </div>
   );
 }
@@ -78,49 +84,48 @@ function usePatch() {
 }
 
 function ActionSheet({ a, onClose }: { a: AwxAction; onClose: () => void }) {
+  const { t } = useTranslation("admin");
   const patch = usePatch();
   const [name, setName] = useState(a.name);
   const [types, setTypes] = useState<Target[]>(a.types);
   const [condition, setCondition] = useState(a.condition);
   const [enabled, setEnabled] = useState(a.enabled);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const toggle = (t: Target, on: boolean) => setTypes((cur) => (on ? [...cur, t] : cur.filter((x) => x !== t)));
+  const toggle = (x: Target, on: boolean) => setTypes((cur) => (on ? [...cur, x] : cur.filter((y) => y !== x)));
   return (
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
       pending={patch.isPending}
-      title={`Change ${a.name}`}
+      title={t("day2.change", { name: a.name })}
       description={
-        <>
-          AWX {a.workflow ? "workflow" : "job template"} <span className="font-mono">{a.template}</span>. Its survey is
-          the form people fill in, unless you design one.
-        </>
+        <Trans
+          t={t}
+          i18nKey={a.workflow ? "day2.awxWorkflow" : "day2.awxJobTemplate"}
+          values={{ template: a.template }}
+          components={{ template: <span className="font-mono" /> }}
+        />
       }
-      submitLabel={patch.isPending ? "Saving…" : "Save action"}
+      submitLabel={patch.isPending ? t("day2.saving") : t("day2.save")}
       submitDisabled={types.length === 0 || name.trim() === ""}
       onSubmit={() => {
         setErrors({});
         patch.mutate(
-          { a, body: { name, types, condition, enabled }, done: `${name} saved` },
+          { a, body: { name, types, condition, enabled }, done: t("day2.savedToast", { name }) },
           {
             onSuccess: onClose,
             onError: (e) => {
               setErrors(fieldErrors(e));
-              failed(e, "Not saved");
+              failed(e, t("day2.notSaved"));
             },
           },
         );
       }}
     >
       <Field
-        label="Name"
+        label={t("day2.name")}
         htmlFor="awx-action-name"
-        hint={
-          name.trim() === ""
-            ? "What the action menu says: the action needs one to be saved"
-            : "What the action menu says"
-        }
+        hint={name.trim() === "" ? t("day2.nameNeeded") : t("day2.nameHint")}
         error={errors["/name"]}
       >
         <Input id="awx-action-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
@@ -129,17 +134,17 @@ function ActionSheet({ a, onClose }: { a: AwxAction; onClose: () => void }) {
         className="flex flex-col gap-1.5"
         aria-describedby={errors["/types"] ? "awx-action-types-error" : undefined}
       >
-        <legend className="mb-1 text-secondary font-medium">Runs on</legend>
-        {(Object.keys(targetLabel) as Target[]).map((t) => (
-          <div key={t} className="flex items-center gap-2 text-body">
-            <Checkbox id={`awx-action-${t}`} checked={types.includes(t)} onChange={(on) => toggle(t, on)} />
-            <label htmlFor={`awx-action-${t}`}>{targetLabel[t]}</label>
+        <legend className="mb-1 text-secondary font-medium">{t("day2.runsOn")}</legend>
+        {(Object.keys(targetKey) as Target[]).map((x) => (
+          <div key={x} className="flex items-center gap-2 text-body">
+            <Checkbox id={`awx-action-${x}`} checked={types.includes(x)} onChange={(on) => toggle(x, on)} />
+            <label htmlFor={`awx-action-${x}`}>{targetLabel(t, x)}</label>
             <span className="text-secondary text-faint">
-              {t === "deployment" ? "every VM of the deployment at once" : "one VM at a time"}
+              {x === "deployment" ? t("day2.everyVm") : t("day2.oneVm")}
             </span>
           </div>
         ))}
-        {types.length === 0 && <p className="text-secondary text-muted">Choose where it runs.</p>}
+        {types.length === 0 && <p className="text-secondary text-muted">{t("day2.chooseWhere")}</p>}
         {errors["/types"] && (
           <p id="awx-action-types-error" className="text-secondary text-bad">
             {errors["/types"]}
@@ -147,14 +152,16 @@ function ActionSheet({ a, onClose }: { a: AwxAction; onClose: () => void }) {
         )}
       </fieldset>
       <Field
-        label="Condition"
+        label={t("day2.condition")}
         htmlFor="awx-action-condition"
         error={errors["/condition"]}
         hint={
-          <>
-            Offered only where this CEL expression is true, for example{" "}
-            <span className="font-mono">resource.os_family == &apos;linux&apos;</span>. Empty: everywhere.
-          </>
+          <Trans
+            t={t}
+            i18nKey="day2.conditionHint"
+            values={{ example: celExample }}
+            components={{ cel: <span className="font-mono" /> }}
+          />
         }
       >
         <Textarea
@@ -166,16 +173,16 @@ function ActionSheet({ a, onClose }: { a: AwxAction; onClose: () => void }) {
       </Field>
       <label htmlFor="awx-action-enabled" className="flex items-center gap-2 text-body">
         <Checkbox id="awx-action-enabled" checked={enabled} onChange={setEnabled} />
-        Offered on deployments
+        {t("day2.offeredOnDeployments")}
       </label>
     </Sheet>
   );
 }
 
-const columnsOf = (forms: Forms): Column<AwxAction>[] => [
+const columnsOf = (t: TFunction<"admin">, forms: Forms): Column<AwxAction>[] => [
   {
     id: "action",
-    header: "Action",
+    header: t("day2.action"),
     sortValue: (a) => a.name,
     cell: (a) => (
       <>
@@ -186,36 +193,39 @@ const columnsOf = (forms: Forms): Column<AwxAction>[] => [
   },
   {
     id: "template",
-    header: "AWX template",
+    header: t("day2.template"),
     sortValue: (a) => a.template,
     cell: (a) => (
       <>
         <div className="font-mono text-secondary">{a.template}</div>
         <div className="text-caption text-faint">
-          {a.workflow ? "Workflow" : "Job template"} #{a.template_id}
-          {a.fields && a.fields.length > 0 ? `, asks for ${a.fields.join(", ")}` : ", no survey"}
+          {a.workflow ? t("day2.workflowId", { id: a.template_id }) : t("day2.jobTemplateId", { id: a.template_id })}
+          {a.fields && a.fields.length > 0 ? t("day2.asksFor", { fields: a.fields.join(", ") }) : t("day2.noSurvey")}
         </div>
       </>
     ),
   },
   {
     id: "offered",
-    header: "Offered on",
+    header: t("day2.offeredOn"),
     cell: (a) => (
       <div className="text-secondary">
-        <div>{a.types.map((t) => targetLabel[t]).join(", ")}</div>
-        <div className="mt-0.5 font-mono text-caption text-muted">{a.condition || "Everywhere"}</div>
+        <div>{a.types.map((x) => targetLabel(t, x)).join(", ")}</div>
+        <div className="mt-0.5 font-mono text-caption text-muted">{a.condition || t("day2.everywhere")}</div>
       </div>
     ),
   },
   {
     id: "status",
-    header: "Status",
+    header: t("day2.status"),
     cell: (a) => (
       <>
         <Status a={a} />
         {a.warnings.length > 0 && (
-          <ul aria-label={`Warnings for ${a.name}`} className="mt-1 flex flex-col gap-0.5 text-secondary text-muted">
+          <ul
+            aria-label={t("day2.warningsFor", { name: a.name })}
+            className="mt-1 flex flex-col gap-0.5 text-secondary text-muted"
+          >
             {a.warnings.map((w) => (
               <li key={w}>{w}</li>
             ))}
@@ -226,12 +236,12 @@ const columnsOf = (forms: Forms): Column<AwxAction>[] => [
   },
   {
     id: "form",
-    header: "Form",
-    cell: (a) => <FormState f={forms.get(a.key)} base="Survey" />,
+    header: t("day2.form"),
+    cell: (a) => <FormState f={forms.get(a.key)} base={t("day2.survey")} />,
   },
   {
     id: "synced",
-    header: "Synced",
+    header: t("day2.synced"),
     align: "end",
     sortValue: (a) => a.synced_at,
     cell: (a) => (
@@ -244,10 +254,10 @@ const columnsOf = (forms: Forms): Column<AwxAction>[] => [
 
 const workflowKey = (w: WorkflowRegistration) => `wf.${w.key}`;
 
-const workflowColumnsOf = (forms: Forms): Column<WorkflowRegistration>[] => [
+const workflowColumnsOf = (t: TFunction<"admin">, forms: Forms): Column<WorkflowRegistration>[] => [
   {
     id: "action",
-    header: "Action",
+    header: t("day2.action"),
     sortValue: (w) => w.day2?.name ?? w.title,
     cell: (w) => (
       <>
@@ -258,7 +268,7 @@ const workflowColumnsOf = (forms: Forms): Column<WorkflowRegistration>[] => [
   },
   {
     id: "workflow",
-    header: "Workflow",
+    header: t("day2.workflow"),
     sortValue: (w) => w.title,
     cell: (w) => (
       <>
@@ -269,66 +279,63 @@ const workflowColumnsOf = (forms: Forms): Column<WorkflowRegistration>[] => [
   },
   {
     id: "offered",
-    header: "Offered on",
+    header: t("day2.offeredOn"),
     cell: (w) => (
       <div className="text-secondary">
         {w.day2?.offered && w.enabled ? (
           <>
-            <div>{w.day2.types.map((t) => targetLabel[t]).join(", ")}</div>
-            <div className="mt-0.5 font-mono text-caption text-muted">{w.day2.condition || "Everywhere"}</div>
+            <div>{w.day2.types.map((x) => targetLabel(t, x)).join(", ")}</div>
+            <div className="mt-0.5 font-mono text-caption text-muted">{w.day2.condition || t("day2.everywhere")}</div>
           </>
         ) : (
-          <Badge tone="neutral">Off</Badge>
+          <Badge tone="neutral">{t("day2.off")}</Badge>
         )}
       </div>
     ),
   },
   {
     id: "form",
-    header: "Form",
-    cell: (w) => <FormState f={forms.get(workflowKey(w))} base="Input schema" />,
+    header: t("day2.form"),
+    cell: (w) => <FormState f={forms.get(workflowKey(w))} base={t("day2.inputSchema")} />,
   },
 ];
 
 function WorkflowActions({ forms }: { forms: Forms }) {
+  const { t } = useTranslation("admin");
   const navigate = useNavigate();
   const workflows = useQuery(adm.workflows());
   const rows = workflows.data?.items.filter((w) => w.usages.includes("day2_action") && w.day2);
   return (
     <Panel
-      title="From custom workflows"
+      title={t("day2.fromWorkflows")}
       description={
-        <>
-          Workflows registered for day-2 actions on the{" "}
-          <Link to="/admin/workflows" className="text-accent underline underline-offset-2">
-            Custom workflows
-          </Link>{" "}
-          page. Their input schema is the form people fill in, unless you design one.
-        </>
+        <Trans
+          t={t}
+          i18nKey="day2.fromWorkflowsDescription"
+          components={{
+            workflows: <Link to="/admin/workflows" className="text-accent underline underline-offset-2" />,
+          }}
+        />
       }
       flush
     >
       <DataTable
-        label="Workflow day-2 actions"
-        columns={workflowColumnsOf(forms)}
+        label={t("day2.workflowActions")}
+        columns={workflowColumnsOf(t, forms)}
         rows={rows}
         rowKey={workflowKey}
         minWidth={720}
         loading={workflows.isPending}
         error={workflows.isError && <ErrorState error={workflows.error} onRetry={() => void workflows.refetch()} />}
         empty={
-          <EmptyState
-            icon={Workflow}
-            title="No workflow actions"
-            body="Register a custom workflow for day-2 actions: it becomes an action here."
-          />
+          <EmptyState icon={Workflow} title={t("day2.noWorkflowActions")} body={t("day2.noWorkflowActionsBody")} />
         }
-        rowMenuLabel={(w) => `Actions for ${w.day2?.name ?? w.title}`}
+        rowMenuLabel={(w) => t("day2.actionsFor", { name: w.day2?.name ?? w.title })}
         rowMenu={(w) => (
           <MenuItem
             onSelect={() => void navigate({ to: "/admin/day2-actions/$key/form", params: { key: workflowKey(w) } })}
           >
-            Design the form
+            {t("day2.design")}
           </MenuItem>
         )}
       />
@@ -337,6 +344,7 @@ function WorkflowActions({ forms }: { forms: Forms }) {
 }
 
 export function Day2ActionsPage() {
+  const { t } = useTranslation(["admin", "shell"]);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const actions = useQuery(q.awxActions());
@@ -348,38 +356,44 @@ export function Day2ActionsPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.awxActions });
       void qc.invalidateQueries({ queryKey: keys.awxTemplates });
-      toast.success("AWX templates synced");
+      toast.success(t("day2.syncedToast"));
     },
-    onError: (e) => failed(e, "The sync failed"),
+    onError: (e) => failed(e, t("day2.syncFailed")),
   });
   const syncButton = (
     <Button size="sm" disabled={sync.isPending} onClick={() => sync.mutate()}>
-      {sync.isPending ? "Syncing…" : "Sync now"}
+      {sync.isPending ? t("day2.syncing") : t("day2.sync")}
     </Button>
   );
   return (
     <Page>
       <PageHeader
-        title="Day-2 actions"
+        title={t("shell:nav.admin.day2Actions")}
         description={
-          <>
-            What people may run on a deployment or a VM besides the built-in actions. Who may run which is set by the{" "}
-            <Link to="/admin/policies" search={{ tab: "day2" }} className="text-accent underline underline-offset-2">
-              day-2 policies
-            </Link>
-            .
-          </>
+          <Trans
+            t={t}
+            i18nKey="day2.description"
+            components={{
+              policies: (
+                <Link
+                  to="/admin/policies"
+                  search={{ tab: "day2" }}
+                  className="text-accent underline underline-offset-2"
+                />
+              ),
+            }}
+          />
         }
       />
       <Panel
-        title="From AWX"
-        description="Templates of rvav's AWX organisation with the day2 label become actions here, every few minutes or when you sync. Their survey is the form people fill in, unless you design one."
+        title={t("day2.fromAwx")}
+        description={t("day2.fromAwxDescription")}
         flush
         actions={actions.data?.items.length ? syncButton : undefined}
       >
         <DataTable
-          label="AWX day-2 actions"
-          columns={columnsOf(forms)}
+          label={t("day2.awxActions")}
+          columns={columnsOf(t, forms)}
           rows={actions.data?.items}
           rowKey={(a) => a.key}
           minWidth={1000}
@@ -388,17 +402,17 @@ export function Day2ActionsPage() {
           empty={
             <EmptyState
               icon={Wrench}
-              title="No AWX actions yet"
-              body="Give a job template or workflow the day2 label in AWX, then sync: it becomes an action here."
+              title={t("day2.noAwxActions")}
+              body={t("day2.noAwxActionsBody")}
               action={syncButton}
             />
           }
-          rowMenuLabel={(a) => `Actions for ${a.name}`}
+          rowMenuLabel={(a) => t("day2.actionsFor", { name: a.name })}
           rowMenu={(a) => (
             <>
-              <MenuItem onSelect={() => setEditing(a)}>Change</MenuItem>
+              <MenuItem onSelect={() => setEditing(a)}>{t("day2.changeItem")}</MenuItem>
               <MenuItem onSelect={() => void navigate({ to: "/admin/day2-actions/$key/form", params: { key: a.key } })}>
-                Design the form
+                {t("day2.design")}
               </MenuItem>
               <MenuSeparator />
               <MenuItem
@@ -408,13 +422,15 @@ export function Day2ActionsPage() {
                     {
                       a,
                       body: { enabled: !a.enabled },
-                      done: a.enabled ? `${a.name} is no longer offered` : `${a.name} is offered`,
+                      done: a.enabled
+                        ? t("day2.noLongerOffered", { name: a.name })
+                        : t("day2.isOffered", { name: a.name }),
                     },
-                    { onError: (e) => failed(e, "Not saved") },
+                    { onError: (e) => failed(e, t("day2.notSaved")) },
                   )
                 }
               >
-                {a.enabled ? "Stop offering" : "Offer on deployments"}
+                {a.enabled ? t("day2.stopOffering") : t("day2.offerOnDeployments")}
               </MenuItem>
             </>
           )}
