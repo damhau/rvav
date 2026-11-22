@@ -22,8 +22,11 @@ const maxTokenDays = 366
 
 func presentToken(t store.APIToken) api.ApiToken {
 	scope := api.ApiTokenScopeAll
-	if t.Scope == auth.ScopeInventory {
+	switch t.Scope {
+	case auth.ScopeInventory:
 		scope = api.ApiTokenScopeInventory
+	case auth.ScopeServiceNow:
+		scope = api.ApiTokenScopeServicenow
 	}
 	return api.ApiToken{Id: t.ID, Name: t.Name, Scope: scope, User: api.UserRef{Id: t.UserID, Name: t.UserName},
 		CreatedAt: t.CreatedAt, ExpiresAt: t.ExpiresAt, LastUsedAt: t.LastUsedAt}

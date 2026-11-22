@@ -750,7 +750,7 @@ func (a *App) RunSync(ctx context.Context) error {
 	}
 	// ServiceNow's CMDB and requested items (ADR-0065): read on next use,
 	// so it runs whether set yet or not.
-	snow := &snowsync.Syncer{Store: a.Store, Log: a.Log,
+	snow := &snowsync.Syncer{Store: a.Store, Log: a.Log, PublicURL: a.Cfg.PublicURL,
 		Config: func(ctx context.Context) config.ServiceNowConfig { return a.live(ctx).ServiceNow }}
 	go func() { _ = snow.Run(ctx) }()
 	if !a.Cfg.VCenter.Configured() {

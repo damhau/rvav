@@ -23,16 +23,24 @@ import (
 // Submit validates a draft again, records the request with its pending steps
 // and deployments, and starts its workflow.
 func (s *Service) Submit(ctx context.Context, p *auth.Principal, d api.RequestDraft) (store.RequestRow, error) {
-	return s.submit(ctx, p, d, nil)
+	return s.submit(ctx, p, d, origin{})
 }
 
-// submit is Submit; with fire, a recurring schedule's run (ADR-0057),
-// recorded with its request so that a firing tried again submits once.
-func (s *Service) submit(ctx context.Context, p *auth.Principal, d api.RequestDraft, fire *provision.ScheduleFiring) (store.RequestRow, error) {
-	return s.placing(ctx, func() (store.RequestRow, error) { return s.submitOnce(ctx, p, d, fire) })
+// origin is what made a request besides its requester, recorded with it
+// in the same transaction: a recurring schedule's run (ADR-0057), so that
+// a firing tried again submits once; or a requested item in ServiceNow
+// (ADR-0065), so that one item makes one request.
+type origin struct {
+	fire *provision.ScheduleFiring
+	snow *store.ServiceNowRequest
 }
 
-func (s *Service) submitOnce(ctx context.Context, p *auth.Principal, d api.RequestDraft, fire *provision.ScheduleFiring) (store.RequestRow, error) {
+func (s *Service) submit(ctx context.Context, p *auth.Principal, d api.RequestDraft, o origin) (store.RequestRow, error) {
+	return s.placing(ctx, func() (store.RequestRow, error) { return s.submitOnce(ctx, p, d, o) })
+}
+
+func (s *Service) submitOnce(ctx context.Context, p *auth.Principal, d api.RequestDraft, o origin) (store.RequestRow, error) {
+	fire := o.fire
 	ev, err := s.Evaluate(ctx, p, d, true)
 	if err != nil {
 		return store.RequestRow{}, err
@@ -204,6 +212,12 @@ func (s *Service) submitOnce(ctx context.Context, p *auth.Principal, d api.Reque
 				return err
 			} else if !added {
 				return errFiredAlready
+			}
+		}
+		if o.snow != nil {
+			o.snow.RequestID = req.ID
+			if err := s.Store.InsertServiceNowRequest(ctx, tx, *o.snow); err != nil {
+				return err
 			}
 		}
 		if err := s.auditWarnings(ctx, tx, p, req, ev.Warnings); err != nil {

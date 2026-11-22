@@ -311,6 +311,8 @@ ServiceNow, the settings apply from the next call to ServiceNow.
 | `RVAV_SERVICENOW_DATA_SOURCE` | `rvav` | | Integrations › ServiceNow | The IRE's discovery source: a value of the `cmdb_ci.discovery_source` choice list. Add it to the list before turning the CMDB on. |
 | `RVAV_SERVICENOW_PROJECTS` | every project | | Integrations › ServiceNow | Comma-separated IDs or codes of the projects whose VMs are kept. Other projects' CIs stay as they are, and are still retired when their VM goes. |
 | `RVAV_SERVICENOW_SYNC_INTERVAL` | `30m` | | Integrations › ServiceNow | How often rvav looks at every VM again, for changes no event told of, and lists the CIs of its data source it doesn't keep. |
+| `RVAV_SERVICENOW_ALLOWED_SOURCES` | any | | Integrations › ServiceNow | Comma-separated addresses or networks (`10.0.0.0/8`) ServiceNow's calls may come from: the instance's outbound addresses, or its MID server's. rvav reads the caller's address after `RVAV_TRUSTED_PROXIES`. |
+| `RVAV_SERVICENOW_REQUESTS_PER_MINUTE` | `30` | | Integrations › ServiceNow | How many requests ServiceNow may submit a minute, across rvav's API processes; each process takes ten times as many reads (the catalog, entitlements and requests). More are answered 429, with `Retry-After`. |
 
 ## Secrets, value sources and webhooks
 

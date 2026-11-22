@@ -172,7 +172,10 @@ func (s *Server) GetRequest(w http.ResponseWriter, r *http.Request, requestID ap
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, present.Request(row, s.secretFields(r, row.VersionID)))
+	out := present.Request(row, s.secretFields(r, row.VersionID))
+	ref, err := s.Core.ServiceNowRefOfRequest(r.Context(), row.ID)
+	out.Servicenow = ref
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 func (s *Server) ListRequestSteps(w http.ResponseWriter, r *http.Request, requestID api.RequestIdPath) {

@@ -126,7 +126,10 @@ ServiceNow calls rvav with an rvav API token that only ServiceNow's
 endpoints take, under `/api/v1/servicenow/`:
 
 - `GET /servicenow/catalog`: every item with a published version shared
-  in some project, with its inputs, for ServiceNow's import;
+  in some project, with the inputs a ServiceNow variable can hold
+  (strings, numbers, booleans, choices from a fixed list; `dynamic` when
+  rvav finds the options at request time; secrets, files, lists and
+  objects left out), for ServiceNow's import;
 - `GET /servicenow/entitlements?user=`: the projects, environments and
   items a user may request in, which ServiceNow's catalog form offers;
 - `POST /servicenow/requests`: a request on behalf of a user, for a
@@ -144,21 +147,30 @@ session is answered 403). The permission it carries,
 built-in or custom, can grant it, not even the administrator's, and
 rvav gives it only to a token of that scope held by that user. The token
 is shown once, valid a year; making a new one revokes the earlier, and
-Revoke cuts ServiceNow off. Making and revoking are audited.
+Revoke cuts ServiceNow off (`GET`, `POST` and `DELETE
+/admin/integrations/servicenow/token`, with `integrations.manage`).
+Making and revoking are audited (`servicenow.token`,
+`servicenow.token_revoked`).
 
-**On whose behalf.** A request names its user by `email`, or by
-`user_name` (ServiceNow's `sys_user.user_name`). rvav looks the email up
-among its users, whatever the case; a user name is taken as the part
-before the `@` of exactly one user's email (two match: refused as
-ambiguous). The user must have signed in to rvav at least once, and must
-not be the local administrator or one of rvav's own users. The request
-is then the user's own: rvav builds the user's principal from the roles
-and the groups of their last sign-in, and submits as they would, with
-their entitlements, quotas, approval policies, lease rules and soft
-policies' warnings (which a request from ServiceNow can only accept by
-saying so, `accept_warnings`). Nothing the integration holds is added:
-an item the user can't request in that project answers 404, as it would
-to them.
+**On whose behalf.** A request names its user in `user`: an email, or,
+without an `@`, a user name (ServiceNow's `sys_user.user_name`). rvav
+looks the email up among its users, whatever the case; a user name is
+taken as the part before the `@` of exactly one user's email (two match:
+refused as ambiguous). No match is refused (422 on `/user`, 404 for the
+entitlements). Never the local administrator or one of rvav's own users.
+The request is then the user's own: rvav builds the user's principal from
+their roles and the groups of their last sign-in (none for a user who
+hasn't signed in yet, who then has their direct memberships only), and
+submits as they would, with their entitlements, quotas, approval
+policies, lease rules and soft policies' warnings (which a request from
+ServiceNow can only accept by saying so, `accept_warnings`). Nothing the
+integration holds is added: an item the user can't request in that
+project, or a project they can't see, answers 404, as it would to them.
+Inputs ServiceNow leaves out take the form's initial values (ADR-0055);
+the default version is requested; the justification ServiceNow sends is
+kept, followed by "Requested in ServiceNow, RITM…". A submission needs
+the connection set (409 otherwise): rvav couldn't tell the requested
+item how it goes.
 
 The request keeps the requested item's number and `sys_id`
 (`servicenow_requests`), its API shows them (`servicenow` on `Request`
@@ -166,16 +178,20 @@ and on the deployment it made, with a link to the record), and a second
 submission for the same `sys_id` answers the request already made (200)
 rather than making another. The audit log has
 `servicenow.request`: the actor is ServiceNow's user, the target the
-request, the detail the user it was made for (ID, name, email), the
-email or user name ServiceNow gave, the requested item, the token and
-where the call came from. A refusal (no such user, an item not
-entitled, a policy) is audited as `servicenow.request_refused` with why.
+request, the detail `via: servicenow`, the user it was made for
+(`on_behalf_of`: ID, name, email), the email or user name ServiceNow
+gave, the requested item, the token, and the caller's address and user
+agent. A refusal (no such user, an item not entitled, a policy) is
+audited as `servicenow.request_refused` with why. The request itself is
+the user's: they are its requester, and its page says it came from
+ServiceNow, with the requested item's number.
 
 **Progress back.** The dispatcher, in the same transaction as for the
 CMDB, queues a work note for each event of a request made from
 ServiceNow (`servicenow_ritm_notes`): submitted, awaiting approval,
 approved or rejected, built or failed, and the deployment's link. The
-sync process sends them in order through the Table API, one PATCH of
+sync process sends them in order through the Table API, the note's
+text written from the event when it is sent, one PATCH of
 `sc_req_item` each with its `work_notes` and `state`: 2 (work in
 progress) while rvav works, 3 (closed complete) when it succeeded, 4
 (closed incomplete) when it failed, was rejected or cancelled. A note
@@ -189,10 +205,10 @@ wait, so the record reads in order.
   `allowed_sources` (the instance's outbound addresses, or the MID
   server's) refuses calls from elsewhere, read after the trusted
   proxies; submissions are limited to `requests_per_minute` (30 by
-  default) across rvav's API processes, counted in the database, and
-  reads to the same rate per process; every request made is audited
-  with the token and the address; the token expires in a year, and
-  Revoke ends it at once.
+  default) across rvav's API processes, counted by the minute in the
+  database (`servicenow_rate`), and reads to ten times that rate in each
+  process; every request made is audited with the token and the
+  address; the token expires in a year, and Revoke ends it at once.
 - **A forged user name.** rvav believes the user ServiceNow names: it
   can't check who ordered in ServiceNow. ServiceNow's side takes the
   user from the requested item's `requested_for`, which its own ACLs
@@ -202,8 +218,9 @@ wait, so the record reads in order.
   request in rvav as the user's, made via ServiceNow. Matching on email
   first, and refusing an ambiguous user name, keeps one ServiceNow user
   from being taken for another rvav user.
-- **Rate limits** answer 429 with `Retry-After`, audited once a minute
-  at most, so a flood doesn't fill the log.
+- **Rate limits** answer 429 with `Retry-After` (the seconds to the
+  next minute), audited as `servicenow.request_limited` once a minute at
+  most in each process, so a flood doesn't fill the log.
 - **What the audit shows**: who the request was for, what ServiceNow
   said (the email or user name), which requested item, which token,
   which address and user agent; refusals likewise.

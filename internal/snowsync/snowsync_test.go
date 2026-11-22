@@ -1,8 +1,10 @@
 package snowsync
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/damhau/rvav/internal/integrations/servicenow"
 	"github.com/damhau/rvav/internal/store"
 )
 
@@ -36,6 +38,41 @@ func TestInScope(t *testing.T) {
 	}{{nil, true}, {[]string{"web"}, true}, {[]string{"prj_web"}, true}, {[]string{"data"}, false}} {
 		if got := InScope(c.projects, "prj_web", "web"); got != c.want {
 			t.Errorf("InScope(%v) = %v", c.projects, got)
+		}
+	}
+}
+
+func TestNote(t *testing.T) {
+	for _, c := range []struct {
+		topic, data, state string
+		says               []string
+	}{
+		{"request.submitted", `"request": {"number": "REQ-10491", "status": "queued"}, "item": {"name": "RHEL 9 server"}`,
+			servicenow.ItemWorkInProgress, []string{"REQ-10491 (RHEL 9 server) submitted", "https://rvav.corp.example/requests/REQ-10491"}},
+		{"approval.requested", `"request": {"number": "REQ-10491"}, "approval": {"name": "Production change", "level": 1,
+			"approvers": [{"name": "Léa Martin"}], "groups": ["rvav-web-admins"]}`, "",
+			[]string{"waits for approval: Production change (level 1), by Léa Martin, rvav-web-admins"}},
+		{"approval.decided", `"request": {"number": "REQ-10491"}, "approval": {"name": "Production change", "level": 1,
+			"outcome": "approved", "decided_by": {"name": "Léa Martin"}}`, "", []string{"REQ-10491 approved by Léa Martin at Production change"}},
+		{"provisioning.post", `"request": {"number": "REQ-10491", "status": "succeeded",
+			"outcome": "succeeded"}, "deployments": [{"id": "dep_1", "name": "web-dev-app001"}]`,
+			servicenow.ItemClosedComplete, []string{"succeeded", "web-dev-app001 https://rvav.corp.example/deployments/dep_1"}},
+		{"provisioning.post", `"request": {"number": "REQ-10491", "status": "failed", "outcome": "failed"}`,
+			servicenow.ItemClosedIncomplete, []string{"REQ-10491 failed."}},
+		{"provisioning.post", `"request": {"number": "REQ-10491", "status": "rejected", "outcome": "failed"}`,
+			servicenow.ItemClosedIncomplete, []string{"was rejected"}},
+		{"provisioning.post", `"request": {"number": "REQ-10491", "status": "cancelled", "outcome": "cancelled"}`,
+			servicenow.ItemClosedIncomplete, []string{"was cancelled"}},
+		{"deployment.changed", `"request": {"number": "REQ-10491"}`, "", nil},
+	} {
+		state, text := Note(store.ServiceNowNote{Topic: c.topic, Payload: []byte(`{"data": {` + c.data + `}}`)}, "https://rvav.corp.example/")
+		if state != c.state || (c.says == nil) != (text == "") {
+			t.Errorf("%s %s: state %q, note %q", c.topic, c.data, state, text)
+		}
+		for _, w := range c.says {
+			if !strings.Contains(text, w) {
+				t.Errorf("%s: %q doesn't say %q", c.topic, text, w)
+			}
 		}
 	}
 }

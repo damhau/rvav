@@ -41,8 +41,13 @@ var auditCategories = map[string]string{
 
 // AuditCategory is the category of an action, by its first word.
 func AuditCategory(action string) string {
-	if strings.HasPrefix(action, "awx.inventory_token") {
+	switch {
+	case strings.HasPrefix(action, "awx.inventory_token"), strings.HasPrefix(action, "servicenow.token"):
 		return AuditToken
+	case strings.HasPrefix(action, "servicenow.request"):
+		return AuditRequest
+	case strings.HasPrefix(action, "servicenow."):
+		return AuditSettings
 	}
 	first, _, _ := strings.Cut(action, ".")
 	if c, ok := auditCategories[first]; ok {

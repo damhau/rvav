@@ -438,6 +438,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 		"resource-types/{key}":           "a1-lb",
 		"variables/{key}":                "a1.site",
 		"schedules/{scheduleId}":         schedule.Id,
+		"requests/{ritmSysId}":           a1RITM,
 		"signal/{name}":                  "a1-signal",
 		"tokens/{id}":                    token.Id,
 		"files/{fileId}":                 attached,
@@ -529,7 +530,7 @@ func (w a1Walk) fill(template string, params openapi3.Parameters) string {
 	}
 	values := map[string]string{"project_id": "prj_web", "user_id": seed.UserID("tnguyen"), "environment": "dev",
 		"from": w.ids["versions/{versionId}"], "to": w.ids["versions/{versionId}"], "topics": "deployments",
-		"version_id": w.ids["versions/{versionId}"], "field": "cluster", "name": "rules.csv"}
+		"version_id": w.ids["versions/{versionId}"], "field": "cluster", "name": "rules.csv", "user": "thomas.nguyen@corp.example"}
 	var query []string
 	for _, ref := range params {
 		p := ref.Value
@@ -718,6 +719,9 @@ func (w a1Walk) compare() {
 }
 
 // body is a valid write where the API checks the body before the caller.
+// a1RITM is a requested item's sys_id: only ServiceNow's token reaches it.
+const a1RITM = "9d385017c611228701d22104cc95c371"
+
 func (w a1Walk) body(o a1Op) any {
 	switch o.id {
 	case "markNotificationsRead":
@@ -737,6 +741,9 @@ func (w a1Walk) body(o a1Op) any {
 		return api.PolicyExplainQuery{Environment: "dev", ProjectId: "prj_web", Action: new("power_off")}
 	case "createRequest":
 		return w.draft
+	case "submitServiceNowRequest":
+		return api.ServiceNowRequestDraft{RitmSysId: a1RITM, RitmNumber: "RITM0010045", User: "thomas.nguyen@corp.example",
+			CatalogItemId: w.draft.CatalogItemId, ProjectId: w.draft.ProjectId, Environment: string(w.draft.Environment)}
 	case "createSchedule":
 		return api.ScheduleWrite{Name: "A1", CatalogItemId: w.draft.CatalogItemId, VersionId: w.draft.VersionId, ProjectId: w.draft.ProjectId,
 			Environment: w.draft.Environment, Inputs: w.draft.Inputs, EveryMinutes: new(60)}

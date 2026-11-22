@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/netip"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -254,6 +256,23 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 				"It was made with the inventory scope (rvav api-token -scope inventory).", nil)
 			return
 		}
+		// ServiceNow's token goes nowhere else, and nothing else goes there
+		// (ADR-0065).
+		snow := strings.HasPrefix(r.URL.Path, "/api/v1/servicenow/")
+		switch {
+		case p.Scope == auth.ScopeServiceNow && !snow:
+			s.problem(w, r, http.StatusForbidden, "forbidden", "This token only takes ServiceNow's calls",
+				"It is ServiceNow's token, made in Administration › Integrations › ServiceNow.", nil)
+			return
+		case snow && !p.Holds(auth.ServiceNowRequest):
+			s.problem(w, r, http.StatusForbidden, "forbidden", "Only ServiceNow's token is taken here",
+				"Make it in Administration › Integrations › ServiceNow, and give it to ServiceNow.", nil)
+			return
+		case snow && !s.Core.ServiceNowSourceAllowed(r.Context()):
+			s.problem(w, r, http.StatusForbidden, "forbidden", "Not from ServiceNow's addresses",
+				"The call comes from an address the ServiceNow integration's allowed sources don't list.", nil)
+			return
+		}
 		next.ServeHTTP(w, r.WithContext(auth.WithPrincipal(r.Context(), p)))
 	})
 }
@@ -289,9 +308,13 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		te  *core.TooLargeError
 		me  *core.UnsupportedTypeError
 		ue  *core.UpstreamError
+		rl  *core.RateLimitedError
 		msg = err.Error()
 	)
 	switch {
+	case errors.As(err, &rl):
+		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(rl.RetryAfter.Seconds())))))
+		s.problem(w, r, http.StatusTooManyRequests, "too-many-requests", "Too many requests", rl.Msg, nil)
 	case errors.Is(err, core.ErrNotFound), errors.Is(err, store.ErrNotFound):
 		s.problem(w, r, http.StatusNotFound, "not-found", "Not found", "It does not exist, or you cannot see it.", nil)
 	case errors.Is(err, core.ErrForbidden):

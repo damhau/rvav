@@ -80,8 +80,9 @@ func (e AdminCatalogItemSourceKind) Valid() bool {
 
 // Defines values for ApiTokenScope.
 const (
-	ApiTokenScopeAll       ApiTokenScope = "all"
-	ApiTokenScopeInventory ApiTokenScope = "inventory"
+	ApiTokenScopeAll        ApiTokenScope = "all"
+	ApiTokenScopeInventory  ApiTokenScope = "inventory"
+	ApiTokenScopeServicenow ApiTokenScope = "servicenow"
 )
 
 // Valid indicates whether the value is a known member of the ApiTokenScope enum.
@@ -90,6 +91,8 @@ func (e ApiTokenScope) Valid() bool {
 	case ApiTokenScopeAll:
 		return true
 	case ApiTokenScopeInventory:
+		return true
+	case ApiTokenScopeServicenow:
 		return true
 	default:
 		return false
@@ -116,8 +119,9 @@ func (e ApiTokenCreateScope) Valid() bool {
 
 // Defines values for ApiTokenCreatedScope.
 const (
-	ApiTokenCreatedScopeAll       ApiTokenCreatedScope = "all"
-	ApiTokenCreatedScopeInventory ApiTokenCreatedScope = "inventory"
+	ApiTokenCreatedScopeAll        ApiTokenCreatedScope = "all"
+	ApiTokenCreatedScopeInventory  ApiTokenCreatedScope = "inventory"
+	ApiTokenCreatedScopeServicenow ApiTokenCreatedScope = "servicenow"
 )
 
 // Valid indicates whether the value is a known member of the ApiTokenCreatedScope enum.
@@ -126,6 +130,8 @@ func (e ApiTokenCreatedScope) Valid() bool {
 	case ApiTokenCreatedScopeAll:
 		return true
 	case ApiTokenCreatedScopeInventory:
+		return true
+	case ApiTokenCreatedScopeServicenow:
 		return true
 	default:
 		return false
@@ -2262,6 +2268,30 @@ func (e SecretWriteKind) Valid() bool {
 	}
 }
 
+// Defines values for ServiceNowInputType.
+const (
+	ServiceNowInputTypeBoolean ServiceNowInputType = "boolean"
+	ServiceNowInputTypeInteger ServiceNowInputType = "integer"
+	ServiceNowInputTypeNumber  ServiceNowInputType = "number"
+	ServiceNowInputTypeString  ServiceNowInputType = "string"
+)
+
+// Valid indicates whether the value is a known member of the ServiceNowInputType enum.
+func (e ServiceNowInputType) Valid() bool {
+	switch e {
+	case ServiceNowInputTypeBoolean:
+		return true
+	case ServiceNowInputTypeInteger:
+		return true
+	case ServiceNowInputTypeNumber:
+		return true
+	case ServiceNowInputTypeString:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SettingsRevisionApplies.
 const (
 	Applied  SettingsRevisionApplies = "applied"
@@ -4087,12 +4117,12 @@ type ApiToken struct {
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	Name       string     `json:"name"`
 
-	// Scope all acts as the user; inventory only reads the Ansible inventory.
+	// Scope all acts as the user; inventory only reads the Ansible inventory; servicenow only takes ServiceNow's calls (ADR-0065).
 	Scope ApiTokenScope `json:"scope"`
 	User  UserRef       `json:"user"`
 }
 
-// ApiTokenScope all acts as the user; inventory only reads the Ansible inventory.
+// ApiTokenScope all acts as the user; inventory only reads the Ansible inventory; servicenow only takes ServiceNow's calls (ADR-0065).
 type ApiTokenScope string
 
 // ApiTokenCreate defines model for ApiTokenCreate.
@@ -4113,7 +4143,7 @@ type ApiTokenCreated struct {
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	Name       string     `json:"name"`
 
-	// Scope all acts as the user; inventory only reads the Ansible inventory.
+	// Scope all acts as the user; inventory only reads the Ansible inventory; servicenow only takes ServiceNow's calls (ADR-0065).
 	Scope ApiTokenCreatedScope `json:"scope"`
 
 	// Token Shown this once.
@@ -4121,7 +4151,7 @@ type ApiTokenCreated struct {
 	User  UserRef `json:"user"`
 }
 
-// ApiTokenCreatedScope all acts as the user; inventory only reads the Ansible inventory.
+// ApiTokenCreatedScope all acts as the user; inventory only reads the Ansible inventory; servicenow only takes ServiceNow's calls (ADR-0065).
 type ApiTokenCreatedScope string
 
 // ApiTokenList defines model for ApiTokenList.
@@ -5848,9 +5878,12 @@ type DeploymentDetail struct {
 	Project ProjectRef `json:"project"`
 
 	// RemoteAccess The users people sign in to the VMs as, one per component that has one (ADR-0039).
-	RemoteAccess *[]RemoteAccess  `json:"remote_access,omitempty"`
-	Resources    []Resource       `json:"resources"`
-	Status       DeploymentStatus `json:"status"`
+	RemoteAccess *[]RemoteAccess `json:"remote_access,omitempty"`
+	Resources    []Resource      `json:"resources"`
+
+	// Servicenow Made by a request from ServiceNow, for this requested item.
+	Servicenow *ServiceNowRef   `json:"servicenow,omitempty"`
+	Status     DeploymentStatus `json:"status"`
 
 	// SyncState `drifted`: changed in vCenter outside rvav (size, disks, adapters'
 	// networks or power), until changed back or accepted. `missing`: no
@@ -6708,7 +6741,10 @@ type Integration struct {
 	// cert_sha256 (the secret: the user's password, or the OAuth
 	// client's secret); cmdb (keep VMs as CIs), cmdb_class, data_source
 	// (the IRE's discovery source), projects (IDs or codes; none, every
-	// project), sync_interval (the reconcile's).
+	// project), sync_interval (the reconcile's); allowed_sources (the
+	// addresses or CIDR ranges ServiceNow's calls may come from; none,
+	// any), requests_per_minute (ServiceNow's submissions, 30 by
+	// default).
 	// smtp: host, port, tls (starttls, tls, none), from, username.
 	// teams: app_id, tenant_id, service_url, login_url, graph_url,
 	// openid_url. slack: api_url.
@@ -9109,10 +9145,13 @@ type Request struct {
 		Id   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"schedule,omitempty"`
-	ScheduledAt *time.Time    `json:"scheduled_at,omitempty"`
-	StartedAt   *time.Time    `json:"started_at,omitempty"`
-	Status      RequestStatus `json:"status"`
-	SubmittedAt time.Time     `json:"submitted_at"`
+	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
+
+	// Servicenow Made from ServiceNow, for this requested item.
+	Servicenow  *ServiceNowRef `json:"servicenow,omitempty"`
+	StartedAt   *time.Time     `json:"started_at,omitempty"`
+	Status      RequestStatus  `json:"status"`
+	SubmittedAt time.Time      `json:"submitted_at"`
 
 	// Title For example `RHEL 9 server · web-dev-app007`.
 	Title   string                `json:"title"`
@@ -9868,6 +9907,34 @@ type ServerCertificate struct {
 	Trusted bool `json:"trusted"`
 }
 
+// ServiceNowCatalog defines model for ServiceNowCatalog.
+type ServiceNowCatalog struct {
+	Items []ServiceNowCatalogItem `json:"items"`
+}
+
+// ServiceNowCatalogItem defines model for ServiceNowCatalogItem.
+type ServiceNowCatalogItem struct {
+	Category    *string           `json:"category,omitempty"`
+	Description *string           `json:"description,omitempty"`
+	Id          string            `json:"id"`
+	Inputs      []ServiceNowInput `json:"inputs"`
+	Name        string            `json:"name"`
+	Slug        string            `json:"slug"`
+
+	// Type Examples: vm_blueprint
+	Type string `json:"type"`
+
+	// Version Examples: 1.2
+	Version   string `json:"version"`
+	VersionId string `json:"version_id"`
+}
+
+// ServiceNowChoice defines model for ServiceNowChoice.
+type ServiceNowChoice struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
 // ServiceNowCmdb defines model for ServiceNowCmdb.
 type ServiceNowCmdb struct {
 	// Class Examples: cmdb_ci_vmware_instance
@@ -9912,6 +9979,21 @@ type ServiceNowCmdb struct {
 	Servicenow *int `json:"servicenow,omitempty"`
 }
 
+// ServiceNowEntitlement defines model for ServiceNowEntitlement.
+type ServiceNowEntitlement struct {
+	Environments []ServiceNowChoice `json:"environments"`
+
+	// Items The IDs of the items shared with the user in the project.
+	Items   []string   `json:"items"`
+	Project ProjectRef `json:"project"`
+}
+
+// ServiceNowEntitlements defines model for ServiceNowEntitlements.
+type ServiceNowEntitlements struct {
+	Projects []ServiceNowEntitlement `json:"projects"`
+	User     ServiceNowUser          `json:"user"`
+}
+
 // ServiceNowFailure defines model for ServiceNowFailure.
 type ServiceNowFailure struct {
 	Attempts       int       `json:"attempts"`
@@ -9920,6 +10002,26 @@ type ServiceNowFailure struct {
 	Error          string    `json:"error"`
 	NextAttemptAt  time.Time `json:"next_attempt_at"`
 }
+
+// ServiceNowInput defines model for ServiceNowInput.
+type ServiceNowInput struct {
+	// Default The form's initial value, taken when ServiceNow sends none.
+	Default interface{} `json:"default,omitempty"`
+
+	// Dynamic rvav finds its options at request time (a value source); ServiceNow leaves it to the form's initial value, or sends a value it knows.
+	Dynamic bool    `json:"dynamic"`
+	Help    *string `json:"help,omitempty"`
+	Label   string  `json:"label"`
+	Name    string  `json:"name"`
+
+	// Options The values it may take, when the list is fixed.
+	Options  *[]ServiceNowChoice `json:"options,omitempty"`
+	Required bool                `json:"required"`
+	Type     ServiceNowInputType `json:"type"`
+}
+
+// ServiceNowInputType defines model for ServiceNowInput.Type.
+type ServiceNowInputType string
 
 // ServiceNowOrphan defines model for ServiceNowOrphan.
 type ServiceNowOrphan struct {
@@ -9934,6 +10036,87 @@ type ServiceNowOrphan struct {
 
 	// Url The CI in ServiceNow.
 	Url string `json:"url"`
+}
+
+// ServiceNowRef The ServiceNow requested item a request was made for (ADR-0065).
+type ServiceNowRef struct {
+	// Number Examples: RITM0010045
+	Number string `json:"number"`
+
+	// SysId Examples: 9d385017c611228701d22104cc95c371
+	SysId string `json:"sys_id"`
+
+	// Url The requested item in ServiceNow.
+	Url string `json:"url"`
+
+	// User The email or user name ServiceNow named the user by.
+	User string `json:"user"`
+}
+
+// ServiceNowRequest defines model for ServiceNowRequest.
+type ServiceNowRequest struct {
+	DeploymentIds []string `json:"deployment_ids"`
+	RequestId     string   `json:"request_id"`
+
+	// RequestNumber Examples: REQ-10491
+	RequestNumber string        `json:"request_number"`
+	RitmNumber    string        `json:"ritm_number"`
+	RitmSysId     string        `json:"ritm_sys_id"`
+	Status        RequestStatus `json:"status"`
+
+	// Url The request in rvav.
+	Url  string         `json:"url"`
+	User ServiceNowUser `json:"user"`
+}
+
+// ServiceNowRequestDraft defines model for ServiceNowRequestDraft.
+type ServiceNowRequestDraft struct {
+	// AcceptWarnings Submit despite soft policies' warnings, which the user then accepted in ServiceNow.
+	AcceptWarnings *bool   `json:"accept_warnings,omitempty"`
+	CatalogItemId  string  `json:"catalog_item_id"`
+	DeploymentName *string `json:"deployment_name,omitempty"`
+	Environment    string  `json:"environment"`
+
+	// Inputs The inputs; those left out take the form's initial values.
+	Inputs        *map[string]interface{} `json:"inputs,omitempty"`
+	Justification *string                 `json:"justification,omitempty"`
+
+	// ProjectId The project's ID or code.
+	ProjectId string `json:"project_id"`
+
+	// RitmNumber Examples: RITM0010045
+	RitmNumber string `json:"ritm_number"`
+	RitmSysId  string `json:"ritm_sys_id"`
+
+	// User The requested item's `requested_for`, by email, or by user name (the part of exactly one rvav user's email before the @).
+	User string `json:"user"`
+}
+
+// ServiceNowToken defines model for ServiceNowToken.
+type ServiceNowToken struct {
+	// AllowedSources The addresses ServiceNow's calls may come from; none, any.
+	AllowedSources    []string `json:"allowed_sources"`
+	RequestsPerMinute int      `json:"requests_per_minute"`
+
+	// Token The token made last, while it is valid.
+	Token *ApiToken `json:"token,omitempty"`
+}
+
+// ServiceNowTokenMade defines model for ServiceNowTokenMade.
+type ServiceNowTokenMade struct {
+	// Revoked Earlier tokens revoked.
+	Revoked int `json:"revoked"`
+
+	// Secret The token, shown this once.
+	Secret string   `json:"secret"`
+	Token  ApiToken `json:"token"`
+}
+
+// ServiceNowUser defines model for ServiceNowUser.
+type ServiceNowUser struct {
+	Email openapi_types.Email `json:"email"`
+	Id    string              `json:"id"`
+	Name  string              `json:"name"`
 }
 
 // SettingsRevision defines model for SettingsRevision.
@@ -12474,6 +12657,12 @@ type ListSchedulesParams struct {
 	ProjectId *ProjectIdQuery `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
+// GetServiceNowEntitlementsParams defines parameters for GetServiceNowEntitlements.
+type GetServiceNowEntitlementsParams struct {
+	// User The user's email, or ServiceNow's user name (the part of exactly one rvav user's email before the @).
+	User string `form:"user" json:"user"`
+}
+
 // ListApiTokensParams defines parameters for ListApiTokens.
 type ListApiTokensParams struct {
 	All *bool `form:"all,omitempty" json:"all,omitempty"`
@@ -12848,6 +13037,9 @@ type CreateScheduleJSONRequestBody = ScheduleWrite
 
 // PauseScheduleJSONRequestBody defines body for PauseSchedule for application/json ContentType.
 type PauseScheduleJSONRequestBody = SchedulePause
+
+// SubmitServiceNowRequestJSONRequestBody defines body for SubmitServiceNowRequest for application/json ContentType.
+type SubmitServiceNowRequestJSONRequestBody = ServiceNowRequestDraft
 
 // CreateApiTokenJSONRequestBody defines body for CreateApiToken for application/json ContentType.
 type CreateApiTokenJSONRequestBody = ApiTokenCreate
@@ -15045,6 +15237,28 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /admin/integrations/servicenow/cmdb/reconcile (the `ReconcileServiceNowCmdb` operationId).
 	ReconcileServiceNowCmdb(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeServiceNowToken Revoke ServiceNow's token, cutting ServiceNow off
+	//
+	// Audited.
+	//
+	// Corresponds with DELETE /admin/integrations/servicenow/token (the `RevokeServiceNowToken` operationId).
+	RevokeServiceNowToken(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServiceNowToken The token ServiceNow calls rvav with
+	//
+	// Corresponds with GET /admin/integrations/servicenow/token (the `GetServiceNowToken` operationId).
+	GetServiceNowToken(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MakeServiceNowToken Make ServiceNow's token, and revoke the earlier one
+	//
+	// For rvav's user `usr_rvav-servicenow`, with the scope `servicenow`:
+	// it requests on users' behalf under /servicenow/ and nowhere else.
+	// Valid a year; shown this once, to put in ServiceNow's credential.
+	// The earlier token stops working at once. Audited.
+	//
+	// Corresponds with POST /admin/integrations/servicenow/token (the `MakeServiceNowToken` operationId).
+	MakeServiceNowToken(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetIntegrationWithBody Save a connection's settings
 	//
@@ -17764,6 +17978,64 @@ type ClientInterface interface {
 	// Corresponds with POST /schedules/{scheduleId}/resume (the `ResumeSchedule` operationId).
 	ResumeSchedule(ctx context.Context, scheduleId ScheduleIdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListServiceNowCatalog Every item ServiceNow's catalog may offer, with its inputs
+	//
+	// Each catalog item with a published version, shared in at least one
+	// project, with the inputs of that version that a ServiceNow variable
+	// can hold: strings, numbers, booleans and choices from a fixed list.
+	// Inputs it can't hold (objects, lists, files, secrets) are left out;
+	// those with options rvav finds at request time say `dynamic`. An
+	// input ServiceNow doesn't send takes the form's initial value.
+	//
+	// Corresponds with GET /servicenow/catalog (the `ListServiceNowCatalog` operationId).
+	ListServiceNowCatalog(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServiceNowEntitlements Where a user may request, and what
+	//
+	// The projects the user may request in, with their environments and
+	// the items shared with the user there: what ServiceNow's catalog
+	// form offers them. The user is named as in a request.
+	//
+	// Corresponds with GET /servicenow/entitlements (the `GetServiceNowEntitlements` operationId).
+	GetServiceNowEntitlements(ctx context.Context, params *GetServiceNowEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SubmitServiceNowRequestWithBody Request on a user's behalf, for a requested item
+	//
+	// Submitted as the user would submit it, with their entitlements,
+	// quotas, approval policies and lease rules, never more: an item the
+	// user can't request in that project answers 404. The request keeps
+	// the requested item's number and `sys_id`; a second submission for
+	// the same `sys_id` answers the request already made, 200. Audited
+	// as `servicenow.request`, a refusal as `servicenow.request_refused`.
+	// rvav writes the request's progress to the requested item's work
+	// notes and state.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
+	SubmitServiceNowRequestWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SubmitServiceNowRequest Request on a user's behalf, for a requested item
+	//
+	// Submitted as the user would submit it, with their entitlements,
+	// quotas, approval policies and lease rules, never more: an item the
+	// user can't request in that project answers 404. The request keeps
+	// the requested item's number and `sys_id`; a second submission for
+	// the same `sys_id` answers the request already made, 200. Audited
+	// as `servicenow.request`, a refusal as `servicenow.request_refused`.
+	// rvav writes the request's progress to the requested item's work
+	// notes and state.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
+	SubmitServiceNowRequest(ctx context.Context, body SubmitServiceNowRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServiceNowRequest The request made for a requested item, and where it is
+	//
+	// Corresponds with GET /servicenow/requests/{ritmSysId} (the `GetServiceNowRequest` operationId).
+	GetServiceNowRequest(ctx context.Context, ritmSysId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListApiTokens The caller's API tokens (everyone's with all=true, for `tokens.manage`)
 	//
 	// Corresponds with GET /tokens (the `ListApiTokens` operationId).
@@ -20171,6 +20443,58 @@ func (c *Client) GetServiceNowCmdb(ctx context.Context, reqEditors ...RequestEdi
 // Corresponds with POST /admin/integrations/servicenow/cmdb/reconcile (the `ReconcileServiceNowCmdb` operationId).
 func (c *Client) ReconcileServiceNowCmdb(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReconcileServiceNowCmdbRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeServiceNowToken Revoke ServiceNow's token, cutting ServiceNow off
+//
+// Audited.
+//
+// Corresponds with DELETE /admin/integrations/servicenow/token (the `RevokeServiceNowToken` operationId).
+func (c *Client) RevokeServiceNowToken(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeServiceNowTokenRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetServiceNowToken The token ServiceNow calls rvav with
+//
+// Corresponds with GET /admin/integrations/servicenow/token (the `GetServiceNowToken` operationId).
+func (c *Client) GetServiceNowToken(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServiceNowTokenRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MakeServiceNowToken Make ServiceNow's token, and revoke the earlier one
+//
+// For rvav's user `usr_rvav-servicenow`, with the scope `servicenow`:
+// it requests on users' behalf under /servicenow/ and nowhere else.
+// Valid a year; shown this once, to put in ServiceNow's credential.
+// The earlier token stops working at once. Audited.
+//
+// Corresponds with POST /admin/integrations/servicenow/token (the `MakeServiceNowToken` operationId).
+func (c *Client) MakeServiceNowToken(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMakeServiceNowTokenRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -25949,6 +26273,114 @@ func (c *Client) ResumeSchedule(ctx context.Context, scheduleId ScheduleIdPath, 
 	return c.Client.Do(req)
 }
 
+// ListServiceNowCatalog Every item ServiceNow's catalog may offer, with its inputs
+//
+// Each catalog item with a published version, shared in at least one
+// project, with the inputs of that version that a ServiceNow variable
+// can hold: strings, numbers, booleans and choices from a fixed list.
+// Inputs it can't hold (objects, lists, files, secrets) are left out;
+// those with options rvav finds at request time say `dynamic`. An
+// input ServiceNow doesn't send takes the form's initial value.
+//
+// Corresponds with GET /servicenow/catalog (the `ListServiceNowCatalog` operationId).
+func (c *Client) ListServiceNowCatalog(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListServiceNowCatalogRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetServiceNowEntitlements Where a user may request, and what
+//
+// The projects the user may request in, with their environments and
+// the items shared with the user there: what ServiceNow's catalog
+// form offers them. The user is named as in a request.
+//
+// Corresponds with GET /servicenow/entitlements (the `GetServiceNowEntitlements` operationId).
+func (c *Client) GetServiceNowEntitlements(ctx context.Context, params *GetServiceNowEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServiceNowEntitlementsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SubmitServiceNowRequestWithBody Request on a user's behalf, for a requested item
+//
+// Submitted as the user would submit it, with their entitlements,
+// quotas, approval policies and lease rules, never more: an item the
+// user can't request in that project answers 404. The request keeps
+// the requested item's number and `sys_id`; a second submission for
+// the same `sys_id` answers the request already made, 200. Audited
+// as `servicenow.request`, a refusal as `servicenow.request_refused`.
+// rvav writes the request's progress to the requested item's work
+// notes and state.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
+func (c *Client) SubmitServiceNowRequestWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSubmitServiceNowRequestRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SubmitServiceNowRequest Request on a user's behalf, for a requested item
+//
+// Submitted as the user would submit it, with their entitlements,
+// quotas, approval policies and lease rules, never more: an item the
+// user can't request in that project answers 404. The request keeps
+// the requested item's number and `sys_id`; a second submission for
+// the same `sys_id` answers the request already made, 200. Audited
+// as `servicenow.request`, a refusal as `servicenow.request_refused`.
+// rvav writes the request's progress to the requested item's work
+// notes and state.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
+func (c *Client) SubmitServiceNowRequest(ctx context.Context, body SubmitServiceNowRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSubmitServiceNowRequestRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetServiceNowRequest The request made for a requested item, and where it is
+//
+// Corresponds with GET /servicenow/requests/{ritmSysId} (the `GetServiceNowRequest` operationId).
+func (c *Client) GetServiceNowRequest(ctx context.Context, ritmSysId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServiceNowRequestRequest(c.Server, ritmSysId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListApiTokens The caller's API tokens (everyone's with all=true, for `tokens.manage`)
 //
 // Corresponds with GET /tokens (the `ListApiTokens` operationId).
@@ -29505,6 +29937,87 @@ func NewReconcileServiceNowCmdbRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/admin/integrations/servicenow/cmdb/reconcile")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeServiceNowTokenRequest constructs an http.Request for the RevokeServiceNowToken method
+func NewRevokeServiceNowTokenRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/integrations/servicenow/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetServiceNowTokenRequest constructs an http.Request for the GetServiceNowToken method
+func NewGetServiceNowTokenRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/integrations/servicenow/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewMakeServiceNowTokenRequest constructs an http.Request for the MakeServiceNowToken method
+func NewMakeServiceNowTokenRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/integrations/servicenow/token")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -39310,6 +39823,157 @@ func NewResumeScheduleRequest(server string, scheduleId ScheduleIdPath) (*http.R
 	return req, nil
 }
 
+// NewListServiceNowCatalogRequest constructs an http.Request for the ListServiceNowCatalog method
+func NewListServiceNowCatalogRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/servicenow/catalog")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetServiceNowEntitlementsRequest constructs an http.Request for the GetServiceNowEntitlements method
+func NewGetServiceNowEntitlementsRequest(server string, params *GetServiceNowEntitlementsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/servicenow/entitlements")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "user", params.User, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSubmitServiceNowRequestRequest calls the generic SubmitServiceNowRequest builder with application/json body
+func NewSubmitServiceNowRequestRequest(server string, body SubmitServiceNowRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSubmitServiceNowRequestRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSubmitServiceNowRequestRequestWithBody constructs an http.Request for the SubmitServiceNowRequest method, with any body, and a specified content type
+func NewSubmitServiceNowRequestRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/servicenow/requests")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetServiceNowRequestRequest constructs an http.Request for the GetServiceNowRequest method
+func NewGetServiceNowRequestRequest(server string, ritmSysId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "ritmSysId", ritmSysId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/servicenow/requests/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListApiTokensRequest constructs an http.Request for the ListApiTokens method
 func NewListApiTokensRequest(server string, params *ListApiTokensParams) (*http.Request, error) {
 	var err error
@@ -40793,6 +41457,34 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /admin/integrations/servicenow/cmdb/reconcile (the `ReconcileServiceNowCmdb` operationId).
 	ReconcileServiceNowCmdbWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReconcileServiceNowCmdbResponse, error)
+
+	// RevokeServiceNowTokenWithResponse Revoke ServiceNow's token, cutting ServiceNow off
+	//
+	// Audited.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /admin/integrations/servicenow/token (the `RevokeServiceNowToken` operationId).
+	RevokeServiceNowTokenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RevokeServiceNowTokenResponse, error)
+
+	// GetServiceNowTokenWithResponse The token ServiceNow calls rvav with
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/integrations/servicenow/token (the `GetServiceNowToken` operationId).
+	GetServiceNowTokenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServiceNowTokenResponse, error)
+
+	// MakeServiceNowTokenWithResponse Make ServiceNow's token, and revoke the earlier one
+	//
+	// For rvav's user `usr_rvav-servicenow`, with the scope `servicenow`:
+	// it requests on users' behalf under /servicenow/ and nowhere else.
+	// Valid a year; shown this once, to put in ServiceNow's credential.
+	// The earlier token stops working at once. Audited.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/integrations/servicenow/token (the `MakeServiceNowToken` operationId).
+	MakeServiceNowTokenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*MakeServiceNowTokenResponse, error)
 
 	// SetIntegrationWithBodyWithResponse Save a connection's settings
 	//
@@ -43779,6 +44471,70 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /schedules/{scheduleId}/resume (the `ResumeSchedule` operationId).
 	ResumeScheduleWithResponse(ctx context.Context, scheduleId ScheduleIdPath, reqEditors ...RequestEditorFn) (*ResumeScheduleResponse, error)
+
+	// ListServiceNowCatalogWithResponse Every item ServiceNow's catalog may offer, with its inputs
+	//
+	// Each catalog item with a published version, shared in at least one
+	// project, with the inputs of that version that a ServiceNow variable
+	// can hold: strings, numbers, booleans and choices from a fixed list.
+	// Inputs it can't hold (objects, lists, files, secrets) are left out;
+	// those with options rvav finds at request time say `dynamic`. An
+	// input ServiceNow doesn't send takes the form's initial value.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /servicenow/catalog (the `ListServiceNowCatalog` operationId).
+	ListServiceNowCatalogWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListServiceNowCatalogResponse, error)
+
+	// GetServiceNowEntitlementsWithResponse Where a user may request, and what
+	//
+	// The projects the user may request in, with their environments and
+	// the items shared with the user there: what ServiceNow's catalog
+	// form offers them. The user is named as in a request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /servicenow/entitlements (the `GetServiceNowEntitlements` operationId).
+	GetServiceNowEntitlementsWithResponse(ctx context.Context, params *GetServiceNowEntitlementsParams, reqEditors ...RequestEditorFn) (*GetServiceNowEntitlementsResponse, error)
+
+	// SubmitServiceNowRequestWithBodyWithResponse Request on a user's behalf, for a requested item
+	//
+	// Submitted as the user would submit it, with their entitlements,
+	// quotas, approval policies and lease rules, never more: an item the
+	// user can't request in that project answers 404. The request keeps
+	// the requested item's number and `sys_id`; a second submission for
+	// the same `sys_id` answers the request already made, 200. Audited
+	// as `servicenow.request`, a refusal as `servicenow.request_refused`.
+	// rvav writes the request's progress to the requested item's work
+	// notes and state.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
+	SubmitServiceNowRequestWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SubmitServiceNowRequestResponse, error)
+
+	// SubmitServiceNowRequestWithResponse Request on a user's behalf, for a requested item
+	//
+	// Submitted as the user would submit it, with their entitlements,
+	// quotas, approval policies and lease rules, never more: an item the
+	// user can't request in that project answers 404. The request keeps
+	// the requested item's number and `sys_id`; a second submission for
+	// the same `sys_id` answers the request already made, 200. Audited
+	// as `servicenow.request`, a refusal as `servicenow.request_refused`.
+	// rvav writes the request's progress to the requested item's work
+	// notes and state.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
+	SubmitServiceNowRequestWithResponse(ctx context.Context, body SubmitServiceNowRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*SubmitServiceNowRequestResponse, error)
+
+	// GetServiceNowRequestWithResponse The request made for a requested item, and where it is
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /servicenow/requests/{ritmSysId} (the `GetServiceNowRequest` operationId).
+	GetServiceNowRequestWithResponse(ctx context.Context, ritmSysId string, reqEditors ...RequestEditorFn) (*GetServiceNowRequestResponse, error)
 
 	// ListApiTokensWithResponse The caller's API tokens (everyone's with all=true, for `tokens.manage`)
 	//
@@ -49400,6 +50156,164 @@ func (r ReconcileServiceNowCmdbResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ReconcileServiceNowCmdbResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeServiceNowTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RevokeServiceNowTokenResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r RevokeServiceNowTokenResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeServiceNowTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeServiceNowTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeServiceNowTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeServiceNowTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetServiceNowTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ServiceNowToken
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetServiceNowTokenResponse) GetJSON200() *ServiceNowToken {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetServiceNowTokenResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetServiceNowTokenResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r GetServiceNowTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServiceNowTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServiceNowTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetServiceNowTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type MakeServiceNowTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ServiceNowTokenMade
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r MakeServiceNowTokenResponse) GetJSON201() *ServiceNowTokenMade {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r MakeServiceNowTokenResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r MakeServiceNowTokenResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r MakeServiceNowTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MakeServiceNowTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MakeServiceNowTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MakeServiceNowTokenResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -62927,6 +63841,331 @@ func (r ResumeScheduleResponse) ContentType() string {
 	return ""
 }
 
+// ListServiceNowCatalogResponse429Headers the declared response headers of an HTTP 429 response for ListServiceNowCatalog
+type ListServiceNowCatalogResponse429Headers struct {
+	RetryAfter *int
+}
+
+type ListServiceNowCatalogResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ServiceNowCatalog
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *TooManyRequests
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *ListServiceNowCatalogResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListServiceNowCatalogResponse) GetJSON200() *ServiceNowCatalog {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListServiceNowCatalogResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListServiceNowCatalogResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r ListServiceNowCatalogResponse) GetApplicationproblemJSON429() *TooManyRequests {
+	return r.ApplicationproblemJSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r ListServiceNowCatalogResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListServiceNowCatalogResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListServiceNowCatalogResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListServiceNowCatalogResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetServiceNowEntitlementsResponse429Headers the declared response headers of an HTTP 429 response for GetServiceNowEntitlements
+type GetServiceNowEntitlementsResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetServiceNowEntitlementsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ServiceNowEntitlements
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *TooManyRequests
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetServiceNowEntitlementsResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetServiceNowEntitlementsResponse) GetJSON200() *ServiceNowEntitlements {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetServiceNowEntitlementsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetServiceNowEntitlementsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetServiceNowEntitlementsResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r GetServiceNowEntitlementsResponse) GetApplicationproblemJSON429() *TooManyRequests {
+	return r.ApplicationproblemJSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r GetServiceNowEntitlementsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServiceNowEntitlementsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServiceNowEntitlementsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetServiceNowEntitlementsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SubmitServiceNowRequestResponse429Headers the declared response headers of an HTTP 429 response for SubmitServiceNowRequest
+type SubmitServiceNowRequestResponse429Headers struct {
+	RetryAfter *int
+}
+
+type SubmitServiceNowRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ServiceNowRequest
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *ServiceNowRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *TooManyRequests
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *UpstreamError
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *SubmitServiceNowRequestResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SubmitServiceNowRequestResponse) GetJSON200() *ServiceNowRequest {
+	return r.JSON200
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r SubmitServiceNowRequestResponse) GetJSON202() *ServiceNowRequest {
+	return r.JSON202
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SubmitServiceNowRequestResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SubmitServiceNowRequestResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SubmitServiceNowRequestResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r SubmitServiceNowRequestResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SubmitServiceNowRequestResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r SubmitServiceNowRequestResponse) GetApplicationproblemJSON429() *TooManyRequests {
+	return r.ApplicationproblemJSON429
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r SubmitServiceNowRequestResponse) GetApplicationproblemJSON502() *UpstreamError {
+	return r.ApplicationproblemJSON502
+}
+
+// GetBody returns the raw response body bytes
+func (r SubmitServiceNowRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SubmitServiceNowRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SubmitServiceNowRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SubmitServiceNowRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetServiceNowRequestResponse429Headers the declared response headers of an HTTP 429 response for GetServiceNowRequest
+type GetServiceNowRequestResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetServiceNowRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ServiceNowRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *TooManyRequests
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetServiceNowRequestResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetServiceNowRequestResponse) GetJSON200() *ServiceNowRequest {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetServiceNowRequestResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetServiceNowRequestResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetServiceNowRequestResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r GetServiceNowRequestResponse) GetApplicationproblemJSON429() *TooManyRequests {
+	return r.ApplicationproblemJSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r GetServiceNowRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServiceNowRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServiceNowRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetServiceNowRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListApiTokensResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -65122,6 +66361,52 @@ func (c *ClientWithResponses) ReconcileServiceNowCmdbWithResponse(ctx context.Co
 		return nil, err
 	}
 	return ParseReconcileServiceNowCmdbResponse(rsp)
+}
+
+// RevokeServiceNowTokenWithResponse Revoke ServiceNow's token, cutting ServiceNow off
+//
+// Audited.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /admin/integrations/servicenow/token (the `RevokeServiceNowToken` operationId).
+func (c *ClientWithResponses) RevokeServiceNowTokenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RevokeServiceNowTokenResponse, error) {
+	rsp, err := c.RevokeServiceNowToken(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeServiceNowTokenResponse(rsp)
+}
+
+// GetServiceNowTokenWithResponse The token ServiceNow calls rvav with
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/integrations/servicenow/token (the `GetServiceNowToken` operationId).
+func (c *ClientWithResponses) GetServiceNowTokenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServiceNowTokenResponse, error) {
+	rsp, err := c.GetServiceNowToken(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServiceNowTokenResponse(rsp)
+}
+
+// MakeServiceNowTokenWithResponse Make ServiceNow's token, and revoke the earlier one
+//
+// For rvav's user `usr_rvav-servicenow`, with the scope `servicenow`:
+// it requests on users' behalf under /servicenow/ and nowhere else.
+// Valid a year; shown this once, to put in ServiceNow's credential.
+// The earlier token stops working at once. Audited.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/integrations/servicenow/token (the `MakeServiceNowToken` operationId).
+func (c *ClientWithResponses) MakeServiceNowTokenWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*MakeServiceNowTokenResponse, error) {
+	rsp, err := c.MakeServiceNowToken(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMakeServiceNowTokenResponse(rsp)
 }
 
 // SetIntegrationWithBodyWithResponse Save a connection's settings
@@ -69940,6 +71225,100 @@ func (c *ClientWithResponses) ResumeScheduleWithResponse(ctx context.Context, sc
 	return ParseResumeScheduleResponse(rsp)
 }
 
+// ListServiceNowCatalogWithResponse Every item ServiceNow's catalog may offer, with its inputs
+//
+// Each catalog item with a published version, shared in at least one
+// project, with the inputs of that version that a ServiceNow variable
+// can hold: strings, numbers, booleans and choices from a fixed list.
+// Inputs it can't hold (objects, lists, files, secrets) are left out;
+// those with options rvav finds at request time say `dynamic`. An
+// input ServiceNow doesn't send takes the form's initial value.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /servicenow/catalog (the `ListServiceNowCatalog` operationId).
+func (c *ClientWithResponses) ListServiceNowCatalogWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListServiceNowCatalogResponse, error) {
+	rsp, err := c.ListServiceNowCatalog(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListServiceNowCatalogResponse(rsp)
+}
+
+// GetServiceNowEntitlementsWithResponse Where a user may request, and what
+//
+// The projects the user may request in, with their environments and
+// the items shared with the user there: what ServiceNow's catalog
+// form offers them. The user is named as in a request.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /servicenow/entitlements (the `GetServiceNowEntitlements` operationId).
+func (c *ClientWithResponses) GetServiceNowEntitlementsWithResponse(ctx context.Context, params *GetServiceNowEntitlementsParams, reqEditors ...RequestEditorFn) (*GetServiceNowEntitlementsResponse, error) {
+	rsp, err := c.GetServiceNowEntitlements(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServiceNowEntitlementsResponse(rsp)
+}
+
+// SubmitServiceNowRequestWithBodyWithResponse Request on a user's behalf, for a requested item
+//
+// Submitted as the user would submit it, with their entitlements,
+// quotas, approval policies and lease rules, never more: an item the
+// user can't request in that project answers 404. The request keeps
+// the requested item's number and `sys_id`; a second submission for
+// the same `sys_id` answers the request already made, 200. Audited
+// as `servicenow.request`, a refusal as `servicenow.request_refused`.
+// rvav writes the request's progress to the requested item's work
+// notes and state.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
+func (c *ClientWithResponses) SubmitServiceNowRequestWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SubmitServiceNowRequestResponse, error) {
+	rsp, err := c.SubmitServiceNowRequestWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSubmitServiceNowRequestResponse(rsp)
+}
+
+// SubmitServiceNowRequestWithResponse Request on a user's behalf, for a requested item
+//
+// Submitted as the user would submit it, with their entitlements,
+// quotas, approval policies and lease rules, never more: an item the
+// user can't request in that project answers 404. The request keeps
+// the requested item's number and `sys_id`; a second submission for
+// the same `sys_id` answers the request already made, 200. Audited
+// as `servicenow.request`, a refusal as `servicenow.request_refused`.
+// rvav writes the request's progress to the requested item's work
+// notes and state.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /servicenow/requests (the `SubmitServiceNowRequest` operationId).
+func (c *ClientWithResponses) SubmitServiceNowRequestWithResponse(ctx context.Context, body SubmitServiceNowRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*SubmitServiceNowRequestResponse, error) {
+	rsp, err := c.SubmitServiceNowRequest(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSubmitServiceNowRequestResponse(rsp)
+}
+
+// GetServiceNowRequestWithResponse The request made for a requested item, and where it is
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /servicenow/requests/{ritmSysId} (the `GetServiceNowRequest` operationId).
+func (c *ClientWithResponses) GetServiceNowRequestWithResponse(ctx context.Context, ritmSysId string, reqEditors ...RequestEditorFn) (*GetServiceNowRequestResponse, error) {
+	rsp, err := c.GetServiceNowRequest(ctx, ritmSysId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServiceNowRequestResponse(rsp)
+}
+
 // ListApiTokensWithResponse The caller's API tokens (everyone's with all=true, for `tokens.manage`)
 //
 // Returns a wrapper object for the known response body format(s).
@@ -74306,6 +75685,122 @@ func ParseReconcileServiceNowCmdbResponse(rsp *http.Response) (*ReconcileService
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeServiceNowTokenResponse parses an HTTP response from a RevokeServiceNowTokenWithResponse call
+func ParseRevokeServiceNowTokenResponse(rsp *http.Response) (*RevokeServiceNowTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeServiceNowTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServiceNowTokenResponse parses an HTTP response from a GetServiceNowTokenWithResponse call
+func ParseGetServiceNowTokenResponse(rsp *http.Response) (*GetServiceNowTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServiceNowTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServiceNowToken
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMakeServiceNowTokenResponse parses an HTTP response from a MakeServiceNowTokenWithResponse call
+func ParseMakeServiceNowTokenResponse(rsp *http.Response) (*MakeServiceNowTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MakeServiceNowTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ServiceNowTokenMade
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
 
 	}
 
@@ -84677,6 +86172,295 @@ func ParseResumeScheduleResponse(rsp *http.Response) (*ResumeScheduleResponse, e
 		}
 		response.ApplicationproblemJSON502 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseListServiceNowCatalogResponse parses an HTTP response from a ListServiceNowCatalogWithResponse call
+func ParseListServiceNowCatalogResponse(rsp *http.Response) (*ListServiceNowCatalogResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListServiceNowCatalogResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServiceNowCatalog
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers ListServiceNowCatalogResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetServiceNowEntitlementsResponse parses an HTTP response from a GetServiceNowEntitlementsWithResponse call
+func ParseGetServiceNowEntitlementsResponse(rsp *http.Response) (*GetServiceNowEntitlementsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServiceNowEntitlementsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServiceNowEntitlements
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetServiceNowEntitlementsResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSubmitServiceNowRequestResponse parses an HTTP response from a SubmitServiceNowRequestWithResponse call
+func ParseSubmitServiceNowRequestResponse(rsp *http.Response) (*SubmitServiceNowRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SubmitServiceNowRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServiceNowRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest ServiceNowRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UpstreamError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers SubmitServiceNowRequestResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetServiceNowRequestResponse parses an HTTP response from a GetServiceNowRequestWithResponse call
+func ParseGetServiceNowRequestResponse(rsp *http.Response) (*GetServiceNowRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServiceNowRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServiceNowRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetServiceNowRequestResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
 	}
 
 	return response, nil

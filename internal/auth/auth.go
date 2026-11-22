@@ -46,8 +46,11 @@ type Principal struct {
 	known map[string]Role
 	// Groups are the caller's OIDC groups (approvers may be a group).
 	Groups []string
-	// Scope limits an API token to one use (ScopeInventory); "" otherwise.
+	// Scope limits an API token to one use (ScopeInventory, ScopeServiceNow);
+	// "" otherwise.
 	Scope string
+	// TokenID is the API token's the caller came with; "" otherwise.
+	TokenID string
 	// Session is the hash of the local session's ID when the caller signed
 	// in with the local administrator's account (ADR-0030); "" otherwise.
 	Session string
@@ -61,6 +64,24 @@ type Principal struct {
 
 // ScopeInventory: the token only reads the Ansible inventory.
 const ScopeInventory = "inventory"
+
+// ScopeServiceNow: the token only takes ServiceNow's calls, under
+// /servicenow/ (ADR-0065).
+const ScopeServiceNow = "servicenow"
+
+// ServiceNowUserID is the user of rvav's own that holds ServiceNow's token.
+const ServiceNowUserID = "usr_rvav-servicenow"
+
+// ServiceNowRequest is what ServiceNow's token may do: request on a user's
+// behalf, as that user. No role grants it, the administrator's included:
+// it is in no catalogue, so no custom role can name it.
+const ServiceNowRequest Permission = "servicenow.request"
+
+// Holds says whether the principal holds a permission that comes with no
+// role; ServiceNowRequest is the only one.
+func (p *Principal) Holds(perm Permission) bool {
+	return perm == ServiceNowRequest && p != nil && p.Scope == ScopeServiceNow && p.User.ID == ServiceNowUserID
+}
 
 // PermissionsIn lists the permissions held in a project, those held for all
 // of rvav included; "" lists those held for all of rvav.
@@ -146,7 +167,7 @@ func Again(ctx context.Context, s *store.Store, p *Principal) (*Principal, error
 	if err != nil {
 		return nil, err
 	}
-	q.Scope, q.Session, q.MustChangePassword = p.Scope, p.Session, p.MustChangePassword
+	q.Scope, q.TokenID, q.Session, q.MustChangePassword = p.Scope, p.TokenID, p.Session, p.MustChangePassword
 	return q, nil
 }
 
@@ -290,7 +311,7 @@ func apiToken(ctx context.Context, s *store.Store, token string) (*Principal, er
 	// and automation should not approve anything.
 	p, err := build(ctx, s, u, nil)
 	if p != nil {
-		p.Scope, p.Method = use.Scope, "token"
+		p.Scope, p.Method, p.TokenID = use.Scope, "token", use.ID
 	}
 	return p, err
 }

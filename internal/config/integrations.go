@@ -165,6 +165,8 @@ var Fields = map[string][]Field{
 		{"data_source", "RVAV_SERVICENOW_DATA_SOURCE", "string", false},
 		{"projects", "RVAV_SERVICENOW_PROJECTS", "list", false},
 		{"sync_interval", "RVAV_SERVICENOW_SYNC_INTERVAL", "duration", false},
+		{"allowed_sources", "RVAV_SERVICENOW_ALLOWED_SOURCES", "list", false},
+		{"requests_per_minute", "RVAV_SERVICENOW_REQUESTS_PER_MINUTE", "int", false},
 	},
 	"smtp": {
 		{"host", "RVAV_SMTP_HOST", "string", false},
@@ -443,6 +445,14 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 			strs("projects", &c.ServiceNow.Projects)
 		}
 		dur("sync_interval", &c.ServiceNow.SyncInterval)
+		// Cleared in the UI: from anywhere.
+		if _, ok := s.Settings["allowed_sources"].([]any); ok && !locked["allowed_sources"] {
+			c.ServiceNow.AllowedSources = nil
+			strs("allowed_sources", &c.ServiceNow.AllowedSources)
+		}
+		if v, ok := s.Settings["requests_per_minute"].(float64); ok && v > 0 && !locked["requests_per_minute"] {
+			c.ServiceNow.RequestsPerMinute = int(v)
+		}
 	case "smtp":
 		str("host", &c.SMTP.Host)
 		if v, ok := s.Settings["port"].(float64); ok && v > 0 && !locked["port"] {
@@ -537,7 +547,8 @@ func (c Config) Settings(kind string) map[string]any {
 		return map[string]any{"url": c.ServiceNow.URL, "auth": c.ServiceNow.Auth, "username": c.ServiceNow.Username,
 			"client_id": c.ServiceNow.ClientID, "insecure": c.ServiceNow.Insecure, "cert_sha256": c.ServiceNow.CertSHA256,
 			"cmdb": c.ServiceNow.CMDB, "cmdb_class": c.ServiceNow.Class, "data_source": c.ServiceNow.DataSource,
-			"projects": nonNil(c.ServiceNow.Projects), "sync_interval": FormatDuration(c.ServiceNow.SyncInterval)}
+			"projects": nonNil(c.ServiceNow.Projects), "sync_interval": FormatDuration(c.ServiceNow.SyncInterval),
+			"allowed_sources": nonNil(c.ServiceNow.AllowedSources), "requests_per_minute": c.ServiceNow.RequestsPerMinute}
 	case "trust":
 		return map[string]any{"ca_bundle": c.CABundle}
 	case "hosts":
@@ -697,6 +708,18 @@ func CheckSettings(kind string, settings map[string]any) map[string]string {
 		}
 		if v, ok := settings["data_source"].(string); ok && v != "" && !snowSource.MatchString(v) {
 			errs["data_source"] = "A discovery source's value: letters, digits, spaces, - and _, for example rvav."
+		}
+		if l, ok := settings["allowed_sources"].([]any); ok {
+			for _, x := range l {
+				if s, _ := x.(string); strings.TrimSpace(s) != "" {
+					if _, err := ParsePrefixes([]string{strings.TrimSpace(s)}); err != nil {
+						errs["allowed_sources"] = err.Error() + "."
+					}
+				}
+			}
+		}
+		if v, ok := settings["requests_per_minute"].(float64); ok && (v < 1 || v > 6000 || v != float64(int(v))) {
+			errs["requests_per_minute"] = "From 1 to 6000."
 		}
 	}
 	if kind == "smtp" {

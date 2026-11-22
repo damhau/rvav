@@ -15,6 +15,7 @@ import (
 	"github.com/vmware/govmomi/vim25"
 
 	"github.com/damhau/rvav/internal/api"
+	"github.com/damhau/rvav/internal/auth"
 	"github.com/damhau/rvav/internal/config"
 	"github.com/damhau/rvav/internal/integrations/servicenow"
 	"github.com/damhau/rvav/internal/snowsync"
@@ -252,9 +253,10 @@ func TestServiceNowConnection(t *testing.T) {
 			t.Fatalf("plain http and an unknown sign-in = %v", problem.Errors)
 		}
 		h.json("PUT", "/api/v1/admin/integrations/servicenow", admin, api.IntegrationWrite{Settings: with(basic,
-			map[string]any{"cmdb_class": "vm", "data_source": "rvav^x", "projects": []string{"web", "nope"}})}, 422, &problem)
-		if f := fieldsOf(problem.Errors); len(f) != 3 || !slices.Contains(f, "/settings/projects") {
-			t.Fatalf("a class, a discovery source and a project none has = %v", problem.Errors)
+			map[string]any{"cmdb_class": "vm", "data_source": "rvav^x", "projects": []string{"web", "nope"},
+				"allowed_sources": []string{"10.0.0.0/33"}, "requests_per_minute": 0})}, 422, &problem)
+		if f := fieldsOf(problem.Errors); len(f) != 5 || !slices.Contains(f, "/settings/projects") || !slices.Contains(f, "/settings/allowed_sources") {
+			t.Fatalf("a class, a discovery source, a project none has, an address and a limit = %v", problem.Errors)
 		}
 		var saved api.Integration
 		h.json("PUT", "/api/v1/admin/integrations/servicenow", admin, api.IntegrationWrite{Settings: with(basic,
@@ -271,6 +273,218 @@ func TestServiceNowConnection(t *testing.T) {
 		h.json("POST", "/api/v1/admin/integrations/servicenow/test", admin, nil, 200, &test)
 		if !test.Ok || test.Certificate == nil || !test.Certificate.Pinned {
 			t.Fatalf("saved test = %+v", test)
+		}
+	})
+}
+
+// TestServiceNowRequests: ServiceNow's token requests on a user's behalf,
+// as that user and never more; the request keeps its requested item, whose
+// work notes and state follow it, in order; no one else is taken under
+// /servicenow/, and the token nowhere else (ADR-0065).
+func TestServiceNowRequests(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		const admin = "mkeller"
+		snow, srv := snowInstance(t)
+		h.svc.Config.ServiceNow = config.ServiceNowConfig{URL: srv.URL, Auth: servicenow.AuthBasic, Username: snow.Username,
+			Secret: snow.Password, CertSHA256: trust.Fingerprint(srv.Certificate()), RequestsPerMinute: 30}
+		var ahead time.Duration
+		sync := &snowsync.Syncer{Store: h.store, PublicURL: "https://rvav.corp.example",
+			Config: func(context.Context) config.ServiceNowConfig { return h.svc.Config.ServiceNow },
+			Now:    func() time.Time { return time.Now().Add(ahead) }}
+		pass := func() {
+			t.Helper()
+			if _, err := h.svc.Dispatcher.Once(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := sync.Pass(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		h.json("POST", "/api/v1/admin/integrations/servicenow/token", "tnguyen", nil, 403, nil)
+		var made api.ServiceNowTokenMade
+		h.json("POST", "/api/v1/admin/integrations/servicenow/token", admin, nil, 201, &made)
+		if made.Token.Scope != api.ApiTokenScopeServicenow || made.Token.User.Id != auth.ServiceNowUserID || made.Secret == "" {
+			t.Fatalf("the token = %+v", made.Token)
+		}
+		token := []string{"Authorization", "Bearer " + made.Secret}
+		call := func(method, path string, body any, want int, out any) {
+			t.Helper()
+			h.json(method, "/api/v1/servicenow"+path, "", body, want, out, token...)
+		}
+
+		// No one else is taken under /servicenow/, an administrator's own
+		// token included; the token is taken nowhere else.
+		h.json("GET", "/api/v1/servicenow/catalog", admin, nil, 403, nil)
+		h.json("GET", "/api/v1/servicenow/catalog", "tnguyen", nil, 403, nil)
+		var own api.ApiTokenCreated
+		h.json("POST", "/api/v1/tokens", admin, api.ApiTokenCreate{Name: "scripts"}, 201, &own)
+		h.json("GET", "/api/v1/servicenow/catalog", "", nil, 403, nil, "Authorization", "Bearer "+own.Token)
+		for _, path := range []string{"/api/v1/me", "/api/v1/requests?project_id=prj_web", "/api/v1/admin/integrations/servicenow/token"} {
+			h.json("GET", path, "", nil, 403, nil, token...)
+		}
+		// No role grants it: a custom role can't name it.
+		h.json("POST", "/api/v1/admin/roles", admin, api.RoleCreate{Key: "snow", Name: "ServiceNow", Permissions: []string{"servicenow.request"}},
+			422, nil)
+
+		// The catalog: what a ServiceNow variable can hold, what rvav finds
+		// at request time said; an item shared nowhere isn't offered.
+		var cat api.ServiceNowCatalog
+		call("GET", "/catalog", nil, 200, &cat)
+		var rhel *api.ServiceNowCatalogItem
+		for i, it := range cat.Items {
+			if it.Slug == "rhel9-server" {
+				rhel = &cat.Items[i]
+			}
+			if it.Slug == "pg-node" {
+				t.Errorf("an item shared nowhere is offered: %+v", it)
+			}
+		}
+		if rhel == nil {
+			t.Fatalf("the catalog = %+v", cat)
+		}
+		inputs := map[string]api.ServiceNowInput{}
+		for _, in := range rhel.Inputs {
+			inputs[in.Name] = in
+		}
+		if size := inputs["size"]; size.Options == nil || len(*size.Options) != 4 || size.Dynamic || !inputs["cluster"].Dynamic {
+			t.Fatalf("the inputs = %+v", rhel.Inputs)
+		}
+		if _, ok := inputs["post_config"]; ok {
+			t.Fatalf("a list is offered: %+v", inputs["post_config"])
+		}
+
+		// Where the user requests, by email in any case or by user name.
+		var ent api.ServiceNowEntitlements
+		for _, who := range []string{"Thomas.Nguyen@corp.example", "thomas.nguyen"} {
+			call("GET", "/entitlements?user="+who, nil, 200, &ent)
+			if ent.User.Id != "usr_tnguyen" || len(ent.Projects) != 1 || ent.Projects[0].Project.Id != "prj_web" ||
+				!slices.Contains(ent.Projects[0].Items, rhel.Id) || slices.Contains(ent.Projects[0].Items, "itm_postgres-cluster") ||
+				len(ent.Projects[0].Environments) != 3 {
+				t.Fatalf("%s's entitlements = %+v", who, ent)
+			}
+		}
+		call("GET", "/entitlements?user=nobody@corp.example", nil, 404, nil)
+
+		ritm := snow.Insert(servicenow.TableRequestedItem, servicenow.Record{"number": "RITM0010045", "state": "1"})
+		given := map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01", "datastore": "vsan-gva-dev-cl01",
+			"network": "dvpg-app-dev-vl310"}
+		draft := api.ServiceNowRequestDraft{RitmSysId: ritm, RitmNumber: "RITM0010045", User: "thomas.nguyen@corp.example",
+			CatalogItemId: "rhel9-server", ProjectId: "web", Environment: "dev", Inputs: &given}
+		with := func(change func(d *api.ServiceNowRequestDraft)) api.ServiceNowRequestDraft {
+			d := draft
+			change(&d)
+			return d
+		}
+
+		// Never more than the user may: someone rvav doesn't know, an item
+		// not shared in the project, a project the user isn't in.
+		var problem struct{ Errors []api.FieldError }
+		call("POST", "/requests", with(func(d *api.ServiceNowRequestDraft) { d.User = "nobody@corp.example" }), 422, &problem)
+		if f := fieldsOf(problem.Errors); !slices.Equal(f, []string{"/user"}) {
+			t.Fatalf("an unknown user = %v", problem.Errors)
+		}
+		call("POST", "/requests", with(func(d *api.ServiceNowRequestDraft) { d.CatalogItemId = "postgres-cluster" }), 404, nil)
+		call("POST", "/requests", with(func(d *api.ServiceNowRequestDraft) { d.User = "sophie.brunner@corp.example" }), 404, nil)
+		var refused int
+		if err := h.store.Pool.QueryRow(ctx, `select count(*) from audit_events where action = 'servicenow.request_refused'
+			and actor_id = $1 and detail->>'ritm_number' = 'RITM0010045'`, auth.ServiceNowUserID).Scan(&refused); err != nil || refused != 3 {
+			t.Fatalf("refusals audited: %d, %v", refused, err)
+		}
+
+		var got api.ServiceNowRequest
+		call("POST", "/requests", draft, 202, &got)
+		if got.User.Id != "usr_tnguyen" || got.RitmSysId != ritm || got.RequestNumber == "" || len(got.DeploymentIds) != 1 {
+			t.Fatalf("the request = %+v", got)
+		}
+		// The same requested item again: the same request.
+		var again api.ServiceNowRequest
+		call("POST", "/requests", draft, 200, &again)
+		call("GET", "/requests/"+ritm, nil, 200, &again)
+		if again.RequestId != got.RequestId {
+			t.Fatalf("again = %+v, first %+v", again, got)
+		}
+		call("GET", "/requests/"+strings.Repeat("0", 32), nil, 404, nil)
+
+		// The user's request, as they'd have made it, that says where it
+		// came from; the audit log says who for.
+		var req api.Request
+		h.json("GET", "/api/v1/requests/"+got.RequestId, "tnguyen", nil, 200, &req)
+		if req.Requester.Id != "usr_tnguyen" || req.Servicenow == nil || req.Servicenow.Number != "RITM0010045" ||
+			req.Servicenow.Url != srv.URL+"/sc_req_item.do?sys_id="+ritm || req.Justification == nil ||
+			!strings.Contains(*req.Justification, "RITM0010045") {
+			t.Fatalf("the request = %+v", req)
+		}
+		var actor, email string
+		if err := h.store.Pool.QueryRow(ctx, `select actor_id, detail->'on_behalf_of'->>'email' from audit_events
+			where action = 'servicenow.request' and target_id = $1`, got.RequestId).Scan(&actor, &email); err != nil ||
+			actor != auth.ServiceNowUserID || email != "thomas.nguyen@corp.example" {
+			t.Fatalf("the audit = %s for %s, %v", actor, email, err)
+		}
+
+		// Its progress reaches the requested item, in order, ServiceNow's
+		// refusal waiting with backoff.
+		snow.FailOn("/api/now/table/sc_req_item", http.StatusServiceUnavailable)
+		h.runWorkflow(got.RequestId, nil)
+		h.waitStatus(got.RequestId, "tnguyen", api.RequestStatusSucceeded)
+		pass()
+		if notes := snow.WorkNotes(ritm); len(notes) != 0 {
+			t.Fatalf("while ServiceNow fails: %v", notes)
+		}
+		snow.FailOn("/api/now/table/sc_req_item", 0)
+		ahead += time.Minute
+		pass()
+		notes, item := snow.WorkNotes(ritm), snow.Row(servicenow.TableRequestedItem, ritm)
+		if len(notes) != 2 || !strings.Contains(notes[0], got.RequestNumber+" (") || !strings.Contains(notes[0], "submitted") ||
+			!strings.Contains(notes[1], "succeeded") || !strings.Contains(notes[1], "https://rvav.corp.example/deployments/"+got.DeploymentIds[0]) ||
+			item["state"] != servicenow.ItemClosedComplete {
+			t.Fatalf("the requested item: %v, %v", notes, item)
+		}
+		var dep api.DeploymentDetail
+		h.json("GET", "/api/v1/deployments/"+got.DeploymentIds[0], "tnguyen", nil, 200, &dep)
+		if dep.Servicenow == nil || dep.Servicenow.SysId != ritm {
+			t.Fatalf("the deployment's requested item = %+v", dep.Servicenow)
+		}
+
+		// Its addresses only, once set.
+		h.svc.Config.ServiceNow.AllowedSources = []string{"10.99.0.0/16"}
+		call("GET", "/catalog", nil, 403, nil)
+		h.svc.Config.ServiceNow.AllowedSources = []string{"10.99.0.0/16", "127.0.0.1"}
+		call("GET", "/catalog", nil, 200, nil)
+
+		// So many submissions a minute, across processes.
+		h.svc.Config.ServiceNow.RequestsPerMinute = 1
+		limited := false
+		for range 3 {
+			code, _, hdr := h.do("POST", "/api/v1/servicenow/requests", "", draft, token...)
+			if code == http.StatusTooManyRequests {
+				if secs, err := strconv.Atoi(hdr.Get("Retry-After")); err != nil || secs < 1 || secs > 60 {
+					t.Fatalf("Retry-After = %q", hdr.Get("Retry-After"))
+				}
+				limited = true
+				break
+			}
+		}
+		if !limited {
+			t.Fatal("never limited")
+		}
+
+		// Revoked: ServiceNow is cut off.
+		var shown api.ServiceNowToken
+		h.json("GET", "/api/v1/admin/integrations/servicenow/token", admin, nil, 200, &shown)
+		if shown.Token == nil || shown.Token.Id != made.Token.Id || shown.RequestsPerMinute != 1 {
+			t.Fatalf("the token shown = %+v", shown)
+		}
+		h.json("DELETE", "/api/v1/admin/integrations/servicenow/token", admin, nil, 204, nil)
+		call("GET", "/catalog", nil, 401, nil)
+		var after api.ServiceNowToken
+		h.json("GET", "/api/v1/admin/integrations/servicenow/token", admin, nil, 200, &after)
+		if after.Token != nil {
+			t.Fatalf("after the revoke = %+v", after)
 		}
 	})
 }

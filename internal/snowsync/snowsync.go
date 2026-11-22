@@ -1,7 +1,8 @@
 // Package snowsync keeps ServiceNow up to date with rvav (ADR-0065): the
-// CI of each VM in the CMDB, through the IRE, retired when the VM goes;
-// and a periodic reconcile that catches what an event couldn't and
-// reports the CIs rvav no longer has.
+// CI of each VM in the CMDB, through the IRE, retired when the VM goes; a
+// periodic reconcile that catches what an event couldn't and reports the
+// CIs rvav no longer has; and the progress of requests made from
+// ServiceNow, in their requested items' work notes and state.
 package snowsync
 
 import (
@@ -28,9 +29,11 @@ type Syncer struct {
 	Store *store.Store
 	// Config is the integration's settings now: they are read on next use.
 	Config func(ctx context.Context) config.ServiceNowConfig
-	Log    *slog.Logger
-	Every  time.Duration
-	Now    func() time.Time
+	// PublicURL is rvav's, for the links in work notes.
+	PublicURL string
+	Log       *slog.Logger
+	Every     time.Duration
+	Now       func() time.Time
 }
 
 const (
@@ -74,23 +77,37 @@ func (s *Syncer) Run(ctx context.Context) error {
 	}
 }
 
-// Pass does what is due: the deployments queued, and the reconcile when
-// its interval has gone by.
+// Pass does what is due: the deployments queued, the reconcile when its
+// interval has gone by, and the work notes owed to requested items.
 func (s *Syncer) Pass(ctx context.Context) error {
 	c := s.Config(ctx)
 	if err := s.Store.SetServiceNowCMDB(ctx, c.Configured() && c.CMDB); err != nil {
 		return err
 	}
-	if !c.Configured() || !c.CMDB {
+	if !c.Configured() {
 		return nil
+	}
+	// Checked first on the pool: the lock takes a connection of its own.
+	if due, err := s.Store.ServiceNowWorkDue(ctx, s.now(), c.CMDB, c.SyncInterval); err != nil || !due {
+		return err
 	}
 	cl, err := servicenow.New(servicenow.Config{URL: c.URL, Auth: c.Auth, Username: c.Username, ClientID: c.ClientID, Secret: c.Secret,
 		TLS: c.TLS()})
 	if err != nil {
 		return err
 	}
-	return s.Store.WithLock(ctx, store.LockServiceNowSync, func() error { return s.cmdb(ctx, cl, c) })
+	return s.Store.WithLock(ctx, store.LockServiceNowSync, func() error {
+		var errs []error
+		if c.CMDB {
+			errs = append(errs, s.cmdb(ctx, cl, c))
+		}
+		return errors.Join(append(errs, s.notes(ctx, cl))...)
+	})
 }
+
+// backoff is how long a call ServiceNow refused waits, from 10 seconds to
+// 15 minutes.
+func backoff(attempts int) time.Duration { return min(firstRetry<<min(attempts, 10), latestRetry) }
 
 func (s *Syncer) cmdb(ctx context.Context, cl *servicenow.Client, c config.ServiceNowConfig) error {
 	st, err := s.Store.ServiceNowState(ctx)
@@ -111,8 +128,7 @@ func (s *Syncer) cmdb(ctx context.Context, cl *servicenow.Client, c config.Servi
 	owners := map[string]string{}
 	for _, q := range due {
 		if err := s.deployment(ctx, cl, c, q.DeploymentID, owners); err != nil {
-			wait := min(firstRetry<<min(q.Attempts, 10), latestRetry)
-			if err := s.Store.RetryForServiceNow(ctx, q.DeploymentID, s.now().Add(wait), err.Error()); err != nil {
+			if err := s.Store.RetryForServiceNow(ctx, q.DeploymentID, s.now().Add(backoff(q.Attempts)), err.Error()); err != nil {
 				return err
 			}
 			continue

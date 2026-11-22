@@ -430,7 +430,7 @@ func (s *Service) RunSchedule(ctx context.Context, f provision.ScheduleFiring) e
 	} else if err != nil {
 		return err
 	}
-	_, err = s.submit(ctx, owner, scheduleDraft(sc.Schedule), &f)
+	_, err = s.submit(ctx, owner, scheduleDraft(sc.Schedule), origin{fire: &f})
 	var invalid *ValidationError
 	var conflict *ConflictError
 	var busy *scheduleBusyError

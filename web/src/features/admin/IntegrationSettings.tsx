@@ -418,6 +418,20 @@ const fields: Record<
         ...interval("every VM is looked at again and ServiceNow's CIs are read"),
         env: "RVAV_SERVICENOW_SYNC_INTERVAL",
       },
+      {
+        name: "allowed_sources",
+        label: "Allowed sources",
+        env: "RVAV_SERVICENOW_ALLOWED_SOURCES",
+        type: "list",
+        hint: "Comma-separated addresses or networks ServiceNow's calls may come from; empty, any",
+      },
+      {
+        name: "requests_per_minute",
+        label: "Requests a minute",
+        env: "RVAV_SERVICENOW_REQUESTS_PER_MINUTE",
+        type: "int",
+        hint: "How many requests ServiceNow may submit a minute, 30 by default",
+      },
     ],
   },
   // Notification channels (S11, ADR-0023).

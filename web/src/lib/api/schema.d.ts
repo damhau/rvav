@@ -4104,6 +4104,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/servicenow/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every item ServiceNow's catalog may offer, with its inputs
+         * @description Each catalog item with a published version, shared in at least one
+         *     project, with the inputs of that version that a ServiceNow variable
+         *     can hold: strings, numbers, booleans and choices from a fixed list.
+         *     Inputs it can't hold (objects, lists, files, secrets) are left out;
+         *     those with options rvav finds at request time say `dynamic`. An
+         *     input ServiceNow doesn't send takes the form's initial value.
+         */
+        get: operations["listServiceNowCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/servicenow/entitlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where a user may request, and what
+         * @description The projects the user may request in, with their environments and
+         *     the items shared with the user there: what ServiceNow's catalog
+         *     form offers them. The user is named as in a request.
+         */
+        get: operations["getServiceNowEntitlements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/servicenow/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request on a user's behalf, for a requested item
+         * @description Submitted as the user would submit it, with their entitlements,
+         *     quotas, approval policies and lease rules, never more: an item the
+         *     user can't request in that project answers 404. The request keeps
+         *     the requested item's number and `sys_id`; a second submission for
+         *     the same `sys_id` answers the request already made, 200. Audited
+         *     as `servicenow.request`, a refusal as `servicenow.request_refused`.
+         *     rvav writes the request's progress to the requested item's work
+         *     notes and state.
+         */
+        post: operations["submitServiceNowRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/servicenow/requests/{ritmSysId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The requested item's `sys_id`. */
+                ritmSysId: string;
+            };
+            cookie?: never;
+        };
+        /** The request made for a requested item, and where it is */
+        get: operations["getServiceNowRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/integrations/servicenow/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The token ServiceNow calls rvav with */
+        get: operations["getServiceNowToken"];
+        put?: never;
+        /**
+         * Make ServiceNow's token, and revoke the earlier one
+         * @description For rvav's user `usr_rvav-servicenow`, with the scope `servicenow`:
+         *     it requests on users' behalf under /servicenow/ and nowhere else.
+         *     Valid a year; shown this once, to put in ServiceNow's credential.
+         *     The earlier token stops working at once. Audited.
+         */
+        post: operations["makeServiceNowToken"];
+        /**
+         * Revoke ServiceNow's token, cutting ServiceNow off
+         * @description Audited.
+         */
+        delete: operations["revokeServiceNowToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/integrations/oidc/trial": {
         parameters: {
             query?: never;
@@ -6820,6 +6942,8 @@ export interface components {
             };
             /** @description The deployment a day-2 request or an update acts on. */
             deployment_id?: string;
+            /** @description Made from ServiceNow, for this requested item. */
+            servicenow?: components["schemas"]["ServiceNowRef"];
             /** @description The resource a day-2 request acts on, when it acts on one. */
             resource?: {
                 id: string;
@@ -7722,6 +7846,8 @@ export interface components {
             /** @description The users people sign in to the VMs as, one per component that has one (ADR-0039). */
             remote_access?: components["schemas"]["RemoteAccess"][];
             generated_key?: components["schemas"]["GeneratedKey"];
+            /** @description Made by a request from ServiceNow, for this requested item. */
+            servicenow?: components["schemas"]["ServiceNowRef"];
         };
         /** @description The user a component's VMs were given to sign in as. */
         RemoteAccess: {
@@ -10475,7 +10601,10 @@ export interface components {
              *     cert_sha256 (the secret: the user's password, or the OAuth
              *     client's secret); cmdb (keep VMs as CIs), cmdb_class, data_source
              *     (the IRE's discovery source), projects (IDs or codes; none, every
-             *     project), sync_interval (the reconcile's).
+             *     project), sync_interval (the reconcile's); allowed_sources (the
+             *     addresses or CIDR ranges ServiceNow's calls may come from; none,
+             *     any), requests_per_minute (ServiceNow's submissions, 30 by
+             *     default).
              *     smtp: host, port, tls (starttls, tls, none), from, username.
              *     teams: app_id, tenant_id, service_url, login_url, graph_url,
              *     openid_url. slack: api_url.
@@ -10859,6 +10988,115 @@ export interface components {
              */
             url: string;
         };
+        /** @description The ServiceNow requested item a request was made for (ADR-0065). */
+        ServiceNowRef: {
+            /** @example 9d385017c611228701d22104cc95c371 */
+            sys_id: string;
+            /** @example RITM0010045 */
+            number: string;
+            /**
+             * Format: uri
+             * @description The requested item in ServiceNow.
+             */
+            url: string;
+            /** @description The email or user name ServiceNow named the user by. */
+            user: string;
+        };
+        ServiceNowCatalog: {
+            items: components["schemas"]["ServiceNowCatalogItem"][];
+        };
+        ServiceNowCatalogItem: {
+            id: string;
+            slug: string;
+            name: string;
+            description?: string;
+            category?: string;
+            /** @example vm_blueprint */
+            type: string;
+            version_id: string;
+            /** @example 1.2 */
+            version: string;
+            inputs: components["schemas"]["ServiceNowInput"][];
+        };
+        ServiceNowInput: {
+            name: string;
+            label: string;
+            /** @enum {string} */
+            type: "string" | "integer" | "number" | "boolean";
+            required: boolean;
+            help?: string;
+            /** @description The form's initial value, taken when ServiceNow sends none. */
+            default?: unknown;
+            /** @description The values it may take, when the list is fixed. */
+            options?: components["schemas"]["ServiceNowChoice"][];
+            /** @description rvav finds its options at request time (a value source); ServiceNow leaves it to the form's initial value, or sends a value it knows. */
+            dynamic: boolean;
+        };
+        ServiceNowUser: {
+            id: string;
+            name: string;
+            /** Format: email */
+            email: string;
+        };
+        ServiceNowEntitlements: {
+            user: components["schemas"]["ServiceNowUser"];
+            projects: components["schemas"]["ServiceNowEntitlement"][];
+        };
+        ServiceNowEntitlement: {
+            project: components["schemas"]["ProjectRef"];
+            environments: components["schemas"]["ServiceNowChoice"][];
+            /** @description The IDs of the items shared with the user in the project. */
+            items: string[];
+        };
+        ServiceNowChoice: {
+            value: string;
+            label: string;
+        };
+        ServiceNowRequestDraft: {
+            ritm_sys_id: string;
+            /** @example RITM0010045 */
+            ritm_number: string;
+            /** @description The requested item's `requested_for`, by email, or by user name (the part of exactly one rvav user's email before the @). */
+            user: string;
+            catalog_item_id: string;
+            /** @description The project's ID or code. */
+            project_id: string;
+            environment: string;
+            /** @description The inputs; those left out take the form's initial values. */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            deployment_name?: string;
+            justification?: string;
+            /** @description Submit despite soft policies' warnings, which the user then accepted in ServiceNow. */
+            accept_warnings?: boolean;
+        };
+        ServiceNowRequest: {
+            ritm_sys_id: string;
+            ritm_number: string;
+            request_id: string;
+            /** @example REQ-10491 */
+            request_number: string;
+            status: components["schemas"]["RequestStatus"];
+            user: components["schemas"]["ServiceNowUser"];
+            /** @description The request in rvav. */
+            url: string;
+            deployment_ids: string[];
+        };
+        ServiceNowToken: {
+            /** @description The token made last, while it is valid. */
+            token?: components["schemas"]["ApiToken"];
+            /** @description The addresses ServiceNow's calls may come from; none, any. */
+            allowed_sources: string[];
+            requests_per_minute: number;
+        };
+        ServiceNowTokenMade: {
+            token: components["schemas"]["ApiToken"];
+            /** @description The token, shown this once. */
+            secret: string;
+            /** @description Earlier tokens revoked. */
+            revoked: number;
+        };
         InventoryToken: {
             /** @description RVAV_INVENTORY_TOKEN sets the token; rvav makes none. */
             locked: boolean;
@@ -10897,10 +11135,10 @@ export interface components {
             id: string;
             name: string;
             /**
-             * @description all acts as the user; inventory only reads the Ansible inventory.
+             * @description all acts as the user; inventory only reads the Ansible inventory; servicenow only takes ServiceNow's calls (ADR-0065).
              * @enum {string}
              */
-            scope: "all" | "inventory";
+            scope: "all" | "inventory" | "servicenow";
             user: components["schemas"]["UserRef"];
             /** Format: date-time */
             created_at: string;
@@ -18124,6 +18362,187 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listServiceNowCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceNowCatalog"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getServiceNowEntitlements: {
+        parameters: {
+            query: {
+                /** @description The user's email, or ServiceNow's user name (the part of exactly one rvav user's email before the @). */
+                user: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceNowEntitlements"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    submitServiceNowRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceNowRequestDraft"];
+            };
+        };
+        responses: {
+            /** @description Made already, for this requested item */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceNowRequest"];
+                };
+            };
+            /** @description Submitted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceNowRequest"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getServiceNowRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The requested item's `sys_id`. */
+                ritmSysId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceNowRequest"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getServiceNowToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceNowToken"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    makeServiceNowToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Made */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceNowTokenMade"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    revokeServiceNowToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked, or there was none */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     trialIdentityProvider: {

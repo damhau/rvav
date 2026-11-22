@@ -192,6 +192,10 @@ type ServiceNowConfig struct {
 	DataSource   string
 	Projects     []string
 	SyncInterval time.Duration
+	// AllowedSources are the addresses and networks ServiceNow's calls may
+	// come from (none: any); RequestsPerMinute caps its submissions.
+	AllowedSources    []string
+	RequestsPerMinute int
 }
 
 // Configured says whether rvav has a ServiceNow instance.
@@ -437,17 +441,18 @@ func Load() (Config, error) {
 			CertSHA256: env("RVAV_AD_CERT_SHA256", ""),
 		},
 		ServiceNow: ServiceNowConfig{
-			URL:        env("RVAV_SERVICENOW_URL", ""),
-			Auth:       env("RVAV_SERVICENOW_AUTH", "basic"),
-			Username:   env("RVAV_SERVICENOW_USERNAME", ""),
-			ClientID:   env("RVAV_SERVICENOW_CLIENT_ID", ""),
-			Secret:     env("RVAV_SERVICENOW_SECRET", ""),
-			Insecure:   boolean("RVAV_SERVICENOW_INSECURE"),
-			CertSHA256: env("RVAV_SERVICENOW_CERT_SHA256", ""),
-			CMDB:       boolean("RVAV_SERVICENOW_CMDB"),
-			Class:      env("RVAV_SERVICENOW_CMDB_CLASS", "cmdb_ci_vmware_instance"),
-			DataSource: env("RVAV_SERVICENOW_DATA_SOURCE", "rvav"),
-			Projects:   list("RVAV_SERVICENOW_PROJECTS"),
+			URL:            env("RVAV_SERVICENOW_URL", ""),
+			Auth:           env("RVAV_SERVICENOW_AUTH", "basic"),
+			Username:       env("RVAV_SERVICENOW_USERNAME", ""),
+			ClientID:       env("RVAV_SERVICENOW_CLIENT_ID", ""),
+			Secret:         env("RVAV_SERVICENOW_SECRET", ""),
+			Insecure:       boolean("RVAV_SERVICENOW_INSECURE"),
+			CertSHA256:     env("RVAV_SERVICENOW_CERT_SHA256", ""),
+			CMDB:           boolean("RVAV_SERVICENOW_CMDB"),
+			Class:          env("RVAV_SERVICENOW_CMDB_CLASS", "cmdb_ci_vmware_instance"),
+			DataSource:     env("RVAV_SERVICENOW_DATA_SOURCE", "rvav"),
+			Projects:       list("RVAV_SERVICENOW_PROJECTS"),
+			AllowedSources: list("RVAV_SERVICENOW_ALLOWED_SOURCES"),
 		},
 		AWX: AWXConfig{
 			Fake:          boolean("RVAV_FAKE_AWX"),
@@ -488,6 +493,15 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if c.ServiceNow.SyncInterval, err = duration("RVAV_SERVICENOW_SYNC_INTERVAL", 30*time.Minute); err != nil {
+		return c, err
+	}
+	if c.ServiceNow.RequestsPerMinute, err = integer("RVAV_SERVICENOW_REQUESTS_PER_MINUTE", 30); err != nil {
+		return c, err
+	}
+	if n := c.ServiceNow.RequestsPerMinute; n < 1 || n > 6000 {
+		return c, fmt.Errorf("RVAV_SERVICENOW_REQUESTS_PER_MINUTE must be from 1 to 6000, got %d", n)
+	}
+	if _, err := prefixes("RVAV_SERVICENOW_ALLOWED_SOURCES"); err != nil {
 		return c, err
 	}
 	if c.IPAM.FakeLatency, err = duration("RVAV_FAKE_EFFICIENTIP_LATENCY", 0); err != nil {
@@ -575,13 +589,23 @@ func list(key string) []string {
 
 // prefixes reads a list of networks (CIDR) or single addresses.
 func prefixes(key string) ([]netip.Prefix, error) {
+	out, err := ParsePrefixes(list(key))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", key, err)
+	}
+	return out, nil
+}
+
+// ParsePrefixes reads addresses and networks such as 10.0.0.0/8; an
+// address is a network of one.
+func ParsePrefixes(list []string) ([]netip.Prefix, error) {
 	var out []netip.Prefix
-	for _, s := range list(key) {
+	for _, s := range list {
 		p, err := netip.ParsePrefix(s)
 		if err != nil {
 			a, aerr := netip.ParseAddr(s)
 			if aerr != nil {
-				return nil, fmt.Errorf("%s: %q is neither an address nor a network such as 10.0.0.0/8", key, s)
+				return nil, fmt.Errorf("%q is neither an address nor a network such as 10.0.0.0/8", s)
 			}
 			p = netip.PrefixFrom(a, a.BitLen())
 		}

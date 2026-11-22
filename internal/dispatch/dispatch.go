@@ -247,6 +247,9 @@ func (d *Dispatcher) fanOut(ctx context.Context) (int, error) {
 		if err := d.Store.QueueForServiceNow(ctx, tx, done); err != nil {
 			return err
 		}
+		if err := d.Store.QueueServiceNowNotes(ctx, tx, done); err != nil {
+			return err
+		}
 		return d.Store.MarkDispatched(ctx, tx, done)
 	})
 	if err == nil {

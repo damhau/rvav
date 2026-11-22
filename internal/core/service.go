@@ -86,6 +86,9 @@ type Service struct {
 	AuditLog *auditlog.Forwarder
 	// signInReports limits the sign-ins clients report (ADR-0058).
 	signInReports windowLimit
+	// snowReads limits ServiceNow's reads in this process, and snowLimited
+	// how often its refusals are audited (ADR-0065).
+	snowReads, snowLimited minuteCount
 	// GitBeforeCommit runs before each commit to the catalog's repository:
 	// tests move the branch with it.
 	GitBeforeCommit func(path string)

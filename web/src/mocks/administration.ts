@@ -475,7 +475,7 @@ export function adminState(db: Db): AdminState {
       git: { settings: { url: "", branch: "main", dir: "catalog", username: "", known_hosts: "", insecure: false, committer: "rvav@corp.example", sync_interval: "5m" }, secret: false },
       vra: { settings: { url: "", username: "", domain: "", insecure: false, cert_sha256: "" }, secret: false },
       ad: { settings: { url: "ldaps://dc01.corp.example", username: "svc-rvav@corp.example", base_dn: "DC=corp,DC=example", insecure: false, plain_ldap: false, cert_sha256: "" }, secret: true },
-      servicenow: { settings: { url: "https://corp.service-now.com", auth: "oauth", username: "", client_id: "3f1c0b7e9a2d4c58b6e1f0a9d7c3b5e2", insecure: false, cert_sha256: "", cmdb: true, cmdb_class: "cmdb_ci_vmware_instance", data_source: "rvav", projects: [], sync_interval: "30m" }, secret: true },
+      servicenow: { settings: { url: "https://corp.service-now.com", auth: "oauth", username: "", client_id: "3f1c0b7e9a2d4c58b6e1f0a9d7c3b5e2", insecure: false, cert_sha256: "", cmdb: true, cmdb_class: "cmdb_ci_vmware_instance", data_source: "rvav", projects: [], sync_interval: "30m", allowed_sources: [], requests_per_minute: 30 }, secret: true },
       smtp: { settings: { host: "smtp.corp.example", port: 587, tls: "starttls", from: "rvav <rvav@corp.example>", username: "" }, secret: false },
       teams: { settings: { app_id: "", tenant_id: "", service_url: "https://smba.trafficmanager.net/emea", login_url: "https://login.microsoftonline.com", graph_url: "https://graph.microsoft.com", openid_url: "https://login.botframework.com/v1/.well-known/openidconfiguration" }, secret: false },
       slack: { settings: { api_url: "https://slack.com/api" }, secret: false, signing: false },

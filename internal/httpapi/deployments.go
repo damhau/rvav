@@ -210,7 +210,9 @@ func (s *Server) GetDeployment(w http.ResponseWriter, r *http.Request, deploymen
 		s.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	ref, err := s.Core.ServiceNowRefOfDeployment(r.Context(), d.ID)
+	out.Servicenow = ref
+	s.reply(w, r, http.StatusOK, out, err)
 }
 
 // DownloadPrivateKey hands the deployment's owner its generated private
