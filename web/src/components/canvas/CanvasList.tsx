@@ -5,6 +5,7 @@
 // by everything the graph shows of it.
 import { TriangleAlert } from "lucide-react";
 import { type ReactNode, useId } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import type { CanvasGraph, CanvasGroup, CanvasNode, CanvasStatus } from "./graph";
 import { statusLabel, subtitleOf } from "./graph";
@@ -115,6 +116,7 @@ function Item({
 }
 
 export function CanvasList({ graph, label, status, selected, onSelect }: ListProps) {
+  const { t } = useTranslation("canvas");
   const uid = useId();
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   const groups = new Map(graph.groups.map((g) => [g.id, g]));
@@ -151,7 +153,7 @@ export function CanvasList({ graph, label, status, selected, onSelect }: ListPro
                 })}
               </ol>
             ) : (
-              <p className="mt-0.5 text-muted">No steps: it goes on.</p>
+              <p className="mt-0.5 text-muted">{t("noSteps")}</p>
             )}
           </div>
         );

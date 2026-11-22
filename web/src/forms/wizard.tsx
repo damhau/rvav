@@ -4,6 +4,7 @@
 // heading on Next and Back.
 import { ArrowLeft, ArrowRight, CircleAlert, LoaderCircle } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { StepMark, type StepState } from "@/components/ui/step-mark";
@@ -65,11 +66,12 @@ export function Wizard({
   control: (name: string) => HTMLElement | null;
   fieldStates?: FieldStates;
 }) {
+  const { t } = useTranslation("forms");
   const form: RequestForm = grid.form;
   const shown = parts.filter((p) => partShows(p, Boolean(leading)) || p.section.key === current);
   const steps: { key: string; title: string; part?: Part }[] = [
     ...shown.map((p) => ({ key: p.section.key, title: p.section.title, part: p })),
-    { key: REVIEW, title: "Review" },
+    { key: REVIEW, title: t("review.title") },
   ];
   const at = Math.max(
     0,
@@ -127,12 +129,12 @@ export function Wizard({
     const previous = steps[at - 1];
     if (previous) go(previous.key);
   };
-  const of = (i: number) => `Step ${i + 1} of ${steps.length}`;
+  const of = (i: number) => t("wizard.stepOf", { n: i + 1, total: steps.length });
 
   return (
     <div className="flex flex-col gap-4">
       <ol
-        aria-label="Steps"
+        aria-label={t("wizard.steps")}
         className="flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3"
       >
         {steps.map((s, i) => {
@@ -147,12 +149,12 @@ export function Wizard({
               <StepMark n={i + 1} state={state} />
               <span className={cn("text-secondary", state === "now" ? "font-medium text-fg" : "text-muted")}>
                 {s.title}
-                {state === "done" && <span className="sr-only">, done</span>}
+                {state === "done" && <span className="sr-only">, {t("wizard.done")}</span>}
               </span>
               {bad && (
                 <>
                   <CircleAlert className="size-3.5 shrink-0 text-bad" aria-hidden />
-                  <span className="sr-only">, needs attention</span>
+                  <span className="sr-only">, {t("wizard.needsAttention")}</span>
                 </>
               )}
             </li>
@@ -193,10 +195,11 @@ export function Wizard({
         <Panel
           title={
             <>
-              Review<span className="sr-only">, {of(steps.length - 1).toLowerCase()}</span>
+              {t("review.title")}
+              <span className="sr-only">, {of(steps.length - 1).toLowerCase()}</span>
             </>
           }
-          description="Check what you entered before you submit."
+          description={t("review.lead")}
           actions={
             <span aria-hidden className="text-caption text-muted">
               {of(steps.length - 1)}
@@ -220,7 +223,7 @@ export function Wizard({
         {at > 0 && (
           <Button onClick={back}>
             <ArrowLeft aria-hidden />
-            Back
+            {t("wizard.back")}
           </Button>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -234,7 +237,7 @@ export function Wizard({
           ) : (
             <Button variant="primary" onClick={() => void next()} disabled={Boolean(options.holding)}>
               {checking && <LoaderCircle className="animate-spin" aria-hidden />}
-              Next
+              {t("wizard.next")}
               <ArrowRight aria-hidden />
             </Button>
           )}

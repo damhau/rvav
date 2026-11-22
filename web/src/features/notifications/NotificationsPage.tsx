@@ -4,6 +4,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -18,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import type { Me } from "@/lib/api/types";
-import { currentLocale, isLocale, localeNames, locales, type Locale } from "@/lib/i18n";
+import { applyLocale, currentLocale, isLocale, localeNames, locales, type Locale } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { failed } from "../admin/governance/common";
@@ -36,6 +37,7 @@ const differs = (kind: string, chs: Channel[]) => {
 };
 
 function List() {
+  const { t } = useTranslation("notifications");
   const [unread, setUnread] = useState(false);
   const list = useInfiniteQuery(q.notifications(unread));
   const markRead = useMarkRead();
@@ -43,16 +45,16 @@ function List() {
   const count = list.data?.pages[0]?.unread ?? 0;
   return (
     <Panel
-      title={count > 0 ? `${count} unread` : "All read"}
+      title={count > 0 ? t("unread", { count }) : t("allRead")}
       flush
       actions={
         <div className="flex items-center gap-3">
           <label htmlFor="unread-only" className="flex items-center gap-1.5 text-secondary">
             <Checkbox id="unread-only" checked={unread} onChange={setUnread} />
-            Unread only
+            {t("unreadOnly")}
           </label>
           <Button size="sm" disabled={count === 0 || markRead.isPending} onClick={() => markRead.mutate({ all: true })}>
-            Mark all read
+            {t("markAllRead")}
           </Button>
         </div>
       }
@@ -60,13 +62,10 @@ function List() {
       {list.isPending && <SkeletonRows rows={4} cols={2} />}
       {list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
       {list.data && items.length === 0 && (
-        <EmptyState
-          title={unread ? "Nothing unread" : "No notification yet"}
-          body="Requests, approvals and leases that concern you show here."
-        />
+        <EmptyState title={t(unread ? "nothingUnread" : "none")} body={t("noneBody")} />
       )}
       {items.length > 0 && (
-        <ul aria-label="Notifications" className="divide-y divide-line">
+        <ul aria-label={t("title")} className="divide-y divide-line">
           {items.map((n) => (
             <li key={n.id} className="flex items-start gap-3 px-4 py-2.5 text-body">
               <div className="min-w-0 flex-1">
@@ -86,10 +85,10 @@ function List() {
                 <Button
                   size="sm"
                   variant="quiet"
-                  aria-label={`Mark read: ${n.title}`}
+                  aria-label={t("markReadOf", { title: n.title })}
                   onClick={() => markRead.mutate({ ids: [n.id] })}
                 >
-                  Mark read
+                  {t("markRead")}
                 </Button>
               )}
             </li>
@@ -99,7 +98,7 @@ function List() {
       {list.hasNextPage && (
         <div className="flex justify-center p-3">
           <Button size="sm" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
-            Load more
+            {t("loadMore")}
           </Button>
         </div>
       )}
@@ -108,11 +107,18 @@ function List() {
 }
 
 function Preferences() {
+  const { t } = useTranslation(["notifications", "shell"]);
   const qc = useQueryClient();
   const { me } = useCurrentProject();
   const prefs = useQuery(q.notificationPreferences());
   // The language shown until one is chosen: saving keeps what the person sees.
   const [locale, setLocale] = useState<Locale>(me.locale ?? currentLocale());
+  // One chosen in the top bar meanwhile is the one this form saves.
+  const [chosen, setChosen] = useState(me.locale);
+  if (me.locale !== chosen) {
+    setChosen(me.locale);
+    if (me.locale) setLocale(me.locale);
+  }
   const [rules, setRules] = useState<Record<string, Channel[]>>({});
   useEffect(() => {
     if (!prefs.data) return;
@@ -133,17 +139,19 @@ function Preferences() {
           },
         }),
       ),
-    onSuccess: (saved) => {
+    onSuccess: async (saved) => {
       qc.setQueryData(q.notificationPreferences().queryKey, saved);
       qc.setQueryData<Me>(keys.me, (m) => m && { ...m, locale: saved.locale });
-      toast.success("Notification preferences saved");
+      // Said in the language just saved.
+      await applyLocale(saved.locale);
+      toast.success(t("prefs.saved"));
     },
-    onError: (e) => failed(e, "Not saved"),
+    onError: (e) => failed(e, t("prefs.notSaved")),
   });
   const test = useMutation({
     mutationFn: (channel: Channel) => call(api.POST("/me/notification-preferences/test", { body: { channel } })),
-    onSuccess: (r) => (r.ok ? toast.success(r.message) : toast.error("Not sent", { description: r.message })),
-    onError: (e) => failed(e, "Not sent"),
+    onSuccess: (r) => (r.ok ? toast.success(r.message) : toast.error(t("prefs.notSent"), { description: r.message })),
+    onError: (e) => failed(e, t("prefs.notSent")),
   });
   if (prefs.isPending) return <SkeletonRows rows={6} cols={4} />;
   if (prefs.isError) return <ErrorState error={prefs.error} onRetry={() => void prefs.refetch()} />;
@@ -153,28 +161,32 @@ function Preferences() {
   };
   return (
     <div className="flex flex-col gap-4">
-      <Panel title="Where rvav can reach you">
+      <Panel title={t("prefs.reach")}>
         <ul className="flex flex-col gap-2 text-body">
           <li className="flex items-center gap-2">
-            <Badge tone="ok">On</Badge> <span className="font-medium">In the app</span>
-            <span className="text-secondary text-muted">Always: everything is here.</span>
+            <Badge tone="ok">{t("prefs.on")}</Badge> <span className="font-medium">{t("prefs.inApp")}</span>
+            <span className="text-secondary text-muted">{t("prefs.always")}</span>
           </li>
           {channels.map((ch) => {
             const c = reach[ch];
             return (
               <li key={ch} className="flex flex-wrap items-center gap-2">
-                {c?.available ? <Badge tone="ok">Can reach you</Badge> : <Badge tone="neutral">Can't</Badge>}
-                <span className="font-medium">{channelLabel[ch]}</span>
+                {c?.available ? (
+                  <Badge tone="ok">{t("prefs.canReach")}</Badge>
+                ) : (
+                  <Badge tone="neutral">{t("prefs.cannot")}</Badge>
+                )}
+                <span className="font-medium">{channelLabel(ch)}</span>
                 <span className="text-secondary text-muted">{c?.available ? c.address : c?.reason}</span>
                 {c?.available && (
                   <Button
                     size="sm"
                     variant="quiet"
                     disabled={test.isPending}
-                    aria-label={`Send me a test on ${channelLabel[ch]}`}
+                    aria-label={t("prefs.testOn", { channel: channelLabel(ch) })}
                     onClick={() => test.mutate(ch)}
                   >
-                    Send me a test
+                    {t("prefs.test")}
                   </Button>
                 )}
               </li>
@@ -182,7 +194,7 @@ function Preferences() {
           })}
         </ul>
       </Panel>
-      <Panel title="What comes where">
+      <Panel title={t("prefs.where")}>
         <form
           className="flex flex-col gap-4"
           onSubmit={(e) => {
@@ -191,8 +203,8 @@ function Preferences() {
           }}
         >
           <Field
-            label="Language"
-            hint="Of rvav's pages and of what it sends you."
+            label={t("shell:topBar.language")}
+            hint={t("prefs.languageHint")}
             htmlFor="notif-locale"
             className="max-w-xs"
           >
@@ -208,54 +220,57 @@ function Preferences() {
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className="border-b border-line py-2 pr-3 font-medium">
-                    When
+                    {t("prefs.when")}
                   </th>
                   <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    App
+                    {t("prefs.app")}
                   </th>
                   {channels.map((ch) => (
                     <th key={ch} scope="col" className="border-b border-line px-3 py-2 font-medium">
-                      {channelLabel[ch]}
+                      {channelLabel(ch)}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {prefs.data.rules.map((r) => (
-                  <tr key={r.kind}>
-                    <th scope="row" className="border-b border-line py-2 pr-3 text-left font-normal">
-                      <span className="font-medium">{kindLabel[r.kind].label}</span>
-                      {!differs(r.kind, rules[r.kind] ?? []) && (
-                        <span className="ml-2 text-caption text-faint">default</span>
-                      )}
-                      <div className="text-secondary text-muted">{kindLabel[r.kind].hint}</div>
-                    </th>
-                    <td className="border-b border-line px-3 py-2">
-                      <Checkbox
-                        checked
-                        disabled
-                        aria-label={`${kindLabel[r.kind].label} in the app`}
-                        onChange={() => {}}
-                      />
-                    </td>
-                    {channels.map((ch) => (
-                      <td key={ch} className="border-b border-line px-3 py-2">
+                {prefs.data.rules.map((r) => {
+                  const kind = kindLabel(r.kind);
+                  return (
+                    <tr key={r.kind}>
+                      <th scope="row" className="border-b border-line py-2 pr-3 text-left font-normal">
+                        <span className="font-medium">{kind.label}</span>
+                        {!differs(r.kind, rules[r.kind] ?? []) && (
+                          <span className="ml-2 text-caption text-faint">{t("prefs.default")}</span>
+                        )}
+                        <div className="text-secondary text-muted">{kind.hint}</div>
+                      </th>
+                      <td className="border-b border-line px-3 py-2">
                         <Checkbox
-                          aria-label={`${kindLabel[r.kind].label} by ${channelLabel[ch]}`}
-                          disabled={!reach[ch]?.available}
-                          checked={(rules[r.kind] ?? []).includes(ch)}
-                          onChange={(on) => toggle(r.kind, ch, on)}
+                          checked
+                          disabled
+                          aria-label={t("prefs.inAppOf", { kind: kind.label })}
+                          onChange={() => {}}
                         />
                       </td>
-                    ))}
-                  </tr>
-                ))}
+                      {channels.map((ch) => (
+                        <td key={ch} className="border-b border-line px-3 py-2">
+                          <Checkbox
+                            aria-label={t("prefs.by", { kind: kind.label, channel: channelLabel(ch) })}
+                            disabled={!reach[ch]?.available}
+                            checked={(rules[r.kind] ?? []).includes(ch)}
+                            onChange={(on) => toggle(r.kind, ch, on)}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
           <div className="flex justify-end">
             <Button type="submit" variant="primary" disabled={save.isPending}>
-              Save preferences
+              {t("prefs.save")}
             </Button>
           </div>
         </form>
@@ -268,10 +283,11 @@ export const notificationsTabs = ["all", "preferences"] as const;
 export type NotificationsTab = (typeof notificationsTabs)[number];
 
 export function NotificationsPage({ tab = "all" }: { tab?: NotificationsTab }) {
+  const { t } = useTranslation("notifications");
   const navigate = useNavigate();
   return (
     <Page>
-      <PageHeader title="Notifications" description="What concerns you, and where you want to hear about it." />
+      <PageHeader title={t("title")} description={t("lead")} />
       <Tabs
         value={tab}
         onValueChange={(next) =>
@@ -282,9 +298,9 @@ export function NotificationsPage({ tab = "all" }: { tab?: NotificationsTab }) {
           })
         }
       >
-        <TabsList aria-label="Notifications sections">
-          <TabsTrigger value="all">Notifications</TabsTrigger>
-          <TabsTrigger value="preferences">Preferences</TabsTrigger>
+        <TabsList aria-label={t("sections")}>
+          <TabsTrigger value="all">{t("tabs.all")}</TabsTrigger>
+          <TabsTrigger value="preferences">{t("tabs.preferences")}</TabsTrigger>
         </TabsList>
         <TabsContent value="all" className="pt-4">
           <List />

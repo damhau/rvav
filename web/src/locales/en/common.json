@@ -22,7 +22,9 @@
   "units": {
     "MB": "{{value}} MB",
     "GB": "{{value}} GB",
-    "TB": "{{value}} TB"
+    "TB": "{{value}} TB",
+    "B": "{{value}} B",
+    "KB": "{{value}} KB"
   },
   "actions": {
     "close": "Close",
@@ -161,5 +163,11 @@
     "label_other": "Policy warnings"
   },
   "clipboardMissing": "This page can't use the clipboard.",
-  "loadingApp": "Loading {{name}}…"
+  "loadingApp": "Loading {{name}}…",
+  "quota": {
+    "vcpu": "vCPU",
+    "memory_gb": "Memory",
+    "storage_gb": "Storage",
+    "vm_count": "VMs"
+  }
 }

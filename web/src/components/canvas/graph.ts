@@ -3,6 +3,7 @@
 // request's run all build one of these from the blueprint and draw it with
 // <Canvas>, as a deployment's topology does from its resources; the list
 // view reads the same model.
+import { i18n } from "@/lib/i18n";
 import type { FieldError, StepStatus } from "@/lib/api/types";
 
 /** TB: top to bottom (a composite's steps); LR: left to right (a VM item's topology). */
@@ -40,6 +41,8 @@ export interface CanvasNode {
   subtitle?: string;
   /** A short tag before the title: what the step runs, a component's count. */
   badge?: string;
+  /** A step's kind (awx, wait, branch…): its icon. */
+  stepKind?: string;
   lines: CanvasLine[];
   /** How it relates to the others, in words: the list view and screen readers say these. */
   relations: string[];
@@ -145,18 +148,10 @@ export function within(pointer: string, prefix: string): boolean {
   return pointer === prefix || pointer.startsWith(prefix + "/");
 }
 
-const statusWords: Record<CanvasStatus, string> = {
-  pending: "Not started",
-  running: "Running",
-  waiting: "Waiting",
-  done: "Done",
-  failed: "Failed",
-  skipped: "Skipped",
-  cancelled: "Cancelled",
-  undone: "Undone",
-};
+export const statusLabel = (s: CanvasStatus) => i18n.t(`canvas:status.${s}`);
 
-export const statusLabel = (s: CanvasStatus) => statusWords[s];
+/** A line as one text: "Runs: vm.create". */
+export const lineText = (l: CanvasLine) => (l.label ? i18n.t("canvas:line", { label: l.label, text: l.text }) : l.text);
 
 /** A node's subtitle, when it says more than its title (a key the title already is says nothing). */
 export const subtitleOf = (n: CanvasNode) => (n.subtitle && n.subtitle !== n.title ? n.subtitle : undefined);
@@ -171,9 +166,9 @@ export function describeNode(n: CanvasNode, status?: CanvasStatus): string {
   if (status) parts.push(statusLabel(status));
   const subtitle = subtitleOf(n);
   if (subtitle) parts.push(subtitle);
-  for (const l of n.lines) parts.push(l.label ? `${l.label}: ${l.text}` : l.text);
+  for (const l of n.lines) parts.push(lineText(l));
   if (n.problems.length > 0)
-    parts.push(`${n.problems.length === 1 ? "1 problem" : `${n.problems.length} problems`}: ${n.problems.join(" ")}`);
+    parts.push(i18n.t("canvas:problemsList", { count: n.problems.length, list: n.problems.join(" ") }));
   parts.push(...n.relations);
   return parts.join(". ");
 }

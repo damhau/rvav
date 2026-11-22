@@ -1,1 +1,100 @@
-{}
+{
+  "title": "Notifications",
+  "lead": "Ce qui vous concerne, et où vous voulez en être informé.",
+  "sections": "Sections des notifications",
+  "tabs": {
+    "all": "Notifications",
+    "preferences": "Préférences"
+  },
+  "unread_one": "{{count}} non lue",
+  "unread_many": "{{count}} non lues",
+  "unread_other": "{{count}} non lues",
+  "allRead": "Tout est lu",
+  "unreadOnly": "Non lues seulement",
+  "markAllRead": "Tout marquer comme lu",
+  "nothingUnread": "Rien de non lu",
+  "none": "Aucune notification pour l'instant",
+  "noneBody": "Les demandes, les approbations et les baux qui vous concernent s'affichent ici.",
+  "markReadOf": "Marquer comme lue\u00a0: {{title}}",
+  "markRead": "Marquer comme lue",
+  "loadMore": "Charger la suite",
+  "bell": {
+    "unread_one": "Notifications, {{count}} non lue",
+    "unread_many": "Notifications, {{count}} non lues",
+    "unread_other": "Notifications, {{count}} non lues",
+    "nothing": "Rien pour l'instant.",
+    "all": "Toutes les notifications et les préférences"
+  },
+  "prefs": {
+    "saved": "Préférences de notification enregistrées",
+    "notSaved": "Non enregistré",
+    "notSent": "Non envoyé",
+    "reach": "Où rvav peut vous joindre",
+    "on": "Activé",
+    "inApp": "Dans l'application",
+    "always": "Toujours\u00a0: tout s'y trouve.",
+    "canReach": "Peut vous joindre",
+    "cannot": "Impossible",
+    "testOn": "M'envoyer un test sur {{channel}}",
+    "test": "M'envoyer un test",
+    "where": "Ce qui arrive où",
+    "languageHint": "Des pages de rvav et de ce qu'il vous envoie.",
+    "when": "Quand",
+    "app": "Application",
+    "default": "par défaut",
+    "inAppOf": "{{kind}} dans l'application",
+    "by": "{{kind}} par {{channel}}",
+    "save": "Enregistrer les préférences"
+  },
+  "channel": {
+    "email": "E-mail",
+    "teams": "Teams",
+    "slack": "Slack"
+  },
+  "kinds": {
+    "request_submitted": {
+      "label": "Demande soumise",
+      "hint": "La vôtre, ou une demande faite en votre nom"
+    },
+    "approval_needed": {
+      "label": "Approbation requise",
+      "hint": "Une demande attend votre décision, ou vous a été déléguée ou transmise par escalade"
+    },
+    "request_approved": {
+      "label": "Demande approuvée",
+      "hint": "Votre demande a été approuvée"
+    },
+    "request_rejected": {
+      "label": "Demande rejetée",
+      "hint": "Votre demande a été rejetée, avec les commentaires"
+    },
+    "request_succeeded": {
+      "label": "Demande terminée",
+      "hint": "Ce que vous avez demandé est prêt, ou l'action est faite"
+    },
+    "request_failed": {
+      "label": "Demande échouée",
+      "hint": "Avec ce qui n'a pas fonctionné"
+    },
+    "request_rolled_back": {
+      "label": "Demande revenue en arrière",
+      "hint": "Ce qu'une demande échouée avait construit a été supprimé"
+    },
+    "lease_expiring": {
+      "label": "Bail bientôt échu",
+      "hint": "Une semaine, puis un jour, avant la fin du bail d'un déploiement"
+    },
+    "lease_expired": {
+      "label": "Bail échu",
+      "hint": "Le bail d'un déploiement a pris fin"
+    },
+    "owner_changed": {
+      "label": "Déploiement transféré",
+      "hint": "Un déploiement vous appartient désormais"
+    },
+    "step_message": {
+      "label": "Message d'une demande",
+      "hint": "Une étape d'un élément composite vous informe de quelque chose"
+    }
+  }
+}

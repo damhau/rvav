@@ -105,11 +105,16 @@ export function leaseLabel(expiresAt: string | null | undefined) {
   return i18n.t("common:lease.inDays", { count: d });
 }
 
-export type SizeUnit = "MB" | "GB" | "TB";
+const sizeUnits = ["B", "KB", "MB", "GB", "TB"] as const;
+export type SizeUnit = (typeof sizeUnits)[number];
 
-export const isSizeUnit = (unit: unknown): unit is SizeUnit => unit === "MB" || unit === "GB" || unit === "TB";
+export const isSizeUnit = (unit: unknown): unit is SizeUnit => sizeUnits.includes(unit as SizeUnit);
 
 /** A size with its unit, as "60 GB" or "60 Go"; the number and unit never break apart in French. */
-export function formatSize(value: number, unit: SizeUnit) {
-  return i18n.t(`common:units.${unit}`, { value: formatNumber(value, { maximumFractionDigits: 1 }) });
+export function formatSize(
+  value: number,
+  unit: SizeUnit,
+  options: Intl.NumberFormatOptions = { maximumFractionDigits: 1 },
+) {
+  return i18n.t(`common:units.${unit}`, { value: formatNumber(value, options) });
 }

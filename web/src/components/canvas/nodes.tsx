@@ -29,23 +29,24 @@ import {
   Waypoints,
   Workflow,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import type { CanvasDirection, CanvasGroup, CanvasNode, CanvasStatus } from "./graph";
-import { statusLabel, subtitleOf } from "./graph";
+import { lineText, statusLabel, subtitleOf } from "./graph";
 import { type EdgeRoute, sides } from "./layout";
 
 export function NodeIcon({ node, className }: { node: CanvasNode; className?: string }) {
   const Icon =
     node.kind === "step"
-      ? node.badge === "AWX"
+      ? node.stepKind === "awx"
         ? SquareTerminal
-        : node.badge === "Workflow"
+        : node.stepKind === "workflow"
           ? Workflow
-          : node.badge === "Wait" || node.badge === "Poll"
+          : node.stepKind === "wait" || node.stepKind === "poll"
             ? Timer
-            : node.badge === "Branch"
+            : node.stepKind === "branch"
               ? Split
-              : node.badge === "Message"
+              : node.stepKind === "notify"
                 ? Mail
                 : Package
       : {
@@ -134,6 +135,7 @@ function Handles({ direction }: { direction: CanvasDirection }) {
 
 /** A node on the canvas. Its size is the layout's (nodeHeight): rows of fixed height, text cut to fit. */
 export function CardView({ data }: NodeProps<CardNode>) {
+  const { t } = useTranslation("canvas");
   const { node, status, selected, direction } = data;
   return (
     <div
@@ -175,7 +177,7 @@ export function CardView({ data }: NodeProps<CardNode>) {
         </div>
       )}
       {node.lines.map((l, i) => (
-        <div key={i} className="h-4 truncate" title={l.label ? `${l.label}: ${l.text}` : l.text}>
+        <div key={i} className="h-4 truncate" title={lineText(l)}>
           {l.label && <span className="text-faint">{l.label} </span>}
           <span className={cn(l.mono && "font-mono")}>{l.text}</span>{" "}
         </div>
@@ -183,7 +185,7 @@ export function CardView({ data }: NodeProps<CardNode>) {
       {node.problems.length > 0 && (
         <div className="flex h-4 items-center gap-1 text-warn" title={node.problems.join(" ")}>
           <TriangleAlert className="size-3 shrink-0" aria-hidden />
-          {node.problems.length === 1 ? "1 problem" : `${node.problems.length} problems`}
+          {t("problems", { count: node.problems.length })}
         </div>
       )}
     </div>
@@ -193,6 +195,7 @@ export function CardView({ data }: NodeProps<CardNode>) {
 /** A parallel group: a frame its steps sit in. */
 export function FrameView({ data }: NodeProps<FrameNode>) {
   const { group, direction } = data;
+  const { t } = useTranslation("canvas");
   return (
     <div
       className={cn(
@@ -206,7 +209,7 @@ export function FrameView({ data }: NodeProps<FrameNode>) {
         {group.problems.length > 0 && (
           <span className="flex items-center gap-1 text-warn" title={group.problems.join(" ")}>
             <TriangleAlert className="size-3" aria-hidden />
-            {group.problems.length === 1 ? "1 problem" : `${group.problems.length} problems`}
+            {t("problems", { count: group.problems.length })}
           </span>
         )}
       </div>

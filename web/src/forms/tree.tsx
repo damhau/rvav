@@ -2,6 +2,7 @@
 // any options that name their parent. Keyboard as the WAI-ARIA tree view.
 import { ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Option } from "@/lib/api/types";
 import { cn, withUnits } from "@/lib/utils";
 import { SourceFailed } from "./failed";
@@ -76,6 +77,7 @@ export function TreeWidget({
   describedBy,
   readOnly,
 }: WidgetProps) {
+  const { t } = useTranslation(["forms", "common"]);
   const sourced = useFieldValues(name, ui, values, ctx);
   const failed = Boolean(ui.value_source) && sourceFailed(sourced);
   const fetched = sourced.data?.options;
@@ -242,7 +244,7 @@ export function TreeWidget({
           className="flex h-24 items-center justify-center rounded-md border border-dashed border-line px-3 text-secondary text-muted"
           aria-describedby={[describedBy, failed && failId].filter(Boolean).join(" ") || undefined}
         >
-          {loading ? "Loading…" : failed ? "Not loaded" : empty ? "Nothing available" : ""}
+          {loading ? t("common:loading") : failed ? t("source.notLoaded") : empty ? t("source.empty") : ""}
         </p>
       ) : (
         <ul
@@ -269,13 +271,13 @@ export function TreeWidget({
       )}
       {pickedNode && (
         <p id={chosenId} className="text-secondary text-muted">
-          Chosen: {pathOf(pickedNode)}
+          {t("tree.chosen", { path: pathOf(pickedNode) })}
         </p>
       )}
       {failed && (
         <SourceFailed
           id={failId}
-          message="Couldn't load the options."
+          message={t("source.failed")}
           onRetry={() => void sourced.refetch()}
           retrying={sourced.isFetching}
           focusTo={() => document.getElementById(id)}

@@ -1,6 +1,7 @@
 // What every layout of a request form shares: each field's state from the
 // server's rule results, the fields a section shows, and the grid they show in.
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { FieldNote } from "@/components/ui/input";
 import type { FieldStates, RequestForm, UiField, UiSection, UiWidget } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -121,6 +122,7 @@ export function FieldGrid({
   errors,
   ctx,
 }: GridProps & { section: UiSection; fields: ShownField[]; leading?: ReactNode }) {
+  const { t } = useTranslation("forms");
   const schema = form.schema as Schema;
   return (
     <div className={cn("grid grid-cols-1 gap-4", gridCols[section.columns ?? 2])}>
@@ -140,7 +142,7 @@ export function FieldGrid({
                 <label id={`${id}-label`} htmlFor={id} className="text-secondary font-medium">
                   {ui.label}
                 </label>
-                {!state.required && !state.readOnly && <span className="text-caption text-faint">Optional</span>}
+                {!state.required && !state.readOnly && <span className="text-caption text-faint">{t("optional")}</span>}
               </div>
             )}
             <Widget

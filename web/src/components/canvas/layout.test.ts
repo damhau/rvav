@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compositeGraph, vmGraph } from "./blueprint";
-import { FRAME, layoutGraph, nearest, nodeHeight, takenWords, type Box } from "./layout";
+import { FRAME, layoutGraph, nearest, nodeHeight, takenLabel, type Box } from "./layout";
 
 const composite = compositeGraph({
   kind: "composite",
@@ -91,7 +91,7 @@ describe("layoutGraph", () => {
     }
     // Only a branch's edges have one.
     expect(l.routes.has(graph.edges.find((e) => e.target === "step:b")!.id)).toBe(false);
-    expect(takenWords["not-taken"]).toBe("not taken");
+    expect(takenLabel("not-taken")).toBe("not taken");
   });
 
   it("lays a VM item out in columns: networks, components, then groups", () => {

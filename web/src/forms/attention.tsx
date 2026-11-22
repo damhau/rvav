@@ -1,5 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import type { Ref } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
 /** A problem with an input the page has no control for. */
 export interface Unplaced {
@@ -25,6 +26,7 @@ export function Attention({
   unplaced: Unplaced[];
   ref?: Ref<HTMLDivElement>;
 }) {
+  const { t } = useTranslation("forms");
   return (
     <div
       ref={ref}
@@ -34,12 +36,17 @@ export function Attention({
     >
       <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="flex min-w-0 flex-col gap-1">
-        <p className="font-medium">{count === 1 ? "1 input needs attention." : `${count} inputs need attention.`}</p>
+        <p className="font-medium">{t("attention", { count })}</p>
         {unplaced.length > 0 && (
           <ul className="flex flex-col gap-0.5 text-secondary">
             {unplaced.map((u) => (
               <li key={u.key} className="break-words">
-                {u.code ? <span className="font-mono">{u.label}</span> : u.label}, not on this form: {u.message}
+                <Trans
+                  t={t}
+                  i18nKey="unplaced"
+                  values={{ label: u.label, message: u.message }}
+                  components={{ label: u.code ? <span className="font-mono" /> : <span /> }}
+                />
               </li>
             ))}
           </ul>

@@ -1,1 +1,141 @@
-{}
+{
+  "attention_one": "{{count}} champ demande votre attention.",
+  "attention_many": "{{count}} champs demandent votre attention.",
+  "attention_other": "{{count}} champs demandent votre attention.",
+  "unplaced": "<label>{{label}}</label>, absent de ce formulaire\u00a0: {{message}}",
+  "needsAttention_one": "{{count}} champ demande votre attention",
+  "needsAttention_many": "{{count}} champs demandent votre attention",
+  "needsAttention_other": "{{count}} champs demandent votre attention",
+  "sections": "Sections du formulaire",
+  "optional": "Facultatif",
+  "source": {
+    "failed": "Impossible de charger les options.",
+    "suggestionsFailed": "Impossible de charger les suggestions.",
+    "loading": "Chargement des options…",
+    "notLoaded": "Non chargé",
+    "empty": "Rien de disponible",
+    "none": "Rien de disponible."
+  },
+  "remove": "Retirer {{name}}",
+  "removed": "Retiré\u00a0: {{name}}.",
+  "tags": {
+    "added": "{{label}}, {{total}} saisis",
+    "atMost": "{{max}} au maximum",
+    "typeEnter": "Tapez, puis Entrée",
+    "already": "{{tag}} y figure déjà.",
+    "notAllowed": "Ce champ n'accepte pas {{tag}}\u00a0: choisissez une suggestion."
+  },
+  "pairs": {
+    "key": "Clé",
+    "keyN": "Clé {{n}}",
+    "value": "Valeur",
+    "valueN": "Valeur {{n}}",
+    "remove": "Retirer la paire {{n}}",
+    "repeated": "{{key}} est déjà une clé plus haut\u00a0: modifiez-la ou retirez cette paire.",
+    "add": "Ajouter une paire"
+  },
+  "grid": {
+    "remove": "Retirer",
+    "cell": "{{column}}, ligne {{n}}",
+    "removeRow": "Retirer la ligne {{n}}",
+    "none": "Aucune ligne pour l'instant.",
+    "add": "Ajouter une ligne",
+    "between": "De {{min}} à {{max}} lignes",
+    "atLeast_one": "Au moins {{count}} ligne",
+    "atLeast_many": "Au moins {{count}} lignes",
+    "atLeast_other": "Au moins {{count}} lignes",
+    "atMost_one": "Au plus {{count}} ligne",
+    "atMost_many": "Au plus {{count}} lignes",
+    "atMost_other": "Au plus {{count}} lignes"
+  },
+  "dual": {
+    "available": "Disponibles",
+    "chosen": "Choisis, dans l'ordre",
+    "allChosen": "Tout est choisi",
+    "noneChosen": "Rien de choisi pour l'instant",
+    "add": "Ajouter",
+    "remove": "Retirer",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "added": "Ajouté\u00a0: {{name}}, {{at}} sur {{total}}.",
+    "moved": "Déplacé\u00a0: {{name}}, {{at}} sur {{total}}."
+  },
+  "file": {
+    "none": "Aucun fichier.",
+    "replace": "Remplacer",
+    "choose": "Choisir un fichier",
+    "sending": "Envoi de {{name}}…",
+    "wait_one": "Attendez que {{names}} soit envoyé.",
+    "wait_many": "Attendez que {{names}} soient envoyés.",
+    "wait_other": "Attendez que {{names}} soient envoyés.",
+    "takes": "Accepte {{types}}, {{size}} au maximum.",
+    "takesAny": "Accepte tout fichier, {{size}} au maximum.",
+    "tooBig": "{{name}} fait {{size}}\u00a0: {{label}} accepte {{max}} au maximum.",
+    "empty": "{{name}} est vide.",
+    "sendFailed": "Impossible d'envoyer {{name}}.",
+    "downloadFailed": "Impossible de télécharger {{name}}"
+  },
+  "review": {
+    "title": "Vérification",
+    "lead": "Vérifiez votre saisie avant de soumettre.",
+    "yes": "Oui",
+    "no": "Non",
+    "rows_one": "{{count}} ligne",
+    "rows_many": "{{count}} lignes",
+    "rows_other": "{{count}} lignes",
+    "notGiven": "Non renseigné",
+    "hidden": "Masqué",
+    "change": "Modifier",
+    "nothing": "Rien à remplir."
+  },
+  "search": {
+    "listName": "résultats",
+    "placeholder": "Tapez pour chercher",
+    "none": "Aucun résultat.",
+    "found_one": "{{count}} résultat\u00a0: appuyez sur Entrée pour le choisir.",
+    "found_many": "{{count}} résultats\u00a0: utilisez les flèches, puis Entrée.",
+    "found_other": "{{count}} résultats\u00a0: utilisez les flèches, puis Entrée.",
+    "lookupFailed": "Impossible de retrouver ce choix.",
+    "failed": "La recherche n'a pas abouti.",
+    "searching": "Recherche…",
+    "tooMany": "{{total}} trouvés, les {{listed}} premiers affichés\u00a0: précisez votre saisie."
+  },
+  "people": {
+    "listName": "personnes trouvées",
+    "placeholder": "Nom ou adresse e-mail",
+    "none": "Personne n'a été trouvé.",
+    "found_one": "{{count}} personne trouvée\u00a0: appuyez sur Entrée pour la choisir.",
+    "found_many": "{{count}} personnes trouvées\u00a0: utilisez les flèches, puis Entrée.",
+    "found_other": "{{count}} personnes trouvées\u00a0: utilisez les flèches, puis Entrée.",
+    "lookupFailed": "Impossible de retrouver cette personne."
+  },
+  "tree": {
+    "chosen": "Choisi\u00a0: {{path}}"
+  },
+  "wizard": {
+    "steps": "Étapes",
+    "done": "terminée",
+    "needsAttention": "demande votre attention",
+    "stepOf": "Étape {{n}} sur {{total}}",
+    "back": "Précédent",
+    "next": "Suivant"
+  },
+  "secret": {
+    "show": "Afficher {{label}}"
+  },
+  "computed": {
+    "updating": "Mise à jour",
+    "nextFree": "prochaine libre",
+    "generated": "généré",
+    "failed": "Impossible de calculer cette valeur."
+  },
+  "image": {
+    "loading": "Chargement de l'image\u00a0: {{name}}",
+    "failed": "L'image ne s'est pas chargée\u00a0: {{name}}",
+    "none": "Pas encore d'image\u00a0: {{name}}"
+  },
+  "link": {
+    "newTab": "(s'ouvre dans un nouvel onglet)",
+    "noAddress": "(pas encore d'adresse)"
+  }
+}

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { ErrorState, SkeletonRows } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -20,14 +21,10 @@ import { q } from "@/lib/query";
 import { copyText } from "@/lib/utils";
 import { relative } from "@/lib/format";
 
-const durations = [
-  { value: "30", label: "30 days" },
-  { value: "90", label: "90 days" },
-  { value: "180", label: "180 days" },
-  { value: "365", label: "A year" },
-];
+const durations = [30, 90, 180];
 
 function NewToken({ onMade }: { onMade: (token: string) => void }) {
+  const { t } = useTranslation("account");
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [days, setDays] = useState("90");
@@ -43,14 +40,14 @@ function NewToken({ onMade }: { onMade: (token: string) => void }) {
           },
         }),
       ),
-    onSuccess: (t) => {
+    onSuccess: (made) => {
       void qc.invalidateQueries({ queryKey: ["tokens"] });
       setName("");
-      onMade(t.token);
+      onMade(made.token);
       // The value lives on the page only, not in the query cache.
       make.reset();
     },
-    onError: (e) => toast.error(isApiError(e) ? (e.fieldErrors[0]?.message ?? e.problem.title) : "No token was made"),
+    onError: (e) => toast.error(isApiError(e) ? (e.fieldErrors[0]?.message ?? e.problem.title) : t("tokens.notMade")),
   });
   return (
     <form
@@ -60,24 +57,33 @@ function NewToken({ onMade }: { onMade: (token: string) => void }) {
         make.mutate();
       }}
     >
-      <Field label="What it is for" htmlFor="token-name" className="w-64">
+      <Field label={t("tokens.forWhat")} htmlFor="token-name" className="w-64">
         <Input id="token-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
       </Field>
-      <Field label="Expires in" htmlFor="token-days" className="w-36">
-        <Select id="token-days" value={days} onChange={setDays} options={durations} />
+      <Field label={t("tokens.expiresIn")} htmlFor="token-days" className="w-36">
+        <Select
+          id="token-days"
+          value={days}
+          onChange={setDays}
+          options={[
+            ...durations.map((d) => ({ value: String(d), label: t("tokens.days", { count: d }) })),
+            { value: "365", label: t("tokens.year") },
+          ]}
+        />
       </Field>
       <label htmlFor="token-inventory" className="flex items-center gap-2 pb-2 text-body">
         <Checkbox id="token-inventory" checked={inventoryOnly} onChange={setInventoryOnly} />
-        Ansible inventory only
+        {t("tokens.inventoryOnly")}
       </label>
       <Button type="submit" variant="primary" disabled={!name.trim() || make.isPending}>
-        {make.isPending ? "Making…" : "Make a token"}
+        {t(make.isPending ? "tokens.making" : "tokens.make")}
       </Button>
     </form>
   );
 }
 
 export function TokensPage() {
+  const { t } = useTranslation(["account", "shell"]);
   const qc = useQueryClient();
   const { me } = useCurrentProject();
   const isAdmin = can(me, "tokens.manage");
@@ -89,114 +95,108 @@ export function TokensPage() {
     mutationFn: (id: string) => call(api.DELETE("/tokens/{id}", { params: { path: { id } } })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["tokens"] });
-      toast.success("Token revoked");
+      toast.success(t("tokens.revoked"));
       setRevoking(null);
     },
-    onError: (e) => toast.error(isApiError(e) ? e.problem.title : "Not revoked"),
+    onError: (e) => toast.error(isApiError(e) ? e.problem.title : t("tokens.notRevoked")),
   });
   const list = tokens.data?.items ?? [];
   return (
     <Page>
-      <PageHeader
-        title="API tokens"
-        description="Scripts and pipelines call rvav's API with a token, as you. Its value is shown once."
-      />
-      <Panel title="New token">
+      <PageHeader title={t("shell:topBar.apiTokens")} description={t("tokens.lead")} />
+      <Panel title={t("tokens.new")}>
         <NewToken onMade={setMade} />
         {made && (
           <section
-            aria-label="Your new token"
+            aria-label={t("tokens.yourNew")}
             className="mt-3 flex flex-col gap-1.5 rounded-md border border-ok bg-ok-soft p-3 text-secondary"
           >
             {/* Announced without the value itself. */}
-            <span role="status">Copy it now: it won't be shown again.</span>
+            <span role="status">{t("tokens.copyNow")}</span>
             <div className="flex items-center gap-2">
               <code className="min-w-0 flex-1 rounded bg-surface px-2 py-1 font-mono break-all">{made}</code>
               <Button
                 size="sm"
                 onClick={() =>
                   copyText(made).then(
-                    () => toast.success("Copied"),
-                    () =>
-                      toast.error("Not copied", { description: "Your browser refused: select the token and copy it." }),
+                    () => toast.success(t("tokens.copied")),
+                    () => toast.error(t("tokens.notCopied"), { description: t("tokens.notCopiedBody") }),
                   )
                 }
               >
-                Copy
+                {t("tokens.copy")}
               </Button>
               <Button size="sm" variant="quiet" onClick={() => setMade(null)}>
-                Done
+                {t("tokens.done")}
               </Button>
             </div>
           </section>
         )}
       </Panel>
       <Panel
-        title={everyone ? "Everyone's tokens" : "Your tokens"}
+        title={t(everyone ? "tokens.everyones" : "tokens.yours")}
         flush
         actions={
           isAdmin && (
             <label htmlFor="tokens-everyone" className="flex items-center gap-2 text-secondary">
               <Checkbox id="tokens-everyone" checked={everyone} onChange={setEveryone} />
-              Everyone's
+              {t("tokens.everyone")}
             </label>
           )
         }
       >
         {tokens.isPending && <SkeletonRows rows={2} cols={5} />}
         {tokens.isError && <ErrorState error={tokens.error} onRetry={() => void tokens.refetch()} />}
-        {tokens.data && list.length === 0 && (
-          <EmptyState title="No tokens" body="Make one above for a script or a pipeline." />
-        )}
+        {tokens.data && list.length === 0 && <EmptyState title={t("tokens.none")} body={t("tokens.noneBody")} />}
         {list.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-body">
               <thead>
                 <tr className="label text-left">
                   <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-                    Token
+                    {t("tokens.token")}
                   </th>
                   {everyone && (
                     <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                      Owner
+                      {t("tokens.owner")}
                     </th>
                   )}
                   <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    Last used
+                    {t("tokens.lastUsed")}
                   </th>
                   <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    Expires
+                    {t("tokens.expires")}
                   </th>
                   <th scope="col" className="border-b border-line px-4 py-2">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{t("tokens.actions")}</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {list.map((t) => (
-                  <tr key={t.id} className="hover:bg-sunken">
+                {list.map((token) => (
+                  <tr key={token.id} className="hover:bg-sunken">
                     <td className="border-b border-line px-4 py-2">
-                      <div className="font-medium">{t.name}</div>
+                      <div className="font-medium">{token.name}</div>
                       <div className="text-caption text-faint">
-                        {t.scope === "inventory" ? "Ansible inventory only" : "Everything you may do"} · made{" "}
-                        {relative(t.created_at)}
+                        {t(token.scope === "inventory" ? "tokens.inventoryOnly" : "tokens.everything")} ·{" "}
+                        {t("tokens.made", { when: relative(token.created_at) })}
                       </div>
                     </td>
-                    {everyone && <td className="border-b border-line px-3 py-2 text-secondary">{t.user.name}</td>}
+                    {everyone && <td className="border-b border-line px-3 py-2 text-secondary">{token.user.name}</td>}
                     <td className="border-b border-line px-3 py-2 text-secondary text-muted">
-                      {t.last_used_at ? relative(t.last_used_at) : "Never"}
+                      {token.last_used_at ? relative(token.last_used_at) : t("tokens.never")}
                     </td>
                     <td className="border-b border-line px-3 py-2 text-secondary text-muted">
-                      {t.expires_at ? relative(t.expires_at) : "Never"}
+                      {token.expires_at ? relative(token.expires_at) : t("tokens.never")}
                     </td>
                     <td className="border-b border-line px-4 py-2 text-right">
                       <Button
                         size="sm"
                         variant="quiet"
-                        aria-label={`Revoke ${t.name}`}
-                        onClick={() => setRevoking({ id: t.id, name: t.name })}
+                        aria-label={t("tokens.revokeName", { name: token.name })}
+                        onClick={() => setRevoking({ id: token.id, name: token.name })}
                       >
-                        Revoke
+                        {t("tokens.revoke")}
                       </Button>
                     </td>
                   </tr>
@@ -210,10 +210,10 @@ export function TokensPage() {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRevoking(null)}
-          title={`Revoke ${revoking.name}?`}
-          description="The token stops working at once. This can't be undone: make a new token to replace it."
-          consequences="Scripts and pipelines that call rvav with it are refused from now on."
-          confirmLabel="Revoke token"
+          title={t("tokens.revokeTitle", { name: revoking.name })}
+          description={t("tokens.revokeBody")}
+          consequences={t("tokens.revokeConsequences")}
+          confirmLabel={t("tokens.revokeConfirm")}
           pending={revoke.isPending}
           onConfirm={() => revoke.mutate(revoking.id)}
         />

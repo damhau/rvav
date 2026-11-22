@@ -1,5 +1,6 @@
 import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -21,6 +22,7 @@ export function SourceFailed({
   retrying: boolean;
   focusTo: () => HTMLElement | null | undefined;
 }) {
+  const { t } = useTranslation();
   const box = useRef<HTMLDivElement>(null);
   const target = useRef(focusTo);
   target.current = focusTo;
@@ -38,7 +40,7 @@ export function SourceFailed({
       </span>
       <Button type="button" size="sm" aria-disabled={retrying || undefined} onClick={() => !retrying && onRetry()}>
         {retrying && <LoaderCircle className="animate-spin" aria-hidden />}
-        Try again
+        {t("error.retry")}
       </Button>
     </div>
   );

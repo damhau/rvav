@@ -17,6 +17,8 @@
 //   from each it is built after), then the groups their VMs are in, the
 //   security groups' firewall rules arriving at them from Any, another
 //   group or an existing one.
+import { formatList, formatNumber, formatSize } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { allSteps, readComposite, type CompositeStepView } from "@/lib/composite";
 import { celCode, dependsOn } from "@/lib/dependsOn";
 import type { FieldError } from "@/lib/api/types";
@@ -31,11 +33,13 @@ const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.map((x) => (typeof x === "string" ? x : JSON.stringify(x))) : str(v) ? [str(v)] : [];
 
-/** "a", "a and b", "a, b and c". */
+/** "a", "a and b", "a, b and c", in the language shown. */
 export function words(names: string[]): string {
-  if (names.length <= 1) return names.join("");
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return formatList(names);
 }
+
+// In the language shown when called: a graph is drawn again when it changes.
+const t = i18n.getFixedT(null, "canvas");
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -49,66 +53,54 @@ export function blueprintGraph(blueprint: unknown, prefix = "/definition/bluepri
 
 // ---- Composites ----------------------------------------------------------
 
-const stepBadge: Record<CompositeStepView["kind"], string> = {
-  item: "Item",
-  awx: "AWX",
-  workflow: "Workflow",
-  rest: "REST",
-  ask: "Person",
-  wait: "Wait",
-  poll: "Poll",
-  signal: "Signal",
-  branch: "Branch",
-  notify: "Message",
-  resource: "Resource",
-  "?": "Step",
-};
+const stepBadge = (kind: CompositeStepView["kind"]) => i18n.t(`canvas:badge.${kind === "?" ? "step" : kind}`);
 
 function stepLines(s: CompositeStepView): CanvasLine[] {
   const lines: CanvasLine[] = [];
   if (s.target)
     lines.push({
-      label: s.kind === "rest" || s.kind === "poll" ? "Calls" : s.kind === "resource" ? "Makes" : "Runs",
+      label: t(
+        s.kind === "rest" || s.kind === "poll" ? "lines.calls" : s.kind === "resource" ? "lines.makes" : "lines.runs",
+      ),
       text: s.target,
       mono: true,
     });
   if (s.ask) {
-    lines.push({ label: "Asks", text: s.ask.who }, { label: "Wants", text: s.ask.wants });
-    if (s.ask.timeout) lines.push({ label: "Timeout", text: s.ask.timeout });
+    lines.push({ label: t("lines.asks"), text: s.ask.who }, { label: t("lines.wants"), text: s.ask.wants });
+    if (s.ask.timeout) lines.push({ label: t("lines.timeout"), text: s.ask.timeout });
   }
   if (s.forEach) {
-    lines.push({ label: "For each", text: s.forEach.items, mono: true });
-    if (s.forEach.parallel > 1) lines.push({ label: "At a time", text: String(s.forEach.parallel) });
+    lines.push({ label: t("lines.forEach"), text: s.forEach.items, mono: true });
+    if (s.forEach.parallel > 1) lines.push({ label: t("lines.atATime"), text: formatNumber(s.forEach.parallel) });
   }
   if (s.signal) {
-    lines.push({ label: "Waits for", text: s.signal.waitsFor });
-    if (s.signal.when) lines.push({ label: "Picks", text: s.signal.when, mono: true });
-    if (s.signal.timeout) lines.push({ label: "Timeout", text: s.signal.timeout });
+    lines.push({ label: t("lines.waitsFor"), text: s.signal.waitsFor });
+    if (s.signal.when) lines.push({ label: t("lines.picks"), text: s.signal.when, mono: true });
+    if (s.signal.timeout) lines.push({ label: t("lines.timeout"), text: s.signal.timeout });
   }
-  if (s.wait?.for) lines.push({ label: "For", text: s.wait.for });
-  if (s.wait?.until) lines.push({ label: "Until", text: s.wait.until, mono: true });
+  if (s.wait?.for) lines.push({ label: t("lines.for"), text: s.wait.for });
+  if (s.wait?.until) lines.push({ label: t("lines.until"), text: s.wait.until, mono: true });
   if (s.poll) {
-    if (s.poll.until) lines.push({ label: "Until", text: s.poll.until, mono: true });
-    if (s.poll.every) lines.push({ label: "Every", text: s.poll.every });
-    if (s.poll.timeout) lines.push({ label: "Timeout", text: s.poll.timeout });
+    if (s.poll.until) lines.push({ label: t("lines.until"), text: s.poll.until, mono: true });
+    if (s.poll.every) lines.push({ label: t("lines.every"), text: s.poll.every });
+    if (s.poll.timeout) lines.push({ label: t("lines.timeout"), text: s.poll.timeout });
   }
   for (const side of s.sides ?? [])
     lines.push(
       side.when === undefined
         ? {
             label: side.label,
-            text:
-              side.steps.length === 0 ? "goes on" : side.steps.length === 1 ? "1 step" : `${side.steps.length} steps`,
+            text: side.steps.length === 0 ? t("composite.goesOn") : t("composite.steps", { count: side.steps.length }),
           }
         : { label: side.label, text: side.when, mono: true },
     );
   if (s.notify) {
-    lines.push({ label: "Tells", text: s.notify.who });
-    if (s.notify.message) lines.push({ label: "Says", text: s.notify.message });
+    lines.push({ label: t("lines.tells"), text: s.notify.who });
+    if (s.notify.message) lines.push({ label: t("lines.says"), text: s.notify.message });
   }
-  if (s.when) lines.push({ label: "When", text: s.when, mono: true });
-  if (s.uses.length > 0) lines.push({ label: "Uses", text: s.uses.join(", "), mono: true });
-  if (s.undo) lines.push({ label: "Undo", text: s.undo, mono: true });
+  if (s.when) lines.push({ label: t("lines.when"), text: s.when, mono: true });
+  if (s.uses.length > 0) lines.push({ label: t("lines.uses"), text: s.uses.join(", "), mono: true });
+  if (s.undo) lines.push({ label: t("lines.undo"), text: s.undo, mono: true });
   return lines;
 }
 
@@ -123,8 +115,6 @@ interface Tail {
   failure?: boolean;
 }
 
-const ifItFails = "if it fails";
-
 // A side's title is what its author wrote: the card holds it in full, an edge doesn't have the room.
 const labelOf = (s: string) => (s.length > 24 ? `${s.slice(0, 23)}…` : s);
 
@@ -137,7 +127,7 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
   const keys = new Map<string, number>();
   for (const s of allSteps(view)) if (s.key) keys.set(s.key, (keys.get(s.key) ?? 0) + 1);
   const stepId = (s: CompositeStepView) => (s.key && keys.get(s.key) === 1 ? `step:${s.key}` : `step@${s.pointer}`);
-  const titleOf = (s: CompositeStepView) => s.title || s.key || "(no key)";
+  const titleOf = (s: CompositeStepView) => s.title || s.key || t("composite.noKey");
   const claimed = new Set<FieldError>();
   const problemsIn = (pointer: string) =>
     view.problems
@@ -151,7 +141,8 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
     kind: "step",
     title: titleOf(s),
     subtitle: s.key && s.key !== titleOf(s) ? s.key : undefined,
-    badge: stepBadge[s.kind],
+    badge: stepBadge(s.kind),
+    stepKind: s.kind,
     lines: stepLines(s),
     relations,
     problems: problemsIn(s.pointer),
@@ -163,8 +154,8 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
     {
       id: "inputs",
       kind: "inputs",
-      title: "Request",
-      lines: [{ text: "The form's values, as inputs" }],
+      title: t("composite.request"),
+      lines: [{ text: t("composite.requestLine") }],
       relations: [],
       problems: [],
     },
@@ -172,25 +163,28 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
   const groups: CanvasGroup[] = [];
   const edges: CanvasEdge[] = [];
   // Where the way goes on from: one step or frame, or each side of a branch.
-  let tails: Tail[] = [{ id: "inputs", names: ["the request"] }];
+  let tails: Tail[] = [{ id: "inputs", names: [t("composite.theRequest")] }];
   const follow = (target: string, names: string[], when?: string) => {
-    for (const t of tails) {
-      const label = [t.label && labelOf(t.label), when ? "when" : ""].filter(Boolean).join(", ");
+    for (const tail of tails) {
+      const label = [tail.label && labelOf(tail.label), when ? t("composite.when") : ""].filter(Boolean).join(", ");
+      const from = `${words(tail.names)}${tail.label ? ` (${tail.label})` : ""}`;
       edges.push({
-        id: `seq:${t.id}>${target}`,
-        source: t.id,
+        id: `seq:${tail.id}>${target}`,
+        source: tail.id,
         target,
         kind: "sequence",
         label: label || undefined,
         description: capital(
-          `${words(t.names)}${t.label ? ` (${t.label})` : ""}, then ${words(names)}${when ? ` when ${when}` : ""}`,
+          when
+            ? t("composite.edgeWhen", { from, to: words(names), when })
+            : t("composite.edge", { from, to: words(names) }),
         ),
-        conditional: Boolean(when) || Boolean(t.branch) || t.failure || undefined,
-        ...(t.branch ? { branch: t.branch } : {}),
+        conditional: Boolean(when) || Boolean(tail.branch) || tail.failure || undefined,
+        ...(tail.branch ? { branch: tail.branch } : {}),
       });
     }
   };
-  const after = () => tails.flatMap((t) => t.names);
+  const after = () => tails.flatMap((x) => x.names);
   const isFirst = () => tails.length === 1 && tails[0]!.id === "inputs";
   /**
    * A catch path's nodes after what it catches, from: each follows the one
@@ -204,13 +198,20 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
     catches: string,
     extra: Partial<CanvasNode> = {},
   ): { nodes: CanvasNode[]; tail: Tail } => {
-    let tail: Tail = { ...from, label: ifItFails, failure: true };
+    let tail: Tail = { ...from, label: t("composite.ifItFails"), failure: true };
     const out = caught.map((c, i) => {
       tails = [tail];
       follow(stepId(c), [titleOf(c)], c.when);
       tail = { id: stepId(c), names: [titleOf(c)], branch: from.branch };
-      const relations = [i === 0 ? `Runs if ${catches} fails` : `Runs after ${titleOf(caught[i - 1]!)}`];
-      return stepNode(c, relations, { ...extra, lines: [{ label: "Catches", text: catches }, ...stepLines(c)] });
+      const relations = [
+        i === 0
+          ? t("composite.runsIf", { name: catches })
+          : t("composite.runsAfter", { names: titleOf(caught[i - 1]!) }),
+      ];
+      return stepNode(c, relations, {
+        ...extra,
+        lines: [{ label: t("lines.catches"), text: catches }, ...stepLines(c)],
+      });
     });
     return { nodes: out, tail };
   };
@@ -223,7 +224,7 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
     // A `parallel:` list is a frame, even of one step (the designer adds the next).
     const parallel = Array.isArray(obj(arr(bp.steps)[g]).parallel);
     const slot = parallel ? `parallel:${g}` : ids[0]!;
-    const runsAfter = isFirst() ? "Runs first" : `Runs after ${words(after())}`;
+    const runsAfter = isFirst() ? t("composite.runsFirst") : t("composite.runsAfter", { names: words(after()) });
     const when = !parallel ? group[0]!.when : undefined;
     follow(slot, titles, when);
     const branch = !parallel ? group[0]!.sides : undefined;
@@ -236,7 +237,7 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
       for (const side of branch) {
         const way = { node: slot, cases: [side.taken] };
         let sideTails: Tail[] = [{ id: slot, names: titles, label: side.label, branch: way }];
-        const before = [`On the side ${side.label} of ${titles[0]!}`];
+        const before = [t("composite.onSide", { side: side.label, name: titles[0]! })];
         const sideNodes: string[] = [];
         side.steps.forEach((s, i) => {
           tails = sideTails;
@@ -246,9 +247,13 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
             ? catchNodes(s.catch, own, titleOf(s), { onSideOf: slot })
             : { nodes: [], tail: undefined };
           onSides.push(
-            stepNode(s, i === 0 ? before : [...before, `Runs after ${titleOf(side.steps[i - 1]!)}`], {
-              onSideOf: slot,
-            }),
+            stepNode(
+              s,
+              i === 0 ? before : [...before, t("composite.runsAfter", { names: titleOf(side.steps[i - 1]!) })],
+              {
+                onSideOf: slot,
+              },
+            ),
             ...caught.nodes,
           );
           sideNodes.push(stepId(s), ...caught.nodes.map((n) => n.id));
@@ -272,35 +277,38 @@ export function compositeGraph(bp: Raw, prefix = "/definition/blueprint"): Canva
     const own: Tail = { id: slot, names: titles };
     const caughtBy = parallel ? view.groupCatch[g] : group[0]!.catch;
     const caught = caughtBy?.length
-      ? catchNodes(caughtBy, own, parallel ? `a step of ${words(titles)}` : titles[0]!)
+      ? catchNodes(caughtBy, own, parallel ? t("composite.stepOf", { names: words(titles) }) : titles[0]!)
       : { nodes: [], tail: undefined };
     nodes.push(
       ...group.map((s, j) => {
         const others = titles.filter((_, k) => k !== j);
         const relations = [runsAfter];
-        if (others.length > 0) relations.push(`At the same time as ${words(others)}`);
+        if (others.length > 0) relations.push(t("composite.sameTimeAs", { names: words(others) }));
         return stepNode(s, relations, { group: parallel ? slot : undefined });
       }),
       ...caught.nodes,
     );
     if (parallel)
-      groups.push({ id: slot, label: "At the same time", nodes: ids, problems: problemsIn(at), pointer: at });
+      groups.push({ id: slot, label: t("composite.sameTime"), nodes: ids, problems: problemsIn(at), pointer: at });
     tails = caught.tail ? [own, caught.tail] : [own];
   });
 
   nodes.push({
     id: "end",
     kind: "end",
-    title: "Done",
+    title: t("composite.done"),
     lines: [
-      { label: "On a failure", text: bp.rollback_on_failure === true ? "undo what was built" : "keep what was built" },
+      {
+        label: t("lines.onFailure"),
+        text: t(bp.rollback_on_failure === true ? "composite.undoBuilt" : "composite.keepBuilt"),
+      },
     ],
-    relations: isFirst() ? ["No step yet"] : [`After ${words(after())}`],
+    relations: isFirst() ? [t("composite.noStepYet")] : [t("composite.after", { names: words(after()) })],
     problems: [],
   });
-  follow("end", ["done"]);
-  if (view.onError.length > 0)
-    nodes.push(...catchNodes(view.onError, { id: "end", names: ["the request"] }, "the request").nodes);
+  follow("end", [t("composite.theEnd")]);
+  const request = t("composite.theRequest");
+  if (view.onError.length > 0) nodes.push(...catchNodes(view.onError, { id: "end", names: [request] }, request).nodes);
   return { kind: "composite", direction: "TB", nodes, edges, groups, problems: view.problems };
 }
 
@@ -325,8 +333,8 @@ function listed(v: unknown): string[] | null {
 }
 
 function sizeText(v: unknown): string {
-  if (typeof v === "number") return `${v} GB`;
-  return str(v) ? `${str(v)} GB` : "? GB";
+  if (typeof v === "number") return formatSize(v, "GB");
+  return i18n.t("common:units.GB", { value: str(v) || "?" });
 }
 
 /** What a custom resource's inputs read of the components and the resources before it. */
@@ -370,8 +378,8 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
         kind: "segment",
         title: str(s.title) || key,
         subtitle: key,
-        badge: "Segment",
-        lines: [{ text: "Made for each deployment" }],
+        badge: t("badge.segment"),
+        lines: [{ text: t("vm.madeEach") }],
         pointer: `${prefix}/segments/${i}`,
       },
       "segment",
@@ -386,8 +394,8 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
         kind: "security_group",
         title: str(sg.title) || key,
         subtitle: key,
-        badge: "Group",
-        lines: [{ text: "Made for each deployment" }],
+        badge: t("badge.group"),
+        lines: [{ text: t("vm.madeEach") }],
         pointer: `${prefix}/security_groups/${i}`,
       },
       "group",
@@ -396,10 +404,10 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
 
   const unknownGroup = (key: string, field: string) => {
     const n = b.node(
-      { id: `sg:${key}`, kind: "security_group", title: key, subtitle: key, badge: "Group", lines: [] },
+      { id: `sg:${key}`, kind: "security_group", title: key, subtitle: key, badge: t("badge.group"), lines: [] },
       "group",
     );
-    if (n.problems.length === 0) problem(n, field, "unknown_group", `No security group has the key ${key}.`);
+    if (n.problems.length === 0) problem(n, field, "unknown_group", t("vm.noGroup", { key }));
     return n;
   };
   const existingGroup = (ref: string) =>
@@ -408,8 +416,8 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
         id: ref,
         kind: "nsx_group",
         title: ref.slice("nsx:".length),
-        badge: "Group",
-        lines: [{ text: "Existing, in NSX" }],
+        badge: t("badge.group"),
+        lines: [{ text: t("vm.existing") }],
       },
       "other",
     );
@@ -429,8 +437,8 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
         {
           id: "network:auto",
           kind: "network",
-          title: "Chosen by placement",
-          badge: "Network",
+          title: t("vm.byPlacement"),
+          badge: t("badge.network"),
           lines: [],
         },
         "network",
@@ -439,17 +447,23 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
     if (seg) {
       const key = seg[1]!;
       const n = b.node(
-        { id: `segment:${key}`, kind: "segment", title: key, subtitle: key, badge: "Segment", lines: [] },
+        { id: `segment:${key}`, kind: "segment", title: key, subtitle: key, badge: t("badge.segment"), lines: [] },
         "segment",
       );
-      if (!n.pointer && n.problems.length === 0) problem(n, field, "unknown_segment", `No segment has the key ${key}.`);
+      if (!n.pointer && n.problems.length === 0) problem(n, field, "unknown_segment", t("vm.noSegment", { key }));
       return n;
     }
     const lit = quoted.exec(e);
     if (lit) {
       const name = lit[1] ?? lit[2] ?? "";
       return b.node(
-        { id: `network:${e}`, kind: "network", title: name, badge: "Network", lines: [{ text: "Named in the item" }] },
+        {
+          id: `network:${e}`,
+          kind: "network",
+          title: name,
+          badge: t("badge.network"),
+          lines: [{ text: t("vm.namedInItem") }],
+        },
         "network",
       );
     }
@@ -457,9 +471,9 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
       {
         id: `network:${e}`,
         kind: "network",
-        title: "From the request",
+        title: t("vm.fromRequest"),
         subtitle: e,
-        badge: "Network",
+        badge: t("badge.network"),
         lines: [],
       },
       "network",
@@ -477,15 +491,15 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
   for (const { c, pointer } of components) {
     const key = declared ? str(c.key) : "vm";
     const bindings = { ...obj(bp.bindings), ...obj(c.bindings) };
-    const title = declared ? str(c.title) || key : "Virtual machine";
+    const title = declared ? str(c.title) || key : t("vm.machine");
     const lines: CanvasLine[] = [];
-    let badge = "VM";
+    let badge = t("badge.vm");
     if (declared) {
       const count = c.count ?? 1;
-      if (typeof count === "number") badge = count === 1 ? "1 VM" : `${count} VMs`;
+      if (typeof count === "number") badge = t("badge.vmCount", { count });
       else {
-        badge = "VMs";
-        lines.push({ label: "Count", text: str(count), mono: true });
+        badge = t("badge.vms");
+        lines.push({ label: t("lines.count"), text: str(count), mono: true });
       }
     }
     const template = str(c.template) || str(bp.template) || str(bindings.template);
@@ -493,26 +507,29 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
     const os = str(obj(c.guest).os_family) || str(bpGuest.os_family);
     if (template)
       lines.push({
-        label: "Template",
+        label: t("lines.template"),
         text: [library ? `${library}/${template}` : template, os].filter(Boolean).join(" · "),
         mono: true,
       });
     const disks = arr(c.disks ?? bp.disks).map(obj);
     if (disks.length > 0)
       lines.push({
-        label: "Disks",
+        label: t("lines.disks"),
         text: [
-          "system",
+          t("vm.system"),
           ...disks.map((d) => sizeText(d.size_gb) + (str(d.storage_policy) ? ` (${str(d.storage_policy)})` : "")),
         ].join(", "),
       });
-    if (c.anti_affinity === true) lines.push({ text: "On separate hosts" });
+    if (c.anti_affinity === true) lines.push({ text: t("vm.separateHosts") });
     const post = bindings.post_config;
     if (post !== undefined) {
       const keys = listed(post);
       if (keys)
-        lines.push({ label: "Then", text: keys.map((k) => str(obj(awx[k]).title) || k).join(", ") || "nothing" });
-      else lines.push({ label: "Then", text: str(post), mono: true });
+        lines.push({
+          label: t("lines.then"),
+          text: keys.map((k) => str(obj(awx[k]).title) || k).join(", ") || t("vm.nothing"),
+        });
+      else lines.push({ label: t("lines.then"), text: str(post), mono: true });
     }
     const comp = b.node(
       {
@@ -547,20 +564,21 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
       const net = network(a.network, a.field);
       const on =
         net.id === "network:auto"
-          ? "the network placement chooses"
+          ? t("vm.placementNetwork")
           : net.kind === "network" && net.subtitle
-            ? `the request's network (${net.subtitle})`
+            ? t("vm.requestNetwork", { name: net.subtitle })
             : net.title;
+      const nic = { title, key: a.key, network: on };
       edges.push({
         id: `nic:${comp.id}:${a.key}`,
         source: net.id,
         target: comp.id,
         kind: "network",
         label: a.dhcp ? `${a.key} · DHCP` : a.key,
-        description: `${title}: adapter ${a.key} on ${on}${a.dhcp ? ", by DHCP" : ""}`,
+        description: t(a.dhcp ? "vm.adapterEdgeDhcp" : "vm.adapterEdge", nic),
       });
-      relate(comp, `Adapter ${a.key} on ${on}${a.dhcp ? ", by DHCP" : ""}`);
-      relate(net, `${title}: adapter ${a.key}`);
+      relate(comp, t(a.dhcp ? "vm.adapterDhcp" : "vm.adapter", nic));
+      relate(net, t("vm.adapterOf", nic));
     }
 
     const memberOf = strings(c.groups ?? bp.groups).map((ref, i) => ({
@@ -575,9 +593,9 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
           {
             id: `groups:${chosen}`,
             kind: "nsx_group",
-            title: "Groups chosen in the request",
+            title: t("vm.chosenGroups"),
             subtitle: chosen,
-            badge: "Group",
+            badge: t("badge.group"),
             lines: [],
           },
           "other",
@@ -589,10 +607,10 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
         source: comp.id,
         target: g.id,
         kind: "member",
-        description: `${title} in ${g.title}`,
+        description: t("vm.memberEdge", { title, group: g.title }),
       });
-      relate(comp, `In ${g.title}`);
-      relate(g, `Holds ${title}`);
+      relate(comp, t("vm.in", { group: g.title }));
+      relate(g, t("vm.holds", { title }));
     }
   }
 
@@ -603,8 +621,8 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
     if (!to) continue;
     strings(c.depends_on).forEach((d, i) => {
       const field = `${pointer}/depends_on/${i}`;
-      if (d === key) problem(to.node, field, "invalid", "A component isn't built after itself.");
-      else if (!byKey.has(d)) problem(to.node, field, "unknown_component", `There is no component ${d}.`);
+      if (d === key) problem(to.node, field, "invalid", t("vm.selfDepends"));
+      else if (!byKey.has(d)) problem(to.node, field, "unknown_component", t("vm.noComponent", { key: d }));
     });
     for (const d of after.get(key) ?? []) {
       const from = byKey.get(d)!;
@@ -613,10 +631,10 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
         source: from.node.id,
         target: to.node.id,
         kind: "sequence",
-        description: `${to.title} built after ${from.title}`,
+        description: t("vm.builtAfterEdge", { to: to.title, from: from.title }),
       });
-      relate(to.node, `Built after ${from.title}`);
-      relate(from.node, `Built before ${to.title}`);
+      relate(to.node, t("vm.builtAfter", { from: from.title }));
+      relate(from.node, t("vm.builtBefore", { to: to.title }));
     }
   }
 
@@ -633,8 +651,8 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
         kind: "resource",
         title,
         subtitle: key && key !== title ? key : undefined,
-        badge: "Resource",
-        lines: str(r.type) ? [{ label: "Type", text: str(r.type), mono: true }] : [],
+        badge: t("badge.resource"),
+        lines: str(r.type) ? [{ label: t("lines.type"), text: str(r.type), mono: true }] : [],
         pointer: `${prefix}/resources/${i}`,
       },
       "resource",
@@ -642,8 +660,8 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
     const texts = Object.values(obj(r.with)).filter((v): v is string => typeof v === "string");
     const before = [
       ...new Set([
-        ...texts.flatMap((t) => readsOf(t, "components")).flatMap((k) => (byKey.has(k) ? [byKey.get(k)!.node] : [])),
-        ...texts.flatMap((t) => readsOf(t, "resources")).flatMap((k) => (made.has(k) ? [made.get(k)!] : [])),
+        ...texts.flatMap((x) => readsOf(x, "components")).flatMap((k) => (byKey.has(k) ? [byKey.get(k)!.node] : [])),
+        ...texts.flatMap((x) => readsOf(x, "resources")).flatMap((k) => (made.has(k) ? [made.get(k)!] : [])),
       ]),
     ];
     for (const from of before) {
@@ -652,15 +670,19 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
         source: from.id,
         target: n.id,
         kind: "sequence",
-        description: `${title} made after ${from.title}`,
+        description: t("vm.madeAfterEdge", { title, from: from.title }),
       });
-      relate(from, `Before ${title}`);
+      relate(from, t("vm.before", { title }));
     }
-    relate(n, before.length > 0 ? `Made after ${words(before.map((x) => x.title))}` : "Made once the VMs are built");
+    relate(
+      n,
+      before.length > 0 ? t("vm.madeAfter", { names: words(before.map((x) => x.title)) }) : t("vm.madeOnceBuilt"),
+    );
     if (key) made.set(key, n);
   });
 
-  const verbs: Record<string, string> = { allow: "Allows", drop: "Drops", reject: "Rejects" };
+  const ruleKind = (action: string) =>
+    action === "allow" || action === "drop" || action === "reject" ? action : "other";
   securityGroups.forEach((sg, i) => {
     const into = buckets.get("group")!.get(`sg:${str(sg.key)}`)!;
     const key = str(sg.key);
@@ -669,13 +691,14 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
       const from = strings(r.from);
       const services = strings(r.services);
       const action = str(r.action) || "allow";
-      const svc = services.length === 0 || services.every((s) => s === "any") ? "any service" : services.join(", ");
-      const verb = verbs[action] ?? action;
+      const svc =
+        services.length === 0 || services.every((s) => s === "any") ? t("vm.anyService") : services.join(", ");
+      const rule = ruleKind(action);
       (from.length > 0 ? from : ["any"]).forEach((f, m) => {
         const field = `${prefix}/security_groups/${i}/rules/${k}/from/${m}`;
         const source =
           f === "any"
-            ? b.node({ id: "any", kind: "any", title: "Any", lines: [{ text: "Any source" }] }, "any")
+            ? b.node({ id: "any", kind: "any", title: t("vm.any"), lines: [{ text: t("vm.anySource") }] }, "any")
             : groupRef(f, field);
         edges.push({
           id: `rule:${key}:${k}:${m}`,
@@ -683,11 +706,11 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint"): CanvasGraph 
           target: into.id,
           kind: "rule",
           label: action === "allow" ? svc : `${svc} · ${action}`,
-          description: `${verb} ${svc} from ${source.title} to ${into.title}`,
+          description: t(`vm.rule.${rule}.edge`, { action, services: svc, from: source.title, to: into.title }),
           deny: action !== "allow",
         });
-        relate(into, `${verb} ${svc} from ${source.title}`);
-        relate(source, `Rule into ${into.title}: ${verb.toLowerCase()} ${svc}`);
+        relate(into, t(`vm.rule.${rule}.into`, { action, services: svc, from: source.title }));
+        relate(source, t(`vm.rule.${rule}.from`, { action, services: svc, to: into.title }));
       });
     });
   });

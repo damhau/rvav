@@ -1,1 +1,133 @@
-{}
+{
+  "attention_one": "{{count}} input needs attention.",
+  "attention_other": "{{count}} inputs need attention.",
+  "unplaced": "<label>{{label}}</label>, not on this form: {{message}}",
+  "needsAttention_one": "{{count}} input needs attention",
+  "needsAttention_other": "{{count}} inputs need attention",
+  "sections": "Form sections",
+  "optional": "Optional",
+  "source": {
+    "failed": "Couldn't load the options.",
+    "suggestionsFailed": "Couldn't load the suggestions.",
+    "loading": "Loading the options…",
+    "notLoaded": "Not loaded",
+    "empty": "Nothing available",
+    "none": "Nothing available."
+  },
+  "remove": "Remove {{name}}",
+  "removed": "Removed {{name}}.",
+  "tags": {
+    "added": "{{label}}, {{total}} added",
+    "atMost": "{{max}} at most",
+    "typeEnter": "Type, then Enter",
+    "already": "{{tag}} is already there.",
+    "notAllowed": "{{tag}} isn't one this field takes: pick a suggestion."
+  },
+  "pairs": {
+    "key": "Key",
+    "keyN": "Key {{n}}",
+    "value": "Value",
+    "valueN": "Value {{n}}",
+    "remove": "Remove pair {{n}}",
+    "repeated": "{{key}} is already a key above: change it or remove this pair.",
+    "add": "Add a pair"
+  },
+  "grid": {
+    "remove": "Remove",
+    "cell": "{{column}}, row {{n}}",
+    "removeRow": "Remove row {{n}}",
+    "none": "No rows yet.",
+    "add": "Add a row",
+    "between": "{{min}} to {{max}} rows",
+    "atLeast_one": "At least {{count}} row",
+    "atLeast_other": "At least {{count}} rows",
+    "atMost_one": "At most {{count}} row",
+    "atMost_other": "At most {{count}} rows"
+  },
+  "dual": {
+    "available": "Available",
+    "chosen": "Chosen, in order",
+    "allChosen": "All chosen",
+    "noneChosen": "None chosen yet",
+    "add": "Add",
+    "remove": "Remove",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "added": "Added {{name}}: {{at}} of {{total}}.",
+    "moved": "Moved {{name}}: {{at}} of {{total}}."
+  },
+  "file": {
+    "none": "No file.",
+    "replace": "Replace",
+    "choose": "Choose a file",
+    "sending": "Sending {{name}}…",
+    "wait_one": "Wait until {{names}} is sent.",
+    "wait_other": "Wait until {{names}} are sent.",
+    "takes": "Takes {{types}}, {{size}} at most.",
+    "takesAny": "Takes any file, {{size}} at most.",
+    "tooBig": "{{name}} is {{size}}: {{label}} takes {{max}} at most.",
+    "empty": "{{name}} is empty.",
+    "sendFailed": "Couldn't send {{name}}.",
+    "downloadFailed": "Couldn't download {{name}}"
+  },
+  "review": {
+    "title": "Review",
+    "lead": "Check what you entered before you submit.",
+    "yes": "Yes",
+    "no": "No",
+    "rows_one": "{{count}} row",
+    "rows_other": "{{count}} rows",
+    "notGiven": "Not given",
+    "hidden": "Hidden",
+    "change": "Change",
+    "nothing": "Nothing to fill in."
+  },
+  "search": {
+    "listName": "matches",
+    "placeholder": "Type to search",
+    "none": "No matches.",
+    "found_one": "{{count}} match: press Enter to pick it.",
+    "found_other": "{{count}} matches: use the arrow keys, then Enter.",
+    "lookupFailed": "Couldn't look up this choice.",
+    "failed": "Couldn't search.",
+    "searching": "Searching…",
+    "tooMany": "{{total}} found, the first {{listed}} listed: type more to narrow them down."
+  },
+  "people": {
+    "listName": "people found",
+    "placeholder": "Name or email",
+    "none": "Nobody found.",
+    "found_one": "{{count}} person found: press Enter to pick them.",
+    "found_other": "{{count}} people found: use the arrow keys, then Enter.",
+    "lookupFailed": "Couldn't look up this person."
+  },
+  "tree": {
+    "chosen": "Chosen: {{path}}"
+  },
+  "wizard": {
+    "steps": "Steps",
+    "done": "done",
+    "needsAttention": "needs attention",
+    "stepOf": "Step {{n}} of {{total}}",
+    "back": "Back",
+    "next": "Next"
+  },
+  "secret": {
+    "show": "Show {{label}}"
+  },
+  "computed": {
+    "updating": "Updating",
+    "nextFree": "next free",
+    "generated": "generated",
+    "failed": "Couldn't work out this value."
+  },
+  "image": {
+    "loading": "Loading the image: {{name}}",
+    "failed": "The image didn't load: {{name}}",
+    "none": "No image yet: {{name}}"
+  },
+  "link": {
+    "newTab": "(opens in a new tab)",
+    "noAddress": "(no address yet)"
+  }
+}

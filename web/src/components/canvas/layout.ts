@@ -5,6 +5,7 @@
 // layout is needed. Sizes are fixed by what a node shows, so the layout
 // needs no measuring and is the same in a test as in a browser.
 import dagre, { type EdgeLabel, type GraphLabel, type NodeLabel } from "@dagrejs/dagre";
+import { i18n } from "@/lib/i18n";
 import { subtitleOf, type CanvasDirection, type CanvasGraph, type CanvasNode, type CanvasNodeKind } from "./graph";
 
 export interface Box {
@@ -35,7 +36,8 @@ export interface EdgeRoute {
 }
 
 /** What a run adds to a branch's edge's label: the room is kept, so that the layout doesn't follow the run. */
-export const takenWords = { taken: "taken", "not-taken": "not taken" } as const;
+/** What a run's branch edge says of its way: "taken", "not taken". */
+export const takenLabel = (way: "taken" | "not-taken") => i18n.t(`canvas:taken.${way}`);
 
 export const nodeWidth: Record<CanvasNodeKind, number> = {
   inputs: 200,
@@ -117,7 +119,7 @@ export function layoutGraph(graph: CanvasGraph): CanvasLayout {
       continue;
     }
     // Room for the label, so it doesn't sit on a node.
-    const room = (e.label?.length ?? 0) + (e.branch ? takenWords["not-taken"].length + 2 : 0);
+    const room = (e.label?.length ?? 0) + (e.branch ? takenLabel("not-taken").length + 2 : 0);
     const label = e.label ? { width: room * 6.5 + 12, height: 18, labelpos: "c" as const } : {};
     g.setEdge(v, w, label, e.id);
   }

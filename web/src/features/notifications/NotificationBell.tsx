@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Bell } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { IconButton } from "@/components/ui/button";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown-menu";
 import { api, call } from "@/lib/api/client";
@@ -30,6 +31,7 @@ export function useMarkRead() {
 }
 
 export function NotificationLine({ n }: { n: Notification }) {
+  useTranslation();
   return (
     <span className="flex min-w-0 items-start gap-2">
       <span
@@ -46,6 +48,7 @@ export function NotificationLine({ n }: { n: Notification }) {
 }
 
 export function NotificationBell() {
+  const { t } = useTranslation("notifications");
   const navigate = useNavigate();
   const latest = useQuery(q.latestNotifications());
   const markRead = useMarkRead();
@@ -60,7 +63,7 @@ export function NotificationBell() {
         <IconButton
           variant="secondary"
           className="relative size-[30px] border-line"
-          label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+          label={unread > 0 ? t("bell.unread", { count: unread }) : t("title")}
         >
           <Bell />
           {unread > 0 && (
@@ -74,16 +77,16 @@ export function NotificationBell() {
         </IconButton>
       </MenuTrigger>
       <MenuContent className="w-[min(380px,calc(100vw-32px))]">
-        <MenuLabel>Notifications</MenuLabel>
-        {latest.data?.items.length === 0 && <p className="px-2 py-3 text-secondary text-muted">Nothing yet.</p>}
+        <MenuLabel>{t("title")}</MenuLabel>
+        {latest.data?.items.length === 0 && <p className="px-2 py-3 text-secondary text-muted">{t("bell.nothing")}</p>}
         {latest.data?.items.map((n) => (
           <MenuItem key={n.id} onSelect={() => open(n)}>
             <NotificationLine n={n} />
           </MenuItem>
         ))}
         <MenuSeparator />
-        {unread > 0 && <MenuItem onSelect={() => markRead.mutate({ all: true })}>Mark all read</MenuItem>}
-        <MenuItem onSelect={() => void navigate({ to: "/notifications" })}>All notifications and preferences</MenuItem>
+        {unread > 0 && <MenuItem onSelect={() => markRead.mutate({ all: true })}>{t("markAllRead")}</MenuItem>}
+        <MenuItem onSelect={() => void navigate({ to: "/notifications" })}>{t("bell.all")}</MenuItem>
       </MenuContent>
     </Menu>
   );

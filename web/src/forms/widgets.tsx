@@ -2,6 +2,7 @@
 // same props so the renderer can pick one from the registry.
 import { ExternalLink, Eye, EyeOff, ImageOff, Info, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/common/feedback";
 import { IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -76,6 +77,7 @@ function TextWidget({ id, name, ui, schema, value, onChange, onBlur, invalid, de
 
 /** A secret typed in: hidden until its button shows it, and never offered to the browser's autofill. */
 function SecretWidget({ id, name, ui, schema, value, onChange, onBlur, invalid, describedBy, readOnly }: WidgetProps) {
+  const { t } = useTranslation("forms");
   const [shown, setShown] = useState(false);
   return (
     <div className="flex min-w-0 items-center gap-1">
@@ -96,7 +98,7 @@ function SecretWidget({ id, name, ui, schema, value, onChange, onBlur, invalid, 
         onBlur={onBlur}
       />
       <IconButton
-        label={`Show ${ui.label}`}
+        label={t("secret.show", { label: ui.label })}
         aria-pressed={shown}
         aria-controls={id}
         onClick={() => setShown((s) => !s)}
@@ -282,6 +284,7 @@ function RadioCardsWidget({ id, ui, value, onChange, readOnly }: WidgetProps) {
  * are dropped. While its source fails, it lists the picks it holds.
  */
 function ChecklistWidget({ id, name, ui, value, values, onChange, ctx, describedBy, readOnly }: WidgetProps) {
+  const { t } = useTranslation("forms");
   const sourced = useFieldValues(name, ui, values, ctx);
   const picked = Array.isArray(value) ? value.map(String) : [];
   const failed = Boolean(ui.value_source) && sourceFailed(sourced);
@@ -311,7 +314,7 @@ function ChecklistWidget({ id, name, ui, value, values, onChange, ctx, described
   const failure = failed && (
     <SourceFailed
       id={failId}
-      message="Couldn't load the options."
+      message={t("source.failed")}
       onRetry={() => void sourced.refetch()}
       retrying={sourced.isFetching}
       focusTo={() => document.getElementById(`${id}-options`)?.querySelector<HTMLElement>("button")}
@@ -320,7 +323,7 @@ function ChecklistWidget({ id, name, ui, value, values, onChange, ctx, described
   if (ui.value_source && !sourced.data && !failed) {
     return (
       <p className="text-secondary text-muted" aria-describedby={describedBy}>
-        Loading the options…
+        {t("source.loading")}
       </p>
     );
   }
@@ -328,7 +331,7 @@ function ChecklistWidget({ id, name, ui, value, values, onChange, ctx, described
     return (
       failure || (
         <p className="text-secondary text-muted" aria-describedby={describedBy}>
-          Nothing available.
+          {t("source.none")}
         </p>
       )
     );
@@ -388,6 +391,7 @@ function SourcedSelectWidget({
   describedBy,
   readOnly,
 }: WidgetProps) {
+  const { t } = useTranslation(["forms", "common"]);
   const sourced = useFieldValues(name, ui, values, ctx);
   const current = str(value);
   const loaded = ui.value_source ? sourced.data?.options : (ui.options ?? []);
@@ -414,7 +418,13 @@ function SourcedSelectWidget({
         options={options.map((o) => ({ value: o.value, label: o.label, meta: o.meta }))}
         loading={sourced.isFetching && !sourced.data && !failed}
         disabled={readOnly || Boolean(empty) || (failed && options.length === 0)}
-        placeholder={empty ? "Nothing available" : failed && options.length === 0 ? "Not loaded" : "Select…"}
+        placeholder={
+          empty
+            ? t("source.empty")
+            : failed && options.length === 0
+              ? t("source.notLoaded")
+              : t("common:select.placeholder")
+        }
         className={cn("font-mono text-secondary", invalid && "border-bad")}
         aria-invalid={invalid || undefined}
         aria-describedby={[describedBy, failed && failId].filter(Boolean).join(" ") || undefined}
@@ -422,7 +432,7 @@ function SourcedSelectWidget({
       {failed && (
         <SourceFailed
           id={failId}
-          message="Couldn't load the options."
+          message={t("source.failed")}
           onRetry={() => void sourced.refetch()}
           retrying={sourced.isFetching}
           focusTo={() => document.getElementById(id)}
@@ -434,6 +444,7 @@ function SourcedSelectWidget({
 
 /** Read-only value computed by the server (VM name, next free IP) or a CEL `value` rule. */
 function ComputedWidget({ id, name, ui, value, values, onChange, ctx, describedBy }: WidgetProps) {
+  const { t } = useTranslation("forms");
   const sourced = useFieldValues(name, ui, values, ctx);
   const suggestion = typeof sourced.data?.value === "string" ? sourced.data.value : undefined;
   useApplySuggestion(value, suggestion, suggestion === undefined || suggestion === value, onChange);
@@ -452,15 +463,17 @@ function ComputedWidget({ id, name, ui, value, values, onChange, ctx, describedB
       >
         <span className="truncate">{shown || <span className="text-faint">–</span>}</span>
         {sourced.isFetching ? (
-          <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label="Updating" />
+          <LoaderCircle className="size-3.5 animate-spin text-faint" aria-label={t("computed.updating")} />
         ) : (
-          <span className="font-sans text-caption text-faint">{name === "ip_address" ? "next free" : "generated"}</span>
+          <span className="font-sans text-caption text-faint">
+            {t(name === "ip_address" ? "computed.nextFree" : "computed.generated")}
+          </span>
         )}
       </output>
       {failed && (
         <SourceFailed
           id={failId}
-          message="Couldn't work out this value."
+          message={t("computed.failed")}
           onRetry={() => void sourced.refetch()}
           retrying={sourced.isFetching}
           focusTo={() => document.getElementById(id)}
@@ -481,6 +494,7 @@ function InfoWidget({ ui }: WidgetProps) {
 
 /** A picture the form shows, with its text alternative and, from help, a caption. */
 function ImageWidget({ id, ui }: WidgetProps) {
+  const { t } = useTranslation("forms");
   const { src, failed } = useShownImage(ui.url);
   const [broken, setBroken] = useState(false);
   const loading = !src && !failed && uploadedImage(ui.url) !== undefined;
@@ -494,13 +508,13 @@ function ImageWidget({ id, ui }: WidgetProps) {
           onError={() => setBroken(true)}
         />
       ) : loading ? (
-        <span role="status" aria-label={`Loading the image: ${ui.alt ?? ui.label}`}>
+        <span role="status" aria-label={t("image.loading", { name: ui.alt ?? ui.label })}>
           <Skeleton className="h-24 w-40 rounded-md" />
         </span>
       ) : (
         <p className="flex items-center gap-2 rounded-md border border-dashed border-line px-3 py-6 text-secondary text-muted">
           <ImageOff className="size-4 shrink-0" aria-hidden />
-          {src || failed ? `The image didn't load: ${ui.alt ?? ui.label}` : `No image yet: ${ui.alt ?? ui.label}`}
+          {t(src || failed ? "image.failed" : "image.none", { name: ui.alt ?? ui.label })}
         </p>
       )}
       {ui.help && <figcaption className="text-secondary text-muted">{ui.help}</figcaption>}
@@ -510,6 +524,7 @@ function ImageWidget({ id, ui }: WidgetProps) {
 
 /** A link the form shows: its label is the link's text, and it opens in a new tab. */
 function LinkWidget({ id, ui }: WidgetProps) {
+  const { t } = useTranslation("forms");
   const href = shownUrl(ui.url);
   return (
     <div className="flex flex-col gap-0.5">
@@ -523,11 +538,11 @@ function LinkWidget({ id, ui }: WidgetProps) {
         >
           {ui.label}
           <ExternalLink className="size-3.5 shrink-0" aria-hidden />
-          <span className="sr-only">(opens in a new tab)</span>
+          <span className="sr-only">{t("link.newTab")}</span>
         </a>
       ) : (
         <span id={id} className="text-body text-muted">
-          {ui.label} <span className="text-faint">(no address yet)</span>
+          {ui.label} <span className="text-faint">{t("link.noAddress")}</span>
         </span>
       )}
       {ui.help && <p className="text-secondary text-muted">{ui.help}</p>}

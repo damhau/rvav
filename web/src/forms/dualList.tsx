@@ -1,6 +1,7 @@
 // A dual list: options picked from one list into another, in an order.
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import type { Option } from "@/lib/api/types";
 import { cn, withUnits } from "@/lib/utils";
@@ -92,6 +93,7 @@ function Listbox({
  * the chosen values, in their order.
  */
 export function DualListWidget({ id, name, ui, value, values, onChange, ctx, describedBy, readOnly }: WidgetProps) {
+  const { t } = useTranslation("forms");
   const sourced = useFieldValues(name, ui, values, ctx);
   const chosen = Array.isArray(value) ? value.map(String) : [];
   const failed = Boolean(ui.value_source) && sourceFailed(sourced);
@@ -120,13 +122,13 @@ export function DualListWidget({ id, name, ui, value, values, onChange, ctx, des
     const o = available[i];
     if (!o || readOnly) return;
     set([...chosen, o.value]);
-    setNote(`Added ${o.label}: ${chosen.length + 1} of ${chosen.length + 1}.`);
+    setNote(t("dual.added", { name: o.label, at: chosen.length + 1, total: chosen.length + 1 }));
   };
   const remove = (i: number) => {
     const o = picked[i];
     if (!o || readOnly) return;
     set(chosen.filter((v) => v !== o.value));
-    setNote(`Removed ${o.label}.`);
+    setNote(t("removed", { name: o.label }));
   };
   const reorder = (i: number, delta: -1 | 1) => {
     const j = i + delta;
@@ -135,13 +137,13 @@ export function DualListWidget({ id, name, ui, value, values, onChange, ctx, des
     [next[i], next[j]] = [next[j]!, next[i]!];
     set(next);
     setActiveChosen(j);
-    setNote(`Moved ${picked[i]!.label}: ${j + 1} of ${chosen.length}.`);
+    setNote(t("dual.moved", { name: picked[i]!.label, at: j + 1, total: chosen.length }));
   };
 
   if (ui.value_source && !sourced.data && !failed) {
     return (
       <p className="text-secondary text-muted" aria-describedby={describedBy}>
-        Loading the options…
+        {t("source.loading")}
       </p>
     );
   }
@@ -160,7 +162,7 @@ export function DualListWidget({ id, name, ui, value, values, onChange, ctx, des
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
         <div className="flex min-w-0 flex-col gap-1">
           <span id={`${availableId}-label`} className="text-caption text-muted">
-            Available
+            {t("dual.available")}
           </span>
           <Listbox
             id={availableId}
@@ -169,7 +171,7 @@ export function DualListWidget({ id, name, ui, value, values, onChange, ctx, des
             active={activeAvailable}
             onActive={setActiveAvailable}
             onMove={add}
-            empty={failed ? "Not loaded" : options.length === 0 ? "Nothing available" : "All chosen"}
+            empty={failed ? t("source.notLoaded") : options.length === 0 ? t("source.empty") : t("dual.allChosen")}
           />
         </div>
         <div className="flex gap-1.5 sm:flex-col">
@@ -178,17 +180,17 @@ export function DualListWidget({ id, name, ui, value, values, onChange, ctx, des
             disabled={readOnly || available.length === 0}
             onClick={() => add(Math.min(activeAvailable, available.length - 1))}
           >
-            Add
+            {t("dual.add")}
             <ChevronRight aria-hidden />
           </Button>
           <Button size="sm" disabled={readOnly || picked.length === 0} onClick={() => remove(at)}>
             <ChevronLeft aria-hidden />
-            Remove
+            {t("dual.remove")}
           </Button>
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <span id={`${chosenId}-label`} className="text-caption text-muted">
-            Chosen, in order
+            {t("dual.chosen")}
           </span>
           <Listbox
             id={chosenId}
@@ -198,24 +200,24 @@ export function DualListWidget({ id, name, ui, value, values, onChange, ctx, des
             onActive={setActiveChosen}
             onMove={remove}
             onReorder={reorder}
-            empty="None chosen yet"
+            empty={t("dual.noneChosen")}
           />
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
         <Button size="sm" disabled={readOnly || at <= 0} onClick={() => reorder(at, -1)}>
           <ArrowUp aria-hidden />
-          Move up
+          {t("dual.moveUp")}
         </Button>
         <Button size="sm" disabled={readOnly || at >= picked.length - 1} onClick={() => reorder(at, 1)}>
           <ArrowDown aria-hidden />
-          Move down
+          {t("dual.moveDown")}
         </Button>
       </div>
       {failed && (
         <SourceFailed
           id={failId}
-          message="Couldn't load the options."
+          message={t("source.failed")}
           onRetry={() => void sourced.refetch()}
           retrying={sourced.isFetching}
           focusTo={() => document.getElementById(availableId)}

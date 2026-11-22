@@ -3,6 +3,7 @@
 // (one row, its sub-fields labelled).
 import { Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button, IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -53,20 +54,21 @@ export function TagsWidget({
   const full = schema.maxItems !== undefined && tags.length >= schema.maxItems;
   const focusLater = useFocusLater();
   const noteId = `${id}-tags-note`;
+  const { t } = useTranslation("forms");
 
   const add = (raw: string) => {
     const tag = raw.trim();
     if (!tag) return setText("");
-    if (tags.includes(tag)) return setNote(`${tag} is already there.`);
-    if (allowed && !allowed.includes(tag)) return setNote(`${tag} isn't one this field takes: pick a suggestion.`);
+    if (tags.includes(tag)) return setNote(t("tags.already", { tag }));
+    if (allowed && !allowed.includes(tag)) return setNote(t("tags.notAllowed", { tag }));
     onChange([...tags, tag]);
     setText("");
     setNote("");
   };
   const remove = (tag: string) => {
-    const next = tags.filter((t) => t !== tag);
+    const next = tags.filter((x) => x !== tag);
     onChange(next.length ? next : undefined);
-    setNote(`Removed ${tag}.`);
+    setNote(t("removed", { name: tag }));
     focusLater(id);
   };
 
@@ -80,15 +82,15 @@ export function TagsWidget({
         )}
       >
         {tags.length > 0 && (
-          <ul className="flex flex-wrap gap-1" aria-label={`${ui.label}, ${tags.length} added`}>
-            {tags.map((t) => (
+          <ul className="flex flex-wrap gap-1" aria-label={t("tags.added", { label: ui.label, total: tags.length })}>
+            {tags.map((tag) => (
               <li
-                key={t}
+                key={tag}
                 className="inline-flex h-6 items-center gap-0.5 rounded-sm bg-sunken pr-0.5 pl-1.5 font-mono text-secondary"
               >
-                {t}
+                {tag}
                 {!readOnly && (
-                  <IconButton label={`Remove ${t}`} className="size-5" onClick={() => remove(t)}>
+                  <IconButton label={t("remove", { name: tag })} className="size-5" onClick={() => remove(tag)}>
                     <X aria-hidden />
                   </IconButton>
                 )}
@@ -103,7 +105,7 @@ export function TagsWidget({
           list={suggestions.length ? `${id}-suggestions` : undefined}
           disabled={readOnly || full}
           autoComplete="off"
-          placeholder={full ? `${schema.maxItems} at most` : (ui.placeholder ?? "Type, then Enter")}
+          placeholder={full ? t("tags.atMost", { max: schema.maxItems }) : (ui.placeholder ?? t("tags.typeEnter"))}
           aria-invalid={invalid || undefined}
           aria-describedby={
             [
@@ -144,7 +146,7 @@ export function TagsWidget({
       {ui.value_source && sourceFailed(sourced) && (
         <SourceFailed
           id={`${id}-source`}
-          message="Couldn't load the suggestions."
+          message={t("source.suggestionsFailed")}
           onRetry={() => void sourced.refetch()}
           retrying={sourced.isFetching}
           focusTo={() => document.getElementById(id)}
@@ -177,6 +179,7 @@ function objectOf(rows: Pair[]): Record<string, string> {
 
 /** Key and value pairs, as an object of strings: a key can't be given twice. */
 export function KeyValueWidget({ id, value, onChange, onBlur, invalid, describedBy, readOnly }: WidgetProps) {
+  const { t } = useTranslation("forms");
   const [rows, setRows] = useState<Pair[]>(() => pairsOf(value));
   const [sent, setSent] = useState(() => JSON.stringify(objectOf(pairsOf(value))));
   const focusLater = useFocusLater();
@@ -213,10 +216,10 @@ export function KeyValueWidget({ id, value, onChange, onBlur, invalid, described
                 <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-1.5">
                   <Input
                     id={`${id}-${i}-key`}
-                    aria-label={`Key ${i + 1}`}
+                    aria-label={t("pairs.keyN", { n: i + 1 })}
                     value={r.key}
                     readOnly={readOnly}
-                    placeholder="Key"
+                    placeholder={t("pairs.key")}
                     className={cn("font-mono text-secondary", (dup || invalid) && "border-bad")}
                     aria-invalid={dup || invalid || undefined}
                     aria-describedby={dup ? errId : undefined}
@@ -225,17 +228,17 @@ export function KeyValueWidget({ id, value, onChange, onBlur, invalid, described
                   />
                   <Input
                     id={`${id}-${i}-value`}
-                    aria-label={`Value ${i + 1}`}
+                    aria-label={t("pairs.valueN", { n: i + 1 })}
                     value={r.value}
                     readOnly={readOnly}
-                    placeholder="Value"
+                    placeholder={t("pairs.value")}
                     className={cn(invalid && "border-bad")}
                     onChange={(e) => update(rows.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}
                     onBlur={onBlur}
                   />
                   <IconButton
                     id={`${id}-${i}-remove`}
-                    label={`Remove pair ${i + 1}`}
+                    label={t("pairs.remove", { n: i + 1 })}
                     disabled={readOnly}
                     onClick={() => {
                       update(rows.filter((_, j) => j !== i));
@@ -247,7 +250,7 @@ export function KeyValueWidget({ id, value, onChange, onBlur, invalid, described
                 </div>
                 {dup && (
                   <p id={errId} className="text-secondary text-bad">
-                    {keyOf(i)} is already a key above: change it or remove this pair.
+                    {t("pairs.repeated", { key: keyOf(i) })}
                   </p>
                 )}
               </li>
@@ -266,7 +269,7 @@ export function KeyValueWidget({ id, value, onChange, onBlur, invalid, described
           }}
         >
           <Plus aria-hidden />
-          Add a pair
+          {t("pairs.add")}
         </Button>
       </div>
     </div>
@@ -347,6 +350,7 @@ function Cell({
 
 /** One object, each sub-field (ui.columns) one of its properties. */
 export function ObjectWidget({ id, ui, schema, value, onChange, invalid, describedBy, readOnly }: WidgetProps) {
+  const { t } = useTranslation("forms");
   const obj = isRecord(value) ? value : {};
   const props = schema.properties ?? {};
   const required = schema.required ?? [];
@@ -390,7 +394,7 @@ export function ObjectWidget({ id, ui, schema, value, onChange, invalid, describ
               <label htmlFor={cellId} className="text-secondary font-medium">
                 {c.label}
               </label>
-              {!required.includes(c.key) && <span className="text-caption text-faint">Optional</span>}
+              {!required.includes(c.key) && <span className="text-caption text-faint">{t("optional")}</span>}
             </div>
             {cell}
           </div>
@@ -402,6 +406,7 @@ export function ObjectWidget({ id, ui, schema, value, onChange, invalid, describ
 
 /** A table of rows, each cell one of the row's properties: a list of objects, from minItems to maxItems rows. */
 export function DatagridWidget({ id, ui, schema, value, onChange, describedBy, readOnly }: WidgetProps) {
+  const { t } = useTranslation("forms");
   const rows = Array.isArray(value) ? value.filter(isRecord) : [];
   const columns = ui.columns ?? [];
   const cells = schema.items?.properties ?? {};
@@ -441,7 +446,7 @@ export function DatagridWidget({ id, ui, schema, value, onChange, describedBy, r
                   </th>
                 ))}
                 <th scope="col" className="w-9">
-                  <span className="sr-only">Remove</span>
+                  <span className="sr-only">{t("grid.remove")}</span>
                 </th>
               </tr>
             </thead>
@@ -455,7 +460,7 @@ export function DatagridWidget({ id, ui, schema, value, onChange, describedBy, r
                         column={c}
                         schema={cells[c.key] ?? {}}
                         row={r}
-                        label={`${c.label}, row ${i + 1}`}
+                        label={t("grid.cell", { column: c.label, n: i + 1 })}
                         readOnly={readOnly}
                         onChange={(v) => setCell(i, c.key, v)}
                       />
@@ -463,7 +468,7 @@ export function DatagridWidget({ id, ui, schema, value, onChange, describedBy, r
                   ))}
                   <td className="px-1">
                     <IconButton
-                      label={`Remove row ${i + 1}`}
+                      label={t("grid.removeRow", { n: i + 1 })}
                       disabled={readOnly || rows.length <= min}
                       onClick={() => {
                         set(rows.filter((_, j) => j !== i));
@@ -479,7 +484,7 @@ export function DatagridWidget({ id, ui, schema, value, onChange, describedBy, r
           </table>
         </div>
       ) : (
-        <p className="text-secondary text-muted">No rows yet.</p>
+        <p className="text-secondary text-muted">{t("grid.none")}</p>
       )}
       <div className="flex items-center gap-2">
         <Button
@@ -492,15 +497,15 @@ export function DatagridWidget({ id, ui, schema, value, onChange, describedBy, r
           }}
         >
           <Plus aria-hidden />
-          Add a row
+          {t("grid.add")}
         </Button>
         {(min > 0 || max !== undefined) && (
           <span className="text-caption text-faint">
             {min > 0 && max !== undefined
-              ? `${min} to ${max} rows`
+              ? t("grid.between", { min, max })
               : min > 0
-                ? `At least ${min} ${min === 1 ? "row" : "rows"}`
-                : `At most ${max} rows`}
+                ? t("grid.atLeast", { count: min })
+                : t("grid.atMost", { count: max })}
           </span>
         )}
       </div>

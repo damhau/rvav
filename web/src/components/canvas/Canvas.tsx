@@ -22,11 +22,12 @@ import {
 } from "@xyflow/react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { CanvasList, NodeFacts } from "./CanvasList";
 import type { CanvasGraph, CanvasNode, CanvasStatus } from "./graph";
-import { describeNode, statusLabel } from "./graph";
-import { arrowKeys, layoutGraph, nearest, takenWords, type CanvasLayout } from "./layout";
+import { describeNode, lineText, statusLabel } from "./graph";
+import { arrowKeys, layoutGraph, nearest, takenLabel, type CanvasLayout } from "./layout";
 import {
   type CardNode,
   edgeTypes,
@@ -39,6 +40,7 @@ import {
 } from "./nodes";
 
 export type CanvasView = "graph" | "list";
+const views: CanvasView[] = ["graph", "list"];
 
 export interface CanvasProps {
   graph: CanvasGraph;
@@ -73,11 +75,6 @@ export interface CanvasProps {
   className?: string;
 }
 
-const ariaLabelConfig = {
-  "node.a11yDescription.default": "Arrow keys move between nodes, Enter selects one.",
-  "node.a11yDescription.keyboardDisabled": "Arrow keys move between nodes, Enter selects one.",
-};
-
 /** The element React Flow draws a node in. */
 function nodeElement(root: HTMLElement | null, id: string): HTMLElement | undefined {
   if (!root) return undefined;
@@ -100,6 +97,7 @@ export function Canvas({
   height,
   className,
 }: CanvasProps) {
+  const { t } = useTranslation("canvas");
   const [ownView, setOwnView] = useState<CanvasView>(defaultView);
   const view = shown ?? ownView;
   const setView = (v: CanvasView) => {
@@ -118,8 +116,12 @@ export function Canvas({
   return (
     <section aria-label={label} className={cn("rvav-canvas flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="Show as" className="inline-flex rounded-md border border-line bg-surface p-0.5">
-          {(["graph", "list"] as const).map((v) => (
+        <div
+          role="group"
+          aria-label={t("showAs")}
+          className="inline-flex rounded-md border border-line bg-surface p-0.5"
+        >
+          {views.map((v) => (
             <button
               key={v}
               type="button"
@@ -130,13 +132,11 @@ export function Canvas({
                 view === v ? "bg-accent-soft text-accent" : "text-muted hover:text-fg",
               )}
             >
-              {v === "graph" ? "Graph" : (list?.label ?? "List")}
+              {v === "graph" ? t("graph") : (list?.label ?? t("list"))}
             </button>
           ))}
         </div>
-        {view === "graph" && (
-          <span className="text-caption text-faint">Arrow keys move between nodes; Enter selects one.</span>
-        )}
+        {view === "graph" && <span className="text-caption text-faint">{t("keys")}</span>}
         {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
       </div>
       {view === "graph" ? (
@@ -169,9 +169,10 @@ export function Canvas({
 
 /** All a node shows, untruncated: the default under the canvas for the selected node. */
 export function NodeDetails({ node, status }: { node: CanvasNode; status?: CanvasStatus }) {
+  const { t } = useTranslation("canvas");
   return (
     <div
-      aria-label={`Selected: ${node.title}`}
+      aria-label={t("selected", { title: node.title })}
       role="region"
       className="rounded-md border border-line bg-surface p-3 text-secondary"
     >
@@ -270,7 +271,7 @@ function toFlow(
     // A run's branch that has chosen: words as well as a line, colour not being the only signal.
     const chosen = e.branch ? taken?.[e.branch.node] : undefined;
     const way = chosen === undefined || !e.branch ? undefined : e.branch.cases.includes(chosen) ? "taken" : "not-taken";
-    const label = e.label && way ? `${e.label}: ${takenWords[way]}` : e.label;
+    const label = e.label && way ? lineText({ label: e.label, text: takenLabel(way) }) : e.label;
     return {
       id: e.id,
       source: e.source,
@@ -295,7 +296,7 @@ function toFlow(
         e.deny && "rvav-edge-deny",
         way && `rvav-edge-${way}`,
       ),
-      ariaLabel: way ? `${e.description}: ${takenWords[way]}` : e.description,
+      ariaLabel: way ? lineText({ label: e.description, text: takenLabel(way) }) : e.description,
       focusable: false,
       selectable: false,
     };
@@ -320,13 +321,23 @@ function Graph({
   onSelect: (id: string | null) => void;
   height?: number;
 }) {
+  const { t, i18n } = useTranslation("canvas");
   const layout = useMemo(() => layoutGraph(graph), [graph]);
   const order = graph.nodes.map((n) => n.id);
   const [visited, setVisited] = useState<string | undefined>(undefined);
   const active = visited && layout.nodes.has(visited) ? visited : order[0];
   const flow = useMemo(
     () => toFlow(graph, layout, active, selected, status, taken),
-    [graph, layout, active, selected, status, taken],
+    // The language too: the nodes' names say their status in it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [graph, layout, active, selected, status, taken, i18n.language],
+  );
+  const ariaLabels = useMemo(
+    () => ({
+      "node.a11yDescription.default": t("keysDescription"),
+      "node.a11yDescription.keyboardDisabled": t("keysDescription"),
+    }),
+    [t],
   );
   const wrapper = useRef<HTMLDivElement>(null);
   const pending = useRef<string | null>(null);
@@ -426,20 +437,20 @@ function Graph({
         maxZoom={1.5}
         fitView
         fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
-        ariaLabelConfig={ariaLabelConfig}
+        ariaLabelConfig={ariaLabels}
       >
         <Background gap={18} size={1} />
         <Panel
           position="bottom-left"
           className="flex flex-col overflow-hidden rounded-md border border-line bg-surface shadow-sm"
         >
-          <ZoomButton label="Zoom in" onClick={() => void rf.zoomIn()}>
+          <ZoomButton label={t("zoomIn")} onClick={() => void rf.zoomIn()}>
             <Plus />
           </ZoomButton>
-          <ZoomButton label="Zoom out" onClick={() => void rf.zoomOut()}>
+          <ZoomButton label={t("zoomOut")} onClick={() => void rf.zoomOut()}>
             <Minus />
           </ZoomButton>
-          <ZoomButton label="Fit to view" onClick={() => void rf.fitView({ padding: 0.12, maxZoom: 1 })}>
+          <ZoomButton label={t("fit")} onClick={() => void rf.fitView({ padding: 0.12, maxZoom: 1 })}>
             <Maximize />
           </ZoomButton>
         </Panel>

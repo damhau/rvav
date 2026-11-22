@@ -2,6 +2,7 @@
 // whose fields are all hidden is left out; one with a problem shown says so.
 import { CircleAlert } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FieldGrid, partShows, problemsIn, type GridProps, type Part } from "./sections";
 
@@ -20,13 +21,14 @@ export function FormTabs({
   current?: string;
   show: (key: string) => void;
 }) {
+  const { t } = useTranslation("forms");
   const shown = parts.filter((p) => partShows(p, Boolean(leading)));
   const first = shown[0];
   if (!first) return null;
   const value = shown.some((p) => p.section.key === current) ? current! : first.section.key;
   return (
     <Tabs value={value} onValueChange={show} className="flex flex-col rounded-lg border border-line bg-surface">
-      <TabsList aria-label="Form sections" className="px-4 pt-2">
+      <TabsList aria-label={t("sections")} className="px-4 pt-2">
         {shown.map((p) => {
           const problems = problemsIn(p, leadingFields, grid.errors);
           return (
@@ -35,9 +37,7 @@ export function FormTabs({
               {problems > 0 && (
                 <>
                   <CircleAlert className="size-3.5 shrink-0 text-bad" aria-hidden />
-                  <span className="sr-only">
-                    , {problems === 1 ? "1 input needs attention" : `${problems} inputs need attention`}
-                  </span>
+                  <span className="sr-only">, {t("needsAttention", { count: problems })}</span>
                 </>
               )}
             </TabsTrigger>

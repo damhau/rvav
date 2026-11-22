@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CircleCheck, CircleX, Clock3, Hourglass, Inbox, ListChecks, Plus, Star } from "lucide-react";
+import type { TFunction } from "i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { ErrorState, Skeleton, SkeletonRows } from "@/components/common/feedback";
 import { Meter } from "@/components/common/meter";
 import { ItemIcon, itemTypeLabel, Time } from "@/components/common/misc";
@@ -11,7 +13,7 @@ import { Panel } from "@/components/ui/panel";
 import { EnvBadge, RequestStatusBadge } from "@/components/common/status";
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import type { QuotaResource, ServiceRequest } from "@/lib/api/types";
+import type { ServiceRequest } from "@/lib/api/types";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q } from "@/lib/query";
@@ -19,17 +21,13 @@ import { leaseLabel, roughDuration } from "@/lib/format";
 import { versionLabel } from "@/features/catalog/facts";
 import { ProgressSegments } from "@/features/requests/ProgressBar";
 
-const quotaLabel: Record<QuotaResource, [string, string]> = {
-  vcpu: ["vCPU", ""],
-  memory_gb: ["Memory", "GB"],
-  storage_gb: ["Storage", "GB"],
-  vm_count: ["VMs", ""],
-};
+const quotaUnit = { vcpu: "", memory_gb: "GB", storage_gb: "GB", vm_count: "" } as const;
 
 /** A week from the start of the next hour, so the query key stays stable. */
 const weekAhead = () => new Date(Math.ceil(Date.now() / 3_600_000) * 3_600_000 + 7 * 86_400_000).toISOString();
 
 function Attention() {
+  const { t } = useTranslation("overview");
   const { projectId } = useCurrentProject();
   const failed = useInfiniteQuery(q.requests({ projectId, status: ["failed"], requester: "me", limit: 5 }));
   const waiting = useInfiniteQuery(q.requests({ projectId, status: ["pending_approval"], limit: 20 }));
@@ -57,49 +55,48 @@ function Attention() {
     rows.push({
       key: r.id,
       icon: <CircleX className="size-3.5" aria-hidden />,
-      title: (
-        <>
-          {r.number} failed{r.error ? ":" : ""} <span className="font-normal">{r.error?.message}</span>
-        </>
+      title: r.error ? (
+        <Trans
+          t={t}
+          i18nKey="attention.failedWith"
+          values={{ number: r.number, message: r.error.message }}
+          components={{ message: <span className="font-normal" /> }}
+        />
+      ) : (
+        t("attention.failed", { number: r.number })
       ),
       body: r.title,
       to: "/requests/$requestId",
       params: { requestId: r.number },
-      action: "Open",
+      action: t("attention.open"),
     });
   }
   if (pending.length) {
     rows.push({
       key: "pending",
       icon: <Clock3 className="size-3.5" aria-hidden />,
-      title: `${pending.length} request${pending.length === 1 ? " is" : "s are"} waiting for approval`,
+      title: t("attention.waiting", { count: pending.length }),
       body: pending.map((r) => r.title).join(" · "),
       to: "/requests",
       search: { status: "pending_approval" },
-      action: "View",
+      action: t("attention.view"),
     });
   }
   if (leases.length) {
     rows.push({
       key: "leases",
       icon: <Hourglass className="size-3.5" aria-hidden />,
-      title: `${leases.length} lease${leases.length === 1 ? " expires" : "s expire"} this week`,
-      body:
-        leases.map((d) => `${d.name} ${leaseLabel(d.lease.expires_at).toLowerCase()}`).join(" · ") +
-        ". Expired VMs are powered off, then deleted.",
+      title: t("attention.leases", { count: leases.length }),
+      body: t("attention.leasesBody", {
+        list: leases.map((d) => `${d.name} ${leaseLabel(d.lease.expires_at).toLowerCase()}`).join(" · "),
+      }),
       to: "/deployments",
       search: { expiring: true },
-      action: "Review",
+      action: t("attention.review"),
     });
   }
   if (rows.length === 0) {
-    return (
-      <EmptyState
-        icon={CircleCheck}
-        title="Nothing needs you right now"
-        body="Failed requests, approvals and expiring leases show up here."
-      />
-    );
+    return <EmptyState icon={CircleCheck} title={t("attention.none")} body={t("attention.noneBody")} />;
   }
   const tone = (k: string) =>
     k === "pending" ? "bg-warn-soft text-warn" : k === "leases" ? "bg-sunken text-muted" : "bg-bad-soft text-bad";
@@ -130,10 +127,10 @@ function Attention() {
 
 type OpenRequest = ServiceRequest;
 
-const openColumns: Column<OpenRequest>[] = [
+const openColumns = (t: TFunction<"overview">): Column<OpenRequest>[] => [
   {
     id: "request",
-    header: "Request",
+    header: t("open.request"),
     cell: (r) => (
       <div className="flex flex-col">
         <Link
@@ -149,10 +146,10 @@ const openColumns: Column<OpenRequest>[] = [
       </div>
     ),
   },
-  { id: "status", header: "Status", cell: (r) => <RequestStatusBadge status={r.status} /> },
+  { id: "status", header: t("open.status"), cell: (r) => <RequestStatusBadge status={r.status} /> },
   {
     id: "step",
-    header: "Current step",
+    header: t("open.step"),
     cell: (r) => (
       <div className="flex flex-col gap-1">
         <span className="text-muted">{r.current_step?.title ?? "–"}</span>
@@ -162,7 +159,7 @@ const openColumns: Column<OpenRequest>[] = [
   },
   {
     id: "submitted",
-    header: "Submitted",
+    header: t("open.submitted"),
     align: "end",
     sortValue: (r) => r.submitted_at,
     className: "whitespace-nowrap text-muted",
@@ -171,14 +168,15 @@ const openColumns: Column<OpenRequest>[] = [
 ];
 
 function OpenRequests() {
+  const { t } = useTranslation("overview");
   const { projectId } = useCurrentProject();
   const open = useInfiniteQuery(
     q.requests({ projectId, status: ["running", "queued", "pending_approval", "scheduled", "cancelling"], limit: 8 }),
   );
   return (
     <DataTable
-      label="Open requests"
-      columns={openColumns}
+      label={t("open.title")}
+      columns={openColumns(t)}
       rows={open.data?.pages[0]?.items}
       rowKey={(r) => r.id}
       rowLinks
@@ -188,11 +186,11 @@ function OpenRequests() {
       empty={
         <EmptyState
           icon={Inbox}
-          title="No open requests"
-          body="Requests that are running or waiting for approval show here, with the step they are at."
+          title={t("open.none")}
+          body={t("open.noneBody")}
           action={
             <Button size="sm" asChild>
-              <Link to="/catalog">Request something from the catalog</Link>
+              <Link to="/catalog">{t("open.fromCatalog")}</Link>
             </Button>
           }
         />
@@ -202,10 +200,11 @@ function OpenRequests() {
 }
 
 function Quota() {
+  const { t } = useTranslation(["overview", "common"]);
   const { projectId, project } = useCurrentProject();
   const quota = useQuery(q.quota(projectId));
   return (
-    <Panel title="Quota" description={`Used and reserved in ${project.name}`}>
+    <Panel title={t("quota.title")} description={t("quota.lead", { project: project.name })}>
       {quota.isPending ? (
         <div className="flex flex-col gap-3">
           {[0, 1, 2, 3].map((i) => (
@@ -219,8 +218,8 @@ function Quota() {
           {quota.data.lines.map((l) => (
             <Meter
               key={l.resource}
-              label={quotaLabel[l.resource][0]}
-              unit={quotaLabel[l.resource][1]}
+              label={t(`common:quota.${l.resource}`)}
+              unit={quotaUnit[l.resource]}
               used={l.used + l.reserved}
               total={l.limit}
             />
@@ -232,16 +231,17 @@ function Quota() {
 }
 
 function Favourites() {
+  const { t } = useTranslation(["overview", "shell"]);
   const { projectId, me } = useCurrentProject();
   const mayRequest = can(me, "request.submit", projectId);
   const favs = useQuery(q.catalog({ projectId, favourite: true }));
   return (
     <Panel
-      title="Your favourites"
+      title={t("favourites.title")}
       flush
       actions={
         <Button size="sm" variant="quiet" asChild>
-          <Link to="/catalog">Catalog</Link>
+          <Link to="/catalog">{t("shell:nav.main.catalog")}</Link>
         </Button>
       }
     >
@@ -252,11 +252,11 @@ function Favourites() {
       ) : favs.data.items.length === 0 ? (
         <EmptyState
           icon={Star}
-          title="No favourites yet"
-          body="Star the items you use often in the catalog, to request them again from here."
+          title={t("favourites.none")}
+          body={t("favourites.noneBody")}
           action={
             <Button size="sm" asChild>
-              <Link to="/catalog">Open the catalog</Link>
+              <Link to="/catalog">{t("favourites.openCatalog")}</Link>
             </Button>
           }
         />
@@ -288,27 +288,27 @@ function Favourites() {
 
 /** While the setup checklist is open (U1.5), the way back to it. */
 function SetupNotice() {
+  const { t } = useTranslation(["overview", "shell"]);
   const { me } = useCurrentProject();
   const setup = useQuery({ ...adm.setup(), enabled: can(me, "system.manage") });
   if (!setup.data?.open) return null;
   const done = setup.data.steps.filter((s) => s.done).length;
   return (
     <section
-      aria-label="Setup"
+      aria-label={t("shell:nav.admin.setup")}
       className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3 text-body"
     >
       <ListChecks className="size-4 text-accent" aria-hidden />
-      <span className="flex-1">
-        Setting up rvav: {done} of {setup.data.steps.length} steps done.
-      </span>
+      <span className="flex-1">{t("setup.progress", { done, total: setup.data.steps.length })}</span>
       <Button size="sm" asChild>
-        <Link to="/admin/setup">Continue setup</Link>
+        <Link to="/admin/setup">{t("setup.continue")}</Link>
       </Button>
     </section>
   );
 }
 
 export function OverviewPage() {
+  const { t } = useTranslation(["overview", "shell"]);
   const { projectId, project, me } = useCurrentProject();
   const deployments = useInfiniteQuery(q.deployments({ projectId, limit: 200 }));
   const all = deployments.data?.pages.flatMap((p) => p.items) ?? [];
@@ -317,15 +317,16 @@ export function OverviewPage() {
   return (
     <Page>
       <PageHeader
-        title="Overview"
-        description="What needs you, what is running, and what you have left to use."
+        title={t("shell:nav.main.overview")}
+        description={t("lead")}
         meta={
           deployments.data ? (
             <span className="flex items-center gap-1.5">
               {project.name} ·{" "}
-              {deployments.hasNextPage
-                ? `${vms} VMs in the first ${all.length} deployments`
-                : `${vms} VMs in ${all.length} deployments`}
+              {t(deployments.hasNextPage ? "summaryFirst" : "summary", {
+                vms: t("vmCount", { count: vms }),
+                count: all.length,
+              })}
               {[...envs].sort().map((e) => (
                 <EnvBadge key={e} env={e} />
               ))}
@@ -340,7 +341,7 @@ export function OverviewPage() {
           can(me, "request.submit", projectId) && (
             <Button variant="primary" asChild>
               <Link to="/catalog">
-                <Plus /> New request
+                <Plus /> {t("newRequest")}
               </Link>
             </Button>
           )
@@ -349,16 +350,16 @@ export function OverviewPage() {
       <SetupNotice />
       <div className="flex flex-wrap items-start gap-4">
         <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4">
-          <Panel title="Needs your attention" description="Failed requests, approvals and leases that end soon" flush>
+          <Panel title={t("attention.title")} description={t("attention.lead")} flush>
             <Attention />
           </Panel>
           <Panel
-            title="Open requests"
-            description="Running, scheduled or waiting for approval"
+            title={t("open.title")}
+            description={t("open.lead")}
             flush
             actions={
               <Button size="sm" variant="quiet" asChild>
-                <Link to="/requests">All requests</Link>
+                <Link to="/requests">{t("open.all")}</Link>
               </Button>
             }
           >

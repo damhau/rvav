@@ -5,6 +5,9 @@ import { useMutation, useMutationState } from "@tanstack/react-query";
 import { Download, FileText, LoaderCircle, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/lib/i18n";
+import { formatList, formatSize } from "@/lib/format";
 import { Button, IconButton } from "@/components/ui/button";
 import { FieldNote } from "@/components/ui/input";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -27,7 +30,7 @@ export function useSendingFiles(): string[] {
 /** What the form says while files are still sending, if any. */
 export function sendingText(names: string[]): string | undefined {
   if (names.length === 0) return undefined;
-  return `Wait until ${names.join(", ")} ${names.length === 1 ? "is" : "are"} sent.`;
+  return i18n.t("forms:file.wait", { names: formatList(names), count: names.length });
 }
 
 /** Whether an input's value is a file's record. */
@@ -39,23 +42,30 @@ export function isFileRef(v: unknown): v is FileRef {
   );
 }
 
+const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+const whole = { maximumFractionDigits: 0 };
+
 /** A size for people: 912 B, 14.2 KB, 3.1 MB. */
 export function fileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024) return formatSize(bytes, "B", whole);
   const kb = bytes / 1024;
-  if (kb < 1024) return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)} KB`;
+  if (kb < 1024) return formatSize(kb, "KB", kb < 10 ? oneDecimal : whole);
   const mb = kb / 1024;
-  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+  return formatSize(mb, "MB", mb < 10 ? oneDecimal : whole);
 }
 
 /** What a file field takes, said under it. */
 export function fileTakes(ui: UiField): string {
   const types = ui.accept ?? [];
-  return `${types.length ? `Takes ${types.join(", ")}` : "Takes any file"}, ${ui.max_size_mb ?? defaultMB} MB at most.`;
+  const size = formatSize(ui.max_size_mb ?? defaultMB, "MB");
+  return types.length
+    ? i18n.t("forms:file.takes", { types: types.join(", "), size })
+    : i18n.t("forms:file.takesAny", { size });
 }
 
 /** A request's file, downloaded as itself: rvav never shows it in the page. */
 export function FileDownload({ file }: { file: FileRef }) {
+  const { t } = useTranslation("forms");
   const download = useMutation({
     mutationFn: async () => {
       const blob = await call(api.GET("/files/{fileId}", { params: { path: { fileId: file.id } }, parseAs: "blob" }));
@@ -64,7 +74,7 @@ export function FileDownload({ file }: { file: FileRef }) {
       URL.revokeObjectURL(url);
     },
     onError: (e) =>
-      toast.error(isApiError(e) ? e.problem.title : `Couldn't download ${file.name}`, {
+      toast.error(isApiError(e) ? e.problem.title : t("file.downloadFailed", { name: file.name }), {
         description: isApiError(e) ? e.problem.detail : undefined,
       }),
   });
@@ -95,6 +105,7 @@ export function FileWidget({
   describedBy,
   readOnly,
 }: WidgetProps) {
+  const { t } = useTranslation("forms");
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
   const [dragging, setDragging] = useState(false);
@@ -114,14 +125,16 @@ export function FileWidget({
       setError(undefined);
       onChange(ref);
     },
-    onError: (e, f) => setError(isApiError(e) ? (e.problem.detail ?? e.problem.title) : `Couldn't send ${f.name}.`),
+    onError: (e, f) =>
+      setError(isApiError(e) ? (e.problem.detail ?? e.problem.title) : t("file.sendFailed", { name: f.name })),
     onSettled: onBlur,
   });
   const send = (f: File | undefined) => {
     if (!f) return;
     const max = ui.max_size_mb ?? defaultMB;
-    if (f.size > max * 1024 * 1024) setError(`${f.name} is ${fileSize(f.size)}: ${ui.label} takes ${max} MB at most.`);
-    else if (f.size === 0) setError(`${f.name} is empty.`);
+    if (f.size > max * 1024 * 1024)
+      setError(t("file.tooBig", { name: f.name, size: fileSize(f.size), label: ui.label, max: formatSize(max, "MB") }));
+    else if (f.size === 0) setError(t("file.empty", { name: f.name }));
     else upload.mutate(f);
   };
   const takesId = `${id}-takes`;
@@ -135,7 +148,7 @@ export function FileWidget({
         {file.name} <span className="text-faint">{fileSize(file.size)}</span>
       </p>
     ) : (
-      <p className="m-0 text-secondary text-faint">No file.</p>
+      <p className="m-0 text-secondary text-faint">{t("file.none")}</p>
     );
 
   return (
@@ -185,11 +198,11 @@ export function FileWidget({
           onClick={() => input.current?.click()}
         >
           {upload.isPending ? <LoaderCircle className="animate-spin" /> : <Upload />}
-          <span id={`${id}-action`}>{file ? "Replace" : "Choose a file"}</span>
+          <span id={`${id}-action`}>{t(file ? "file.replace" : "file.choose")}</span>
         </Button>
         {file && (
           <IconButton
-            label={`Remove ${file.name}`}
+            label={t("remove", { name: file.name })}
             disabled={upload.isPending}
             onClick={() => {
               setError(undefined);
@@ -201,7 +214,7 @@ export function FileWidget({
           </IconButton>
         )}
         <span role="status" className="text-caption text-muted">
-          {upload.isPending ? `Sending ${upload.variables.name}…` : ""}
+          {upload.isPending ? t("file.sending", { name: upload.variables.name }) : ""}
         </span>
       </div>
       <FieldNote id={error ? errorId : takesId} error={error} hint={fileTakes(ui)} />

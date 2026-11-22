@@ -1,6 +1,7 @@
 // A choice found by typing: the field's value source is searched with what
 // is typed (F1.2); people are found the same way in rvav.users.
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import type { Option } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
@@ -26,15 +27,6 @@ export interface SearchWords {
   lookupFailed: string;
 }
 
-const matchWords: SearchWords = {
-  list: "matches",
-  listName: "matches",
-  placeholder: "Type to search",
-  none: "No matches.",
-  found: (n) => (n === 1 ? "1 match: press Enter to pick it." : `${n} matches: use the arrow keys, then Enter.`),
-  lookupFailed: "Couldn't look up this choice.",
-};
-
 /**
  * A combobox: typing searches the field's source, the arrow keys move in
  * what it finds, Enter picks, Escape closes. The value is the option's.
@@ -53,6 +45,7 @@ export function SearchBox({
   readOnly,
   words,
 }: WidgetProps & { words: SearchWords }) {
+  const { t } = useTranslation(["forms", "common"]);
   const picked = typeof value === "string" && value !== "" ? value : undefined;
   // null: the box shows the option picked; otherwise what is typed.
   const [text, setText] = useState<string | null>(null);
@@ -109,13 +102,13 @@ export function SearchBox({
   const status = !searching
     ? ""
     : searchFailed
-      ? "Couldn't search."
+      ? t("search.failed")
       : !found.data || found.isFetching
-        ? "Searching…"
+        ? t("search.searching")
         : all.length === 0
           ? words.none
           : all.length > listed
-            ? `${all.length} found, the first ${listed} listed: type more to narrow them down.`
+            ? t("search.tooMany", { total: all.length, listed })
             : words.found(all.length);
 
   return (
@@ -138,7 +131,7 @@ export function SearchBox({
           .filter(Boolean)
           .join(" ")}
         value={text ?? option?.label ?? (picked && named.isFetching && !unnamed ? "" : (picked ?? ""))}
-        placeholder={picked && !option ? "Loading…" : words.placeholder}
+        placeholder={picked && !option ? t("common:loading") : words.placeholder}
         autoComplete="off"
         readOnly={readOnly}
         onChange={(e) => {
@@ -166,7 +159,7 @@ export function SearchBox({
       {searchFailed && (
         <SourceFailed
           id={searchFailId}
-          message="Couldn't search."
+          message={t("search.failed")}
           onRetry={() => {
             setOpen(true);
             void found.refetch();
@@ -220,7 +213,18 @@ export function SearchBox({
 
 /** A search field: its value source is searched with what is typed. */
 export function SearchWidget(props: WidgetProps) {
+  const { t } = useTranslation("forms");
   return (
-    <SearchBox {...props} words={{ ...matchWords, placeholder: props.ui.placeholder ?? matchWords.placeholder }} />
+    <SearchBox
+      {...props}
+      words={{
+        list: "matches",
+        listName: t("search.listName"),
+        placeholder: props.ui.placeholder ?? t("search.placeholder"),
+        none: t("search.none"),
+        found: (count) => t("search.found", { count }),
+        lookupFailed: t("search.lookupFailed"),
+      }}
+    />
   );
 }

@@ -1,1 +1,57 @@
-{}
+{
+  "lead": "Ce qui requiert votre attention, ce qui est en cours, et ce qu'il vous reste à utiliser.",
+  "vmCount_one": "{{count}} VM",
+  "vmCount_many": "{{count}} VM",
+  "vmCount_other": "{{count}} VM",
+  "summary_one": "{{vms}} dans {{count}} déploiement",
+  "summary_many": "{{vms}} dans {{count}} déploiements",
+  "summary_other": "{{vms}} dans {{count}} déploiements",
+  "summaryFirst_one": "{{vms}} dans les {{count}} premiers déploiements",
+  "summaryFirst_many": "{{vms}} dans les {{count}} premiers déploiements",
+  "summaryFirst_other": "{{vms}} dans les {{count}} premiers déploiements",
+  "newRequest": "Nouvelle demande",
+  "attention": {
+    "title": "Requiert votre attention",
+    "lead": "Demandes échouées, approbations et baux qui arrivent à échéance",
+    "failed": "{{number}} a échoué",
+    "failedWith": "{{number}} a échoué\u00a0: <message>{{message}}</message>",
+    "waiting_one": "{{count}} demande attend une approbation",
+    "waiting_many": "{{count}} demandes attendent une approbation",
+    "waiting_other": "{{count}} demandes attendent une approbation",
+    "leases_one": "{{count}} bail expire cette semaine",
+    "leases_many": "{{count}} baux expirent cette semaine",
+    "leases_other": "{{count}} baux expirent cette semaine",
+    "leasesBody": "{{list}}. Les VM expirées sont éteintes, puis supprimées.",
+    "open": "Ouvrir",
+    "view": "Voir",
+    "review": "Examiner",
+    "none": "Rien ne requiert votre attention pour l'instant",
+    "noneBody": "Les demandes échouées, les approbations et les baux qui expirent s'affichent ici."
+  },
+  "open": {
+    "title": "Demandes en cours",
+    "lead": "En cours, planifiées ou en attente d'approbation",
+    "all": "Toutes les demandes",
+    "request": "Demande",
+    "status": "Statut",
+    "step": "Étape en cours",
+    "submitted": "Soumise",
+    "none": "Aucune demande en cours",
+    "noneBody": "Les demandes en cours d'exécution ou en attente d'approbation s'affichent ici, avec l'étape où elles en sont.",
+    "fromCatalog": "Demander quelque chose au catalogue"
+  },
+  "quota": {
+    "title": "Quota",
+    "lead": "Utilisé et réservé dans {{project}}"
+  },
+  "favourites": {
+    "title": "Vos favoris",
+    "none": "Aucun favori pour l'instant",
+    "noneBody": "Ajoutez aux favoris les éléments que vous utilisez souvent dans le catalogue, pour les redemander d'ici.",
+    "openCatalog": "Ouvrir le catalogue"
+  },
+  "setup": {
+    "progress": "Mise en route de rvav\u00a0: {{done}} sur {{total}} étapes terminées.",
+    "continue": "Poursuivre la mise en route"
+  }
+}

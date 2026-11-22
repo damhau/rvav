@@ -16,7 +16,11 @@ const translated = [
   "src/components/ui/**",
   "src/components/common/**",
   "src/components/shell/**",
-  "src/features/account/SignIn.tsx",
+  "src/components/canvas/**",
+  "src/forms/**",
+  "src/features/account/**",
+  "src/features/overview/**",
+  "src/features/notifications/**",
 ];
 
 // The props of rvav's building blocks and the attributes a person reads or
@@ -141,7 +145,16 @@ export default tseslint.config(
           "should-validate-template": true,
           "jsx-attributes": { include: textAttributes, exclude: [] },
           words: {
-            exclude: [/^[^\p{L}]*$/u, "[A-Z][A-Z0-9_-]*s?", ...untranslated, ...untranslated.map((w) => `${w}:`)],
+            exclude: [
+              /^[^\p{L}]*$/u,
+              "[A-Z][A-Z0-9_-]*s?",
+              // The pieces of an element ID or an address built in a template: "f-", "-note", "/deployments/".
+              /^[a-z0-9]+(-[a-z0-9]+)*-$/,
+              /^(-[a-z0-9]+)+$/,
+              /^\/[\w/.-]*$/,
+              ...untranslated,
+              ...untranslated.map((w) => `${w}:`),
+            ],
           },
           message: "Text a person reads goes through t() (ADR-0061, docs/frontend.md#translating-a-folder)",
         },

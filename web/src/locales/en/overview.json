@@ -1,1 +1,52 @@
-{}
+{
+  "lead": "What needs you, what is running, and what you have left to use.",
+  "vmCount_one": "{{count}} VM",
+  "vmCount_other": "{{count}} VMs",
+  "summary_one": "{{vms}} in {{count}} deployment",
+  "summary_other": "{{vms}} in {{count}} deployments",
+  "summaryFirst_one": "{{vms}} in the first {{count}} deployment",
+  "summaryFirst_other": "{{vms}} in the first {{count}} deployments",
+  "newRequest": "New request",
+  "attention": {
+    "title": "Needs your attention",
+    "lead": "Failed requests, approvals and leases that end soon",
+    "failed": "{{number}} failed",
+    "failedWith": "{{number}} failed: <message>{{message}}</message>",
+    "waiting_one": "{{count}} request is waiting for approval",
+    "waiting_other": "{{count}} requests are waiting for approval",
+    "leases_one": "{{count}} lease expires this week",
+    "leases_other": "{{count}} leases expire this week",
+    "leasesBody": "{{list}}. Expired VMs are powered off, then deleted.",
+    "open": "Open",
+    "view": "View",
+    "review": "Review",
+    "none": "Nothing needs you right now",
+    "noneBody": "Failed requests, approvals and expiring leases show up here."
+  },
+  "open": {
+    "title": "Open requests",
+    "lead": "Running, scheduled or waiting for approval",
+    "all": "All requests",
+    "request": "Request",
+    "status": "Status",
+    "step": "Current step",
+    "submitted": "Submitted",
+    "none": "No open requests",
+    "noneBody": "Requests that are running or waiting for approval show here, with the step they are at.",
+    "fromCatalog": "Request something from the catalog"
+  },
+  "quota": {
+    "title": "Quota",
+    "lead": "Used and reserved in {{project}}"
+  },
+  "favourites": {
+    "title": "Your favourites",
+    "none": "No favourites yet",
+    "noneBody": "Star the items you use often in the catalog, to request them again from here.",
+    "openCatalog": "Open the catalog"
+  },
+  "setup": {
+    "progress": "Setting up rvav: {{done}} of {{total}} steps done.",
+    "continue": "Continue setup"
+  }
+}

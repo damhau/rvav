@@ -2,6 +2,8 @@
 // would read it (labels rather than values, secrets masked), with a way back
 // to each page.
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import type { Option, UiColumn, UiField, UiWidget } from "@/lib/api/types";
 import { toText } from "@/lib/utils";
@@ -30,7 +32,7 @@ function blank(v: unknown): boolean {
 }
 
 function columnText(c: UiColumn, v: unknown): string {
-  if (c.widget === "toggle") return v ? "Yes" : "No";
+  if (c.widget === "toggle") return i18n.t(v ? "forms:review.yes" : "forms:review.no");
   if (c.widget === "select") return c.options?.find((o) => o.value === String(v))?.label ?? toText(v);
   return toText(v);
 }
@@ -38,12 +40,12 @@ function columnText(c: UiColumn, v: unknown): string {
 /** A value as the review says it. */
 export function enteredText(ui: UiField, v: unknown, options?: Option[]): string {
   const label = (x: unknown) => options?.find((o) => o.value === String(x))?.label ?? toText(x);
-  if (ui.widget === "toggle") return v ? "Yes" : "No";
+  if (ui.widget === "toggle") return i18n.t(v ? "forms:review.yes" : "forms:review.no");
   if (listed.includes(ui.widget) && Array.isArray(v)) return v.map(label).join(", ");
   if (ui.widget === "date" && typeof v === "string") return longDay(`${v}T00:00:00`);
   if (ui.widget === "datetime" && typeof v === "string") return fullDate(v);
   if (isFileRef(v)) return `${v.name} (${fileSize(v.size)})`;
-  if (ui.widget === "datagrid" && Array.isArray(v)) return v.length === 1 ? "1 row" : `${v.length} rows`;
+  if (ui.widget === "datagrid" && Array.isArray(v)) return i18n.t("forms:review.rows", { count: v.length });
   if (ui.widget === "object" && typeof v === "object" && v !== null) {
     const obj = v as Record<string, unknown>;
     return (ui.columns ?? [])
@@ -71,21 +73,22 @@ function Entered({
   values: Record<string, unknown>;
   ctx: FormContext;
 }) {
+  const { t } = useTranslation("forms");
   const text = typeof value === "string" ? value : "";
   const search = searched.includes(ui.widget) ? { text, enabled: text !== "" } : undefined;
   // The labels its widget showed, from the same queries: cached, or asked once.
   const sourced = useFieldValues(name, ui, values, ctx, search);
   if (isSecret(ui)) {
     return blank(value) ? (
-      <span className="text-muted">Not given</span>
+      <span className="text-muted">{t("review.notGiven")}</span>
     ) : (
       <>
         <span aria-hidden>••••</span>
-        <span className="sr-only">Hidden</span>
+        <span className="sr-only">{t("review.hidden")}</span>
       </>
     );
   }
-  if (blank(value) && ui.widget !== "toggle") return <span className="text-muted">Not given</span>;
+  if (blank(value) && ui.widget !== "toggle") return <span className="text-muted">{t("review.notGiven")}</span>;
   return <>{enteredText(ui, value, ui.value_source ? sourced.data?.options : ui.options)}</>;
 }
 
@@ -104,6 +107,7 @@ export function Review({
   leadingRows?: ReviewRow[];
   onChange: (key: string) => void;
 }) {
+  const { t } = useTranslation("forms");
   return (
     <div className="flex flex-col divide-y divide-line">
       {parts.map((p, i) => {
@@ -117,11 +121,12 @@ export function Review({
                 {p.section.title}
               </h3>
               <Button size="sm" variant="quiet" onClick={() => onChange(p.section.key)}>
-                Change<span className="sr-only"> {p.section.title}</span>
+                {t("review.change")}
+                <span className="sr-only"> {p.section.title}</span>
               </Button>
             </div>
             {rows.length + fields.length === 0 ? (
-              <p className="text-secondary text-muted">Nothing to fill in.</p>
+              <p className="text-secondary text-muted">{t("review.nothing")}</p>
             ) : (
               <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
                 {rows.map((r) => (

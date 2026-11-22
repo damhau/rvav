@@ -23,7 +23,9 @@
   "units": {
     "MB": "{{value}}\u00a0Mo",
     "GB": "{{value}}\u00a0Go",
-    "TB": "{{value}}\u00a0To"
+    "TB": "{{value}}\u00a0To",
+    "B": "{{value}}\u00a0o",
+    "KB": "{{value}}\u00a0Ko"
   },
   "actions": {
     "close": "Fermer",
@@ -163,5 +165,11 @@
     "label_other": "Avertissements de politique"
   },
   "clipboardMissing": "Cette page ne peut pas utiliser le presse-papiers.",
-  "loadingApp": "Chargement de {{name}}…"
+  "loadingApp": "Chargement de {{name}}…",
+  "quota": {
+    "vcpu": "vCPU",
+    "memory_gb": "Mémoire",
+    "storage_gb": "Stockage",
+    "vm_count": "VM"
+  }
 }
