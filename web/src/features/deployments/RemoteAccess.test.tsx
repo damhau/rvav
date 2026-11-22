@@ -39,8 +39,12 @@ describe("a deployment's remote access", () => {
     await user.click(within(shown).getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // relative() says "in a moment" when the mock's stamp isn't before the render's clock: the same millisecond,
+    // or a wall clock that steps back under load.
     await waitFor(() =>
-      expect(box).toHaveTextContent("Léa Martin downloaded the private key just now. rvav no longer has it."),
+      expect(box).toHaveTextContent(
+        /Léa Martin downloaded the private key (just now|in a moment)\. rvav no longer has it\./,
+      ),
     );
     expect(within(box).queryByRole("button", { name: "Download the private key" })).not.toBeInTheDocument();
   });
