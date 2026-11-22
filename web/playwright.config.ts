@@ -16,6 +16,10 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 },
     // The specs read the English texts (ADR-0061); french.spec.ts sets its own.
     locale: "en-GB",
+    // A toast fades in over 0.4 s, and axe reports its half-faded text as too
+    // little contrast: nightly runs 44676709812, 44867766159 and 44986569649
+    // each failed one spec so. With reduced motion it shows at once.
+    reducedMotion: "reduce",
   },
   projects: [
     {

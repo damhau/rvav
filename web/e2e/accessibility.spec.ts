@@ -109,10 +109,6 @@ async function scanAll(page: Page, path: string) {
 
 for (const theme of ["light", "dark"] as const) {
   test.describe(`${theme} theme`, () => {
-    // A toast fades in and out over 0.4 s, and axe reports its half-faded text
-    // as too little contrast (Browser tests on 11-09, 11-13 and 11-17). With
-    // reduced motion it shows at once, and goes the same way.
-    test.use({ reducedMotion: "reduce" });
     test.beforeEach(async ({ page }) => {
       await page.addInitScript((t) => localStorage.setItem("rvav.theme", t), theme);
     });

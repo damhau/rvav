@@ -4,10 +4,6 @@ import { bothThemes, scan, theme } from "./axe";
 // X1.2: the deployments list's filters, sort, layouts and saved views, and the
 // Resources page's VMs, in mock mode.
 
-// A toast fades in and out, and axe reports its half-faded text as too
-// little contrast; with reduced motion it shows at once.
-test.use({ reducedMotion: "reduce" });
-
 async function settled(page: Page) {
   await page.mouse.move(0, 0);
   await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 10_000 });

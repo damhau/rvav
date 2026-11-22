@@ -15,6 +15,8 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 },
     // The specs read the English texts (ADR-0061).
     locale: "en-GB",
+    // A toast caught fading in fails axe's contrast check; see playwright.config.ts.
+    reducedMotion: "reduce",
   },
   projects: [
     {

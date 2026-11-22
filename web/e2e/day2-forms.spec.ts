@@ -4,8 +4,6 @@ import { bothThemes } from "./axe";
 // A custom day-2 action's designed form (E1.3, ADR-0050): an administrator
 // lays it out in the catalog's designer and turns it on; the action's
 // dialog then asks for it.
-test.use({ reducedMotion: "reduce" });
-
 test("design an AWX action's form, turn it on, and run the action with it", async ({ page }) => {
   await page.goto("/admin/day2-actions");
   const row = page
