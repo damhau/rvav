@@ -215,6 +215,11 @@ export const adm = {
   inventory: () => get(["admin", "inventory"], (signal) => call(api.GET("/admin/inventory", { signal }))),
   networkMappings: () =>
     get(["admin", "network-mappings"], (signal) => call(api.GET("/admin/network-mappings", { signal }))),
+  ipRanges: () => get(["admin", "ip-ranges"], (signal) => call(api.GET("/admin/ip-ranges", { signal }))),
+  ipAllocations: (id: string) =>
+    get(["admin", "ip-ranges", id, "allocations"], (signal) =>
+      call(api.GET("/admin/ip-ranges/{id}/allocations", { params: { path: { id } }, signal })),
+    ),
   templates: () => get(["admin", "templates"], (signal) => call(api.GET("/admin/templates", { signal }))),
   sizes: () => get(["admin", "sizes"], (signal) => call(api.GET("/admin/sizes", { signal }))),
   naming: () => get(["admin", "naming"], (signal) => call(api.GET("/admin/naming-policies", { signal }))),

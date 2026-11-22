@@ -1,7 +1,8 @@
 // VM templates, size presets and network mappings (S9, ADR-0020): what
 // blueprints' template and size pickers offer, and the subnet each vCenter
-// network deploys into; and the vCenter objects' tags (ADR-0035).
-import { useNavigate } from "@tanstack/react-router";
+// network deploys into; rvav's IP ranges (ADR-0063); and the vCenter
+// objects' tags (ADR-0035).
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cpu, HardDrive, Network, Server, X } from "lucide-react";
 import { useState } from "react";
@@ -27,6 +28,7 @@ import { adm } from "@/lib/query";
 import { can } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { errorAt, failed, fieldErrors, OfferEditor, offersText, writable } from "./common";
+import { IPRanges } from "./IPRanges";
 
 type S = components["schemas"];
 
@@ -865,7 +867,12 @@ function Networks({ canEdit }: { canEdit: boolean }) {
       id: "network",
       header: "Network",
       sortValue: (m) => m.network,
-      cell: (m) => <span className="font-mono text-secondary">{m.network}</span>,
+      cell: (m) => (
+        <span className="font-mono text-secondary">
+          {m.network}
+          {m.vcenter && <span className="block text-caption text-muted">{m.vcenter}</span>}
+        </span>
+      ),
     },
     {
       id: "subnet",
@@ -886,7 +893,9 @@ function Networks({ canEdit }: { canEdit: boolean }) {
       header: "DNS",
       cell: (m) => (
         <span className="text-secondary">
-          {m.dns_zone} <span className="font-mono text-muted">{m.dns_servers.join(", ")}</span>
+          {m.source === "rvav" && !m.dns_zone ? "The blueprint's domain" : m.dns_zone}{" "}
+          <span className="font-mono text-muted">{m.dns_servers.join(", ")}</span>
+          {m.source === "rvav" && <span className="block text-caption text-muted">No DNS records</span>}
         </span>
       ),
     },
@@ -894,13 +903,24 @@ function Networks({ canEdit }: { canEdit: boolean }) {
       id: "source",
       header: "From",
       sortValue: (m) => sourceLabel[m.source],
-      cell: (m) => <Badge tone={m.source === "manual" ? "accent" : "neutral"}>{sourceLabel[m.source]}</Badge>,
+      cell: (m) =>
+        m.source === "rvav" ? (
+          <Link
+            to="/admin/infrastructure"
+            search={{ tab: "ip-ranges" }}
+            className="text-secondary font-medium text-accent hover:underline"
+          >
+            {sourceLabel.rvav}
+          </Link>
+        ) : (
+          <Badge tone={m.source === "manual" ? "accent" : "neutral"}>{sourceLabel[m.source]}</Badge>
+        ),
     },
   ];
   return (
     <Panel
       title="Network mappings"
-      description="EfficientIP's subnets come with their vCenter network in the sync; map a network by hand when EfficientIP doesn't say."
+      description="EfficientIP's subnets come with their vCenter network in the sync; map a network by hand when EfficientIP doesn't say. A network with IP ranges takes its addresses from them."
       flush
       actions={canEdit && items?.length !== 0 && add}
     >
@@ -1142,7 +1162,7 @@ function Inventory() {
   );
 }
 
-export const infrastructureTabs = ["templates", "sizes", "networks", "inventory"] as const;
+export const infrastructureTabs = ["templates", "sizes", "networks", "ip-ranges", "inventory"] as const;
 export type InfrastructureTab = (typeof infrastructureTabs)[number];
 
 export function InfrastructurePage({ tab = "templates" }: { tab?: InfrastructureTab }) {
@@ -1153,7 +1173,7 @@ export function InfrastructurePage({ tab = "templates" }: { tab?: Infrastructure
     <Page>
       <PageHeader
         title="Templates and networks"
-        description="What blueprints' template and size pickers offer, the subnet each network deploys into, and the tags of vCenter objects."
+        description="What blueprints' template and size pickers offer, the subnet each network deploys into, rvav's own IP ranges, and the tags of vCenter objects."
       />
       <Tabs
         value={tab}
@@ -1165,6 +1185,7 @@ export function InfrastructurePage({ tab = "templates" }: { tab?: Infrastructure
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="sizes">Sizes</TabsTrigger>
           <TabsTrigger value="networks">Networks</TabsTrigger>
+          <TabsTrigger value="ip-ranges">IP ranges</TabsTrigger>
           <TabsTrigger value="inventory">vCenter objects</TabsTrigger>
         </TabsList>
         <TabsContent value="templates" className="pt-4">
@@ -1175,6 +1196,9 @@ export function InfrastructurePage({ tab = "templates" }: { tab?: Infrastructure
         </TabsContent>
         <TabsContent value="networks" className="pt-4">
           <Networks canEdit={canEdit} />
+        </TabsContent>
+        <TabsContent value="ip-ranges" className="pt-4">
+          <IPRanges canEdit={canEdit} />
         </TabsContent>
         <TabsContent value="inventory" className="pt-4">
           <Inventory />

@@ -10,6 +10,7 @@ import { celCheck } from "./cel";
 import { audited, policyNameTooLong } from "./governance";
 import { chooseLease, leaseTermsErrors, looserLease, looserRule, orderedRules, type LeaseTerms } from "./leases";
 import { clusters, datastoreClusters, datastores, hostsOf, networks, resourcePools, tags, VCENTER } from "./inventory";
+import { rangeMappings } from "./ipRanges";
 import type { Db } from "./seed";
 import { policyVars, userGroups } from "./logic";
 import {
@@ -1762,7 +1763,10 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     }),
     http.get(`${base}/admin/network-mappings`, async () => {
       await wait();
-      return HttpResponse.json({ items: st().mappings });
+      const items = [...st().mappings, ...rangeMappings(db)].sort(
+        (a, b) => a.network.localeCompare(b.network) || (a.vcenter ?? "").localeCompare(b.vcenter ?? ""),
+      );
+      return HttpResponse.json({ items });
     }),
     http.put(`${base}/admin/network-mappings/:network`, async ({ params, request }) => {
       await wait();

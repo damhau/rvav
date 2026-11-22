@@ -169,7 +169,7 @@ export const adminGroups: AdminGroup[] = [
         to: "/admin/infrastructure",
         key: "infrastructure",
         icon: Layers,
-        keywords: ["sizes", "subnets", "tags"],
+        keywords: ["sizes", "subnets", "ip ranges", "tags"],
         show: (me) => can(me, "infrastructure.read"),
       },
       {

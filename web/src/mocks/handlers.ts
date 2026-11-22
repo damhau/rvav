@@ -48,6 +48,7 @@ import {
 } from "./catalogAdmin";
 import { catalogGitHandlers } from "./catalogGit";
 import { adminState, administrationHandlers } from "./administration";
+import { ipRangeHandlers, rangeReconcile } from "./ipRanges";
 import { chooseLease, presentLease } from "./leases";
 import { onboardingHandlers } from "./onboarding";
 import { vraHandlers } from "./vra";
@@ -507,6 +508,7 @@ export const handlers = [
   }),
   ...governanceHandlers(db, base, wait),
   ...administrationHandlers(db, base, wait),
+  ...ipRangeHandlers(db, base, wait),
   ...quotaHandlers(db, base, wait),
   ...limitHandlers(db, base, wait),
   ...onboardingHandlers(db, base, wait),
@@ -584,14 +586,15 @@ export const handlers = [
   })(),
 
   // The mock user is an administrator for this check; one address and one
-  // record left behind, and a PTR record someone deleted.
+  // record left behind, and a PTR record someone deleted; in the IP ranges,
+  // an address left by an unregistered VM and two VMs on addresses the
+  // ranges didn't give them.
   http.get(`${base}/admin/ipam/reconcile`, async () => {
     await wait();
     return json<S["IpamReconcile"]>({
       checked_at: new Date().toISOString(),
       efficientip: true,
-      orphan_allocations: [],
-      unallocated: [],
+      ...rangeReconcile(db),
       managed_addresses: 13,
       managed_records: 26,
       orphan_addresses: [
