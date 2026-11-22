@@ -151,7 +151,9 @@ Without a restart by hand, in one of two ways:
   - An unknown username is refused at once. The one account's name,
     `admin`, is no secret, and checking a password against nothing would
     only take one of the four hash slots the administrator's sign-in waits
-    for. An attempt waits for a slot only as long as its request does.
+    for. An attempt waits for a slot only as long as its request does. It
+    is audited with the username `unknown`, as often as a reported
+    failure ([ADR-0058](0058-audit-forwarding-and-sign-ins.md)).
 - **Audited:** a sign-in (`auth.sign_in`), a failure
   (`auth.sign_in_failed`), a password change (`auth.password_changed`), a
   reset (`auth.password_reset`) and a sign-out (`auth.sign_out`).

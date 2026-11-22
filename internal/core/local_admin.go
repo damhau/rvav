@@ -68,7 +68,9 @@ func (s *Service) EnsureLocalAdmin(ctx context.Context) (created bool, generated
 // must be changed first. From the third failure in a row, attempts wait.
 // An unknown username is refused at once: the one account's name, admin,
 // is no secret, and checking a password against nothing would only take a
-// hash slot the administrator's sign-in waits for.
+// hash slot the administrator's sign-in waits for. It is audited as
+// "unknown", since a password typed in its place would reach the SIEM,
+// and as often as failure reports, since anyone may send one.
 func (s *Service) SignIn(ctx context.Context, username, password string, now time.Time) (sessionID string, mustChange bool, err error) {
 	name := strings.TrimSpace(username)
 	if utf8.RuneCountInString(name) > 64 || utf8.RuneCountInString(password) > maxPasswordLength {
@@ -76,7 +78,9 @@ func (s *Service) SignIn(ctx context.Context, username, password string, now tim
 	}
 	acc, err := s.Store.LocalAccountByName(ctx, name)
 	if errors.Is(err, store.ErrNotFound) {
-		s.auditSignIn(ctx, nil, "auth.sign_in_failed", "", map[string]any{"username": clipName(name), "reason": "unknown username", "method": "local"})
+		if s.mayRecordFailure(ctx) {
+			s.auditSignIn(ctx, nil, "auth.sign_in_failed", "", map[string]any{"username": "unknown", "reason": "unknown username", "method": "local"})
+		}
 		return "", false, ErrBadCredentials
 	}
 	if err != nil {
@@ -254,7 +258,7 @@ func (s *Service) SignOut(ctx context.Context, p *auth.Principal) error {
 	return nil
 }
 
-// clipName keeps an unknown username short in the audit log.
+// clipName keeps a provider's message short in the audit log.
 func clipName(name string) string {
 	if r := []rune(name); len(r) > 64 {
 		return string(r[:64])

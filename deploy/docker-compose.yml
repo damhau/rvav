@@ -30,9 +30,11 @@ x-rvav-env: &rvav-env
   RVAV_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/rvav
   RVAV_OIDC_CLIENT_ID: rvav
   RVAV_CORS_ORIGINS: ${RVAV_CORS_ORIGINS:-http://localhost:5173}
-  # The web container's nginx, on Compose's networks: the audit log records
-  # the address the browser came from, not the container's.
-  RVAV_TRUSTED_PROXIES: ${RVAV_TRUSTED_PROXIES:-172.16.0.0/12}
+  # The web container's nginx, at its own address on the proxy network
+  # below: the audit log records the address nginx saw. Only that address,
+  # so that a client reaching the API or nginx through Docker's gateway
+  # can't choose what is recorded.
+  RVAV_TRUSTED_PROXIES: ${RVAV_TRUSTED_PROXIES:-172.31.250.14}
   RVAV_TEMPORAL_ADDRESS: temporal:7233
   RVAV_VCENTER_URL: https://vcsim:8989/sdk
   RVAV_VCENTER_USERNAME: user
@@ -196,6 +198,7 @@ services:
     restart: on-failure
     environment: *rvav-env
     ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_API_PORT:-8080}:8080"]
+    networks: [default, proxy]
     depends_on:
       migrate: { condition: service_completed_successfully }
       efficientip: { condition: service_healthy }
@@ -242,12 +245,25 @@ services:
     environment:
       RVAV_API_UPSTREAM: http://api:8080
     ports: ["${RVAV_BIND_ADDRESS:-127.0.0.1}:${RVAV_WEB_PORT:-3000}:8080"]
+    # On the proxy network only, so that it reaches the API from the
+    # address the API trusts.
+    networks:
+      proxy: { ipv4_address: 172.31.250.14 }
     depends_on:
       api: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
       interval: 2s
       retries: 30
+
+networks:
+  # The web container and the API. Docker hands out addresses from
+  # ip_range only, so none takes the web container's. If the subnet clashes
+  # with a network of yours, change it, the web container's address and
+  # RVAV_TRUSTED_PROXIES together.
+  proxy:
+    ipam:
+      config: [{ subnet: 172.31.250.0/28, ip_range: 172.31.250.0/29 }]
 
 volumes:
   pgdata:

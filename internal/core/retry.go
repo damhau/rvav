@@ -417,7 +417,9 @@ func (s *Service) Retry(ctx context.Context, p *auth.Principal, idOrNumber strin
 	}
 	if err := s.Workflows.Restart(ctx, r.ID); err != nil {
 		s.Log.Error("restart workflow", "request", r.Number, "err", err)
-		_ = s.Store.SetRequestStatus(ctx, s.Store.Pool, r.ID, "failed")
+		// Only while still queued: a call that timed out may have started
+		// the run, which has moved the request on.
+		_, _ = s.Store.SetRequestStatusFrom(ctx, s.Store.Pool, r.ID, "queued", "failed")
 		return r, &UpstreamError{System: "Temporal", Err: err}
 	}
 	s.publishRequest(ctx, r.ID)

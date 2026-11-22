@@ -171,8 +171,15 @@ can't be checked, so anyone could report one. It is marked
 64 printable ASCII characters, a description of at most 500 without
 control characters), and at most 10 a minute from one address, and 300
 in all, are kept in each API process; so are 10 successes and sign-outs
-a minute per user. A report past those limits is answered as if it were
-kept.
+a minute per user. An IPv6 address counts as its /64, which one host may
+be given whole. A report past those limits is answered as if it were
+kept, and counts toward neither: the limit keeps a key only for what it
+lets through, and the keys of the last two minutes, so a flood from new
+addresses costs it no scan and at most 300 keys a minute. Past 300, a
+real failure is dropped too; what holds then is the ingress's rate
+limit. The local administrator's unknown usernames share these limits,
+since anyone may send one, and are recorded as `unknown`: a password
+typed in the username field would otherwise reach the SIEM.
 
 rvav has no gate of its own for disabled users or required groups: the
 provider refuses them, and the client reports its error. A token that

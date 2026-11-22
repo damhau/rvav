@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -14,8 +15,9 @@ import (
 
 // The web app and rvavctl sign in at the identity provider themselves, so
 // they report how it went (ADR-0058). Anyone may report a failure: at most
-// reportsPerMinute are kept from one address, or of one user's sign-ins,
-// and allReportsPerMinute failures in all, in each API process.
+// reportsPerMinute are kept from one address (an IPv6 /64), or of one
+// user's sign-ins, and allReportsPerMinute failures in all, in each API
+// process. The local administrator's unknown usernames count as failures.
 const (
 	reportsPerMinute    = 10
 	allReportsPerMinute = 300
@@ -133,16 +135,33 @@ func (s *Service) SignedIn(ctx context.Context, p *auth.Principal, r api.SignInR
 }
 
 func (s *Service) mayRecordFailure(ctx context.Context) bool {
-	now := time.Now()
-	return s.signInReports.allow("ip:"+auth.ClientFrom(ctx).IP, reportsPerMinute, now) &&
-		s.signInReports.allow("", allReportsPerMinute, now)
+	return s.signInReports.allowWithin(addressKey(auth.ClientFrom(ctx).IP), reportsPerMinute, allReportsPerMinute, time.Now())
+}
+
+// addressKey is where a request came from, for a limit: one IPv6 /64 is
+// one address, since a single host may be given the whole of it.
+func addressKey(ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
+		return "ip:" + ip
+	}
+	if a = a.Unmap(); a.Is4() {
+		return "ip:" + a.String()
+	}
+	p, _ := a.WithZone("").Prefix(64)
+	return "ip:" + p.String()
 }
 
 // windowLimit allows so many events a minute for each key, in this process.
+// It keeps the keys of this minute and the last one, so that what has
+// expired goes without a scan, and at most maxLimitKeys new ones a minute.
 type windowLimit struct {
-	mu   sync.Mutex
-	seen map[string]window
+	mu        sync.Mutex
+	cur, prev map[string]window
+	turned    time.Time
 }
+
+const maxLimitKeys = 10000
 
 type window struct {
 	start time.Time
@@ -150,26 +169,50 @@ type window struct {
 }
 
 func (l *windowLimit) allow(key string, n int, now time.Time) bool {
+	return l.allowWithin(key, n, 0, now)
+}
+
+// allowWithin also allows at most all events a minute of every key that
+// asks so, together; an event it refuses is counted nowhere.
+func (l *windowLimit) allowWithin(key string, n, all int, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.seen == nil {
-		l.seen = map[string]window{}
+	if l.cur == nil || now.Sub(l.turned) >= time.Minute {
+		l.prev, l.cur, l.turned = l.cur, map[string]window{}, now
 	}
-	if len(l.seen) > 10000 {
-		for k, w := range l.seen {
-			if now.Sub(w.start) >= time.Minute {
-				delete(l.seen, k)
-			}
-		}
-	}
-	w := l.seen[key]
-	if now.Sub(w.start) >= time.Minute {
-		w = window{start: now}
-	}
+	w := l.window(key, now)
 	if w.n >= n {
 		return false
 	}
+	if _, kept := l.cur[key]; !kept && len(l.cur) >= maxLimitKeys {
+		return false
+	}
+	if all > 0 {
+		t := l.window("", now)
+		if t.n >= all {
+			return false
+		}
+		t.n++
+		l.cur[""] = t
+	}
 	w.n++
-	l.seen[key] = w
+	l.cur[key] = w
 	return true
+}
+
+func (l *windowLimit) window(key string, now time.Time) window {
+	w, ok := l.cur[key]
+	if !ok {
+		w = l.prev[key]
+	}
+	if now.Sub(w.start) >= time.Minute {
+		return window{start: now}
+	}
+	return w
+}
+
+func (l *windowLimit) keys() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.cur) + len(l.prev)
 }

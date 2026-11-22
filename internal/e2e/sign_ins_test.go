@@ -246,10 +246,21 @@ func TestSignInsAudited(t *testing.T) {
 		if flood != 10 {
 			t.Errorf("failures kept from one address = %d, want 10", flood)
 		}
-		mark := h.lastAuditID()
 		if ev := h.authEvents(ev[3].ID); len(ev) != 10 {
 			t.Errorf("events after the refused token = %d, want the 10 failures only", len(ev))
 		}
+		// The local administrator's unknown usernames are kept as often,
+		// and never as typed: it may be a password.
+		mark := h.lastAuditID()
+		for range 12 {
+			if code, b := call("POST", "/api/v1/auth/sign-in", "", "2001:db8:5::1", map[string]any{"username": "Corr3ct-Horse!", "password": "x"}); code != 401 {
+				t.Fatalf("an unknown username = %d %s", code, b)
+			}
+		}
+		if ev := h.authEvents(mark); len(ev) != 10 || ev[0].Detail["username"] != "unknown" || ev[0].Detail["reason"] != "unknown username" {
+			t.Errorf("unknown usernames audited: %d, %+v", len(ev), ev)
+		}
+		mark = h.lastAuditID()
 
 		// Signing out with the provider's token.
 		if code, b := call("POST", "/api/v1/auth/sign-out", lea, "203.0.113.7", nil); code != 204 {

@@ -2584,7 +2584,10 @@ sign-ins**.
   ([configuration.md](../operations/configuration.md)).
 - **Reported by the client:** a failure marked `reported_by: client`
   happened in the browser or rvavctl, before rvav saw a token. rvav can't
-  check it, and keeps at most 10 a minute from one address.
+  check it, and keeps at most 10 a minute from one address (an IPv6
+  /64) and 300 in all. The same limits apply to the local administrator's
+  sign-ins with an unknown username, recorded as `unknown` rather than
+  what was typed.
 - **No secrets:** the audit log never records a token, a code or a
   password.
 

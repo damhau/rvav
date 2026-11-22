@@ -72,7 +72,9 @@ last activity commits, a moment before the run closes: a Retry or a
 rollback in that moment ends that run and starts its own, where Temporal's
 default would hand back the old run and run nothing (#180). They take the
 failed request under its lock, so of two at once the second gets a
-conflict.
+conflict. When Temporal doesn't confirm a retry's start, the request
+reads failed again, to be retried, unless it has moved on from queued:
+a call that timed out may still have started the run (O1.7, #173).
 
 A day-2 action stops at its first failed step, except for an operation
 marked to keep going: its step stays failed and the next one runs. When

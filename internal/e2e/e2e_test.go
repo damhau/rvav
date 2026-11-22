@@ -102,6 +102,8 @@ type recorder struct {
 	rolledBack []string
 	onboarding []string
 	startErr   error // returned by Start, to act as an unreachable Temporal
+	// restart, when set, is what Restart does instead.
+	restart func(id string) error
 }
 
 func (r *recorder) StartOnboarding(_ context.Context, runID string) error {
@@ -125,6 +127,12 @@ func (r *recorder) Start(_ context.Context, id string) error {
 }
 
 func (r *recorder) Restart(ctx context.Context, id string) error {
+	r.mu.Lock()
+	restart := r.restart
+	r.mu.Unlock()
+	if restart != nil {
+		return restart(id)
+	}
 	return r.Start(ctx, id)
 }
 

@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +17,53 @@ import (
 	"github.com/damhau/rvav/internal/outbox"
 	"github.com/damhau/rvav/internal/provision"
 )
+
+// TestRetryWhenTemporalErs: a retry whose start Temporal doesn't confirm
+// leaves the request failed, to retry again, unless the run started anyway
+// and moved it on (#180).
+func TestRetryWhenTemporalErs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		var form api.RequestForm
+		h.json("GET", "/api/v1/catalog/items/rhel9-server/form?project_id=prj_web", "lmartin", nil, 200, &form)
+		h.awx.FailTask = "idm : join realm"
+		var r api.Request
+		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: form.ItemId, VersionId: form.VersionId,
+			ProjectId: "prj_web", Environment: "dev", Inputs: map[string]any{"role": "app", "size": "S", "cluster": "GVA-DEV-CL01",
+				"datastore": "vsan-gva-dev-cl01", "network": "dvpg-app-dev-vl310", "post_config": []string{"linux-baseline", "idm-join"}}},
+			202, &r, "Idempotency-Key", uuid.NewString())
+		h.runWorkflow(r.Id, nil)
+		h.waitStatus(r.Id, "tnguyen", api.RequestStatusFailed)
+		h.awx.FailTask = ""
+
+		h.wf.mu.Lock()
+		h.wf.restart = func(string) error { return errors.New("connection refused") }
+		h.wf.mu.Unlock()
+		h.json("POST", "/api/v1/requests/"+r.Id+"/retry", "tnguyen", nil, 502, nil)
+		var got api.Request
+		if h.json("GET", "/api/v1/requests/"+r.Id, "tnguyen", nil, 200, &got); got.Status != api.RequestStatusFailed {
+			t.Fatalf("after a retry Temporal refused, the request is %s", got.Status)
+		}
+
+		// The call times out after Temporal started the run, which picked
+		// the request up before rvav hears of the timeout.
+		h.wf.mu.Lock()
+		h.wf.restart = func(id string) error {
+			if err := h.store.SetRequestStatus(ctx, h.store.Pool, id, "running"); err != nil {
+				t.Error(err)
+			}
+			return context.DeadlineExceeded
+		}
+		h.wf.mu.Unlock()
+		h.json("POST", "/api/v1/requests/"+r.Id+"/retry", "tnguyen", nil, 502, nil)
+		if h.json("GET", "/api/v1/requests/"+r.Id, "tnguyen", nil, 200, &got); got.Status != api.RequestStatusRunning {
+			t.Fatalf("after a retry whose run started, the request is %s", got.Status)
+		}
+	})
+}
 
 // TestRetryAndRollback retries a request that failed in its last AWX job
 // (what was built stays), and rolls back one that failed, then retries it

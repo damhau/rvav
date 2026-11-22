@@ -340,7 +340,7 @@ func TestLocalAdmin(t *testing.T) {
 		}
 		var who string
 		_ = h.store.Pool.QueryRow(ctx, `select detail->>'username' from audit_events where action = 'auth.sign_in_failed' and actor_id is null`).Scan(&who)
-		if who != "nobody" {
+		if who != "unknown" {
 			t.Errorf("the unknown username audited as %q", who)
 		}
 	})
