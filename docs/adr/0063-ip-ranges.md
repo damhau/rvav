@@ -143,9 +143,10 @@ PowerShell's `Get-RvavIPRange` and `Get-RvavIPAllocation`.
 PowerShell does it with `Invoke-RvavApi`.
 
 ## Consequences
-- An administrator manages ranges in Infrastructure › IP ranges and with
-  Terraform's `rvav_ip_range`; `rvavctl ip-ranges` and PowerShell read
-  them, and `rvavctl` gives orphans back.
+- An administrator manages ranges in Administration › Templates and
+  networks › IP ranges and with Terraform's `rvav_ip_range`;
+  `rvavctl ip-ranges` and PowerShell read them, and `rvavctl` gives
+  orphans back.
 - A network with ranges and an EfficientIP subnet uses the ranges; the
   EfficientIP subnet sync goes on, unused for that vCenter.
 - Moving a network from EfficientIP to ranges doesn't move the addresses

@@ -378,19 +378,21 @@ other networks keep EfficientIP. One VM can have adapters on both.
   VM exists, on a rollback, and when a day-2 action moves the adapter to
   another network. Unregistering a VM keeps its addresses: the reconcile
   report lists them, and an administrator gives them back.
-- **Reconcile** (**Integrations › Checks**, and the **IP ranges** tab):
-  addresses given to VMs rvav no longer has, and vCenter VMs on a range's
-  address that the range didn't give them. The vRA import doesn't read
-  vRA's network profiles: define their ranges again in rvav.
+- **Reconcile** (the **IP ranges** tab; **Integrations › Checks** counts
+  them and links there): addresses given to VMs rvav no longer has, and
+  vCenter VMs on a range's address that the range didn't give them. The
+  vRA import doesn't read vRA's network profiles: define their ranges
+  again in rvav.
 
 ## NSX (native, Policy API; ADR-0028)
 
 - **Client** (`internal/integrations/nsx`): NSX 4.x's Policy API
   (`/policy/api/v1`, NSX-T 3.x too), signed in with a user and password,
   or a principal identity's certificate (`RVAV_NSX_*`, or
-  Administration › Integrations › NSX, whose test signs in and lists the
-  Tier-1s, transport zones and services). Lists are read by cursor;
-  PATCH makes or updates by ID; calls are counted as system `nsx`.
+  Administration › Integrations › NSX, whose test signs in, reads NSX's
+  version, and counts the Tier-1 gateways, the segments and the default
+  domain's groups). Lists are read by cursor; PATCH makes or updates by
+  ID; calls are counted as system `nsx`.
 - **Several NSX Managers** ([ADR-0062](adr/0062-several-nsx-managers.md)):
   the integration's is the first, and administrators add others under it
   (**NSX Managers**: name, HTTPS address, account and password sealed

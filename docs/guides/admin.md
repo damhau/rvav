@@ -701,8 +701,9 @@ does in EfficientIP.
 
 ### Reconcile the IP ranges
 
-Under **Reconcile the IP ranges** on the **IP ranges** tab, or in
-**Integrations › Checks**, click **Run the check**. It lists:
+Under **Reconcile the IP ranges** on the **IP ranges** tab, click **Run
+the check**. **EfficientIP reconcile** in **Integrations › Checks** counts
+the same rows, and links to this tab. The check lists:
 
 - **Addresses of VMs rvav no longer has**, such as an unregistered VM's.
   If the VM is gone from vCenter, select **Give back** in the row's
@@ -730,11 +731,13 @@ To connect rvav to your domain:
 1. Give a service account the rights in
    [integrations.md](../integrations.md#active-directory-permissions-service-account),
    on the OUs rvav will use only.
-2. In **Integrations › Active Directory**, enter a domain controller's
-   address: `ldaps://dc01.corp.example` for LDAPS, or
+2. In **Integrations › Active Directory**, under **URL**, enter a domain
+   controller's address: `ldaps://dc01.corp.example` for LDAPS, or
    `ldap://dc01.corp.example` for LDAP with StartTLS.
-3. Enter the service account (its UPN, `svc-rvav@corp.example`, or its
-   DN), its password, and the domain's base DN (`DC=corp,DC=example`).
+3. Under **Service account**, enter the service account's UPN
+   (`svc-rvav@corp.example`) or DN. Under **Service account password**,
+   enter its password, and under **Base DN**, the domain's base DN
+   (`DC=corp,DC=example`).
 4. Click **Test connection**. The test shows the domain controller's
    certificate. If rvav doesn't trust it, trust it or add its CA to the
    CA bundle (see [Trusted certificates](#trusted-certificates)), then
@@ -759,10 +762,11 @@ To give a project an OU:
 
 1. In **Projects**, open the project, then the **Placement** tab.
 2. Under **Active Directory**, click **New OU**.
-3. Select an environment, or **Any environment**.
-4. Enter the OU's DN. A DN without `DC=` parts, such as
+3. Under **Environment**, select an environment, or **Any environment**.
+4. Under **OU**, enter the OU's DN. A DN without `DC=` parts, such as
    `OU=Servers,OU=Web`, is relative to the base DN.
-5. Optional: enter the groups the computer objects join, one DN a line.
+5. Optional: under **Groups**, enter the groups the computer objects
+   join, one DN a line.
 6. Optional: select **Blueprints may choose their OU**, to let a
    blueprint's `active_directory` name another OU, or none. Otherwise
    rvav ignores it.
@@ -1764,13 +1768,14 @@ An item's tabs:
     firewall rule, with its services, under `security_groups` in the
     YAML; bind a custom resource's inputs to a component's, such as
     `components.web.addresses`, to make it after that component.
-  - A selected node's details edit its fields: a VM's key, title, count
-    (a number, or CEL over the inputs), template, naming and
-    anti-affinity; a network's CEL; a disk's key, size, storage policy and
-    datastore; a segment's, a group's or a resource's key and title. When
-    you rename a key, what reads it follows (`depends_on`, adapters,
-    groups, rules and CEL). Guest settings, a rule's services and a
-    resource's inputs stay in the YAML.
+  - A selected node's details edit its fields: a blueprint's one VM's
+    template, naming and OS family; a component's key, title, count (a
+    number, or CEL over the inputs), template, naming and anti-affinity;
+    a network's CEL; a disk's key, size, storage policy and datastore; a
+    segment's, a group's or a resource's key and title. When you rename a
+    key, what reads it follows (`depends_on`, adapters, groups, rules and
+    CEL). The other guest settings, a rule's services and a resource's
+    inputs stay in the YAML.
   - **Disconnect**, beside each of a node's connections, removes what
     writes it. **Remove** removes the node and what names it: a network's
     adapters, a group's members and rules, a VM's place in the others'
@@ -2501,8 +2506,9 @@ of the type or an item version names it.
 - **EfficientIP reconcile** (**Integrations › Checks**): addresses and records
   tagged as rvav's that no deployment owns, left by failures or restores,
   or by a deletion that went on past failed steps.
-  Delete them there, or adopt their VM. The same check covers rvav's IP
-  ranges (see [Reconcile the IP ranges](#reconcile-the-ip-ranges)).
+  Delete them there, or adopt their VM. The same check counts what rvav's
+  IP ranges have to reconcile, which you do on the **IP ranges** tab (see
+  [Reconcile the IP ranges](#reconcile-the-ip-ranges)).
   Adopting a VM on a network with ranges gives it no address from them:
   exclude its address from the range.
 
