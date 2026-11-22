@@ -189,6 +189,42 @@ test("setup, branding, the audit log and the system, in French", async ({ page }
   expect(errors).toEqual([]);
 });
 
+test("onboarding and AWX's templates, in French", async ({ page }) => {
+  test.setTimeout(150_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await inFrench(page);
+
+  await open(page, "Intégration de l'existant");
+  const vms = page.getByRole("table", { name: "VM à intégrer" });
+  await expect(vms.getByRole("columnheader", { name: /^Système invité/ })).toBeVisible();
+  await bothThemes(page, "onboarding");
+  await page.getByRole("textbox", { name: "Rechercher" }).fill("app-old");
+  await expect(page.getByText("8 VM", { exact: true })).toBeVisible();
+  await vms.getByRole("checkbox", { name: "Sélectionner app-old01" }).check();
+  await expect(page.getByRole("region", { name: "VM sélectionnées" })).toContainText("1 VM sélectionnée");
+  await page.getByRole("button", { name: "Intégrer 1 VM…" }).click();
+  const sheet = page.getByRole("dialog", { name: "Intégrer 1 VM" });
+  await expect(sheet.getByRole("checkbox", { name: /^Protéger de la suppression/ })).toBeVisible();
+  await scan(page, "adopting a VM");
+  await sheet.getByRole("button", { name: "Annuler" }).click();
+  await expect(sheet).toBeHidden();
+
+  await open(page, "Éléments de catalogue");
+  await tab(page, "Modèles AWX");
+  const templates = page.getByRole("region", { name: "Importés d'AWX" });
+  await expect(templates.getByRole("button", { name: "Synchroniser maintenant" })).toBeVisible();
+  await expect(templates.getByRole("columnheader", { name: /^Élément de catalogue/ })).toBeVisible();
+  await bothThemes(page, "AWX's templates");
+
+  await page.getByRole("button", { name: /^Compte/ }).click();
+  await page.getByRole("menuitem", { name: "English" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.getByRole("heading", { name: "Catalog items", level: 1 })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "AWX templates" })).toHaveAttribute("aria-selected", "true");
+  expect(errors).toEqual([]);
+});
+
 test.describe("a French browser, at 320 px", () => {
   test.use({ locale: "fr-CH", viewport: { width: 320, height: 640 } });
   for (const path of [
@@ -204,6 +240,8 @@ test.describe("a French browser, at 320 px", () => {
     "/admin/audit",
     "/admin/audit-forwarding",
     "/admin/system",
+    "/admin/onboarding",
+    "/admin/catalog-items?tab=awx",
   ]) {
     test(`no sideways scrolling: ${path}`, async ({ page }) => {
       await page.goto(path);

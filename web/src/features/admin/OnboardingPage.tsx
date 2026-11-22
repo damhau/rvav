@@ -5,8 +5,10 @@
 // the VMs a filter matches, by hand or every few hours.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { ServerCog } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -23,6 +25,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { formatSize } from "@/lib/format";
 import { useDebounced } from "@/lib/hooks";
 import { adm } from "@/lib/query";
 import { failed, fieldErrors } from "./governance/common";
@@ -38,8 +41,8 @@ export type OnboardingTab = (typeof onboardingTabs)[number];
 const keyOf = (v: Vm) => `${v.vcenter}/${v.moref}`;
 /** How many VMs one adoption takes (the server's limit). */
 const MAX_ADOPT = 200;
-const memory = (mb: number) => (mb % 1024 === 0 ? `${mb / 1024} GB` : `${mb} MB`);
-const vmsText = (n: number) => `${n} VM${n === 1 ? "" : "s"}`;
+const memory = (mb: number) => (mb % 1024 === 0 ? formatSize(mb / 1024, "GB") : formatSize(mb, "MB"));
+const folderExample = "/GVA/vm/legacy";
 
 function AdoptSheet({
   vms,
@@ -50,7 +53,8 @@ function AdoptSheet({
   onClose: () => void;
   onDone: (r: S["OnboardingResult"]) => void;
 }) {
-  const [t, setT] = useState<Target>(emptyTarget);
+  const { t } = useTranslation("admin");
+  const [target, setTarget] = useState<Target>(emptyTarget);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [local, setLocal] = useState<Record<number, string>>({});
   const [keep, setKeep] = useState(false);
@@ -58,23 +62,23 @@ function AdoptSheet({
   const refs = vms.map((v) => ({ vcenter: v.vcenter, moref: v.moref, ...(keep ? { prevent_delete: true } : {}) }));
   const adopt = useMutation({
     mutationFn: () => {
-      const component = t.component.trim() || undefined;
-      if (t.into === "existing")
+      const component = target.component.trim() || undefined;
+      if (target.into === "existing")
         return call(
-          api.POST("/admin/onboarding/into", { body: { vms: refs, deployment_id: t.deployment, component } }),
+          api.POST("/admin/onboarding/into", { body: { vms: refs, deployment_id: target.deployment, component } }),
         );
       return call(
         api.POST("/admin/onboarding", {
           body: {
             vms: refs,
-            project_id: t.project,
-            environment: t.environment,
-            owner_id: t.owner,
-            catalog_item_id: t.item,
-            ...(t.lease ? { lease_days: Number(t.lease) } : {}),
-            ...(t.into === "one" ? { deployment_name: t.name } : {}),
+            project_id: target.project,
+            environment: target.environment,
+            owner_id: target.owner,
+            catalog_item_id: target.item,
+            ...(target.lease ? { lease_days: Number(target.lease) } : {}),
+            ...(target.into === "one" ? { deployment_name: target.name } : {}),
             component,
-            inputs: inputsOf(t),
+            inputs: inputsOf(target),
           },
         }),
       );
@@ -82,7 +86,7 @@ function AdoptSheet({
     onSuccess: onDone,
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Nothing was adopted");
+      failed(e, t("onboarding.notAdopted"));
     },
   });
   // A VM's error names it.
@@ -90,30 +94,30 @@ function AdoptSheet({
     .filter(([k]) => k.startsWith("/vms"))
     .map(([k, msg]) => {
       const i = Number(k.split("/")[2]);
-      return Number.isNaN(i) ? msg : `${vms[i]?.name ?? k}: ${msg}`;
+      return Number.isNaN(i) ? msg : t("onboarding.vmError", { name: vms[i]?.name ?? k, message: msg });
     });
   return (
     <Sheet
       open
       onOpenChange={(o) => !o && onClose()}
       pending={adopt.isPending}
-      title={`Adopt ${vmsText(vms.length)}`}
-      description="Nothing changes in vCenter or EfficientIP: rvav records the VMs, and the addresses and DNS records EfficientIP has for them. Deleting a deployment later deletes its VMs and releases those."
+      title={t("onboarding.adopt", { count: vms.length })}
+      description={t("onboarding.sheetDescription")}
       className="w-[min(640px,100vw)]"
       onSubmit={() => {
         setErrors({});
-        const problems = inputProblems(t);
+        const problems = inputProblems(target);
         setLocal(problems);
         if (Object.keys(problems).length === 0) adopt.mutate();
       }}
-      submitLabel={adopt.isPending ? "Adopting…" : `Adopt ${vmsText(vms.length)}`}
+      submitLabel={adopt.isPending ? t("onboarding.adopting") : t("onboarding.adopt", { count: vms.length })}
     >
       <TargetFields
-        t={t}
+        t={target}
         onChange={(next) => {
           // A row gone: the problems found by row no longer line up.
-          if (next.inputs.length < t.inputs.length) setLocal({});
-          setT(next);
+          if (next.inputs.length < target.inputs.length) setLocal({});
+          setTarget(next);
         }}
         errors={errors}
         at=""
@@ -132,9 +136,9 @@ function AdoptSheet({
       )}
       <section aria-labelledby="ob-vms" className="flex flex-col gap-1.5">
         <h3 id="ob-vms" className="label">
-          The VMs
+          {t("onboarding.theVms")}
         </h3>
-        <ul aria-label="VMs to adopt" className="max-h-48 overflow-y-auto font-mono text-caption">
+        <ul aria-label={t("onboarding.toAdopt")} className="max-h-48 overflow-y-auto font-mono text-caption">
           {vms.map((v) => (
             <li key={keyOf(v)}>
               {v.name} <span className="text-faint">{v.vcenter}</span>
@@ -144,11 +148,8 @@ function AdoptSheet({
         <label htmlFor="ob-keep" className="mt-1 flex items-start gap-2 text-body">
           <Checkbox id="ob-keep" className="mt-0.5" checked={keep} onChange={setKeep} />
           <span>
-            <span className="font-medium">Keep from deletion</span>
-            <span className="block text-secondary text-muted">
-              Deleting their deployment is refused until an administrator runs its Allow deletion, as for a
-              blueprint&apos;s prevent_delete. For VMs vRA keeps from deletion.
-            </span>
+            <span className="font-medium">{t("onboarding.keep")}</span>
+            <span className="block text-secondary text-muted">{t("onboarding.keepHint")}</span>
           </span>
         </label>
       </section>
@@ -157,14 +158,19 @@ function AdoptSheet({
 }
 
 function Adopted({ result, onClose }: { result: S["OnboardingResult"]; onClose: () => void }) {
+  const { t } = useTranslation(["admin", "common"]);
   const vms = result.deployments.reduce((n, d) => n + d.vms.length, 0);
   return (
     <Panel
-      title={`Adopted ${vmsText(vms)} into ${result.deployments.length} deployment${result.deployments.length === 1 ? "" : "s"}`}
-      description="Each is a deployment like any other: its owner runs its day-2 actions, and its lease runs from when it was made."
+      title={t("onboarding.adopted", {
+        count: vms,
+        vms: t("onboarding.vms", { count: vms }),
+        deployments: t("onboarding.deployments", { count: result.deployments.length }),
+      })}
+      description={t("onboarding.adoptedDescription")}
       actions={
         <Button size="sm" variant="quiet" onClick={onClose}>
-          Close
+          {t("common:actions.close")}
         </Button>
       }
       flush
@@ -180,8 +186,11 @@ function Adopted({ result, onClose }: { result: S["OnboardingResult"]; onClose: 
               {d.name}
             </Link>
             <span className="text-muted">
-              {d.vms.length > 1 ? `${d.vms.length} VMs · ` : ""}
-              {d.addresses} address{d.addresses === 1 ? "" : "es"}, {d.records} DNS record{d.records === 1 ? "" : "s"}
+              {d.vms.length > 1 ? t("onboarding.vmsOf", { count: d.vms.length }) : ""}
+              {t("onboarding.counts", {
+                addresses: t("onboarding.addresses", { count: d.addresses }),
+                records: t("onboarding.records", { count: d.records }),
+              })}
             </span>
           </li>
         ))}
@@ -190,10 +199,10 @@ function Adopted({ result, onClose }: { result: S["OnboardingResult"]; onClose: 
   );
 }
 
-const columns: Column<Vm>[] = [
+const columnsOf = (t: TFunction<"admin">): Column<Vm>[] => [
   {
     id: "name",
-    header: "Name",
+    header: t("onboarding.name"),
     cell: (v) => (
       <span className="flex items-center gap-2">
         <PowerDot on={v.power_state === "on"} />
@@ -206,27 +215,25 @@ const columns: Column<Vm>[] = [
   },
   {
     id: "address",
-    header: "Address",
+    header: t("onboarding.address"),
     cell: (v) => (
       <span className="font-mono text-secondary">
-        {v.ip_address ?? <span className="text-faint">none</span>}
+        {v.ip_address ?? <span className="text-faint">{t("onboarding.none")}</span>}
         {v.hostname && <div className="text-caption text-faint">{v.hostname}</div>}
       </span>
     ),
   },
   {
     id: "size",
-    header: "Size",
+    header: t("onboarding.size"),
     cell: (v) => (
-      <span className="tnum">
-        {v.cpu_count} vCPU · {memory(v.memory_mb)}
-      </span>
+      <span className="tnum">{t("onboarding.shape", { cpu: v.cpu_count, memory: memory(v.memory_mb) })}</span>
     ),
   },
-  { id: "os", header: "Guest OS", cell: (v) => <span className="text-muted">{v.guest_os ?? ""}</span> },
+  { id: "os", header: t("onboarding.os"), cell: (v) => <span className="text-muted">{v.guest_os ?? ""}</span> },
   {
     id: "where",
-    header: "Where",
+    header: t("onboarding.where"),
     cell: (v) => (
       <span className="text-secondary text-muted">
         {v.cluster ?? ""}
@@ -237,6 +244,7 @@ const columns: Column<Vm>[] = [
 ];
 
 function VmsTab() {
+  const { t } = useTranslation(["admin", "common"]);
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [vcenter, setVcenter] = useState("any");
@@ -285,18 +293,18 @@ function VmsTab() {
         <div
           className="flex flex-wrap items-center gap-2 rounded-lg border border-accent bg-accent-soft px-3 py-2"
           role="region"
-          aria-label="Selected VMs"
+          aria-label={t("onboarding.selectedVms")}
         >
-          <span className="font-medium">{vmsText(selected.size)} selected</span>
+          <span className="font-medium">{t("onboarding.selected", { count: selected.size })}</span>
           {selected.size > MAX_ADOPT && (
-            <span className="text-secondary text-muted">At most {MAX_ADOPT} at once: select fewer to adopt them.</span>
+            <span className="text-secondary text-muted">{t("onboarding.atMost", { n: MAX_ADOPT })}</span>
           )}
           <span className="flex-1" />
           <Button size="sm" variant="primary" disabled={selected.size > MAX_ADOPT} onClick={() => setAdopting(true)}>
-            Adopt {vmsText(selected.size)}…
+            {t("onboarding.adoptMore", { count: selected.size })}
           </Button>
           <Button size="sm" variant="quiet" onClick={() => setSelected(new Map())}>
-            Clear selection
+            {t("onboarding.clearSelection")}
           </Button>
         </div>
       )}
@@ -305,14 +313,16 @@ function VmsTab() {
         footer={
           list.hasNextPage && (
             <Button size="sm" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
-              {list.isFetchingNextPage ? "Loading…" : `Show more (${vms?.length ?? 0} of ${total})`}
+              {list.isFetchingNextPage
+                ? t("common:loadingEllipsis")
+                : t("onboarding.showMore", { shown: vms?.length ?? 0, total })}
             </Button>
           )
         }
       >
         <DataTable
-          label="VMs to adopt"
-          columns={columns}
+          label={t("onboarding.toAdopt")}
+          columns={columnsOf(t)}
           rows={vms}
           rowKey={keyOf}
           minWidth={760}
@@ -321,26 +331,26 @@ function VmsTab() {
           selection={{
             selected: new Set(selected.keys()),
             onChange: (next) => setSelected(new Map([...next].map((k) => [k, selected.get(k) ?? shown.get(k)!]))),
-            label: (v) => `Select ${v.name}`,
-            allLabel: "Select all shown",
+            label: (v) => t("onboarding.select", { name: v.name }),
+            allLabel: t("onboarding.selectAll"),
           }}
           toolbar={
             <div className="flex w-full flex-wrap items-end gap-2">
-              <Field label="Search" htmlFor="ob-search" className="w-56">
+              <Field label={t("onboarding.search")} htmlFor="ob-search" className="w-56">
                 <Input
                   id="ob-search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Name, address or host name"
+                  placeholder={t("onboarding.searchPlaceholder")}
                 />
               </Field>
-              <Field label="Folder" htmlFor="ob-folder" className="w-48">
+              <Field label={t("onboarding.folder")} htmlFor="ob-folder" className="w-48">
                 <Input
                   id="ob-folder"
                   className="font-mono"
                   value={folder}
                   onChange={(e) => setFolder(e.target.value)}
-                  placeholder="/GVA/vm/legacy"
+                  placeholder={folderExample}
                 />
               </Field>
               <Field label="vCenter" htmlFor="ob-vcenter" className="w-48">
@@ -349,45 +359,41 @@ function VmsTab() {
                   value={vcenter}
                   onChange={setVcenter}
                   options={[
-                    { value: "any", label: "Any" },
+                    { value: "any", label: t("onboarding.any") },
                     ...(vcenters.data?.items ?? []).map((v) => ({ value: v.name, label: v.name })),
                   ]}
                 />
               </Field>
-              <Field label="Power" htmlFor="ob-power" className="w-32">
+              <Field label={t("onboarding.power")} htmlFor="ob-power" className="w-32">
                 <Select
                   id="ob-power"
                   value={power}
                   onChange={setPower}
                   options={[
-                    { value: "any", label: "Any" },
-                    { value: "on", label: "On" },
-                    { value: "off", label: "Off" },
-                    { value: "suspended", label: "Suspended" },
+                    { value: "any", label: t("onboarding.any") },
+                    { value: "on", label: t("onboarding.on") },
+                    { value: "off", label: t("onboarding.off") },
+                    { value: "suspended", label: t("onboarding.suspended") },
                   ]}
                 />
               </Field>
               <span className="ml-auto self-center text-secondary text-muted" aria-live="polite">
-                {list.data ? vmsText(total) : ""}
-                {selected.size > 0 ? ` · ${selected.size} selected` : ""}
-                {hidden > 0 ? `, ${hidden} not shown` : ""}
-                {selected.size > MAX_ADOPT ? ` · at most ${MAX_ADOPT} at once` : ""}
+                {list.data ? t("onboarding.vms", { count: total }) : ""}
+                {selected.size > 0 ? t("onboarding.selectedSuffix", { count: selected.size }) : ""}
+                {hidden > 0 ? t("onboarding.hiddenSuffix", { count: hidden }) : ""}
+                {selected.size > MAX_ADOPT ? t("onboarding.atMostSuffix", { n: MAX_ADOPT }) : ""}
               </span>
             </div>
           }
           empty={
             <EmptyState
               icon={ServerCog}
-              title="Nothing to adopt"
-              body={
-                filtered
-                  ? "No VM rvav doesn't manage matches these filters."
-                  : "Every VM the inventory has is managed by rvav."
-              }
+              title={t("onboarding.nothing")}
+              body={filtered ? t("onboarding.noMatch") : t("onboarding.allManaged")}
               action={
                 filtered && (
                   <Button size="sm" onClick={clearFilters}>
-                    Clear filters
+                    {t("onboarding.clear")}
                   </Button>
                 )
               }
@@ -406,7 +412,7 @@ function VmsTab() {
             void qc.invalidateQueries({ queryKey: ["admin", "onboarding"] });
             void qc.invalidateQueries({ queryKey: ["deployments"] });
             void qc.invalidateQueries({ queryKey: ["vms"] });
-            toast.success(`Adopted ${vmsText(r.deployments.reduce((n, d) => n + d.vms.length, 0))}`);
+            toast.success(t("onboarding.adoptedToast", { count: r.deployments.reduce((n, d) => n + d.vms.length, 0) }));
           }}
         />
       )}
@@ -415,19 +421,20 @@ function VmsTab() {
 }
 
 export function OnboardingPage({ tab = "vms" }: { tab?: OnboardingTab }) {
+  const { t } = useTranslation(["admin", "shell"]);
   const navigate = useNavigate();
   const plans = useQuery(adm.onboardingPlans());
   const [editing, setEditing] = useState<Plan | "new" | null>(null);
   return (
     <Page>
       <PageHeader
-        title="Onboarding"
-        description="VMs in vCenter that rvav doesn't manage. Adopt them into deployments with an owner, a project and a lease, or save a plan that adopts those its filter matches, as they appear."
+        title={t("shell:nav.admin.onboarding")}
+        description={t("onboarding.description")}
         actions={
           tab === "plans" &&
           Boolean(plans.data?.items.length) && (
             <Button variant="primary" onClick={() => setEditing("new")}>
-              New plan
+              {t("onboarding.newPlan")}
             </Button>
           )
         }
@@ -438,9 +445,9 @@ export function OnboardingPage({ tab = "vms" }: { tab?: OnboardingTab }) {
           void navigate({ to: "/admin/onboarding", search: { tab: next as OnboardingTab }, replace: true })
         }
       >
-        <TabsList aria-label="Onboarding sections">
-          <TabsTrigger value="vms">VMs to adopt</TabsTrigger>
-          <TabsTrigger value="plans">Plans</TabsTrigger>
+        <TabsList aria-label={t("onboarding.sections")}>
+          <TabsTrigger value="vms">{t("onboarding.toAdopt")}</TabsTrigger>
+          <TabsTrigger value="plans">{t("onboarding.plans")}</TabsTrigger>
         </TabsList>
         <TabsContent value="vms" className="pt-4">
           <VmsTab />

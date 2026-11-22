@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { Workflow } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -23,77 +25,81 @@ import { relative } from "@/lib/format";
 export const catalogTabs = ["items", "categories", "secrets", "awx"] as const;
 export type CatalogTab = (typeof catalogTabs)[number];
 
-function Status({ t }: { t: AwxTemplate }) {
-  if (t.gone) return <Badge tone="neutral">Not in AWX</Badge>;
-  if (t.survey_changed) return <Badge tone="warn">Survey changed</Badge>;
-  if (t.warnings.length > 0) return <Badge tone="warn">Check settings</Badge>;
-  return <Badge tone="ok">In step</Badge>;
+function Status({ template }: { template: AwxTemplate }) {
+  const { t } = useTranslation("admin");
+  if (template.gone) return <Badge tone="neutral">{t("catalogItems.notInAwx")}</Badge>;
+  if (template.survey_changed) return <Badge tone="warn">{t("catalogItems.surveyChanged")}</Badge>;
+  if (template.warnings.length > 0) return <Badge tone="warn">{t("catalogItems.checkSettings")}</Badge>;
+  return <Badge tone="ok">{t("catalogItems.inStep")}</Badge>;
 }
 
-const awxColumns: Column<AwxTemplate>[] = [
+const awxColumns = (t: TFunction<"admin">): Column<AwxTemplate>[] => [
   {
     id: "template",
-    header: "AWX template",
-    sortValue: (t) => t.name,
-    cell: (t) => (
+    header: t("catalogItems.template"),
+    sortValue: (x) => x.name,
+    cell: (x) => (
       <>
-        <div className="font-medium">{t.name}</div>
+        <div className="font-medium">{x.name}</div>
         <div className="font-mono text-caption text-muted">
-          {t.workflow ? "Workflow" : "Job template"} #{t.template_id}
+          {x.workflow
+            ? t("catalogItems.workflow", { id: x.template_id })
+            : t("catalogItems.jobTemplate", { id: x.template_id })}
         </div>
       </>
     ),
   },
   {
     id: "item",
-    header: "Catalog item",
-    sortValue: (t) => t.item_name,
-    cell: (t) =>
-      t.item_id ? (
+    header: t("catalogItems.item"),
+    sortValue: (x) => x.item_name,
+    cell: (x) =>
+      x.item_id ? (
         <Link
           to="/admin/catalog-items/$itemId"
-          params={{ itemId: t.item_id }}
+          params={{ itemId: x.item_id }}
           className="font-medium text-fg hover:text-accent"
         >
-          {t.item_name}
+          {x.item_name}
         </Link>
       ) : (
-        <span className="text-muted">None</span>
+        <span className="text-muted">{t("catalogItems.none")}</span>
       ),
   },
-  { id: "status", header: "Status", cell: (t) => <Status t={t} /> },
+  { id: "status", header: t("catalogItems.status"), cell: (x) => <Status template={x} /> },
   {
     id: "changed",
-    header: "What changed",
-    cell: (t) =>
-      t.survey_diff.length + t.warnings.length > 0 ? (
+    header: t("catalogItems.changed"),
+    cell: (x) =>
+      x.survey_diff.length + x.warnings.length > 0 ? (
         <ul
-          aria-label={`Changes and warnings for ${t.name}`}
+          aria-label={t("catalogItems.changesFor", { name: x.name })}
           className="flex flex-col gap-0.5 text-secondary text-muted"
         >
-          {t.survey_diff.map((d) => (
+          {x.survey_diff.map((d) => (
             <li key={d} className="font-mono text-caption text-fg">
               {d}
             </li>
           ))}
-          {t.warnings.map((w) => (
+          {x.warnings.map((w) => (
             <li key={w}>{w}</li>
           ))}
         </ul>
       ) : (
-        <span className="text-muted">Nothing</span>
+        <span className="text-muted">{t("catalogItems.nothing")}</span>
       ),
   },
   {
     id: "synced",
-    header: "Synced",
+    header: t("catalogItems.synced"),
     align: "end",
-    sortValue: (t) => t.synced_at,
-    cell: (t) => <span className="text-secondary text-muted">{relative(t.synced_at)}</span>,
+    sortValue: (x) => x.synced_at,
+    cell: (x) => <span className="text-secondary text-muted">{relative(x.synced_at)}</span>,
   },
 ];
 
 export function AwxTemplatesPanel() {
+  const { t } = useTranslation("admin");
   const qc = useQueryClient();
   const templates = useQuery(q.awxTemplates());
   const sync = useMutation({
@@ -101,63 +107,55 @@ export function AwxTemplatesPanel() {
     onSuccess: (list) => {
       qc.setQueryData(keys.awxTemplates, list);
       void qc.invalidateQueries({ queryKey: keys.catalog.all });
-      toast.success("AWX templates synced");
+      toast.success(t("catalogItems.syncedToast"));
     },
     onError: (e) =>
-      toast.error(isApiError(e) ? e.problem.title : "The sync failed", {
+      toast.error(isApiError(e) ? e.problem.title : t("catalogItems.syncFailed"), {
         description: isApiError(e) ? e.problem.detail : undefined,
       }),
   });
   return (
     <Panel
-      title="Imported from AWX"
-      description="Templates of rvav's AWX organisation with the catalog label become items, every few minutes or when you sync."
+      title={t("catalogItems.imported")}
+      description={t("catalogItems.importedDescription")}
       flush
       actions={
         <Button size="sm" disabled={sync.isPending} onClick={() => sync.mutate()}>
-          {sync.isPending ? "Syncing…" : "Sync now"}
+          {sync.isPending ? t("catalogItems.syncing") : t("catalogItems.sync")}
         </Button>
       }
     >
       <DataTable
-        label="AWX templates"
-        columns={awxColumns}
+        label={t("catalogItems.awxTemplates")}
+        columns={awxColumns(t)}
         rows={templates.data?.items}
-        rowKey={(t) => `${t.workflow}-${t.template_id}`}
+        rowKey={(x) => `${x.workflow}-${x.template_id}`}
         minWidth={880}
         loading={templates.isPending}
         error={templates.isError && <ErrorState error={templates.error} onRetry={() => void templates.refetch()} />}
-        empty={
-          <EmptyState
-            icon={Workflow}
-            title="No AWX templates yet"
-            body="Give a job template or workflow the catalog label in AWX, then sync: it becomes an item here."
-          />
-        }
+        empty={<EmptyState icon={Workflow} title={t("catalogItems.noneYet")} body={t("catalogItems.noneYetBody")} />}
       />
     </Panel>
   );
 }
 
 export function CatalogItemsPage({ tab }: { tab?: CatalogTab }) {
+  const { t } = useTranslation(["admin", "shell"]);
   const navigate = useNavigate();
   return (
     <Page>
-      <PageHeader
-        title="Catalog items"
-        description="Build items, publish their versions and choose which projects may request them."
-      />
+      <PageHeader title={t("shell:nav.admin.catalogItems")} description={t("catalogItems.description")} />
       <Tabs
         value={tab ?? "items"}
         onValueChange={(v) =>
           void navigate({ to: "/admin/catalog-items", search: { tab: v as CatalogTab }, replace: true })
         }
       >
-        <TabsList aria-label="Catalog sections">
-          <TabsTrigger value="items">Items</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-          <TabsTrigger value="secrets">Secrets</TabsTrigger>
-          <TabsTrigger value="awx">AWX templates</TabsTrigger>
+        <TabsList aria-label={t("catalogItems.sections")}>
+          <TabsTrigger value="items">{t("catalogItems.items")}</TabsTrigger>
+          <TabsTrigger value="categories">{t("catalogItems.categories")}</TabsTrigger>
+          <TabsTrigger value="secrets">{t("catalogItems.secrets")}</TabsTrigger>
+          <TabsTrigger value="awx">{t("catalogItems.awxTemplates")}</TabsTrigger>
         </TabsList>
         <TabsContent value="items" className="flex flex-col gap-3 pt-4">
           <GitBanner />

@@ -163,3 +163,56 @@ describe("system, setup, branding and the audit log, in French", () => {
     );
   });
 });
+
+describe("onboarding and AWX's templates, in French", () => {
+  async function search(user: ReturnType<typeof userEvent.setup>, text: string, found: string) {
+    const box = await screen.findByRole("textbox", { name: "Rechercher" });
+    await user.clear(box);
+    await user.click(box);
+    await user.paste(text);
+    await screen.findByText(found, {}, { timeout: 5000 });
+  }
+
+  async function choose(user: ReturnType<typeof userEvent.setup>, combobox: string, option: string) {
+    await user.click(screen.getByRole("combobox", { name: combobox }));
+    await user.click(await screen.findByRole("option", { name: option }));
+  }
+
+  it("selects VMs, says what the filters hide, and adopts them", { timeout: 20_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/onboarding");
+    expect(await screen.findByRole("heading", { level: 1, name: "Intégration de l'existant" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "VM à intégrer" })).toHaveAttribute("aria-selected", "true");
+    await search(user, "app-old", "8 VM");
+    const table = screen.getByRole("table", { name: "VM à intégrer" });
+    await user.click(within(table).getByRole("checkbox", { name: "Sélectionner app-old01" }));
+    expect(screen.getByRole("region", { name: "VM sélectionnées" })).toHaveTextContent("1 VM sélectionnée");
+    await user.click(within(table).getByRole("checkbox", { name: "Sélectionner app-old02" }));
+    expect(screen.getByRole("region", { name: "VM sélectionnées" })).toHaveTextContent("2 VM sélectionnées");
+    await search(user, "erp-app", "12 VM · 2 sélectionnées, dont 2 non affichées");
+    await user.click(screen.getByRole("button", { name: "Intégrer 2 VM…" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Intégrer 2 VM" });
+    expect(within(sheet).getByRole("list", { name: "VM à intégrer" })).toHaveTextContent(/app-old01.*app-old02/);
+    await choose(user, "Projet", "Web Platform");
+    await choose(user, "Environnement", "dev");
+    await choose(user, "Propriétaire", "Léa Martin");
+    await choose(user, "Élément de catalogue", "RHEL 9 server");
+    await user.click(within(sheet).getByRole("button", { name: "Intégrer 2 VM" }));
+    const adopted = await screen.findByRole("region", { name: "2 VM intégrées dans 2 déploiements" });
+    expect(adopted).toHaveTextContent(/\d+ adresses?, \d+ enregistrements? DNS/);
+    expect(i18n.t("admin:onboarding.adopted", { count: 1, vms: "1 VM", deployments: "1 déploiement" })).toBe(
+      "1 VM intégrée dans 1 déploiement",
+    );
+  });
+
+  it("lists AWX's templates with their catalog items", { timeout: 15_000 }, async () => {
+    renderApp("/admin/catalog-items?tab=awx");
+    expect(await screen.findByRole("heading", { level: 1, name: "Éléments de catalogue" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Modèles AWX" })).toHaveAttribute("aria-selected", "true");
+    const table = await screen.findByRole("table", { name: "Modèles AWX" });
+    expect(within(table).getByRole("columnheader", { name: /^Élément de catalogue/ })).toBeInTheDocument();
+    expect((await within(table).findAllByText(/^(Workflow|Modèle de job) n° \d+$/)).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Synchroniser maintenant" })).toBeInTheDocument();
+  });
+});
