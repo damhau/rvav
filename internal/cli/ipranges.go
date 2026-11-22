@@ -12,7 +12,7 @@ import (
 )
 
 func (a *app) ipRangesCmd() *cobra.Command {
-	c := &cobra.Command{Use: "ip-ranges", Short: "rvav's IP ranges, for networks without EfficientIP, and who holds each address"}
+	c := group("ip-ranges", "rvav's IP ranges, for networks without EfficientIP, and who holds each address")
 	c.AddCommand(a.ipRangesListCmd(), a.ipRangesShowCmd(), a.ipRangesReleaseCmd())
 	return c
 }

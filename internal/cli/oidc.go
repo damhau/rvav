@@ -1,14 +1,17 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"runtime"
 	"slices"
@@ -185,6 +188,44 @@ func (e *signInError) failure() *rvavclient.SignInFailure {
 		f.Description = &d
 	}
 	return f
+}
+
+var errNoRevocation = errors.New("the identity provider offers no revocation")
+
+// revokeToken revokes the session's refresh token, or its access token
+// when it has none, at the endpoint the provider's discovery names (RFC
+// 7009). rvav's client is public: its ID goes in the body.
+func revokeToken(ctx context.Context, hc *http.Client, s *rvavclient.OIDCSession) error {
+	provider, err := oidc.NewProvider(ctx, s.Issuer)
+	if err != nil {
+		return err
+	}
+	var meta struct {
+		Revocation string `json:"revocation_endpoint"`
+	}
+	if err := provider.Claims(&meta); err != nil || meta.Revocation == "" {
+		return errNoRevocation
+	}
+	token, hint := s.Token.RefreshToken, "refresh_token"
+	if token == "" {
+		token, hint = s.Token.AccessToken, "access_token"
+	}
+	form := url.Values{"token": {token}, "token_type_hint": {hint}, "client_id": {s.ClientID}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, meta.Revocation, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := cmp.Or(hc, http.DefaultClient).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("it answered %s", resp.Status)
+	}
+	return nil
 }
 
 func printable(s string, n int) string {

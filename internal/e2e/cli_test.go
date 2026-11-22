@@ -121,7 +121,7 @@ func TestCLI(t *testing.T) {
 		h := setup(t, ctx, c)
 		lea := newRvavctl(t, ctx)
 
-		_, stderr := lea.run(1, "", "whoami")
+		_, stderr := lea.run(4, "", "whoami")
 		mustContain(t, "whoami before login", stderr, "not signed in", "rvavctl login --server")
 
 		// Development mode signs everyone in as one user.
@@ -215,7 +215,7 @@ func TestCLI(t *testing.T) {
 			t.Fatalf("deployments actions resize -o json: %v", action)
 		}
 
-		_, stderr = lea.run(1, "", "deployments", "run", dep, "power_off")
+		_, stderr = lea.run(2, "", "deployments", "run", dep, "power_off")
 		mustContain(t, "power_off without --yes", stderr, "--yes")
 		n = h.wf.startedCount()
 		done = lea.start("deployments", "run", dep, "power_off", "--resource", "web-dev-app001", "--yes", "--wait")
@@ -272,7 +272,7 @@ func TestCLI(t *testing.T) {
 		})
 		mustContain(t, "approvals list", inbox.out, waiting.Number)
 		mustContain(t, "approvals show", show.out, "You may decide:", "yes", "Fourth front node")
-		if noComment.code != 1 || approve.code != 0 {
+		if noComment.code != 2 || approve.code != 0 {
 			t.Fatalf("reject without comment = %d %s, approve = %d %s", noComment.code, noComment.stderr, approve.code, approve.stderr)
 		}
 		mustContain(t, "approve", approve.out, "approved")
@@ -298,9 +298,9 @@ func TestCLI(t *testing.T) {
 		mustContain(t, "failed request's wait", stderr, failing.Number+" failed", "idm : join realm")
 		out, _ = lea.run(0, "", "requests", "retry", failing.Number)
 		mustContain(t, "retry", out, failing.Number)
-		_, stderr = script.run(1, `{"by": "a script"}`, "requests", "signal", failing.Number, "cab-approved", "--data", "-")
+		_, stderr = script.run(4, `{"by": "a script"}`, "requests", "signal", failing.Number, "cab-approved", "--data", "-")
 		mustContain(t, "a signal nothing waits for", stderr, "signal")
-		_, stderr = script.run(1, "", "requests", "signal", failing.Number, "cab-approved", "--data", "[1]")
+		_, stderr = script.run(2, "", "requests", "signal", failing.Number, "cab-approved", "--data", "[1]")
 		mustContain(t, "a signal that isn't an object", stderr, "--data: a JSON object")
 
 		// Cancel a request waiting for approval.
@@ -312,8 +312,17 @@ func TestCLI(t *testing.T) {
 			t.Fatalf("cancelled = %s", cancelled.Status)
 		}
 
+		// A list that shows only the first requests says so.
+		lea.json(&reqs, "requests", "list", "--mine", "--limit", "1")
+		_, stderr = lea.run(0, "", "requests", "list", "--mine", "--limit", "1")
+		mustContain(t, "requests list --limit 1", stderr, "Showing the first 1 requests; there are more")
+		lea.json(&reqs, "requests", "list", "--mine", "--all")
+		if len(reqs) < 4 {
+			t.Fatalf("requests list --all = %d requests", len(reqs))
+		}
+
 		out, _ = lea.run(0, "", "logout")
 		mustContain(t, "logout", out, "Signed out of "+h.srv.URL)
-		lea.run(1, "", "whoami")
+		lea.run(4, "", "whoami")
 	})
 }

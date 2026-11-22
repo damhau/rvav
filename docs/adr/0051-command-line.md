@@ -5,6 +5,10 @@
 - Builds on the API contract of [ADR-0006](0006-contract-first-vertical-slices.md)
   and the sign-in of [ADR-0010](0010-identity-provider.md) and
   [ADR-0030](0030-settings-and-local-administrator.md). O1.1 (#167).
+- Amended by O1.7 (#173): profiles shared by processes that run at once,
+  `logout` revoking at the provider, no token over plain `http://` to
+  another machine, waits that go on through passing errors, and exit
+  codes for scripts.
 
 ## Context
 vRA has a command line and SDKs: requesters script requests, owners run
@@ -29,10 +33,16 @@ generated code it has what every client needs:
   problem details (RFC 9457), whose message lists each field error by its
   input's name (`role`, not `/inputs/role`).
 - `Profiles`: named rvavs and their credentials, in one JSON file only
-  its user may read (`0600` in a `0700` directory), replaced at once so
-  that a reader never sees half of it. A refreshed token is written back
-  into the file as it is then, so that two rvavctl processes don't lose
-  each other's profiles.
+  its user may read (`0600` in a `0700` directory, made `0700` when it
+  is more open), replaced at once so that a reader never sees half of
+  it. Writers take a lock on the file (`config.json.lock`), so that two
+  processes don't lose each other's changes. A token source reads the
+  file again, under the lock, before it refreshes: when another process
+  already refreshed, it takes that token, so that a provider that lets
+  each refresh token serve once (Keycloak and Okta can) doesn't end the
+  sign-in. The Terraform provider uses the same source.
+- `Retry`: a wait's pause after an error that doesn't last (a 502, 503
+  or 504, a 429, a dropped connection), doubling up to a minute.
 
 ### How rvavctl signs in
 `rvavctl login --server URL` reads `GET /auth/options`, as the web app
@@ -60,21 +70,27 @@ The other ways in:
   user in rvav itself, not those from their groups, as the API decided for
   automation.
 - **`RVAV_URL` and `RVAV_TOKEN`** in the environment, for scripts and CI,
-  without a file. They are the names AWX already gives the jobs rvav
-  launches. `RVAV_TOKEN` wins over a profile.
+  without a file. They are the names that rvav's "rvav API" credential
+  type in AWX injects, which rvav attaches to its inventory source only:
+  a job template's playbook that calls rvavctl needs that credential
+  added. `RVAV_TOKEN` wins over a profile.
 - **Development mode:** an rvav without a provider that signs everyone in
   as one user; the profile then keeps only the address.
 
 A profile's credentials go to its own rvav only: `--server` naming
-another sends none.
+another sends none. No token goes over plain `http://` to another
+machine than the user's own, unless `--insecure-http` says to; `login
+--insecure-http` keeps that choice in the profile.
 
 ### The commands
 They follow the web app's pages and use its words:
 - `login`, `logout`, `whoami`;
 - `catalog list | show | choices | request`;
-- `requests list | show | wait | cancel | retry`;
+- `requests list | show | wait | cancel | retry | signal`;
 - `deployments list | show | actions | run`;
-- `approvals list | show | approve | reject`.
+- `approvals list | show | approve | reject`;
+- `ip-ranges list | show | release`, for rvav's own IP ranges
+  ([ADR-0063](0063-ip-ranges.md)).
 
 `cobra` parses them: subcommands, help, and shell completion
 (`rvavctl completion`). It is the one new dependency.
@@ -92,9 +108,18 @@ deletes or can't be undone needs `--yes`.
 
 **Output:** a table, or with `-o json` what the API returns, its fields
 and their order kept; a list is a JSON array of its items, all its pages
-read up to `--limit`. Data goes to standard output, progress and errors to
-standard error. `--wait` reads the request every two seconds until it
-ends, and exits with 1 unless it succeeded.
+read up to `--limit`, or every page with `--all`, and says on standard
+error when there are more. Data goes to standard output, progress and
+errors to standard error. A table shows text without its control
+characters (C0 and C1, tab aside), so that a justification can't move
+the terminal's cursor. `--wait` reads the request every two seconds until
+it ends, or until `--timeout`, and goes on through errors that don't last.
+
+**Exit codes**, for scripts: `0` for success, `1` for a request that
+didn't succeed (and other errors), `2` for a command used wrongly, `3`
+for a wait that `--timeout` ended, `4` for a call to rvav or its identity
+provider that failed, `130` for Ctrl-C. `requests cancel --wait`
+succeeds when the request ends cancelled.
 
 Every create sends a new `Idempotency-Key`.
 
@@ -112,10 +137,12 @@ arm64, with the release's version, into `dist/rvavctl/` as archives with a
   O1.2.
 - The identity provider must accept the loopback redirect, and the device
   grant for `--device`, on rvav's client
-  ([administrator guide](../guides/admin.md#signing-in-with-rvavctl)).
+  ([administrator guide](../guides/admin.md#set-up-the-sign-in-for-rvavctl)).
   The development realm does both.
 - The sign-in sits in a file, readable by its user only, as kubectl's and
-  the cloud CLIs' do. `logout` forgets it; a refresh token stays valid at
-  the provider until it expires.
+  the cloud CLIs' do. `logout` revokes the refresh token at the provider
+  when its discovery document names a `revocation_endpoint` (RFC 7009),
+  as Keycloak's and Okta's do, then forgets it. Entra ID names none: there
+  the refresh token stays valid until it expires, and `logout` says so.
 - An API token can't approve as a member of an approver group, as before:
   approvers sign in with `rvavctl login`.

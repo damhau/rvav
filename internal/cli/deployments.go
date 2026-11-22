@@ -13,7 +13,7 @@ import (
 )
 
 func (a *app) deploymentsCmd() *cobra.Command {
-	c := &cobra.Command{Use: "deployments", Short: "Deployments and their day-2 actions"}
+	c := group("deployments", "Deployments and their day-2 actions")
 	c.AddCommand(a.deploymentsListCmd(), a.deploymentsShowCmd(), a.deploymentsActionsCmd(), a.deploymentsRunCmd())
 	return c
 }
@@ -22,7 +22,7 @@ func (a *app) deploymentsListCmd() *cobra.Command {
 	var project, search string
 	var status, envs []string
 	var mine bool
-	var limit int
+	var l listed
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "Deployments you can see, by name",
@@ -54,7 +54,7 @@ func (a *app) deploymentsListCmd() *cobra.Command {
 			if mine {
 				params.Owner = ptr("me")
 			}
-			deps, raw, err := collect(limit, func(cursor *string, n int) (page[rvavclient.Deployment], error) {
+			deps, raw, more, err := collect(l.max(), func(cursor *string, n int) (page[rvavclient.Deployment], error) {
 				p := params
 				p.Limit, p.Cursor = &n, cursor
 				r, err := c.ListDeploymentsWithResponse(ctx, &p)
@@ -69,6 +69,7 @@ func (a *app) deploymentsListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			a.more(l, more)
 			return a.list(raw, "No deployments.", func() error {
 				t := newTable(a.Out, "ID", "NAME", "STATUS", "PROJECT", "ENV", "ITEM", "OWNER", "VMS", "LEASE ENDS")
 				for _, d := range deps {
@@ -84,7 +85,7 @@ func (a *app) deploymentsListCmd() *cobra.Command {
 	c.Flags().StringSliceVarP(&envs, "env", "e", nil, "only these environments, by key")
 	c.Flags().BoolVar(&mine, "mine", false, "only those you own")
 	c.Flags().StringVarP(&search, "search", "q", "", "a deployment's name, its owner's, or a VM's name, address or FQDN")
-	c.Flags().IntVar(&limit, "limit", 200, "at most this many deployments")
+	l.flags(c, "deployments", 200)
 	return c
 }
 
@@ -273,7 +274,7 @@ func (a *app) printAction(x rvavclient.Day2Action) error {
 type runFlags struct {
 	resource, justification string
 	acceptWarnings, yes     bool
-	wait                    bool
+	wait                    waitFlags
 	inputs                  inputFlags
 }
 
@@ -299,7 +300,7 @@ that deletes or can't be undone needs --yes.`,
 	fl.StringVar(&f.justification, "justification", "", "why, for the approvers")
 	fl.BoolVar(&f.acceptWarnings, "accept-warnings", false, "go on despite soft policies' warnings")
 	fl.BoolVarP(&f.yes, "yes", "y", false, "confirm an action that deletes or can't be undone")
-	fl.BoolVarP(&f.wait, "wait", "w", false, "wait for the request to finish")
+	f.wait.flags(c)
 	return c
 }
 
@@ -324,7 +325,7 @@ func (a *app) run(ctx context.Context, deployment, key string, f runFlags) error
 		if action.Confirm != nil {
 			why = action.Confirm.Message
 		}
-		return fmt.Errorf("%s\nAdd --yes to go on", why)
+		return usagef("%s\nAdd --yes to go on", why)
 	}
 	var schema map[string]any
 	if action.Form != nil {
@@ -347,7 +348,7 @@ func (a *app) run(ctx context.Context, deployment, key string, f runFlags) error
 	if err := rvavclient.Check(resp.HTTPResponse, resp.Body); err != nil {
 		return err
 	}
-	return a.submitted(ctx, c, resp.JSON202, resp.Body, f.wait)
+	return a.submitted(ctx, c, resp.JSON202, resp.Body, f.wait, rvavclient.RequestStatusSucceeded)
 }
 
 // pickAction is the action key names, on the resource given or the only
@@ -370,10 +371,10 @@ func pickAction(all []rvavclient.Day2Action, key, resource string) (rvavclient.D
 		for i, m := range matches {
 			names[i] = str(m.ResourceName)
 		}
-		return rvavclient.Day2Action{}, fmt.Errorf("%s applies to several resources: give --resource, one of %s",
+		return rvavclient.Day2Action{}, usagef("%s applies to several resources: give --resource, one of %s",
 			key, strings.Join(names, ", "))
 	case resource != "":
-		return rvavclient.Day2Action{}, fmt.Errorf("no action %s on resource %s: see rvavctl deployments actions", key, resource)
+		return rvavclient.Day2Action{}, usagef("no action %s on resource %s: see rvavctl deployments actions", key, resource)
 	}
-	return rvavclient.Day2Action{}, fmt.Errorf("no action %s on this deployment: see rvavctl deployments actions", key)
+	return rvavclient.Day2Action{}, usagef("no action %s on this deployment: see rvavctl deployments actions", key)
 }

@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"text/tabwriter"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 func (a *app) jsonOut() bool { return a.output == "json" }
@@ -43,9 +46,33 @@ func newTable(out io.Writer, headers ...string) *table {
 
 func (t *table) row(cells ...string) {
 	for i, c := range cells {
-		cells[i] = strings.NewReplacer("\t", " ", "\n", " ").Replace(c)
+		cells[i] = cell(c)
 	}
 	fmt.Fprintln(t.w, strings.Join(cells, "\t"))
+}
+
+// cell is text from rvav as a terminal may show it: on one line, and with
+// no control character, so that what a requester wrote can't move the
+// cursor, clear a line or hide a link (ANSI and OSC 8 escapes).
+func cell(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\t', r == '\n', r == '\r':
+			return ' '
+		case r < 0x20, r == 0x7f, r >= 0x80 && r < 0xa0:
+			return '�'
+		}
+		return r
+	}, s)
+}
+
+// multiline is cell for text of several lines, such as an error.
+func multiline(s string) string {
+	parts := strings.Split(s, "\n")
+	for i, p := range parts {
+		parts[i] = cell(p)
+	}
+	return strings.Join(parts, "\n")
 }
 
 func (t *table) flush() error { return t.w.Flush() }
@@ -104,8 +131,30 @@ type page[T any] struct {
 	next  *string
 }
 
-// collect reads pages until limit items or the last page.
-func collect[T any](limit int, read func(cursor *string, n int) (page[T], error)) ([]T, []json.RawMessage, error) {
+// listed is how many items a list shows: --limit, or every one with --all.
+type listed struct {
+	limit int
+	all   bool
+	what  string
+}
+
+func (l *listed) flags(c *cobra.Command, what string, limit int) {
+	l.what = what
+	c.Flags().IntVar(&l.limit, "limit", limit, "at most this many "+what)
+	c.Flags().BoolVar(&l.all, "all", false, "every one of the "+what+", however many")
+	c.MarkFlagsMutuallyExclusive("limit", "all")
+}
+
+func (l *listed) max() int {
+	if l.all {
+		return math.MaxInt
+	}
+	return l.limit
+}
+
+// collect reads pages until limit items or the last page, and says
+// whether there are more.
+func collect[T any](limit int, read func(cursor *string, n int) (page[T], error)) ([]T, []json.RawMessage, bool, error) {
 	var items []T
 	var raw []json.RawMessage
 	var cursor *string
@@ -113,20 +162,30 @@ func collect[T any](limit int, read func(cursor *string, n int) (page[T], error)
 		n := min(limit-len(items), 200)
 		p, err := read(cursor, n)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 		r, err := rawItems(p.body)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 		items, raw = append(items, p.items...), append(raw, r...)
-		if p.next == nil || *p.next == "" || len(items) >= limit {
+		last := p.next == nil || *p.next == ""
+		if last || len(items) >= limit {
+			more := len(items) > limit || !last
 			if len(items) > limit {
 				items, raw = items[:limit], raw[:limit]
 			}
-			return items, raw, nil
+			return items, raw, more, nil
 		}
 		cursor = p.next
+	}
+}
+
+// more says on standard error that a list shows only the first of its
+// items, whatever the output.
+func (a *app) more(l listed, more bool) {
+	if more {
+		fmt.Fprintf(a.Err, "Showing the first %d %s; there are more. Give --limit or --all for more.\n", l.limit, l.what)
 	}
 }
 

@@ -154,14 +154,17 @@ func TestCollect(t *testing.T) {
 		}
 		return page[int]{items: items, body: []byte(body), next: next}, nil
 	}
-	items, raw, err := collect(250, read)
-	if err != nil || len(items) != 250 || len(raw) != 250 || items[249] != 249 || strings.Join(asked, " ") != "0+200 200+50" {
-		t.Fatalf("collect 250 = %d items, %d raw, asked %v, %v", len(items), len(raw), asked, err)
+	items, raw, more, err := collect(250, read)
+	if err != nil || len(items) != 250 || len(raw) != 250 || items[249] != 249 || !more || strings.Join(asked, " ") != "0+200 200+50" {
+		t.Fatalf("collect 250 = %d items, %d raw, more %v, asked %v, %v", len(items), len(raw), more, asked, err)
 	}
 	asked = nil
-	items, _, _ = collect(1000, read)
-	if len(items) != 450 || strings.Join(asked, " ") != "0+200 200+200 400+200" {
-		t.Fatalf("collect all = %d, asked %v", len(items), asked)
+	items, _, more, _ = collect(1000, read)
+	if len(items) != 450 || more || strings.Join(asked, " ") != "0+200 200+200 400+200" {
+		t.Fatalf("collect all = %d, more %v, asked %v", len(items), more, asked)
+	}
+	if items, _, more, _ = collect(450, read); len(items) != 450 || more {
+		t.Fatalf("collect exactly all = %d, more %v", len(items), more)
 	}
 }
 
@@ -253,6 +256,19 @@ func TestOutput(t *testing.T) {
 	out.Reset()
 	if err := details(&out, "Name", "web-01", "Empty", "", "Status", "ready"); err != nil || out.String() != "Name:    web-01\nStatus:  ready\n" {
 		t.Fatalf("details = %q", out.String())
+	}
+	// What a requester writes can't move the approver's cursor or hide a link.
+	out.Reset()
+	evil := "dev only\r\x1b[2KJustification: routine\x1b]8;;https://evil.example\x1b\\click\x1b]8;;\x1b\\ \u009b2K\x7f\x00 été"
+	if err := details(&out, "Environment", "prd", "Justification", evil); err != nil {
+		t.Fatal(err)
+	}
+	if want := "Environment:    prd\nJustification:  dev only �[2KJustification: routine�]8;;https://evil.example�\\click" +
+		"�]8;;�\\ �2K�� été\n"; out.String() != want {
+		t.Fatalf("details = %q, want %q", out.String(), want)
+	}
+	if got := multiline("Refused:\n  role: \x1b[31mred\x1b[0m"); got != "Refused:\n  role: �[31mred�[0m" {
+		t.Fatalf("multiline = %q", got)
 	}
 	if (&app{output: "yaml"}).checkOutput() == nil {
 		t.Fatal("-o yaml should fail")

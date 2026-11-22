@@ -62,13 +62,16 @@ func (a *app) login(ctx context.Context, f loginFlags) error {
 		server = ps.Profiles[a.profile].Server
 	}
 	if server == "" {
-		return errors.New("give rvav's address: rvavctl login --server https://rvav.corp.example")
+		return usagef("give rvav's address: rvavctl login --server https://rvav.corp.example")
 	}
 	if _, err := rvavclient.BaseURL(server); err != nil {
+		return &usageError{err}
+	}
+	if err := a.encrypted(server); err != nil {
 		return err
 	}
 	server = strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(server), "/"), rvavclient.APIPath)
-	p := &rvavclient.Profile{Server: server}
+	p := &rvavclient.Profile{Server: server, InsecureHTTP: rvavclient.Unencrypted(server)}
 	how := ""
 	switch {
 	case f.withToken:
@@ -77,7 +80,7 @@ func (a *app) login(ctx context.Context, f loginFlags) error {
 			return err
 		}
 		if p.Token = strings.TrimSpace(string(b)); p.Token == "" {
-			return errors.New("no token on standard input")
+			return usagef("no token on standard input")
 		}
 		how = ", with an API token"
 	default:
@@ -122,8 +125,10 @@ func (a *app) login(ctx context.Context, f loginFlags) error {
 	if err := rvavclient.Check(me.HTTPResponse, me.Body); err != nil {
 		return fmt.Errorf("rvav refused the sign-in: %w", err)
 	}
-	ps.Profiles[a.profile] = p
-	if err := ps.Save(); err != nil {
+	if err := rvavclient.Edit(ps.Path, func(ps *rvavclient.Profiles) error {
+		ps.Profiles[a.profile] = p
+		return nil
+	}); err != nil {
 		return err
 	}
 	_, err = fmt.Fprintf(a.Out, "Signed in to %s as %s (%s)%s.\n", server, me.JSON200.User.Name, me.JSON200.User.Id, how)
@@ -171,9 +176,12 @@ Make one in rvav (your menu, API tokens), then run:
 func (a *app) logoutCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout",
-		Short: "Forget the profile's sign-in",
-		Long: `Forget the profile's sign-in on this machine. An API token stays valid until
-it expires or you revoke it in rvav. rvav's audit log records the sign-out.`,
+		Short: "Sign out: revoke the profile's sign-in and forget it",
+		Long: `Sign out of the profile's rvav. rvavctl revokes the sign-in at the identity
+provider when the provider offers revocation (RFC 7009), then forgets it on
+this machine; without revocation, the sign-in stays valid at the provider
+until it expires. An API token stays valid until it expires or you revoke it
+in rvav. rvav's audit log records the sign-out.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ps, err := a.profiles()
@@ -185,25 +193,55 @@ it expires or you revoke it in rvav. rvav's audit log records the sign-out.`,
 				_, err := fmt.Fprintf(a.Out, "Not signed in (profile %q).\n", a.profile)
 				return err
 			}
-			a.signOut(cmd.Context(), p)
-			delete(ps.Profiles, a.profile)
-			if err := ps.Save(); err != nil {
+			a.signOut(cmd.Context(), ps)
+			// Signing out may have refreshed the sign-in, and spent the
+			// refresh token held here.
+			if now, err := a.profiles(); err == nil && now.Profiles[a.profile] != nil {
+				p = now.Profiles[a.profile]
+			}
+			revoked := a.revoke(cmd.Context(), p)
+			if err := rvavclient.Edit(ps.Path, func(ps *rvavclient.Profiles) error {
+				delete(ps.Profiles, a.profile)
+				return nil
+			}); err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(a.Out, "Signed out of %s.\n", p.Server)
+			_, err = fmt.Fprintf(a.Out, "Signed out of %s%s.\n", p.Server, revoked)
 			return err
 		},
 	}
 }
 
 // signOut tells rvav, for its audit log; signing out goes on without it.
-func (a *app) signOut(ctx context.Context, p *rvavclient.Profile) {
+func (a *app) signOut(ctx context.Context, ps *rvavclient.Profiles) {
 	ctx, cancel := context.WithTimeout(context.WithValue(ctx, oauth2.HTTPClient, a.HTTP), 5*time.Second)
 	defer cancel()
-	c, err := a.client(p.Server, p.TokenSource(ctx, func(*oauth2.Token) error { return nil }))
+	c, err := a.client(ps.Profiles[a.profile].Server, ps.TokenSource(ctx, a.profile))
 	if err == nil {
 		_, _ = c.SignOutWithResponse(ctx)
 	}
+}
+
+// revoke revokes the profile's refresh token at the identity provider,
+// which ends the sign-in there, and says how it went.
+func (a *app) revoke(ctx context.Context, p *rvavclient.Profile) string {
+	switch {
+	case p.Token != "":
+		return "; the API token stays valid until it expires or you revoke it in rvav"
+	case p.OIDC == nil || p.OIDC.Token == nil:
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.WithValue(ctx, oauth2.HTTPClient, a.HTTP), 10*time.Second)
+	defer cancel()
+	err := revokeToken(ctx, a.HTTP, p.OIDC)
+	switch {
+	case errors.Is(err, errNoRevocation):
+		return "; the identity provider offers no revocation, so the sign-in stays valid there until it expires"
+	case err != nil:
+		return "; the identity provider didn't revoke the sign-in (" + oneLine(err.Error(), 200) +
+			"), so it stays valid there until it expires"
+	}
+	return ", and the identity provider revoked the sign-in"
 }
 
 func (a *app) whoamiCmd() *cobra.Command {

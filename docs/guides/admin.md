@@ -272,10 +272,12 @@ the discovery URL is that address, `http://keycloak.<namespace>.svc:8080/realms/
 
 In rvav, the issuer is `https://<org>.okta.com/oauth2/<server ID>`.
 
-### Signing in with rvavctl
+### Set up the sign-in for rvavctl
 
-[rvavctl](cli.md) signs in with rvav's client, as the web app does, so
-its tokens have the same audience and groups. On that client, allow:
+[rvavctl](cli.md) signs in with rvav's client, as the web app does,
+unless people give another with `rvavctl login --client-id`. rvav takes
+a token from either when its audience is rvav's client ID and it has the
+same groups claim. The client rvavctl signs in with must allow:
 - **The loopback redirect** `http://127.0.0.1/callback`, for the sign-in
   in the browser. rvavctl listens on a free port, which providers ignore
   on a loopback address (RFC 8252). If yours matches ports exactly,
@@ -283,13 +285,36 @@ its tokens have the same audience and groups. On that client, allow:
   people to sign in with `--callback-port 8250`.
 - **The device authorization grant,** for `rvavctl login --device`.
 
+We recommend a public client of its own for rvavctl, rather than turning
+these on for the web app's client:
+- The device grant lets anyone start a sign-in and send someone its code
+  to enter, a phishing technique known as device code phishing. On a
+  client of its own, you can leave the grant off, or limit it with your
+  provider's access policies, without changing the web app's sign-in.
+- On Entra ID, **Allow public client flows** turns on the device code
+  flow, and also the resource owner password grant (ROPC), which signs
+  in with a password sent by the program, without your sign-in page.
+  On the web app's registration, that opens the password grant on the
+  web app's client too.
+
+People then sign in once with `--client-id <its client ID>`; rvavctl
+keeps it in the profile.
+
 By provider:
-- **Keycloak:** add `http://127.0.0.1/callback` to **Valid redirect
-  URIs**, and turn on **OAuth 2.0 Device Authorization Grant** in
-  **Capability config**.
-- **Entra ID:** in **Authentication**, add the **Mobile and desktop
-  applications** platform with `http://127.0.0.1/callback`, and set
-  **Allow public client flows** to **Yes** for the device code flow.
+- **Keycloak:** create an OpenID Connect client for rvavctl, for example
+  `rvavctl`, with **Client authentication** off, **Standard flow** on,
+  and **OAuth 2.0 Device Authorization Grant** on if people sign in with
+  `--device`. Add `http://127.0.0.1/callback` to **Valid redirect URIs**.
+  Give it the same mappers as rvav's client: an audience mapper that
+  adds rvav's client ID to the access token's audience, and the groups
+  mapper. To use rvav's client instead, make the same changes there.
+- **Entra ID:** register an application for rvavctl. In
+  **Authentication**, add the **Mobile and desktop applications**
+  platform with `http://127.0.0.1/callback`, and set **Allow public
+  client flows** to **Yes** if people sign in with `--device`. In **API
+  permissions**, add rvav's API scope (`api://<rvav's client ID>/access`),
+  and grant admin consent. Its access tokens are then rvav's, with the
+  groups claim that rvav's registration sets.
 - **Okta:** the single-page application can't use the device grant. Add
   a **Native Application** for rvavctl, with the authorization code,
   refresh token and device authorization grants, its sign-in redirect URI
@@ -300,6 +325,11 @@ By provider:
 `offline_access` is asked for when the provider offers it, so that a
 sign-in outlives the browser session. Without it, people sign in again
 when the provider's session ends.
+
+`rvavctl logout` revokes the sign-in at providers that offer token
+revocation (RFC 7009), such as Keycloak and Okta. Entra ID doesn't: there
+a refresh token stays valid until it expires or you revoke the user's
+sessions in Entra ID.
 
 ### When the trial refuses the token
 
@@ -2540,7 +2570,7 @@ sign-ins**.
 
 | Action | What it records |
 |---|---|
-| `auth.sign_in` | A sign-in: the user, their roles and groups, the client (`web` or `rvavctl`) and the method (`oidc`, `device`, `token` or `local`). |
+| `auth.sign_in` | A sign-in: the user, their roles and groups, the client (`web` or `rvavctl`) and the method (`oidc`, `device`, `token`, `local`, or `dev` in development mode). |
 | `auth.sign_in_failed` | A refusal. **Who** is **Unknown** when the identity provider refused before rvav knew who it was. The detail says the stage (`state`, `provider` or `token`), the reason, and the provider's error and description, such as `access_denied` and `User is disabled`. |
 | `auth.sign_out` | A sign-out from the web app, or `rvavctl logout`. |
 | `auth.token_used` | An API token's first use of the day (UTC), with its name. An expired token's use is a failure, once a day. |

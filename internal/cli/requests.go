@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,10 +19,12 @@ var finalStatus = map[rvavclient.RequestStatus]bool{rvavclient.RequestStatusSucc
 	rvavclient.RequestStatusFailed: true, rvavclient.RequestStatusRejected: true, rvavclient.RequestStatusCancelled: true}
 
 func (a *app) requestsCmd() *cobra.Command {
-	c := &cobra.Command{Use: "requests", Short: "Requests: follow, wait for, cancel, retry or signal them"}
+	c := group("requests", "Requests: follow, wait for, cancel, retry or signal them")
 	c.AddCommand(a.requestsListCmd(), a.requestsShowCmd(), a.requestsWaitCmd(),
-		a.requestActionCmd("cancel", "Cancel a request that is waiting or running", cancelRequest),
-		a.requestActionCmd("retry", "Run a failed request again from its failed step", retryRequest),
+		a.requestActionCmd("cancel", "Cancel a request that is waiting or running; --wait fails unless it ends cancelled",
+			rvavclient.RequestStatusCancelled, cancelRequest),
+		a.requestActionCmd("retry", "Run a failed request again from its failed step", rvavclient.RequestStatusSucceeded,
+			retryRequest),
 		a.requestsSignalCmd())
 	return c
 }
@@ -30,7 +33,7 @@ func (a *app) requestsListCmd() *cobra.Command {
 	var project, search string
 	var status []string
 	var mine bool
-	var limit int
+	var l listed
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "Requests you can see, newest first",
@@ -59,7 +62,7 @@ func (a *app) requestsListCmd() *cobra.Command {
 			if mine {
 				params.Requester = ptr("me")
 			}
-			reqs, raw, err := collect(limit, func(cursor *string, n int) (page[rvavclient.Request], error) {
+			reqs, raw, more, err := collect(l.max(), func(cursor *string, n int) (page[rvavclient.Request], error) {
 				p := params
 				p.Limit, p.Cursor = &n, cursor
 				r, err := c.ListRequestsWithResponse(ctx, &p)
@@ -74,6 +77,7 @@ func (a *app) requestsListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			a.more(l, more)
 			return a.list(raw, "No requests.", func() error {
 				t := newTable(a.Out, "ID", "NUMBER", "TITLE", "STATUS", "PROJECT", "ENV", "REQUESTER", "SUBMITTED")
 				for _, r := range reqs {
@@ -88,7 +92,7 @@ func (a *app) requestsListCmd() *cobra.Command {
 	c.Flags().StringSliceVar(&status, "status", nil, "only these statuses, for example running,failed")
 	c.Flags().BoolVar(&mine, "mine", false, "only those you made")
 	c.Flags().StringVarP(&search, "search", "q", "", "requests whose number or title has this text")
-	c.Flags().IntVar(&limit, "limit", 50, "at most this many requests")
+	l.flags(c, "requests", 50)
 	return c
 }
 
@@ -185,19 +189,35 @@ func (a *app) printRequest(r *rvavclient.Request) error {
 		"Error", failure, "Deployments", deployments)
 }
 
-// submitted prints a request just made, or waits for it.
-func (a *app) submitted(ctx context.Context, c *rvavclient.ClientWithResponses, r *rvavclient.Request, body []byte, wait bool) error {
-	if !wait {
+// waitFlags are --wait and its --timeout.
+type waitFlags struct {
+	wait    bool
+	timeout time.Duration
+}
+
+func (w *waitFlags) flags(c *cobra.Command) {
+	c.Flags().BoolVarP(&w.wait, "wait", "w", false, "wait for the request to finish")
+	w.timeoutFlag(c)
+}
+
+func (w *waitFlags) timeoutFlag(c *cobra.Command) {
+	c.Flags().DurationVar(&w.timeout, "timeout", 0, "give up waiting after this long, for example 30m (never by default)")
+}
+
+// submitted prints a request just made, or waits for it to end as want.
+func (a *app) submitted(ctx context.Context, c *rvavclient.ClientWithResponses, r *rvavclient.Request, body []byte, w waitFlags,
+	want rvavclient.RequestStatus) error {
+	if !w.wait {
 		if a.jsonOut() {
 			return a.printJSON(rawJSON(body))
 		}
 		return a.printRequest(r)
 	}
-	return a.wait(ctx, c, r.Id, 0)
+	return a.wait(ctx, c, r.Id, w.timeout, want)
 }
 
 func (a *app) requestsWaitCmd() *cobra.Command {
-	var timeout time.Duration
+	var w waitFlags
 	c := &cobra.Command{
 		Use:   "wait REQUEST",
 		Short: "Wait for a request to finish; fail when it doesn't succeed",
@@ -207,73 +227,78 @@ func (a *app) requestsWaitCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return a.wait(cmd.Context(), c, args[0], timeout)
+			return a.wait(cmd.Context(), c, args[0], w.timeout, rvavclient.RequestStatusSucceeded)
 		},
 	}
-	c.Flags().DurationVar(&timeout, "timeout", 0, "give up after this long, for example 30m (never by default)")
+	w.timeoutFlag(c)
 	return c
 }
 
 // wait reads the request until it ends, saying how it goes on standard
-// error, then prints it; a request that didn't succeed is an error.
-func (a *app) wait(ctx context.Context, c *rvavclient.ClientWithResponses, id string, timeout time.Duration) error {
+// error, then prints it; a request that ends otherwise than want is an
+// error. Errors worth trying again, such as a proxy's 502 during a rolling
+// restart, don't end the wait.
+func (a *app) wait(ctx context.Context, c *rvavclient.ClientWithResponses, id string, timeout time.Duration,
+	want rvavclient.RequestStatus) error {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
+	name := id
+	retry := &rvavclient.Retry{Interval: a.Poll, Retrying: func(err error, pause time.Duration) {
+		fmt.Fprintf(a.Err, "%s: %s; trying again in %s\n", name, oneLine(err.Error(), 200), pause.Round(time.Second))
+	}}
 	var status rvavclient.RequestStatus
 	step := ""
 	for {
 		r, err := a.getRequest(ctx, c, id)
-		if err != nil {
-			if ctx.Err() == context.DeadlineExceeded {
-				return fmt.Errorf("%s hasn't finished after %s", id, timeout)
+		if err == nil {
+			req := r.JSON200
+			name = req.Number
+			now := ""
+			if req.CurrentStep != nil {
+				now = req.CurrentStep.Title
+			}
+			switch {
+			case status == "":
+				fmt.Fprintf(a.Err, "%s (%s) %s\n", req.Number, req.Id, cell(progress(req.Status, now)))
+			case req.Status != status || now != "" && now != step:
+				fmt.Fprintf(a.Err, "%s %s\n", req.Number, cell(progress(req.Status, now)))
+			}
+			status = req.Status
+			if now != "" {
+				step = now
+			}
+			if finalStatus[req.Status] {
+				return a.ended(req, r.Body, want)
+			}
+		}
+		if err := retry.Wait(ctx, err); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) && ctx.Err() != nil {
+				return &timeoutError{fmt.Sprintf("%s hasn't finished after %s; rvav goes on with it", name, timeout)}
 			}
 			return err
 		}
-		req := r.JSON200
-		now := ""
-		if req.CurrentStep != nil {
-			now = req.CurrentStep.Title
-		}
-		switch {
-		case status == "":
-			fmt.Fprintf(a.Err, "%s (%s) %s\n", req.Number, req.Id, progress(req.Status, now))
-		case req.Status != status || now != "" && now != step:
-			fmt.Fprintf(a.Err, "%s %s\n", req.Number, progress(req.Status, now))
-		}
-		status = req.Status
-		if now != "" {
-			step = now
-		}
-		if finalStatus[req.Status] {
-			if a.jsonOut() {
-				err = a.printJSON(rawJSON(r.Body))
-			} else {
-				err = a.printRequest(req)
-			}
-			if err != nil {
-				return err
-			}
-			if req.Status != rvavclient.RequestStatusSucceeded {
-				msg := fmt.Sprintf("%s %s", req.Number, req.Status)
-				if req.Error != nil {
-					msg += ": " + req.Error.Message
-				}
-				return fmt.Errorf("%s", msg)
-			}
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			if ctx.Err() == context.DeadlineExceeded {
-				return fmt.Errorf("%s hasn't finished after %s", req.Number, timeout)
-			}
-			return ctx.Err()
-		case <-time.After(a.Poll):
-		}
 	}
+}
+
+// ended prints a request that ended, and fails unless it ended as want.
+func (a *app) ended(req *rvavclient.Request, body []byte, want rvavclient.RequestStatus) error {
+	var err error
+	if a.jsonOut() {
+		err = a.printJSON(rawJSON(body))
+	} else {
+		err = a.printRequest(req)
+	}
+	if err != nil || req.Status == want {
+		return err
+	}
+	msg := fmt.Sprintf("%s %s", req.Number, req.Status)
+	if req.Error != nil {
+		msg += ": " + req.Error.Message
+	}
+	return &outcomeError{msg}
 }
 
 func progress(status rvavclient.RequestStatus, step string) string {
@@ -284,10 +309,10 @@ func progress(status rvavclient.RequestStatus, step string) string {
 }
 
 // requestActionCmd is cancel or retry: a call on the request that
-// answers with it.
-func (a *app) requestActionCmd(use, short string,
+// answers with it, and --wait for the request to end as want.
+func (a *app) requestActionCmd(use, short string, want rvavclient.RequestStatus,
 	call func(ctx context.Context, c *rvavclient.ClientWithResponses, id string) (*http.Response, []byte, *rvavclient.Request, error)) *cobra.Command {
-	var wait bool
+	var w waitFlags
 	cmd := &cobra.Command{
 		Use:   use + " REQUEST",
 		Short: short,
@@ -305,10 +330,10 @@ func (a *app) requestActionCmd(use, short string,
 			if err := rvavclient.Check(resp, body); err != nil {
 				return err
 			}
-			return a.submitted(ctx, c, r, body, wait)
+			return a.submitted(ctx, c, r, body, w, want)
 		},
 	}
-	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "wait for the request to finish")
+	w.flags(cmd)
 	return cmd
 }
 
@@ -375,7 +400,7 @@ func (a *app) signalData(data string) (map[string]any, error) {
 		return body, nil
 	}
 	if err := json.Unmarshal([]byte(data), &body); err != nil {
-		return nil, fmt.Errorf("--data: a JSON object: %w", err)
+		return nil, &usageError{fmt.Errorf("--data: a JSON object: %w", err)}
 	}
 	return body, nil
 }

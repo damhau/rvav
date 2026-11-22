@@ -35,10 +35,10 @@ func (f inputFlags) read(stdin io.Reader, schema map[string]any) (map[string]any
 			b, err = os.ReadFile(f.file)
 		}
 		if err != nil {
-			return nil, err
+			return nil, &usageError{fmt.Errorf("--inputs: %w", err)}
 		}
 		if err := yaml.Unmarshal(b, &inputs); err != nil {
-			return nil, fmt.Errorf("--inputs %s: %w", f.file, err)
+			return nil, &usageError{fmt.Errorf("--inputs %s: %w", f.file, err)}
 		}
 		if inputs == nil {
 			inputs = map[string]any{}
@@ -47,11 +47,11 @@ func (f inputFlags) read(stdin io.Reader, schema map[string]any) (map[string]any
 	for _, kv := range f.values {
 		name, raw, ok := strings.Cut(kv, "=")
 		if !ok || name == "" {
-			return nil, fmt.Errorf("--input %q: write name=value", kv)
+			return nil, usagef("--input %q: write name=value", kv)
 		}
 		v, err := coerce(property(schema, name), raw)
 		if err != nil {
-			return nil, fmt.Errorf("--input %s: %w", name, err)
+			return nil, &usageError{fmt.Errorf("--input %s: %w", name, err)}
 		}
 		inputs[name] = v
 	}

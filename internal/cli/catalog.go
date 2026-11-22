@@ -48,18 +48,18 @@ func (a *app) project(ctx context.Context, c *rvavclient.ClientWithResponses, gi
 	for i, p := range mine {
 		names[i] = fmt.Sprintf("%s (%s)", p.Code, p.Name)
 	}
-	return "", fmt.Errorf("give --project: %s", strings.Join(names, ", "))
+	return "", usagef("give --project: %s", strings.Join(names, ", "))
 }
 
 func (a *app) catalogCmd() *cobra.Command {
-	c := &cobra.Command{Use: "catalog", Short: "The items you can request, and requesting them"}
+	c := group("catalog", "The items you can request, and requesting them")
 	c.AddCommand(a.catalogListCmd(), a.catalogShowCmd(), a.catalogChoicesCmd(), a.catalogRequestCmd())
 	return c
 }
 
 func (a *app) catalogListCmd() *cobra.Command {
 	var project, search, category string
-	var limit int
+	var l listed
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "The catalog items you can request in a project",
@@ -74,7 +74,7 @@ func (a *app) catalogListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			items, raw, err := collect(limit, func(cursor *string, n int) (page[rvavclient.CatalogItem], error) {
+			items, raw, more, err := collect(l.max(), func(cursor *string, n int) (page[rvavclient.CatalogItem], error) {
 				params := &rvavclient.ListCatalogItemsParams{ProjectId: pid, Limit: &n, Cursor: cursor}
 				if search != "" {
 					params.Q = &search
@@ -94,6 +94,7 @@ func (a *app) catalogListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			a.more(l, more)
 			return a.list(raw, "No catalog items you can request here.", func() error {
 				t := newTable(a.Out, "ID", "NAME", "TYPE", "CATEGORY", "VERSION", "APPROVAL")
 				for _, i := range items {
@@ -106,7 +107,7 @@ func (a *app) catalogListCmd() *cobra.Command {
 	c.Flags().StringVarP(&project, "project", "p", "", "the project, by ID, code or name")
 	c.Flags().StringVarP(&search, "search", "q", "", "items whose name or description has this text")
 	c.Flags().StringVar(&category, "category", "", "items in this category, by key")
-	c.Flags().IntVar(&limit, "limit", 200, "at most this many items")
+	l.flags(c, "items", 200)
 	return c
 }
 
@@ -266,8 +267,9 @@ them as you would to rvavctl catalog request.`,
 type requestFlags struct {
 	project, env, version, name, description, justification, onBehalfOf, at string
 	count, leaseDays                                                        int
-	acceptWarnings, dryRun, wait                                            bool
+	acceptWarnings, dryRun                                                  bool
 	inputs                                                                  inputFlags
+	wait                                                                    waitFlags
 }
 
 func (a *app) catalogRequestCmd() *cobra.Command {
@@ -282,7 +284,7 @@ item's inputs with rvavctl catalog show ITEM.
 
 With --dry-run, rvav checks the request and says what it would do, without
 making it. With --wait, rvavctl waits for the request to finish, and fails
-when it doesn't succeed.`,
+when it doesn't succeed; --timeout gives up waiting after a while.`,
 		Example: `  rvavctl catalog request rhel9-server --project web --env dev \
     --input role=app --input size=M --input post_config=linux-baseline,monitoring-agent --wait
   rvavctl catalog request rhel9-server --env prd --inputs server.yaml --justification "CHG-1234" --dry-run`,
@@ -304,7 +306,7 @@ when it doesn't succeed.`,
 	fl.StringVar(&f.at, "at", "", "start later, at this time (RFC 3339, for example 2026-12-01T06:00:00Z)")
 	fl.BoolVar(&f.acceptWarnings, "accept-warnings", false, "go on despite soft policies' warnings")
 	fl.BoolVar(&f.dryRun, "dry-run", false, "check the request and say what it would do, without making it")
-	fl.BoolVarP(&f.wait, "wait", "w", false, "wait for the request to finish")
+	f.wait.flags(c)
 	_ = c.MarkFlagRequired("env")
 	return c
 }
@@ -339,7 +341,7 @@ func (a *app) request(ctx context.Context, item string, f requestFlags) error {
 	if f.at != "" {
 		at, err := time.Parse(time.RFC3339, f.at)
 		if err != nil {
-			return fmt.Errorf("--at %q: write a time as 2026-12-01T06:00:00Z", f.at)
+			return usagef("--at %q: write a time as 2026-12-01T06:00:00Z", f.at)
 		}
 		d.ScheduledAt = &at
 	}
@@ -356,7 +358,7 @@ func (a *app) request(ctx context.Context, item string, f requestFlags) error {
 	if err := rvavclient.Check(r.HTTPResponse, r.Body); err != nil {
 		return err
 	}
-	return a.submitted(ctx, c, r.JSON202, r.Body, f.wait)
+	return a.submitted(ctx, c, r.JSON202, r.Body, f.wait, rvavclient.RequestStatusSucceeded)
 }
 
 func (a *app) preview(ctx context.Context, c *rvavclient.ClientWithResponses, d rvavclient.RequestDraft) error {

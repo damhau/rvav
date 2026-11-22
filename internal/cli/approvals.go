@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,15 +12,15 @@ import (
 )
 
 func (a *app) approvalsCmd() *cobra.Command {
-	c := &cobra.Command{Use: "approvals", Short: "Approvals waiting for you, and deciding them"}
+	c := group("approvals", "Approvals waiting for you, and deciding them")
 	c.AddCommand(a.approvalsListCmd(), a.approvalsShowCmd(), a.decideCmd("approve"), a.decideCmd("reject"))
 	return c
 }
 
 func (a *app) approvalsListCmd() *cobra.Command {
 	var status []string
-	var all bool
-	var limit int
+	var view string
+	var l listed
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "Approvals waiting for you (the oldest first), or those you decided",
@@ -33,8 +32,12 @@ func (a *app) approvalsListCmd() *cobra.Command {
 				return err
 			}
 			params := rvavclient.ListApprovalsParams{}
-			if all {
+			switch view {
+			case "mine":
+			case "all":
 				params.View = ptr(rvavclient.ListApprovalsParamsView("all"))
+			default:
+				return usagef("--view %q: use mine or all", view)
 			}
 			if len(status) > 0 {
 				st := make([]rvavclient.ApprovalStatus, len(status))
@@ -43,7 +46,7 @@ func (a *app) approvalsListCmd() *cobra.Command {
 				}
 				params.Status = &st
 			}
-			items, raw, err := collect(limit, func(cursor *string, n int) (page[rvavclient.ApprovalSummary], error) {
+			items, raw, more, err := collect(l.max(), func(cursor *string, n int) (page[rvavclient.ApprovalSummary], error) {
 				p := params
 				p.Limit, p.Cursor = &n, cursor
 				r, err := c.ListApprovalsWithResponse(ctx, &p)
@@ -58,6 +61,7 @@ func (a *app) approvalsListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			a.more(l, more)
 			return a.list(raw, "No approvals.", func() error {
 				t := newTable(a.Out, "ID", "REQUEST", "TITLE", "LEVEL", "STATUS", "REQUESTER", "SUBMITTED", "DUE")
 				for _, x := range items {
@@ -73,8 +77,8 @@ func (a *app) approvalsListCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringSliceVar(&status, "status", nil, "only these statuses, for example approved,rejected (pending by default)")
-	c.Flags().BoolVar(&all, "all", false, "every approval, for administrators and auditors")
-	c.Flags().IntVar(&limit, "limit", 50, "at most this many approvals")
+	c.Flags().StringVar(&view, "view", "mine", "mine, or all for everyone's approvals (administrators and auditors)")
+	l.flags(c, "approvals", 50)
 	return c
 }
 
@@ -177,7 +181,7 @@ func (a *app) decideCmd(decision string) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if decision == "reject" && comment == "" {
-				return errors.New("say why with --comment: the requester gets it")
+				return usagef("say why with --comment: the requester gets it")
 			}
 			ctx := cmd.Context()
 			c, err := a.connect(ctx)

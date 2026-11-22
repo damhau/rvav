@@ -11,15 +11,28 @@ keep rvav's configuration and deployments in Terraform, see
 
 ## Install rvavctl
 
-1. Download the archive for your system from the rvav release:
-   `rvavctl_<version>_<os>_<arch>.tar.gz`, or `.zip` for Windows.
-2. Check it against the release's `SHA256SUMS`:
+rvav's releases don't include rvavctl's archives yet. Build them from
+rvav's repository, at the version of your rvav. You need Go, at the
+version that `go.mod` names, and `zip` for the Windows archives.
+
+1. Build the archives:
 
    ```sh
-   sha256sum --check --ignore-missing SHA256SUMS
+   VERSION=1.4.0 make cli-dist
    ```
 
-3. Put `rvavctl` (`rvavctl.exe` on Windows) in a directory on your `PATH`.
+   This writes one archive per system into `dist/rvavctl`,
+   `rvavctl_1.4.0_<os>_<arch>.tar.gz` or `.zip` for Windows, and their
+   `SHA256SUMS`.
+
+2. Check the archive for your system against `SHA256SUMS`:
+
+   ```sh
+   cd dist/rvavctl && sha256sum --check --ignore-missing SHA256SUMS
+   ```
+
+3. Extract the archive, and put `rvavctl` (`rvavctl.exe` on Windows) in a
+   directory on your `PATH`.
 4. Optional: turn on completion for your shell, for example for bash:
 
    ```sh
@@ -29,8 +42,15 @@ keep rvav's configuration and deployments in Terraform, see
    `rvavctl completion --help` lists the other shells (zsh, fish,
    PowerShell).
 
-To build it from the repository instead, run `make build`: it writes
-`bin/rvavctl`.
+To build `rvavctl` for your own machine only, run `make build`, which
+writes `bin/rvavctl`, or install it with Go:
+
+```sh
+go install github.com/damhau/rvav/cmd/rvavctl@latest
+```
+
+Replace `latest` with the commit of your rvav to get the same version.
+`rvavctl --version` then says `dev`.
 
 ## Sign in
 
@@ -61,7 +81,7 @@ rvavctl whoami
 ```
 
 `rvavctl` keeps the sign-in in your configuration directory, in a file
-only you can read:
+only you can read, in a directory only you can open:
 
 | System | File |
 |---|---|
@@ -69,9 +89,26 @@ only you can read:
 | macOS | `~/Library/Application Support/rvav/config.json` |
 | Windows | `%AppData%\rvav\config.json` |
 
-It renews the sign-in as needed. When your organisation ends it, commands
-fail with `the sign-in has expired`: run `rvavctl login` again. To forget
-the sign-in on this machine, run `rvavctl logout`.
+It renews the sign-in as needed. Several `rvavctl` commands, and the
+[Terraform provider](terraform.md), can run at once on one sign-in: each
+takes the sign-in that another one renewed, so a provider that lets each
+refresh token serve once, such as Keycloak or Okta, doesn't end it.
+
+When your organisation ends the sign-in, commands fail with
+`the sign-in has expired`: run `rvavctl login` again. When the identity
+provider can't be reached, they fail with that error instead, and the
+sign-in stays.
+
+To sign out, run `rvavctl logout`. If the identity provider offers
+revocation (RFC 7009), as Keycloak and Okta do, `rvavctl` revokes the
+sign-in there first. If it doesn't, as with Entra ID, the sign-in stays
+valid at the provider until it expires, and `rvavctl logout` says so.
+
+`rvavctl` sends your token to an `http://` address only on your own
+machine, such as `http://localhost:8080`. To call an rvav elsewhere over
+`http://`, add `--insecure-http` to `rvavctl login`, which the profile
+keeps, or to each command that uses `RVAV_TOKEN`: your token then crosses
+the network unencrypted.
 
 rvav's audit log records each sign-in, failed or not, with the address it
 came from, and each `rvavctl logout`. rvavctl sends the provider's error
@@ -100,8 +137,7 @@ rvavctl login --server https://rvav.corp.example --with-token < token.txt
 ```
 
 In scripts and CI jobs, set `RVAV_URL` and `RVAV_TOKEN` instead: no
-profile file is needed, and they win over the profile. AWX jobs that rvav
-launches already have both.
+profile file is needed, and they win over the profile.
 
 ```sh
 export RVAV_URL=https://rvav.corp.example RVAV_TOKEN=rvav_pat_…
@@ -150,7 +186,8 @@ with `rvavctl login`.
    needs approval. If rvav would refuse the request, it lists why and
    exits with `1`.
 
-5. Request it. To wait until it's done, add `--wait`:
+5. Request it. To wait until it's done, add `--wait`, and `--timeout 1h`
+   to give up waiting after an hour:
 
    ```sh
    rvavctl catalog request rhel9-server --env dev \
@@ -204,16 +241,23 @@ rvavctl catalog request rhel9-server --env dev --inputs server.yaml --input size
 
 | Command | What it does |
 |---|---|
-| `rvavctl requests list` | The requests you can see, newest first. `--mine`, `--status running,failed`, `--project`. |
+| `rvavctl requests list` | The requests you can see, newest first: the first 50, or `--limit 200`, or `--all`. `--mine`, `--status running,failed`, `--project`. |
 | `rvavctl requests show REQ-10001` | A request and its steps. |
 | `rvavctl requests wait REQ-10001` | Waits until it ends. `--timeout 30m` gives up after 30 minutes. |
-| `rvavctl requests cancel REQ-10001` | Cancels a request that is waiting or running. |
+| `rvavctl requests cancel REQ-10001` | Cancels a request that is waiting or running. With `--wait`, succeeds when the request ends cancelled. |
 | `rvavctl requests retry REQ-10001` | Runs a failed request again from the step that failed. |
 | `rvavctl requests signal REQ-10001 cab-approved` | Sends the signal a composite step waits for. `--data '{"by": "me"}'` gives what it brings, `--data -` reads it from standard input. |
 
 You can name a request by its number or its ID. `wait`, and `--wait` on
-the commands that make requests, exit with `0` when the request succeeds
-and `1` when it fails, is rejected or cancelled.
+the commands that make requests, succeed when the request succeeds. They
+fail when it fails, is rejected or is cancelled; see
+[exit codes](#output-and-scripting). `--timeout` works with each `--wait`.
+
+A wait goes on through errors that don't last, such as a proxy's
+`502 Bad Gateway` during a rolling restart or a dropped connection: it
+says so on standard error and tries again, waiting longer each time, up
+to a minute. It stops on any other error, such as a request that rvav
+doesn't know.
 
 ## Act on your deployments
 
@@ -251,12 +295,12 @@ the VM or the deployment.
 
 | Command | What it does |
 |---|---|
-| `rvavctl approvals list` | The approvals waiting for you, oldest first. `--status approved,rejected` for those you decided. `--all` for every approval, if you're an administrator or auditor. |
+| `rvavctl approvals list` | The approvals waiting for you, oldest first: the first 50, or `--limit 200`, or `--all`. `--status approved,rejected` for those you decided. `--view all` for everyone's approvals, if you're an administrator or auditor. |
 | `rvavctl approvals show ID` | What you need to decide: the request, why it needs approval, the facts, and the inputs you may change. |
 | `rvavctl approvals approve ID -m "OK"` | Approves at your level. `--input memory_gb=32` changes an input that approvers may change. |
 | `rvavctl approvals reject ID -m "Use the M size"` | Rejects. The comment is required: the requester gets it. |
 
-## Look up an address of an IP range
+## See IP ranges and who holds their addresses
 
 On networks without EfficientIP, rvav gives VMs addresses from its own IP
 ranges ([ADR-0063](../adr/0063-ip-ranges.md)). To see the ranges and the
@@ -278,20 +322,38 @@ exclude the address from the range instead.
 ## Output and scripting
 
 - Tables go to standard output; progress and errors go to standard error.
+  Text that others wrote, such as a justification, shows without its
+  control characters, so that it can't move the cursor or hide a link.
 - `-o json` prints what the API returns. A list is a JSON array of its
-  items, with every page read up to `--limit`. `catalog show` prints
-  `{"item": …, "form": …}`, `requests show` prints
-  `{"request": …, "steps": […]}`, and `ip-ranges show` prints
-  `{"range": …, "addresses": […]}`.
-- A command exits with `0` when it succeeds and `1` when it fails.
+  items, with every page read up to `--limit`, or all of them with
+  `--all`. `catalog show` prints `{"item": …, "form": …}`,
+  `requests show` prints `{"request": …, "steps": […]}`, and
+  `ip-ranges show` prints `{"range": …, "addresses": […]}`.
+- A list that shows only the first of its items says so on standard
+  error. `requests list` and `approvals list` show the first 50, and
+  `catalog list` and `deployments list` the first 200.
+
+A command's exit code says how it went:
+
+| Code | What happened |
+|---|---|
+| `0` | The command succeeded, and the request it waited for ended as asked. |
+| `1` | The request didn't succeed: it failed, was rejected or was cancelled. A dry run that rvav would refuse, and other errors, also exit with `1`. |
+| `2` | The command, a flag or an input isn't right, such as a missing `--yes` or `--comment`. rvavctl changed nothing. |
+| `3` | `--timeout` ended the wait. rvav goes on with the request. |
+| `4` | Calling rvav, or its identity provider, failed: rvav refused the call, you aren't signed in, or no answer came. |
+| `130` | You pressed Ctrl-C. |
 
 For example, to wait for each of your running requests in turn:
 
 ```sh
-rvavctl requests list --mine --status running -o json \
+rvavctl requests list --mine --status running --all -o json \
   | jq -r '.[].number' \
-  | xargs -n 1 rvavctl requests wait
+  | xargs -r -n 1 rvavctl requests wait
 ```
+
+`xargs` goes on to the next request when one fails, and exits with `123`
+at the end if any did.
 
 To see every command and flag, run `rvavctl --help`, or `--help` on any
 command.

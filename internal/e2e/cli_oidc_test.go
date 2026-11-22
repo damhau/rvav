@@ -46,6 +46,7 @@ type cliIdP struct {
 	challenge, redirect, scope string
 	refresh                    string
 	refreshes, devicePolls     int
+	revoked                    []string
 	refuseRefresh              bool
 	// authError refuses the sign-in in the browser; badCode sends back a
 	// code the token endpoint refuses.
@@ -81,7 +82,8 @@ func (p *cliIdP) serve(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]any{"issuer": p.issuer, "jwks_uri": base + "/certs",
 			"authorization_endpoint": base + "/auth", "token_endpoint": base + "/token",
 			"device_authorization_endpoint": base + "/device", "id_token_signing_alg_values_supported": []string{"RS256"},
-			"scopes_supported": []string{"openid", "profile", "email", "offline_access"}})
+			"revocation_endpoint": base + "/revoke",
+			"scopes_supported":    []string{"openid", "profile", "email", "offline_access"}})
 	case "/certs":
 		reply(w, 200, jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &p.key.PublicKey, KeyID: "k1", Algorithm: "RS256", Use: "sig"}}})
 	case "/auth":
@@ -142,6 +144,13 @@ func (p *cliIdP) serve(w http.ResponseWriter, r *http.Request) {
 		u := p.signsIn
 		reply(w, 200, map[string]any{"access_token": p.token(u.sub, u.name, u.email, u.groups, tokenOpts{}),
 			"token_type": "Bearer", "expires_in": 300, "refresh_token": p.refresh})
+	case "/revoke":
+		_ = r.ParseForm()
+		f := r.PostForm
+		p.revoked = append(p.revoked, f.Get("token_type_hint")+" "+f.Get("client_id"))
+		if f.Get("token") == p.refresh {
+			p.refresh = ""
+		}
 	default:
 		http.NotFound(w, r)
 	}
@@ -157,12 +166,15 @@ func (p *cliIdP) set(change func(p *cliIdP)) {
 type idpSeen struct {
 	scope                  string
 	refreshes, devicePolls int
+	revoked                []string
+	refresh                string
 }
 
 func (p *cliIdP) get() idpSeen {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return idpSeen{scope: p.scope, refreshes: p.refreshes, devicePolls: p.devicePolls}
+	return idpSeen{scope: p.scope, refreshes: p.refreshes, devicePolls: p.devicePolls, revoked: slices.Clone(p.revoked),
+		refresh: p.refresh}
 }
 
 // TestCLIOIDC signs rvavctl in at rvav's identity provider, as people do
@@ -264,17 +276,17 @@ func TestCLIOIDC(t *testing.T) {
 		// Once the provider refuses, sign in again.
 		idp.set(func(p *cliIdP) { p.refuseRefresh = true })
 		expire(lea)
-		_, stderr = lea.run(1, "", "whoami")
+		_, stderr = lea.run(4, "", "whoami")
 		mustContain(t, "refused refresh", stderr, "the sign-in has expired", "Sign in again: rvavctl login")
 		idp.set(func(p *cliIdP) { p.refuseRefresh = false })
 
 		// The provider refuses (a disabled user), or the code can't be
 		// exchanged: rvav records why, never the code.
 		idp.set(func(p *cliIdP) { p.authError = "access_denied" })
-		_, stderr = lea.run(1, "", "login", "--server", srv.URL)
+		_, stderr = lea.run(4, "", "login", "--server", srv.URL)
 		mustContain(t, "refused login", stderr, "the identity provider refused: access_denied User is disabled")
 		idp.set(func(p *cliIdP) { p.authError, p.badCode = "", true })
-		_, stderr = lea.run(1, "", "login", "--server", srv.URL)
+		_, stderr = lea.run(4, "", "login", "--server", srv.URL)
 		mustContain(t, "refused code", stderr, "invalid_grant")
 		idp.set(func(p *cliIdP) { p.badCode = false })
 		audited("failed logins",
@@ -311,7 +323,7 @@ func TestCLIOIDC(t *testing.T) {
 			reply(w, 401, map[string]string{"title": "Unauthorized"})
 		}))
 		t.Cleanup(other.Close)
-		marc.run(1, "", "whoami", "--profile", "prod", "--server", other.URL)
+		marc.run(4, "", "whoami", "--profile", "prod", "--server", other.URL)
 		sentMu.Lock()
 		if len(sent) != 1 || sent[0] != "" {
 			t.Fatalf("another rvav got %q", sent)
@@ -320,8 +332,13 @@ func TestCLIOIDC(t *testing.T) {
 		if b, err := os.ReadFile(marc.config); err != nil || !strings.Contains(string(b), `"refresh_token"`) {
 			t.Fatalf("saved profile: %v %s", err, b)
 		}
-		marc.run(0, "", "logout", "--profile", "prod")
-		marc.run(1, "", "whoami", "--profile", "prod")
+		// Signing out revokes the sign-in at the provider.
+		out, _ = marc.run(0, "", "logout", "--profile", "prod")
+		mustContain(t, "logout", out, "Signed out of "+srv.URL+", and the identity provider revoked the sign-in.")
+		if got := idp.get(); !slices.Equal(got.revoked, []string{"refresh_token rvav"}) || got.refresh != "" {
+			t.Fatalf("revoked %q, refresh token left %q", got.revoked, got.refresh)
+		}
+		marc.run(4, "", "whoami", "--profile", "prod")
 		audited("logout", map[string]any{"action": "auth.sign_out", "method": "oidc"})
 		h.noSecretsAudited("code-1", "code-2", "device-1", "WDJB-MJHT", "refresh-", "eyJ")
 	})
