@@ -6608,6 +6608,15 @@ export interface components {
             project: components["schemas"]["ProjectRef"];
             environment: components["schemas"]["EnvironmentKey"];
             owner: components["schemas"]["UserRef"];
+            /**
+             * Format: date-time
+             * @description When its owner last signed in or used an API token, if ever. A run
+             *     has the groups the identity provider gave them at their last
+             *     sign-in: once both this and the schedule's `created_at` are older
+             *     than `RVAV_SCHEDULE_OWNER_IDLE_DAYS` (90 days unless set), its runs
+             *     are skipped until they sign in again.
+             */
+            owner_seen_at?: string;
             inputs: {
                 [key: string]: unknown;
             };

@@ -3,6 +3,7 @@ package provision
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	enumspb "go.temporal.io/api/enums/v1"
@@ -43,7 +44,9 @@ type InvalidScheduleError struct{ Msg string }
 func (e *InvalidScheduleError) Error() string { return e.Msg }
 
 // ScheduleTemporalID is the Temporal schedule of a schedule.
-func ScheduleTemporalID(id string) string { return "rvav-schedule-" + id }
+func ScheduleTemporalID(id string) string { return scheduleIDPrefix + id }
+
+const scheduleIDPrefix = "rvav-schedule-"
 
 // ScheduledRun submits one run of a schedule as its owner's request; what
 // the request runs is the request's own workflow.
@@ -100,8 +103,12 @@ func (t *Temporal) CreateSchedule(ctx context.Context, id string, s ScheduleSpec
 		Note:          s.Note,
 	})
 	var invalid *serviceerror.InvalidArgument
-	if errors.As(err, &invalid) {
+	switch {
+	case errors.As(err, &invalid):
 		return &InvalidScheduleError{Msg: invalid.Message}
+	case errors.Is(err, temporal.ErrScheduleAlreadyRunning):
+		// Made by a worker's reconcile while this was being saved.
+		return nil
 	}
 	return err
 }
@@ -122,6 +129,26 @@ func (t *Temporal) DeleteSchedule(ctx context.Context, id string) error {
 		return nil
 	}
 	return err
+}
+
+// ListSchedules gives rvav's schedules Temporal has, by rvav's id, and
+// whether each is paused.
+func (t *Temporal) ListSchedules(ctx context.Context) (map[string]bool, error) {
+	it, err := t.Client.ScheduleClient().List(ctx, client.ScheduleListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for it.HasNext() {
+		e, err := it.Next()
+		if err != nil {
+			return nil, err
+		}
+		if id, ok := strings.CutPrefix(e.ID, scheduleIDPrefix); ok {
+			out[id] = e.Paused
+		}
+	}
+	return out, nil
 }
 
 // NextRuns are the next times Temporal fires a schedule.

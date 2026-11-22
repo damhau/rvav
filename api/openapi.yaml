@@ -8881,6 +8881,15 @@ components:
         project: { $ref: "#/components/schemas/ProjectRef" }
         environment: { $ref: "#/components/schemas/EnvironmentKey" }
         owner: { $ref: "#/components/schemas/UserRef" }
+        owner_seen_at:
+          type: string
+          format: date-time
+          description: |
+            When its owner last signed in or used an API token, if ever. A run
+            has the groups the identity provider gave them at their last
+            sign-in: once both this and the schedule's `created_at` are older
+            than `RVAV_SCHEDULE_OWNER_IDLE_DAYS` (90 days unless set), its runs
+            are skipped until they sign in again.
         inputs:
           type: object
           additionalProperties: true

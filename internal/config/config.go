@@ -64,6 +64,10 @@ type Config struct {
 	// DrainTimeout is how long a process applying newer connection
 	// settings lets its running work finish before it exits (ADR-0030).
 	DrainTimeout time.Duration
+	// ScheduleOwnerIdleDays is how long a recurring schedule's owner may go
+	// without signing in or using a token before its runs are skipped: a
+	// run has the groups of their last sign-in (ADR-0057). 0: never.
+	ScheduleOwnerIdleDays int
 
 	// WMKSSDKURLs are the scripts of VMware's HTML console client, in load
 	// order (RVAV_WMKS_SDK_URLS, comma-separated). Without them the console
@@ -423,6 +427,12 @@ func Load() (Config, error) {
 	}
 	if c.DrainTimeout, err = duration("RVAV_DRAIN_TIMEOUT", 5*time.Minute); err != nil {
 		return c, err
+	}
+	if c.ScheduleOwnerIdleDays, err = integer("RVAV_SCHEDULE_OWNER_IDLE_DAYS", 90); err != nil {
+		return c, err
+	}
+	if c.ScheduleOwnerIdleDays < 0 {
+		return c, fmt.Errorf("RVAV_SCHEDULE_OWNER_IDLE_DAYS must be 0 or more, got %d", c.ScheduleOwnerIdleDays)
 	}
 
 	if c.TrustedProxies, err = prefixes("RVAV_TRUSTED_PROXIES"); err != nil {

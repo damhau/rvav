@@ -34,14 +34,16 @@ type Schedule struct {
 // ScheduleRow is a schedule with the names shown next to it and its last run.
 type ScheduleRow struct {
 	Schedule
-	ItemSlug      string     `db:"item_slug"`
-	ItemName      string     `db:"item_name"`
-	ItemType      string     `db:"item_type"`
-	VersionNumber string     `db:"version_number"`
-	ProjectCode   string     `db:"project_code"`
-	ProjectName   string     `db:"project_name"`
-	OwnerName     string     `db:"owner_name"`
-	OwnerEmail    string     `db:"owner_email"`
+	ItemSlug      string `db:"item_slug"`
+	ItemName      string `db:"item_name"`
+	ItemType      string `db:"item_type"`
+	VersionNumber string `db:"version_number"`
+	ProjectCode   string `db:"project_code"`
+	ProjectName   string `db:"project_name"`
+	OwnerName     string `db:"owner_name"`
+	OwnerEmail    string `db:"owner_email"`
+	// OwnerSeenAt is when the owner last signed in or used an API token.
+	OwnerSeenAt   *time.Time `db:"owner_seen_at"`
 	LastRunAt     *time.Time `db:"last_run_at"`
 	LastOutcome   *string    `db:"last_outcome"`
 	LastReason    *string    `db:"last_reason"`
@@ -67,6 +69,8 @@ select s.id, s.name, s.item_id, s.version_id, s.project_id, s.environment, s.own
        s.accept_warnings, s.cron, s.every_minutes, s.timezone, s.paused, s.paused_note, s.created_at, s.updated_at,
        i.slug as item_slug, i.name as item_name, i.type as item_type, v.number as version_number,
        p.code as project_code, p.name as project_name, u.name as owner_name, u.email as owner_email,
+       greatest(u.last_seen_at, (select max(t.last_used_at) from api_tokens t where t.user_id = u.id),
+           (select max(x.last_seen_at) from sessions x where x.user_id = u.id)) as owner_seen_at,
        lr.at as last_run_at, lr.outcome as last_outcome, lr.reason as last_reason,
        lr.request_id as last_request_id, r.number as last_number, r.status as last_status
 from schedules s
@@ -103,6 +107,25 @@ func (s *Store) InsertSchedule(ctx context.Context, sc Schedule) error {
 	return err
 }
 
+// HoldSchedule locks a schedule's row while one of its firings submits.
+func (s *Store) HoldSchedule(ctx context.Context, tx pgx.Tx, id string) error {
+	_, err := tx.Exec(ctx, `select 1 from schedules where id = $1 for update`, id)
+	return err
+}
+
+// UnfinishedScheduleRequest is the number of a request the schedule started
+// that hasn't finished, waiting for approval included; "" when none.
+func (s *Store) UnfinishedScheduleRequest(ctx context.Context, db DB, id string) (string, error) {
+	var number string
+	err := db.QueryRow(ctx, `select number from requests
+		where schedule_id = $1 and status not in ('succeeded', 'failed', 'rejected', 'cancelled')
+		order by submitted_at limit 1`, id).Scan(&number)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return number, err
+}
+
 // RemoveSchedule drops a schedule whose Temporal schedule couldn't be made.
 func (s *Store) RemoveSchedule(ctx context.Context, id string) error {
 	_, err := s.Pool.Exec(ctx, `delete from schedules where id = $1`, id)
@@ -127,6 +150,12 @@ func (s *Store) DeleteSchedule(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+// DeletedSchedules are those of ids that were deleted.
+func (s *Store) DeletedSchedules(ctx context.Context, ids []string) ([]string, error) {
+	rows, _ := s.Pool.Query(ctx, `select id from schedules where id = any($1) and deleted_at is not null order by id`, ids)
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 // ScheduleName is a schedule's name, deleted or not.

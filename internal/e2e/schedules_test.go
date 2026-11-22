@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -60,6 +61,17 @@ func (f *scheduleFake) DeleteSchedule(_ context.Context, id string) error {
 
 func (f *scheduleFake) NextRuns(_ context.Context, id string) ([]time.Time, error) {
 	return []time.Time{time.Date(2030, 1, 1, 2, 0, 0, 0, time.UTC)}, nil
+}
+
+func (f *scheduleFake) ListSchedules(context.Context) (map[string]bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]bool{}
+	for id := range f.specs {
+		_, paused := f.paused[id]
+		out[id] = paused
+	}
+	return out, nil
 }
 
 // cleanup is the custom workflow a scheduled item runs.
@@ -280,6 +292,148 @@ func TestSchedules(t *testing.T) {
 	})
 }
 
+// TestScheduleGuards: a schedule's runs never overlap, whether the firing
+// before was skipped or fires at the same time; an owner not seen for
+// RVAV_SCHEDULE_OWNER_IDLE_DAYS has their runs skipped until they sign in;
+// a worker's start makes Temporal's schedules agree with rvav's (E1.6,
+// ADR-0057).
+func TestScheduleGuards(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		h := setup(t, ctx, c)
+		fake := &scheduleFake{specs: map[string]provision.ScheduleSpec{}, paused: map[string]string{}}
+		h.svc.ScheduleControl = fake
+		h.svc.Config.ScheduleOwnerIdleDays = 90
+		const owner = "tnguyen"
+		item := cleanupItem(h)
+		long := hourly(item, map[string]any{"target": "/tmp"})
+		long.Name = strings.Repeat("n", 121)
+		var problem struct{ Errors []api.FieldError }
+		h.json("POST", "/api/v1/schedules", owner, long, 422, &problem)
+		if len(problem.Errors) != 1 || problem.Errors[0].Field != "/name" || deref(problem.Errors[0].Code) != "too_long" {
+			t.Fatalf("a long name = %+v", problem.Errors)
+		}
+		var sc api.Schedule
+		h.json("POST", "/api/v1/schedules", owner, hourly(item, map[string]any{"target": "/tmp"}), 201, &sc)
+		if sc.OwnerSeenAt != nil {
+			t.Fatalf("an owner never signed in was seen at %v", sc.OwnerSeenAt)
+		}
+		fire := func(id string) error {
+			return h.svc.RunSchedule(ctx, provision.ScheduleFiring{ScheduleID: sc.Id, FireID: id, At: time.Now().UTC()})
+		}
+		runs := func() []api.ScheduleRun {
+			t.Helper()
+			var got api.Schedule
+			h.json("GET", "/api/v1/schedules/"+sc.Id, owner, nil, 200, &got)
+			return *got.Runs
+		}
+		unfinished := func() int {
+			t.Helper()
+			var n int
+			if err := h.store.Pool.QueryRow(ctx, `select count(*) from requests where schedule_id = $1
+				and status not in ('succeeded', 'failed', 'rejected', 'cancelled')`, sc.Id).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+
+		// Firings at the same time start one request.
+		var wg sync.WaitGroup
+		errs := make([]error, 4)
+		for i := range errs {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				errs[i] = fire("f1-" + strconv.Itoa(i))
+			}()
+		}
+		wg.Wait()
+		if err := errors.Join(errs...); err != nil {
+			t.Fatal(err)
+		}
+		got := runs()
+		started := slices.IndexFunc(got, func(r api.ScheduleRun) bool { return r.Outcome == api.ScheduleRunOutcomeStarted })
+		if len(got) != 4 || unfinished() != 1 || started < 0 {
+			t.Fatalf("firings at once = %+v", got)
+		}
+		number := got[started].Request.Number
+		// A skipped run is no reason to start the next: the request before
+		// still runs.
+		for _, id := range []string{"f2", "f3"} {
+			if err := fire(id); err != nil {
+				t.Fatal(err)
+			}
+			if r := runs()[0]; r.Outcome != api.ScheduleRunOutcomeSkipped || deref(r.Reason) != number+" hadn't finished." {
+				t.Fatalf("%s while %s runs = %+v", id, number, r)
+			}
+		}
+		if unfinished() != 1 {
+			t.Fatal("a skip let a second request start")
+		}
+		if _, err := h.store.Pool.Exec(ctx, `update requests set status = 'succeeded' where schedule_id = $1`, sc.Id); err != nil {
+			t.Fatal(err)
+		}
+
+		// An owner unseen for longer than the bound: skipped until they sign in.
+		if _, err := h.store.Pool.Exec(ctx, `update schedules set created_at = now() - interval '200 days' where id = $1`, sc.Id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.store.Pool.Exec(ctx, `update users set last_seen_at = now() - interval '91 days' where id = $1`, seed.UserID(owner)); err != nil {
+			t.Fatal(err)
+		}
+		if err := fire("f4"); err != nil {
+			t.Fatal(err)
+		}
+		if r := runs()[0]; r.Outcome != api.ScheduleRunOutcomeSkipped || !strings.Contains(deref(r.Reason), "hasn't signed in for 90 days") {
+			t.Fatalf("a run of an owner gone = %+v", r)
+		}
+		h.json("GET", "/api/v1/schedules/"+sc.Id, owner, nil, 200, &sc)
+		if sc.OwnerSeenAt == nil || time.Since(*sc.OwnerSeenAt) < 90*24*time.Hour {
+			t.Fatalf("the owner was seen at %v", sc.OwnerSeenAt)
+		}
+		// As a sign-in does.
+		if _, err := h.store.Pool.Exec(ctx, `update users set last_seen_at = now() where id = $1`, seed.UserID(owner)); err != nil {
+			t.Fatal(err)
+		}
+		if err := fire("f5"); err != nil {
+			t.Fatal(err)
+		}
+		if r := runs()[0]; r.Outcome != api.ScheduleRunOutcomeStarted {
+			t.Fatalf("a run once the owner signed in = %+v", r)
+		}
+
+		// A worker's start: a row without its Temporal schedule gets one, a
+		// pause only Temporal took is undone, a deleted schedule's goes; one
+		// rvav doesn't know is another's.
+		var other api.Schedule
+		h.json("POST", "/api/v1/schedules", owner, hourly(item, map[string]any{"target": "/srv"}), 201, &other)
+		var gone api.Schedule
+		h.json("POST", "/api/v1/schedules", owner, hourly(item, map[string]any{"target": "/opt"}), 201, &gone)
+		fake.mu.Lock()
+		delete(fake.specs, sc.Id)
+		fake.paused[other.Id] = "half paused"
+		fake.specs["sch_someone_else"] = provision.ScheduleSpec{EveryMinutes: 5}
+		fake.mu.Unlock()
+		if err := h.store.DeleteSchedule(ctx, gone.Id); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.svc.ReconcileSchedules(ctx); err != nil {
+			t.Fatal(err)
+		}
+		fake.mu.Lock()
+		spec, made := fake.specs[sc.Id]
+		_, paused := fake.paused[other.Id]
+		_, kept := fake.specs[gone.Id]
+		_, foreign := fake.specs["sch_someone_else"]
+		fake.mu.Unlock()
+		if !made || spec.EveryMinutes != 60 || spec.Timezone != "UTC" || paused || kept || !foreign {
+			t.Fatalf("reconciled: made %v (%+v), paused %v, deleted kept %v, another's kept %v", made, spec, paused, kept, foreign)
+		}
+	})
+}
+
 // TestSchedulesThroughTemporal: a schedule is a Temporal schedule; its
 // firing submits the owner's request, which runs to its end; pausing,
 // resuming and deleting it reach Temporal, and a cron Temporal refuses is
@@ -368,6 +522,33 @@ func TestSchedulesThroughTemporal(t *testing.T) {
 		var nf *serviceerror.NotFound
 		if _, err := handle.Describe(ctx); !errors.As(err, &nf) && !strings.Contains(lowerErr(err), "not found") {
 			t.Fatalf("deleted in Temporal: %v", err)
+		}
+
+		// Deleted in rvav only (the process stopped before Temporal): a
+		// worker's start deletes it in Temporal.
+		var orphan api.Schedule
+		h.json("POST", "/api/v1/schedules", owner, nightly, 201, &orphan)
+		if err := h.store.DeleteSchedule(ctx, orphan.Id); err != nil {
+			t.Fatal(err)
+		}
+		for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(200 * time.Millisecond) {
+			listed, err := temporal.ListSchedules(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := listed[orphan.Id]; ok {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("Temporal never listed %s: %v", orphan.Id, listed)
+			}
+		}
+		if err := h.svc.ReconcileSchedules(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tc.ScheduleClient().GetHandle(ctx, provision.ScheduleTemporalID(orphan.Id)).Describe(ctx); !errors.As(err, &nf) &&
+			!strings.Contains(lowerErr(err), "not found") {
+			t.Fatalf("a schedule deleted in rvav stays in Temporal: %v", err)
 		}
 	})
 }

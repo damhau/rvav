@@ -564,6 +564,9 @@ func (a *App) RunWorker(ctx context.Context) error {
 	if err := provision.EnsureHousekeeping(ctx, tc, a.Cfg.Temporal.TaskQueue); err != nil {
 		a.Log.Warn("housekeeping schedule", "err", err)
 	}
+	if err := svc.ReconcileSchedules(ctx); err != nil {
+		a.Log.Warn("recurring schedules in Temporal", "err", err)
+	}
 	a.Log.Info("worker started", "task_queue", a.Cfg.Temporal.TaskQueue)
 	// Events to subscriptions (ADR-0021) and notifications to their
 	// channels (ADR-0023): every worker replica takes part.

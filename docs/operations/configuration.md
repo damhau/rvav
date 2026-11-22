@@ -83,6 +83,7 @@ still sign in and correct a wrong one.
 | `RVAV_OIDC_SCOPES` | `openid profile email` | | Integrations › Identity provider | The scopes the web app asks for, space-separated: with Entra ID, a scope of rvav's API (`api://<client>/access`) and `offline_access`. |
 | `RVAV_OIDC_GROUPS_CLAIM` | `groups` | | Integrations › Identity provider | The token claim with the user's groups (roles and approver groups map to them); `roles` for Entra ID's app roles. |
 | `RVAV_OIDC_MANAGER_CLAIM` | `manager` | | Integrations › Identity provider | The token claim with the user's manager, by email or subject, for approval levels that ask the requester's manager. rvav stores it at each sign-in; a token without it clears it. |
+| `RVAV_SCHEDULE_OWNER_IDLE_DAYS` | `90` | | install | How many days a recurring schedule's owner may go without signing in or using an API token before its runs are skipped. A run has the groups the identity provider gave the owner at their last sign-in, so someone who left would otherwise keep their rights through their schedules. `0` never skips. |
 
 ## Temporal
 

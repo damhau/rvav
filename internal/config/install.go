@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/damhau/rvav/internal/fips"
@@ -43,6 +44,7 @@ var Install = []InstallSetting{
 	{"RVAV_AUTH_MODE", false, func(c Config) string { return c.Auth.Mode }},
 	{"RVAV_ALLOW_DEV_AUTH", false, func(c Config) string { return onOff(c.Auth.AllowDev) }},
 	{"RVAV_DEV_USER", false, func(c Config) string { return c.Auth.DevUser }},
+	{"RVAV_SCHEDULE_OWNER_IDLE_DAYS", false, func(c Config) string { return strconv.Itoa(c.ScheduleOwnerIdleDays) }},
 	{"RVAV_TEMPORAL_ADDRESS", false, func(c Config) string { return c.Temporal.Address }},
 	{"RVAV_TEMPORAL_NAMESPACE", false, func(c Config) string { return c.Temporal.Namespace }},
 	{"RVAV_TEMPORAL_TASK_QUEUE", false, func(c Config) string { return c.Temporal.TaskQueue }},

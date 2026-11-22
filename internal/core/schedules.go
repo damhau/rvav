@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -29,6 +30,8 @@ type ScheduleControl interface {
 	ResumeSchedule(ctx context.Context, id string) error
 	DeleteSchedule(ctx context.Context, id string) error
 	NextRuns(ctx context.Context, id string) ([]time.Time, error)
+	// ListSchedules gives the schedules Temporal has, by id: paused or not.
+	ListSchedules(ctx context.Context) (map[string]bool, error)
 }
 
 var cronField = regexp.MustCompile(`^[0-9A-Za-z*,/\-?#]+$`)
@@ -109,7 +112,7 @@ func (s *Service) nextRuns(ctx context.Context, sc store.ScheduleRow) []time.Tim
 func presentSchedule(sc store.ScheduleRow, next []time.Time) api.Schedule {
 	out := api.Schedule{Id: sc.ID, Name: sc.Name, Version: api.CatalogItemVersionRef{Id: sc.VersionID, Number: sc.VersionNumber},
 		Project: present.ProjectRef(sc.ProjectID, sc.ProjectCode, sc.ProjectName), Environment: sc.Environment,
-		Owner: present.UserRef(sc.OwnerID, sc.OwnerName, sc.OwnerEmail), Inputs: map[string]any{}, Cron: sc.Cron,
+		Owner: present.UserRef(sc.OwnerID, sc.OwnerName, sc.OwnerEmail), OwnerSeenAt: sc.OwnerSeenAt, Inputs: map[string]any{}, Cron: sc.Cron,
 		EveryMinutes: sc.EveryMinutes, Timezone: sc.Timezone, Paused: sc.Paused, CreatedAt: sc.CreatedAt, NextRuns: next,
 		AcceptWarnings: present.Ptr(sc.AcceptWarnings)}
 	out.CatalogItem.Id, out.CatalogItem.Slug, out.CatalogItem.Name = sc.ItemID, sc.ItemSlug, sc.ItemName
@@ -197,8 +200,11 @@ func (s *Service) CreateSchedule(ctx context.Context, p *auth.Principal, w api.S
 	if w.EveryMinutes != nil {
 		sc.EveryMinutes = w.EveryMinutes
 	}
-	if sc.Name == "" || utf8.RuneCountInString(sc.Name) > 120 {
+	switch {
+	case sc.Name == "":
 		errs = append(errs, fieldErr("/name", "required", "Name it, in 120 characters at most."))
+	case utf8.RuneCountInString(sc.Name) > 120:
+		errs = append(errs, fieldErr("/name", "too_long", "Name it in 120 characters at most."))
 	}
 	inputs := w.Inputs
 	if inputs == nil {
@@ -323,12 +329,72 @@ func (s *Service) DeleteSchedule(ctx context.Context, p *auth.Principal, id stri
 	return nil
 }
 
-// finished are the statuses after which a schedule's next run may start.
-var finished = []string{"succeeded", "failed", "rejected", "cancelled"}
+// ReconcileSchedules makes Temporal's schedules agree with rvav's, at a
+// worker's start: the database row and the Temporal schedule aren't written
+// at once, so a process that stopped in between left one without the other,
+// or a pause in Temporal only. rvav's rows are what callers were told.
+func (s *Service) ReconcileSchedules(ctx context.Context) error {
+	if s.ScheduleControl == nil {
+		return nil
+	}
+	// Temporal's first: a schedule made in between has its row already.
+	have, err := s.ScheduleControl.ListSchedules(ctx)
+	if err != nil {
+		return err
+	}
+	rows, err := s.Store.Schedules(ctx)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, sc := range rows {
+		paused, ok := have[sc.ID]
+		delete(have, sc.ID)
+		switch {
+		case !ok:
+			spec := provision.ScheduleSpec{Cron: deref(sc.Cron), Timezone: sc.Timezone, Paused: sc.Paused, Note: sc.PausedNote}
+			if sc.EveryMinutes != nil {
+				spec.EveryMinutes = *sc.EveryMinutes
+			}
+			s.Log.Info("schedule made again in Temporal", "schedule", sc.ID)
+			errs = append(errs, s.ScheduleControl.CreateSchedule(ctx, sc.ID, spec))
+		case paused && !sc.Paused:
+			errs = append(errs, s.ScheduleControl.ResumeSchedule(ctx, sc.ID))
+		case !paused && sc.Paused:
+			errs = append(errs, s.ScheduleControl.PauseSchedule(ctx, sc.ID, sc.PausedNote))
+		}
+	}
+	// Only those rvav deleted: a namespace may hold another rvav's.
+	deleted, err := s.Store.DeletedSchedules(ctx, slices.Collect(maps.Keys(have)))
+	if err != nil {
+		return errors.Join(append(errs, err)...)
+	}
+	for _, id := range deleted {
+		s.Log.Info("deleted schedule removed from Temporal", "schedule", id)
+		errs = append(errs, s.ScheduleControl.DeleteSchedule(ctx, id))
+	}
+	return errors.Join(errs...)
+}
+
+// scheduleBusyError is a firing while a request the schedule started
+// hasn't finished: another firing's, submitted at the same time.
+type scheduleBusyError struct{ number string }
+
+func (e *scheduleBusyError) Error() string { return e.number + " hadn't finished" }
+
+// ownerSeen is when a schedule's owner was last seen: making it counts.
+func ownerSeen(sc store.ScheduleRow) time.Time {
+	if sc.OwnerSeenAt != nil && sc.OwnerSeenAt.After(sc.CreatedAt) {
+		return *sc.OwnerSeenAt
+	}
+	return sc.CreatedAt
+}
 
 // RunSchedule submits a firing's request as the schedule's owner, as
 // POST /requests would: what refuses a request refuses it, and the firing
-// keeps why. It skips a firing while the request before hasn't finished.
+// keeps why. It skips a firing while a request the schedule started hasn't
+// finished, and while its owner hasn't been seen for
+// RVAV_SCHEDULE_OWNER_IDLE_DAYS.
 // An error is one to try again.
 func (s *Service) RunSchedule(ctx context.Context, f provision.ScheduleFiring) error {
 	sc, err := s.Store.GetSchedule(ctx, f.ScheduleID)
@@ -347,11 +413,16 @@ func (s *Service) RunSchedule(ctx context.Context, f provision.ScheduleFiring) e
 			Outcome: outcome, Reason: reason})
 		return err
 	}
-	switch {
-	case sc.Paused:
+	if sc.Paused {
 		return record("skipped", "It was paused.")
-	case sc.LastStatus != nil && !slices.Contains(finished, *sc.LastStatus):
-		return record("skipped", deref(sc.LastNumber)+" hadn't finished.")
+	}
+	if number, err := s.Store.UnfinishedScheduleRequest(ctx, s.Store.Pool, sc.ID); err != nil {
+		return err
+	} else if number != "" {
+		return record("skipped", number+" hadn't finished.")
+	}
+	if idle := s.Config.ScheduleOwnerIdleDays; idle > 0 && time.Since(ownerSeen(sc)) > time.Duration(idle)*24*time.Hour {
+		return record("skipped", fmt.Sprintf("Its owner hasn't signed in for %d days: a run would have the groups of their last sign-in. It runs again once they sign in.", idle))
 	}
 	owner, err := auth.ForUser(ctx, s.Store, sc.OwnerID)
 	if errors.Is(err, store.ErrNotFound) {
@@ -362,9 +433,12 @@ func (s *Service) RunSchedule(ctx context.Context, f provision.ScheduleFiring) e
 	_, err = s.submit(ctx, owner, scheduleDraft(sc.Schedule), &f)
 	var invalid *ValidationError
 	var conflict *ConflictError
+	var busy *scheduleBusyError
 	switch {
 	case err == nil, errors.Is(err, errFiredAlready):
 		return nil
+	case errors.As(err, &busy):
+		return record("skipped", busy.number+" hadn't finished.")
 	case errors.As(err, &invalid), errors.As(err, &conflict), errors.Is(err, ErrForbidden), errors.Is(err, ErrNotFound):
 		return record("refused", refusal(err))
 	}

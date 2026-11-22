@@ -9295,11 +9295,18 @@ type Schedule struct {
 	Name          string                 `json:"name"`
 
 	// NextRuns Its next times, from Temporal; none while paused, or when Temporal can't be reached.
-	NextRuns   []time.Time `json:"next_runs"`
-	Owner      UserRef     `json:"owner"`
-	Paused     bool        `json:"paused"`
-	PausedNote *string     `json:"paused_note,omitempty"`
-	Project    ProjectRef  `json:"project"`
+	NextRuns []time.Time `json:"next_runs"`
+	Owner    UserRef     `json:"owner"`
+
+	// OwnerSeenAt When its owner last signed in or used an API token, if ever. A run
+	// has the groups the identity provider gave them at their last
+	// sign-in: once both this and the schedule's `created_at` are older
+	// than `RVAV_SCHEDULE_OWNER_IDLE_DAYS` (90 days unless set), its runs
+	// are skipped until they sign in again.
+	OwnerSeenAt *time.Time `json:"owner_seen_at,omitempty"`
+	Paused      bool       `json:"paused"`
+	PausedNote  *string    `json:"paused_note,omitempty"`
+	Project     ProjectRef `json:"project"`
 
 	// Runs Its last 20 runs, the newest first, in `getSchedule` only.
 	Runs     *[]ScheduleRun        `json:"runs,omitempty"`

@@ -78,6 +78,18 @@ func (s *Service) submit(ctx context.Context, p *auth.Principal, d api.RequestDr
 
 	defer s.prefetchNames(ctx, ev)()
 	err = s.Store.Tx(ctx, func(tx pgx.Tx) error {
+		// Firings of one schedule one at a time: none starts while a request
+		// another started hasn't finished (ADR-0057).
+		if fire != nil {
+			if err := s.Store.HoldSchedule(ctx, tx, fire.ScheduleID); err != nil {
+				return err
+			}
+			if number, err := s.Store.UnfinishedScheduleRequest(ctx, tx, fire.ScheduleID); err != nil {
+				return err
+			} else if number != "" {
+				return &scheduleBusyError{number: number}
+			}
+		}
 		if err := s.holdChange(ctx, tx, change, ev.OverSoft, d.AcceptWarnings, d.AcceptedWarnings); err != nil {
 			return err
 		}

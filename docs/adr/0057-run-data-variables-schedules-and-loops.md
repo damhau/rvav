@@ -142,9 +142,19 @@ schedule makes a request at each of its times.
   firing workflow's ID, in the request's own transaction, so a retried
   activity submits once.
 - A run is `started`, `refused` (what refuses a request refused it, said
-  in one line), `skipped` (paused, or the request of the run before not
-  finished, approval included) or `failed` (rvav couldn't submit it after
-  its retries). The owner isn't notified of a refusal; the schedule's
+  in one line), `skipped` (paused, a request the schedule started not
+  finished, approval included, or its owner not seen for too long) or
+  `failed` (rvav couldn't submit it after its retries). Whether one of its
+  requests is unfinished is asked in the run's own transaction, with the
+  schedule's row locked, so two firings at once start one request, and a
+  skipped run lets no other start while that request runs (E1.6).
+- A run has the owner's groups from their last sign-in (`ForUser`): an
+  owner removed from a group at the identity provider who never signs in
+  again would keep its rights through their schedules. A run is skipped
+  once the owner hasn't signed in or used an API token for
+  `RVAV_SCHEDULE_OWNER_IDLE_DAYS` (90 unless set; making the schedule
+  counts), and runs again once they do. The schedule shows when its
+  owner was last seen (`owner_seen_at`). The owner isn't notified of a refusal; the schedule's
   page shows it. A scheduled run's request isn't announced as submitted to
   its owner either; its later notifications are as for any request.
 - The owner and those with `request.manage` in the project pause, resume
@@ -250,6 +260,13 @@ narrowly.
 - Temporal holds when a schedule runs; rvav's table holds what it runs.
   A restore takes both to the same moment (they share the PostgreSQL
   server), and a Temporal schedule rvav no longer knows does nothing.
+  The row and the Temporal schedule aren't written in one transaction: a
+  creation Temporal refuses removes the row, and each worker's start
+  makes Temporal agree with the rows (one without its Temporal schedule
+  gets it, a pause or a deletion Temporal alone took is aligned), so a
+  process that stopped in between leaves nothing that never runs. Only
+  schedules rvav deleted are deleted in Temporal: a namespace may hold
+  another rvav's.
 - ADR-0033's line, a flow that needs loops or error handling is a
   playbook's or a custom workflow's, moves: a composite loops over a list
   and catches a step's failure. Paging an API, nested loops and a loop of
