@@ -1,7 +1,9 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Ellipsis, LayoutGrid, Plus, SearchX, Server, Table2 } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
 import { DeploymentStatusBadge, EnvBadge } from "@/components/common/status";
@@ -17,6 +19,7 @@ import { Select } from "@/components/ui/select";
 import type { Day2Action, Deployment, DeploymentStatusFilter } from "@/lib/api/types";
 import { can } from "@/lib/can";
 import { useSearchBox } from "@/lib/hooks";
+import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { q, type DeploymentSort } from "@/lib/query";
 import { cn } from "@/lib/utils";
@@ -73,15 +76,14 @@ export const deploymentSorts = [
   "-vm_count",
 ] as const satisfies readonly DeploymentSort[];
 
-const statuses: Record<
-  NonNullable<DeploymentsSearch["status"]>,
-  { label: string; statuses: DeploymentStatusFilter[] }
-> = {
-  ready: { label: "Ready", statuses: ["ready"] },
-  provisioning: { label: "Provisioning", statuses: ["provisioning", "updating"] },
-  failed: { label: "Failed", statuses: ["failed"] },
-  expired: { label: "Lease ended", statuses: ["expired"] },
+const statuses: Record<NonNullable<DeploymentsSearch["status"]>, DeploymentStatusFilter[]> = {
+  ready: ["ready"],
+  provisioning: ["provisioning", "updating"],
+  failed: ["failed"],
+  expired: ["expired"],
 };
+
+const statusKeys = Object.keys(statuses) as (keyof typeof statuses)[];
 
 // Each sortable column's sort: the API sorts the whole list, not the pages loaded.
 const sortKeys: Record<string, string> = {
@@ -106,22 +108,30 @@ const fromSort = (s: Sort | null): DeploymentsSearch["sort"] => {
   return (s.desc ? `-${key}` : key) as DeploymentSort;
 };
 
-const cardSorts: { value: DeploymentSort; label: string; all?: boolean }[] = [
-  { value: "name", label: "Name, A to Z" },
-  { value: "-name", label: "Name, Z to A" },
-  { value: "-created_at", label: "Newest first" },
-  { value: "lease_expires_at", label: "Lease ending first" },
-  { value: "status", label: "Status" },
-  { value: "environment", label: "Environment" },
-  { value: "owner", label: "Owner" },
-  { value: "item", label: "Catalog item" },
-  { value: "project", label: "Project", all: true },
-  { value: "-vm_count", label: "Most VMs first" },
+interface CardSort {
+  value: DeploymentSort;
+  key:
+    "nameAz" | "nameZa" | "newest" | "leaseFirst" | "status" | "environment" | "owner" | "item" | "project" | "mostVms";
+  all?: boolean;
+}
+
+const cardSorts: CardSort[] = [
+  { value: "name", key: "nameAz" },
+  { value: "-name", key: "nameZa" },
+  { value: "-created_at", key: "newest" },
+  { value: "lease_expires_at", key: "leaseFirst" },
+  { value: "status", key: "status" },
+  { value: "environment", key: "environment" },
+  { value: "owner", key: "owner" },
+  { value: "item", key: "item" },
+  { value: "project", key: "project", all: true },
+  { value: "-vm_count", key: "mostVms" },
 ];
 
 const weekAhead = () => new Date(Math.ceil(Date.now() / 3_600_000) * 3_600_000 + 7 * 86_400_000).toISOString();
 
 function Dots({ d }: { d: Deployment }) {
+  const { t } = useTranslation("deployments");
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
       {Array.from({ length: Math.min(d.vm_count, 6) }, (_, i) => (
@@ -131,9 +141,7 @@ function Dots({ d }: { d: Deployment }) {
           className={cn("size-2 rounded-full", i < d.vms_powered_on ? "bg-ok" : "border border-line-strong")}
         />
       ))}
-      <span className="tnum ml-1 text-muted">
-        {d.vms_powered_on} of {d.vm_count} on
-      </span>
+      <span className="tnum ml-1 text-muted">{t("onOf", { count: d.vms_powered_on, total: d.vm_count })}</span>
     </span>
   );
 }
@@ -180,11 +188,11 @@ const nameLink = (d: Deployment) => (
   </Link>
 );
 
-function columnsFor(all: boolean): Column<Deployment>[] {
+function columnsFor(t: TFunction<"deployments">, all: boolean): Column<Deployment>[] {
   return [
     {
       id: "name",
-      header: "Deployment",
+      header: t("list.columns.deployment"),
       sortValue: (d) => d.name,
       cell: (d) => (
         <>
@@ -199,7 +207,7 @@ function columnsFor(all: boolean): Column<Deployment>[] {
       ? [
           {
             id: "project",
-            header: "Project",
+            header: t("list.columns.project"),
             sortValue: (d: Deployment) => d.project.name,
             cell: (d: Deployment) => <span className="text-muted">{d.project.name}</span>,
           },
@@ -207,27 +215,27 @@ function columnsFor(all: boolean): Column<Deployment>[] {
       : []),
     {
       id: "env",
-      header: "Environment",
+      header: t("list.columns.environment"),
       sortValue: (d) => d.environment,
       cell: (d) => <EnvBadge env={d.environment} />,
     },
     {
       id: "status",
-      header: "Status",
+      header: t("list.columns.status"),
       sortValue: (d) => d.status,
       cell: (d) => <DeploymentStatusBadge status={d.status} />,
     },
-    { id: "vms", header: "VMs", sortValue: (d) => d.vm_count, cell: (d) => <Dots d={d} /> },
-    { id: "address", header: "Address", cell: (d) => <Address d={d} /> },
+    { id: "vms", header: t("list.columns.vms"), sortValue: (d) => d.vm_count, cell: (d) => <Dots d={d} /> },
+    { id: "address", header: t("list.columns.address"), cell: (d) => <Address d={d} /> },
     {
       id: "owner",
-      header: "Owner",
+      header: t("list.columns.owner"),
       sortValue: (d) => d.owner.name,
       cell: (d) => <span className="text-muted">{d.owner.name}</span>,
     },
     {
       id: "lease",
-      header: "Lease",
+      header: t("list.columns.lease"),
       sortValue: (d) => d.lease.expires_at,
       cell: (d) => <Lease expiresAt={d.lease.expires_at} />,
     },
@@ -246,6 +254,7 @@ function DeploymentCards({
   loading: boolean;
   onPick: (d: Deployment, a: Day2Action) => void;
 }) {
+  const { t } = useTranslation("deployments");
   if (loading && items.length === 0) {
     return (
       <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3" aria-hidden>
@@ -256,7 +265,7 @@ function DeploymentCards({
     );
   }
   return (
-    <ul aria-label="Deployments" className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+    <ul aria-label={t("list.cards")} className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((d) => (
         <li key={d.id} className="flex min-w-0 flex-col gap-2 rounded-lg border border-line bg-surface p-3.5">
           <div className="flex items-start justify-between gap-2">
@@ -268,7 +277,7 @@ function DeploymentCards({
             </div>
             <Menu>
               <MenuTrigger asChild>
-                <IconButton label={`Actions for ${d.name}`} className="-mt-1 -mr-1.5">
+                <IconButton label={t("actionsFor", { name: d.name })} className="-mt-1 -mr-1.5">
                   <Ellipsis />
                 </IconButton>
               </MenuTrigger>
@@ -290,11 +299,11 @@ function DeploymentCards({
           </div>
           <dl className="mt-auto flex flex-wrap justify-between gap-x-3 gap-y-1 border-t border-line pt-2 text-caption">
             <div className="flex gap-1">
-              <dt className="text-faint">Owner</dt>
+              <dt className="text-faint">{t("list.owner")}</dt>
               <dd className="text-muted">{d.owner.name}</dd>
             </div>
             <div className="flex gap-1">
-              <dt className="text-faint">Lease</dt>
+              <dt className="text-faint">{t("list.lease")}</dt>
               <dd>
                 <Lease expiresAt={d.lease.expires_at} />
               </dd>
@@ -308,12 +317,19 @@ function DeploymentCards({
 
 /** The count above the list: the deployments loaded, said as such while more pages remain. */
 export function deploymentCount(n: number, vms: number, on: number, expiring: number, more: boolean) {
-  const leases = expiring ? ` · ${expiring} lease${expiring === 1 ? "" : "s"} end within 7 days` : "";
-  if (more) return `${n} shown · ${vms} VMs, ${on} powered on${leases}`;
-  return `${n} deployment${n === 1 ? "" : "s"} · ${vms} VMs, ${on} powered on${leases}`;
+  const t = i18n.getFixedT(null, "deployments");
+  const counts = {
+    what: more ? t("count.shown", { count: n }) : t("count.deployments", { count: n }),
+    vms: t("count.vms", { count: vms }),
+    on: t("count.on", { count: on }),
+  };
+  return expiring
+    ? t("count.summaryLeases", { ...counts, leases: t("count.leases", { count: expiring }) })
+    : t("count.summary", counts);
 }
 
 export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
+  const { t } = useTranslation(["deployments", "common"]);
   const { me, projectId, project } = useCurrentProject();
   const navigate = useNavigate({ from: "/deployments/" });
   // The address keeps the search, without a history entry per keystroke.
@@ -334,7 +350,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const list = useInfiniteQuery(
     q.deployments({
       projectId: scope,
-      status: search.status ? statuses[search.status].statuses : undefined,
+      status: search.status ? statuses[search.status] : undefined,
       environment: envs.length ? envs : undefined,
       item: search.item ? [search.item] : undefined,
       template: search.template ? [search.template] : undefined,
@@ -373,13 +389,13 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
     ? (environments.data?.items.map((e) => e.key) ?? facets.data?.environments ?? [])
     : (ownProject.data?.environments ?? facets.data?.environments ?? []);
   const envOptions = [
-    { value: "any", label: "All environments" },
+    { value: "any", label: t("list.allEnvironments") },
     ...envKeys.map((k) => ({ value: k, label: envName(k), meta: k })),
     ...(envs.length > 1 ? [{ value: search.env!, label: envs.join(", ") }] : []),
     ...(envs.length === 1 && !envKeys.includes(envs[0]!) ? [{ value: envs[0]!, label: envs[0]! }] : []),
   ];
   const itemOptions = [
-    { value: "any", label: "All catalog items" },
+    { value: "any", label: t("list.allItems") },
     ...(facets.data?.items.map((i) => ({ value: i.slug, label: i.name })) ?? []),
     ...(search.item && !facets.data?.items.some((i) => i.slug === search.item)
       ? [{ value: search.item, label: search.item }]
@@ -389,30 +405,29 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
     ...(facets.data?.templates ?? []),
     ...(search.template && !facets.data?.templates.includes(search.template) ? [search.template] : []),
   ];
-  const where = all ? "your projects" : project.name;
 
   const toolbar = (
     <>
-      <TableSearch label="Search deployments" placeholder="Name, IP or owner" value={text} onChange={setText} />
+      <TableSearch label={t("list.search")} placeholder={t("list.searchPlaceholder")} value={text} onChange={setText} />
       <Select
-        aria-label="Status"
+        aria-label={t("list.statusFilter")}
         value={search.status ?? "any"}
         onChange={(v) => set({ status: v === "any" ? undefined : (v as DeploymentsSearch["status"]) })}
         options={[
-          { value: "any", label: "All statuses" },
-          ...Object.entries(statuses).map(([k, s]) => ({ value: k, label: s.label })),
+          { value: "any", label: t("list.allStatuses") },
+          ...statusKeys.map((k) => ({ value: k, label: t(`list.status.${k}`) })),
         ]}
         className="w-40"
       />
       <Select
-        aria-label="Environment"
+        aria-label={t("list.environment")}
         value={search.env ?? "any"}
         onChange={(v) => set({ env: v === "any" ? undefined : v })}
         options={envOptions}
         className="w-44"
       />
       <Select
-        aria-label="Catalog item"
+        aria-label={t("list.item")}
         value={search.item ?? "any"}
         onChange={(v) => set({ item: v === "any" ? undefined : v })}
         options={itemOptions}
@@ -420,15 +435,15 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
       />
       {templates.length > 0 && (
         <Select
-          aria-label="VM template"
+          aria-label={t("list.template")}
           value={search.template ?? "any"}
           onChange={(v) => set({ template: v === "any" ? undefined : v })}
-          options={[{ value: "any", label: "All templates" }, ...templates.map((t) => ({ value: t, label: t }))]}
+          options={[{ value: "any", label: t("list.allTemplates") }, ...templates.map((x) => ({ value: x, label: x }))]}
           className="w-52"
         />
       )}
       <PersonFilter
-        label="Owner"
+        label={t("list.ownerFilter")}
         value={search.owner === "me" ? undefined : search.owner}
         onChange={(id) => set({ owner: id === me.user.id ? "me" : id })}
       />
@@ -438,7 +453,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
           checked={search.owner === "me"}
           onChange={(v) => set({ owner: v ? "me" : undefined })}
         />
-        <label htmlFor="deployments-mine">Only mine</label>
+        <label htmlFor="deployments-mine">{t("list.onlyMine")}</label>
       </span>
       <span className="flex items-center gap-2 text-body">
         <Checkbox
@@ -446,15 +461,15 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
           checked={Boolean(search.expiring)}
           onChange={(v) => set({ expiring: v || undefined })}
         />
-        <label htmlFor="deployments-expiring">Lease ends within 7 days</label>
+        <label htmlFor="deployments-expiring">{t("list.expiring")}</label>
       </span>
       {layout === "cards" && (
         <Select
-          aria-label="Sort by"
+          aria-label={t("list.sortBy")}
           value={search.sort ?? "name"}
           onChange={(v) => set({ sort: v === "name" ? undefined : (v as DeploymentSort) })}
           options={[
-            ...cardSorts.filter((s) => all || !s.all),
+            ...cardSorts.filter((s) => all || !s.all).map((s) => ({ value: s.value, label: t(`list.sort.${s.key}`) })),
             ...(search.sort && !cardSorts.some((s) => s.value === search.sort)
               ? [{ value: search.sort, label: search.sort }]
               : []),
@@ -464,7 +479,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
       )}
       {filtered && (
         <Button variant="quiet" onClick={clear}>
-          Clear filters
+          {t("list.clear")}
         </Button>
       )}
     </>
@@ -473,22 +488,22 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const empty = filtered ? (
     <EmptyState
       icon={SearchX}
-      title="No deployments match"
-      body="Try other words, or other filters."
+      title={t("list.noMatch")}
+      body={t("list.noMatchBody")}
       action={
         <Button size="sm" onClick={clear}>
-          Clear filters
+          {t("list.clear")}
         </Button>
       }
     />
   ) : (
     <EmptyState
       icon={Server}
-      title={`Nothing deployed in ${where} yet`}
-      body="What your requests build shows here, with its VMs, addresses and lease."
+      title={all ? t("list.noneAll") : t("list.noneIn", { project: project.name })}
+      body={t("list.noneBody")}
       action={
         <Button size="sm" asChild>
-          <Link to="/catalog">Request something from the catalog</Link>
+          <Link to="/catalog">{t("list.fromCatalog")}</Link>
         </Button>
       }
     />
@@ -498,8 +513,8 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   return (
     <Page>
       <PageHeader
-        title="Deployments"
-        description={`What requests built in ${where}. Power state and addresses come from vCenter, live.`}
+        title={t("list.title")}
+        description={all ? t("list.leadAll") : t("list.leadProject", { project: project.name })}
         meta={items && deploymentCount(shown.length, vms, on, expiring, list.hasNextPage)}
         actions={
           <>
@@ -511,25 +526,25 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
               />
             )}
             <Segmented
-              label="Show as"
+              label={t("list.showAs")}
               value={layout}
               onChange={setLayout}
               options={[
-                { value: "table", label: "Table", icon: Table2, iconOnly: true },
-                { value: "cards", label: "Cards", icon: LayoutGrid, iconOnly: true },
+                { value: "table", label: t("list.table"), icon: Table2, iconOnly: true },
+                { value: "cards", label: t("list.cardsLayout"), icon: LayoutGrid, iconOnly: true },
               ]}
             />
             <SavedViewsMenu list="deployments" query={toQuery({ ...search, layout })} onApply={apply} />
             {can(me, "import.manage") && (
               <Button asChild>
                 <Link to="/admin/onboarding" search={{ tab: "plans" }}>
-                  Adopt existing VMs
+                  {t("list.adopt")}
                 </Link>
               </Button>
             )}
             <Button variant="primary" asChild>
               <Link to="/catalog">
-                <Plus /> New request
+                <Plus /> {t("list.newRequest")}
               </Link>
             </Button>
           </>
@@ -540,11 +555,9 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
         <div
           className="flex flex-wrap items-center gap-2 rounded-lg border border-accent bg-accent-soft px-3 py-2"
           role="region"
-          aria-label="Bulk actions"
+          aria-label={t("list.bulk")}
         >
-          <span className="font-medium">
-            {visibleSelected.length} deployment{visibleSelected.length === 1 ? "" : "s"} selected
-          </span>
+          <span className="font-medium">{t("list.selected", { count: visibleSelected.length })}</span>
           <span className="flex-1" />
           {bulkActions.map((b) => (
             <Button
@@ -553,11 +566,11 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
               variant={b.key === "delete" ? "danger" : undefined}
               onClick={() => setBulk(b)}
             >
-              {b.label}
+              {t(`bulk.${b.key}.label`)}
             </Button>
           ))}
           <Button size="sm" variant="quiet" onClick={() => setSelected(new Set())}>
-            Clear
+            {t("list.clearSelection")}
           </Button>
         </div>
       )}
@@ -567,25 +580,25 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
         footer={
           list.hasNextPage && (
             <Button size="sm" onClick={() => void list.fetchNextPage()} disabled={list.isFetchingNextPage}>
-              {list.isFetchingNextPage ? "Loading…" : "Load more"}
+              {list.isFetchingNextPage ? t("common:loadingEllipsis") : t("list.loadMore")}
             </Button>
           )
         }
       >
         {layout === "table" ? (
           <DataTable
-            label="Deployments"
-            columns={columnsFor(all)}
+            label={t("list.title")}
+            columns={columnsFor(t, all)}
             rows={items}
             rowKey={(d) => d.id}
             rowLinks
             rowMenu={(d) => <RowActionItems deployment={d} onPick={pick} />}
-            rowMenuLabel={(d) => `Actions for ${d.name}`}
+            rowMenuLabel={(d) => t("actionsFor", { name: d.name })}
             selection={{
               selected,
               onChange: setSelected,
-              label: (d) => `Select ${d.name}`,
-              allLabel: list.hasNextPage ? "Select all shown" : "Select all",
+              label: (d) => t("list.select", { name: d.name }),
+              allLabel: list.hasNextPage ? t("list.selectAllShown") : t("common:table.selectAll"),
             }}
             sort={toSort(search.sort)}
             onSortChange={(s) => set({ sort: fromSort(s) })}

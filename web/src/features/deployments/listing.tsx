@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bookmark, BookmarkPlus, Check, ChevronDown, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -62,14 +63,15 @@ export function ScopeToggle({
   projectName: string;
   onChange: (all: boolean) => void;
 }) {
+  const { t } = useTranslation("deployments");
   return (
     <Segmented
-      label="Projects"
+      label={t("views.projects")}
       value={all ? "all" : "one"}
       onChange={(v) => onChange(v === "all")}
       options={[
         { value: "one", label: projectName },
-        { value: "all", label: "All my projects" },
+        { value: "all", label: t("views.allProjects") },
       ]}
     />
   );
@@ -89,6 +91,7 @@ export function SavedViewsMenu({
   query: ListQuery;
   onApply: (query: ListQuery) => void;
 }) {
+  const { t } = useTranslation("deployments");
   const qc = useQueryClient();
   const views = useQuery(q.savedViews(list));
   const [last, setLast] = useState<string | null>(null);
@@ -103,18 +106,18 @@ export function SavedViewsMenu({
       call(api.PUT("/me/views/{id}", { params: { path: { id: v.id } }, body: { list, name: v.name, query } })),
     onSuccess: (v) => {
       refresh();
-      toast.success(`${v.name} now shows these filters`);
+      toast.success(t("views.updated", { name: v.name }));
     },
-    onError: (e) => toast.error(isApiError(e) ? e.message : "The view wasn't saved"),
+    onError: (e) => toast.error(isApiError(e) ? e.message : t("views.notSaved")),
   });
   const remove = useMutation({
     mutationFn: (v: SavedView) => call(api.DELETE("/me/views/{id}", { params: { path: { id: v.id } } })),
     onSuccess: () => {
       refresh();
       setOpen(null);
-      toast.success("View deleted");
+      toast.success(t("views.deleted"));
     },
-    onError: (e) => toast.error(isApiError(e) ? e.message : "The view wasn't deleted"),
+    onError: (e) => toast.error(isApiError(e) ? e.message : t("views.notDeleted")),
   });
 
   return (
@@ -125,20 +128,18 @@ export function SavedViewsMenu({
             <Bookmark />
             {shown ? (
               <>
-                <span className="sr-only">Saved view: </span>
+                <span className="sr-only">{t("views.savedView")}</span>
                 <span className="max-w-40 truncate">{shown.name}</span>
               </>
             ) : (
-              "Views"
+              t("views.views")
             )}
             <ChevronDown className="text-faint" />
           </Button>
         </MenuTrigger>
         <MenuContent align="end" className="max-w-80">
-          <MenuLabel>Your saved views</MenuLabel>
-          {items.length === 0 && (
-            <p className="px-2 pb-1.5 text-secondary text-muted">None yet. Filter the list, then save the view.</p>
-          )}
+          <MenuLabel>{t("views.yours")}</MenuLabel>
+          {items.length === 0 && <p className="px-2 pb-1.5 text-secondary text-muted">{t("views.none")}</p>}
           {items.map((v) => (
             <MenuItem
               key={v.id}
@@ -148,26 +149,26 @@ export function SavedViewsMenu({
               }}
             >
               <span className="truncate">{v.name}</span>
-              {shown?.id === v.id && <Check className="ml-auto text-accent!" aria-label="Shown" />}
+              {shown?.id === v.id && <Check className="ml-auto text-accent!" aria-label={t("views.shown")} />}
             </MenuItem>
           ))}
           <MenuSeparator />
           <MenuItem onSelect={() => setOpen({ kind: "save" })}>
-            <BookmarkPlus /> Save as a new view…
+            <BookmarkPlus /> {t("views.saveNew")}
           </MenuItem>
           {lastApplied && !shown && (
             <MenuItem onSelect={() => update.mutate(lastApplied)}>
-              <RefreshCw /> Update {lastApplied.name}
+              <RefreshCw /> {t("views.update", { name: lastApplied.name })}
             </MenuItem>
           )}
           {shown && (
             <MenuItem onSelect={() => setOpen({ kind: "rename", view: shown })}>
-              <Pencil /> Rename {shown.name}…
+              <Pencil /> {t("views.rename", { name: shown.name })}
             </MenuItem>
           )}
           {shown && (
             <MenuItem danger onSelect={() => setOpen({ kind: "delete", view: shown })}>
-              <Trash2 /> Delete {shown.name}…
+              <Trash2 /> {t("views.delete", { name: shown.name })}
             </MenuItem>
           )}
         </MenuContent>
@@ -182,7 +183,7 @@ export function SavedViewsMenu({
             refresh();
             setLast(v.id);
             setOpen(null);
-            toast.success(open.view ? `Renamed ${v.name}` : `Saved ${v.name}`);
+            toast.success(open.view ? t("views.renamed", { name: v.name }) : t("views.saved", { name: v.name }));
           }}
         />
       )}
@@ -190,9 +191,9 @@ export function SavedViewsMenu({
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setOpen(null)}
-          title={`Delete ${open.view.name}?`}
-          description="The view's filters are forgotten; the list stays as it is."
-          confirmLabel="Delete view"
+          title={t("views.deleteTitle", { name: open.view.name })}
+          description={t("views.deleteBody")}
+          confirmLabel={t("views.deleteConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(open.view!)}
         />
@@ -214,6 +215,7 @@ function ViewNameDialog({
   onClose: () => void;
   onSaved: (v: SavedView) => void;
 }) {
+  const { t } = useTranslation(["deployments", "common"]);
   const [name, setName] = useState(view?.name ?? "");
   const save = useMutation({
     mutationFn: () => {
@@ -227,13 +229,13 @@ function ViewNameDialog({
   const problem = save.error
     ? isApiError(save.error)
       ? (save.error.fieldErrors.find((f) => f.field === "/name")?.message ?? save.error.message)
-      : "The view wasn't saved. Try again."
+      : t("views.notSavedRetry")
     : undefined;
   return (
     <Dialog open onOpenChange={(o) => !o && !save.isPending && onClose()}>
       <DialogContent
-        title={view ? `Rename ${view.name}` : "Save this view"}
-        description={view ? undefined : "Its filters, sort and layout, under a name only you see."}
+        title={view ? t("views.renameTitle", { name: view.name }) : t("views.saveTitle")}
+        description={view ? undefined : t("views.saveBody")}
         onOpenAutoFocus={(e) => {
           // The name it asks for, rather than Close.
           e.preventDefault();
@@ -247,22 +249,22 @@ function ViewNameDialog({
             if (name.trim()) save.mutate();
           }}
         >
-          <Field label="Name" htmlFor="view-name" error={problem}>
+          <Field label={t("views.name")} htmlFor="view-name" error={problem}>
             <Input
               id="view-name"
               value={name}
               maxLength={60}
               autoComplete="off"
               onChange={(e) => setName(e.target.value)}
-              placeholder="Such as Production web"
+              placeholder={t("views.namePlaceholder")}
             />
           </Field>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="quiet" onClick={onClose} disabled={save.isPending}>
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" variant="primary" disabled={!name.trim() || save.isPending}>
-              {save.isPending ? "Saving…" : view ? "Rename view" : "Save view"}
+              {save.isPending ? t("views.saving") : view ? t("views.renameView") : t("views.saveView")}
             </Button>
           </div>
         </form>

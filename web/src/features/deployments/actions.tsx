@@ -4,6 +4,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDown, Ellipsis, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -35,19 +36,11 @@ import type { FormContext } from "@/forms/useFieldValues";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { Day2Action, Day2Draft, Deployment, RequestForm, ServiceRequest } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
+import { i18n } from "@/lib/i18n";
 import { keys, q } from "@/lib/query";
 import { newIdempotencyKey } from "@/lib/utils";
 
-export const groupLabel: Record<Day2Action["group"], string> = {
-  power: "Power",
-  configuration: "Configuration",
-  snapshots: "Snapshots",
-  automation: "Automation",
-  access: "Access",
-  lifecycle: "Lifecycle",
-};
-
-const groupOrder = Object.keys(groupLabel) as Day2Action["group"][];
+const groupOrder: Day2Action["group"][] = ["power", "configuration", "snapshots", "automation", "access", "lifecycle"];
 
 /** Actions that run without asking anything: no form, no confirmation, no approval, no warning, nothing lost. */
 export const runsDirectly = (a: Day2Action) =>
@@ -55,7 +48,7 @@ export const runsDirectly = (a: Day2Action) =>
 
 /** Toast for an action that failed to start without a dialog to show it in. */
 export function actionFailed(e: unknown) {
-  toast.error(isApiError(e) ? e.problem.title : "The action could not start", {
+  toast.error(isApiError(e) ? e.problem.title : i18n.t("deployments:actions.couldNotStart"), {
     description: isApiError(e) ? e.problem.detail : undefined,
   });
 }
@@ -65,6 +58,7 @@ export function actionFailed(e: unknown) {
  * one deployment, passes each action's with it.
  */
 export function useRunAction(deploymentId?: string) {
+  const { t } = useTranslation("deployments");
   const qc = useQueryClient();
   const navigate = useNavigate();
   return useMutation({
@@ -81,9 +75,9 @@ export function useRunAction(deploymentId?: string) {
       void qc.invalidateQueries({ queryKey: keys.requests.lists() });
       void qc.invalidateQueries({ queryKey: keys.vms.all });
       toast.success(r.title, {
-        description: r.status === "pending_approval" ? `${r.number} waits for approval.` : `${r.number} has started.`,
+        description: t(r.status === "pending_approval" ? "actions.waits" : "actions.started", { number: r.number }),
         action: {
-          label: "Follow",
+          label: t("actions.follow"),
           onClick: () => void navigate({ to: "/requests/$requestId", params: { requestId: r.number } }),
         },
       });
@@ -134,6 +128,7 @@ export function ActionDialog({
   action: Day2Action;
   onClose: (started?: ServiceRequest) => void;
 }) {
+  const { t } = useTranslation(["deployments", "common"]);
   const form = useMemo(() => asForm(action), [action]);
   const designed = Boolean(action.form?.designed);
   const [values, setValues] = useState<Record<string, unknown>>(() => ({ ...form?.initial_values }));
@@ -220,7 +215,7 @@ export function ActionDialog({
         description={
           action.confirm?.message ||
           (action.destructive
-            ? `${action.name} runs on ${target ?? deployment.name} as soon as you confirm.`
+            ? t("actions.runsOnConfirm", { action: action.name, target: target ?? deployment.name })
             : undefined)
         }
         className="w-[min(560px,calc(100vw-32px))]"
@@ -253,14 +248,19 @@ export function ActionDialog({
               role="note"
             >
               <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              <span>Needs approval: {action.approval.reasons.join("; ")}. It starts once approved.</span>
+              <span>{t("actions.needsApproval", { reasons: action.approval.reasons.join("; ") })}</span>
             </p>
           )}
           <PolicyWarnings warnings={warnings} refusal={warnedRefusal} />
           {mustType && (
             <div className="flex flex-col gap-1.5 text-secondary">
               <label htmlFor="action-confirm">
-                Type <span className="font-mono font-medium">{mustType}</span> to confirm
+                <Trans
+                  t={t}
+                  i18nKey="typeToConfirm"
+                  values={{ text: mustType }}
+                  components={{ text: <span className="font-mono font-medium" /> }}
+                />
               </label>
               <Input
                 id="action-confirm"
@@ -289,7 +289,7 @@ export function ActionDialog({
           {action.approval.required && (
             <div className="flex flex-col gap-1.5 text-secondary">
               <label htmlFor="action-justification" className="font-medium">
-                Why (for the approvers)
+                {t("actions.why")}
               </label>
               <Textarea
                 id="action-justification"
@@ -301,10 +301,11 @@ export function ActionDialog({
           )}
           {preview.isError && (
             <p className="text-secondary text-bad" role="alert">
-              The form&apos;s rules could not be worked out:{" "}
-              {isApiError(preview.error)
-                ? (preview.error.problem.detail ?? preview.error.problem.title)
-                : String(preview.error)}
+              {t("actions.rulesFailed", {
+                error: isApiError(preview.error)
+                  ? (preview.error.problem.detail ?? preview.error.problem.title)
+                  : String(preview.error),
+              })}
             </p>
           )}
           {errors?.form.map((m) => (
@@ -314,7 +315,7 @@ export function ActionDialog({
           ))}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" onClick={() => onClose()}>
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button
               type="submit"
@@ -323,8 +324,11 @@ export function ActionDialog({
               aria-disabled={run.isPending || undefined}
               className="aria-disabled:opacity-50"
             >
-              {action.approval.required ? "Ask for approval" : action.name}
-              {warnings.length > 0 && " anyway"}
+              {action.approval.required
+                ? t(warnings.length > 0 ? "actions.askApprovalAnyway" : "actions.askApproval")
+                : warnings.length > 0
+                  ? t("actions.anyway", { action: action.name })
+                  : action.name}
             </Button>
           </div>
         </form>
@@ -384,6 +388,7 @@ export function DeploymentActionsMenu({
   onRetry?: () => void;
   onPick: (a: Day2Action) => void;
 }) {
+  const { t } = useTranslation(["deployments", "common"]);
   const targets = [
     ...new Map(
       actions.filter((a) => a.resource_id).map((a) => [a.resource_id!, a.resource_name ?? a.resource_id!]),
@@ -397,16 +402,16 @@ export function DeploymentActionsMenu({
     <Menu>
       <MenuTrigger asChild>
         <Button>
-          Actions <ChevronDown />
+          {t("actions.menu")} <ChevronDown />
         </Button>
       </MenuTrigger>
       <MenuContent className="min-w-64">
         {loading ? (
-          <MenuLabel>Loading…</MenuLabel>
+          <MenuLabel>{t("common:loadingEllipsis")}</MenuLabel>
         ) : failed ? (
           <>
-            <MenuLabel>The actions could not be loaded</MenuLabel>
-            {onRetry && <MenuItem onSelect={onRetry}>Try again</MenuItem>}
+            <MenuLabel>{t("actions.notLoaded")}</MenuLabel>
+            {onRetry && <MenuItem onSelect={onRetry}>{t("common:error.retry")}</MenuItem>}
           </>
         ) : (
           <>
@@ -421,7 +426,7 @@ export function DeploymentActionsMenu({
             {!single && vms.length > 0 && (
               <>
                 {top.length > 0 && <MenuSeparator />}
-                <MenuLabel>Virtual machines</MenuLabel>
+                <MenuLabel>{t("actions.vms")}</MenuLabel>
                 {vms.map(([id, name]) => (
                   <MenuSub key={id}>
                     <MenuSubTrigger>{name}</MenuSubTrigger>
@@ -439,7 +444,7 @@ export function DeploymentActionsMenu({
             {resources.length > 0 && (
               <>
                 <MenuSeparator />
-                <MenuLabel>Custom resources</MenuLabel>
+                <MenuLabel>{t("actions.custom")}</MenuLabel>
                 {resources.map(([id, name]) => (
                   <MenuSub key={id}>
                     <MenuSubTrigger>{name}</MenuSubTrigger>
@@ -469,6 +474,7 @@ function ActionItems({
   deploymentId?: string;
   consoleLink?: { deploymentId: string; resourceId: string };
 }) {
+  const { t } = useTranslation("deployments");
   const navigate = useNavigate();
   const groups = groupOrder
     .map((g) => ({
@@ -478,13 +484,13 @@ function ActionItems({
       ),
     }))
     .filter((x) => x.items.length);
-  if (groups.length === 0) return <MenuLabel>No actions apply</MenuLabel>;
+  if (groups.length === 0) return <MenuLabel>{t("actions.none")}</MenuLabel>;
   return (
     <>
       {groups.map(({ g, items }, i) => (
         <div key={g}>
           {i > 0 && <MenuSeparator />}
-          <MenuLabel>{groupLabel[g]}</MenuLabel>
+          <MenuLabel>{t(`actions.group.${g}`)}</MenuLabel>
           {items.map((a) =>
             a.key === "console" && consoleLink ? (
               <MenuItem
@@ -511,8 +517,12 @@ function ActionItems({
                 <span className="flex min-w-0 flex-col">
                   <span>
                     {a.name}
-                    {a.approval.required && <span className="ml-1.5 text-caption text-warn">approval</span>}
-                    {Boolean(a.warnings?.length) && <span className="ml-1.5 text-caption text-warn">warns</span>}
+                    {a.approval.required && (
+                      <span className="ml-1.5 text-caption text-warn">{t("actions.approval")}</span>
+                    )}
+                    {Boolean(a.warnings?.length) && (
+                      <span className="ml-1.5 text-caption text-warn">{t("actions.warns")}</span>
+                    )}
                   </span>
                   {!a.enabled && a.disabled_reason && (
                     <span className="text-caption leading-snug text-faint">{a.disabled_reason}</span>
@@ -539,9 +549,10 @@ export function RowActionItems({
   deployment: Deployment;
   onPick: (deployment: Deployment, a: Day2Action) => void;
 }) {
+  const { t } = useTranslation(["deployments", "common"]);
   const list = useQuery({ ...q.deploymentActions(deployment.id), staleTime: 0 });
-  if (list.isPending) return <MenuLabel>Loading…</MenuLabel>;
-  if (list.isError) return <MenuLabel>The actions could not be loaded</MenuLabel>;
+  if (list.isPending) return <MenuLabel>{t("common:loadingEllipsis")}</MenuLabel>;
+  if (list.isError) return <MenuLabel>{t("actions.notLoaded")}</MenuLabel>;
   const vms = new Set(list.data.items.filter((a) => a.resource_id).map((a) => a.resource_id));
   const actions = list.data.items.filter((a) => !a.resource_id || vms.size === 1);
   const vm = actions.find((a) => a.resource_id)?.resource_id;

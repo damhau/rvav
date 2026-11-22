@@ -29,6 +29,11 @@ const translated = [
   "src/features/admin/access/**",
   "src/features/admin/notifications/**",
   "src/features/admin/governance/policies/**",
+  "src/features/deployments/DeploymentsPage.tsx",
+  "src/features/deployments/listing.tsx",
+  "src/features/deployments/PersonFilter.tsx",
+  "src/features/deployments/bulk.tsx",
+  "src/features/deployments/actions.tsx",
 ];
 
 // The props of rvav's building blocks and the attributes a person reads or

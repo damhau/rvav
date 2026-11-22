@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { useId, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { IconButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { UserRef } from "@/lib/api/types";
@@ -25,6 +26,7 @@ export function PersonFilter({
   onChange: (id: string | undefined) => void;
   className?: string;
 }) {
+  const { t } = useTranslation(["deployments", "common"]);
   const id = useId();
   const [text, setText] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -49,12 +51,10 @@ export function PersonFilter({
   const status = !searching
     ? ""
     : !found.data || found.isFetching
-      ? "Searching…"
+      ? t("person.searching")
       : people.length === 0
-        ? "Nobody found."
-        : people.length === 1
-          ? "1 person found: press Enter to pick them."
-          : `${people.length} people found: use the arrow keys, then Enter.`;
+        ? t("person.nobody")
+        : t("person.found", { count: people.length });
 
   return (
     <div className={cn("relative w-52", className)}>
@@ -70,7 +70,7 @@ export function PersonFilter({
         aria-activedescendant={expanded ? `${listId}-${Math.min(active, people.length - 1)}` : undefined}
         aria-describedby={`${listId}-status`}
         value={text ?? person?.name ?? (value && named.isError ? value : "")}
-        placeholder={value && !person && !named.isError ? "Loading…" : `${label}: anyone`}
+        placeholder={value && !person && !named.isError ? t("common:loadingEllipsis") : t("person.anyone", { label })}
         autoComplete="off"
         className={cn(value && "pr-8")}
         onChange={(e) => {
@@ -107,7 +107,7 @@ export function PersonFilter({
       />
       {value && text === null && (
         <IconButton
-          label={`Clear ${label.toLowerCase()}`}
+          label={t("person.clear", { label: label.toLowerCase() })}
           className="absolute top-1/2 right-0.5 size-7 -translate-y-1/2"
           onClick={() => onChange(undefined)}
         >
@@ -117,7 +117,7 @@ export function PersonFilter({
       <ul
         id={listId}
         role="listbox"
-        aria-label={`${label}: people found`}
+        aria-label={t("person.foundList", { label })}
         hidden={!expanded}
         className="absolute top-full z-10 mt-1 flex max-h-64 w-72 flex-col overflow-y-auto rounded-md border border-line bg-surface shadow-pop"
       >
