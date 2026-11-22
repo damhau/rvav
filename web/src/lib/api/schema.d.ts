@@ -11062,7 +11062,7 @@ export interface components {
             /** @description The project's ID or code. */
             project_id: string;
             environment: string;
-            /** @description The inputs; those left out take the form's initial values. */
+            /** @description The inputs; those left out take the form's initial values. A string is taken for an integer, a number or a boolean ("4", "true"), as ServiceNow's variables are strings, and an empty string is left out. */
             inputs?: {
                 [key: string]: unknown;
             };

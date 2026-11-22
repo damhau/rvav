@@ -231,16 +231,41 @@ wait, so the record reads in order.
   admin role and no access to anything else.
 
 ### ServiceNow's side
-`integrations/servicenow/` holds scripts for the instance, not an update
-set: a script include (`RvavClient`) that calls rvav through a REST
-message with the token in a Connection & Credential alias, a scheduled
-job that imports rvav's catalog as catalog items (each keeps its rvav
-item ID in its `meta`), and a business rule on `sc_req_item` that
-submits each ordered item to rvav on behalf of its `requested_for`, with
-the install steps. An update set would be one XML file to import, but we
-can't build and check one without an instance: the scripts and the steps
-are what we can stand behind, and I1.6's acceptance checks them against a
-personal developer instance.
+`integrations/servicenow/` holds scripts for the instance, global scope,
+and its README the install steps:
+
+- `RvavClient` calls rvav with `sn_ws.RESTMessageV2`, the URL and the
+  token from a Connection & Credential alias (an HTTP connection and an
+  API key credential), through a MID server if a property names one.
+- `RvavCatalogImport`, from a daily scheduled job, makes a catalog item
+  of each item rvav offers, which keeps its rvav item ID in its `meta`
+  (`rvav:itm_…`), and deactivates the ones rvav no longer offers. Each
+  has the variable set `rvav` (project, environment, deployment name,
+  justification, accept warnings) and a variable `rvav_in_<input>` per
+  input: a select box for a fixed list, a checkbox for a boolean, else a
+  line of text, a `dynamic` input included, which rvav checks when the
+  request is submitted.
+- Two catalog client scripts on the variable set fill the project and
+  environment choices through `RvavAjax` (client callable), which asks
+  rvav's entitlements for the user signed in, never for a user the
+  browser names.
+- A business rule on `sc_req_item` queues the event `rvav.order` when an
+  item of rvav's is ordered (or, with `rvav.wait_for_approval`, once
+  ServiceNow approved it); its script action, `RvavOrder`, submits it on
+  behalf of `requested_for`, by email, else user name. ServiceNow's
+  variables are strings: rvav takes them as the form's types, and an
+  empty one as the initial value. A refusal closes the requested item
+  incomplete with rvav's problem in its work notes; rvav down, a 401 or
+  a 429 leave it open, and a job every 5 minutes submits again, for 3
+  days, the open ones rvav has no request for.
+
+There is no update set. An update set is one XML file to import, but it
+is exported from an instance the records were made on, and we have none:
+a hand-written one we can't check would be worse than steps that say
+what each record is. The scripts are checked under Node, with a stand-in
+for the Glide APIs, against rvav's real answers (`TestServiceNowScripts`):
+the import, the projects, the draft rvav takes, a refusal and a retry.
+I1.6's acceptance runs them on a personal developer instance.
 
 ### Events
 No new topic: the CMDB and the work notes follow the events rvav already

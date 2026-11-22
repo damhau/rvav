@@ -10077,7 +10077,7 @@ type ServiceNowRequestDraft struct {
 	DeploymentName *string `json:"deployment_name,omitempty"`
 	Environment    string  `json:"environment"`
 
-	// Inputs The inputs; those left out take the form's initial values.
+	// Inputs The inputs; those left out take the form's initial values. A string is taken for an integer, a number or a boolean ("4", "true"), as ServiceNow's variables are strings, and an empty string is left out.
 	Inputs        *map[string]interface{} `json:"inputs,omitempty"`
 	Justification *string                 `json:"justification,omitempty"`
 

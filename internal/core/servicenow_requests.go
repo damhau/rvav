@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -430,12 +431,14 @@ func (s *Service) serviceNowDraft(ctx context.Context, up *auth.Principal, d api
 	if !shared || it.PublishedVersionID == nil {
 		return api.RequestDraft{}, ErrNotFound
 	}
-	draft := api.RequestDraft{CatalogItemId: it.ID, VersionId: *it.PublishedVersionID, ProjectId: proj.ID,
+	v, err := s.Store.GetVersion(ctx, *it.PublishedVersionID)
+	if err != nil {
+		return api.RequestDraft{}, err
+	}
+	draft := api.RequestDraft{CatalogItemId: it.ID, VersionId: v.ID, ProjectId: proj.ID,
 		Environment: d.Environment, Inputs: map[string]any{}, DeploymentName: d.DeploymentName, AcceptWarnings: d.AcceptWarnings}
 	if d.Inputs != nil {
-		for k, v := range *d.Inputs {
-			draft.Inputs[k] = v
-		}
+		draft.Inputs = ServiceNowValues(v.FormSchema, *d.Inputs)
 	}
 	just := fmt.Sprintf("Requested in ServiceNow, %s.", d.RitmNumber)
 	if j := strings.TrimSpace(deref(d.Justification)); j != "" {
@@ -443,6 +446,48 @@ func (s *Service) serviceNowDraft(ctx context.Context, up *auth.Principal, d api
 	}
 	draft.Justification = &just
 	return draft, nil
+}
+
+// ServiceNowValues takes ServiceNow's variables, which are strings, as the
+// form's types: "4" for an integer, "true" or "false" for a boolean. An
+// empty string is left out, so the form's initial value applies; a value
+// that isn't one of the type's is kept as it came, for the form to refuse.
+func ServiceNowValues(formSchema json.RawMessage, given map[string]any) map[string]any {
+	var schema struct {
+		Properties map[string]struct {
+			Type any `json:"type"`
+		} `json:"properties"`
+	}
+	_ = json.Unmarshal(formSchema, &schema)
+	out := make(map[string]any, len(given))
+	for k, v := range given {
+		str, ok := v.(string)
+		if !ok {
+			out[k] = v
+			continue
+		}
+		if str = strings.TrimSpace(str); str == "" {
+			continue
+		}
+		out[k] = str
+		switch t, _ := schema.Properties[k].Type.(string); t {
+		case "integer":
+			if n, err := strconv.ParseInt(str, 10, 64); err == nil {
+				out[k] = n
+			}
+		case "number":
+			if n, err := strconv.ParseFloat(str, 64); err == nil {
+				out[k] = n
+			}
+		case "boolean":
+			if b, err := strconv.ParseBool(str); err == nil {
+				out[k] = b
+			}
+		case "string":
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // ServiceNowRequest is the request made for a requested item.
