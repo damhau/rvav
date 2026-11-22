@@ -47,3 +47,47 @@ describe("templates and networks, in French", () => {
     expect(prd).toHaveTextContent(/\d+ hôtes, \d+ Go de mémoire libre, dont 32 Go réservés/);
   });
 });
+
+describe("projects, in French", () => {
+  it("names the tabs, and counts what uses an environment", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects");
+    expect(await screen.findByRole("heading", { level: 1, name: "Projets" })).toBeInTheDocument();
+    const tabs = screen.getByRole("tablist", { name: "Sections des projets" });
+    expect(
+      within(tabs)
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["Projets", "Environnements", "Groupes du fournisseur d'identité"]);
+    expect(await screen.findByRole("columnheader", { name: /^Quotas utilisés/ })).toBeInTheDocument();
+
+    await user.click(within(tabs).getByRole("tab", { name: "Environnements" }));
+    const envs = await screen.findByRole("region", { name: "Environnements" });
+    expect((await within(envs).findAllByText(/^\d+ projets?, \d+ déploiements?$/)).length).toBeGreaterThan(0);
+  });
+
+  it("shows a project's members, and where its VMs' computer objects go", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web");
+    expect(await screen.findByRole("heading", { level: 1, name: "Web Platform" })).toBeInTheDocument();
+    expect(screen.getByText(/^\d+ membres?$/)).toBeInTheDocument();
+    const tabs = screen.getByRole("tablist", { name: "Sections du projet" });
+    expect(
+      within(tabs)
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["Membres", "Placement", "Quotas", "Détails"]);
+    const members = await screen.findByRole("region", { name: "Membres" });
+    expect(await within(members).findByRole("list", { name: "Rôles de Thomas Nguyen" })).toHaveTextContent(
+      /donné ici|par /,
+    );
+
+    await user.click(within(tabs).getByRole("tab", { name: "Placement" }));
+    const directory = await screen.findByRole("region", { name: "Active Directory" });
+    const table = await within(directory).findByRole("table", { name: "OU Active Directory de Web Platform" });
+    expect(await within(table).findByRole("row", { name: /^Tout environnement/ })).toBeInTheDocument();
+    expect(within(table).getByRole("row", { name: /^Tous les projets dans prd/ })).toHaveTextContent(
+      "Définie dans Projets › Environnements",
+    );
+  });
+});

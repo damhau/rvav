@@ -3,7 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Gauge, Plus, Route as RouteIcon, UserRound, X } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -25,6 +27,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { adm, q } from "@/lib/query";
 import { can } from "@/lib/can";
+import { formatList } from "@/lib/format";
 import { useCurrentProject } from "@/lib/project";
 import { cn } from "@/lib/utils";
 import { Refusal, refused } from "../access/refusal";
@@ -35,6 +38,10 @@ import { ArchiveDialog, quotaTone, takenText } from "./ProjectsPage";
 import { enforcements, quotaResources as resources, resourceName } from "./QuotaLines";
 
 type S = components["schemas"];
+type T = TFunction<"admin-governance">;
+
+const propertiesPath = "project.properties.<key>";
+const sharings = ["all_members", "owner_only"] as const;
 
 export const projectTabs = ["members", "placement", "quotas", "details"] as const;
 export type ProjectTab = (typeof projectTabs)[number];
@@ -62,18 +69,22 @@ function PropertiesEditor({
   /** Problems found before saving, by row. */
   local: Record<number, string>;
 }) {
+  const { t } = useTranslation("admin-governance");
   const set = (i: number, p: Property) => onChange(value.map((x, j) => (j === i ? p : x)));
   return (
     <fieldset className="flex flex-col gap-2 md:col-span-2">
-      <legend className="mb-1 text-secondary font-medium">Custom properties</legend>
+      <legend className="mb-1 text-secondary font-medium">{t("project.properties.legend")}</legend>
       <p className="text-secondary text-muted">
-        Each VM of the project gets them as vSphere custom attributes and in its notes. Bindings read them as{" "}
-        <code className="font-mono">project.properties.&lt;key&gt;</code>.
+        {t("project.properties.lead")} <code className="font-mono">{propertiesPath}</code>.
       </p>
       {errors["/properties"] && <p className="text-secondary text-bad">{errors["/properties"]}</p>}
       {value.map((p, i) => (
         <div key={i} className="grid grid-cols-[1fr_2fr_auto] items-start gap-2">
-          <Field label="Key" htmlFor={`p-prop-${i}-key`} error={local[i] ?? errors[`/properties/${p.key.trim()}`]}>
+          <Field
+            label={t("project.properties.key")}
+            htmlFor={`p-prop-${i}-key`}
+            error={local[i] ?? errors[`/properties/${p.key.trim()}`]}
+          >
             <Input
               id={`p-prop-${i}-key`}
               className="font-mono"
@@ -82,7 +93,7 @@ function PropertiesEditor({
               onChange={(e) => set(i, { ...p, key: e.target.value })}
             />
           </Field>
-          <Field label="Value" htmlFor={`p-prop-${i}-value`}>
+          <Field label={t("project.properties.value")} htmlFor={`p-prop-${i}-value`}>
             <Input
               id={`p-prop-${i}-value`}
               value={p.value}
@@ -96,7 +107,7 @@ function PropertiesEditor({
               size="icon"
               variant="quiet"
               className="mt-6"
-              aria-label={`Remove property ${p.key || i + 1}`}
+              aria-label={t("project.properties.remove", { name: p.key || i + 1 })}
               onClick={() => onChange(value.filter((_, j) => j !== i))}
             >
               <X className="size-3.5" />
@@ -107,7 +118,7 @@ function PropertiesEditor({
       {!disabled && (
         <div>
           <Button type="button" variant="secondary" onClick={() => onChange([...value, { key: "", value: "" }])}>
-            <Plus className="size-3.5" /> Add property
+            <Plus className="size-3.5" /> {t("project.properties.add")}
           </Button>
         </div>
       )}
@@ -116,6 +127,7 @@ function PropertiesEditor({
 }
 
 function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const envs = useQuery(q.environments());
   const [archiving, setArchiving] = useState(false);
@@ -135,22 +147,22 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
     onSuccess: (p) => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: ["me"] });
-      toast.success(`${p.name} saved`);
+      toast.success(t("project.details.saved", { name: p.name }));
     },
-    onError: (e) => failed(e, "Not saved"),
+    onError: (e) => failed(e, t("projects.notSaved")),
   });
   const errors = fieldErrors(save.error);
   return (
     <Panel
-      title="Details"
+      title={t("project.details.title")}
       footer={
         isAdmin && (
           <>
             <Button variant={project.archived ? "secondary" : "danger"} onClick={() => setArchiving(true)}>
-              {project.archived ? "Put back in use" : "Archive"}
+              {project.archived ? t("projects.archive.restore") : t("projects.archive.archive")}
             </Button>
             <Button type="submit" form="project-details" variant="primary" disabled={save.isPending}>
-              {save.isPending ? "Saving…" : "Save details"}
+              {save.isPending ? t("projects.saving") : t("project.details.save")}
             </Button>
           </>
         )
@@ -161,7 +173,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
         className="grid max-w-2xl grid-cols-1 gap-3 md:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
-          const problems = keyProblems(props, (p) => p.value === "", "Give the property a key.");
+          const problems = keyProblems(props, (p) => p.value === "", t("project.properties.keyless"));
           setLocal(problems);
           if (Object.keys(problems).length > 0) return;
           save.mutate({
@@ -170,7 +182,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
           });
         }}
       >
-        <Field label="Name" htmlFor="p-name">
+        <Field label={t("projects.name")} htmlFor="p-name">
           <Input
             id="p-name"
             value={f.name}
@@ -178,7 +190,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
             onChange={(e) => setF({ ...f, name: e.target.value })}
           />
         </Field>
-        <Field label="Cost centre" htmlFor="p-cost">
+        <Field label={t("projects.costCentre")} htmlFor="p-cost">
           <Input
             id="p-cost"
             value={f.cost_center}
@@ -186,7 +198,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
             onChange={(e) => setF({ ...f, cost_center: e.target.value })}
           />
         </Field>
-        <Field label="Description" htmlFor="p-description" className="md:col-span-2">
+        <Field label={t("projects.description")} htmlFor="p-description" className="md:col-span-2">
           <Input
             id="p-description"
             value={f.description}
@@ -195,7 +207,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
           />
         </Field>
         <fieldset className="flex flex-wrap gap-3 md:col-span-2">
-          <legend className="mb-1 text-secondary font-medium">Environments it deploys to</legend>
+          <legend className="mb-1 text-secondary font-medium">{t("projects.environmentsLegend")}</legend>
           {(envs.data?.items ?? []).map((e) => (
             <label key={e.key} htmlFor={`p-env-${e.key}`} className="flex items-center gap-1.5 text-body">
               <Checkbox
@@ -231,8 +243,11 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
 }
 
 /** Where a role a member holds here comes from. */
-function sourceText(r: S["ProjectMemberRole"]): string {
-  return [r.direct ? "given here" : "", ...r.groups.map((g) => `through ${g}`)].filter(Boolean).join(" and ");
+function sourceText(t: T, r: S["ProjectMemberRole"]): string {
+  return formatList([
+    ...(r.direct ? [t("project.roles.source.here")] : []),
+    ...r.groups.map((group) => t("project.roles.source.through", { group })),
+  ]);
 }
 
 /** The roles given to someone in the project themselves: those the caller may give, and those held already. */
@@ -247,6 +262,7 @@ function RolesSheet({
   offered: S["AssignableRole"][];
   onClose: () => void;
 }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const [keys, setKeys] = useState(member.direct_roles);
   const kept = member.roles.filter((r) => r.direct && !offered.some((o) => o.key === r.key));
@@ -262,11 +278,11 @@ function RolesSheet({
     onSuccess: (m) => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: ["me"] });
-      toast.success(`${m.user.name}'s roles saved`);
+      toast.success(t("project.roles.saved", { name: m.user.name }));
       onClose();
     },
     onError: (e) => {
-      if (!refused(e)) failed(e, "Not saved");
+      if (!refused(e)) failed(e, t("projects.notSaved"));
     },
   });
   const toggle = (key: string, on: boolean) => setKeys(on ? [...keys, key] : keys.filter((k) => k !== key));
@@ -275,14 +291,14 @@ function RolesSheet({
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={`Roles of ${member.user.name}`}
-      description={`Given to them in ${project.name} themselves. A role through a group changes with its mapping.`}
-      submitLabel={save.isPending ? "Saving…" : "Save roles"}
+      title={t("project.roles.title", { name: member.user.name })}
+      description={t("project.roles.lead", { project: project.name })}
+      submitLabel={save.isPending ? t("projects.saving") : t("project.roles.save")}
       submitDisabled={keys.length === 0}
       onSubmit={() => save.mutate()}
     >
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-secondary font-medium">Given here</legend>
+        <legend className="mb-1 text-secondary font-medium">{t("project.roles.givenHere")}</legend>
         {offered.map((r) => (
           <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-body">
             <Checkbox id={`mr-${r.key}`} checked={keys.includes(r.key)} onChange={(on) => toggle(r.key, on)} />
@@ -294,33 +310,26 @@ function RolesSheet({
           <label key={r.key} htmlFor={`mr-${r.key}`} className="flex items-center gap-2 text-body">
             <Checkbox id={`mr-${r.key}`} checked disabled onChange={() => undefined} />
             {r.name}
-            <span className="text-secondary text-muted">(you may not take it away)</span>
+            <span className="text-secondary text-muted">{t("project.roles.cantTake")}</span>
           </label>
         ))}
       </fieldset>
       {viaGroups.length > 0 && (
         <p className="text-secondary text-muted">
-          Through groups: {viaGroups.map((r) => `${r.name} (${r.groups.join(", ")})`).join("; ")}.
+          {t("project.roles.throughGroups", {
+            roles: viaGroups.map((r) => `${r.name} (${r.groups.join(", ")})`).join("; "),
+          })}
         </p>
       )}
-      {keys.length === 0 && (
-        <p className="text-secondary text-muted">Choose a role, or remove them from the project in the list.</p>
-      )}
+      {keys.length === 0 && <p className="text-secondary text-muted">{t("project.roles.chooseOne")}</p>}
       <Refusal error={save.error} />
     </Sheet>
   );
 }
 
-const sharingLabels: Record<S["DeploymentSharing"], [string, string]> = {
-  all_members: ["All members", "Whoever sees the project sees all its deployments and requests."],
-  owner_only: [
-    "Owners only",
-    "Members see the deployments they own and the requests they made. Project admins, supervisors, auditors and administrators still see all of them. To share a deployment, change its owner.",
-  ],
-};
-
 /** Who sees the project's deployments (ADR-0045), set by whoever manages its members. */
 function DeploymentSharing({ project, canManage }: { project: S["AdminProject"]; canManage: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const current = project.deployment_sharing ?? "all_members";
   const [value, setValue] = useState(current);
@@ -342,36 +351,46 @@ function DeploymentSharing({ project, canManage }: { project: S["AdminProject"];
       void qc.invalidateQueries({ queryKey: ["deployments"] });
       void qc.invalidateQueries({ queryKey: ["requests"] });
       void qc.invalidateQueries({ queryKey: ["projects", project.id] });
-      toast.success(`${project.name}'s deployments: ${sharingLabels[sharing][0].toLowerCase()}`);
+      toast.success(t(`project.sharing.saved.${sharing}`, { project: project.name }));
       // Save sharing is disabled once saved: the focus goes back to the choice.
       document.getElementById("deployment-sharing")?.focus();
     },
-    onError: (e) => failed(e, "Not saved"),
+    onError: (e) => failed(e, t("projects.notSaved")),
   });
   return (
     <Panel
-      title="Deployment sharing"
-      description="Who sees the project's deployments and requests."
+      title={t("project.sharing.title")}
+      description={t("project.sharing.lead")}
       footer={
         canManage && (
           <Button variant="primary" disabled={value === current || save.isPending} onClick={() => save.mutate(value)}>
-            Save sharing
+            {t("project.sharing.save")}
           </Button>
         )
       }
     >
       {canManage ? (
-        <Field label="Who sees them" htmlFor="deployment-sharing" hint={sharingLabels[value][1]} className="max-w-xl">
+        <Field
+          label={t("project.sharing.who")}
+          htmlFor="deployment-sharing"
+          hint={t(`project.sharing.${value}.hint`)}
+          className="max-w-xl"
+        >
           <Select
             id="deployment-sharing"
             value={value}
             onChange={(v) => setValue(v as S["DeploymentSharing"])}
-            options={Object.entries(sharingLabels).map(([v, [label]]) => ({ value: v, label }))}
+            options={sharings.map((v) => ({ value: v, label: t(`project.sharing.${v}.label`) }))}
           />
         </Field>
       ) : (
         <p className="text-body">
-          <span className="font-medium">{sharingLabels[current][0]}.</span> {sharingLabels[current][1]}
+          <Trans
+            t={t}
+            i18nKey="project.sharing.current"
+            values={{ label: t(`project.sharing.${current}.label`), hint: t(`project.sharing.${current}.hint`) }}
+            components={{ strong: <span className="font-medium" /> }}
+          />
         </p>
       )}
     </Panel>
@@ -379,6 +398,7 @@ function DeploymentSharing({ project, canManage }: { project: S["AdminProject"];
 }
 
 function Members({ project, canManage }: { project: S["AdminProject"]; canManage: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const projectId = project.id;
   const qc = useQueryClient();
   const { me } = useCurrentProject();
@@ -407,10 +427,10 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
       ),
     onSuccess: (m) => {
       refresh();
-      toast.success(`${m.user.name} added as ${roleName(role)}`);
+      toast.success(t("project.members.added", { name: m.user.name, role: roleName(role) }));
     },
     onError: (e) => {
-      if (!refused(e)) failed(e, "Not added");
+      if (!refused(e)) failed(e, t("project.members.notAdded"));
     },
   });
   const remove = useMutation({
@@ -420,12 +440,12 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
       ),
     onSuccess: (_, m) => {
       refresh();
-      toast.success(`${m.user.name} removed`);
+      toast.success(t("project.members.removed", { name: m.user.name }));
       setRemoving(null);
     },
     onError: (e) => {
       setRemoving(null);
-      if (!refused(e)) failed(e, "Not removed");
+      if (!refused(e)) failed(e, t("projects.notRemoved"));
     },
   });
   const seesRoles = can(me, "access.read");
@@ -435,7 +455,7 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
   const columns: Column<S["ProjectMember"]>[] = [
     {
       id: "who",
-      header: "Who",
+      header: t("project.members.who"),
       sortValue: (m) => m.user.name.toLowerCase(),
       cell: (m) => (
         <div className="flex flex-col">
@@ -446,9 +466,9 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
     },
     {
       id: "roles",
-      header: "Roles, and where each comes from",
+      header: t("project.members.roles"),
       cell: (m) => (
-        <ul aria-label={`Roles of ${m.user.name}`} className="flex flex-col gap-0.5">
+        <ul aria-label={t("project.roles.title", { name: m.user.name })} className="flex flex-col gap-0.5">
           {m.roles.map((r) => (
             <li key={r.key}>
               {seesRoles ? (
@@ -462,7 +482,7 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
               ) : (
                 r.name
               )}{" "}
-              <span className="text-secondary text-muted">{sourceText(r)}</span>
+              <span className="text-secondary text-muted">{sourceText(t, r)}</span>
             </li>
           ))}
         </ul>
@@ -471,14 +491,14 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
   ];
   const kept = (m: S["ProjectMember"]) => m.roles.filter((r) => r.groups.length > 0);
   return (
-    <Panel title="Members" flush>
+    <Panel title={t("project.members.title")} flush>
       {refused(remove.error) && (
         <div className="border-b border-line px-4 py-3">
           <Refusal error={remove.error} />
         </div>
       )}
       <DataTable
-        label="Members"
+        label={t("project.members.title")}
         columns={columns}
         rows={members.data?.items}
         rowKey={(m) => m.user.id}
@@ -491,19 +511,19 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
               <div className="flex flex-wrap items-end gap-2">
                 <div className="w-72">
                   <UserPicker
-                    label="Add someone"
+                    label={t("project.members.add")}
                     id="member-search"
                     onPick={(u) => {
                       const m = members.data?.items.find((x) => x.user.id === u.id);
                       if (m?.direct_roles.includes(role))
-                        toast.info(`${u.name} already holds ${roleName(role)}`, {
-                          description: "Change their roles in the list.",
+                        toast.info(t("project.members.already", { name: u.name, role: roleName(role) }), {
+                          description: t("project.members.alreadyHint"),
                         });
                       else add.mutate({ userId: u.id, roles: [...(m?.direct_roles ?? []), role] });
                     }}
                   />
                 </div>
-                <Field label="As" htmlFor="member-role" className="w-48">
+                <Field label={t("project.members.as")} htmlFor="member-role" className="w-48">
                   <Select
                     id="member-role"
                     value={role}
@@ -512,7 +532,7 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
                     options={(offered.data?.items ?? []).map((r) => ({
                       value: r.key,
                       label: r.name,
-                      group: r.built_in ? "Built in" : "Custom",
+                      group: r.built_in ? t("projects.builtIn") : t("projects.custom"),
                     }))}
                   />
                 </Field>
@@ -524,25 +544,21 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
         empty={
           <EmptyState
             icon={UserRound}
-            title="Nobody yet"
-            body={
-              canManage
-                ? "Add someone above, or map a group of the identity provider to a role in this project."
-                : "Nobody holds a role in this project."
-            }
+            title={t("project.members.emptyTitle")}
+            body={canManage ? t("project.members.emptyManage") : t("project.members.emptyRead")}
           />
         }
-        rowMenuLabel={(m) => `Actions for ${m.user.name}`}
+        rowMenuLabel={(m) => t("projects.actionsFor", { name: m.user.name })}
         rowMenu={
           canManage && offered.data
             ? (m) => (
                 <>
-                  <MenuItem onSelect={() => setEditing(m)}>Change roles</MenuItem>
+                  <MenuItem onSelect={() => setEditing(m)}>{t("project.members.changeRoles")}</MenuItem>
                   {removable(m) && (
                     <>
                       <MenuSeparator />
                       <MenuItem danger onSelect={() => setRemoving(m)}>
-                        Remove
+                        {t("projects.remove")}
                       </MenuItem>
                     </>
                   )}
@@ -558,16 +574,21 @@ function Members({ project, canManage }: { project: S["AdminProject"]; canManage
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.user.name}?`}
-          description={`They lose the roles given to them in ${project.name}: ${removing.direct_roles.map(roleName).join(", ")}.`}
+          title={t("project.members.removeTitle", { name: removing.user.name })}
+          description={t("project.members.removeLead", {
+            project: project.name,
+            roles: removing.direct_roles.map(roleName).join(", "),
+          })}
           consequences={
             kept(removing).length > 0
-              ? `They keep ${kept(removing)
-                  .map((r) => `${r.name} (${sourceText({ ...r, direct: false })})`)
-                  .join(", ")}: a group gives it.`
-              : "Their deployments stay in the project."
+              ? t("project.members.keeps", {
+                  roles: kept(removing)
+                    .map((r) => `${r.name} (${sourceText(t, { ...r, direct: false })})`)
+                    .join(", "),
+                })
+              : t("project.members.deploymentsStay")
           }
-          confirmLabel="Remove member"
+          confirmLabel={t("project.members.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing)}
         />
@@ -587,6 +608,7 @@ function RuleSheet({
   rule?: S["PlacementRule"];
   onClose: () => void;
 }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const [f, setF] = useState({
     clusters: rule?.clusters.join(", ") ?? `GVA-${env.toUpperCase()}-*`,
@@ -648,12 +670,12 @@ function RuleSheet({
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "placement-rules"] });
       void qc.invalidateQueries({ queryKey: ["admin", "placement-preview"] });
-      toast.success("Placement rule saved");
+      toast.success(t("project.rule.saved"));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("projects.notSaved"));
     },
   });
   const field = (k: keyof typeof f, label: string, hint?: string, mono = true) => (
@@ -681,9 +703,12 @@ function RuleSheet({
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={`${rule ? "Change" : "New"} placement rule for ${project.name} in ${env}`}
-      description="Names take * patterns and are comma-separated; tags are category/tag, all of them needed."
-      submitLabel={save.isPending ? "Saving…" : "Save rule"}
+      title={t(rule ? "project.rule.changeTitle" : "project.rule.newTitle", {
+        project: project.name,
+        environment: env,
+      })}
+      description={t("project.rule.lead")}
+      submitLabel={save.isPending ? t("projects.saving") : t("project.rule.save")}
       onSubmit={() => {
         setErrors({});
         save.mutate();
@@ -691,66 +716,64 @@ function RuleSheet({
       className="w-[min(640px,100vw)]"
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {field("clusters", "Clusters")}
-        {field("cluster_tags", "Cluster tags", "For example rvav-tier/gold")}
-        {field(
-          "resource_pool",
-          "Resource pool",
-          "Its path in each cluster, for example rvav/dev; empty for the cluster's",
-        )}
-        {field("hosts", "Hosts", "Empty for any that takes new VMs")}
-        {field("datastores", "Datastores")}
-        {field("datastore_tags", "Datastore tags")}
-        {field("datastore_cluster", "Datastore cluster", "Its datastores only; Storage DRS chooses among them")}
+        {field("clusters", t("project.rule.clusters"))}
+        {field("cluster_tags", t("project.rule.clusterTags"), t("project.rule.clusterTagsHint"))}
+        {field("resource_pool", t("project.rule.pool"), t("project.rule.poolHint"))}
+        {field("hosts", t("project.rule.hosts"), t("project.rule.hostsHint"))}
+        {field("datastores", t("project.rule.datastores"))}
+        {field("datastore_tags", t("project.rule.datastoreTags"))}
+        {field("datastore_cluster", t("project.rule.datastoreCluster"), t("project.rule.datastoreClusterHint"))}
         <Field
-          label="Strategy"
+          label={t("project.rule.strategy")}
           htmlFor="rule-strategy"
           error={errorAt(errors, "/strategy")}
-          hint="How rvav chooses among the clusters left"
+          hint={t("project.rule.strategyHint")}
         >
           <Select
             id="rule-strategy"
             value={strategy}
             onChange={(v) => setStrategy(v as S["PlacementStrategy"])}
-            options={strategies}
+            options={strategies(t)}
           />
         </Field>
-        {field("networks", "Networks", "For example dvpg-*-dev-*")}
-        {field("folder", "VM folder")}
-        {field("storage_policy", "Storage policy", "Empty for the datastore's default", false)}
-        {field("vcenter", "vCenter", "Empty for any; needed when a cluster's name is in two")}
-        {field("priority", "Priority", "Lower first", false)}
+        {field("networks", t("project.rule.networks"), t("project.rule.networksHint"))}
+        {field("folder", t("project.rule.folder"))}
+        {field("storage_policy", t("project.rule.storagePolicy"), t("project.rule.storagePolicyHint"), false)}
+        {field("vcenter", t("project.rule.vcenter"), t("project.rule.vcenterHint"))}
+        {field("priority", t("project.rule.priority"), t("project.rule.priorityHint"), false)}
       </div>
       <label htmlFor="rule-seg-on" className="flex items-center gap-2 text-body">
         <Checkbox id="rule-seg-on" checked={segOn} onChange={setSegOn} />
-        NSX segments made for deployments
+        {t("project.rule.segments")}
       </label>
       {segOn && (
         <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-line p-3 sm:grid-cols-2">
-          <legend className="px-1 text-secondary text-muted">
-            Items that make their own networks get segments on this Tier-1, their subnets from this block
-          </legend>
-          {segField("tier1", "Tier-1 gateway", "Its NSX ID, for example t1-gva-dev")}
-          {segField("ip_block", "EfficientIP block", "Its name or range")}
-          {segField("prefix_length", "Subnet size", "Prefix length, 16 to 29")}
-          {segField("dns_zone", "DNS zone")}
-          {segField("dns_servers", "DNS servers", "Comma-separated")}
+          <legend className="px-1 text-secondary text-muted">{t("project.rule.segmentsLegend")}</legend>
+          {segField("tier1", t("project.rule.tier1"), t("project.rule.tier1Hint"))}
+          {segField("ip_block", t("project.rule.ipBlock"), t("project.rule.ipBlockHint"))}
+          {segField("prefix_length", t("project.rule.prefix"), t("project.rule.prefixHint"))}
+          {segField("dns_zone", t("project.rule.dnsZone"))}
+          {segField("dns_servers", t("project.rule.dnsServers"), t("project.rule.commaSeparated"))}
         </fieldset>
       )}
     </Sheet>
   );
 }
 
-const names = (plain: string[], tags: string[]) => [...plain, ...tags.map((t) => `tag ${t}`)].join(", ") || "Any";
+const names = (t: T, plain: string[], tags: string[]) =>
+  [...plain, ...tags.map((tag) => t("project.placement.tag", { tag }))].join(", ") || t("project.placement.any");
 
-const strategies: { value: S["PlacementStrategy"]; label: string; meta: string }[] = [
-  { value: "most_free_memory", label: "Most free memory", meta: "The cluster with the most free memory" },
-  { value: "binpack", label: "Binpack", meta: "The least free memory that still has room" },
-  { value: "spread", label: "Spread", meta: "The fewest of rvav's VMs" },
-];
-const strategyLabel = (v: S["PlacementStrategy"] | undefined) => strategies.find((x) => x.value === v)?.label ?? "";
+const strategyKeys: S["PlacementStrategy"][] = ["most_free_memory", "binpack", "spread"];
+const strategies = (t: T) =>
+  strategyKeys.map((value) => ({
+    value,
+    label: t(`project.strategy.${value}.label`),
+    meta: t(`project.strategy.${value}.meta`),
+  }));
+const strategyLabel = (t: T, v: S["PlacementStrategy"] | undefined) => (v ? t(`project.strategy.${v}.label`) : "");
 
 function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const [env, setEnv] = useState(project.environments[0] ?? "dev");
   const [editing, setEditing] = useState<S["PlacementRule"] | "new" | null>(null);
@@ -762,44 +785,50 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "placement-rules"] });
       void qc.invalidateQueries({ queryKey: ["admin", "placement-preview"] });
-      toast.success("Placement rule removed");
+      toast.success(t("project.placement.removed"));
       setRemoving(null);
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("projects.notRemoved")),
   });
   const here = rules.data?.items.filter((r) => r.environment === env);
   const columns: Column<S["PlacementRule"]>[] = [
     {
       id: "priority",
-      header: "Priority",
+      header: t("project.rule.priority"),
       sortValue: (r) => r.priority,
       cell: (r) => <span className="tabular-nums">{r.priority}</span>,
       className: "w-20",
     },
     {
       id: "clusters",
-      header: "Clusters",
+      header: t("project.rule.clusters"),
       cell: (r) => (
         <div className="flex flex-col font-mono text-secondary">
-          <span>{names(r.clusters, r.cluster_tags)}</span>
-          {r.vcenter && <span className="text-muted">in {r.vcenter}</span>}
-          {r.resource_pool && <span className="text-muted">pool {r.resource_pool}</span>}
-          {r.hosts.length > 0 && <span className="text-muted">hosts {r.hosts.join(", ")}</span>}
+          <span>{names(t, r.clusters, r.cluster_tags)}</span>
+          {r.vcenter && <span className="text-muted">{t("project.placement.inVcenter", { vcenter: r.vcenter })}</span>}
+          {r.resource_pool && (
+            <span className="text-muted">{t("project.placement.pool", { pool: r.resource_pool })}</span>
+          )}
+          {r.hosts.length > 0 && (
+            <span className="text-muted">{t("project.placement.hosts", { hosts: r.hosts.join(", ") })}</span>
+          )}
         </div>
       ),
     },
     {
       id: "datastores",
-      header: "Datastores",
+      header: t("project.rule.datastores"),
       cell: (r) => (
         <div className="flex flex-col text-secondary">
           <span className="font-mono">
             {r.datastore_cluster && !r.datastores.length && !r.datastore_tags.length
-              ? `cluster ${r.datastore_cluster}`
-              : names(r.datastores, r.datastore_tags)}
+              ? t("project.placement.datastoreCluster", { name: r.datastore_cluster })
+              : names(t, r.datastores, r.datastore_tags)}
           </span>
           {r.datastore_cluster && (r.datastores.length > 0 || r.datastore_tags.length > 0) && (
-            <span className="font-mono text-muted">in cluster {r.datastore_cluster}</span>
+            <span className="font-mono text-muted">
+              {t("project.placement.inDatastoreCluster", { name: r.datastore_cluster })}
+            </span>
           )}
           {r.storage_policy && <span className="text-muted">{r.storage_policy}</span>}
         </div>
@@ -807,10 +836,10 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
     },
     {
       id: "networks",
-      header: "Networks",
+      header: t("project.rule.networks"),
       cell: (r) => (
         <div className="flex flex-col font-mono text-secondary">
-          <span>{r.networks.join(", ") || "None"}</span>
+          <span>{r.networks.join(", ") || t("projects.none")}</span>
           {r.segments && (
             <span className="text-muted">
               NSX {r.segments.tier1}, {r.segments.ip_block} /{r.segments.prefix_length}, {r.segments.dns_zone}
@@ -821,24 +850,24 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
     },
     {
       id: "strategy",
-      header: "Strategy",
+      header: t("project.rule.strategy"),
       sortValue: (r) => r.strategy,
-      cell: (r) => <span className="text-secondary">{strategyLabel(r.strategy)}</span>,
+      cell: (r) => <span className="text-secondary">{strategyLabel(t, r.strategy)}</span>,
     },
     {
       id: "folder",
-      header: "VM folder",
+      header: t("project.rule.folder"),
       cell: (r) => <span className="font-mono text-secondary break-all">{r.folder}</span>,
     },
   ];
   const add = isAdmin && (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New rule
+      {t("project.placement.add")}
     </Button>
   );
   return (
     <div className="flex flex-col gap-4">
-      <Field label="Environment" htmlFor="placement-env" className="w-48">
+      <Field label={t("projects.environments.environment")} htmlFor="placement-env" className="w-48">
         <Select
           id="placement-env"
           value={env}
@@ -847,13 +876,13 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
         />
       </Field>
       <Panel
-        title="Placement rules"
-        description={`Where requests of ${project.name} in ${env} go: the first rule that fits, lowest priority first.`}
+        title={t("project.placement.title")}
+        description={t("project.placement.lead", { project: project.name, environment: env })}
         flush
         actions={here?.length ? add : undefined}
       >
         <DataTable
-          label={`Placement rules in ${env}`}
+          label={t("project.placement.label", { environment: env })}
           columns={columns}
           rows={here}
           rowKey={(r) => r.id}
@@ -864,20 +893,20 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
           empty={
             <EmptyState
               icon={RouteIcon}
-              title="No rule"
-              body={`Requests of ${project.name} in ${env} have nowhere to go.`}
+              title={t("project.placement.emptyTitle")}
+              body={t("project.placement.emptyBody", { project: project.name, environment: env })}
               action={add || undefined}
             />
           }
-          rowMenuLabel={(r) => `Actions for the rule of priority ${r.priority}`}
+          rowMenuLabel={(r) => t("project.placement.actionsFor", { priority: r.priority })}
           rowMenu={
             isAdmin
               ? (r) => (
                   <>
-                    <MenuItem onSelect={() => setEditing(r)}>Change</MenuItem>
+                    <MenuItem onSelect={() => setEditing(r)}>{t("projects.change")}</MenuItem>
                     <MenuSeparator />
                     <MenuItem danger onSelect={() => setRemoving(r)}>
-                      Remove
+                      {t("projects.remove")}
                     </MenuItem>
                   </>
                 )
@@ -885,41 +914,48 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
           }
         />
       </Panel>
-      <Panel title={`What ${project.name} gets in ${env}`}>
+      <Panel title={t("project.placement.previewTitle", { project: project.name, environment: env })}>
         {preview.isPending && <Skeleton className="h-24" />}
         {preview.isError && <ErrorState error={preview.error} onRetry={() => void preview.refetch()} />}
         {preview.data && (
           <div className="flex flex-col gap-2 text-secondary">
             {preview.data.problems.length > 0 && (
-              <ul aria-label="What stops a request here" className="flex flex-col gap-0.5 text-warn">
+              <ul aria-label={t("project.placement.problems")} className="flex flex-col gap-0.5 text-warn">
                 {preview.data.problems.map((p) => (
                   <li key={p}>{p}</li>
                 ))}
               </ul>
             )}
             <p>
-              <span className="text-faint">Clusters:</span>{" "}
+              <span className="text-faint">{t("project.placement.clusters")}</span>{" "}
               {preview.data.clusters
                 .map((c) => {
                   const how = [
-                    c.resource_pool && `pool ${c.resource_pool}`,
-                    c.strategy && c.strategy !== "most_free_memory" && strategyLabel(c.strategy).toLowerCase(),
+                    c.resource_pool && t("project.placement.pool", { pool: c.resource_pool }),
+                    c.strategy && c.strategy !== "most_free_memory" && strategyLabel(t, c.strategy).toLowerCase(),
                   ].filter(Boolean);
-                  return how.length ? `${c.name} (${how.join(", ")})` : c.name;
+                  return how.length ? t("project.placement.clusterHow", { name: c.name, how: how.join(", ") }) : c.name;
                 })
-                .join(", ") || "none"}
+                .join(", ") || t("project.placement.none")}
             </p>
             <p>
-              <span className="text-faint">Datastores:</span>{" "}
-              {preview.data.datastores.map((d) => `${d.name} (${d.free_gb} GB free)`).join(", ") || "none"}
+              <span className="text-faint">{t("project.placement.datastores")}</span>{" "}
+              {preview.data.datastores
+                .map((d) => t("project.placement.datastoreFree", { name: d.name, free: d.free_gb }))
+                .join(", ") || t("project.placement.none")}
             </p>
             <p>
-              <span className="text-faint">Networks:</span>{" "}
-              {preview.data.networks.map((n) => `${n.name}${n.subnet ? ` ${n.subnet}` : " (no subnet)"}`).join(", ") ||
-                "none"}
+              <span className="text-faint">{t("project.placement.networks")}</span>{" "}
+              {preview.data.networks
+                .map((n) =>
+                  n.subnet
+                    ? t("project.placement.network", { name: n.name, subnet: n.subnet })
+                    : t("project.placement.networkNoSubnet", { name: n.name }),
+                )
+                .join(", ") || t("project.placement.none")}
             </p>
             <p>
-              <span className="text-faint">Folder:</span>{" "}
+              <span className="text-faint">{t("project.placement.folder")}</span>{" "}
               <span className="font-mono">{preview.data.folder || "—"}</span>
             </p>
           </div>
@@ -937,14 +973,14 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove the rule of priority ${removing.priority} in ${env}?`}
-          description={`Requests of ${project.name} in ${env} are placed by the rules left.`}
+          title={t("project.placement.removeTitle", { priority: removing.priority, environment: env })}
+          description={t("project.placement.removeLead", { project: project.name, environment: env })}
           consequences={
             (here?.length ?? 0) <= 1
-              ? `It is the only rule: requests of ${project.name} in ${env} will have nowhere to go.`
-              : `${(here?.length ?? 1) - 1} other rules stay. Deployments already placed stay where they are.`
+              ? t("project.placement.onlyRule", { project: project.name, environment: env })
+              : t("project.placement.othersStay", { count: (here?.length ?? 1) - 1 })
           }
-          confirmLabel="Remove rule"
+          confirmLabel={t("project.placement.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing.id)}
         />
@@ -954,6 +990,7 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
 }
 
 function useSaveQuotas(project: S["AdminProject"]) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (items: S["QuotaLimit"][]) =>
@@ -972,7 +1009,7 @@ function useSaveQuotas(project: S["AdminProject"]) {
       ])
         void qc.invalidateQueries({ queryKey });
     },
-    onError: (e) => failed(e, "Not saved"),
+    onError: (e) => failed(e, t("quota.notSaved")),
   });
 }
 
@@ -1002,6 +1039,7 @@ function LimitSheet({
   editing?: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("admin-governance");
   const save = useSaveQuotas(project);
   const existing = editing === undefined ? undefined : limits.find((l) => limitKey(l) === editing);
   const [f, setF] = useState(() => ({
@@ -1021,9 +1059,9 @@ function LimitSheet({
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={existing ? "Change the limit" : "New limit"}
-      description="Requests that would pass a limit are refused, or need an approval."
-      submitLabel={save.isPending ? "Saving…" : "Save limit"}
+      title={existing ? t("quota.changeTitle") : t("quota.newTitle")}
+      description={t("quota.sheetLead")}
+      submitLabel={save.isPending ? t("quota.saving") : t("quota.save")}
       submitDisabled={twin || !valid}
       onSubmit={() => {
         const row: S["QuotaLimit"] = {
@@ -1035,13 +1073,13 @@ function LimitSheet({
         const items = existing ? limits.map((l) => (limitKey(l) === editing ? row : l)) : [...limits, row];
         save.mutate(items, {
           onSuccess: () => {
-            toast.success("Limit saved");
+            toast.success(t("quota.saved"));
             onClose();
           },
         });
       }}
     >
-      <Field label="Resource" htmlFor="limit-resource">
+      <Field label={t("quota.resourceLabel")} htmlFor="limit-resource">
         <Select
           id="limit-resource"
           value={f.resource}
@@ -1050,25 +1088,25 @@ function LimitSheet({
         />
       </Field>
       <Field
-        label="In"
+        label={t("project.quotas.in")}
         htmlFor="limit-environment"
-        error={twin ? "This resource has a limit there already: change that one." : undefined}
+        error={twin ? t("project.quotas.twin") : undefined}
       >
         <Select
           id="limit-environment"
           value={f.environment || "all"}
           onChange={(v) => setF({ ...f, environment: v === "all" ? "" : v })}
           options={[
-            { value: "all", label: "The whole project" },
+            { value: "all", label: t("project.quotas.wholeProject") },
             ...project.environments.map((e) => ({ value: e, label: e })),
           ]}
         />
       </Field>
       <Field
-        label="Limit"
+        label={t("quota.limit")}
         htmlFor="limit-value"
-        hint="Empty for no limit."
-        error={valid ? undefined : "A whole number, 0 or more."}
+        hint={t("quota.emptyForNone")}
+        error={valid ? undefined : t("quota.wholeNumber")}
       >
         <Input
           id="limit-value"
@@ -1079,7 +1117,7 @@ function LimitSheet({
           onChange={(e) => setF({ ...f, limit: e.target.value })}
         />
       </Field>
-      <Field label="When passed" htmlFor="limit-enforcement">
+      <Field label={t("quota.whenPassed")} htmlFor="limit-enforcement">
         <Select
           id="limit-enforcement"
           value={f.enforcement}
@@ -1093,51 +1131,56 @@ function LimitSheet({
 
 /** What a limit's resource takes now, in its environment or the whole project. */
 function LimitUse({ project, limit }: { project: S["AdminProject"]; limit: S["QuotaLimit"] }) {
+  const { t } = useTranslation("admin-governance");
   const usage = useQuery(q.quota(project.id, limit.environment || undefined));
   if (usage.isPending) return <Skeleton className="h-4 w-20" />;
   const line = usage.data?.lines.find((l) => l.resource === limit.resource);
-  if (!line) return <span className="text-faint">Not known</span>;
+  if (!line) return <span className="text-faint">{t("projects.quotaUse.notKnown")}</span>;
   const shown = { ...line, limit: limit.limit };
-  return <span className={cn("tabular-nums", quotaTone(shown))}>{takenText(shown)}</span>;
+  return <span className={cn("tabular-nums", quotaTone(shown))}>{takenText(t, shown)}</span>;
 }
 
 function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const quotas = useQuery(adm.quotas(project.id));
   const save = useSaveQuotas(project);
   // Limits go by their resource and environment, not their place: a refetch may reorder them.
   const [editing, setEditing] = useState<{ key?: string } | null>(null);
   const [removing, setRemoving] = useState<S["QuotaLimit"] | null>(null);
   const limits = quotas.data?.items ?? [];
-  const where = (l: S["QuotaLimit"]) => (l.environment ? `in ${l.environment}` : "in the whole project");
+  const where = (l: S["QuotaLimit"]) =>
+    l.environment
+      ? t("project.quotas.inEnvironment", { environment: l.environment })
+      : t("project.quotas.inWholeProject");
   const columns: Column<S["QuotaLimit"]>[] = [
     {
       id: "resource",
-      header: "Resource",
+      header: t("quota.resourceLabel"),
       sortValue: (l) => resourceName(l.resource),
       cell: (l) => <span className="font-medium">{resourceName(l.resource)}</span>,
     },
     {
       id: "in",
-      header: "In",
+      header: t("project.quotas.in"),
       sortValue: (l) => l.environment,
-      cell: (l) => <span className="text-secondary">{l.environment || "The whole project"}</span>,
+      cell: (l) => <span className="text-secondary">{l.environment || t("project.quotas.wholeProject")}</span>,
     },
     {
       id: "limit",
-      header: "Limit",
+      header: t("quota.limit"),
       align: "end",
       sortValue: (l) => l.limit ?? -1,
-      cell: (l) => <span className="tabular-nums">{l.limit ?? "None"}</span>,
+      cell: (l) => <span className="tabular-nums">{l.limit ?? t("quota.none")}</span>,
     },
     {
       id: "used",
-      header: "Taken now",
+      header: t("project.quotas.taken"),
       align: "end",
       cell: (l) => <LimitUse project={project} limit={l} />,
     },
     {
       id: "enforcement",
-      header: "When passed",
+      header: t("quota.whenPassed"),
       cell: (l) => (
         <span className="text-secondary">{enforcements().find((e) => e.value === l.enforcement)?.label}</span>
       ),
@@ -1145,18 +1188,18 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
   ];
   const add = isAdmin && (
     <Button size="sm" variant="primary" disabled={!quotas.data} onClick={() => setEditing({})}>
-      Add a limit
+      {t("quota.add")}
     </Button>
   );
   return (
     <Panel
-      title="Quotas"
-      description="What the project's requests may take, with what its deployments and running requests take now."
+      title={t("project.quotas.title")}
+      description={t("project.quotas.lead")}
       flush
       actions={limits.length ? add : undefined}
     >
       <DataTable
-        label="Quota limits"
+        label={t("project.quotas.label")}
         columns={columns}
         rows={quotas.data && limits}
         rowKey={limitKey}
@@ -1166,20 +1209,20 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
         empty={
           <EmptyState
             icon={Gauge}
-            title="No limit"
-            body="The project's requests may take any amount. Add a limit on vCPU, memory, storage or VMs."
+            title={t("quota.emptyTitle")}
+            body={t("project.quotas.emptyBody")}
             action={add || undefined}
           />
         }
-        rowMenuLabel={(l) => `Actions for the ${resourceName(l.resource)} limit ${where(l)}`}
+        rowMenuLabel={(l) => t("project.quotas.actionsFor", { resource: resourceName(l.resource), where: where(l) })}
         rowMenu={
           isAdmin
             ? (l) => (
                 <>
-                  <MenuItem onSelect={() => setEditing({ key: limitKey(l) })}>Change</MenuItem>
+                  <MenuItem onSelect={() => setEditing({ key: limitKey(l) })}>{t("projects.change")}</MenuItem>
                   <MenuSeparator />
                   <MenuItem danger onSelect={() => setRemoving(l)}>
-                    Remove
+                    {t("projects.remove")}
                   </MenuItem>
                 </>
               )
@@ -1193,21 +1236,19 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove the ${resourceName(removing.resource)} limit ${where(removing)}?`}
-          description="Requests are no longer held to it."
+          title={t("project.quotas.removeTitle", { resource: resourceName(removing.resource), where: where(removing) })}
+          description={t("quota.removeLead")}
           consequences={
-            removing.environment
-              ? "A limit on the whole project still applies, if there is one."
-              : "Limits in each environment still apply."
+            removing.environment ? t("project.quotas.wholeStillApplies") : t("project.quotas.eachStillApplies")
           }
-          confirmLabel="Remove limit"
+          confirmLabel={t("quota.removeConfirm")}
           pending={save.isPending}
           onConfirm={() =>
             save.mutate(
               limits.filter((l) => limitKey(l) !== limitKey(removing)),
               {
                 onSuccess: () => {
-                  toast.success("Limit removed");
+                  toast.success(t("quota.removed"));
                   setRemoving(null);
                 },
               },
@@ -1220,6 +1261,7 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
 }
 
 export function ProjectPage({ projectId, tab = "members" }: { projectId: string; tab?: ProjectTab }) {
+  const { t } = useTranslation(["admin-governance", "shell"]);
   const navigate = useNavigate();
   const { me } = useCurrentProject();
   const project = useQuery(adm.project(projectId));
@@ -1241,16 +1283,16 @@ export function ProjectPage({ projectId, tab = "members" }: { projectId: string;
       <PageHeader
         breadcrumbs={
           <Breadcrumbs>
-            <Link to="/admin/projects">Projects</Link>
+            <Link to="/admin/projects">{t("shell:nav.admin.projects")}</Link>
           </Breadcrumbs>
         }
         title={p.name}
         meta={
           <>
             <span className="font-mono">{p.code}</span>
-            <span>{p.members} members</span>
-            <span>{p.deployments} deployments</span>
-            {p.archived && <Badge tone="neutral">Archived</Badge>}
+            <span>{t("project.memberCount", { count: p.members })}</span>
+            <span>{t("project.deploymentCount", { count: p.deployments })}</span>
+            {p.archived && <Badge tone="neutral">{t("projects.list.archived")}</Badge>}
           </>
         }
       />
@@ -1265,11 +1307,12 @@ export function ProjectPage({ projectId, tab = "members" }: { projectId: string;
           })
         }
       >
-        <TabsList aria-label="Project sections">
-          <TabsTrigger value="members">Members</TabsTrigger>
-          <TabsTrigger value="placement">Placement</TabsTrigger>
-          <TabsTrigger value="quotas">Quotas</TabsTrigger>
-          <TabsTrigger value="details">Details</TabsTrigger>
+        <TabsList aria-label={t("project.tabsLabel")}>
+          {projectTabs.map((value) => (
+            <TabsTrigger key={value} value={value}>
+              {t(`project.tabs.${value}`)}
+            </TabsTrigger>
+          ))}
         </TabsList>
         <TabsContent value="members" className="flex flex-col gap-4 pt-4">
           <DeploymentSharing project={p} canManage={can(me, "project.members.manage", p.id)} />

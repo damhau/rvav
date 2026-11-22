@@ -28,7 +28,7 @@ const translated = [
   "src/features/requests/**",
   "src/features/admin/access/**",
   "src/features/admin/notifications/**",
-  "src/features/admin/governance/policies/**",
+  "src/features/admin/governance/**",
   "src/features/deployments/**",
 ];
 

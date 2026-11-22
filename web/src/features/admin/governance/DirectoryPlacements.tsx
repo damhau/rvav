@@ -2,7 +2,9 @@
 // groups of a project, of an environment in every project, or of both.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FolderTree } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Button } from "@/components/ui/button";
@@ -23,13 +25,19 @@ import { errorAt, failed, fieldErrors } from "./common";
 type S = components["schemas"];
 
 const ANY = "";
+const ouExample = "OU=Servers,OU=Web";
+const groupExample = "CN=Web servers,OU=Groups";
 
 /** Where a row applies, in words. */
-function scope(r: S["AdPlacement"], inProject: boolean): string {
-  const env = r.environment ? `in ${r.environment}` : "in any environment";
+function scope(t: TFunction<"admin-governance">, r: S["AdPlacement"], inProject: boolean): string {
+  const environment = r.environment;
+  if (r.project_id && inProject)
+    return environment ? t("placements.scope.inEnvironment", { environment }) : t("placements.scope.anyEnvironment");
   if (r.project_id)
-    return inProject ? (r.environment ? `In ${r.environment}` : "Any environment") : `${r.project_name} ${env}`;
-  return r.environment ? `Every project in ${r.environment}` : "Every project, any environment";
+    return environment
+      ? t("placements.scope.projectIn", { project: r.project_name, environment })
+      : t("placements.scope.projectAny", { project: r.project_name });
+  return environment ? t("placements.scope.everyIn", { environment }) : t("placements.scope.everyAny");
 }
 
 function PlacementSheet({
@@ -43,6 +51,7 @@ function PlacementSheet({
   row?: S["AdPlacement"];
   onClose: () => void;
 }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const [f, setF] = useState({
     environment: row?.environment ?? ANY,
@@ -69,12 +78,12 @@ function PlacementSheet({
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "ad-placements"] });
-      toast.success("OU saved");
+      toast.success(t("placements.saved"));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("projects.notSaved"));
     },
   });
   const groupErrors = Object.entries(errors)
@@ -85,48 +94,50 @@ function PlacementSheet({
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={`${row ? "Change the" : "New"} Active Directory OU${project ? ` for ${project.name}` : ""}`}
-      description="DNs, or DNs relative to the integration's base DN, such as OU=Servers,OU=Web."
-      submitLabel={save.isPending ? "Saving…" : "Save OU"}
+      title={
+        project
+          ? t(row ? "placements.changeFor" : "placements.newFor", { project: project.name })
+          : t(row ? "placements.change" : "placements.new")
+      }
+      description={t("placements.sheetLead")}
+      submitLabel={save.isPending ? t("projects.saving") : t("placements.save")}
       submitDisabled={!f.ou.trim()}
       onSubmit={() => {
         setErrors({});
         save.mutate();
       }}
     >
-      <Field label="Environment" htmlFor="adp-environment" error={errorAt(errors, "/environment")}>
+      <Field label={t("placements.environment")} htmlFor="adp-environment" error={errorAt(errors, "/environment")}>
         <Select
           id="adp-environment"
           value={f.environment}
           onChange={(environment) => setF({ ...f, environment })}
-          options={[{ value: ANY, label: "Any environment" }, ...environments.map((e) => ({ value: e, label: e }))]}
+          options={[
+            { value: ANY, label: t("placements.scope.anyEnvironment") },
+            ...environments.map((e) => ({ value: e, label: e })),
+          ]}
         />
       </Field>
-      <Field
-        label="OU"
-        htmlFor="adp-ou"
-        hint="Where the VMs' computer objects are made."
-        error={errorAt(errors, "/ou")}
-      >
+      <Field label={t("placements.ou")} htmlFor="adp-ou" hint={t("placements.ouHint")} error={errorAt(errors, "/ou")}>
         <Input
           id="adp-ou"
           className="font-mono text-secondary"
-          placeholder="OU=Servers,OU=Web"
+          placeholder={ouExample}
           value={f.ou}
           onChange={(e) => setF({ ...f, ou: e.target.value })}
         />
       </Field>
       <Field
-        label="Groups"
+        label={t("placements.groups")}
         htmlFor="adp-groups"
-        hint="One DN a line. The objects join them once made."
+        hint={t("placements.groupsHint")}
         error={groupErrors.join(" ") || undefined}
       >
         <Textarea
           id="adp-groups"
           rows={3}
           className="font-mono text-secondary"
-          placeholder="CN=Web servers,OU=Groups"
+          placeholder={groupExample}
           value={f.groups}
           onChange={(e) => setF({ ...f, groups: e.target.value })}
         />
@@ -134,10 +145,8 @@ function PlacementSheet({
       <label htmlFor="adp-allow" className="flex items-start gap-2 text-body">
         <Checkbox id="adp-allow" checked={f.allow} onChange={(allow) => setF({ ...f, allow })} className="mt-0.5" />
         <span>
-          Blueprints may choose their OU
-          <span className="block text-secondary text-muted">
-            A blueprint&apos;s active_directory names another OU, or none. Otherwise it is ignored.
-          </span>
+          {t("placements.allow")}
+          <span className="block text-secondary text-muted">{t("placements.allowNote")}</span>
         </span>
       </label>
     </Sheet>
@@ -149,6 +158,7 @@ function PlacementSheet({
  * no project, those set for every project.
  */
 export function DirectoryPlacements({ project, canManage }: { project?: S["AdminProject"]; canManage: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const rows = useQuery(adm.adPlacements(project?.id));
   const envs = useQuery({ ...adm.environments(), enabled: !project });
@@ -158,10 +168,10 @@ export function DirectoryPlacements({ project, canManage }: { project?: S["Admin
     mutationFn: (id: string) => call(api.DELETE("/admin/ad-placements/{id}", { params: { path: { id } } })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "ad-placements"] });
-      toast.success("OU removed");
+      toast.success(t("placements.removed"));
       setRemoving(null);
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("projects.notRemoved")),
   });
   const mine = (r: S["AdPlacement"]) => (project ? r.project_id === project.id : r.project_id === null);
   const shown = rows.data?.items.filter((r) => (project ? true : r.project_id === null));
@@ -169,22 +179,22 @@ export function DirectoryPlacements({ project, canManage }: { project?: S["Admin
   const columns: Column<S["AdPlacement"]>[] = [
     {
       id: "scope",
-      header: "Applies to",
+      header: t("placements.appliesTo"),
       cell: (r) => (
         <div className="flex flex-col">
-          <span>{scope(r, Boolean(project))}</span>
-          {project && !mine(r) && <span className="text-caption text-faint">Set in Projects › Environments</span>}
+          <span>{scope(t, r, Boolean(project))}</span>
+          {project && !mine(r) && <span className="text-caption text-faint">{t("placements.setElsewhere")}</span>}
         </div>
       ),
     },
     {
       id: "ou",
-      header: "OU",
+      header: t("placements.ou"),
       cell: (r) => <span className="font-mono text-secondary break-all">{r.ou_dn}</span>,
     },
     {
       id: "groups",
-      header: "Groups",
+      header: t("placements.groups"),
       cell: (r) =>
         r.groups.length ? (
           <ul className="flex flex-col font-mono text-secondary break-all">
@@ -193,37 +203,33 @@ export function DirectoryPlacements({ project, canManage }: { project?: S["Admin
             ))}
           </ul>
         ) : (
-          <span className="text-muted">None</span>
+          <span className="text-muted">{t("projects.none")}</span>
         ),
     },
     {
       id: "blueprints",
-      header: "Blueprints",
+      header: t("placements.blueprints"),
       cell: (r) => (
         <span className="text-secondary text-muted">
-          {r.allow_blueprint_ou ? "May choose their OU" : "Use this OU"}
+          {r.allow_blueprint_ou ? t("placements.mayChoose") : t("placements.useThis")}
         </span>
       ),
     },
   ];
   const add = canManage && (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New OU
+      {t("placements.add")}
     </Button>
   );
   return (
     <Panel
-      title="Active Directory"
-      description={
-        project
-          ? `The OU where each VM of ${project.name} gets its computer object before it is built: the row for its environment, else the one for any environment, else one set for every project.`
-          : "OUs for every project's VMs, by environment. A project's own OU, on its Placement tab, comes first."
-      }
+      title={t("placements.title")}
+      description={project ? t("placements.leadProject", { project: project.name }) : t("placements.leadAll")}
       flush
       actions={shown?.length ? add : undefined}
     >
       <DataTable
-        label={project ? `Active Directory OUs of ${project.name}` : "Active Directory OUs of every project"}
+        label={project ? t("placements.labelProject", { project: project.name }) : t("placements.labelAll")}
         columns={columns}
         rows={shown}
         rowKey={(r) => r.id}
@@ -233,30 +239,26 @@ export function DirectoryPlacements({ project, canManage }: { project?: S["Admin
         empty={
           <EmptyState
             icon={FolderTree}
-            title="No OU"
-            body={
-              project
-                ? `VMs of ${project.name} get no computer object in Active Directory.`
-                : "VMs get a computer object only where a project has an OU of its own."
-            }
+            title={t("placements.emptyTitle")}
+            body={project ? t("placements.emptyProject", { project: project.name }) : t("placements.emptyAll")}
             action={add || undefined}
           />
         }
-        rowMenuLabel={(r) => `Actions for the OU ${r.ou_dn}`}
+        rowMenuLabel={(r) => t("placements.actionsFor", { ou: r.ou_dn })}
         rowMenu={
           canManage
             ? (r) =>
                 mine(r) ? (
                   <>
-                    <MenuItem onSelect={() => setEditing(r)}>Change</MenuItem>
+                    <MenuItem onSelect={() => setEditing(r)}>{t("projects.change")}</MenuItem>
                     <MenuSeparator />
                     <MenuItem danger onSelect={() => setRemoving(r)}>
-                      Remove
+                      {t("projects.remove")}
                     </MenuItem>
                   </>
                 ) : (
                   <MenuItem disabled onSelect={() => undefined}>
-                    Change it in Projects › Environments
+                    {t("placements.changeElsewhere")}
                   </MenuItem>
                 )
             : undefined
@@ -274,10 +276,10 @@ export function DirectoryPlacements({ project, canManage }: { project?: S["Admin
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Stop making computer objects in ${removing.ou_dn}?`}
-          description={`${scope(removing, Boolean(project))}: new VMs get the OU that applies next, or none.`}
-          consequences="Objects already made stay, and are deleted with their VMs."
-          confirmLabel="Remove OU"
+          title={t("placements.removeTitle", { ou: removing.ou_dn })}
+          description={t("placements.removeLead", { scope: scope(t, removing, Boolean(project)) })}
+          consequences={t("placements.removeConsequences")}
+          confirmLabel={t("placements.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing.id)}
         />

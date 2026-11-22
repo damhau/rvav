@@ -2,7 +2,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { FolderKanban, Layers, UsersRound } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -32,6 +34,10 @@ import { failed, fieldErrors, UserPicker } from "./common";
 import { DirectoryPlacements } from "./DirectoryPlacements";
 
 type S = components["schemas"];
+type T = TFunction<"admin-governance">;
+
+const keyExample = "dev";
+const groupExample = "rvav-web";
 
 export const projectsTabs = ["projects", "environments", "groups"] as const;
 export type ProjectsTab = (typeof projectsTabs)[number];
@@ -46,6 +52,7 @@ function useRefreshAccess() {
 }
 
 function NewProjectSheet({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshAccess();
   const navigate = useNavigate();
   const envs = useQuery(q.environments());
@@ -62,12 +69,12 @@ function NewProjectSheet({ onClose }: { onClose: () => void }) {
     mutationFn: () => call(api.POST("/admin/projects", { body: { ...f, project_admins: admins.map((a) => a.id) } })),
     onSuccess: (p) => {
       refresh();
-      toast.success(`${p.name} created`);
+      toast.success(t("projects.new.created", { name: p.name }));
       void navigate({ to: "/admin/projects/$projectId", params: { projectId: p.id } });
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, "The project wasn't created");
+      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, t("projects.new.notCreated"));
     },
   });
   return (
@@ -75,9 +82,9 @@ function NewProjectSheet({ onClose }: { onClose: () => void }) {
       open
       onOpenChange={(o) => !o && onClose()}
       pending={create.isPending}
-      title="New project"
-      description="Its code is in VM names and can't change later."
-      submitLabel={create.isPending ? "Creating…" : "Create"}
+      title={t("projects.new.title")}
+      description={t("projects.new.lead")}
+      submitLabel={create.isPending ? t("projects.new.creating") : t("projects.new.create")}
       submitDisabled={!f.code || !f.name}
       onSubmit={() => {
         setErrors({});
@@ -85,7 +92,7 @@ function NewProjectSheet({ onClose }: { onClose: () => void }) {
       }}
     >
       <div className="grid grid-cols-[120px_1fr] gap-3">
-        <Field label="Code" htmlFor="project-code" error={errors["/code"]}>
+        <Field label={t("projects.code")} htmlFor="project-code" error={errors["/code"]}>
           <Input
             id="project-code"
             className="font-mono"
@@ -93,22 +100,22 @@ function NewProjectSheet({ onClose }: { onClose: () => void }) {
             onChange={(e) => setF({ ...f, code: e.target.value })}
           />
         </Field>
-        <Field label="Name" htmlFor="project-name" error={errors["/name"]}>
+        <Field label={t("projects.name")} htmlFor="project-name" error={errors["/name"]}>
           <Input id="project-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         </Field>
       </div>
-      <Field label="Description" htmlFor="project-description">
+      <Field label={t("projects.description")} htmlFor="project-description">
         <Input
           id="project-description"
           value={f.description}
           onChange={(e) => setF({ ...f, description: e.target.value })}
         />
       </Field>
-      <Field label="Cost centre" htmlFor="project-cost">
+      <Field label={t("projects.costCentre")} htmlFor="project-cost">
         <Input id="project-cost" value={f.cost_center} onChange={(e) => setF({ ...f, cost_center: e.target.value })} />
       </Field>
       <fieldset className="flex flex-wrap gap-3">
-        <legend className="mb-1 text-secondary font-medium">Environments it deploys to</legend>
+        <legend className="mb-1 text-secondary font-medium">{t("projects.environmentsLegend")}</legend>
         {(envs.data?.items ?? []).map((e) => (
           <label key={e.key} htmlFor={`project-env-${e.key}`} className="flex items-center gap-1.5 text-body">
             <Checkbox
@@ -126,19 +133,19 @@ function NewProjectSheet({ onClose }: { onClose: () => void }) {
         ))}
       </fieldset>
       <UserPicker
-        label="Project admins"
+        label={t("projects.new.admins")}
         id="project-admin-search"
         onPick={(u) => !admins.some((a) => a.id === u.id) && setAdmins([...admins, u])}
       />
       {admins.length > 0 && (
-        <ul aria-label="Chosen project admins" className="flex flex-wrap gap-1.5">
+        <ul aria-label={t("projects.new.chosenAdmins")} className="flex flex-wrap gap-1.5">
           {admins.map((a) => (
             <li key={a.id}>
               <Badge tone="accent">
                 {a.name}{" "}
                 <button
                   type="button"
-                  aria-label={`Remove ${a.name}`}
+                  aria-label={t("projects.new.removeAdmin", { name: a.name })}
                   onClick={() => setAdmins(admins.filter((x) => x.id !== a.id))}
                 >
                   ×
@@ -152,10 +159,9 @@ function NewProjectSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
 /** Archiving asks, and so does putting back in use: either changes what its members may do. */
 export function ArchiveDialog({ project, onClose }: { project: S["AdminProject"]; onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshAccess();
   const save = useMutation({
     mutationFn: () =>
@@ -167,10 +173,10 @@ export function ArchiveDialog({ project, onClose }: { project: S["AdminProject"]
       ),
     onSuccess: (p) => {
       refresh();
-      toast.success(p.archived ? `${p.name} archived` : `${p.name} back in use`);
+      toast.success(t(p.archived ? "projects.archive.archived" : "projects.archive.backInUse", { name: p.name }));
       onClose();
     },
-    onError: (e) => failed(e, "Not changed"),
+    onError: (e) => failed(e, t("projects.archive.notChanged")),
   });
   const common = { open: true, onOpenChange: (o: boolean) => !o && onClose(), pending: save.isPending };
   if (project.archived)
@@ -178,44 +184,42 @@ export function ArchiveDialog({ project, onClose }: { project: S["AdminProject"]
       <ConfirmDialog
         {...common}
         tone="primary"
-        title={`Put ${project.name} back in use?`}
-        description="Its members can request in it again, with its placement rules and quotas as they were."
-        confirmLabel="Put back in use"
+        title={t("projects.archive.restoreTitle", { name: project.name })}
+        description={t("projects.archive.restoreLead")}
+        confirmLabel={t("projects.archive.restore")}
         onConfirm={() => save.mutate()}
       />
     );
   return (
     <ConfirmDialog
       {...common}
-      title={`Archive ${project.name}?`}
-      description="Nobody can request anything new in it, and it leaves the project lists. You can put it back in use later."
+      title={t("projects.archive.title", { name: project.name })}
+      description={t("projects.archive.lead")}
       consequences={
         project.deployments === 0
-          ? "It has no deployment."
-          : project.deployments === 1
-            ? "Its deployment goes on running, and its members keep it."
-            : `Its ${project.deployments} deployments go on running, and its members keep them.`
+          ? t("projects.archive.noDeployment")
+          : t("projects.archive.keeps", { count: project.deployments })
       }
-      confirmLabel="Archive project"
+      confirmLabel={t("projects.archive.confirm")}
       onConfirm={() => save.mutate()}
     />
   );
 }
 
-const resourceLabel: Record<S["QuotaResource"], [string, string?]> = {
-  vcpu: ["vCPU"],
-  memory_gb: ["Memory", "GB"],
-  storage_gb: ["Storage", "GB"],
-  vm_count: ["VMs"],
+const inGb: Record<S["QuotaResource"], boolean> = {
+  vcpu: false,
+  memory_gb: true,
+  storage_gb: true,
+  vm_count: false,
 };
 
 type QuotaLine = S["QuotaUsage"]["lines"][number];
 
 /** What deployments and running requests take, of the limit: "12 of 64 GB". */
-export function takenText(l: QuotaLine): string {
-  const unit = resourceLabel[l.resource][1];
+export function takenText(t: T, l: QuotaLine): string {
   const taken = l.used + l.reserved;
-  return `${l.limit == null ? taken : `${taken} of ${l.limit}`}${unit ? ` ${unit}` : ""}`;
+  if (l.limit == null) return inGb[l.resource] ? t("projects.quotaUse.gb", { taken }) : String(taken);
+  return t(inGb[l.resource] ? "projects.quotaUse.ofGb" : "projects.quotaUse.of", { taken, limit: l.limit });
 }
 
 export function quotaTone(l: QuotaLine): string | undefined {
@@ -228,21 +232,23 @@ export function quotaTone(l: QuotaLine): string | undefined {
 
 /** The project-wide limit nearest to being reached. */
 function QuotaUse({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("admin-governance");
   const quota = useQuery(q.quota(projectId));
   if (quota.isPending) return <Skeleton className="h-4 w-24" />;
-  if (quota.isError) return <span className="text-faint">Not known</span>;
+  if (quota.isError) return <span className="text-faint">{t("projects.quotaUse.notKnown")}</span>;
   const tightest = quota.data.lines
     .filter((l) => l.limit != null && l.limit > 0)
     .sort((a, b) => (b.used + b.reserved) / b.limit! - (a.used + a.reserved) / a.limit!)[0];
-  if (!tightest) return <span className="text-muted">No project-wide limit</span>;
+  if (!tightest) return <span className="text-muted">{t("projects.quotaUse.noProjectWide")}</span>;
   return (
     <span className={cn("tabular-nums", quotaTone(tightest))}>
-      {resourceLabel[tightest.resource][0]} {takenText(tightest)}
+      {t(`projects.quotaUse.name.${tightest.resource}`)} {takenText(t, tightest)}
     </span>
   );
 }
 
 function ProjectsPanel() {
+  const { t } = useTranslation("admin-governance");
   const navigate = useNavigate();
   const [search, setSearch] = useState<string>();
   const [text, setText] = useSearchBox(search, setSearch);
@@ -259,7 +265,7 @@ function ProjectsPanel() {
   if (scope !== "all") {
     // The projects whose settings the caller sees: a project admin's own.
     return (
-      <Panel title="Your projects">
+      <Panel title={t("projects.list.yours")}>
         <ul className="flex flex-col gap-1 text-body">
           {scope.map((p) => (
             <li key={p.id}>
@@ -279,7 +285,7 @@ function ProjectsPanel() {
   const columns: Column<S["AdminProject"]>[] = [
     {
       id: "project",
-      header: "Project",
+      header: t("projects.list.project"),
       sortValue: (p) => p.name.toLowerCase(),
       cell: (p) => (
         <div className="flex flex-wrap items-center gap-x-2">
@@ -287,32 +293,32 @@ function ProjectsPanel() {
             {p.name}
           </Link>
           <span className="font-mono text-caption text-faint">{p.code}</span>
-          {p.archived && <Badge tone="neutral">Archived</Badge>}
+          {p.archived && <Badge tone="neutral">{t("projects.list.archived")}</Badge>}
         </div>
       ),
     },
     {
       id: "environments",
-      header: "Environments",
-      cell: (p) => <span className="text-secondary text-muted">{p.environments.join(", ") || "None"}</span>,
+      header: t("projects.list.environments"),
+      cell: (p) => <span className="text-secondary text-muted">{p.environments.join(", ") || t("projects.none")}</span>,
     },
     {
       id: "members",
-      header: "Members",
+      header: t("projects.list.members"),
       align: "end",
       sortValue: (p) => p.members,
       cell: (p) => <span className="tabular-nums">{p.members}</span>,
     },
     {
       id: "deployments",
-      header: "Deployments",
+      header: t("projects.list.deployments"),
       align: "end",
       sortValue: (p) => p.deployments,
       cell: (p) => <span className="tabular-nums">{p.deployments}</span>,
     },
     {
       id: "quota",
-      header: "Quota use",
+      header: t("projects.list.quota"),
       cell: (p) => (
         <span className="text-secondary">
           <QuotaUse projectId={p.id} />
@@ -322,16 +328,16 @@ function ProjectsPanel() {
   ];
   const create = can(me, "project.create") && (
     <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
-      New project
+      {t("projects.list.add")}
     </Button>
   );
   const filtered = Boolean(search) || archived;
   // With no project at all, the empty state offers New project itself.
   const none = projects.data?.items.length === 0 && !filtered;
   return (
-    <Panel title="Projects" flush actions={none ? undefined : create}>
+    <Panel title={t("projects.list.title")} flush actions={none ? undefined : create}>
       <DataTable
-        label="Projects"
+        label={t("projects.list.title")}
         columns={columns}
         rows={projects.data?.items}
         rowKey={(p) => p.id}
@@ -341,10 +347,15 @@ function ProjectsPanel() {
         error={projects.isError && <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />}
         toolbar={
           <>
-            <TableSearch label="Search projects" value={text} onChange={setText} placeholder="Name or code" />
+            <TableSearch
+              label={t("projects.list.search")}
+              value={text}
+              onChange={setText}
+              placeholder={t("projects.list.searchPlaceholder")}
+            />
             <label htmlFor="projects-archived" className="flex items-center gap-1.5 text-secondary">
               <Checkbox id="projects-archived" checked={archived} onChange={setArchived} />
-              Archived ones too
+              {t("projects.list.archivedToo")}
             </label>
           </>
         }
@@ -352,8 +363,8 @@ function ProjectsPanel() {
           filtered ? (
             <EmptyState
               icon={FolderKanban}
-              title="No project matches"
-              body="Search by name or code."
+              title={t("projects.list.noMatch")}
+              body={t("projects.list.noMatchBody")}
               action={
                 <Button
                   size="sm"
@@ -362,30 +373,30 @@ function ProjectsPanel() {
                     setArchived(false);
                   }}
                 >
-                  Clear the search
+                  {t("projects.list.clear")}
                 </Button>
               }
             />
           ) : (
             <EmptyState
               icon={FolderKanban}
-              title="No projects yet"
-              body="A project is who requests: its members, the environments it deploys to, where its VMs go and its quotas."
+              title={t("projects.list.emptyTitle")}
+              body={t("projects.list.emptyBody")}
               action={create || undefined}
             />
           )
         }
-        rowMenuLabel={(p) => `Actions for ${p.name}`}
+        rowMenuLabel={(p) => t("projects.actionsFor", { name: p.name })}
         rowMenu={(p) => (
           <>
             <MenuItem onSelect={() => void navigate({ to: "/admin/projects/$projectId", params: { projectId: p.id } })}>
-              Open
+              {t("projects.list.open")}
             </MenuItem>
             {can(me, "project.update", p.id) && (
               <>
                 <MenuSeparator />
                 <MenuItem danger={!p.archived} onSelect={() => setArchiving(p)}>
-                  {p.archived ? "Put back in use" : "Archive"}
+                  {p.archived ? t("projects.archive.restore") : t("projects.archive.archive")}
                 </MenuItem>
               </>
             )}
@@ -416,6 +427,7 @@ function EnvironmentSheet({
   next: number;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshEnvironments();
   const [f, setF] = useState({
     key: existing?.key ?? "",
@@ -450,12 +462,13 @@ function EnvironmentSheet({
           ),
     onSuccess: () => {
       refresh();
-      toast.success(existing ? `${f.name} saved` : `${f.name} added`);
+      toast.success(t(existing ? "projects.environments.saved" : "projects.environments.added", { name: f.name }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      if (!isApiError(e) || e.fieldErrors.length === 0) failed(e, existing ? "Not saved" : "Not added");
+      if (!isApiError(e) || e.fieldErrors.length === 0)
+        failed(e, existing ? t("projects.notSaved") : t("projects.environments.notAdded"));
     },
   });
   const whole = f.snapshots.trim() !== "" && Number.isInteger(snapshots) && snapshots >= 0;
@@ -464,9 +477,17 @@ function EnvironmentSheet({
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={existing ? `Change ${existing.name}` : "New environment"}
-      description="Projects deploy to environments; a VM's name carries its environment's key."
-      submitLabel={save.isPending ? "Saving…" : existing ? "Save environment" : "Add environment"}
+      title={
+        existing ? t("projects.environments.changeNamed", { name: existing.name }) : t("projects.environments.new")
+      }
+      description={t("projects.environments.sheetLead")}
+      submitLabel={
+        save.isPending
+          ? t("projects.saving")
+          : existing
+            ? t("projects.environments.save")
+            : t("projects.environments.add")
+      }
       submitDisabled={!f.key || !f.name || !whole}
       onSubmit={() => {
         setErrors({});
@@ -474,24 +495,24 @@ function EnvironmentSheet({
       }}
     >
       <Field
-        label="Key"
+        label={t("projects.environments.key")}
         htmlFor="env-key"
-        hint="2 to 10 lower-case letters and digits. It can't change later."
+        hint={t("projects.environments.keyHint")}
         error={errors["/key"]}
       >
         <Input
           id="env-key"
           className="font-mono"
-          placeholder="dev"
+          placeholder={keyExample}
           value={f.key}
           disabled={Boolean(existing)}
           onChange={(e) => setF({ ...f, key: e.target.value })}
         />
       </Field>
-      <Field label="Name" htmlFor="env-name" error={errors["/name"]}>
+      <Field label={t("projects.name")} htmlFor="env-name" error={errors["/name"]}>
         <Input
           id="env-name"
-          placeholder="Development"
+          placeholder={t("projects.environments.namePlaceholder")}
           value={f.name}
           onChange={(e) => setF({ ...f, name: e.target.value })}
         />
@@ -504,13 +525,16 @@ function EnvironmentSheet({
           className="mt-0.5"
         />
         <span>
-          Production
-          <span className="block text-secondary text-muted">
-            Highlighted everywhere; policies are usually stricter.
-          </span>
+          {t("projects.environments.production")}
+          <span className="block text-secondary text-muted">{t("projects.environments.productionNote")}</span>
         </span>
       </label>
-      <Field label="Snapshots kept" htmlFor="env-snapshots" hint="Per VM." error={errors["/snapshot_max_count"]}>
+      <Field
+        label={t("projects.environments.snapshots")}
+        htmlFor="env-snapshots"
+        hint={t("projects.environments.snapshotsHint")}
+        error={errors["/snapshot_max_count"]}
+      >
         <Input
           id="env-snapshots"
           type="number"
@@ -542,6 +566,7 @@ function TagCategoriesField({
   onChange: (v: string[]) => void;
   error?: string;
 }) {
+  const { t } = useTranslation("admin-governance");
   const inventory = useQuery(adm.inventory());
   const known = new Map<string, S["InventoryTagCategory"]>();
   for (const c of inventory.data?.tag_categories ?? []) if (!known.has(c.name)) known.set(c.name, c);
@@ -550,14 +575,12 @@ function TagCategoriesField({
     onChange(on ? [...value, name].sort((a, b) => a.localeCompare(b)) : value.filter((v) => v !== name));
   return (
     <fieldset className="flex flex-col gap-1.5" aria-describedby="env-tag-categories-note">
-      <legend className="mb-1 text-secondary font-medium">Tags users may change</legend>
+      <legend className="mb-1 text-secondary font-medium">{t("projects.environments.tagsLegend")}</legend>
       {inventory.isPending ? (
         <Skeleton className="h-5 w-40" />
       ) : names.length === 0 ? (
         <p className="text-secondary text-muted">
-          {inventory.isError
-            ? "Couldn't read vCenter's tag categories."
-            : "vCenter has no tag category for VMs yet: rvav reads them at its inventory sync."}
+          {inventory.isError ? t("projects.environments.tagsUnreadable") : t("projects.environments.tagsNone")}
         </p>
       ) : (
         names.map((name) => {
@@ -571,23 +594,25 @@ function TagCategoriesField({
               </label>
               <span className="min-w-0 truncate text-caption text-faint">
                 {c
-                  ? [c.single && "one per VM", c.tags.join(", ") || "no tags yet"].filter(Boolean).join(" · ")
-                  : "not in vCenter"}
+                  ? [
+                      c.single && t("projects.environments.onePerVm"),
+                      c.tags.join(", ") || t("projects.environments.noTagsYet"),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : t("projects.environments.notInVcenter")}
               </span>
             </div>
           );
         })
       )}
-      <FieldNote
-        id="env-tag-categories-note"
-        error={error}
-        hint="Their tags are what Edit tags offers on this environment's VMs. Tags of other categories stay as they are."
-      />
+      <FieldNote id="env-tag-categories-note" error={error} hint={t("projects.environments.tagsHint")} />
     </fieldset>
   );
 }
 
 function EnvironmentsPanel({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshEnvironments();
   const envs = useQuery(adm.environments());
   const [editing, setEditing] = useState<S["AdminEnvironment"] | "new" | null>(null);
@@ -596,16 +621,18 @@ function EnvironmentsPanel({ canEdit }: { canEdit: boolean }) {
     mutationFn: (key: string) => call(api.DELETE("/admin/environments/{key}", { params: { path: { key } } })),
     onSuccess: () => {
       refresh();
-      toast.success(`${removing?.name ?? "The environment"} removed`);
+      toast.success(
+        t("projects.environments.removed", { name: removing?.name ?? t("projects.environments.theEnvironment") }),
+      );
       setRemoving(null);
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("projects.notRemoved")),
   });
   const list = envs.data?.items;
   const columns: Column<S["AdminEnvironment"]>[] = [
     {
       id: "environment",
-      header: "Environment",
+      header: t("projects.environments.environment"),
       sortValue: (e) => e.order,
       cell: (e) => (
         <div className="flex flex-wrap items-center gap-x-2">
@@ -616,56 +643,62 @@ function EnvironmentsPanel({ canEdit }: { canEdit: boolean }) {
     },
     {
       id: "production",
-      header: "Production",
-      cell: (e) => (e.production ? <Badge tone="warn">Production</Badge> : <span className="text-muted">No</span>),
+      header: t("projects.environments.production"),
+      cell: (e) =>
+        e.production ? (
+          <Badge tone="warn">{t("projects.environments.production")}</Badge>
+        ) : (
+          <span className="text-muted">{t("projects.environments.no")}</span>
+        ),
     },
     {
       id: "snapshots",
-      header: "Snapshots kept",
+      header: t("projects.environments.snapshots"),
       align: "end",
       sortValue: (e) => e.snapshot_max_count,
       cell: (e) => <span className="tabular-nums">{e.snapshot_max_count}</span>,
     },
     {
       id: "tags",
-      header: "Tags users change",
+      header: t("projects.environments.tags"),
       cell: (e) =>
         e.tag_categories?.length ? (
           <span className="font-mono text-secondary">{e.tag_categories.join(", ")}</span>
         ) : (
-          <span className="text-muted">None</span>
+          <span className="text-muted">{t("projects.none")}</span>
         ),
     },
     {
       id: "used",
-      header: "Used by",
+      header: t("projects.environments.usedBy"),
       cell: (e) => (
         <span className="text-secondary text-muted">
-          {plural(e.projects ?? 0, "project")}, {plural(e.deployments ?? 0, "deployment")}
+          {t("projects.environments.projects", { count: e.projects ?? 0 })},{" "}
+          {t("projects.environments.deployments", { count: e.deployments ?? 0 })}
         </span>
       ),
     },
   ];
   const add = canEdit && (
     <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-      New environment
+      {t("projects.environments.new")}
     </Button>
   );
   const why = (e: S["AdminEnvironment"]) =>
     (e.projects ?? 0) > 0
-      ? "Remove: projects deploy to it"
+      ? t("projects.environments.removeProjects")
       : (e.deployments ?? 0) > 0
-        ? "Remove: deployments are in it"
+        ? t("projects.environments.removeDeployments")
         : undefined;
   return (
     <Panel
-      title="Environments"
-      description="Where projects deploy, in this order everywhere."
+      title={t("projects.environments.title")}
+      description={t("projects.environments.lead")}
       flush
       actions={list?.length ? add : undefined}
     >
       <DataTable
-        label="Environments"
+        label={t("projects.environments.title")}
         columns={columns}
         rows={list}
         rowKey={(e) => e.key}
@@ -675,20 +708,20 @@ function EnvironmentsPanel({ canEdit }: { canEdit: boolean }) {
         empty={
           <EmptyState
             icon={Layers}
-            title="No environments yet"
-            body="Each project deploys to environments: add one, development for example, before the first project."
+            title={t("projects.environments.emptyTitle")}
+            body={t("projects.environments.emptyBody")}
             action={add || undefined}
           />
         }
-        rowMenuLabel={(e) => `Actions for ${e.name}`}
+        rowMenuLabel={(e) => t("projects.actionsFor", { name: e.name })}
         rowMenu={
           canEdit
             ? (e) => (
                 <>
-                  <MenuItem onSelect={() => setEditing(e)}>Change</MenuItem>
+                  <MenuItem onSelect={() => setEditing(e)}>{t("projects.change")}</MenuItem>
                   <MenuSeparator />
                   <MenuItem danger disabled={Boolean(why(e))} onSelect={() => setRemoving(e)}>
-                    {why(e) ?? "Remove"}
+                    {why(e) ?? t("projects.remove")}
                   </MenuItem>
                 </>
               )
@@ -706,10 +739,10 @@ function EnvironmentsPanel({ canEdit }: { canEdit: boolean }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.name}?`}
-          description="Projects can't be given it any more."
-          consequences="No project deploys to it and no deployment is in it."
-          confirmLabel="Remove environment"
+          title={t("projects.environments.removeTitle", { name: removing.name })}
+          description={t("projects.environments.removeLead")}
+          consequences={t("projects.environments.removeConsequences")}
+          confirmLabel={t("projects.environments.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing.key)}
         />
@@ -719,6 +752,7 @@ function EnvironmentsPanel({ canEdit }: { canEdit: boolean }) {
 }
 
 function MapGroupSheet({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshAccess();
   const projects = useQuery(adm.projectNames());
   const roles = useQuery(adm.roles());
@@ -732,11 +766,11 @@ function MapGroupSheet({ onClose }: { onClose: () => void }) {
       ),
     onSuccess: () => {
       refresh();
-      toast.success(`${f.group} mapped`);
+      toast.success(t("projects.groups.mapped", { group: f.group }));
       onClose();
     },
     onError: (e) => {
-      if (!refused(e)) failed(e, "Not mapped");
+      if (!refused(e)) failed(e, t("projects.groups.notMapped"));
     },
   });
   // A role is mapped where it can be given: for all of rvav without a project, in one with it.
@@ -749,43 +783,47 @@ function MapGroupSheet({ onClose }: { onClose: () => void }) {
       open
       onOpenChange={(o) => !o && onClose()}
       pending={add.isPending}
-      title="Map a group"
-      description="Everyone in the identity provider's group gets the role, for all of rvav or in one project."
-      submitLabel={add.isPending ? "Mapping…" : "Map group"}
+      title={t("projects.groups.title")}
+      description={t("projects.groups.lead")}
+      submitLabel={add.isPending ? t("projects.groups.mapping") : t("projects.groups.map")}
       submitDisabled={!f.group}
       onSubmit={() => add.mutate()}
     >
-      <Field label="OIDC group" htmlFor="map-group" hint="As the identity provider sends it in the groups claim.">
+      <Field label={t("projects.groups.group")} htmlFor="map-group" hint={t("projects.groups.groupHint")}>
         <Input
           id="map-group"
           className="font-mono"
-          placeholder="rvav-web"
+          placeholder={groupExample}
           value={f.group}
           onChange={(e) => setF({ ...f, group: e.target.value })}
         />
       </Field>
-      <Field label="In project" htmlFor="map-project">
+      <Field label={t("projects.groups.inProject")} htmlFor="map-project">
         <Select
           id="map-project"
           value={f.project}
           onChange={(v) => setF({ ...f, project: v, role: v === "none" ? "auditor" : "member" })}
           options={[
-            { value: "none", label: "For all of rvav" },
+            { value: "none", label: t("projects.groups.forAll") },
             ...(projects.data?.items ?? []).map((p) => ({ value: p.id, label: p.name })),
           ]}
         />
       </Field>
-      <Field label="Role" htmlFor="map-role">
+      <Field label={t("projects.groups.role")} htmlFor="map-role">
         <Select
           id="map-role"
           value={f.role}
           onChange={(v) => setF({ ...f, role: v })}
           loading={roles.isPending}
-          options={offered.map((r) => ({ value: r.key, label: r.name, group: r.built_in ? "Built in" : "Custom" }))}
+          options={offered.map((r) => ({
+            value: r.key,
+            label: r.name,
+            group: r.built_in ? t("projects.builtIn") : t("projects.custom"),
+          }))}
         />
       </Field>
       {chosen && !chosen.built_in && chosen.permissions.includes("access.manage") && (
-        <AdminWarning who={`everyone in ${f.group || "the group"}`} />
+        <AdminWarning who={t("projects.groups.everyoneIn", { group: f.group || t("projects.groups.theGroup") })} />
       )}
       <Refusal error={add.error} />
     </Sheet>
@@ -793,6 +831,7 @@ function MapGroupSheet({ onClose }: { onClose: () => void }) {
 }
 
 function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTranslation("admin-governance");
   const refresh = useRefreshAccess();
   const mappings = useQuery(adm.groupMappings());
   const [mapping, setMapping] = useState(false);
@@ -801,43 +840,51 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
     mutationFn: (id: string) => call(api.DELETE("/admin/group-mappings/{id}", { params: { path: { id } } })),
     onSuccess: () => {
       refresh();
-      toast.success(`The mapping of ${removing?.oidc_group ?? "the group"} removed`);
+      toast.success(t("projects.groups.removed", { group: removing?.oidc_group ?? t("projects.groups.theGroup") }));
       setRemoving(null);
     },
     onError: (e) => {
       setRemoving(null);
-      if (!refused(e)) failed(e, "Not removed");
+      if (!refused(e)) failed(e, t("projects.notRemoved"));
     },
   });
   const gives = (m: S["GroupMapping"]) =>
-    `${m.role_name ?? m.role}${m.project ? ` in ${m.project.name}` : " for all of rvav"}`;
+    m.project
+      ? t("projects.groups.givesIn", { role: m.role_name ?? m.role, project: m.project.name })
+      : t("projects.groups.givesAll", { role: m.role_name ?? m.role });
   const columns: Column<S["GroupMapping"]>[] = [
     {
       id: "group",
-      header: "Group",
+      header: t("projects.groups.groupColumn"),
       sortValue: (m) => m.oidc_group,
       cell: (m) => <span className="font-mono text-secondary">{m.oidc_group}</span>,
     },
     {
       id: "gives",
-      header: "Gives",
+      header: t("projects.groups.gives"),
       sortValue: (m) => gives(m),
       cell: (m) => (
         <span className="text-secondary">
-          <Link
-            to="/admin/roles/$roleKey"
-            params={{ roleKey: m.role }}
-            className="text-accent underline underline-offset-2"
-          >
-            {m.role_name ?? m.role}
-          </Link>
-          {m.project ? ` in ${m.project.name}` : " for all of rvav"}
+          <Trans
+            t={t}
+            i18nKey={m.project ? "projects.groups.givesInLink" : "projects.groups.givesAllLink"}
+            values={{ role: m.role_name ?? m.role, project: m.project?.name }}
+            components={{
+              role: (
+                <Link
+                  to="/admin/roles/$roleKey"
+                  params={{ roleKey: m.role }}
+                  className="text-accent underline underline-offset-2"
+                />
+              ),
+            }}
+          />
         </span>
       ),
     },
     {
       id: "people",
-      header: "People in it",
+      header: t("projects.groups.people"),
       align: "end",
       sortValue: (m) => m.users ?? 0,
       cell: (m) => <span className="tabular-nums">{m.users ?? 0}</span>,
@@ -845,14 +892,14 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
   ];
   const add = canEdit && (
     <Button size="sm" variant="primary" onClick={() => setMapping(true)}>
-      Map a group
+      {t("projects.groups.add")}
     </Button>
   );
   const list = mappings.data?.items;
   return (
     <Panel
-      title="Identity provider groups"
-      description="Roles given to everyone in a group of the identity provider."
+      title={t("projects.groups.panelTitle")}
+      description={t("projects.groups.panelLead")}
       flush
       actions={list?.length ? add : undefined}
     >
@@ -862,7 +909,7 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
         </div>
       )}
       <DataTable
-        label="Identity provider groups"
+        label={t("projects.groups.panelTitle")}
         columns={columns}
         rows={list}
         rowKey={(m) => m.id}
@@ -872,17 +919,17 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
         empty={
           <EmptyState
             icon={UsersRound}
-            title="No group mapped yet"
-            body="Map a group of the identity provider to admin first: the local administrator is then kept for when the provider is down."
+            title={t("projects.groups.emptyTitle")}
+            body={t("projects.groups.emptyBody")}
             action={add || undefined}
           />
         }
-        rowMenuLabel={(m) => `Actions for ${m.oidc_group}`}
+        rowMenuLabel={(m) => t("projects.actionsFor", { name: m.oidc_group })}
         rowMenu={
           canEdit
             ? (m) => (
                 <MenuItem danger onSelect={() => setRemoving(m)}>
-                  Remove
+                  {t("projects.remove")}
                 </MenuItem>
               )
             : undefined
@@ -893,14 +940,14 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove the mapping of ${removing.oidc_group}?`}
-          description={`People in ${removing.oidc_group} no longer get ${gives(removing)}, unless they hold it another way.`}
+          title={t("projects.groups.removeTitle", { group: removing.oidc_group })}
+          description={t("projects.groups.removeLead", { group: removing.oidc_group, gives: gives(removing) })}
           consequences={
             (removing.users ?? 0) > 0
-              ? `${plural(removing.users ?? 0, "person", "people")} ${removing.users === 1 ? "was" : "were"} in it at their last sign-in.`
-              : "Nobody in it has signed in yet."
+              ? t("projects.groups.signedIn", { count: removing.users ?? 0 })
+              : t("projects.groups.nobodySignedIn")
           }
-          confirmLabel="Remove mapping"
+          confirmLabel={t("projects.groups.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing.id)}
         />
@@ -910,20 +957,21 @@ function GroupMappingsPanel({ canEdit }: { canEdit: boolean }) {
 }
 
 export function ProjectsPage({ tab }: { tab?: ProjectsTab }) {
+  const { t } = useTranslation(["admin-governance", "shell"]);
   const navigate = useNavigate();
   const { me } = useCurrentProject();
+  const seesEnvironments = can(me, "environments.read");
+  const seesGroups = can(me, "access.read");
+  const seesPlacements = can(me, "project.settings.read");
   const tabs = [
-    { value: "projects", label: "Projects", show: true },
-    { value: "environments", label: "Environments", show: can(me, "environments.read") },
-    { value: "groups", label: "Identity provider groups", show: can(me, "access.read") },
-  ].filter((t) => t.show);
-  const shown = tabs.some((t) => t.value === tab) ? tab : "projects";
+    { value: "projects", show: true },
+    { value: "environments", show: seesEnvironments },
+    { value: "groups", show: seesGroups },
+  ].filter((s) => s.show);
+  const shown = tabs.some((s) => s.value === tab) ? tab : "projects";
   return (
     <Page>
-      <PageHeader
-        title="Projects"
-        description="Projects, the environments they deploy to, and the groups that give roles."
-      />
+      <PageHeader title={t("shell:nav.admin.projects")} description={t("projects.lead")} />
       {tabs.length === 1 ? (
         <ProjectsPanel />
       ) : (
@@ -933,23 +981,23 @@ export function ProjectsPage({ tab }: { tab?: ProjectsTab }) {
             void navigate({ to: "/admin/projects", search: { tab: next as ProjectsTab }, replace: true })
           }
         >
-          <TabsList aria-label="Projects sections">
-            {tabs.map((t) => (
-              <TabsTrigger key={t.value} value={t.value}>
-                {t.label}
+          <TabsList aria-label={t("projects.tabsLabel")}>
+            {tabs.map((s) => (
+              <TabsTrigger key={s.value} value={s.value}>
+                {t(`projects.tabs.${s.value as ProjectsTab}`)}
               </TabsTrigger>
             ))}
           </TabsList>
           <TabsContent value="projects" className="pt-4">
             <ProjectsPanel />
           </TabsContent>
-          {can(me, "environments.read") && (
+          {seesEnvironments && (
             <TabsContent value="environments" className="flex flex-col gap-4 pt-4">
               <EnvironmentsPanel canEdit={can(me, "environments.manage")} />
-              {can(me, "project.settings.read") && <DirectoryPlacements canManage={can(me, "placement.manage")} />}
+              {seesPlacements && <DirectoryPlacements canManage={can(me, "placement.manage")} />}
             </TabsContent>
           )}
-          {can(me, "access.read") && (
+          {seesGroups && (
             <TabsContent value="groups" className="pt-4">
               <GroupMappingsPanel canEdit={can(me, "access.manage")} />
             </TabsContent>

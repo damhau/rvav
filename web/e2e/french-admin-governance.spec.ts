@@ -185,6 +185,41 @@ test("templates and networks, in French", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("projects, in French", async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await inFrench(page);
+
+  await open(page, "Projets");
+  const projects = page.getByRole("table", { name: "Projets" });
+  await expect(projects.getByRole("columnheader", { name: /^Quotas utilisés/ })).toBeVisible();
+  await bothThemes(page, "French projects");
+  await tab(page, "Environnements");
+  await expect(page.getByRole("region", { name: "Environnements", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Active Directory", exact: true })).toBeVisible();
+  await bothThemes(page, "French environments");
+  await tab(page, "Groupes du fournisseur d'identité");
+  await expect(page.getByRole("region", { name: "Groupes du fournisseur d'identité", exact: true })).toBeVisible();
+  await bothThemes(page, "French identity provider groups");
+
+  await tab(page, "Projets");
+  await projects.getByRole("link", { name: "Web Platform", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Web Platform", level: 1 })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Partage des déploiements" })).toBeVisible();
+  await bothThemes(page, "French project members");
+  await tab(page, "Placement");
+  await expect(page.getByRole("region", { name: "Règles de placement" })).toBeVisible();
+  await bothThemes(page, "French project placement");
+  await tab(page, "Quotas");
+  await expect(page.getByRole("region", { name: "Quotas", exact: true })).toBeVisible();
+  await bothThemes(page, "French project quotas");
+  await tab(page, "Détails");
+  await expect(page.getByRole("button", { name: "Enregistrer les détails" })).toBeVisible();
+  await bothThemes(page, "French project details");
+  expect(errors).toEqual([]);
+});
+
 test.describe("a French browser, at 320 px", () => {
   test.use({ locale: "fr-CH", viewport: { width: 320, height: 640 } });
   for (const path of [
@@ -199,6 +234,10 @@ test.describe("a French browser, at 320 px", () => {
     "/admin/infrastructure",
     "/admin/infrastructure?tab=ip-ranges",
     "/admin/infrastructure?tab=inventory",
+    "/admin/projects",
+    "/admin/projects?tab=environments",
+    "/admin/projects/prj_web",
+    "/admin/projects/prj_web?tab=placement",
   ]) {
     test(`no sideways scrolling: ${path}`, async ({ page }) => {
       await page.goto(path);
