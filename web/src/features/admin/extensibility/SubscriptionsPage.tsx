@@ -2,10 +2,12 @@
 // workflows that hear about requests, their approvals, each VM they build or
 // delete (ADR-0049), day-2 actions, leases and projects; blocking ones may stop a
 // request, or change a VM it hasn't built (ADR-0054).
+import type { TFunction } from "i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Webhook } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -24,9 +26,10 @@ import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
+import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q } from "@/lib/query";
-import { fullDate, relative } from "@/lib/format";
+import { formatList, fullDate, relative } from "@/lib/format";
 import { errorAt, failed, fieldErrors, priorityOf, writable } from "../governance/common";
 import { RunDialog } from "./runs";
 
@@ -35,16 +38,20 @@ type Subscription = S["Subscription"];
 type TargetKind = "webhook" | "awx" | "workflow";
 type TargetDraft = { kind: TargetKind; url: string; secret: string; template: string; workflow: string };
 
-export function targetText(t: S["SubscriptionTarget"]): string {
-  if (t.webhook) {
-    try {
-      return "Webhook to " + new URL(t.webhook.url).host;
-    } catch {
-      return "Webhook to " + t.webhook.url;
-    }
+const tx = i18n.getFixedT(null, "admin-extensibility");
+
+function hostOf(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
   }
-  if (t.awx) return "AWX template " + (t.awx.job_template ?? `#${t.awx.template_id ?? ""}`);
-  if (t.workflow) return "Custom workflow " + t.workflow.key;
+}
+
+export function targetText(t: S["SubscriptionTarget"]): string {
+  if (t.webhook) return tx("target.webhookTo", { host: hostOf(t.webhook.url) });
+  if (t.awx) return tx("target.awx", { name: t.awx.job_template ?? `#${t.awx.template_id ?? ""}` });
+  if (t.workflow) return tx("target.workflow", { key: t.workflow.key });
   return "—";
 }
 
@@ -63,50 +70,15 @@ const targetOf = (d: TargetDraft): S["SubscriptionTarget"] =>
       ? { awx: { job_template: d.template } }
       : { workflow: { key: d.workflow } };
 
-/** "a, b and c". */
-export const listText = (items: string[]) =>
-  items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-
 /** What a blocking answer may change, and where the answer says it. */
-export const changeText: Record<S["SubscriptionChange"], string> = {
-  properties: "the deployment's custom properties (properties)",
-  name: "the VM's name (machine.name)",
-  placement: "its cluster, resource pool, datastore and folder (machine.placement)",
-  networks: "its adapters' networks and addresses (machine.networks)",
-};
+export const changeText = (c: S["SubscriptionChange"]) => tx(`changes.${c}`);
 
 export const runsText = (s: Subscription) =>
-  `${s.runs.delivered} delivered, ${s.runs.failed} failed, ${s.runs.pending} waiting`;
-
-const topicGroups: Record<S["EventTopicGroup"], string> = {
-  request: "Requests",
-  approval: "A request's approval levels",
-  machine: "A request's VMs, one event each",
-  custom: "A request's custom resources, one event each",
-  lease: "Leases",
-  project: "Projects",
-};
+  tx("subscriptions.runs", { delivered: s.runs.delivered, failed: s.runs.failed, pending: s.runs.pending });
 
 const invalidate = (qc: ReturnType<typeof useQueryClient>) => {
   void qc.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
   void qc.invalidateQueries({ queryKey: ["admin", "subscription"] });
-};
-
-const targetLabels = {
-  target: {
-    kind: "Kind of target",
-    url: "URL",
-    secret: "Signing secret",
-    template: "Job template",
-    workflow: "Custom workflow",
-  },
-  recovery: {
-    kind: "Kind of recovery target",
-    url: "Recovery URL",
-    secret: "Recovery signing secret",
-    template: "Recovery job template",
-    workflow: "Recovery workflow",
-  },
 };
 
 /** A subscription's target, or its recovery target: a webhook, an AWX template or a custom workflow. */
@@ -121,34 +93,35 @@ function TargetFields({
   onChange: (d: TargetDraft) => void;
   errors: Record<string, string>;
 }) {
+  const { t } = useTranslation("admin-extensibility");
   const secrets = useQuery(adm.secrets());
   const templates = useQuery(q.awxTemplates());
   const workflows = useQuery(adm.workflows());
-  const label = targetLabels[of];
+  const label = (field: "kind" | "url" | "secret" | "template" | "workflow") => t(`target.labels.${of}.${field}`);
   const id = (field: string) => (of === "target" ? `sub-${field}` : `sub-recovery-${field}`);
   const path = `/${of}`;
   const set = (patch: Partial<TargetDraft>) => onChange({ ...value, ...patch });
   return (
     <>
-      <Field label={label.kind} htmlFor={id("kind")} error={errors[path]}>
+      <Field label={label("kind")} htmlFor={id("kind")} error={errors[path]}>
         <Select
           id={id("kind")}
           value={value.kind}
           onChange={(v) => set({ kind: v as TargetKind })}
           options={[
-            { value: "webhook", label: "Webhook" },
-            { value: "awx", label: "AWX template" },
-            { value: "workflow", label: "Custom workflow" },
+            { value: "webhook", label: t("target.kinds.webhook") },
+            { value: "awx", label: t("target.kinds.awx") },
+            { value: "workflow", label: t("target.kinds.workflow") },
           ]}
         />
       </Field>
       {value.kind === "webhook" && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
           <Field
-            label={label.url}
+            label={label("url")}
             htmlFor={id("url")}
             error={errors[`${path}/webhook/url`]}
-            hint="On a host rvav may call, as Integrations sets"
+            hint={t("target.urlHint")}
           >
             <Input
               id={id("url")}
@@ -157,7 +130,7 @@ function TargetFields({
               onChange={(e) => set({ url: e.target.value })}
             />
           </Field>
-          <Field label={label.secret} htmlFor={id("secret")} error={errors[`${path}/webhook/secret`]}>
+          <Field label={label("secret")} htmlFor={id("secret")} error={errors[`${path}/webhook/secret`]}>
             <Select
               id={id("secret")}
               value={value.secret}
@@ -171,10 +144,10 @@ function TargetFields({
       )}
       {value.kind === "awx" && (
         <Field
-          label={label.template}
+          label={label("template")}
           htmlFor={id("template")}
           error={errorAt(errors, `${path}/awx`)}
-          hint="It gets the event as the extra variable rvav_event."
+          hint={t("target.awxHint")}
         >
           <Select
             id={id("template")}
@@ -187,7 +160,7 @@ function TargetFields({
         </Field>
       )}
       {value.kind === "workflow" && (
-        <Field label={label.workflow} htmlFor={id("workflow")} error={errors[`${path}/workflow/key`]}>
+        <Field label={label("workflow")} htmlFor={id("workflow")} error={errors[`${path}/workflow/key`]}>
           <Select
             id={id("workflow")}
             value={value.workflow}
@@ -203,6 +176,7 @@ function TargetFields({
 }
 
 export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClose: () => void }) {
+  const { t } = useTranslation("admin-extensibility");
   const qc = useQueryClient();
   const topics = useQuery(adm.eventTopics());
   const [f, setF] = useState({
@@ -224,7 +198,7 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
   const mayBlock = topic?.may_block ?? false;
   const blocks = mayBlock && f.blocking;
   const blockable = (topics.data?.items ?? []).filter((t) => t.may_block).map((t) => t.key);
-  const changes = (topic?.may_change ?? []).map((c) => changeText[c]);
+  const changes = (topic?.may_change ?? []).map(changeText);
   const save = useMutation({
     mutationFn: () => {
       const body: S["SubscriptionWrite"] = {
@@ -246,12 +220,12 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
     },
     onSuccess: () => {
       invalidate(qc);
-      toast.success(`${f.name} saved`);
+      toast.success(t("shared.saved", { name: f.name }));
       onClose();
     },
     onError: (e) => {
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("shared.notSaved"));
     },
   });
   return (
@@ -259,34 +233,34 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={sub ? `Change ${sub.name}` : "New subscription"}
-      description="What it hears about, and what is told."
+      title={sub ? t("shared.changeName", { name: sub.name }) : t("subscriptions.new")}
+      description={t("subscriptions.sheet.lead")}
       className="w-[min(720px,100vw)]"
-      submitLabel={save.isPending ? "Saving…" : "Save subscription"}
+      submitLabel={save.isPending ? t("shared.saving") : t("subscriptions.sheet.save")}
       onSubmit={() => {
         setErrors({});
         save.mutate();
       }}
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
-        <Field label="Name" htmlFor="sub-name" error={errors["/name"]}>
+        <Field label={t("shared.name")} htmlFor="sub-name" error={errors["/name"]}>
           <Input id="sub-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         </Field>
-        <Field label="Topic" htmlFor="sub-topic" error={errors["/topic"]}>
+        <Field label={t("shared.topic")} htmlFor="sub-topic" error={errors["/topic"]}>
           <Select
             id="sub-topic"
             value={f.topic}
             onChange={(v) => setF({ ...f, topic: v as S["EventTopicKey"] })}
-            options={(topics.data?.items ?? []).map((t) => ({
-              value: t.key,
-              label: t.key,
-              group: topicGroups[t.group],
+            options={(topics.data?.items ?? []).map((ev) => ({
+              value: ev.key,
+              label: ev.key,
+              group: t(`topicGroups.${ev.group}`),
             }))}
           />
         </Field>
       </div>
       {topic && <p className="-mt-2 text-secondary text-muted">{topic.description}</p>}
-      <Field label="Description" htmlFor="sub-description">
+      <Field label={t("shared.description")} htmlFor="sub-description">
         <Input
           id="sub-description"
           value={f.description}
@@ -294,12 +268,10 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
         />
       </Field>
       <Field
-        label="Only when (CEL)"
+        label={t("subscriptions.sheet.condition")}
         htmlFor="sub-condition"
         error={errors["/condition"]}
-        hint={
-          'Over the event\'s data; empty for every event. For example environment == "prd" && item.slug == "rhel9-server"'
-        }
+        hint={t("subscriptions.sheet.conditionHint")}
       >
         <Textarea
           id="sub-condition"
@@ -311,18 +283,20 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
       </Field>
       {topic && (
         <details className="text-secondary">
-          <summary className="cursor-pointer text-muted">A sample {topic.key} event</summary>
+          <summary className="cursor-pointer text-muted">
+            {t("subscriptions.sheet.sample", { topic: topic.key })}
+          </summary>
           <pre className="mt-1 max-h-64 overflow-auto rounded bg-sunken p-2 font-mono text-caption">
             {JSON.stringify(topic.sample, null, 2)}
           </pre>
         </details>
       )}
       <fieldset className="flex flex-col gap-3 rounded-md border border-line p-3">
-        <legend className="px-1 text-secondary font-medium">Target</legend>
+        <legend className="px-1 text-secondary font-medium">{t("shared.target")}</legend>
         <TargetFields of="target" value={target} onChange={setTarget} errors={errors} />
       </fieldset>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Priority" htmlFor="sub-priority" hint="Lower first">
+        <Field label={t("shared.priority")} htmlFor="sub-priority" hint={t("subscriptions.sheet.priorityHint")}>
           <Input
             id="sub-priority"
             type="number"
@@ -330,7 +304,7 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
             onChange={(e) => setF({ ...f, priority: e.target.value })}
           />
         </Field>
-        <Field label="Timeout (s)" htmlFor="sub-timeout" error={errors["/timeout_seconds"]}>
+        <Field label={t("subscriptions.sheet.timeout")} htmlFor="sub-timeout" error={errors["/timeout_seconds"]}>
           <Input
             id="sub-timeout"
             type="number"
@@ -349,48 +323,40 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
             checked={blocks}
             onChange={(blocking) => setF({ ...f, blocking })}
           />
-          Blocking: the request waits for the answer, which may stop it
+          {t("subscriptions.sheet.blocking")}
           {!mayBlock && blockable.length > 0 && (
-            <span className="text-secondary text-faint">(only on {listText(blockable)})</span>
+            <span className="text-secondary text-faint">
+              {t("subscriptions.sheet.onlyOn", { topics: formatList(blockable) })}
+            </span>
           )}
         </label>
         {errors["/blocking"] && <p className="text-secondary text-bad">{errors["/blocking"]}</p>}
         {blocks && (
           <>
             <p className="text-secondary text-muted">
-              {changes.length > 0
-                ? `Its answer may also change ${listText(changes)}; rvav checks the change again before building, as it checked the request. `
-                : ""}
-              A webhook answers with JSON, an AWX job with the rvav_answer artifact (set_stats), a custom workflow with
-              its result.
+              {changes.length > 0 ? `${t("subscriptions.sheet.mayChange", { changes: formatList(changes) })} ` : ""}
+              {t("subscriptions.sheet.answers")}
             </p>
-            <Field
-              label="When it fails, doesn't answer or asks for a change rvav refuses"
-              htmlFor="sub-on-failure"
-              className="max-w-sm"
-            >
+            <Field label={t("subscriptions.sheet.onFailure")} htmlFor="sub-on-failure" className="max-w-sm">
               <Select
                 id="sub-on-failure"
                 value={f.on_failure}
                 onChange={(v) => setF({ ...f, on_failure: v as S["SubscriptionOnFailure"] })}
                 options={[
-                  { value: "stop_request", label: "Stop the request" },
-                  { value: "continue_request", label: "Let the request go on" },
+                  { value: "stop_request", label: t("subscriptions.sheet.stop") },
+                  { value: "continue_request", label: t("subscriptions.sheet.goOn") },
                 ]}
               />
             </Field>
             <label htmlFor="sub-recovers" className="flex items-center gap-1.5 text-body">
               <Checkbox id="sub-recovers" checked={recovers} onChange={setRecovers} />
-              Tell a recovery target when it fails
+              {t("subscriptions.sheet.recovers")}
             </label>
             {errors["/recovery"] && !recovers && <p className="text-secondary text-bad">{errors["/recovery"]}</p>}
             {recovers && (
               <fieldset className="flex flex-col gap-3 rounded-md border border-line p-3">
-                <legend className="px-1 text-secondary font-medium">Recovery target</legend>
-                <p className="text-secondary text-muted">
-                  Told once, with the event and why it failed (recovery.reason). If it answers stop or continue, that
-                  decides; otherwise the setting above does.
-                </p>
+                <legend className="px-1 text-secondary font-medium">{t("subscriptions.sheet.recovery")}</legend>
+                <p className="text-secondary text-muted">{t("subscriptions.sheet.recoveryLead")}</p>
                 <TargetFields of="recovery" value={recovery} onChange={setRecovery} errors={errors} />
               </fieldset>
             )}
@@ -398,7 +364,7 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
         )}
         <label htmlFor="sub-enabled" className="flex items-center gap-1.5 text-body">
           <Checkbox id="sub-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />
-          Enabled
+          {t("shared.enabled")}
         </label>
       </div>
     </Sheet>
@@ -407,6 +373,7 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
 
 /** Sends a subscription its topic's sample event, then shows how the delivery went. */
 export function useSubscriptionTest() {
+  const { t } = useTranslation("admin-extensibility");
   const qc = useQueryClient();
   const [tested, setTested] = useState<S["SubscriptionRunDetail"] | null>(null);
   const test = useMutation({
@@ -416,16 +383,17 @@ export function useSubscriptionTest() {
       void qc.invalidateQueries({ queryKey: ["admin", "subscription-runs"] });
       setTested(run);
     },
-    onError: (e) => failed(e, "The test didn't run"),
+    onError: (e) => failed(e, t("subscriptions.testFailed")),
   });
   const dialog = tested && (
-    <RunDialog runId={tested.id} initial={tested} title="Test delivery" onClose={() => setTested(null)} />
+    <RunDialog runId={tested.id} initial={tested} title={t("run.testTitle")} onClose={() => setTested(null)} />
   );
   return { test, dialog };
 }
 
 /** Turns a subscription on or off, keeping the rest of it. */
 export function useSubscriptionSwitch() {
+  const { t } = useTranslation("admin-extensibility");
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (s: Subscription) =>
@@ -437,9 +405,9 @@ export function useSubscriptionSwitch() {
       ),
     onSuccess: (s) => {
       invalidate(qc);
-      toast.success(s.enabled ? `${s.name} is on` : `${s.name} is off`);
+      toast.success(s.enabled ? t("shared.isOn", { name: s.name }) : t("shared.isOff", { name: s.name }));
     },
-    onError: (e) => failed(e, "Not saved"),
+    onError: (e) => failed(e, t("shared.notSaved")),
   });
 }
 
@@ -452,39 +420,40 @@ export function RemoveSubscription({
   onClose: () => void;
   onRemoved?: () => void;
 }) {
+  const { t } = useTranslation("admin-extensibility");
   const qc = useQueryClient();
   const remove = useMutation({
     mutationFn: () => call(api.DELETE("/admin/subscriptions/{id}", { params: { path: { id: sub.id } } })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
-      toast.success(`${sub.name} removed`);
+      toast.success(t("shared.removed", { name: sub.name }));
       onClose();
       onRemoved?.();
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("shared.notRemoved")),
   });
   return (
     <ConfirmDialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Remove ${sub.name}?`}
-      description="Its runs, with what each sent and got back, go with it. To keep them, turn it off instead."
+      title={t("shared.removeName", { name: sub.name })}
+      description={t("subscriptions.remove.body")}
       consequences={
         sub.blocking
-          ? `Requests stop waiting for its answer on ${sub.topic}.`
-          : `${targetText(sub.target)} stops hearing about ${sub.topic}.`
+          ? t("subscriptions.remove.blocking", { topic: sub.topic })
+          : t("subscriptions.remove.stops", { target: targetText(sub.target), topic: sub.topic })
       }
-      confirmLabel="Remove subscription"
+      confirmLabel={t("subscriptions.remove.confirm")}
       pending={remove.isPending}
       onConfirm={() => remove.mutate()}
     />
   );
 }
 
-const columns: Column<Subscription>[] = [
+const columnsFor = (t: TFunction<"admin-extensibility">): Column<Subscription>[] => [
   {
     id: "name",
-    header: "Subscription",
+    header: t("subscriptions.columns.subscription"),
     sortValue: (s) => s.name,
     cell: (s) => (
       <>
@@ -497,12 +466,12 @@ const columns: Column<Subscription>[] = [
         </Link>
         {s.blocking && (
           <Badge tone="warn" className="ml-2">
-            Blocking
+            {t("shared.blocking")}
           </Badge>
         )}
         {!s.enabled && (
           <Badge tone="neutral" className="ml-2">
-            Off
+            {t("shared.off")}
           </Badge>
         )}
         {s.condition && <div className="font-mono text-caption text-faint">{s.condition}</div>}
@@ -511,26 +480,30 @@ const columns: Column<Subscription>[] = [
   },
   {
     id: "topic",
-    header: "Topic",
+    header: t("shared.topic"),
     sortValue: (s) => s.topic,
     cell: (s) => (
       <div className="font-mono text-secondary">
         {s.topic}
-        <div className="text-faint">priority {s.priority}</div>
+        <div className="text-faint">{t("subscriptions.columns.priority", { priority: s.priority })}</div>
       </div>
     ),
   },
-  { id: "target", header: "Target", cell: (s) => <span className="text-secondary">{targetText(s.target)}</span> },
+  {
+    id: "target",
+    header: t("shared.target"),
+    cell: (s) => <span className="text-secondary">{targetText(s.target)}</span>,
+  },
   {
     id: "runs",
-    header: "Last 30 days",
+    header: t("shared.last30"),
     sortValue: (s) => s.last_run_at,
     cell: (s) => (
       <div className="text-secondary text-muted">
         {runsText(s)}
         {s.last_run_at && (
           <div className="text-faint" title={fullDate(s.last_run_at)}>
-            Last run {relative(s.last_run_at)}
+            {t("subscriptions.columns.lastRun", { when: relative(s.last_run_at) })}
           </div>
         )}
       </div>
@@ -539,6 +512,7 @@ const columns: Column<Subscription>[] = [
 ];
 
 export function SubscriptionsPage() {
+  const { t } = useTranslation(["admin-extensibility", "shell"]);
   const { me } = useCurrentProject();
   const canEdit = can(me, "extensibility.manage");
   const subs = useQuery(adm.subscriptions());
@@ -548,20 +522,20 @@ export function SubscriptionsPage() {
   const toggle = useSubscriptionSwitch();
   const create = canEdit && (
     <Button variant="primary" onClick={() => setEditing("new")}>
-      New subscription
+      {t("subscriptions.new")}
     </Button>
   );
   return (
     <Page>
       <PageHeader
-        title="Subscriptions"
-        description="Webhooks, AWX templates and custom workflows that hear about requests, their approvals, each VM a request builds or deletes, day-2 actions, leases and projects. A blocking one may stop a request."
+        title={t("shell:nav.admin.subscriptions")}
+        description={t("subscriptions.lead")}
         actions={subs.data?.items.length ? create : undefined}
       />
-      <Panel title="All subscriptions" flush>
+      <Panel title={t("subscriptions.all")} flush>
         <DataTable
-          label="Subscriptions"
-          columns={columns}
+          label={t("subscriptions.label")}
+          columns={columnsFor(t)}
           rows={subs.data?.items}
           rowKey={(s) => s.id}
           rowLinks
@@ -571,26 +545,26 @@ export function SubscriptionsPage() {
           empty={
             <EmptyState
               icon={Webhook}
-              title="No subscription yet"
-              body="Subscribe a webhook, an AWX template or a custom workflow to a topic, such as a VM built, to tell another system."
+              title={t("subscriptions.none")}
+              body={t("subscriptions.noneBody")}
               action={create || undefined}
             />
           }
-          rowMenuLabel={(s) => `Actions for ${s.name}`}
+          rowMenuLabel={(s) => t("shared.actionsFor", { name: s.name })}
           rowMenu={
             canEdit
               ? (s) => (
                   <>
                     <MenuItem disabled={test.isPending} onSelect={() => test.mutate(s.id)}>
-                      Send a test event
+                      {t("subscriptions.sendTest")}
                     </MenuItem>
-                    <MenuItem onSelect={() => setEditing(s)}>Change</MenuItem>
+                    <MenuItem onSelect={() => setEditing(s)}>{t("shared.change")}</MenuItem>
                     <MenuItem disabled={toggle.isPending} onSelect={() => toggle.mutate(s)}>
-                      {s.enabled ? "Turn off" : "Turn on"}
+                      {s.enabled ? t("shared.turnOff") : t("shared.turnOn")}
                     </MenuItem>
                     <MenuSeparator />
                     <MenuItem danger onSelect={() => setRemoving(s)}>
-                      Remove
+                      {t("shared.remove")}
                     </MenuItem>
                   </>
                 )

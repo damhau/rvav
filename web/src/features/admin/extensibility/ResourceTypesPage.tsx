@@ -1,9 +1,11 @@
 // Custom resource types (ADR-0056): what rvav doesn't build itself, such as
 // a load balancer, made and deleted by a custom workflow or an AWX template.
 // Blueprints and composite steps use them; deployments show their resources.
+import type { TFunction } from "i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shapes } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -22,6 +24,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
+import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { adm, keys, q } from "@/lib/query";
 import { errorAt, failed, fieldErrors, writable } from "../governance/common";
@@ -31,17 +34,17 @@ type ResourceType = S["ResourceType"];
 type Driver = S["ResourceTypeDriver"];
 type Phase = "create" | "delete" | "update" | "read";
 
-const phases: { phase: Phase; label: string; optional?: boolean }[] = [
-  { phase: "create", label: "Creates it" },
-  { phase: "delete", label: "Deletes it" },
-  { phase: "update", label: "Updates it", optional: true },
-  { phase: "read", label: "Reads it again", optional: true },
+const tx = i18n.getFixedT(null, "admin-extensibility");
+
+const phases: { phase: Phase; optional?: boolean }[] = [
+  { phase: "create" },
+  { phase: "delete" },
+  { phase: "update", optional: true },
+  { phase: "read", optional: true },
 ];
 
-const kindLabel = { workflow: "Custom workflow", awx: "AWX template" } as const;
-
 /** A step's driver as the table says it. */
-const driverText = (d: Driver) => `${d.kind === "awx" ? "AWX" : "Workflow"} · ${d.name}`;
+const driverText = (d: Driver) => tx(`resourceTypes.driver.${d.kind}`, { name: d.name });
 
 const sampleSchema = `{
   "type": "object",
@@ -49,8 +52,6 @@ const sampleSchema = `{
     "vip": { "type": "string", "title": "Virtual IP" }
   }
 }`;
-
-const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /** What runs one step: its kind, then the workflow or template, from those that can. */
 function DriverField({
@@ -72,6 +73,7 @@ function DriverField({
   templates: Option[];
   error?: string;
 }) {
+  const { t } = useTranslation("admin-extensibility");
   const kind = value?.kind ?? (optional ? "none" : "workflow");
   const offered = kind === "awx" ? templates : workflows;
   const options =
@@ -80,9 +82,11 @@ function DriverField({
       : offered;
   return (
     <fieldset className="flex flex-col gap-1.5">
-      <legend className="text-secondary font-medium">{optional ? `${label} (optional)` : label}</legend>
+      <legend className="text-secondary font-medium">
+        {optional ? t("resourceTypes.optional", { label }) : label}
+      </legend>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[180px_minmax(0,1fr)]">
-        <Field label="Run" htmlFor={`rt-${phase}-kind`}>
+        <Field label={t("resourceTypes.run")} htmlFor={`rt-${phase}-kind`}>
           <Select
             id={`rt-${phase}-kind`}
             value={kind}
@@ -92,20 +96,24 @@ function DriverField({
               )
             }
             options={[
-              ...(optional ? [{ value: "none", label: "Nothing" }] : []),
-              { value: "workflow", label: kindLabel.workflow },
-              { value: "awx", label: kindLabel.awx },
+              ...(optional ? [{ value: "none", label: t("resourceTypes.nothing") }] : []),
+              { value: "workflow", label: t("target.kinds.workflow") },
+              { value: "awx", label: t("target.kinds.awx") },
             ]}
           />
         </Field>
         {value && (
-          <Field label={kind === "awx" ? "Job template" : "Workflow"} htmlFor={`rt-${phase}-name`} error={error}>
+          <Field
+            label={kind === "awx" ? t("resourceTypes.jobTemplate") : t("resourceTypes.workflow")}
+            htmlFor={`rt-${phase}-name`}
+            error={error}
+          >
             <Select
               id={`rt-${phase}-name`}
               value={value.name}
               onChange={(name) => onChange({ ...value, name })}
               options={options}
-              placeholder={kind === "awx" ? "Choose a job template…" : "Choose a workflow…"}
+              placeholder={kind === "awx" ? t("resourceTypes.chooseTemplate") : t("resourceTypes.chooseWorkflow")}
             />
           </Field>
         )}
@@ -115,6 +123,7 @@ function DriverField({
 }
 
 function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: () => void }) {
+  const { t } = useTranslation("admin-extensibility");
   const qc = useQueryClient();
   const workflows = useQuery(adm.workflows());
   const templates = useQuery(q.awxTemplates());
@@ -184,16 +193,16 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
       void qc.invalidateQueries({ queryKey: ["admin", "workflows"] });
       // What the composite designer offers to steps is made from them.
       void qc.invalidateQueries({ queryKey: keys.catalogAdmin.compositeSteps });
-      toast.success(`${f.title} saved`);
+      toast.success(t("shared.saved", { name: f.title }));
       onClose();
     },
     onError: (e) => {
       if (e instanceof SyntaxError) {
-        setErrors({ "/property_schema": "This is not valid JSON." });
+        setErrors({ "/property_schema": t("shared.invalidJson") });
         return;
       }
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("shared.notSaved"));
     },
   });
   const actionError = (key: string) => {
@@ -205,10 +214,10 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={type ? `Change ${type.title}` : "New resource type"}
-      description="Blueprints and composite steps make its resources; deployments show them like VMs, and deleting a deployment deletes them."
+      title={type ? t("shared.changeName", { name: type.title }) : t("resourceTypes.sheet.new")}
+      description={t("resourceTypes.sheet.lead")}
       className="w-[min(760px,100vw)]"
-      submitLabel={save.isPending ? "Saving…" : "Save resource type"}
+      submitLabel={save.isPending ? t("shared.saving") : t("resourceTypes.sheet.save")}
       onSubmit={() => {
         setErrors({});
         save.mutate();
@@ -216,10 +225,10 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[220px_1fr]">
         <Field
-          label="Key"
+          label={t("shared.key")}
           htmlFor="rt-key"
           error={errors["/key"]}
-          hint={type ? "Set when defined" : "Its name in blueprints: load-balancer"}
+          hint={type ? t("resourceTypes.sheet.keySet") : t("resourceTypes.sheet.keyHint")}
         >
           <Input
             id="rt-key"
@@ -229,11 +238,11 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
             onChange={(e) => setF({ ...f, key: e.target.value })}
           />
         </Field>
-        <Field label="Title" htmlFor="rt-title" error={errors["/title"]}>
+        <Field label={t("shared.title")} htmlFor="rt-title" error={errors["/title"]}>
           <Input id="rt-title" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
         </Field>
       </div>
-      <Field label="Description" htmlFor="rt-description">
+      <Field label={t("shared.description")} htmlFor="rt-description">
         <Input
           id="rt-description"
           value={f.description}
@@ -241,16 +250,13 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
         />
       </Field>
       <fieldset className="flex flex-col gap-3 rounded-md border border-line p-3">
-        <legend className="px-1 text-secondary font-medium">Its life</legend>
-        <p className="text-secondary text-muted">
-          A custom workflow registered for resource types gets the resource's inputs and returns its properties; an AWX
-          template gets them as extra variables and returns them with set_stats.
-        </p>
-        {phases.map(({ phase, label, optional }) => (
+        <legend className="px-1 text-secondary font-medium">{t("resourceTypes.sheet.life")}</legend>
+        <p className="text-secondary text-muted">{t("resourceTypes.sheet.lifeLead")}</p>
+        {phases.map(({ phase, optional }) => (
           <DriverField
             key={phase}
             phase={phase}
-            label={label}
+            label={t(`resourceTypes.phases.${phase}`)}
             optional={optional}
             value={drivers[phase]}
             onChange={(d) => setDrivers({ ...drivers, [phase]: d })}
@@ -261,10 +267,10 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
         ))}
       </fieldset>
       <Field
-        label="Property schema (JSON Schema)"
+        label={t("resourceTypes.sheet.schema")}
         htmlFor="rt-schema"
         error={errorAt(errors, "/property_schema")}
-        hint="What it returns: later steps read these properties, and the deployment page shows them by their titles."
+        hint={t("resourceTypes.sheet.schemaHint")}
       >
         <Textarea
           id="rt-schema"
@@ -275,11 +281,9 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
         />
       </Field>
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="text-secondary font-medium">Day-2 actions on its resources</legend>
+        <legend className="text-secondary font-medium">{t("resourceTypes.sheet.actions")}</legend>
         {listedActions.length === 0 ? (
-          <p className="text-secondary text-muted">
-            No custom workflow is registered as a day-2 action, and AWX offers none.
-          </p>
+          <p className="text-secondary text-muted">{t("resourceTypes.sheet.noActions")}</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {listedActions.map((a) => (
@@ -301,64 +305,77 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
       </fieldset>
       <label htmlFor="rt-enabled" className="flex items-center gap-1.5 text-body">
         <Checkbox id="rt-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />
-        Items may use it
+        {t("resourceTypes.sheet.enabled")}
       </label>
     </Sheet>
   );
 }
 
 /** Why a type can't be removed, said in place of Remove; the server decides again. */
-const cantRemove = (t: ResourceType) =>
-  t.resources > 0
-    ? `Remove: deployments have ${plural(t.resources, "resource")}`
-    : t.used_by.length > 0
-      ? "Remove: it is in use"
+const cantRemove = (rt: ResourceType) =>
+  rt.resources > 0
+    ? tx("resourceTypes.cantRemove", { count: rt.resources })
+    : rt.used_by.length > 0
+      ? tx("shared.inUse")
       : undefined;
 
-const columns: Column<ResourceType>[] = [
+const columnsFor = (t: TFunction<"admin-extensibility">): Column<ResourceType>[] => [
   {
     id: "type",
-    header: "Type",
-    sortValue: (t) => t.title,
-    cell: (t) => (
+    header: t("resourceTypes.columns.type"),
+    sortValue: (rt) => rt.title,
+    cell: (rt) => (
       <>
-        <span className="font-medium">{t.title}</span>
-        {t.enabled === false && (
+        <span className="font-medium">{rt.title}</span>
+        {rt.enabled === false && (
           <Badge tone="neutral" className="ml-2">
-            Off
+            {t("shared.off")}
           </Badge>
         )}
-        <div className="font-mono text-caption text-faint">{t.key}</div>
-        {t.used_by.length > 0 && <div className="text-secondary text-muted">Used by {t.used_by.join(", ")}</div>}
+        <div className="font-mono text-caption text-faint">{rt.key}</div>
+        {rt.used_by.length > 0 && (
+          <div className="text-secondary text-muted">{t("shared.usedBy", { names: rt.used_by.join(", ") })}</div>
+        )}
       </>
     ),
   },
   {
     id: "life",
-    header: "Created and deleted by",
-    cell: (t) => (
+    header: t("resourceTypes.columns.life"),
+    cell: (rt) => (
       <div className="font-mono text-secondary">
-        {driverText(t.create)}
-        <div>{driverText(t.delete)}</div>
-        {t.update && <div className="text-faint">Update: {driverText(t.update)}</div>}
-        {t.read && <div className="text-faint">Read: {driverText(t.read)}</div>}
+        {driverText(rt.create)}
+        <div>{driverText(rt.delete)}</div>
+        {rt.update && (
+          <div className="text-faint">{t("resourceTypes.columns.update", { driver: driverText(rt.update) })}</div>
+        )}
+        {rt.read && (
+          <div className="text-faint">{t("resourceTypes.columns.read", { driver: driverText(rt.read) })}</div>
+        )}
       </div>
     ),
   },
   {
     id: "actions",
-    header: "Day-2 actions",
-    cell: (t) =>
-      (t.actions ?? []).length > 0 ? (
-        <div className="font-mono text-secondary">{(t.actions ?? []).join(", ")}</div>
+    header: t("resourceTypes.columns.actions"),
+    cell: (rt) =>
+      (rt.actions ?? []).length > 0 ? (
+        <div className="font-mono text-secondary">{(rt.actions ?? []).join(", ")}</div>
       ) : (
-        <span className="text-secondary text-faint">None</span>
+        <span className="text-secondary text-faint">{t("shared.none")}</span>
       ),
   },
-  { id: "resources", header: "Resources", align: "end", sortValue: (t) => t.resources, cell: (t) => t.resources },
+  {
+    id: "resources",
+    header: t("resourceTypes.columns.resources"),
+    align: "end",
+    sortValue: (rt) => rt.resources,
+    cell: (rt) => rt.resources,
+  },
 ];
 
 export function ResourceTypesPage() {
+  const { t } = useTranslation(["admin-extensibility", "shell"]);
   const qc = useQueryClient();
   const { me } = useCurrentProject();
   const canEdit = can(me, "extensibility.manage");
@@ -371,75 +388,75 @@ export function ResourceTypesPage() {
     void qc.invalidateQueries({ queryKey: keys.catalogAdmin.compositeSteps });
   };
   const toggle = useMutation({
-    mutationFn: (t: ResourceType) =>
+    mutationFn: (rt: ResourceType) =>
       call(
         api.PUT("/admin/resource-types/{key}", {
-          params: { path: { key: t.key ?? "" } },
+          params: { path: { key: rt.key ?? "" } },
           body: {
-            ...writable(t, "key", "resources", "used_by", "created_at", "updated_at"),
-            enabled: t.enabled === false,
+            ...writable(rt, "key", "resources", "used_by", "created_at", "updated_at"),
+            enabled: rt.enabled === false,
           },
         }),
       ),
-    onSuccess: (t) => {
+    onSuccess: (rt) => {
       refresh();
-      toast.success(t.enabled ? `${t.title} is on` : `${t.title} is off`);
+      toast.success(rt.enabled ? t("shared.isOn", { name: rt.title }) : t("shared.isOff", { name: rt.title }));
     },
-    onError: (e) => failed(e, "Not saved"),
+    onError: (e) => failed(e, t("shared.notSaved")),
   });
   const remove = useMutation({
-    mutationFn: (t: ResourceType) =>
-      call(api.DELETE("/admin/resource-types/{key}", { params: { path: { key: t.key ?? "" } } })),
-    onSuccess: (_, t) => {
+    mutationFn: (rt: ResourceType) =>
+      call(api.DELETE("/admin/resource-types/{key}", { params: { path: { key: rt.key ?? "" } } })),
+    onSuccess: (_, rt) => {
       refresh();
-      toast.success(`${t.title} removed`);
+      toast.success(t("shared.removed", { name: rt.title }));
     },
     onError: (e) => {
       refresh();
-      failed(e, "Not removed");
+      failed(e, t("shared.notRemoved"));
     },
   });
   const create = canEdit && (
     <Button variant="primary" onClick={() => setEditing({})}>
-      New resource type
+      {t("resourceTypes.sheet.new")}
     </Button>
   );
   return (
     <Page>
       <PageHeader
-        title="Resource types"
-        description="What rvav doesn't build itself, such as load balancers: a custom workflow or an AWX template creates each resource, and another deletes it. Blueprints and composite steps use them."
+        title={t("shell:nav.admin.resourceTypes")}
+        description={t("resourceTypes.lead")}
         actions={types.data?.items.length ? create : undefined}
       />
-      <Panel title="Defined types" flush>
+      <Panel title={t("resourceTypes.defined")} flush>
         <DataTable
-          label="Resource types"
-          columns={columns}
+          label={t("resourceTypes.label")}
+          columns={columnsFor(t)}
           rows={types.data?.items}
-          rowKey={(t) => t.key ?? t.title}
+          rowKey={(rt) => rt.key ?? rt.title}
           minWidth={820}
           loading={types.isPending}
           error={types.isError && <ErrorState error={types.error} onRetry={() => void types.refetch()} />}
           empty={
             <EmptyState
               icon={Shapes}
-              title="No resource type yet"
-              body="Define one to let blueprints make what rvav doesn't build itself, with your workflows or AWX templates."
+              title={t("resourceTypes.none")}
+              body={t("resourceTypes.noneBody")}
               action={create || undefined}
             />
           }
-          rowMenuLabel={(t) => `Actions for ${t.title}`}
+          rowMenuLabel={(rt) => t("shared.actionsFor", { name: rt.title })}
           rowMenu={
             canEdit
-              ? (t) => (
+              ? (rt) => (
                   <>
-                    <MenuItem onSelect={() => setEditing({ type: t })}>Change</MenuItem>
-                    <MenuItem disabled={toggle.isPending} onSelect={() => toggle.mutate(t)}>
-                      {t.enabled === false ? "Turn on" : "Turn off"}
+                    <MenuItem onSelect={() => setEditing({ type: rt })}>{t("shared.change")}</MenuItem>
+                    <MenuItem disabled={toggle.isPending} onSelect={() => toggle.mutate(rt)}>
+                      {rt.enabled === false ? t("shared.turnOn") : t("shared.turnOff")}
                     </MenuItem>
                     <MenuSeparator />
-                    <MenuItem danger disabled={Boolean(cantRemove(t))} onSelect={() => setRemoving(t)}>
-                      {cantRemove(t) ?? "Remove"}
+                    <MenuItem danger disabled={Boolean(cantRemove(rt))} onSelect={() => setRemoving(rt)}>
+                      {cantRemove(rt) ?? t("shared.remove")}
                     </MenuItem>
                   </>
                 )
@@ -452,15 +469,15 @@ export function ResourceTypesPage() {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.title}?`}
-          description="Blueprints and composite steps can no longer use it."
-          consequences="rvav forgets the type. Its custom workflows and AWX templates aren't changed."
-          confirmLabel="Remove resource type"
+          title={t("shared.removeName", { name: removing.title })}
+          description={t("resourceTypes.remove.body")}
+          consequences={t("resourceTypes.remove.consequences")}
+          confirmLabel={t("resourceTypes.remove.confirm")}
           pending={remove.isPending}
           onConfirm={() => {
-            const t = removing;
+            const rt = removing;
             setRemoving(null);
-            remove.mutate(t);
+            remove.mutate(rt);
           }}
         />
       )}

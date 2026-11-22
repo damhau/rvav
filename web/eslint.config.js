@@ -46,6 +46,7 @@ const translated = [
   "src/features/admin/catalog/GitPanels.tsx",
   "src/features/admin/catalog/SharingTab.tsx",
   "src/features/admin/catalog/VariablesPage.tsx",
+  "src/features/admin/extensibility/**",
 ];
 
 // The props of rvav's building blocks and the attributes a person reads or

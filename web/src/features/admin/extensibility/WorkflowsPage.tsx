@@ -1,8 +1,10 @@
 // Custom Temporal workflows (S10, ADR-0022): registered here, they run as
 // catalog items, day-2 actions, subscription targets or composite steps.
+import type { TFunction } from "i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Workflow } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Page } from "@/components/common/page";
@@ -20,6 +22,8 @@ import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
+import { formatList, formatNumber } from "@/lib/format";
+import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { adm } from "@/lib/query";
 import { errorAt, failed, fieldErrors, writable } from "../governance/common";
@@ -29,18 +33,19 @@ type Registration = S["WorkflowRegistration"];
 type Usage = S["WorkflowUsage"];
 type Day2Type = S["WorkflowDay2"]["types"][number];
 
-export const usageLabel: Record<Usage, string> = {
-  catalog_item: "Catalog item",
-  day2_action: "Day-2 action",
-  subscription_target: "Subscription target",
-  composite_step: "Composite step",
-  resource_type: "Resource type",
-};
+const tx = i18n.getFixedT(null, "admin-extensibility");
+
+const usages: Usage[] = ["catalog_item", "day2_action", "subscription_target", "composite_step", "resource_type"];
+const usageLabel = (u: Usage) => tx(`workflows.usage.${u}`);
 
 const days = (seconds: number) => {
-  const d = seconds / 86400;
-  return d >= 1 ? `${Math.round(d * 10) / 10} days` : `${Math.round(seconds / 3600)} h`;
+  if (seconds < 86400) return tx("workflows.hours", { hours: Math.round(seconds / 3600) });
+  const d = Math.round((seconds / 86400) * 10) / 10;
+  return tx("workflows.days", { count: d, days: formatNumber(d) });
 };
+
+const anyKey = "<key>";
+const actionKey = (key?: string) => `wf.${key ?? ""}`;
 
 const sampleSchema = `{
   "type": "object",
@@ -51,6 +56,7 @@ const sampleSchema = `{
 }`;
 
 function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void }) {
+  const { t } = useTranslation("admin-extensibility");
   const qc = useQueryClient();
   const projects = useQuery(adm.projectNames());
   const [f, setF] = useState({
@@ -63,7 +69,7 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
     enabled: wf?.enabled ?? true,
   });
   const [schema, setSchema] = useState(wf?.input_schema ? JSON.stringify(wf.input_schema, null, 2) : sampleSchema);
-  const [usages, setUsages] = useState<Usage[]>(wf?.usages ?? ["catalog_item"]);
+  const [used, setUsed] = useState<Usage[]>(wf?.usages ?? ["catalog_item"]);
   const [projectIds, setProjectIds] = useState<string[]>(wf?.project_ids ?? []);
   const [day2, setDay2] = useState<S["WorkflowDay2"]>(
     wf?.day2 ?? { name: "", types: ["deployment"], condition: "", offered: false },
@@ -86,8 +92,8 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
         input_schema,
         timeout_seconds: Math.round(Number(f.timeout) * 86400) || 2592000,
         project_ids: projectIds,
-        usages,
-        day2: usages.includes("day2_action") ? day2 : undefined,
+        usages: used,
+        day2: used.includes("day2_action") ? day2 : undefined,
         enabled: f.enabled,
       };
       return wf
@@ -96,16 +102,16 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "workflows"] });
-      toast.success(`${f.title} saved`);
+      toast.success(t("shared.saved", { name: f.title }));
       onClose();
     },
     onError: (e) => {
       if (e instanceof SyntaxError) {
-        setErrors({ "/input_schema": "This is not valid JSON." });
+        setErrors({ "/input_schema": t("shared.invalidJson") });
         return;
       }
       setErrors(fieldErrors(e));
-      failed(e, "Not saved");
+      failed(e, t("shared.notSaved"));
     },
   });
   const toggle = <T,>(list: T[], v: T, on: boolean) => (on ? [...list, v] : list.filter((x) => x !== v));
@@ -114,10 +120,10 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={wf ? `Change ${wf.title}` : "Register a workflow"}
-      description="Its own workers run it in Temporal; rvav starts it with the form its input schema describes."
+      title={wf ? t("shared.changeName", { name: wf.title }) : t("workflows.sheet.register")}
+      description={t("workflows.sheet.lead")}
       className="w-[min(760px,100vw)]"
-      submitLabel={save.isPending ? "Saving…" : "Save workflow"}
+      submitLabel={save.isPending ? t("shared.saving") : t("workflows.sheet.save")}
       onSubmit={() => {
         setErrors({});
         save.mutate();
@@ -125,10 +131,10 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[200px_1fr]">
         <Field
-          label="Key"
+          label={t("shared.key")}
           htmlFor="wf-key"
           error={errors["/key"]}
-          hint={wf ? "Set when registered" : "Its name in rvav"}
+          hint={wf ? t("workflows.sheet.keySet") : t("workflows.sheet.keyHint")}
         >
           <Input
             id="wf-key"
@@ -138,11 +144,11 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
             onChange={(e) => setF({ ...f, key: e.target.value })}
           />
         </Field>
-        <Field label="Title" htmlFor="wf-title" error={errors["/title"]}>
+        <Field label={t("shared.title")} htmlFor="wf-title" error={errors["/title"]}>
           <Input id="wf-title" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
         </Field>
       </div>
-      <Field label="Description" htmlFor="wf-description">
+      <Field label={t("shared.description")} htmlFor="wf-description">
         <Input
           id="wf-description"
           value={f.description}
@@ -151,10 +157,10 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
       </Field>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_140px]">
         <Field
-          label="Workflow type"
+          label={t("workflows.sheet.type")}
           htmlFor="wf-type"
           error={errors["/workflow_type"]}
-          hint="Ends with its major version: decommission.v1"
+          hint={t("workflows.sheet.typeHint")}
         >
           <Input
             id="wf-type"
@@ -163,7 +169,7 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
             onChange={(e) => setF({ ...f, workflow_type: e.target.value })}
           />
         </Field>
-        <Field label="Task queue" htmlFor="wf-queue" error={errors["/task_queue"]}>
+        <Field label={t("workflows.sheet.queue")} htmlFor="wf-queue" error={errors["/task_queue"]}>
           <Input
             id="wf-queue"
             className="font-mono"
@@ -171,7 +177,7 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
             onChange={(e) => setF({ ...f, task_queue: e.target.value })}
           />
         </Field>
-        <Field label="Timeout (days)" htmlFor="wf-timeout" error={errors["/timeout_seconds"]}>
+        <Field label={t("workflows.sheet.timeout")} htmlFor="wf-timeout" error={errors["/timeout_seconds"]}>
           <Input
             id="wf-timeout"
             type="number"
@@ -183,10 +189,10 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
         </Field>
       </div>
       <Field
-        label="Input schema (JSON Schema)"
+        label={t("workflows.sheet.schema")}
         htmlFor="wf-schema"
         error={errorAt(errors, "/input_schema")}
-        hint="The form people fill when they start it."
+        hint={t("workflows.sheet.schemaHint")}
       >
         <Textarea
           id="wf-schema"
@@ -197,39 +203,41 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
         />
       </Field>
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="text-secondary font-medium">Used as</legend>
+        <legend className="text-secondary font-medium">{t("workflows.sheet.usedAs")}</legend>
         <div className="flex flex-wrap gap-4">
-          {(Object.keys(usageLabel) as Usage[]).map((u) => (
+          {usages.map((u) => (
             <label key={u} htmlFor={`wf-usage-${u}`} className="flex items-center gap-1.5 text-body">
               <Checkbox
                 id={`wf-usage-${u}`}
-                checked={usages.includes(u)}
-                onChange={(on) => setUsages(toggle(usages, u, on))}
+                checked={used.includes(u)}
+                onChange={(on) => setUsed(toggle(used, u, on))}
               />
-              {usageLabel[u]}
+              {t(`workflows.usage.${u}`)}
             </label>
           ))}
         </div>
         {errors["/usages"] && <p className="text-secondary text-bad">{errors["/usages"]}</p>}
       </fieldset>
-      {usages.includes("day2_action") && (
+      {used.includes("day2_action") && (
         <fieldset className="flex flex-col gap-2 rounded-md border border-line p-3">
-          <legend className="px-1 text-secondary font-medium">As the day-2 action wf.{f.key || "<key>"}</legend>
+          <legend className="px-1 text-secondary font-medium">
+            {t("workflows.sheet.day2As", { key: f.key || anyKey })}
+          </legend>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr]">
-            <Field label="Action name" htmlFor="wf-day2-name" error={errors["/day2/name"]}>
+            <Field label={t("workflows.sheet.actionName")} htmlFor="wf-day2-name" error={errors["/day2/name"]}>
               <Input id="wf-day2-name" value={day2.name} onChange={(e) => setDay2({ ...day2, name: e.target.value })} />
             </Field>
             <fieldset className="flex flex-col gap-1.5">
-              <legend className="text-secondary font-medium">Runs on</legend>
+              <legend className="text-secondary font-medium">{t("workflows.sheet.runsOn")}</legend>
               <div className="flex gap-4">
-                {(["vsphere.vm", "deployment"] as Day2Type[]).map((t) => (
-                  <label key={t} htmlFor={`wf-day2-${t}`} className="flex items-center gap-1.5 text-body">
+                {(["vsphere.vm", "deployment"] as Day2Type[]).map((type) => (
+                  <label key={type} htmlFor={`wf-day2-${type}`} className="flex items-center gap-1.5 text-body">
                     <Checkbox
-                      id={`wf-day2-${t}`}
-                      checked={day2.types.includes(t)}
-                      onChange={(on) => setDay2({ ...day2, types: toggle(day2.types, t, on) })}
+                      id={`wf-day2-${type}`}
+                      checked={day2.types.includes(type)}
+                      onChange={(on) => setDay2({ ...day2, types: toggle(day2.types, type, on) })}
                     />
-                    {t === "vsphere.vm" ? "VMs" : "Deployments"}
+                    {type === "vsphere.vm" ? t("workflows.sheet.vms") : t("workflows.sheet.deployments")}
                   </label>
                 ))}
               </div>
@@ -237,10 +245,10 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
             </fieldset>
           </div>
           <Field
-            label="Offered when (CEL)"
+            label={t("workflows.sheet.offeredWhen")}
             htmlFor="wf-day2-condition"
             error={errors["/day2/condition"]}
-            hint="Empty: everywhere"
+            hint={t("workflows.sheet.offeredHint")}
           >
             <Input
               id="wf-day2-condition"
@@ -255,13 +263,13 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
               checked={day2.offered}
               onChange={(offered) => setDay2({ ...day2, offered })}
             />
-            Offer it on deployments
+            {t("workflows.sheet.offer")}
           </label>
         </fieldset>
       )}
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="text-secondary font-medium">Projects</legend>
-        <p className="text-secondary text-muted">None ticked: every project may use it.</p>
+        <legend className="text-secondary font-medium">{t("workflows.sheet.projects")}</legend>
+        <p className="text-secondary text-muted">{t("workflows.sheet.projectsLead")}</p>
         <div className="flex flex-wrap gap-x-4 gap-y-1.5">
           {(projects.data?.items ?? []).map((p) => (
             <label key={p.id} htmlFor={`wf-project-${p.id}`} className="flex items-center gap-1.5 text-body">
@@ -280,7 +288,7 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
       </fieldset>
       <label htmlFor="wf-enabled" className="flex items-center gap-1.5 text-body">
         <Checkbox id="wf-enabled" checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} />
-        Enabled
+        {t("shared.enabled")}
       </label>
     </Sheet>
   );
@@ -288,53 +296,62 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
 
 /** Why a workflow can't be removed, said in place of Remove; the server also refuses one requests ran. */
 const cantRemove = (w: Registration) =>
-  w.running > 0 ? "Remove: runs haven't ended" : w.used_by.length > 0 ? "Remove: it is in use" : undefined;
+  w.running > 0 ? tx("workflows.cantRemove") : w.used_by.length > 0 ? tx("shared.inUse") : undefined;
 
-const columns: Column<Registration>[] = [
+const columnsFor = (t: TFunction<"admin-extensibility">): Column<Registration>[] => [
   {
     id: "workflow",
-    header: "Workflow",
+    header: t("workflows.columns.workflow"),
     sortValue: (w) => w.title,
     cell: (w) => (
       <>
         <span className="font-medium">{w.title}</span>
         {!w.enabled && (
           <Badge tone="neutral" className="ml-2">
-            Off
+            {t("shared.off")}
           </Badge>
         )}
         <div className="font-mono text-caption text-faint">{w.key}</div>
-        {w.used_by.length > 0 && <div className="text-secondary text-muted">Used by {w.used_by.join(", ")}</div>}
+        {w.used_by.length > 0 && (
+          <div className="text-secondary text-muted">{t("shared.usedBy", { names: w.used_by.join(", ") })}</div>
+        )}
       </>
     ),
   },
   {
     id: "type",
-    header: "Type and queue",
+    header: t("workflows.columns.type"),
     sortValue: (w) => w.workflow_type,
     cell: (w) => (
       <div className="font-mono text-secondary">
         {w.workflow_type}
         <div className="text-faint">
-          {w.task_queue}, {days(w.timeout_seconds)}
+          {t("workflows.columns.queue", { queue: w.task_queue, timeout: days(w.timeout_seconds) })}
         </div>
       </div>
     ),
   },
   {
     id: "usages",
-    header: "Used as",
+    header: t("workflows.sheet.usedAs"),
     cell: (w) => (
       <div className="text-secondary">
-        {w.usages.map((u) => usageLabel[u]).join(", ")}
-        {w.day2?.offered && <div className="font-mono text-faint">wf.{w.key}</div>}
+        {w.usages.map(usageLabel).join(", ")}
+        {w.day2?.offered && <div className="font-mono text-faint">{actionKey(w.key)}</div>}
       </div>
     ),
   },
-  { id: "running", header: "Running", align: "end", sortValue: (w) => w.running, cell: (w) => w.running },
+  {
+    id: "running",
+    header: t("workflows.columns.running"),
+    align: "end",
+    sortValue: (w) => w.running,
+    cell: (w) => w.running,
+  },
 ];
 
 export function WorkflowsPage() {
+  const { t } = useTranslation(["admin-extensibility", "shell"]);
   const qc = useQueryClient();
   const { me } = useCurrentProject();
   const canEdit = can(me, "extensibility.manage");
@@ -352,35 +369,35 @@ export function WorkflowsPage() {
       ),
     onSuccess: (w) => {
       refresh();
-      toast.success(w.enabled ? `${w.title} is on` : `${w.title} is off`);
+      toast.success(w.enabled ? t("shared.isOn", { name: w.title }) : t("shared.isOff", { name: w.title }));
     },
-    onError: (e) => failed(e, "Not saved"),
+    onError: (e) => failed(e, t("shared.notSaved")),
   });
   const remove = useMutation({
     mutationFn: (w: Registration) =>
       call(api.DELETE("/admin/workflows/{key}", { params: { path: { key: w.key ?? "" } } })),
     onSuccess: (_, w) => {
       refresh();
-      toast.success(`${w.title} removed`);
+      toast.success(t("shared.removed", { name: w.title }));
     },
-    onError: (e) => failed(e, "Not removed"),
+    onError: (e) => failed(e, t("shared.notRemoved")),
   });
   const register = canEdit && (
     <Button variant="primary" onClick={() => setEditing("new")}>
-      Register a workflow
+      {t("workflows.sheet.register")}
     </Button>
   );
   return (
     <Page>
       <PageHeader
-        title="Custom workflows"
-        description="Temporal workflows your teams write, run by their own workers; rvav starts them, shows their steps and asks for their approvals."
+        title={t("shell:nav.admin.workflows")}
+        description={t("workflows.lead")}
         actions={workflows.data?.items.length ? register : undefined}
       />
-      <Panel title="Registered workflows" flush>
+      <Panel title={t("workflows.registered")} flush>
         <DataTable
-          label="Registered workflows"
-          columns={columns}
+          label={t("workflows.registered")}
+          columns={columnsFor(t)}
           rows={workflows.data?.items}
           rowKey={(w) => w.key ?? w.title}
           minWidth={860}
@@ -389,23 +406,23 @@ export function WorkflowsPage() {
           empty={
             <EmptyState
               icon={Workflow}
-              title="No custom workflow yet"
-              body="Register one to offer it in the catalog, on deployments or to subscriptions."
+              title={t("workflows.none")}
+              body={t("workflows.noneBody")}
               action={register || undefined}
             />
           }
-          rowMenuLabel={(w) => `Actions for ${w.title}`}
+          rowMenuLabel={(w) => t("shared.actionsFor", { name: w.title })}
           rowMenu={
             canEdit
               ? (w) => (
                   <>
-                    <MenuItem onSelect={() => setEditing(w)}>Change</MenuItem>
+                    <MenuItem onSelect={() => setEditing(w)}>{t("shared.change")}</MenuItem>
                     <MenuItem disabled={toggle.isPending} onSelect={() => toggle.mutate(w)}>
-                      {w.enabled ? "Turn off" : "Turn on"}
+                      {w.enabled ? t("shared.turnOff") : t("shared.turnOn")}
                     </MenuItem>
                     <MenuSeparator />
                     <MenuItem danger disabled={Boolean(cantRemove(w))} onSelect={() => setRemoving(w)}>
-                      {cantRemove(w) ?? "Remove"}
+                      {cantRemove(w) ?? t("shared.remove")}
                     </MenuItem>
                   </>
                 )
@@ -418,12 +435,15 @@ export function WorkflowsPage() {
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={`Remove ${removing.title}?`}
-          description="rvav forgets its registration: it no longer starts it. Its workers and Temporal aren't changed."
-          consequences={`It is no longer offered as ${removing.usages
-            .map((u) => usageLabel[u].toLowerCase())
-            .join(", ")}. If requests ran it, it is refused: turn it off instead.`}
-          confirmLabel="Remove workflow"
+          title={t("shared.removeName", { name: removing.title })}
+          description={t("workflows.remove.body")}
+          consequences={t("workflows.remove.consequences", {
+            usages: formatList(
+              removing.usages.map((u) => usageLabel(u).toLowerCase()),
+              "disjunction",
+            ),
+          })}
+          confirmLabel={t("workflows.remove.confirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing, { onSuccess: () => setRemoving(null) })}
         />

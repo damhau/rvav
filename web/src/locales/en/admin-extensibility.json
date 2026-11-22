@@ -1,1 +1,300 @@
-{}
+{
+  "shared": {
+    "change": "Change",
+    "changeName": "Change {{name}}",
+    "turnOn": "Turn on",
+    "turnOff": "Turn off",
+    "remove": "Remove",
+    "removeName": "Remove {{name}}?",
+    "actionsFor": "Actions for {{name}}",
+    "moreActions": "More actions for {{name}}",
+    "saving": "Saving…",
+    "saved": "{{name}} saved",
+    "notSaved": "Not saved",
+    "removed": "{{name}} removed",
+    "notRemoved": "Not removed",
+    "isOn": "{{name}} is on",
+    "isOff": "{{name}} is off",
+    "on": "On",
+    "off": "Off",
+    "enabled": "Enabled",
+    "blocking": "Blocking",
+    "name": "Name",
+    "key": "Key",
+    "title": "Title",
+    "description": "Description",
+    "topic": "Topic",
+    "target": "Target",
+    "priority": "Priority",
+    "status": "Status",
+    "none": "None",
+    "invalidJson": "This is not valid JSON.",
+    "inUse": "Remove: it is in use",
+    "usedBy": "Used by {{names}}",
+    "settings": "Settings",
+    "last30": "Last 30 days"
+  },
+  "target": {
+    "webhookTo": "Webhook to {{host}}",
+    "awx": "AWX template {{name}}",
+    "workflow": "Custom workflow {{key}}",
+    "kinds": {
+      "webhook": "Webhook",
+      "awx": "AWX template",
+      "workflow": "Custom workflow"
+    },
+    "labels": {
+      "target": {
+        "kind": "Kind of target",
+        "url": "URL",
+        "secret": "Signing secret",
+        "template": "Job template",
+        "workflow": "Custom workflow"
+      },
+      "recovery": {
+        "kind": "Kind of recovery target",
+        "url": "Recovery URL",
+        "secret": "Recovery signing secret",
+        "template": "Recovery job template",
+        "workflow": "Recovery workflow"
+      }
+    },
+    "urlHint": "On a host rvav may call, as Integrations sets",
+    "awxHint": "It gets the event as the extra variable rvav_event."
+  },
+  "topicGroups": {
+    "request": "Requests",
+    "approval": "A request's approval levels",
+    "machine": "A request's VMs, one event each",
+    "custom": "A request's custom resources, one event each",
+    "lease": "Leases",
+    "project": "Projects"
+  },
+  "changes": {
+    "properties": "the deployment's custom properties (properties)",
+    "name": "the VM's name (machine.name)",
+    "placement": "its cluster, resource pool, datastore and folder (machine.placement)",
+    "networks": "its adapters' networks and addresses (machine.networks)"
+  },
+  "machineChange": {
+    "renamed": "renamed {{name}}",
+    "moved": "moved to {{where}}",
+    "cluster": "cluster {{name}}",
+    "resourcePool": "resource pool {{name}}",
+    "datastore": "datastore {{name}}",
+    "folder": "folder {{name}}",
+    "adapter": "adapter {{index}}: {{what}}",
+    "network": "network {{name}}",
+    "address": "address {{address}}",
+    "join": "; "
+  },
+  "attempt": {
+    "http": "HTTP {{code}}",
+    "job": "AWX job {{id}}",
+    "workflow": "workflow {{id}}",
+    "ms": "{{ms}} ms"
+  },
+  "run": {
+    "status": {
+      "queued": "Waiting",
+      "delivering": "Delivering",
+      "delivered": "Delivered",
+      "failed": "Failed",
+      "blocked": "Stopped the request"
+    },
+    "anyStatus": "Any status",
+    "title": "Run",
+    "runOf": "Run of",
+    "recoveryOf": "Its recovery target, after the subscription failed",
+    "request": "Request",
+    "answer": "Answer",
+    "noAnswer": "None: the subscription's setting for when it fails decided",
+    "why": "Why",
+    "nextAttempt": "Next attempt",
+    "properties": "Properties set",
+    "changed": "Changed on the VM",
+    "attempts": "Attempts",
+    "notTried": "Not tried yet.",
+    "ok": "OK",
+    "failed": "Failed",
+    "sent": "What was sent",
+    "retry": "Try again",
+    "retried": "It will be delivered again",
+    "notRetried": "Not retried",
+    "testTitle": "Test delivery"
+  },
+  "runs": {
+    "when": "When",
+    "open": "Open the run from",
+    "test": "Test",
+    "recovery": "Recovery",
+    "title": "Runs",
+    "lead": "One for each event it heard about. Open one to see what was sent and what came back.",
+    "loadMore": "Load more",
+    "none": "No run yet",
+    "noneBody": "It runs for each event that matches. To see one now, send it a test event from the menu above.",
+    "noneWith": "No run with the status {{status}}",
+    "noneWithBody": "Other runs may have another status.",
+    "showAll": "Show every run"
+  },
+  "subscriptions": {
+    "runs": "{{delivered}} delivered, {{failed}} failed, {{pending}} waiting",
+    "new": "New subscription",
+    "sheet": {
+      "lead": "What it hears about, and what is told.",
+      "save": "Save subscription",
+      "condition": "Only when (CEL)",
+      "conditionHint": "Over the event's data; empty for every event. For example environment == \"prd\" && item.slug == \"rhel9-server\"",
+      "sample": "A sample {{topic}} event",
+      "priorityHint": "Lower first",
+      "timeout": "Timeout (s)",
+      "blocking": "Blocking: the request waits for the answer, which may stop it",
+      "onlyOn": "(only on {{topics}})",
+      "mayChange": "Its answer may also change {{changes}}; rvav checks the change again before building, as it checked the request.",
+      "answers": "A webhook answers with JSON, an AWX job with the rvav_answer artifact (set_stats), a custom workflow with its result.",
+      "onFailure": "When it fails, doesn't answer or asks for a change rvav refuses",
+      "stop": "Stop the request",
+      "goOn": "Let the request go on",
+      "recovers": "Tell a recovery target when it fails",
+      "recovery": "Recovery target",
+      "recoveryLead": "Told once, with the event and why it failed (recovery.reason). If it answers stop or continue, that decides; otherwise the setting above does."
+    },
+    "testFailed": "The test didn't run",
+    "remove": {
+      "body": "Its runs, with what each sent and got back, go with it. To keep them, turn it off instead.",
+      "blocking": "Requests stop waiting for its answer on {{topic}}.",
+      "stops": "{{target}} stops hearing about {{topic}}.",
+      "confirm": "Remove subscription"
+    },
+    "columns": {
+      "subscription": "Subscription",
+      "priority": "priority {{priority}}",
+      "lastRun": "Last run {{when}}"
+    },
+    "lead": "Webhooks, AWX templates and custom workflows that hear about requests, their approvals, each VM a request builds or deletes, day-2 actions, leases and projects. A blocking one may stop a request.",
+    "all": "All subscriptions",
+    "label": "Subscriptions",
+    "none": "No subscription yet",
+    "noneBody": "Subscribe a webhook, an AWX template or a custom workflow to a topic, such as a VM built, to tell another system.",
+    "sendTest": "Send a test event"
+  },
+  "subscription": {
+    "title": "Subscription",
+    "onlyWhen": "Only when",
+    "everyEvent": "Every event",
+    "blockingStops": "Yes: the request stops when it fails, doesn't answer or asks for a change rvav refuses",
+    "blockingGoesOn": "Yes: the request goes on when it fails, doesn't answer or asks for a change rvav refuses",
+    "no": "No",
+    "mayChange": "Its answer may change",
+    "timeout": "Timeout",
+    "seconds": "{{seconds}} s",
+    "created": "Created",
+    "remove": "Remove subscription",
+    "change": "Change subscription"
+  },
+  "resourceTypes": {
+    "phases": {
+      "create": "Creates it",
+      "delete": "Deletes it",
+      "update": "Updates it",
+      "read": "Reads it again"
+    },
+    "optional": "{{label}} (optional)",
+    "driver": {
+      "awx": "AWX · {{name}}",
+      "workflow": "Workflow · {{name}}"
+    },
+    "run": "Run",
+    "nothing": "Nothing",
+    "jobTemplate": "Job template",
+    "workflow": "Workflow",
+    "chooseTemplate": "Choose a job template…",
+    "chooseWorkflow": "Choose a workflow…",
+    "sheet": {
+      "new": "New resource type",
+      "lead": "Blueprints and composite steps make its resources; deployments show them like VMs, and deleting a deployment deletes them.",
+      "save": "Save resource type",
+      "keySet": "Set when defined",
+      "keyHint": "Its name in blueprints: load-balancer",
+      "life": "Its life",
+      "lifeLead": "A custom workflow registered for resource types gets the resource's inputs and returns its properties; an AWX template gets them as extra variables and returns them with set_stats.",
+      "schema": "Property schema (JSON Schema)",
+      "schemaHint": "What it returns: later steps read these properties, and the deployment page shows them by their titles.",
+      "actions": "Day-2 actions on its resources",
+      "noActions": "No custom workflow is registered as a day-2 action, and AWX offers none.",
+      "enabled": "Items may use it"
+    },
+    "cantRemove_one": "Remove: deployments have {{count}} resource",
+    "cantRemove_other": "Remove: deployments have {{count}} resources",
+    "columns": {
+      "type": "Type",
+      "life": "Created and deleted by",
+      "update": "Update: {{driver}}",
+      "read": "Read: {{driver}}",
+      "actions": "Day-2 actions",
+      "resources": "Resources"
+    },
+    "lead": "What rvav doesn't build itself, such as load balancers: a custom workflow or an AWX template creates each resource, and another deletes it. Blueprints and composite steps use them.",
+    "defined": "Defined types",
+    "label": "Resource types",
+    "none": "No resource type yet",
+    "noneBody": "Define one to let blueprints make what rvav doesn't build itself, with your workflows or AWX templates.",
+    "remove": {
+      "body": "Blueprints and composite steps can no longer use it.",
+      "consequences": "rvav forgets the type. Its custom workflows and AWX templates aren't changed.",
+      "confirm": "Remove resource type"
+    }
+  },
+  "workflows": {
+    "usage": {
+      "catalog_item": "Catalog item",
+      "day2_action": "Day-2 action",
+      "subscription_target": "Subscription target",
+      "composite_step": "Composite step",
+      "resource_type": "Resource type"
+    },
+    "days_one": "{{days}} day",
+    "days_other": "{{days}} days",
+    "hours": "{{hours}} h",
+    "sheet": {
+      "register": "Register a workflow",
+      "lead": "Its own workers run it in Temporal; rvav starts it with the form its input schema describes.",
+      "save": "Save workflow",
+      "keySet": "Set when registered",
+      "keyHint": "Its name in rvav",
+      "type": "Workflow type",
+      "typeHint": "Ends with its major version: decommission.v1",
+      "queue": "Task queue",
+      "timeout": "Timeout (days)",
+      "schema": "Input schema (JSON Schema)",
+      "schemaHint": "The form people fill when they start it.",
+      "usedAs": "Used as",
+      "day2As": "As the day-2 action wf.{{key}}",
+      "actionName": "Action name",
+      "runsOn": "Runs on",
+      "vms": "VMs",
+      "deployments": "Deployments",
+      "offeredWhen": "Offered when (CEL)",
+      "offeredHint": "Empty: everywhere",
+      "offer": "Offer it on deployments",
+      "projects": "Projects",
+      "projectsLead": "None ticked: every project may use it."
+    },
+    "cantRemove": "Remove: runs haven't ended",
+    "columns": {
+      "workflow": "Workflow",
+      "type": "Type and queue",
+      "queue": "{{queue}}, {{timeout}}",
+      "running": "Running"
+    },
+    "lead": "Temporal workflows your teams write, run by their own workers; rvav starts them, shows their steps and asks for their approvals.",
+    "registered": "Registered workflows",
+    "none": "No custom workflow yet",
+    "noneBody": "Register one to offer it in the catalog, on deployments or to subscriptions.",
+    "remove": {
+      "body": "rvav forgets its registration: it no longer starts it. Its workers and Temporal aren't changed.",
+      "consequences": "It is no longer offered as {{usages}}. If requests ran it, it is refused: turn it off instead.",
+      "confirm": "Remove workflow"
+    }
+  }
+}
