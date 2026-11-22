@@ -53,9 +53,10 @@ let problem: SignInProblem | null = null;
 /**
  * Why the sign-in page is shown other than because nobody is signed in:
  * rvav's API didn't answer (starting again with newer settings, or down),
- * or the identity provider couldn't be reached.
+ * the identity provider couldn't be reached, or it answered that signing in
+ * was refused (consent refused, or cancelled).
  */
-export type SignInProblem = "api" | "provider";
+export type SignInProblem = "api" | "provider" | "refused";
 
 /** What kept the browser from signing in by itself, if anything. */
 export const signInProblem = () => problem;
@@ -179,6 +180,23 @@ export function signInFailure(back: URLSearchParams, e: unknown): SignInFailure 
   };
 }
 
+/**
+ * What the sign-in page says of a sign-in that failed on the way back: the
+ * provider's access_denied is a refusal (RFC 6749 4.1.2.1), the person's or
+ * the provider's; anything else, the provider's trouble.
+ */
+export function callbackProblem(f: SignInFailure): SignInProblem {
+  return f.stage === "provider" && f.error === "access_denied" ? "refused" : "provider";
+}
+
+/** Back from the provider with a failure: rvav is told, and the sign-in page says what went wrong. */
+function failedCallback(failure: SignInFailure): "sign-in" {
+  void reportSignIn(null, failure);
+  problem = callbackProblem(failure);
+  globalThis.history.replaceState({}, "", SIGN_IN_PATH);
+  return "sign-in";
+}
+
 /** Tells rvav how a sign-in at the provider went, for its audit log; signing in goes on without it. */
 async function reportSignIn(token: string | null, failure?: SignInFailure) {
   try {
@@ -211,6 +229,10 @@ export async function initAuth(): Promise<"ready" | "redirecting" | "sign-in" | 
   if (isMock) {
     // The pages are reachable in mock mode, for the browser tests.
     if (path === SIGN_IN_PATH) return "sign-in";
+    // The browser tests' provider answers with an error only: there is none to sign in at.
+    const back = new URLSearchParams(globalThis.location.search);
+    if (path === CALLBACK_PATH && back.get("error"))
+      return failedCallback(signInFailure(back, new Error(back.get("error") ?? "")));
     if (path === CHANGE_PASSWORD_PATH) return "change-password";
     return "ready";
   }
@@ -229,10 +251,7 @@ export async function initAuth(): Promise<"ready" | "redirecting" | "sign-in" | 
       return "ready";
     } catch (e) {
       // The provider refused, its token endpoint didn't answer, or the code was refused.
-      void reportSignIn(null, signInFailure(back, e));
-      problem = "provider";
-      globalThis.history.replaceState({}, "", SIGN_IN_PATH);
-      return "sign-in";
+      return failedCallback(signInFailure(back, e));
     }
   }
 

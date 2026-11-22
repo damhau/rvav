@@ -6,8 +6,13 @@ approvers. Administrators have [their own guide](admin.md).
 
 ## Signing in and projects
 
-You sign in with your organisation's account. What you see depends on your
-**project roles**, which come from your groups:
+You sign in with your organisation's account. If you cancel there, or
+refuse to let rvav read your account, rvav's sign-in page says that
+signing in was refused: to try again, choose **Sign in with single
+sign-on**.
+
+What you see depends on your **project roles**, which come from your
+groups:
 
 | Role | What you can do in the project |
 |---|---|

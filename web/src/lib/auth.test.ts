@@ -126,6 +126,27 @@ describe("signing in with the provider remembered", () => {
     ]);
   });
 
+  it("says a sign-in refused at the provider was refused, not that the provider is down", async () => {
+    api(200);
+    at("/auth/callback", "?error=access_denied&error_description=Consent+refused&state=xyz");
+    signinRedirectCallback.mockRejectedValue(new Error("Consent refused"));
+    const auth = await load();
+    expect(await auth.initAuth()).toBe("sign-in");
+    expect(auth.signInProblem()).toBe("refused");
+    expect(replaceState).toHaveBeenCalledWith({}, "", "/sign-in");
+    expect(told()).toEqual([
+      {
+        url: "/api/v1/auth/sign-ins",
+        authorization: undefined,
+        body: {
+          client: "web",
+          method: "oidc",
+          failure: { stage: "provider", error: "access_denied", description: "Consent refused" },
+        },
+      },
+    ]);
+  });
+
   it("tells rvav of the sign-in with the new token", async () => {
     api(200);
     at("/auth/callback", "?code=abc&state=xyz");
@@ -189,6 +210,20 @@ describe("a failed sign-in, as the audit log records it", () => {
     expect(f.error).toBe("invalid_grant");
     expect(f.description).toHaveLength(500);
     expect(f.description).toMatch(/^Code not valid at all x+$/);
+  });
+});
+
+describe("a failed sign-in, as the sign-in page says it", () => {
+  it.each([
+    ["the provider's access_denied", { stage: "provider", error: "access_denied" }, "refused"],
+    ["another error of the provider's", { stage: "provider", error: "temporarily_unavailable" }, "provider"],
+    ["the provider's error without a code", { stage: "provider" }, "provider"],
+    ["a state that matches no sign-in", { stage: "state", description: "No matching state" }, "provider"],
+    ["a refused code", { stage: "token", error: "invalid_grant" }, "provider"],
+    ["a token endpoint that didn't answer", { stage: "token", description: "Failed to fetch" }, "provider"],
+  ] as const)("is %s: %s", async (_, failure, problem) => {
+    const { callbackProblem } = await load();
+    expect(callbackProblem(failure)).toBe(problem);
   });
 });
 

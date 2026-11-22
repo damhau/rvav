@@ -27,6 +27,7 @@
     "failed": "Signing in didn't work. Try again in a moment.",
     "unreachable": "Can't reach the rvav API. Check your connection and try again.",
     "providerDown": "The identity provider can't be reached. Sign in as the local administrator, or try single sign-on again later.",
+    "refused": "Signing in was refused or cancelled at the identity provider. Sign in with single sign-on to try again, or as the local administrator.",
     "left_one": "{{count}} second left.",
     "left_other": "{{count}} seconds left."
   },

@@ -27,6 +27,7 @@
     "failed": "La connexion n'a pas abouti. Réessayez dans un instant.",
     "unreachable": "Impossible de joindre l'API de rvav. Vérifiez votre connexion et réessayez.",
     "providerDown": "Le fournisseur d'identité est injoignable. Connectez-vous en tant qu'administrateur local, ou réessayez l'authentification unique plus tard.",
+    "refused": "La connexion a été refusée ou annulée auprès du fournisseur d'identité. Connectez-vous avec l'authentification unique pour réessayer, ou en tant qu'administrateur local.",
     "left_one": "{{count}} seconde restante.",
     "left_many": "{{count}} secondes restantes.",
     "left_other": "{{count}} secondes restantes."

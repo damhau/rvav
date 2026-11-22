@@ -43,3 +43,38 @@ test("the local administrator signs in with the install password and changes it"
   await expect(page.getByRole("button", { name: /^Account/ })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+// Consent refused at the identity provider: it comes back with
+// error=access_denied, and the sign-in page says so rather than that the
+// provider can't be reached (#200).
+test.describe("a sign-in refused at the provider", () => {
+  test("says it was refused, and single sign-on tries again", async ({ page }) => {
+    await page.goto("/auth/callback?error=access_denied&error_description=Consent+refused&state=xyz");
+    await expect(page).toHaveURL(/\/sign-in$/);
+    await expect(page.getByRole("alert")).toHaveText(
+      "Signing in was refused or cancelled at the identity provider. Sign in with single sign-on to try again, or as the local administrator.",
+    );
+    await expect(page.getByText(/can't be reached/)).toHaveCount(0);
+    await page.getByRole("button", { name: "Sign in with single sign-on" }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("button", { name: /^Account/ })).toBeVisible();
+  });
+
+  test.describe("in French", () => {
+    test.use({ locale: "fr-CH" });
+    test("says it was refused", async ({ page }) => {
+      await page.goto("/auth/callback?error=access_denied&state=xyz");
+      await expect(page.getByRole("alert")).toHaveText(
+        "La connexion a été refusée ou annulée auprès du fournisseur d'identité. Connectez-vous avec l'authentification unique pour réessayer, ou en tant qu'administrateur local.",
+      );
+      await expect(page.getByText(/injoignable/)).toHaveCount(0);
+    });
+  });
+
+  test("an error other than a refusal still says the provider can't be reached", async ({ page }) => {
+    await page.goto("/auth/callback?error=temporarily_unavailable&state=xyz");
+    await expect(page.getByRole("alert")).toHaveText(
+      "The identity provider can't be reached. Sign in as the local administrator, or try single sign-on again later.",
+    );
+  });
+});

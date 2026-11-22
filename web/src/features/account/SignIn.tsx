@@ -97,7 +97,9 @@ export function SignInPage({
   const providerDown = t("signIn.providerDown");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(problem === "provider" ? providerDown : null);
+  const [error, setError] = useState<string | null>(() =>
+    problem === "provider" ? providerDown : problem === "refused" ? t("signIn.refused") : null,
+  );
   const [busy, setBusy] = useState(false);
   const wait = useWait();
 

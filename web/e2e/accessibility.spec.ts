@@ -123,8 +123,9 @@ for (const theme of ["light", "dark"] as const) {
     }
 
     // Before the app: the sign-in page, the local administrator's
-    // password change, and a trial sign-in's window (ADR-0030).
-    for (const path of ["/sign-in", "/change-password", "/auth/trial"]) {
+    // password change, a trial sign-in's window (ADR-0030), and a sign-in
+    // refused at the provider (#200).
+    for (const path of ["/sign-in", "/change-password", "/auth/trial", "/auth/callback?error=access_denied"]) {
       test(`axe: ${path}`, async ({ page }) => {
         await page.goto(path);
         await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();

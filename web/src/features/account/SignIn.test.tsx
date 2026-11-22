@@ -37,6 +37,16 @@ describe("the sign-in page", () => {
     expect(screen.getByRole("form", { name: "Local administrator" })).toBeInTheDocument();
   });
 
+  it("says a sign-in refused at the provider was refused, and offers single sign-on again", () => {
+    render(<SignInPage provider problem="refused" />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Signing in was refused or cancelled at the identity provider. Sign in with single sign-on to try again, or as the local administrator.",
+    );
+    expect(screen.queryByText(/can't be reached/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in with single sign-on" })).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "Local administrator" })).toBeInTheDocument();
+  });
+
   it("says the API isn't answering, not that no provider is set, and offers to try again", async () => {
     const reload = vi.fn();
     vi.stubGlobal("location", { ...globalThis.location, pathname: "/", search: "", assign, reload });
