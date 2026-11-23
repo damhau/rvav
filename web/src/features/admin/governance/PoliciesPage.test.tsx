@@ -217,6 +217,19 @@ describe("Policies", () => {
     },
   );
 
+  it("names the day-2 actions it explains, their keys aside", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/policies?tab=explain");
+    await user.click(await screen.findByRole("combobox", { name: "Day-2 action" }));
+    const power = await screen.findByRole("option", { name: /^Power on/ });
+    expect(power).toHaveTextContent("Power onpower_on");
+    const unregister = screen.getAllByRole("option", { name: /^Unregister/ }).map((o) => o.textContent);
+    expect(unregister).toEqual(["Unregistervm_unregister", "Unregisterunregister"]);
+    expect(screen.queryByRole("option", { name: /^power_on/ })).toBeNull();
+    await user.click(power);
+    expect(screen.getByRole("combobox", { name: "Day-2 action" })).toHaveTextContent(/^Power on$/);
+  });
+
   it("explains which lease rule decides, read with the inputs given", { timeout: 15_000 }, async () => {
     adminState(db).leaseRules.push({
       id: "lsr_small",

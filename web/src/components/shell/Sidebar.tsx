@@ -60,6 +60,10 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
   const groups = adminMenu(me);
   const running = useInfiniteQuery(q.requests({ projectId, status: ["running", "queued", "cancelling"], limit: 50 }));
   const runningCount = running.data?.pages.reduce((n, p) => n + p.items.length, 0) ?? 0;
+  // The list has no total: more than a page running is the page's count and a plus.
+  const runningText = running.hasNextPage
+    ? t("nav.runningMore", { n: runningCount })
+    : t("nav.running", { count: runningCount });
   const waiting = useQuery(q.approvals(["pending"])).data?.total ?? 0;
   const linkProps = { activeProps: { className: active }, onClick: onNavigate } as const;
   const id = useId();
@@ -70,10 +74,10 @@ export function Sidebar({ rail = false, onNavigate }: { rail?: boolean; onNaviga
       return rail ? (
         <>
           <span className="absolute top-1.5 right-2 size-1.5 rounded-full bg-run" aria-hidden />
-          <span className="sr-only">{t("nav.running", { count: runningCount })}</span>
+          <span className="sr-only">{runningText}</span>
         </>
       ) : (
-        <span className="tnum ml-auto text-caption text-run">{t("nav.running", { count: runningCount })}</span>
+        <span className="tnum ml-auto text-caption text-run">{runningText}</span>
       );
     }
     if (key === "approvals" && waiting > 0) {

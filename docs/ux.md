@@ -233,6 +233,9 @@ sentence case.
 - **Long names are cut, not broken.** An FQDN or a path in a table stays
   on one line, cut with an ellipsis, and shows whole in a tooltip on hover
   and keyboard focus.
+- **A count past a page shows a plus.** A count made from one page of a
+  list, such as the requests running in the menu, reads "50+ running"
+  once there are more, not 50.
 - **Nothing that comes later.** A feature that doesn't work yet isn't shown,
   not even as a disabled button.
 

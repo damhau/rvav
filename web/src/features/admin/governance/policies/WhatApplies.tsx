@@ -11,6 +11,8 @@ import type { components } from "@/lib/api/schema";
 import { q } from "@/lib/query";
 import { limitLabel } from "@/features/requests/limits";
 import { useEnvName } from "@/lib/environments";
+import { i18n } from "@/lib/i18n";
+import { day2Name } from "@/lib/i18n/names";
 import { quotaLabel, quotaWhere } from "@/features/requests/quota";
 import { failed } from "../common";
 import { useProjects } from "./shared";
@@ -23,6 +25,12 @@ const day2Actions = [
   "nsx_group_add", "nsx_group_remove", "rename", "edit", "change_owner", "change_project", "extend_lease", "vm_unregister", "unregister",
   "delete",
 ]; // prettier-ignore
+
+/** A built-in day-2 action's name in the language shown, from its key. */
+function actionName(key: string): string {
+  const en: unknown = i18n.getResource("en", "names", `day2.${key}`);
+  return typeof en === "string" ? day2Name({ key, name: en }) : key;
+}
 
 const inputsExample = '{"size": "S"}';
 
@@ -192,7 +200,7 @@ export function WhatApplies() {
               onChange={(v) => setF({ ...f, action: v })}
               options={[
                 { value: "none", label: t("policies.explain.none") },
-                ...day2Actions.map((a) => ({ value: a, label: a })),
+                ...day2Actions.map((a) => ({ value: a, label: actionName(a), meta: a })),
               ]}
             />
           </Field>

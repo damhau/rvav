@@ -41,6 +41,19 @@ describe("app shell", () => {
 });
 
 describe("sidebar", () => {
+  it("counts more than a page of running requests as 50+", async () => {
+    const project = db.me.projects[0]!.project.id;
+    const first = db.requests.find((r) => r.request.project.id === project)!;
+    for (let i = 0; i < 55; i++)
+      db.requests.push({
+        ...first,
+        request: { ...first.request, id: `req_many_${i}`, number: `REQ-9${i}`, status: "running" },
+      });
+    renderApp("/");
+    const nav = await mainNav();
+    expect(await within(nav).findByText("50+ running")).toBeInTheDocument();
+  });
+
   it("lists an administrator's pages in four groups, after the main menu", async () => {
     renderApp("/");
     const nav = await mainNav();

@@ -521,6 +521,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
         columns={columns}
         rows={items}
         rowKey={(tpl) => tpl.key}
+        minWidth={720}
         loading={templates.isPending}
         error={templates.isError && <ErrorState error={templates.error} onRetry={() => void templates.refetch()} />}
         empty={

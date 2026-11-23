@@ -86,6 +86,7 @@
     "running_one": "{{count}} en cours",
     "running_many": "{{count}} en cours",
     "running_other": "{{count}} en cours",
+    "runningMore": "{{n}}+ en cours",
     "waitingForYou_one": "{{count}} vous attend",
     "waitingForYou_many": "{{count}} vous attendent",
     "waitingForYou_other": "{{count}} vous attendent",

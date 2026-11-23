@@ -6,6 +6,12 @@ import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
 describe("Templates and networks", () => {
+  it("scrolls the templates sideways rather than squeeze their columns", async () => {
+    renderApp("/admin/infrastructure");
+    const region = await screen.findByRole("region", { name: "VM templates" });
+    expect(await within(region).findByRole("table", { name: "VM templates" })).toHaveStyle({ minWidth: "720px" });
+  });
+
   it("removes a template after saying what it is offered to", async () => {
     const user = userEvent.setup();
     renderApp("/admin/infrastructure");

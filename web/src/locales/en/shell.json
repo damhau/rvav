@@ -85,6 +85,7 @@
     },
     "running_one": "{{count}} running",
     "running_other": "{{count}} running",
+    "runningMore": "{{n}}+ running",
     "waitingForYou_one": "{{count}} waiting for you",
     "waitingForYou_other": "{{count}} waiting for you",
     "live": {
