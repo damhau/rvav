@@ -469,16 +469,16 @@ requests, with their own steps:
   rename it first.
 - **The AWX actions your organisation offers** (install an agent, and so
   on).
-- **Delete.** A step that fails in vCenter, EfficientIP or NSX stops the
-  deletion, and the deployment shows as failed: delete it again once the
-  cause is fixed. To finish deleting it anyway, select **Go on past steps
-  in vCenter, EfficientIP or NSX that fail**. rvav passes over each step
-  that fails, and the last step, **Forget what was left**, lists what
-  stays there. A VM that stays keeps its IP addresses and DNS records, so
-  they aren't given to another while it runs. rvav forgets it and the
-  deployment shows as deleted: delete what was left in vCenter,
-  EfficientIP or NSX, or have an administrator onboard a VM that was
-  left.
+- **Delete.** A step that fails in vCenter, EfficientIP, NSX or Active
+  Directory stops the deletion, and the deployment shows as failed: delete
+  it again once the cause is fixed. To finish deleting it anyway, select
+  **Go on past steps in vCenter, EfficientIP, NSX or Active Directory that
+  fail**. rvav passes over each step that fails, and the last step,
+  **Forget what was left**, lists what stays there. A VM that stays keeps
+  its IP addresses and DNS records, so they aren't given to another while
+  it runs. rvav forgets it and the deployment shows as deleted: delete
+  what was left in vCenter, EfficientIP, NSX or Active Directory, or have
+  an administrator onboard a VM that was left.
 
 An action that loses something, such as Delete, Power off or Revert to a
 snapshot, asks first and says what changes. Delete also asks you to type the

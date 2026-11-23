@@ -261,7 +261,7 @@ func init() {
 		},
 		Form: func(Target, Choices) *api.ActionForm {
 			f := form("If a step fails", toggle(InputIgnoreFailures, "Go on past failures",
-				"Go on past steps in vCenter, EfficientIP or NSX that fail. What they don't delete stays there: "+
+				"Go on past steps in vCenter, EfficientIP, NSX or Active Directory that fail. What they don't delete stays there: "+
 					"the request lists it, and rvav forgets it."))
 			// Set by rvav's own deletion when a lease ends, not shown.
 			f.Schema["properties"].(map[string]any)["lease"] = map[string]any{"type": "boolean"}

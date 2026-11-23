@@ -908,7 +908,7 @@ export const catalogue: MockAction[] = [
           {
             label: "Go on past failures",
             widget: "toggle",
-            help: "Go on past steps in vCenter, EfficientIP or NSX that fail. What they don't delete stays there: the request lists it, and rvav forgets it.",
+            help: "Go on past steps in vCenter, EfficientIP, NSX or Active Directory that fail. What they don't delete stays there: the request lists it, and rvav forgets it.",
           },
           false,
         ],
