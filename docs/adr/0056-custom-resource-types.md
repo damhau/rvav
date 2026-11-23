@@ -106,6 +106,13 @@ resources:
 Saving refuses resources in a blueprint without components, a key
 already taken, a missing type, CEL that doesn't compile, and a reference
 to a component that doesn't exist or to a resource not listed before.
+Once its type exists, it also refuses, at the key, an input `with` binds
+that the type's `create` doesn't take (`unknown_input`, #208): when
+`create` is a custom workflow whose input schema lists its properties and
+doesn't set `additionalProperties: true`. `name` is always taken: it
+names the resource. An AWX `create` isn't checked, as a job template may
+take variables its survey doesn't ask for. The check reads `create`'s
+inputs, not `property_schema`, which is what `create` returns.
 
 ### In a composite: the `resource` step
 A composite step of kind `resource` makes a custom resource:
@@ -117,7 +124,8 @@ A composite step of kind `resource` makes a custom resource:
 ```
 
 - Its `with` is any composite step's: CEL over `inputs` and earlier
-  steps' outputs. Its title defaults to the type's.
+  steps' outputs. Its keys are checked as a blueprint resource's. Its
+  title defaults to the type's.
 - It joins the deployment of a VM step in an earlier group: the one
   `resource.deployment` names, else the only one. A request is refused
   when there is none, when several come before it and it names none, or

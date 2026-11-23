@@ -1,7 +1,8 @@
 // The mocks check a VM item's draft and publish it as the server does
 // (internal/core/blueprint_check.go): the size New item gives it, and the
 // CPU and memory publishing needs, at the binding; what its bindings are
-// and read (blueprint_inputs.go).
+// and read (blueprint_inputs.go); what its custom resources bind
+// (custom_resources.go).
 import { describe, expect, it } from "vitest";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -92,5 +93,31 @@ describe("the mocks' VM item drafts", () => {
 
     await save(withBlueprint(def, { ...bp, bindings: { vcpu: 2, memory_gb: 4 } }));
     expect((await publish()).published_version).toBeDefined();
+  });
+
+  it("refuse an input a custom resource binds that its type's create workflow doesn't take, at its key", async () => {
+    const { def, save } = await newVmItem("aliased-vm");
+    const bp = { ...(def.blueprint as Record<string, unknown>), components: [{ key: "web", count: 2 }] };
+    const resources = (alias: Record<string, unknown>) =>
+      withBlueprint(def, {
+        ...bp,
+        resources: [
+          { key: "lb", type: "load-balancer", with: { members: "components.web.addresses", anything: "1" } },
+          { key: "alias", type: "dns-alias", with: alias },
+          { key: "later", type: "not-yet", with: { anything: "1" } },
+        ],
+      });
+
+    const refused = await save(resources({ fqdn: '"web.corp.example"', target: "components.web.fqdns[0]" })).catch(
+      (e: { fieldErrors: S["FieldError"][] }) => e.fieldErrors,
+    );
+    expect(refused).toEqual([
+      {
+        field: "/definition/blueprint/resources/1/with/target",
+        code: "unknown_input",
+        message: "DNS alias takes fqdn and name: target isn't one of its inputs.",
+      },
+    ]);
+    expect((await save(resources({ fqdn: '"web.corp.example"', name: '"web-alias"' }))).id).toBeDefined();
   });
 });

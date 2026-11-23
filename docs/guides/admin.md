@@ -2415,7 +2415,10 @@ templates. To define a type:
 What each step gets and returns:
 
 - `create` and `update` get the inputs the blueprint or the composite
-  step binds; `delete` and `read` get the resource's properties.
+  step binds; `delete` and `read` get the resource's properties. When
+  `create` is a custom workflow whose input schema lists its inputs,
+  saving an item refuses a `with` that binds another, except `name`,
+  which names the resource.
 - A custom workflow gets them in its context's `inputs`, and the
   resource in `resource`. Its result is the resource's properties.
 - An AWX template gets them as extra variables, and the resource in

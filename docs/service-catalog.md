@@ -300,7 +300,7 @@ the composite above:
 |---|---|
 | `resource.type` | The resource type's key. Required. Publishing needs it to exist and be on |
 | `resource.deployment` | The key of the VM step whose deployment the resource joins. Optional when only one VM step comes before it |
-| `with` | The create step's inputs, CEL over `inputs` and `steps.<key>` as in any step |
+| `with` | The create step's inputs, CEL over `inputs` and `steps.<key>` as in any step. Saving refuses one the type's create workflow doesn't take, as for a blueprint's resources |
 | `title` | Its title on the timeline: the type's by default |
 
 It may have a `when`, and may sit in a parallel group or a branch, after
@@ -851,6 +851,13 @@ else `<deployment>-<key>`.
   `type`, and a reference to a component that doesn't exist or to a
   resource not listed before. A draft may name a type that doesn't exist
   yet: publishing needs it to exist and be on.
+- Once the type exists, saving also refuses an input `with` binds that
+  the type's create workflow doesn't take, at its key, naming those it
+  takes: `Load balancer takes members, name and port: pool isn't one of
+  its inputs.` The inputs are those the workflow's input schema lists,
+  and `name`, which names the resource. A workflow whose schema lists
+  none, or sets `additionalProperties: true`, and an AWX template take
+  any.
 - A request is refused while the type is turned off.
 - When the request fails and rolls back, its custom resources are deleted
   first, the last made first. Deleting the deployment deletes them before

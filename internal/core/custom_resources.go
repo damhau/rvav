@@ -111,8 +111,10 @@ func bindResourceSteps(steps []provision.CompositeStep, deployments map[string]s
 	}
 }
 
-// checkResourceRefs checks, to publish a version, the resource types its
-// blueprint names.
+// checkResourceRefs checks the resource types a version's blueprint names:
+// the inputs its with binds are ones the type's create takes and, to
+// publish, the type exists and is on. A draft may name a type that doesn't
+// exist yet.
 func (s *Service) checkResourceRefs(ctx context.Context, d api.CatalogVersionDefinition, prefix string, publish bool) ([]api.FieldError, error) {
 	raw, _ := json.Marshal(d.Blueprint)
 	b, err := blueprint.Parse(raw)
@@ -120,34 +122,78 @@ func (s *Service) checkResourceRefs(ctx context.Context, d api.CatalogVersionDef
 		return nil, nil
 	}
 	var errs []api.FieldError
-	check := func(at, key string) error {
-		if key == "" || !publish {
+	check := func(at, key string, with map[string]any, withAt string) error {
+		if key == "" {
 			return nil
 		}
 		t, err := s.Store.GetResourceType(ctx, key)
 		switch {
 		case errors.Is(err, store.ErrNotFound):
-			errs = append(errs, fieldErr(at, "unknown_resource_type", "There is no resource type "+key+": add it under Administration > Resource types."))
+			if publish {
+				errs = append(errs, fieldErr(at, "unknown_resource_type", "There is no resource type "+key+": add it under Administration > Resource types."))
+			}
+			return nil
 		case err != nil:
 			return err
-		case !t.Enabled:
+		case !t.Enabled && publish:
 			errs = append(errs, fieldErr(at, "disabled", t.Title+" is turned off: turn it on before publishing."))
+		}
+		takes, err := s.createInputs(ctx, t)
+		if err != nil || takes == nil {
+			return err
+		}
+		// name names the resource, whatever create takes (provision.resourceName).
+		if !slices.Contains(takes, "name") {
+			takes = append(takes, "name")
+			slices.Sort(takes)
+		}
+		for _, k := range sortedKeys(with) {
+			if !slices.Contains(takes, k) {
+				errs = append(errs, fieldErr(withAt+"/"+k, "unknown_input", fmt.Sprintf("%s takes %s: %s isn't one of its inputs.",
+					t.Title, joinNames(takes), k)))
+			}
 		}
 		return nil
 	}
 	ptr := prefix + "/blueprint"
 	for i, r := range b.Resources {
-		if err := check(fmt.Sprintf("%s/resources/%d/type", ptr, i), r.Type); err != nil {
+		at := fmt.Sprintf("%s/resources/%d", ptr, i)
+		if err := check(at+"/type", r.Type, r.With, at+"/with"); err != nil {
 			return nil, err
 		}
 	}
 	var failed error
 	eachStep(b, ptr, func(st blueprint.CompositeStep, at string) {
 		if st.Resource != nil && failed == nil {
-			failed = check(at+"/resource/type", st.Resource.Type)
+			failed = check(at+"/resource/type", st.Resource.Type, st.With, at+"/with")
 		}
 	})
 	return errs, failed
+}
+
+// createInputs are the inputs a resource type's create workflow declares,
+// by name, or nil when rvav can't tell: a workflow it doesn't know, or one
+// whose input schema lists none or lets others in. An AWX template may take
+// variables its survey doesn't ask for: its inputs aren't told.
+func (s *Service) createInputs(ctx context.Context, t store.ResourceType) ([]string, error) {
+	if t.Lifecycle.Create.Kind != "workflow" {
+		return nil, nil
+	}
+	reg, err := s.Store.GetWorkflowRegistration(ctx, t.Lifecycle.Create.Name)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var schema struct {
+		Properties           map[string]json.RawMessage `json:"properties"`
+		AdditionalProperties any                        `json:"additionalProperties"`
+	}
+	if json.Unmarshal(reg.InputSchema, &schema) != nil || len(schema.Properties) == 0 || schema.AdditionalProperties == true {
+		return nil, nil
+	}
+	return sortedKeys(schema.Properties), nil
 }
 
 // compareResources plans the deployment's custom resources (ADR-0056):

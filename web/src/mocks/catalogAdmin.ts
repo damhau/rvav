@@ -751,6 +751,43 @@ function inputReadProblems(db: Db, def: Definition, prefix: string): S["FieldErr
   return vmInputProblems(def.blueprint, `${prefix}/blueprint`, new Set(Object.keys(props)));
 }
 
+/**
+ * As the server's checkResourceRefs, on save and to publish: what a custom
+ * resource's with binds, its type's create workflow takes, when its input
+ * schema lists its inputs and lets no other in. A type that doesn't exist
+ * yet, or an AWX create, takes any.
+ */
+function resourceWithProblems(db: Db, bp: unknown, ptr: string): S["FieldError"][] {
+  const out: S["FieldError"][] = [];
+  const check = (type: unknown, bound: unknown, at: string) => {
+    const t = resourceTypesOf(db).find((x) => x.key === type);
+    if (t?.create.kind !== "workflow") return;
+    const schema = workflowRegistrations(db).find((w) => w.key === t.create.name)?.input_schema as
+      { properties?: Record<string, unknown>; additionalProperties?: unknown } | undefined;
+    const declared = Object.keys(schema?.properties ?? {});
+    if (!declared.length || schema?.additionalProperties === true) return;
+    // name names the resource, whatever create takes (provision.resourceName).
+    const takes = [...new Set([...declared, "name"])].sort();
+    const named = takes.length > 1 ? `${takes.slice(0, -1).join(", ")} and ${takes.at(-1)}` : takes[0];
+    for (const k of Object.keys(bound && typeof bound === "object" ? bound : {}).sort())
+      if (!takes.includes(k))
+        out.push({
+          field: `${at}/${k}`,
+          code: "unknown_input",
+          message: `${t.title} takes ${named}: ${k} isn't one of its inputs.`,
+        });
+  };
+  const resources = (bp as { resources?: unknown } | null)?.resources;
+  (Array.isArray(resources) ? (resources as Record<string, unknown>[]) : []).forEach((r, i) =>
+    check(r?.type, r?.with, `${ptr}/resources/${i}/with`),
+  );
+  eachStep(bp, ptr, (st, at) => {
+    const res = st.resource as Record<string, unknown> | undefined;
+    if (res) check(res.type, st.with, `${at}/with`);
+  });
+  return out;
+}
+
 function vmStepProblems(db: Db, bp: unknown, ptr: string): S["FieldError"][] {
   const b = (bp ?? {}) as { steps?: BlueprintStep[]; on_error?: BlueprintStep[] };
   const out: S["FieldError"][] = [];
@@ -1418,6 +1455,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         ...libraryRefProblems(db, u.definition.ui_schema, "/definition", false),
         ...vmStepProblems(db, u.definition.blueprint, "/definition/blueprint"),
         ...inputReadProblems(db, u.definition, "/definition"),
+        ...resourceWithProblems(db, u.definition.blueprint, "/definition/blueprint"),
       ];
       if (errors.length) return problem(422, "Some inputs need attention", errors);
       if (u.base_revision !== undefined && u.base_revision !== v.revision)
@@ -1464,6 +1502,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         ...variableProblems(db, v.definition.blueprint, "/definition/blueprint"),
         ...vmSizeProblems(v.definition.blueprint, "/definition/blueprint"),
         ...inputReadProblems(db, v.definition, "/definition"),
+        ...resourceWithProblems(db, v.definition.blueprint, "/definition/blueprint"),
       ];
       if (incomplete.length) return problem(422, "Some inputs need attention", incomplete);
       if (!body.keep_published)
@@ -1611,6 +1650,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       const errors = versions.flatMap((v, i) => [
         ...check(v, `/versions/${i}`),
         ...inputReadProblems(db, v, `/versions/${i}`),
+        ...resourceWithProblems(db, v.blueprint, `/versions/${i}/blueprint`),
       ]);
       if (errors.length) return problem(422, "Some inputs need attention", errors);
       const def = (v: Definition): Definition => ({
