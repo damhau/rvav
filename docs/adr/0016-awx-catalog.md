@@ -26,7 +26,9 @@ a template is the AWX admin's way of publishing it.
 - Otherwise rvav makes an item: name from the template's, its description
   as the summary, category from a `category:<key>` label (else
   Automation), published at once as version "AWX #1", open to every
-  project. Approval policies apply as to any item.
+  project. Since G2.2, it is shared as the AWX source is, every project
+  unless an administrator narrows it ([ADR-0019](0019-catalog-administration.md),
+  Sharing). Approval policies apply as to any item.
 - The form comes from the survey: text and textarea (length limits),
   integer and float (bounds), multiple choice (segmented up to four
   choices, else a select), multiselect (checklist), required questions and

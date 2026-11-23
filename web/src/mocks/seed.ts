@@ -38,6 +38,7 @@ export interface StoredRequest {
 }
 
 export interface StoredItem extends CatalogItem {
+  /** The projects it is shared with itself; AWX shares the items made from it (catalogAdmin owners). */
   projectIds: string[];
 }
 
@@ -337,7 +338,7 @@ export function createDb(now = Date.now()): Db {
       approval: "never",
       requests_last_30_days: 88,
       source: { kind: "awx", awx_template_id: 47, awx_template_name: "pg-create-role" },
-      projectIds: both,
+      projectIds: [],
     }),
     item({
       key: "fwflow",
@@ -352,7 +353,7 @@ export function createDb(now = Date.now()): Db {
       approval: "always",
       requests_last_30_days: 29,
       source: { kind: "awx", awx_template_id: 12, awx_template_name: "fw-flow-request" },
-      projectIds: both,
+      projectIds: [],
     }),
     item({
       key: "dnsrec",
@@ -367,7 +368,7 @@ export function createDb(now = Date.now()): Db {
       approval: "never",
       requests_last_30_days: 52,
       source: { kind: "awx", awx_template_id: 31, awx_template_name: "ddi-dns-record" },
-      projectIds: both,
+      projectIds: [],
     }),
     item({
       key: "tlscert",
@@ -382,7 +383,7 @@ export function createDb(now = Date.now()): Db {
       approval: "never",
       requests_last_30_days: 23,
       source: { kind: "awx", awx_template_id: 22, awx_template_name: "pki-renew-deploy" },
-      projectIds: both,
+      projectIds: [],
     }),
     item({
       key: "idmgroup",
@@ -397,7 +398,7 @@ export function createDb(now = Date.now()): Db {
       approval: "never",
       requests_last_30_days: 11,
       source: { kind: "awx", awx_template_id: 9, awx_template_name: "idm-hbac-group" },
-      projectIds: both,
+      projectIds: [],
     }),
   ];
   const forms: Record<string, RequestForm> = {};

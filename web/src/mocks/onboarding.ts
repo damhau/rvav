@@ -11,6 +11,7 @@ import { freeDeploymentName } from "./deploymentNames";
 import { auditTargetNames } from "./governance";
 import { clusters, datastores, networks } from "./inventory";
 import { heldIn } from "./roles";
+import { offeredIn } from "./sharing";
 import type { Db, StoredItem } from "./seed";
 
 type S = components["schemas"];
@@ -174,7 +175,7 @@ function newDestination(db: Db, t: NewTarget, at: string, errors: FieldError[]):
   const item = db.items.find((i) => i.id === t.catalog_item_id || i.slug === t.catalog_item_id);
   if (!item || item.type !== "vm_blueprint")
     errors.push(err(`${at}/catalog_item_id`, "invalid", "Choose a published VM item: it gives the deployments their OS family and day-2 actions.")); // prettier-ignore
-  else if (project && !item.projectIds.includes(project.id))
+  else if (project && !offeredIn(db, item, project.id))
     errors.push(err(`${at}/catalog_item_id`, "invalid", `${item.name} isn't offered in ${project.name}.`));
   // The lease policy's default when none is given, and its maximum.
   const policy = project ? leasePolicyOf(db, project.id, env) : undefined;

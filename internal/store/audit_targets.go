@@ -15,6 +15,8 @@ var auditTargets = []struct{ typ, name string }{
 	{"approval", "select r.number || ' · ' || x.name from approvals x join requests r on r.id = x.request_id where x.id = %s"},
 	{"project", "select name from projects where id = %s"},
 	{"catalog_item", "select name from catalog_items where id = %s"},
+	{"catalog_category", "select name from catalog_categories where key = %s"},
+	{"catalog_source", "select name from catalog_sources where kind = %s"},
 	{"role", "select name from roles where key = %s"},
 	{"user", "select name from users where id = %s"},
 	{"api_token", "select name from api_tokens where id = %s"},

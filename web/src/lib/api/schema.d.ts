@@ -1708,6 +1708,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/awx/entitlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The projects that may request the items made from AWX
+         * @description The AWX source's shares apply to every item the AWX sync made or
+         *     linked, those it makes later included, on top of each item's own
+         *     (ADR-0019, Sharing; ADR-0016). Every project, with all its
+         *     members, until a catalog admin changes it. rvav's Git repository
+         *     is no such source: it holds the whole catalog, so share its
+         *     categories instead.
+         */
+        get: operations["getAwxEntitlements"];
+        /**
+         * Share the items made from AWX with every project or chosen projects, and with whom in each
+         * @description The body of an item's share
+         *     (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+         *     defaults for what it leaves out. Audited as
+         *     `catalog.source.entitlements`.
+         */
+        put: operations["setAwxEntitlements"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/awx/entitlements/requesters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Who could request the items made from AWX in a project, shared with this audience
+         * @description As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+         *     `everywhere` is the AWX source's saved every-project share. An
+         *     item's own shares and its category's add to it, item by item.
+         */
+        post: operations["previewAwxRequesters"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/awx/actions": {
         parameters: {
             query?: never;
@@ -2319,6 +2373,61 @@ export interface paths {
         head?: never;
         /** Rename or reorder a category */
         patch: operations["updateCatalogCategory"];
+        trace?: never;
+    };
+    "/admin/catalog/categories/{key}/entitlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The projects that may request a category's items
+         * @description A category's shares apply to every item in it, those added or moved
+         *     into it later included, on top of each item's own: shares add up
+         *     (ADR-0019, Sharing). The item's sharing lists them as `inherited`.
+         */
+        get: operations["getCatalogCategoryEntitlements"];
+        /**
+         * Share a category's items with every project or chosen projects, and with whom in each
+         * @description The body of an item's share
+         *     (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+         *     defaults for what it leaves out. Audited as
+         *     `catalog.category.entitlements`.
+         */
+        put: operations["setCatalogCategoryEntitlements"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog/categories/{key}/entitlements/requesters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Who could request a category's items in a project, shared with this audience
+         * @description As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+         *     `everywhere` is the category's saved every-project share. An item's
+         *     own shares and its source's add to it, item by item.
+         */
+        post: operations["previewCatalogCategoryRequesters"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/admin/catalog/icons": {
@@ -5631,11 +5740,13 @@ export interface components {
             to?: unknown;
         };
         /**
-         * @description Who may request an item (ADR-0019, Sharing): in every project,
-         *     those made later included, or in chosen projects; in each, all its
-         *     members, or the users, OIDC groups and project roles an audience
-         *     names. Someone requests it in a project when one of these covers
-         *     them there, and when they may request in that project.
+         * @description Who may request an item, or the items of a category or a source
+         *     (ADR-0019, Sharing): in every project, those made later included,
+         *     or in chosen projects; in each, all its members, or the users, OIDC
+         *     groups and project roles an audience names. Someone requests an
+         *     item in a project when one of its shares, its category's or its
+         *     source's covers them there, and when they may request in that
+         *     project.
          */
         CatalogEntitlements: {
             /** @description Shared with every project, those made later included. */
@@ -5657,8 +5768,37 @@ export interface components {
             }[];
             /** @description The roles given in projects, built-in or custom, to choose from. */
             readonly roles?: components["schemas"]["RoleRef"][];
-            /** @description The users the audiences name. */
+            /** @description The users the audiences name, those of `inherited` included. */
             readonly users?: components["schemas"]["UserRef"][];
+            /**
+             * @description An item's shares from its category and from its source (the
+             *     AWX sync), one per project or for every project, which add to
+             *     its own (ADR-0019, Sharing). Absent from a category's or a
+             *     source's own sharing.
+             */
+            readonly inherited?: components["schemas"]["CatalogInheritedShare"][];
+        };
+        /** @description A share an item has through its category or its source, and who may request it there. */
+        CatalogInheritedShare: {
+            from: components["schemas"]["CatalogShareOrigin"];
+            /** @description In every project, those made later included; otherwise in `project_id`. */
+            all_projects: boolean;
+            project_id?: string;
+            user_ids: string[];
+            groups: string[];
+            roles: string[];
+        };
+        /** @description Where an item's inherited share comes from. */
+        CatalogShareOrigin: {
+            /** @enum {string} */
+            kind: "category" | "source";
+            /**
+             * @description The category's key, or the source's (`awx`).
+             * @example compute
+             */
+            key: string;
+            /** @example Compute */
+            name: string;
         };
         /**
          * @description Who may request an item in a project: all its members when it names
@@ -5703,6 +5843,12 @@ export interface components {
             named: boolean;
             /** @description The item's every-project share covers them, whatever the audience says. */
             everywhere: boolean;
+            /**
+             * @description The item's shares from its category or its source that cover
+             *     them in the project, whatever the audience says. Empty for a
+             *     category's or a source's own audience.
+             */
+            inherited: components["schemas"]["CatalogShareOrigin"][];
             /** @description The audience's groups they were in at their last sign-in. */
             groups: string[];
             /** @description The audience's roles they hold in the project. */
@@ -5728,6 +5874,14 @@ export interface components {
             sort_order?: number;
             /** @description Items in the category. */
             readonly items?: number;
+            /**
+             * @description Who its items are shared with through it (ADR-0019, Sharing):
+             *     every project, and how many projects of their own.
+             */
+            readonly sharing?: {
+                all_projects: boolean;
+                projects: number;
+            };
         };
         AdminCatalogCategoryUpdate: {
             name?: string;
@@ -14368,6 +14522,82 @@ export interface operations {
             502: components["responses"]["UpstreamError"];
         };
     };
+    getAwxEntitlements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogEntitlements"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setAwxEntitlements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogEntitlements"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogEntitlements"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    previewAwxRequesters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogProjectAudience"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogRequesters"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
     listAwxActions: {
         parameters: {
             query?: never;
@@ -15400,6 +15630,91 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminCatalogCategory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getCatalogCategoryEntitlements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogEntitlements"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setCatalogCategoryEntitlements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogEntitlements"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogEntitlements"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    previewCatalogCategoryRequesters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogProjectAudience"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogRequesters"];
                 };
             };
             401: components["responses"]["Unauthorized"];

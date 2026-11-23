@@ -2129,6 +2129,74 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { $ref: "#/components/responses/UpstreamError" }
 
+  /admin/awx/entitlements:
+    get:
+      tags: [catalog-admin]
+      operationId: getAwxEntitlements
+      summary: The projects that may request the items made from AWX
+      description: |
+        The AWX source's shares apply to every item the AWX sync made or
+        linked, those it makes later included, on top of each item's own
+        (ADR-0019, Sharing; ADR-0016). Every project, with all its
+        members, until a catalog admin changes it. rvav's Git repository
+        is no such source: it holds the whole catalog, so share its
+        categories instead.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogEntitlements" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [catalog-admin]
+      operationId: setAwxEntitlements
+      summary: Share the items made from AWX with every project or chosen projects, and with whom in each
+      description: |
+        The body of an item's share
+        (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+        defaults for what it leaves out. Audited as
+        `catalog.source.entitlements`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogEntitlements" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogEntitlements" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/awx/entitlements/requesters:
+    post:
+      tags: [catalog-admin]
+      operationId: previewAwxRequesters
+      summary: Who could request the items made from AWX in a project, shared with this audience
+      description: |
+        As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+        `everywhere` is the AWX source's saved every-project share. An
+        item's own shares and its category's add to it, item by item.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogProjectAudience" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogRequesters" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /admin/awx/actions:
     get:
       tags: [admin]
@@ -2929,6 +2997,84 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/catalog/categories/{key}/entitlements:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [catalog-admin]
+      operationId: getCatalogCategoryEntitlements
+      summary: The projects that may request a category's items
+      description: |
+        A category's shares apply to every item in it, those added or moved
+        into it later included, on top of each item's own: shares add up
+        (ADR-0019, Sharing). The item's sharing lists them as `inherited`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogEntitlements" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [catalog-admin]
+      operationId: setCatalogCategoryEntitlements
+      summary: Share a category's items with every project or chosen projects, and with whom in each
+      description: |
+        The body of an item's share
+        (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+        defaults for what it leaves out. Audited as
+        `catalog.category.entitlements`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogEntitlements" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogEntitlements" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/catalog/categories/{key}/entitlements/requesters:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [catalog-admin]
+      operationId: previewCatalogCategoryRequesters
+      summary: Who could request a category's items in a project, shared with this audience
+      description: |
+        As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+        `everywhere` is the category's saved every-project share. An item's
+        own shares and its source's add to it, item by item.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogProjectAudience" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogRequesters" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
 
   /admin/catalog/icons:
     get:
@@ -7579,11 +7725,13 @@ components:
     CatalogEntitlements:
       type: object
       description: |
-        Who may request an item (ADR-0019, Sharing): in every project,
-        those made later included, or in chosen projects; in each, all its
-        members, or the users, OIDC groups and project roles an audience
-        names. Someone requests it in a project when one of these covers
-        them there, and when they may request in that project.
+        Who may request an item, or the items of a category or a source
+        (ADR-0019, Sharing): in every project, those made later included,
+        or in chosen projects; in each, all its members, or the users, OIDC
+        groups and project roles an audience names. Someone requests an
+        item in a project when one of its shares, its category's or its
+        source's covers them there, and when they may request in that
+        project.
       required: [all_projects, project_ids]
       properties:
         all_projects:
@@ -7621,8 +7769,47 @@ components:
         users:
           type: array
           readOnly: true
-          description: The users the audiences name.
+          description: The users the audiences name, those of `inherited` included.
           items: { $ref: "#/components/schemas/UserRef" }
+        inherited:
+          type: array
+          readOnly: true
+          description: |
+            An item's shares from its category and from its source (the
+            AWX sync), one per project or for every project, which add to
+            its own (ADR-0019, Sharing). Absent from a category's or a
+            source's own sharing.
+          items: { $ref: "#/components/schemas/CatalogInheritedShare" }
+    CatalogInheritedShare:
+      type: object
+      description: A share an item has through its category or its source, and who may request it there.
+      required: [from, all_projects, user_ids, groups, roles]
+      properties:
+        from: { $ref: "#/components/schemas/CatalogShareOrigin" }
+        all_projects:
+          type: boolean
+          description: In every project, those made later included; otherwise in `project_id`.
+        project_id: { type: string }
+        user_ids:
+          type: array
+          items: { type: string }
+        groups:
+          type: array
+          items: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+    CatalogShareOrigin:
+      type: object
+      description: Where an item's inherited share comes from.
+      required: [kind, key, name]
+      properties:
+        kind: { type: string, enum: [category, source] }
+        key:
+          type: string
+          description: The category's key, or the source's (`awx`).
+          examples: [compute]
+        name: { type: string, examples: [Compute] }
     CatalogAudience:
       type: object
       description: |
@@ -7687,13 +7874,20 @@ components:
           $ref: "#/components/schemas/CatalogAudience"
     CatalogRequester:
       type: object
-      required: [user, named, groups, roles, everywhere]
+      required: [user, named, groups, roles, everywhere, inherited]
       properties:
         user: { $ref: "#/components/schemas/UserRef" }
         named: { type: boolean, description: The audience names them. }
         everywhere:
           type: boolean
           description: The item's every-project share covers them, whatever the audience says.
+        inherited:
+          type: array
+          description: |
+            The item's shares from its category or its source that cover
+            them in the project, whatever the audience says. Empty for a
+            category's or a source's own audience.
+          items: { $ref: "#/components/schemas/CatalogShareOrigin" }
         groups:
           type: array
           description: The audience's groups they were in at their last sign-in.
@@ -7732,6 +7926,16 @@ components:
         name: { type: string, minLength: 1, maxLength: 60 }
         sort_order: { type: integer }
         items: { type: integer, readOnly: true, description: Items in the category. }
+        sharing:
+          type: object
+          readOnly: true
+          description: |
+            Who its items are shared with through it (ADR-0019, Sharing):
+            every project, and how many projects of their own.
+          required: [all_projects, projects]
+          properties:
+            all_projects: { type: boolean }
+            projects: { type: integer }
     AdminCatalogCategoryUpdate:
       type: object
       additionalProperties: false

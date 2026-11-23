@@ -332,6 +332,75 @@ func TestMigrateItemSharing(t *testing.T) {
 	}
 }
 
+// TestMigrateCategorySourceSharing: the AWX source is shared with every
+// project, and an item the sync opened to every project follows it rather
+// than keep a share of its own; one whose sharing an administrator set
+// keeps it (G2.2, ADR-0019). Down and up again.
+func TestMigrateCategorySourceSharing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Pool.Exec(ctx, `drop schema public cascade; create schema public`); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := pgx.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := stdlib.OpenDB(*cfg)
+	defer db.Close()
+	goose.SetBaseFS(migrations.FS)
+	if err := goose.SetDialect("postgres"); err != nil {
+		t.Fatal(err)
+	}
+	const before = 110
+	if err := goose.UpToContext(ctx, db, ".", before); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `insert into projects (id, code, name) values ('prj_a', 'a1', 'A');
+		insert into catalog_categories (key, name) values ('automation', 'Automation') on conflict do nothing;
+		insert into catalog_items (id, slug, name, summary, category, type, source_kind, all_projects) values
+			('itm_synced', 'synced', 'Synced', '', 'automation', 'awx_job_template', 'awx', true),
+			('itm_set', 'set', 'Set', '', 'automation', 'awx_job_template', 'awx', true),
+			('itm_native', 'native', 'Native', '', 'automation', 'vm_blueprint', 'native', true);
+		insert into audit_events (action, target_type, target_id) values ('catalog.item.entitlements', 'catalog_item', 'itm_set')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx, databaseURL); err != nil {
+		t.Fatal(err)
+	}
+	src, err := st.SourceSharing(ctx, store.SourceAWX)
+	if err != nil || !src.AllProjects || len(src.Projects) != 0 || !src.Everywhere.Everyone() {
+		t.Fatalf("the AWX source's sharing = %+v, %v", src, err)
+	}
+	anyone := store.Requester{UserID: "usr_x", Groups: []string{}, Roles: []string{"member"}}
+	for item, own := range map[string]bool{"itm_synced": false, "itm_set": true, "itm_native": true} {
+		sh, err := st.ItemSharing(ctx, item)
+		if err != nil || sh.AllProjects != own {
+			t.Fatalf("%s shared with every project on its own: %v, %v", item, sh.AllProjects, err)
+		}
+		if in, with, err := st.SharedWith(ctx, item, "prj_a", anyone); err != nil || !in || !with {
+			t.Fatalf("%s in prj_a: project %v, requester %v, %v", item, in, with, err)
+		}
+	}
+	if err := goose.DownToContext(ctx, db, ".", before); err != nil {
+		t.Fatal(err)
+	}
+	var all bool
+	if err := st.Pool.QueryRow(ctx, `select all_projects from catalog_items where id = 'itm_synced'`).Scan(&all); err != nil || !all {
+		t.Fatalf("down, itm_synced is shared with every project: %v, %v", all, err)
+	}
+	if err := store.Migrate(ctx, databaseURL); err != nil {
+		t.Fatalf("up again: %v", err)
+	}
+}
+
 // TestMigrateC2 takes C2's migrations (00080 on) down with their data in
 // place, and up again: an item with two requestable versions keeps one, a
 // deployment drops the lease rules it recorded, and the day-2 policies

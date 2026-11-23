@@ -150,18 +150,10 @@ type Sharing struct {
 	Projects    []ProjectShare
 }
 
-// ItemSharing reads who an item is shared with.
+// ItemSharing reads who an item is shared with on its own, without its
+// category's and its source's shares.
 func (s *Store) ItemSharing(ctx context.Context, itemID string) (Sharing, error) {
-	var sh Sharing
-	err := s.Pool.QueryRow(ctx, `select all_projects, share_user_ids, share_groups, share_roles from catalog_items where id = $1`,
-		itemID).Scan(&sh.AllProjects, &sh.Everywhere.UserIDs, &sh.Everywhere.Groups, &sh.Everywhere.Roles)
-	if err != nil {
-		return sh, notFound(err)
-	}
-	rows, _ := s.Pool.Query(ctx, `select project_id, user_ids, groups, roles from catalog_entitlements
-		where item_id = $1 order by project_id`, itemID)
-	sh.Projects, err = pgx.CollectRows(rows, pgx.RowToStructByName[ProjectShare])
-	return sh, err
+	return s.sharing(ctx, itemShares, itemID)
 }
 
 // VersionDef is a version's definition.
@@ -424,39 +416,7 @@ func (s *Store) DeprecateVersion(ctx context.Context, itemID, versionID string, 
 
 // SetSharing shares an item with exactly these projects and audiences.
 func (s *Store) SetSharing(ctx context.Context, itemID string, sh Sharing) error {
-	return s.Tx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `update catalog_items set all_projects = $2, share_user_ids = $3, share_groups = $4,
-			share_roles = $5, updated_at = now() where id = $1`, itemID, sh.AllProjects, nonNilStrings(sh.Everywhere.UserIDs),
-			nonNilStrings(sh.Everywhere.Groups), nonNilStrings(sh.Everywhere.Roles)); err != nil {
-			return err
-		}
-		ids := make([]string, len(sh.Projects))
-		for i, p := range sh.Projects {
-			ids[i] = p.ProjectID
-		}
-		if _, err := tx.Exec(ctx, `delete from catalog_entitlements where item_id = $1 and not (project_id = any($2))`,
-			itemID, ids); err != nil {
-			return err
-		}
-		return addShares(ctx, tx, itemID, sh.Projects, true)
-	})
-}
-
-// addShares shares an item with projects; with replace, the audience of
-// one it is shared with already becomes this one.
-func addShares(ctx context.Context, db DB, itemID string, shares []ProjectShare, replace bool) error {
-	conflict := `do nothing`
-	if replace {
-		conflict = `(item_id, project_id) do update set user_ids = excluded.user_ids, groups = excluded.groups, roles = excluded.roles`
-	}
-	for _, p := range shares {
-		if _, err := db.Exec(ctx, `insert into catalog_entitlements (item_id, project_id, user_ids, groups, roles)
-			values ($1, $2, $3, $4, $5) on conflict `+conflict, itemID, p.ProjectID, nonNilStrings(p.UserIDs),
-			nonNilStrings(p.Groups), nonNilStrings(p.Roles)); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.Tx(ctx, func(tx pgx.Tx) error { return setSharing(ctx, tx, itemShares, itemID, sh, ", updated_at = now()") })
 }
 
 // UnknownProjects returns the IDs that are not projects.
@@ -466,17 +426,23 @@ func (s *Store) UnknownProjects(ctx context.Context, ids []string) ([]string, er
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-// AdminCategory is a category with its number of items, in any state.
+// AdminCategory is a category with its number of items, in any state, and
+// how far it shares them.
 type AdminCategory struct {
 	Key       string `db:"key"`
 	Name      string `db:"name"`
 	SortOrder int    `db:"sort_order"`
 	Items     int    `db:"items"`
+	// AllProjects and SharedProjects: with every project, and with how
+	// many chosen projects.
+	AllProjects    bool `db:"all_projects"`
+	SharedProjects int  `db:"shared_projects"`
 }
 
 func (s *Store) AdminCategories(ctx context.Context) ([]AdminCategory, error) {
 	rows, _ := s.Pool.Query(ctx, `select c.key, c.name, c.sort_order,
-		(select count(*) from catalog_items i where i.category = c.key)::int as items
+		(select count(*) from catalog_items i where i.category = c.key)::int as items, c.all_projects,
+		(select count(*) from catalog_category_entitlements e where e.category = c.key)::int as shared_projects
 		from catalog_categories c order by c.sort_order, c.key`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[AdminCategory])
 }

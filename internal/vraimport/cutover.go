@@ -126,7 +126,7 @@ func planCutover(e *vra.Estate, r Rvav, st ImportState, items []ItemImport, deps
 			default:
 				published++
 			}
-			if imported && proj != nil && !s.AllProjects && !slices.Contains(s.Projects, proj.ID) {
+			if imported && proj != nil && !s.Offers(proj.ID) {
 				unshared = append(unshared, ci.Name)
 			}
 		}

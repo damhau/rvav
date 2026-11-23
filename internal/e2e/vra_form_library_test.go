@@ -96,7 +96,7 @@ return JSON.parse(host.createRequest("GET", "/versions?env=" + environment).exec
 
 		var saved api.FormLibraryEntry
 		h.json("GET", "/api/v1/admin/form-library/getVersions", admin, nil, 200, &saved)
-		if saved.Kind != api.Rest || saved.Use != api.Source || saved.Params["url"] != dbaas.URL+"/versions?env=${params.environment}" ||
+		if saved.Kind != api.Rest || saved.Use != api.FormLibraryPurposeSource || saved.Params["url"] != dbaas.URL+"/versions?env=${params.environment}" ||
 			len(saved.UsedBy) != 1 || saved.UsedBy[0].State != "draft" {
 			t.Fatalf("the entry = %+v", saved)
 		}

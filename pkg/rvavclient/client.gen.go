@@ -594,6 +594,24 @@ func (e CatalogItemVersionDetailState) Valid() bool {
 	}
 }
 
+// Defines values for CatalogShareOriginKind.
+const (
+	CatalogShareOriginKindCategory CatalogShareOriginKind = "category"
+	CatalogShareOriginKindSource   CatalogShareOriginKind = "source"
+)
+
+// Valid indicates whether the value is a known member of the CatalogShareOriginKind enum.
+func (e CatalogShareOriginKind) Valid() bool {
+	switch e {
+	case CatalogShareOriginKindCategory:
+		return true
+	case CatalogShareOriginKindSource:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CatalogVersionChangeArea.
 const (
 	CatalogVersionChangeAreaBlueprint     CatalogVersionChangeArea = "blueprint"
@@ -1154,16 +1172,16 @@ func (e FirewallRuleAction) Valid() bool {
 
 // Defines values for FormLibraryPurpose.
 const (
-	Source     FormLibraryPurpose = "source"
-	Validation FormLibraryPurpose = "validation"
+	FormLibraryPurposeSource     FormLibraryPurpose = "source"
+	FormLibraryPurposeValidation FormLibraryPurpose = "validation"
 )
 
 // Valid indicates whether the value is a known member of the FormLibraryPurpose enum.
 func (e FormLibraryPurpose) Valid() bool {
 	switch e {
-	case Source:
+	case FormLibraryPurposeSource:
 		return true
-	case Validation:
+	case FormLibraryPurposeValidation:
 		return true
 	default:
 		return false
@@ -3906,10 +3924,17 @@ type AdPlacementWrite struct {
 // AdminCatalogCategory defines model for AdminCatalogCategory.
 type AdminCatalogCategory struct {
 	// Items Items in the category.
-	Items     *int   `json:"items,omitempty"`
-	Key       string `json:"key"`
-	Name      string `json:"name"`
-	SortOrder *int   `json:"sort_order,omitempty"`
+	Items *int   `json:"items,omitempty"`
+	Key   string `json:"key"`
+	Name  string `json:"name"`
+
+	// Sharing Who its items are shared with through it (ADR-0019, Sharing):
+	// every project, and how many projects of their own.
+	Sharing *struct {
+		AllProjects bool `json:"all_projects"`
+		Projects    int  `json:"projects"`
+	} `json:"sharing,omitempty"`
+	SortOrder *int `json:"sort_order,omitempty"`
 }
 
 // AdminCatalogCategoryList defines model for AdminCatalogCategoryList.
@@ -3930,11 +3955,13 @@ type AdminCatalogItem struct {
 	DescriptionMd string              `json:"description_md"`
 	DraftVersion  *CatalogItemVersion `json:"draft_version,omitempty"`
 
-	// Entitlements Who may request an item (ADR-0019, Sharing): in every project,
-	// those made later included, or in chosen projects; in each, all its
-	// members, or the users, OIDC groups and project roles an audience
-	// names. Someone requests it in a project when one of these covers
-	// them there, and when they may request in that project.
+	// Entitlements Who may request an item, or the items of a category or a source
+	// (ADR-0019, Sharing): in every project, those made later included,
+	// or in chosen projects; in each, all its members, or the users, OIDC
+	// groups and project roles an audience names. Someone requests an
+	// item in a project when one of its shares, its category's or its
+	// source's covers them there, and when they may request in that
+	// project.
 	Entitlements CatalogEntitlements `json:"entitlements"`
 	Featured     bool                `json:"featured"`
 
@@ -4950,11 +4977,13 @@ type CatalogCategory struct {
 	Name      string `json:"name"`
 }
 
-// CatalogEntitlements Who may request an item (ADR-0019, Sharing): in every project,
-// those made later included, or in chosen projects; in each, all its
-// members, or the users, OIDC groups and project roles an audience
-// names. Someone requests it in a project when one of these covers
-// them there, and when they may request in that project.
+// CatalogEntitlements Who may request an item, or the items of a category or a source
+// (ADR-0019, Sharing): in every project, those made later included,
+// or in chosen projects; in each, all its members, or the users, OIDC
+// groups and project roles an audience names. Someone requests an
+// item in a project when one of its shares, its category's or its
+// source's covers them there, and when they may request in that
+// project.
 type CatalogEntitlements struct {
 	// AllProjects Shared with every project, those made later included.
 	AllProjects bool `json:"all_projects"`
@@ -4965,6 +4994,12 @@ type CatalogEntitlements struct {
 
 	// Everywhere With `all_projects`, who may request it in each project.
 	Everywhere *CatalogAudience `json:"everywhere,omitempty"`
+
+	// Inherited An item's shares from its category and from its source (the
+	// AWX sync), one per project or for every project, which add to
+	// its own (ADR-0019, Sharing). Absent from a category's or a
+	// source's own sharing.
+	Inherited *[]CatalogInheritedShare `json:"inherited,omitempty"`
 
 	// ProjectIds The projects it is shared with, besides every project when `all_projects`.
 	ProjectIds []string `json:"project_ids"`
@@ -4979,7 +5014,7 @@ type CatalogEntitlements struct {
 	// Roles The roles given in projects, built-in or custom, to choose from.
 	Roles *[]RoleRef `json:"roles,omitempty"`
 
-	// Users The users the audiences name.
+	// Users The users the audiences name, those of `inherited` included.
 	Users *[]UserRef `json:"users,omitempty"`
 }
 
@@ -5040,6 +5075,19 @@ type CatalogImportResult struct {
 	Created  bool                 `json:"created"`
 	ItemId   string               `json:"item_id"`
 	Versions []CatalogItemVersion `json:"versions"`
+}
+
+// CatalogInheritedShare A share an item has through its category or its source, and who may request it there.
+type CatalogInheritedShare struct {
+	// AllProjects In every project, those made later included; otherwise in `project_id`.
+	AllProjects bool `json:"all_projects"`
+
+	// From Where an item's inherited share comes from.
+	From      CatalogShareOrigin `json:"from"`
+	Groups    []string           `json:"groups"`
+	ProjectId *string            `json:"project_id,omitempty"`
+	Roles     []string           `json:"roles"`
+	UserIds   []string           `json:"user_ids"`
 }
 
 // CatalogItem defines model for CatalogItem.
@@ -5293,6 +5341,11 @@ type CatalogRequester struct {
 	// Groups The audience's groups they were in at their last sign-in.
 	Groups []string `json:"groups"`
 
+	// Inherited The item's shares from its category or its source that cover
+	// them in the project, whatever the audience says. Empty for a
+	// category's or a source's own audience.
+	Inherited []CatalogShareOrigin `json:"inherited"`
+
 	// Named The audience names them.
 	Named bool `json:"named"`
 
@@ -5329,6 +5382,21 @@ type CatalogRequesters struct {
 	People  []CatalogRequester `json:"people"`
 	Project ProjectRef         `json:"project"`
 }
+
+// CatalogShareOrigin Where an item's inherited share comes from.
+type CatalogShareOrigin struct {
+	// Key The category's key, or the source's (`awx`).
+	//
+	// Examples: compute
+	Key  string                 `json:"key"`
+	Kind CatalogShareOriginKind `json:"kind"`
+
+	// Name Examples: Compute
+	Name string `json:"name"`
+}
+
+// CatalogShareOriginKind defines model for CatalogShareOrigin.Kind.
+type CatalogShareOriginKind string
 
 // CatalogVersionChange defines model for CatalogVersionChange.
 type CatalogVersionChange struct {
@@ -12848,6 +12916,12 @@ type UpdateAuditDestinationJSONRequestBody = AuditDestinationWrite
 // UpdateAwxActionJSONRequestBody defines body for UpdateAwxAction for application/json ContentType.
 type UpdateAwxActionJSONRequestBody = AwxActionUpdate
 
+// SetAwxEntitlementsJSONRequestBody defines body for SetAwxEntitlements for application/json ContentType.
+type SetAwxEntitlementsJSONRequestBody = CatalogEntitlements
+
+// PreviewAwxRequestersJSONRequestBody defines body for PreviewAwxRequesters for application/json ContentType.
+type PreviewAwxRequestersJSONRequestBody = CatalogProjectAudience
+
 // SetBrandingJSONRequestBody defines body for SetBranding for application/json ContentType.
 type SetBrandingJSONRequestBody = BrandingWrite
 
@@ -12859,6 +12933,12 @@ type CreateCatalogCategoryJSONRequestBody = AdminCatalogCategory
 
 // UpdateCatalogCategoryJSONRequestBody defines body for UpdateCatalogCategory for application/json ContentType.
 type UpdateCatalogCategoryJSONRequestBody = AdminCatalogCategoryUpdate
+
+// SetCatalogCategoryEntitlementsJSONRequestBody defines body for SetCatalogCategoryEntitlements for application/json ContentType.
+type SetCatalogCategoryEntitlementsJSONRequestBody = CatalogEntitlements
+
+// PreviewCatalogCategoryRequestersJSONRequestBody defines body for PreviewCatalogCategoryRequesters for application/json ContentType.
+type PreviewCatalogCategoryRequestersJSONRequestBody = CatalogProjectAudience
 
 // CreateCatalogItemJSONRequestBody defines body for CreateCatalogItem for application/json ContentType.
 type CreateCatalogItemJSONRequestBody = CatalogItemCreate
@@ -14468,6 +14548,64 @@ type ClientInterface interface {
 	// Corresponds with PATCH /admin/awx/actions/{key} (the `UpdateAwxAction` operationId).
 	UpdateAwxAction(ctx context.Context, key string, body UpdateAwxActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAwxEntitlements The projects that may request the items made from AWX
+	//
+	// The AWX source's shares apply to every item the AWX sync made or
+	// linked, those it makes later included, on top of each item's own
+	// (ADR-0019, Sharing; ADR-0016). Every project, with all its
+	// members, until a catalog admin changes it. rvav's Git repository
+	// is no such source: it holds the whole catalog, so share its
+	// categories instead.
+	//
+	// Corresponds with GET /admin/awx/entitlements (the `GetAwxEntitlements` operationId).
+	GetAwxEntitlements(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAwxEntitlementsWithBody Share the items made from AWX with every project or chosen projects, and with whom in each
+	//
+	// The body of an item's share
+	// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+	// defaults for what it leaves out. Audited as
+	// `catalog.source.entitlements`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/awx/entitlements (the `SetAwxEntitlements` operationId).
+	SetAwxEntitlementsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAwxEntitlements Share the items made from AWX with every project or chosen projects, and with whom in each
+	//
+	// The body of an item's share
+	// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+	// defaults for what it leaves out. Audited as
+	// `catalog.source.entitlements`.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/awx/entitlements (the `SetAwxEntitlements` operationId).
+	SetAwxEntitlements(ctx context.Context, body SetAwxEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewAwxRequestersWithBody Who could request the items made from AWX in a project, shared with this audience
+	//
+	// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+	// `everywhere` is the AWX source's saved every-project share. An
+	// item's own shares and its category's add to it, item by item.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/awx/entitlements/requesters (the `PreviewAwxRequesters` operationId).
+	PreviewAwxRequestersWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewAwxRequesters Who could request the items made from AWX in a project, shared with this audience
+	//
+	// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+	// `everywhere` is the AWX source's saved every-project share. An
+	// item's own shares and its category's add to it, item by item.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/awx/entitlements/requesters (the `PreviewAwxRequesters` operationId).
+	PreviewAwxRequesters(ctx context.Context, body PreviewAwxRequestersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAwxTemplates AWX templates imported into the catalog
 	//
 	// The templates chosen by organisation and label (ADR-0016), each with
@@ -14586,6 +14724,61 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /admin/catalog/categories/{key} (the `UpdateCatalogCategory` operationId).
 	UpdateCatalogCategory(ctx context.Context, key string, body UpdateCatalogCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCatalogCategoryEntitlements The projects that may request a category's items
+	//
+	// A category's shares apply to every item in it, those added or moved
+	// into it later included, on top of each item's own: shares add up
+	// (ADR-0019, Sharing). The item's sharing lists them as `inherited`.
+	//
+	// Corresponds with GET /admin/catalog/categories/{key}/entitlements (the `GetCatalogCategoryEntitlements` operationId).
+	GetCatalogCategoryEntitlements(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetCatalogCategoryEntitlementsWithBody Share a category's items with every project or chosen projects, and with whom in each
+	//
+	// The body of an item's share
+	// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+	// defaults for what it leaves out. Audited as
+	// `catalog.category.entitlements`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /admin/catalog/categories/{key}/entitlements (the `SetCatalogCategoryEntitlements` operationId).
+	SetCatalogCategoryEntitlementsWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetCatalogCategoryEntitlements Share a category's items with every project or chosen projects, and with whom in each
+	//
+	// The body of an item's share
+	// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+	// defaults for what it leaves out. Audited as
+	// `catalog.category.entitlements`.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /admin/catalog/categories/{key}/entitlements (the `SetCatalogCategoryEntitlements` operationId).
+	SetCatalogCategoryEntitlements(ctx context.Context, key string, body SetCatalogCategoryEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewCatalogCategoryRequestersWithBody Who could request a category's items in a project, shared with this audience
+	//
+	// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+	// `everywhere` is the category's saved every-project share. An item's
+	// own shares and its source's add to it, item by item.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /admin/catalog/categories/{key}/entitlements/requesters (the `PreviewCatalogCategoryRequesters` operationId).
+	PreviewCatalogCategoryRequestersWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewCatalogCategoryRequesters Who could request a category's items in a project, shared with this audience
+	//
+	// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+	// `everywhere` is the category's saved every-project share. An item's
+	// own shares and its source's add to it, item by item.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /admin/catalog/categories/{key}/entitlements/requesters (the `PreviewCatalogCategoryRequesters` operationId).
+	PreviewCatalogCategoryRequesters(ctx context.Context, key string, body PreviewCatalogCategoryRequestersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCompositeStepTargets What a composite item's steps can run, with their inputs and outputs
 	//
@@ -18793,6 +18986,114 @@ func (c *Client) UpdateAwxAction(ctx context.Context, key string, body UpdateAwx
 	return c.Client.Do(req)
 }
 
+// GetAwxEntitlements The projects that may request the items made from AWX
+//
+// The AWX source's shares apply to every item the AWX sync made or
+// linked, those it makes later included, on top of each item's own
+// (ADR-0019, Sharing; ADR-0016). Every project, with all its
+// members, until a catalog admin changes it. rvav's Git repository
+// is no such source: it holds the whole catalog, so share its
+// categories instead.
+//
+// Corresponds with GET /admin/awx/entitlements (the `GetAwxEntitlements` operationId).
+func (c *Client) GetAwxEntitlements(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAwxEntitlementsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetAwxEntitlementsWithBody Share the items made from AWX with every project or chosen projects, and with whom in each
+//
+// The body of an item's share
+// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+// defaults for what it leaves out. Audited as
+// `catalog.source.entitlements`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/awx/entitlements (the `SetAwxEntitlements` operationId).
+func (c *Client) SetAwxEntitlementsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAwxEntitlementsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetAwxEntitlements Share the items made from AWX with every project or chosen projects, and with whom in each
+//
+// The body of an item's share
+// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+// defaults for what it leaves out. Audited as
+// `catalog.source.entitlements`.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/awx/entitlements (the `SetAwxEntitlements` operationId).
+func (c *Client) SetAwxEntitlements(ctx context.Context, body SetAwxEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAwxEntitlementsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewAwxRequestersWithBody Who could request the items made from AWX in a project, shared with this audience
+//
+// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+// `everywhere` is the AWX source's saved every-project share. An
+// item's own shares and its category's add to it, item by item.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/awx/entitlements/requesters (the `PreviewAwxRequesters` operationId).
+func (c *Client) PreviewAwxRequestersWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewAwxRequestersRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewAwxRequesters Who could request the items made from AWX in a project, shared with this audience
+//
+// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+// `everywhere` is the AWX source's saved every-project share. An
+// item's own shares and its category's add to it, item by item.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/awx/entitlements/requesters (the `PreviewAwxRequesters` operationId).
+func (c *Client) PreviewAwxRequesters(ctx context.Context, body PreviewAwxRequestersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewAwxRequestersRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListAwxTemplates AWX templates imported into the catalog
 //
 // The templates chosen by organisation and label (ADR-0016), each with
@@ -19042,6 +19343,111 @@ func (c *Client) UpdateCatalogCategoryWithBody(ctx context.Context, key string, 
 // Corresponds with PATCH /admin/catalog/categories/{key} (the `UpdateCatalogCategory` operationId).
 func (c *Client) UpdateCatalogCategory(ctx context.Context, key string, body UpdateCatalogCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateCatalogCategoryRequest(c.Server, key, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCatalogCategoryEntitlements The projects that may request a category's items
+//
+// A category's shares apply to every item in it, those added or moved
+// into it later included, on top of each item's own: shares add up
+// (ADR-0019, Sharing). The item's sharing lists them as `inherited`.
+//
+// Corresponds with GET /admin/catalog/categories/{key}/entitlements (the `GetCatalogCategoryEntitlements` operationId).
+func (c *Client) GetCatalogCategoryEntitlements(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCatalogCategoryEntitlementsRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetCatalogCategoryEntitlementsWithBody Share a category's items with every project or chosen projects, and with whom in each
+//
+// The body of an item's share
+// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+// defaults for what it leaves out. Audited as
+// `catalog.category.entitlements`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /admin/catalog/categories/{key}/entitlements (the `SetCatalogCategoryEntitlements` operationId).
+func (c *Client) SetCatalogCategoryEntitlementsWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetCatalogCategoryEntitlementsRequestWithBody(c.Server, key, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetCatalogCategoryEntitlements Share a category's items with every project or chosen projects, and with whom in each
+//
+// The body of an item's share
+// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+// defaults for what it leaves out. Audited as
+// `catalog.category.entitlements`.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /admin/catalog/categories/{key}/entitlements (the `SetCatalogCategoryEntitlements` operationId).
+func (c *Client) SetCatalogCategoryEntitlements(ctx context.Context, key string, body SetCatalogCategoryEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetCatalogCategoryEntitlementsRequest(c.Server, key, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewCatalogCategoryRequestersWithBody Who could request a category's items in a project, shared with this audience
+//
+// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+// `everywhere` is the category's saved every-project share. An item's
+// own shares and its source's add to it, item by item.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /admin/catalog/categories/{key}/entitlements/requesters (the `PreviewCatalogCategoryRequesters` operationId).
+func (c *Client) PreviewCatalogCategoryRequestersWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewCatalogCategoryRequestersRequestWithBody(c.Server, key, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewCatalogCategoryRequesters Who could request a category's items in a project, shared with this audience
+//
+// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+// `everywhere` is the category's saved every-project share. An item's
+// own shares and its source's add to it, item by item.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /admin/catalog/categories/{key}/entitlements/requesters (the `PreviewCatalogCategoryRequesters` operationId).
+func (c *Client) PreviewCatalogCategoryRequesters(ctx context.Context, key string, body PreviewCatalogCategoryRequestersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewCatalogCategoryRequestersRequest(c.Server, key, body)
 	if err != nil {
 		return nil, err
 	}
@@ -27494,6 +27900,113 @@ func NewUpdateAwxActionRequestWithBody(server string, key string, contentType st
 	return req, nil
 }
 
+// NewGetAwxEntitlementsRequest constructs an http.Request for the GetAwxEntitlements method
+func NewGetAwxEntitlementsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/awx/entitlements")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetAwxEntitlementsRequest calls the generic SetAwxEntitlements builder with application/json body
+func NewSetAwxEntitlementsRequest(server string, body SetAwxEntitlementsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetAwxEntitlementsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSetAwxEntitlementsRequestWithBody constructs an http.Request for the SetAwxEntitlements method, with any body, and a specified content type
+func NewSetAwxEntitlementsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/awx/entitlements")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewAwxRequestersRequest calls the generic PreviewAwxRequesters builder with application/json body
+func NewPreviewAwxRequestersRequest(server string, body PreviewAwxRequestersJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPreviewAwxRequestersRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPreviewAwxRequestersRequestWithBody constructs an http.Request for the PreviewAwxRequesters method, with any body, and a specified content type
+func NewPreviewAwxRequestersRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/awx/entitlements/requesters")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListAwxTemplatesRequest constructs an http.Request for the ListAwxTemplates method
 func NewListAwxTemplatesRequest(server string) (*http.Request, error) {
 	var err error
@@ -27837,6 +28350,134 @@ func NewUpdateCatalogCategoryRequestWithBody(server string, key string, contentT
 	}
 
 	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetCatalogCategoryEntitlementsRequest constructs an http.Request for the GetCatalogCategoryEntitlements method
+func NewGetCatalogCategoryEntitlementsRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/catalog/categories/%s/entitlements", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetCatalogCategoryEntitlementsRequest calls the generic SetCatalogCategoryEntitlements builder with application/json body
+func NewSetCatalogCategoryEntitlementsRequest(server string, key string, body SetCatalogCategoryEntitlementsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetCatalogCategoryEntitlementsRequestWithBody(server, key, "application/json", bodyReader)
+}
+
+// NewSetCatalogCategoryEntitlementsRequestWithBody constructs an http.Request for the SetCatalogCategoryEntitlements method, with any body, and a specified content type
+func NewSetCatalogCategoryEntitlementsRequestWithBody(server string, key string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/catalog/categories/%s/entitlements", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewCatalogCategoryRequestersRequest calls the generic PreviewCatalogCategoryRequesters builder with application/json body
+func NewPreviewCatalogCategoryRequestersRequest(server string, key string, body PreviewCatalogCategoryRequestersJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPreviewCatalogCategoryRequestersRequestWithBody(server, key, "application/json", bodyReader)
+}
+
+// NewPreviewCatalogCategoryRequestersRequestWithBody constructs an http.Request for the PreviewCatalogCategoryRequesters method, with any body, and a specified content type
+func NewPreviewCatalogCategoryRequestersRequestWithBody(server string, key string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/catalog/categories/%s/entitlements/requesters", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -40827,6 +41468,66 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /admin/awx/actions/{key} (the `UpdateAwxAction` operationId).
 	UpdateAwxActionWithResponse(ctx context.Context, key string, body UpdateAwxActionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAwxActionResponse, error)
 
+	// GetAwxEntitlementsWithResponse The projects that may request the items made from AWX
+	//
+	// The AWX source's shares apply to every item the AWX sync made or
+	// linked, those it makes later included, on top of each item's own
+	// (ADR-0019, Sharing; ADR-0016). Every project, with all its
+	// members, until a catalog admin changes it. rvav's Git repository
+	// is no such source: it holds the whole catalog, so share its
+	// categories instead.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/awx/entitlements (the `GetAwxEntitlements` operationId).
+	GetAwxEntitlementsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAwxEntitlementsResponse, error)
+
+	// SetAwxEntitlementsWithBodyWithResponse Share the items made from AWX with every project or chosen projects, and with whom in each
+	//
+	// The body of an item's share
+	// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+	// defaults for what it leaves out. Audited as
+	// `catalog.source.entitlements`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/awx/entitlements (the `SetAwxEntitlements` operationId).
+	SetAwxEntitlementsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAwxEntitlementsResponse, error)
+
+	// SetAwxEntitlementsWithResponse Share the items made from AWX with every project or chosen projects, and with whom in each
+	//
+	// The body of an item's share
+	// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+	// defaults for what it leaves out. Audited as
+	// `catalog.source.entitlements`.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/awx/entitlements (the `SetAwxEntitlements` operationId).
+	SetAwxEntitlementsWithResponse(ctx context.Context, body SetAwxEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAwxEntitlementsResponse, error)
+
+	// PreviewAwxRequestersWithBodyWithResponse Who could request the items made from AWX in a project, shared with this audience
+	//
+	// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+	// `everywhere` is the AWX source's saved every-project share. An
+	// item's own shares and its category's add to it, item by item.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/awx/entitlements/requesters (the `PreviewAwxRequesters` operationId).
+	PreviewAwxRequestersWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewAwxRequestersResponse, error)
+
+	// PreviewAwxRequestersWithResponse Who could request the items made from AWX in a project, shared with this audience
+	//
+	// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+	// `everywhere` is the AWX source's saved every-project share. An
+	// item's own shares and its category's add to it, item by item.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/awx/entitlements/requesters (the `PreviewAwxRequesters` operationId).
+	PreviewAwxRequestersWithResponse(ctx context.Context, body PreviewAwxRequestersJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewAwxRequestersResponse, error)
+
 	// ListAwxTemplatesWithResponse AWX templates imported into the catalog
 	//
 	// The templates chosen by organisation and label (ADR-0016), each with
@@ -40955,6 +41656,63 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /admin/catalog/categories/{key} (the `UpdateCatalogCategory` operationId).
 	UpdateCatalogCategoryWithResponse(ctx context.Context, key string, body UpdateCatalogCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateCatalogCategoryResponse, error)
+
+	// GetCatalogCategoryEntitlementsWithResponse The projects that may request a category's items
+	//
+	// A category's shares apply to every item in it, those added or moved
+	// into it later included, on top of each item's own: shares add up
+	// (ADR-0019, Sharing). The item's sharing lists them as `inherited`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/catalog/categories/{key}/entitlements (the `GetCatalogCategoryEntitlements` operationId).
+	GetCatalogCategoryEntitlementsWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetCatalogCategoryEntitlementsResponse, error)
+
+	// SetCatalogCategoryEntitlementsWithBodyWithResponse Share a category's items with every project or chosen projects, and with whom in each
+	//
+	// The body of an item's share
+	// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+	// defaults for what it leaves out. Audited as
+	// `catalog.category.entitlements`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/catalog/categories/{key}/entitlements (the `SetCatalogCategoryEntitlements` operationId).
+	SetCatalogCategoryEntitlementsWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetCatalogCategoryEntitlementsResponse, error)
+
+	// SetCatalogCategoryEntitlementsWithResponse Share a category's items with every project or chosen projects, and with whom in each
+	//
+	// The body of an item's share
+	// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+	// defaults for what it leaves out. Audited as
+	// `catalog.category.entitlements`.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /admin/catalog/categories/{key}/entitlements (the `SetCatalogCategoryEntitlements` operationId).
+	SetCatalogCategoryEntitlementsWithResponse(ctx context.Context, key string, body SetCatalogCategoryEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetCatalogCategoryEntitlementsResponse, error)
+
+	// PreviewCatalogCategoryRequestersWithBodyWithResponse Who could request a category's items in a project, shared with this audience
+	//
+	// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+	// `everywhere` is the category's saved every-project share. An item's
+	// own shares and its source's add to it, item by item.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/catalog/categories/{key}/entitlements/requesters (the `PreviewCatalogCategoryRequesters` operationId).
+	PreviewCatalogCategoryRequestersWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewCatalogCategoryRequestersResponse, error)
+
+	// PreviewCatalogCategoryRequestersWithResponse Who could request a category's items in a project, shared with this audience
+	//
+	// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+	// `everywhere` is the category's saved every-project share. An item's
+	// own shares and its source's add to it, item by item.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /admin/catalog/categories/{key}/entitlements/requesters (the `PreviewCatalogCategoryRequesters` operationId).
+	PreviewCatalogCategoryRequestersWithResponse(ctx context.Context, key string, body PreviewCatalogCategoryRequestersJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewCatalogCategoryRequestersResponse, error)
 
 	// ListCompositeStepTargetsWithResponse What a composite item's steps can run, with their inputs and outputs
 	//
@@ -46149,6 +46907,185 @@ func (r UpdateAwxActionResponse) ContentType() string {
 	return ""
 }
 
+type GetAwxEntitlementsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CatalogEntitlements
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAwxEntitlementsResponse) GetJSON200() *CatalogEntitlements {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetAwxEntitlementsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetAwxEntitlementsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAwxEntitlementsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAwxEntitlementsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAwxEntitlementsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAwxEntitlementsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetAwxEntitlementsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CatalogEntitlements
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetAwxEntitlementsResponse) GetJSON200() *CatalogEntitlements {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetAwxEntitlementsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetAwxEntitlementsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetAwxEntitlementsResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SetAwxEntitlementsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetAwxEntitlementsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetAwxEntitlementsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetAwxEntitlementsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PreviewAwxRequestersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CatalogRequesters
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewAwxRequestersResponse) GetJSON200() *CatalogRequesters {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r PreviewAwxRequestersResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r PreviewAwxRequestersResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r PreviewAwxRequestersResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewAwxRequestersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewAwxRequestersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewAwxRequestersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewAwxRequestersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListAwxTemplatesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -46791,6 +47728,206 @@ func (r UpdateCatalogCategoryResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateCatalogCategoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCatalogCategoryEntitlementsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CatalogEntitlements
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCatalogCategoryEntitlementsResponse) GetJSON200() *CatalogEntitlements {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetCatalogCategoryEntitlementsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetCatalogCategoryEntitlementsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetCatalogCategoryEntitlementsResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCatalogCategoryEntitlementsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCatalogCategoryEntitlementsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCatalogCategoryEntitlementsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCatalogCategoryEntitlementsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetCatalogCategoryEntitlementsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CatalogEntitlements
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetCatalogCategoryEntitlementsResponse) GetJSON200() *CatalogEntitlements {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetCatalogCategoryEntitlementsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetCatalogCategoryEntitlementsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetCatalogCategoryEntitlementsResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetCatalogCategoryEntitlementsResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SetCatalogCategoryEntitlementsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetCatalogCategoryEntitlementsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetCatalogCategoryEntitlementsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetCatalogCategoryEntitlementsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PreviewCatalogCategoryRequestersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CatalogRequesters
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationFailed
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewCatalogCategoryRequestersResponse) GetJSON200() *CatalogRequesters {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r PreviewCatalogCategoryRequestersResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r PreviewCatalogCategoryRequestersResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r PreviewCatalogCategoryRequestersResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r PreviewCatalogCategoryRequestersResponse) GetApplicationproblemJSON422() *ValidationFailed {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewCatalogCategoryRequestersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewCatalogCategoryRequestersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewCatalogCategoryRequestersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewCatalogCategoryRequestersResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -65406,6 +66543,96 @@ func (c *ClientWithResponses) UpdateAwxActionWithResponse(ctx context.Context, k
 	return ParseUpdateAwxActionResponse(rsp)
 }
 
+// GetAwxEntitlementsWithResponse The projects that may request the items made from AWX
+//
+// The AWX source's shares apply to every item the AWX sync made or
+// linked, those it makes later included, on top of each item's own
+// (ADR-0019, Sharing; ADR-0016). Every project, with all its
+// members, until a catalog admin changes it. rvav's Git repository
+// is no such source: it holds the whole catalog, so share its
+// categories instead.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/awx/entitlements (the `GetAwxEntitlements` operationId).
+func (c *ClientWithResponses) GetAwxEntitlementsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAwxEntitlementsResponse, error) {
+	rsp, err := c.GetAwxEntitlements(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAwxEntitlementsResponse(rsp)
+}
+
+// SetAwxEntitlementsWithBodyWithResponse Share the items made from AWX with every project or chosen projects, and with whom in each
+//
+// The body of an item's share
+// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+// defaults for what it leaves out. Audited as
+// `catalog.source.entitlements`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/awx/entitlements (the `SetAwxEntitlements` operationId).
+func (c *ClientWithResponses) SetAwxEntitlementsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAwxEntitlementsResponse, error) {
+	rsp, err := c.SetAwxEntitlementsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAwxEntitlementsResponse(rsp)
+}
+
+// SetAwxEntitlementsWithResponse Share the items made from AWX with every project or chosen projects, and with whom in each
+//
+// The body of an item's share
+// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+// defaults for what it leaves out. Audited as
+// `catalog.source.entitlements`.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/awx/entitlements (the `SetAwxEntitlements` operationId).
+func (c *ClientWithResponses) SetAwxEntitlementsWithResponse(ctx context.Context, body SetAwxEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAwxEntitlementsResponse, error) {
+	rsp, err := c.SetAwxEntitlements(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAwxEntitlementsResponse(rsp)
+}
+
+// PreviewAwxRequestersWithBodyWithResponse Who could request the items made from AWX in a project, shared with this audience
+//
+// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+// `everywhere` is the AWX source's saved every-project share. An
+// item's own shares and its category's add to it, item by item.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/awx/entitlements/requesters (the `PreviewAwxRequesters` operationId).
+func (c *ClientWithResponses) PreviewAwxRequestersWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewAwxRequestersResponse, error) {
+	rsp, err := c.PreviewAwxRequestersWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewAwxRequestersResponse(rsp)
+}
+
+// PreviewAwxRequestersWithResponse Who could request the items made from AWX in a project, shared with this audience
+//
+// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+// `everywhere` is the AWX source's saved every-project share. An
+// item's own shares and its category's add to it, item by item.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/awx/entitlements/requesters (the `PreviewAwxRequesters` operationId).
+func (c *ClientWithResponses) PreviewAwxRequestersWithResponse(ctx context.Context, body PreviewAwxRequestersJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewAwxRequestersResponse, error) {
+	rsp, err := c.PreviewAwxRequesters(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewAwxRequestersResponse(rsp)
+}
+
 // ListAwxTemplatesWithResponse AWX templates imported into the catalog
 //
 // The templates chosen by organisation and label (ADR-0016), each with
@@ -65617,6 +66844,93 @@ func (c *ClientWithResponses) UpdateCatalogCategoryWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParseUpdateCatalogCategoryResponse(rsp)
+}
+
+// GetCatalogCategoryEntitlementsWithResponse The projects that may request a category's items
+//
+// A category's shares apply to every item in it, those added or moved
+// into it later included, on top of each item's own: shares add up
+// (ADR-0019, Sharing). The item's sharing lists them as `inherited`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/catalog/categories/{key}/entitlements (the `GetCatalogCategoryEntitlements` operationId).
+func (c *ClientWithResponses) GetCatalogCategoryEntitlementsWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetCatalogCategoryEntitlementsResponse, error) {
+	rsp, err := c.GetCatalogCategoryEntitlements(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCatalogCategoryEntitlementsResponse(rsp)
+}
+
+// SetCatalogCategoryEntitlementsWithBodyWithResponse Share a category's items with every project or chosen projects, and with whom in each
+//
+// The body of an item's share
+// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+// defaults for what it leaves out. Audited as
+// `catalog.category.entitlements`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/catalog/categories/{key}/entitlements (the `SetCatalogCategoryEntitlements` operationId).
+func (c *ClientWithResponses) SetCatalogCategoryEntitlementsWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetCatalogCategoryEntitlementsResponse, error) {
+	rsp, err := c.SetCatalogCategoryEntitlementsWithBody(ctx, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetCatalogCategoryEntitlementsResponse(rsp)
+}
+
+// SetCatalogCategoryEntitlementsWithResponse Share a category's items with every project or chosen projects, and with whom in each
+//
+// The body of an item's share
+// (`PUT /admin/catalog/items/{itemId}/entitlements`), with the same
+// defaults for what it leaves out. Audited as
+// `catalog.category.entitlements`.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /admin/catalog/categories/{key}/entitlements (the `SetCatalogCategoryEntitlements` operationId).
+func (c *ClientWithResponses) SetCatalogCategoryEntitlementsWithResponse(ctx context.Context, key string, body SetCatalogCategoryEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetCatalogCategoryEntitlementsResponse, error) {
+	rsp, err := c.SetCatalogCategoryEntitlements(ctx, key, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetCatalogCategoryEntitlementsResponse(rsp)
+}
+
+// PreviewCatalogCategoryRequestersWithBodyWithResponse Who could request a category's items in a project, shared with this audience
+//
+// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+// `everywhere` is the category's saved every-project share. An item's
+// own shares and its source's add to it, item by item.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/catalog/categories/{key}/entitlements/requesters (the `PreviewCatalogCategoryRequesters` operationId).
+func (c *ClientWithResponses) PreviewCatalogCategoryRequestersWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewCatalogCategoryRequestersResponse, error) {
+	rsp, err := c.PreviewCatalogCategoryRequestersWithBody(ctx, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewCatalogCategoryRequestersResponse(rsp)
+}
+
+// PreviewCatalogCategoryRequestersWithResponse Who could request a category's items in a project, shared with this audience
+//
+// As an item's (`POST /admin/catalog/items/{itemId}/entitlements/requesters`):
+// `everywhere` is the category's saved every-project share. An item's
+// own shares and its source's add to it, item by item.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /admin/catalog/categories/{key}/entitlements/requesters (the `PreviewCatalogCategoryRequesters` operationId).
+func (c *ClientWithResponses) PreviewCatalogCategoryRequestersWithResponse(ctx context.Context, key string, body PreviewCatalogCategoryRequestersJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewCatalogCategoryRequestersResponse, error) {
+	rsp, err := c.PreviewCatalogCategoryRequesters(ctx, key, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewCatalogCategoryRequestersResponse(rsp)
 }
 
 // ListCompositeStepTargetsWithResponse What a composite item's steps can run, with their inputs and outputs
@@ -72983,6 +74297,140 @@ func ParseUpdateAwxActionResponse(rsp *http.Response) (*UpdateAwxActionResponse,
 	return response, nil
 }
 
+// ParseGetAwxEntitlementsResponse parses an HTTP response from a GetAwxEntitlementsWithResponse call
+func ParseGetAwxEntitlementsResponse(rsp *http.Response) (*GetAwxEntitlementsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAwxEntitlementsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CatalogEntitlements
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetAwxEntitlementsResponse parses an HTTP response from a SetAwxEntitlementsWithResponse call
+func ParseSetAwxEntitlementsResponse(rsp *http.Response) (*SetAwxEntitlementsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetAwxEntitlementsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CatalogEntitlements
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewAwxRequestersResponse parses an HTTP response from a PreviewAwxRequestersWithResponse call
+func ParsePreviewAwxRequestersResponse(rsp *http.Response) (*PreviewAwxRequestersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewAwxRequestersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CatalogRequesters
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAwxTemplatesResponse parses an HTTP response from a ListAwxTemplatesWithResponse call
 func ParseListAwxTemplatesResponse(rsp *http.Response) (*ListAwxTemplatesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -73446,6 +74894,161 @@ func ParseUpdateCatalogCategoryResponse(rsp *http.Response) (*UpdateCatalogCateg
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AdminCatalogCategory
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCatalogCategoryEntitlementsResponse parses an HTTP response from a GetCatalogCategoryEntitlementsWithResponse call
+func ParseGetCatalogCategoryEntitlementsResponse(rsp *http.Response) (*GetCatalogCategoryEntitlementsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCatalogCategoryEntitlementsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CatalogEntitlements
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetCatalogCategoryEntitlementsResponse parses an HTTP response from a SetCatalogCategoryEntitlementsWithResponse call
+func ParseSetCatalogCategoryEntitlementsResponse(rsp *http.Response) (*SetCatalogCategoryEntitlementsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetCatalogCategoryEntitlementsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CatalogEntitlements
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewCatalogCategoryRequestersResponse parses an HTTP response from a PreviewCatalogCategoryRequestersWithResponse call
+func ParsePreviewCatalogCategoryRequestersResponse(rsp *http.Response) (*PreviewCatalogCategoryRequestersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewCatalogCategoryRequestersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CatalogRequesters
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

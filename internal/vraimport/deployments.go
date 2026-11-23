@@ -303,7 +303,7 @@ func planDeployment(e *vra.Estate, r Rvav, d vra.Deployment, slugs map[string]st
 		switch {
 		case !st.Published:
 			return skip("item", st.Slug+" isn't published in rvav: publish it, then adopt.")
-		case !st.AllProjects && !slices.Contains(st.Projects, proj.ID):
+		case !st.Offers(proj.ID):
 			return skip("item", st.Slug+" isn't offered to "+proj.Name+" in rvav: share it there.")
 		}
 	}

@@ -32,6 +32,17 @@ type ItemState struct {
 	Published   bool
 	AllProjects bool
 	Projects    []string
+	// InheritedAll and InheritedProjects: shared through its category or
+	// its source, which the import neither adds to nor reads as its own.
+	InheritedAll      bool
+	InheritedProjects []string
+}
+
+// Offers says whether a project's catalog has the item, by its own shares
+// or its category's or source's.
+func (s ItemState) Offers(projectID string) bool {
+	return s.AllProjects || s.InheritedAll || slices.Contains(s.Projects, projectID) ||
+		slices.Contains(s.InheritedProjects, projectID)
 }
 
 // Link is what an earlier import made of a template.

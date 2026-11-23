@@ -85,11 +85,12 @@ type OfferedItem struct {
 	VersionNumber string `db:"version_number"`
 }
 
-// ServiceNowCatalogItems are the items published and shared in a project.
+// ServiceNowCatalogItems are the items published and shared in a project,
+// on their own or through their category or source.
 func (s *Store) ServiceNowCatalogItems(ctx context.Context) ([]OfferedItem, error) {
 	rows, _ := s.Pool.Query(ctx, `select i.id, i.slug, i.name, i.summary, i.category, i.type, v.id as version_id, v.number as version_number
 		from catalog_items i join catalog_item_versions v on v.id = i.published_version_id
-		where i.all_projects or exists (select 1 from catalog_entitlements e where e.item_id = i.id)
+		where `+sharedIn("")+`
 		order by i.name, i.id`)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[OfferedItem])
 }

@@ -24,7 +24,12 @@ import (
 var categoryKey = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
 
 func presentCategory(c store.AdminCategory) api.AdminCatalogCategory {
-	return api.AdminCatalogCategory{Key: c.Key, Name: c.Name, SortOrder: &c.SortOrder, Items: &c.Items}
+	out := api.AdminCatalogCategory{Key: c.Key, Name: c.Name, SortOrder: &c.SortOrder, Items: &c.Items}
+	out.Sharing = &struct {
+		AllProjects bool `json:"all_projects"`
+		Projects    int  `json:"projects"`
+	}{c.AllProjects, c.SharedProjects}
+	return out
 }
 
 // AdminCatalogCategories lists every category with its number of items.
@@ -77,7 +82,7 @@ func (s *Service) CreateCatalogCategory(ctx context.Context, p *auth.Principal, 
 	} else if err != nil {
 		return api.AdminCatalogCategory{}, err
 	}
-	s.auditCatalog(ctx, p, "catalog.category.create", c.Key, map[string]any{"name": row.Name})
+	s.auditOn(ctx, p, "catalog.category.create", "catalog_category", c.Key, map[string]any{"name": row.Name})
 	return s.adminCategory(ctx, c.Key)
 }
 
@@ -94,7 +99,7 @@ func (s *Service) UpdateCatalogCategory(ctx context.Context, p *auth.Principal, 
 	} else if err != nil {
 		return api.AdminCatalogCategory{}, err
 	}
-	s.auditCatalog(ctx, p, "catalog.category.update", key, map[string]any{"changes": u})
+	s.auditOn(ctx, p, "catalog.category.update", "catalog_category", key, map[string]any{"changes": u})
 	return s.adminCategory(ctx, key)
 }
 
@@ -111,7 +116,7 @@ func (s *Service) DeleteCatalogCategory(ctx context.Context, p *auth.Principal, 
 	case err != nil:
 		return err
 	}
-	s.auditCatalog(ctx, p, "catalog.category.delete", key, nil)
+	s.auditOn(ctx, p, "catalog.category.delete", "catalog_category", key, nil)
 	return nil
 }
 

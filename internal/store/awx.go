@@ -59,7 +59,7 @@ func (s *Store) FindAWXItem(ctx context.Context, name string, workflow bool) (st
 }
 
 // NewAWXItem is an item made from an AWX template, published at once and
-// open to every project.
+// shared as the AWX source is (ADR-0019, Sharing).
 type NewAWXItem struct {
 	ID, VersionID, Slug, Name, Summary, Category, Type, Icon string
 	AWXID                                                    int
@@ -90,10 +90,7 @@ func (s *Store) CreateAWXItem(ctx context.Context, it NewAWXItem) error {
 			'Made from the AWX survey.', now())`, it.VersionID, it.ID, it.Schema, it.UI, it.Initial, it.Blueprint); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `update catalog_items set published_version_id = $2 where id = $1`, it.ID, it.VersionID); err != nil {
-			return err
-		}
-		_, err := tx.Exec(ctx, `update catalog_items set all_projects = true where id = $1`, it.ID)
+		_, err := tx.Exec(ctx, `update catalog_items set published_version_id = $2 where id = $1`, it.ID, it.VersionID)
 		return err
 	})
 }

@@ -13,7 +13,17 @@ import (
 	"github.com/damhau/rvav/internal/store"
 )
 
-// Sharing: who may request an item, in which projects (ADR-0019).
+// Sharing: who may request an item, in which projects (ADR-0019). An
+// item's category and its source share it too, on top of its own shares.
+
+// sharee is what a share is of, as its messages say it.
+type sharee struct{ is, isnt string }
+
+var (
+	shareItem     = sharee{"the item is", "The item isn't"}
+	shareCategory = sharee{"the category is", "The category isn't"}
+	shareAWX      = sharee{"the items made from AWX are", "The items made from AWX aren't"}
+)
 
 // offered checks that a project's catalog has an item, published, for the
 // principal: ErrNotFound when it doesn't, ErrForbidden when its sharing
@@ -86,6 +96,20 @@ func (s *Service) entitlements(ctx context.Context, it store.AdminItem) (api.Cat
 	if err != nil {
 		return api.CatalogEntitlements{}, err
 	}
+	inherited, err := s.Store.InheritedSharing(ctx, it.ID)
+	if err != nil {
+		return api.CatalogEntitlements{}, err
+	}
+	return s.presentSharing(ctx, sh, inherited)
+}
+
+func shareOrigin(ih store.InheritedShare) api.CatalogShareOrigin {
+	return api.CatalogShareOrigin{Kind: api.CatalogShareOriginKind(ih.Kind), Key: ih.Key, Name: ih.Name}
+}
+
+// presentSharing is a sharing as the API has it, with an item's inherited
+// shares when it is an item's (inherited not nil).
+func (s *Service) presentSharing(ctx context.Context, sh store.Sharing, inherited []store.InheritedShare) (api.CatalogEntitlements, error) {
 	everywhere := presentAudience(sh.Everywhere)
 	out := api.CatalogEntitlements{AllProjects: sh.AllProjects, ProjectIds: []string{}, Everywhere: &everywhere}
 	audiences := []api.CatalogProjectAudience{}
@@ -99,6 +123,24 @@ func (s *Service) entitlements(ctx context.Context, it store.AdminItem) (api.Cat
 		}
 	}
 	out.Audiences = &audiences
+	if inherited != nil {
+		shares := []api.CatalogInheritedShare{}
+		for _, ih := range inherited {
+			from := shareOrigin(ih)
+			if ih.AllProjects {
+				a := presentAudience(ih.Everywhere)
+				shares = append(shares, api.CatalogInheritedShare{From: from, AllProjects: true, UserIds: a.UserIds, Groups: a.Groups, Roles: a.Roles})
+				named = append(named, ih.Everywhere.UserIDs...)
+			}
+			for _, ps := range ih.Projects {
+				a := presentAudience(ps.Audience)
+				shares = append(shares, api.CatalogInheritedShare{From: from, ProjectId: present.Ptr(ps.ProjectID), UserIds: a.UserIds,
+					Groups: a.Groups, Roles: a.Roles})
+				named = append(named, ps.UserIDs...)
+			}
+		}
+		out.Inherited = &shares
+	}
 	users := []api.UserRef{}
 	if len(named) > 0 {
 		found, err := s.Store.FindUsers(ctx, slices.Compact(slices.Sorted(slices.Values(named))))
@@ -144,7 +186,7 @@ func (s *Service) SetCatalogItemEntitlements(ctx context.Context, p *auth.Princi
 	if err != nil {
 		return api.CatalogEntitlements{}, err
 	}
-	sh, err := s.sharingOf(ctx, e, old)
+	sh, err := s.sharingOf(ctx, e, old, shareItem)
 	if err != nil {
 		return api.CatalogEntitlements{}, err
 	}
@@ -153,6 +195,80 @@ func (s *Service) SetCatalogItemEntitlements(ctx context.Context, p *auth.Princi
 	}
 	s.auditCatalog(ctx, p, "catalog.item.entitlements", it.ID, sharingDetail(sh))
 	return s.CatalogItemEntitlements(ctx, p, it.ID)
+}
+
+// CatalogCategoryEntitlements is who a category's items are shared with
+// through it.
+func (s *Service) CatalogCategoryEntitlements(ctx context.Context, p *auth.Principal, key string) (api.CatalogEntitlements, error) {
+	if !p.Everywhere(auth.CatalogManage) {
+		return api.CatalogEntitlements{}, ErrForbidden
+	}
+	sh, err := s.Store.CategorySharing(ctx, key)
+	if errors.Is(err, store.ErrNotFound) {
+		return api.CatalogEntitlements{}, ErrNotFound
+	}
+	if err != nil {
+		return api.CatalogEntitlements{}, err
+	}
+	return s.presentSharing(ctx, sh, nil)
+}
+
+// SetCatalogCategoryEntitlements shares a category's items, those added
+// to it later included, as an item is shared.
+func (s *Service) SetCatalogCategoryEntitlements(ctx context.Context, p *auth.Principal, key string, e api.CatalogEntitlements) (api.CatalogEntitlements, error) {
+	if !p.Everywhere(auth.CatalogManage) {
+		return api.CatalogEntitlements{}, ErrForbidden
+	}
+	old, err := s.Store.CategorySharing(ctx, key)
+	if errors.Is(err, store.ErrNotFound) {
+		return api.CatalogEntitlements{}, ErrNotFound
+	}
+	if err != nil {
+		return api.CatalogEntitlements{}, err
+	}
+	sh, err := s.sharingOf(ctx, e, old, shareCategory)
+	if err != nil {
+		return api.CatalogEntitlements{}, err
+	}
+	if err := s.Store.SetCategorySharing(ctx, key, sh); err != nil {
+		return api.CatalogEntitlements{}, err
+	}
+	s.auditOn(ctx, p, "catalog.category.entitlements", "catalog_category", key, sharingDetail(sh))
+	return s.CatalogCategoryEntitlements(ctx, p, key)
+}
+
+// AWXEntitlements is who the items made from AWX are shared with through
+// their source.
+func (s *Service) AWXEntitlements(ctx context.Context, p *auth.Principal) (api.CatalogEntitlements, error) {
+	if !p.Everywhere(auth.CatalogManage) {
+		return api.CatalogEntitlements{}, ErrForbidden
+	}
+	sh, err := s.Store.SourceSharing(ctx, store.SourceAWX)
+	if err != nil {
+		return api.CatalogEntitlements{}, err
+	}
+	return s.presentSharing(ctx, sh, nil)
+}
+
+// SetAWXEntitlements shares the items made from AWX, those the sync makes
+// later included, as an item is shared.
+func (s *Service) SetAWXEntitlements(ctx context.Context, p *auth.Principal, e api.CatalogEntitlements) (api.CatalogEntitlements, error) {
+	if !p.Everywhere(auth.CatalogManage) {
+		return api.CatalogEntitlements{}, ErrForbidden
+	}
+	old, err := s.Store.SourceSharing(ctx, store.SourceAWX)
+	if err != nil {
+		return api.CatalogEntitlements{}, err
+	}
+	sh, err := s.sharingOf(ctx, e, old, shareAWX)
+	if err != nil {
+		return api.CatalogEntitlements{}, err
+	}
+	if err := s.Store.SetSourceSharing(ctx, store.SourceAWX, sh); err != nil {
+		return api.CatalogEntitlements{}, err
+	}
+	s.auditOn(ctx, p, "catalog.source.entitlements", "catalog_source", store.SourceAWX, sharingDetail(sh))
+	return s.AWXEntitlements(ctx, p)
 }
 
 func sharingDetail(sh store.Sharing) map[string]any {
@@ -177,9 +293,9 @@ func sharingDetail(sh store.Sharing) map[string]any {
 
 // sharingOf checks the sharing asked for: an audience a request leaves
 // out is the one each project had (all members for one added), the
-// everywhere audience the one the item had while it stays shared with
-// every project.
-func (s *Service) sharingOf(ctx context.Context, e api.CatalogEntitlements, old store.Sharing) (store.Sharing, error) {
+// everywhere audience the one it had while it stays shared with every
+// project.
+func (s *Service) sharingOf(ctx context.Context, e api.CatalogEntitlements, old store.Sharing, of sharee) (store.Sharing, error) {
 	unknown, err := s.Store.UnknownProjects(ctx, e.ProjectIds)
 	if err != nil {
 		return store.Sharing{}, err
@@ -202,7 +318,7 @@ func (s *Service) sharingOf(ctx context.Context, e api.CatalogEntitlements, old 
 			switch _, dup := audiences[a.ProjectId]; {
 			case !slices.Contains(projects, a.ProjectId):
 				errs = append(errs, fieldErr(ptr+"/project_id", "not_shared",
-					"The item isn't shared with "+a.ProjectId+": add it to project_ids."))
+					of.isnt+" shared with "+a.ProjectId+": add it to project_ids."))
 				continue
 			case dup:
 				errs = append(errs, fieldErr(ptr+"/project_id", "duplicate", "Give one audience per project."))
@@ -225,7 +341,7 @@ func (s *Service) sharingOf(ctx context.Context, e api.CatalogEntitlements, old 
 		errs = append(errs, aerrs...)
 		if !e.AllProjects && !aud.Everyone() {
 			errs = append(errs, fieldErr("/everywhere", "not_all_projects",
-				"Name who may request in every project only when the item is shared with every project."))
+				"Name who may request in every project only when "+of.is+" shared with every project."))
 		}
 		if e.AllProjects {
 			sh.Everywhere = aud
@@ -282,21 +398,84 @@ func (s *Service) audienceOf(ctx context.Context, ptr string, a api.CatalogAudie
 	return out, errs, nil
 }
 
+func emptyRequesters() api.CatalogRequesters {
+	return api.CatalogRequesters{People: []api.CatalogRequester{}, LeftOut: []api.UserRef{}, NotRequesters: []api.UserRef{},
+		Groups: []api.CatalogRequesterGroup{}}
+}
+
 // CatalogRequesters is who an audience lets request an item in a project,
 // before it is saved: the project's members who may request there, and
-// the users it names. Shares add up, so the item's every-project share
-// covers people too.
+// the users it names. Shares add up, so the item's every-project share,
+// its category's and its source's cover people too.
 func (s *Service) CatalogRequesters(ctx context.Context, p *auth.Principal, idOrSlug string, a api.CatalogProjectAudience) (api.CatalogRequesters, error) {
-	out := api.CatalogRequesters{People: []api.CatalogRequester{}, LeftOut: []api.UserRef{}, NotRequesters: []api.UserRef{},
-		Groups: []api.CatalogRequesterGroup{}}
 	it, err := s.adminItem(ctx, p, idOrSlug)
 	if err != nil {
-		return out, err
+		return emptyRequesters(), err
 	}
 	saved, err := s.Store.ItemSharing(ctx, it.ID)
 	if err != nil {
-		return out, err
+		return emptyRequesters(), err
 	}
+	inherited, err := s.Store.InheritedSharing(ctx, it.ID)
+	if err != nil {
+		return emptyRequesters(), err
+	}
+	return s.whoRequests(ctx, saved, inherited, a)
+}
+
+// CatalogCategoryRequesters is who an audience lets request a category's
+// items in a project, through the category.
+func (s *Service) CatalogCategoryRequesters(ctx context.Context, p *auth.Principal, key string, a api.CatalogProjectAudience) (api.CatalogRequesters, error) {
+	if !p.Everywhere(auth.CatalogManage) {
+		return emptyRequesters(), ErrForbidden
+	}
+	saved, err := s.Store.CategorySharing(ctx, key)
+	if errors.Is(err, store.ErrNotFound) {
+		return emptyRequesters(), ErrNotFound
+	}
+	if err != nil {
+		return emptyRequesters(), err
+	}
+	return s.whoRequests(ctx, saved, nil, a)
+}
+
+// AWXRequesters is who an audience lets request the items made from AWX
+// in a project, through their source.
+func (s *Service) AWXRequesters(ctx context.Context, p *auth.Principal, a api.CatalogProjectAudience) (api.CatalogRequesters, error) {
+	if !p.Everywhere(auth.CatalogManage) {
+		return emptyRequesters(), ErrForbidden
+	}
+	saved, err := s.Store.SourceSharing(ctx, store.SourceAWX)
+	if err != nil {
+		return emptyRequesters(), err
+	}
+	return s.whoRequests(ctx, saved, nil, a)
+}
+
+// covers says whether an audience lets someone request in a project.
+func covers(a store.Audience, who *auth.Principal, projectID string) bool {
+	return a.Everyone() || slices.Contains(a.UserIDs, who.User.ID) ||
+		slices.ContainsFunc(a.Groups, func(g string) bool { return slices.Contains(who.Groups, g) }) ||
+		slices.ContainsFunc(a.Roles, func(k string) bool { return slices.Contains(who.RolesIn(projectID), k) })
+}
+
+// inheritedFor are the inherited shares that let someone request in a
+// project.
+func inheritedFor(inherited []store.InheritedShare, who *auth.Principal, projectID string) []api.CatalogShareOrigin {
+	out := []api.CatalogShareOrigin{}
+	for _, ih := range inherited {
+		if ih.AllProjects && covers(ih.Everywhere, who, projectID) ||
+			slices.ContainsFunc(ih.Projects, func(ps store.ProjectShare) bool {
+				return ps.ProjectID == projectID && covers(ps.Audience, who, projectID)
+			}) {
+			out = append(out, shareOrigin(ih))
+		}
+	}
+	return out
+}
+
+func (s *Service) whoRequests(ctx context.Context, saved store.Sharing, inherited []store.InheritedShare, a api.CatalogProjectAudience) (api.CatalogRequesters, error) {
+	out := emptyRequesters()
 	if saved.AllProjects {
 		out.Everywhere = present.Ptr(presentAudience(saved.Everywhere))
 	}
@@ -345,12 +524,6 @@ func (s *Service) CatalogRequesters(ctx context.Context, p *auth.Principal, idOr
 		people = append(people, person{who.User, who})
 	}
 	slices.SortFunc(people, func(a, b person) int { return strings.Compare(a.user.Name+a.user.ID, b.user.Name+b.user.ID) })
-	everywhere := func(who *auth.Principal) bool {
-		e := saved.Everywhere
-		return saved.AllProjects && (e.Everyone() || slices.Contains(e.UserIDs, who.User.ID) ||
-			slices.ContainsFunc(e.Groups, func(g string) bool { return slices.Contains(who.Groups, g) }) ||
-			slices.ContainsFunc(e.Roles, func(k string) bool { return slices.Contains(who.RolesIn(proj.ID), k) }))
-	}
 	for _, pe := range people {
 		named := slices.Contains(aud.UserIDs, pe.user.ID)
 		if !pe.who.In(auth.RequestSubmit, proj.ID) {
@@ -360,7 +533,7 @@ func (s *Service) CatalogRequesters(ctx context.Context, p *auth.Principal, idOr
 			continue
 		}
 		r := api.CatalogRequester{User: userRef(pe.user), Named: named, Groups: []string{}, Roles: []api.RoleRef{},
-			Everywhere: everywhere(pe.who)}
+			Everywhere: saved.AllProjects && covers(saved.Everywhere, pe.who, proj.ID), Inherited: inheritedFor(inherited, pe.who, proj.ID)}
 		for _, g := range aud.Groups {
 			if slices.Contains(pe.who.Groups, g) {
 				r.Groups = append(r.Groups, g)
@@ -371,7 +544,7 @@ func (s *Service) CatalogRequesters(ctx context.Context, p *auth.Principal, idOr
 				r.Roles = append(r.Roles, api.RoleRef{Key: k, Name: roleName[k]})
 			}
 		}
-		if aud.Everyone() || named || len(r.Groups) > 0 || len(r.Roles) > 0 || r.Everywhere {
+		if aud.Everyone() || named || len(r.Groups) > 0 || len(r.Roles) > 0 || r.Everywhere || len(r.Inherited) > 0 {
 			out.People = append(out.People, r)
 		} else {
 			out.LeftOut = append(out.LeftOut, userRef(pe.user))

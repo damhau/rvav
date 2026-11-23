@@ -348,7 +348,7 @@ func (s *Service) runValidation(ctx context.Context, p *auth.Principal, ev *Eval
 	case api.Library:
 		detail["form_library"], detail["entry_version"] = deref(v.Name), derefInt(v.Version)
 		bindings := derefMap(v.Params)
-		e, params, err := s.libraryBound(ctx, deref(v.Name), derefInt(v.Version), api.Validation, bindings, vars, props)
+		e, params, err := s.libraryBound(ctx, deref(v.Name), derefInt(v.Version), api.FormLibraryPurposeValidation, bindings, vars, props)
 		switch {
 		case errors.Is(err, errUnbound):
 			detail["outcome"] = "not_run"

@@ -229,7 +229,7 @@ func (s *Service) resolveSource(ctx context.Context, p *auth.Principal, proj sto
 		return v
 	}
 	if src.Kind == api.Library {
-		e, params, err := s.libraryBound(ctx, deref(src.Name), derefInt(src.Version), api.Source, derefMap(src.Params), vars(), formProps(ver.FormSchema))
+		e, params, err := s.libraryBound(ctx, deref(src.Name), derefInt(src.Version), api.FormLibraryPurposeSource, derefMap(src.Params), vars(), formProps(ver.FormSchema))
 		if errors.Is(err, errUnbound) {
 			if !singleSource(field) {
 				out.Options = &[]api.Option{}

@@ -459,7 +459,7 @@ func seedCatalog(exec func(string, ...any) error) error {
 		}
 		if err := exec(`insert into catalog_items (id, slug, name, summary, description_md, category, type, icon, tags,
 			featured, source_kind, awx_template_name, published_version_id, all_projects)
-			values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, $11 = 'awx')
+			values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, false)
 			on conflict (id) do update set name = excluded.name, summary = excluded.summary,
 			description_md = excluded.description_md, category = excluded.category, type = excluded.type,
 			icon = excluded.icon, tags = excluded.tags, featured = excluded.featured, source_kind = excluded.source_kind,

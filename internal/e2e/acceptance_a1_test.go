@@ -325,7 +325,7 @@ func a1IDs(t *testing.T, h *harness, vm *a1VM, given api.RoleAssignment) map[str
 	h.json("POST", "/api/v1/admin/property-groups", admin, api.PropertyGroupWrite{Key: new("a1_group"), Name: "A1 group",
 		Inputs: []api.PropertyGroupInput{}, Constants: map[string]any{"domain": "corp.example"}}, 201, nil)
 	h.json("POST", "/api/v1/admin/form-library", admin, api.FormLibraryEntryWrite{Key: new("a1_check"), Name: "A1 check",
-		Use: api.Validation, Kind: api.Cel, Params: map[string]any{"check": "true"}, Parameters: []api.FormLibraryParameter{}}, 201, nil)
+		Use: api.FormLibraryPurposeValidation, Kind: api.Cel, Params: map[string]any{"check": "true"}, Parameters: []api.FormLibraryParameter{}}, 201, nil)
 	fin := &[]api.Offer{{ProjectId: new("prj_fin")}}
 	var naming api.NamingPolicy
 	h.json("POST", "/api/v1/admin/naming-policies", admin, api.NamingPolicyWrite{Name: "A1 names",
@@ -487,7 +487,7 @@ var (
 		"createSavedView": true,
 	}
 	a1Reads = map[string]bool{"resolveFieldValues": true, "previewRequest": true, "explainPolicies": true,
-		"previewCatalogRequesters": true}
+		"previewCatalogRequesters": true, "previewCatalogCategoryRequesters": true, "previewAwxRequesters": true}
 )
 
 func (w a1Walk) operations() []a1Op {

@@ -262,7 +262,7 @@ func (s *Service) vraPlan(ctx context.Context, e *vra.Estate, extra map[string]s
 	st := vraimport.ImportState{Links: map[string]vraimport.Link{}, Items: map[string]vraimport.ItemState{}, Slugs: map[string]string{}}
 	for id, it := range states {
 		st.Items[id] = vraimport.ItemState{ID: it.ID, Slug: it.Slug, HasDraft: it.HasDraft, Published: it.Published,
-			AllProjects: it.AllProjects, Projects: it.Projects}
+			AllProjects: it.AllProjects, Projects: it.Projects, InheritedAll: it.InheritedAll, InheritedProjects: it.InheritedProjects}
 		st.Slugs[it.Slug] = id
 	}
 	moves, err := s.Store.VRAMoves(ctx)

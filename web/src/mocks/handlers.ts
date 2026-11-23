@@ -68,7 +68,7 @@ import { brandingHandlers } from "./branding";
 import { notificationTemplateHandlers } from "./notificationTemplates";
 import { signInHandlers } from "./signIn";
 import { draftHandlers } from "./drafts";
-import { sharedWith, sharingHandlers } from "./sharing";
+import { offeredIn, sharedWith, sharingHandlers } from "./sharing";
 import { listingHandlers, seesDeployment, visibleDeployments } from "./listing";
 import { faults } from "./faults";
 import { namesDeployments } from "./deploymentNames";
@@ -682,7 +682,7 @@ export const handlers = [
     await wait();
     const item = itemByKey(params.itemId);
     const projectId = new URL(request.url).searchParams.get("project_id");
-    if (item && projectId && item.projectIds.includes(projectId) && !sharedWith(db, item, projectId))
+    if (item && projectId && offeredIn(db, item, projectId) && !sharedWith(db, item, projectId))
       return notFound("Catalog item");
     return item ? json<S["CatalogItem"]>(publicItem(item)) : notFound("Catalog item");
   }),
@@ -716,7 +716,7 @@ export const handlers = [
         "You can't request items in this project",
         "Your roles there don't let you request.",
       );
-    if (projectId && item.projectIds.includes(projectId) && !sharedWith(db, item, projectId))
+    if (projectId && offeredIn(db, item, projectId) && !sharedWith(db, item, projectId))
       return notFound("Catalog item");
     const form = requestableForm(db, item, url.searchParams.get("version_id"));
     if (!form) return notFound("Version");
@@ -803,7 +803,7 @@ export const handlers = [
     if (!can(db.me, "request.submit", project.id)) {
       return problem(403, "forbidden", "You can't request items in this project");
     }
-    if (item.projectIds.includes(project.id) && !sharedWith(db, item, project.id)) {
+    if (offeredIn(db, item, project.id) && !sharedWith(db, item, project.id)) {
       return problem(
         403,
         "forbidden",

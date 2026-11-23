@@ -179,7 +179,7 @@ func (s *Service) TestFormLibraryEntry(ctx context.Context, p *auth.Principal, t
 	e := storeEntry("test", t.Entry)
 	audit := map[string]any{"key": deref(t.Entry.Key), "use": t.Entry.Use, "kind": t.Entry.Kind, "host": entryHost(t.Entry.Kind, t.Entry.Params)}
 	defer func() { s.auditLibrary(ctx, p, "form_library.test", cmp.Or(deref(t.Entry.Key), "unsaved"), audit) }()
-	if e.Use == string(api.Validation) {
+	if e.Use == string(api.FormLibraryPurposeValidation) {
 		v := s.runCheck(ctx, proj.ID, entryCheck(e), Refs{"params": t.Params}, vars, policy.EvalLibrary)
 		audit["outcome"] = v.outcome()
 		if v.failure != "" {
@@ -316,7 +316,7 @@ func checkEntry(w api.FormLibraryEntryWrite, prefix string) []api.FieldError {
 		}
 	}
 	params := orEmpty(w.Params)
-	if w.Use == api.Validation {
+	if w.Use == api.FormLibraryPurposeValidation {
 		if w.Search != nil && *w.Search {
 			add("/search", "invalid", "A validation searches nothing: leave search out.")
 		}
@@ -444,13 +444,13 @@ func (s *Service) checkLibraryRefs(ctx context.Context, d api.CatalogVersionDefi
 		if src == nil || src.Kind != api.Library || deref(src.Name) == "" || src.Version == nil {
 			continue
 		}
-		refs = append(refs, ref{prefix + "/ui_schema/fields/" + name + "/value_source", *src.Name, *src.Version, api.Source, derefMap(src.Params)})
+		refs = append(refs, ref{prefix + "/ui_schema/fields/" + name + "/value_source", *src.Name, *src.Version, api.FormLibraryPurposeSource, derefMap(src.Params)})
 	}
 	for i, v := range validationsOf(d.UiSchema) {
 		if v.Kind != api.Library || deref(v.Name) == "" || v.Version == nil {
 			continue
 		}
-		refs = append(refs, ref{fmt.Sprintf("%s/ui_schema/validations/%d", prefix, i), *v.Name, *v.Version, api.Validation, derefMap(v.Params)})
+		refs = append(refs, ref{fmt.Sprintf("%s/ui_schema/validations/%d", prefix, i), *v.Name, *v.Version, api.FormLibraryPurposeValidation, derefMap(v.Params)})
 	}
 	var errs []api.FieldError
 	for _, r := range refs {

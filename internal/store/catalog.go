@@ -53,18 +53,6 @@ type Requester struct {
 	Roles  []string
 }
 
-// sharedWith is the condition that item i is shared with a requester in a
-// project, from the parameters that hold them.
-func sharedWith(project, user, groups, roles string) string {
-	covers := func(users, gs, rs string) string {
-		return `(cardinality(` + users + `) + cardinality(` + gs + `) + cardinality(` + rs + `) = 0 or ` +
-			user + ` = any(` + users + `) or ` + gs + ` && ` + groups + `::text[] or ` + rs + ` && ` + roles + `::text[])`
-	}
-	return `((i.all_projects and ` + covers("i.share_user_ids", "i.share_groups", "i.share_roles") + `)
-		or exists (select 1 from catalog_entitlements e where e.item_id = i.id and e.project_id = ` + project +
-		` and ` + covers("e.user_ids", "e.groups", "e.roles") + `))`
-}
-
 // ListItems returns published items shared with the caller in a project, ordered by name.
 func (s *Store) ListItems(ctx context.Context, f ItemFilter) (Page[CatalogItem], error) {
 	after := Cursor{}
@@ -96,20 +84,19 @@ func (s *Store) GetItem(ctx context.Context, idOrSlug, userID string) (CatalogIt
 	return i, notFound(err)
 }
 
-// IsEntitled says whether an item is shared with a project, whoever its
-// sharing names there.
+// IsEntitled says whether an item is shared with a project, on its own or
+// through its category or source, whoever its sharing names there.
 func (s *Store) IsEntitled(ctx context.Context, itemID, projectID string) (bool, error) {
 	var ok bool
-	err := s.Pool.QueryRow(ctx, `select exists (select 1 from catalog_items where id = $1 and all_projects)
-		or exists (select 1 from catalog_entitlements where item_id = $1 and project_id = $2)`, itemID, projectID).Scan(&ok)
+	err := s.Pool.QueryRow(ctx, `select exists (select 1 from catalog_items i where i.id = $1 and `+sharedIn("$2")+`)`,
+		itemID, projectID).Scan(&ok)
 	return ok, err
 }
 
 // SharedWith says whether an item is shared with a project, and whether
 // with this requester there.
 func (s *Store) SharedWith(ctx context.Context, itemID, projectID string, who Requester) (project, requester bool, err error) {
-	err = s.Pool.QueryRow(ctx, `select i.all_projects
-			or exists (select 1 from catalog_entitlements e where e.item_id = i.id and e.project_id = $2),
+	err = s.Pool.QueryRow(ctx, `select `+sharedIn("$2")+`,
 		`+sharedWith("$2", "$3", "$4", "$5")+`
 		from catalog_items i where i.id = $1`,
 		itemID, projectID, who.UserID, nonNilStrings(who.Groups), nonNilStrings(who.Roles)).Scan(&project, &requester)

@@ -180,6 +180,52 @@ func (s *Server) PreviewCatalogRequesters(w http.ResponseWriter, r *http.Request
 	s.reply(w, r, http.StatusOK, out, err)
 }
 
+func (s *Server) GetCatalogCategoryEntitlements(w http.ResponseWriter, r *http.Request, key string) {
+	out, err := s.Core.CatalogCategoryEntitlements(r.Context(), principal(r), key)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) SetCatalogCategoryEntitlements(w http.ResponseWriter, r *http.Request, key string) {
+	var e api.CatalogEntitlements
+	if !s.decode(w, r, &e) {
+		return
+	}
+	out, err := s.Core.SetCatalogCategoryEntitlements(r.Context(), principal(r), key, e)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) PreviewCatalogCategoryRequesters(w http.ResponseWriter, r *http.Request, key string) {
+	var a api.CatalogProjectAudience
+	if !s.decode(w, r, &a) {
+		return
+	}
+	out, err := s.Core.CatalogCategoryRequesters(r.Context(), principal(r), key, a)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) GetAwxEntitlements(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Core.AWXEntitlements(r.Context(), principal(r))
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) SetAwxEntitlements(w http.ResponseWriter, r *http.Request) {
+	var e api.CatalogEntitlements
+	if !s.decode(w, r, &e) {
+		return
+	}
+	out, err := s.Core.SetAWXEntitlements(r.Context(), principal(r), e)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
+func (s *Server) PreviewAwxRequesters(w http.ResponseWriter, r *http.Request) {
+	var a api.CatalogProjectAudience
+	if !s.decode(w, r, &a) {
+		return
+	}
+	out, err := s.Core.AWXRequesters(r.Context(), principal(r), a)
+	s.reply(w, r, http.StatusOK, out, err)
+}
+
 func (s *Server) ExportCatalogItem(w http.ResponseWriter, r *http.Request, itemID api.ItemIdPath, params api.ExportCatalogItemParams) {
 	body, name, err := s.Core.ExportCatalogItem(r.Context(), principal(r), itemID, deref(params.VersionId))
 	if err != nil {

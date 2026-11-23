@@ -205,6 +205,11 @@ func (s *Service) UpdateCatalogItem(ctx context.Context, p *auth.Principal, idOr
 		return api.AdminCatalogItem{}, err
 	}
 	s.auditCatalog(ctx, p, "catalog.item.update", it.ID, map[string]any{"changes": u})
+	if u.Category != nil && *u.Category != it.Category {
+		// Moving an item shares it as its new category is shared, which may
+		// widen who can request it (ADR-0019, Sharing).
+		s.auditCatalog(ctx, p, "catalog.item.category", it.ID, map[string]any{"from": it.Category, "to": *u.Category})
+	}
 	s.markGit(ctx, p, it.ID, "Update "+cmp.Or(deref(u.Slug), it.Slug)+"'s details")
 	return s.AdminCatalogItem(ctx, p, it.ID)
 }
@@ -541,8 +546,12 @@ func (s *Service) CompareCatalogItemVersions(ctx context.Context, p *auth.Princi
 }
 
 func (s *Service) auditCatalog(ctx context.Context, p *auth.Principal, action, itemID string, detail map[string]any) {
-	if err := s.Store.Audit(ctx, s.Store.Pool, store.AuditEvent{ActorID: &p.User.ID, Action: action, TargetType: "catalog_item",
-		TargetID: itemID, Detail: detail}); err != nil {
+	s.auditOn(ctx, p, action, "catalog_item", itemID, detail)
+}
+
+func (s *Service) auditOn(ctx context.Context, p *auth.Principal, action, targetType, targetID string, detail map[string]any) {
+	if err := s.Store.Audit(ctx, s.Store.Pool, store.AuditEvent{ActorID: &p.User.ID, Action: action, TargetType: targetType,
+		TargetID: targetID, Detail: detail}); err != nil {
 		s.Log.Error("audit", "action", action, "err", err)
 	}
 }

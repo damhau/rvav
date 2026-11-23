@@ -76,7 +76,7 @@ func TestFormLibrary(t *testing.T) {
 
 		var problem struct{ Errors []api.FieldError }
 		yes := true
-		entry := api.FormLibraryEntryWrite{Key: present.Ptr("dbVersions"), Name: "Database versions", Use: api.Source, Kind: api.Rest,
+		entry := api.FormLibraryEntryWrite{Key: present.Ptr("dbVersions"), Name: "Database versions", Use: api.FormLibraryPurposeSource, Kind: api.Rest,
 			Params:     map[string]any{"url": dbaas.URL + "/versions?env=${inputs.environment}", "items": "$[*]", "value": "$.v", "label": "$.name"},
 			Parameters: []api.FormLibraryParameter{{Name: "env", Label: "Environment", Required: &yes}}}
 		h.json("POST", "/api/v1/admin/form-library", admin, entry, 422, &problem)
@@ -86,7 +86,7 @@ func TestFormLibrary(t *testing.T) {
 		entry.Params["url"] = dbaas.URL + "/versions?env=${params.env}"
 		var saved api.FormLibraryEntry
 		h.json("POST", "/api/v1/admin/form-library", admin, entry, 201, &saved)
-		if saved.Version != 1 || saved.Use != api.Source || len(saved.UsedBy) != 0 {
+		if saved.Version != 1 || saved.Use != api.FormLibraryPurposeSource || len(saved.UsedBy) != 0 {
 			t.Fatalf("created = %+v", saved)
 		}
 		h.json("POST", "/api/v1/admin/form-library", admin, entry, 409, nil)
@@ -243,7 +243,7 @@ func TestFormValidations(t *testing.T) {
 		h.svc.REST.Hosts = []string{budget.URL, downURL}
 
 		yes := true
-		openCC := api.FormLibraryEntryWrite{Key: present.Ptr("costCentreOpen"), Name: "Cost centre open", Use: api.Validation, Kind: api.Cel,
+		openCC := api.FormLibraryEntryWrite{Key: present.Ptr("costCentreOpen"), Name: "Cost centre open", Use: api.FormLibraryPurposeValidation, Kind: api.Cel,
 			Params:     map[string]any{"check": `params.cc.startsWith("CC-") ? {} : {"cc": "Cost centre " + params.cc + " is closed."}`},
 			Parameters: []api.FormLibraryParameter{{Name: "cc", Label: "Cost centre", Required: &yes}}}
 		h.json("POST", "/api/v1/admin/form-library", admin, openCC, 201, nil)

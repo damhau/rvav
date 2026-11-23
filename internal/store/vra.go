@@ -161,18 +161,21 @@ func (s *Store) AdoptedVRADeployments(ctx context.Context) (map[string][]string,
 
 // AddShares shares an item with more projects, leaving those it has.
 func (s *Store) AddShares(ctx context.Context, itemID string, shares []ProjectShare) error {
-	return addShares(ctx, s.Pool, itemID, shares, false)
+	return addShares(ctx, s.Pool, itemShares, itemID, shares, false)
 }
 
 // ItemImportState is what the import needs of a catalog item: whether it
-// exists, whether it has a draft, who it is shared with.
+// exists, whether it has a draft, who it is shared with on its own, and
+// through its category and its source (Inherited*).
 type ItemImportState struct {
-	ID          string   `db:"id"`
-	Slug        string   `db:"slug"`
-	HasDraft    bool     `db:"has_draft"`
-	Published   bool     `db:"published"`
-	AllProjects bool     `db:"all_projects"`
-	Projects    []string `db:"projects"`
+	ID                string   `db:"id"`
+	Slug              string   `db:"slug"`
+	HasDraft          bool     `db:"has_draft"`
+	Published         bool     `db:"published"`
+	AllProjects       bool     `db:"all_projects"`
+	Projects          []string `db:"projects"`
+	InheritedAll      bool     `db:"inherited_all"`
+	InheritedProjects []string `db:"inherited_projects"`
 }
 
 // ItemImportStates are the catalog items' states by ID.
@@ -181,7 +184,12 @@ func (s *Store) ItemImportStates(ctx context.Context) (map[string]ItemImportStat
 		exists (select 1 from catalog_item_versions v where v.item_id = i.id and v.state = 'draft') as has_draft,
 		i.published_version_id is not null as published,
 		i.all_projects,
-		coalesce((select array_agg(e.project_id order by e.project_id) from catalog_entitlements e where e.item_id = i.id), '{}') as projects
+		coalesce((select array_agg(e.project_id order by e.project_id) from catalog_entitlements e where e.item_id = i.id), '{}') as projects,
+		exists (select 1 from catalog_categories c where c.key = i.category and c.all_projects)
+			or exists (select 1 from catalog_sources s where s.kind = i.source_kind and s.all_projects) as inherited_all,
+		array(select e.project_id from catalog_category_entitlements e where e.category = i.category
+			union select e.project_id from catalog_source_entitlements e where e.source_kind = i.source_kind
+			order by 1) as inherited_projects
 		from catalog_items i`)
 	list, err := pgx.CollectRows(rows, pgx.RowToStructByName[ItemImportState])
 	out := map[string]ItemImportState{}

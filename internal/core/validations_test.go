@@ -145,12 +145,12 @@ func TestCheckValidations(t *testing.T) {
 }
 
 func TestCheckEntry(t *testing.T) {
-	src := api.FormLibraryEntryWrite{Name: "Versions", Use: api.Source, Kind: api.Rest, Parameters: []api.FormLibraryParameter{{Name: "env", Label: "Environment"}},
+	src := api.FormLibraryEntryWrite{Name: "Versions", Use: api.FormLibraryPurposeSource, Kind: api.Rest, Parameters: []api.FormLibraryParameter{{Name: "env", Label: "Environment"}},
 		Params: map[string]any{"url": "https://dbaas.corp.example/versions?env=${params.env}", "items": "$[*]", "value": "$.v"}}
 	if errs := checkEntry(src, ""); len(errs) != 0 {
 		t.Fatalf("a good source = %+v", errs)
 	}
-	check := api.FormLibraryEntryWrite{Name: "Open", Use: api.Validation, Kind: api.Cel, Params: map[string]any{"check": `params.cc.startsWith("CC-")`}}
+	check := api.FormLibraryEntryWrite{Name: "Open", Use: api.FormLibraryPurposeValidation, Kind: api.Cel, Params: map[string]any{"check": `params.cc.startsWith("CC-")`}}
 	if errs := checkEntry(check, ""); len(errs) != 0 {
 		t.Fatalf("a good validation = %+v", errs)
 	}
@@ -159,17 +159,17 @@ func TestCheckEntry(t *testing.T) {
 		w    api.FormLibraryEntryWrite
 		want []string
 	}{
-		{"an entry reading a form", api.FormLibraryEntryWrite{Name: "x", Use: api.Source, Kind: api.Rest, Params: map[string]any{"url": "https://a.corp.example/${inputs.env}", "items": "$[*]", "value": "$.v"}},
+		{"an entry reading a form", api.FormLibraryEntryWrite{Name: "x", Use: api.FormLibraryPurposeSource, Kind: api.Rest, Params: map[string]any{"url": "https://a.corp.example/${inputs.env}", "items": "$[*]", "value": "$.v"}},
 			[]string{"/params/url"}},
-		{"a CEL entry reading a form", api.FormLibraryEntryWrite{Name: "x", Use: api.Validation, Kind: api.Cel, Params: map[string]any{"check": "inputs.cpu > 1.0"}},
+		{"a CEL entry reading a form", api.FormLibraryEntryWrite{Name: "x", Use: api.FormLibraryPurposeValidation, Kind: api.Cel, Params: map[string]any{"check": "inputs.cpu > 1.0"}},
 			[]string{"/params/check"}},
-		{"a library entry", api.FormLibraryEntryWrite{Name: "x", Use: api.Source, Kind: api.Library}, []string{"/kind"}},
+		{"a library entry", api.FormLibraryEntryWrite{Name: "x", Use: api.FormLibraryPurposeSource, Kind: api.Library}, []string{"/kind"}},
 		{"parameters", api.FormLibraryEntryWrite{Name: " ", Use: "both", Kind: api.Cel, Params: map[string]any{"options": "[]"},
 			Parameters: []api.FormLibraryParameter{{Name: "a", Label: "A"}, {Name: "a", Label: ""}, {Name: "_b", Label: "B"}}},
 			[]string{"/name", "/use", "/parameters/1/name", "/parameters/1/label", "/parameters/2/name"}},
-		{"a source's message", api.FormLibraryEntryWrite{Name: "x", Use: api.Source, Kind: api.Cel, Params: map[string]any{"options": "[]"}, Message: present.Ptr("No.")},
+		{"a source's message", api.FormLibraryEntryWrite{Name: "x", Use: api.FormLibraryPurposeSource, Kind: api.Cel, Params: map[string]any{"options": "[]"}, Message: present.Ptr("No.")},
 			[]string{"/message"}},
-		{"a validation that searches", api.FormLibraryEntryWrite{Name: "x", Use: api.Validation, Kind: api.Cel, Params: map[string]any{"check": "true"}, Search: new(true)},
+		{"a validation that searches", api.FormLibraryEntryWrite{Name: "x", Use: api.FormLibraryPurposeValidation, Kind: api.Cel, Params: map[string]any{"check": "true"}, Search: new(true)},
 			[]string{"/search"}},
 	} {
 		var got []string

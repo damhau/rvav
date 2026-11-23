@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { awxOwner, shareOwner } from "@/mocks/catalogAdmin";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
@@ -45,6 +46,7 @@ describe("the catalog against the mock API", () => {
 
   it("says when nothing is shared with the project", async () => {
     db.items.forEach((i) => (i.projectIds = []));
+    shareOwner(db, awxOwner, { all: false, everywhere: { user_ids: [], groups: [], roles: [] }, projects: {} });
     renderApp("/catalog");
     expect(await screen.findByText("Nothing is shared with Web Platform yet")).toBeInTheDocument();
   });

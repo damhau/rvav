@@ -2,8 +2,9 @@
 
 - Status: accepted; catalog admins are those holding `catalog.manage`
   ([ADR-0034](0034-custom-roles.md)); items shared with users, groups and
-  roles within projects since G1.2; several versions published at once
-  since C2.1 ([ADR-0046](0046-deployment-names-and-versions.md))
+  roles within projects since G1.2; categories and the AWX source shared
+  since G2.2; several versions published at once since C2.1
+  ([ADR-0046](0046-deployment-names-and-versions.md))
 - Date: 2026-10-27
 
 ## Context
@@ -85,7 +86,8 @@ survey the item was made from.
 ### Sharing
 An item is open to every project (those made later too: the new column
 `catalog_items.all_projects`), or to chosen projects (`catalog_entitlements`
-as before). Items made from AWX are open to every project.
+as before). Items made from AWX were open to every project; since G2.2
+they are shared as the AWX source is (below).
 
 Since G1.2 (vRA's content sharing, A7 and A28 of the parity list), each
 share also says who may request the item in the project: all its members,
@@ -128,6 +130,41 @@ requests the item in a project when any share covers them there.
   adds names who the policies name; it never changes a project the item
   is shared with already. What doesn't map is in the plan's notes, and a
   project where nobody maps isn't shared, rather than shared with all.
+
+Since G2.2 (A28 of the parity list), a **category** and the **AWX source**
+are shared as an item is, with the same body and checks
+(`/admin/catalog/categories/{key}/entitlements`, `/admin/awx/entitlements`,
+each with its `requesters` preview). Each item in the category, or made
+from AWX, has their shares on top of its own, so an item added later, by
+hand, by an import or by the sync, is shared at once.
+- **Tables:** `catalog_categories.all_projects` and `share_*` with
+  `catalog_category_entitlements`; `catalog_sources` (one row, `awx`) with
+  `catalog_source_entitlements`. A row per source kind leaves room for
+  another source.
+- **Shares still add up.** An inherited share is one more share: whether an
+  item is shared with someone (the catalog, the item, its form, a submit,
+  ServiceNow's catalog and entitlements) is its own shares, its category's
+  or its source's. An inherited share never narrows an item's own; to
+  narrow, the category's or the source's share changes.
+- **The migration** shares the AWX source with every project, as the items
+  made from AWX were, and drops an AWX item's own every-project share
+  unless it names an audience or an administrator saved the item's sharing
+  (a `catalog.item.entitlements` event). The sync no longer gives an item a
+  share of its own.
+- **An item shows its inherited shares**, read-only, with the category or
+  source each comes from (`inherited` in its entitlements); who could
+  request it names the people covered through them.
+- **Moving an item to another category** shares it as that category is,
+  and no longer as the old one: the item's Details say so before saving,
+  and the move is audited (`catalog.item.category`, from and to). A
+  category's and the source's sharing are audited on their own targets
+  (`catalog_category`, `catalog_source`), as are a category's changes.
+- **Roles:** a role a category's or the source's share names can't be
+  deleted either.
+- **Git** ([ADR-0029](0029-catalog-in-git.md)): an item's `sharing` block
+  stays per item and is never taken. A category's shares are in the
+  database with the categories, and there is no Git source to share: items
+  read from Git are native items, shared by their category.
 
 ### Categories and icons
 Categories can be added, renamed, ordered, and removed once empty. Icons
@@ -210,3 +247,6 @@ sign-in, and also returns rules that fail to evaluate.
 - The seed still creates its items, and updates one only while no catalog
   admin has changed it (no `catalog.*` audit event names it): after that,
   its metadata, versions and entitlements are the admin's.
+- Since G2.2, sharing a category shares the items added to it later, and
+  moving an item between categories changes who may request it: what an
+  item's page shows as inherited, and the move's audit event, say why.

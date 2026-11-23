@@ -19,10 +19,13 @@ type StoredRole struct {
 	// Policies are the day-2 policies whose roles name it, and the approval
 	// and day-2 policies whose levels do.
 	Policies []string `db:"policies"`
-	// Items are the catalog items whose sharing names it.
-	Items     []string  `db:"items"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
+	// Items are the catalog items whose sharing names it; Categories and
+	// Sources the categories and sources whose sharing does.
+	Items      []string  `db:"items"`
+	Categories []string  `db:"categories"`
+	Sources    []string  `db:"sources"`
+	CreatedAt  time.Time `db:"created_at"`
+	UpdatedAt  time.Time `db:"updated_at"`
 }
 
 const roleSelect = `select r.key, r.name, r.description, r.permissions, r.built_in,
@@ -37,6 +40,12 @@ const roleSelect = `select r.key, r.name, r.description, r.permissions, r.built_
 	array(select i.name from catalog_items i where r.key = any(i.share_roles)
 		or exists (select 1 from catalog_entitlements e where e.item_id = i.id and r.key = any(e.roles))
 		order by i.name) as items,
+	array(select c.name from catalog_categories c where r.key = any(c.share_roles)
+		or exists (select 1 from catalog_category_entitlements e where e.category = c.key and r.key = any(e.roles))
+		order by c.sort_order, c.name) as categories,
+	array(select o.name from catalog_sources o where r.key = any(o.share_roles)
+		or exists (select 1 from catalog_source_entitlements e where e.source_kind = o.kind and r.key = any(e.roles))
+		order by o.name) as sources,
 	r.created_at, r.updated_at from roles r`
 
 func (s *Store) Roles(ctx context.Context) ([]StoredRole, error) {
