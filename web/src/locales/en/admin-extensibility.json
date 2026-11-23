@@ -102,7 +102,7 @@
       "failed": "Failed",
       "blocked": "Stopped the request"
     },
-    "anyStatus": "Any status",
+    "anyStatus": "All statuses",
     "title": "Run",
     "runOf": "Run of",
     "recoveryOf": "Its recovery target, after the subscription failed",

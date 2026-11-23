@@ -52,6 +52,17 @@ describe("the Resources page against the mock API", () => {
     expect(screen.getByText("12 VMs · 10 powered on")).toBeInTheDocument();
   });
 
+  it("lets a long placement or network wrap between its words, never inside one", async () => {
+    renderApp("/resources");
+    const table = await screen.findByRole("table", { name: "VMs" }, { timeout: 5000 });
+    const row = (await within(table).findByRole("button", { name: "web-tst-search001" })).closest("tr")!;
+    const html = (text: string | RegExp) => within(row).getByText(text, { selector: "div, li" }).innerHTML;
+    expect(html("vc01.corp.example")).toBe("vc01.<wbr>corp.<wbr>example");
+    expect(html("GVA-TST-CL01")).toBe("GVA-<wbr>TST-<wbr>CL01");
+    expect(html(/^rvav-dep-/)).toMatch(/^rvav-<wbr>dep-<wbr>/);
+    for (const cell of within(row).getAllByRole("cell")) expect(cell.className).not.toContain("anywhere");
+  });
+
   it("filters by power, cluster and network, each kept in the address", async () => {
     const user = userEvent.setup();
     const { router } = renderApp("/resources");
@@ -62,7 +73,7 @@ describe("the Resources page against the mock API", () => {
     await waitFor(() => expect(names(table)).toEqual(["web-dev-legacy001", "web-tst-search002"]));
     expect(router.state.location.search).toEqual({ power: "off" });
 
-    await pick(user, "Power", "Any power state");
+    await pick(user, "Power", "All power states");
     await pick(user, "Cluster", "GVA-DEV-CL01");
     await waitFor(() => expect(names(table)).toEqual(["web-dev-api004", "web-dev-legacy001", "web-dev-worker002"]));
 

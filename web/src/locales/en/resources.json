@@ -38,7 +38,7 @@
     "environment": "Environment",
     "allEnvironments": "All environments",
     "power": "Power",
-    "anyPower": "Any power state",
+    "anyPower": "All power states",
     "allVcenters": "All vCenters",
     "cluster": "Cluster",
     "allClusters": "All clusters",

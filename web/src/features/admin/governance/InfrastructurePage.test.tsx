@@ -240,6 +240,22 @@ describe("Templates and networks", () => {
     );
   });
 
+  it("adds a network mapping in a sheet titled and confirmed alike", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/infrastructure?tab=networks");
+    const region = await screen.findByRole("region", { name: "Network mappings" });
+    await user.click(await within(region).findByRole("button", { name: "Add a network mapping" }));
+    const sheet = await screen.findByRole("dialog", { name: "Add a network mapping" });
+    expect(within(sheet).queryByRole("button", { name: "Save mapping" })).toBeNull();
+    await user.type(within(sheet).getByRole("textbox", { name: "vCenter network" }), "dvpg-lab-dev-vl999");
+    await user.type(within(sheet).getByRole("textbox", { name: "Subnet" }), "10.99.0.0/24");
+    await user.type(within(sheet).getByRole("textbox", { name: "Gateway" }), "10.99.0.1");
+    await user.type(within(sheet).getByRole("textbox", { name: "DNS zone" }), "lab.corp.example");
+    await user.click(within(sheet).getByRole("button", { name: "Add a network mapping" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(await within(region).findByRole("row", { name: /dvpg-lab-dev-vl999/ })).toHaveTextContent("By hand");
+  });
+
   it("lists vCenter objects with their tags, by name, kind or tag", async () => {
     const user = userEvent.setup();
     renderApp("/admin/infrastructure");

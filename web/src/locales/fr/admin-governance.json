@@ -488,7 +488,7 @@
       "mapped": "{{network}} associé",
       "removed": "La correspondance de {{network}} a été retirée",
       "byHandTitle": "Associer {{network}} à la main",
-      "new": "Associer un réseau",
+      "new": "Ajouter une correspondance de réseau",
       "sheetLead": "Une correspondance faite à la main l'emporte sur celle d'EfficientIP jusqu'à ce qu'elle soit retirée.",
       "save": "Enregistrer la correspondance",
       "network": "Réseau vCenter",
@@ -506,7 +506,7 @@
         "efficientip": "EfficientIP",
         "rvav": "Plages IP de rvav"
       },
-      "add": "Associer un réseau",
+      "add": "Ajouter une correspondance de réseau",
       "networkColumn": "Réseau",
       "via": "via {{gateway}}",
       "dns": "DNS",

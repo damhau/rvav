@@ -247,8 +247,8 @@ for (const theme of ["light", "dark"] as const) {
       await loaded(page);
       await page.getByRole("tab", { name: "Networks" }).click();
       await expect(page.getByRole("row", { name: /dvpg-app-dev-vl310/ })).toContainText("2001:db8:310::/64");
-      await page.getByRole("button", { name: "Map a network" }).click();
-      const sheet = page.getByRole("dialog", { name: "Map a network" });
+      await page.getByRole("button", { name: "Add a network mapping" }).click();
+      const sheet = page.getByRole("dialog", { name: "Add a network mapping" });
       await expect(sheet.getByRole("textbox", { name: "IPv6 subnet" })).toBeVisible();
       await scan(page, "a network's IPv6 subnet");
     });
@@ -757,10 +757,10 @@ test("a dialog with the keyboard", async ({ page }) => {
   await page.goto("/admin/infrastructure");
   await loaded(page);
   await page.getByRole("tab", { name: "Networks" }).click();
-  const open = page.getByRole("button", { name: "Map a network" });
+  const open = page.getByRole("button", { name: "Add a network mapping" });
   await open.focus();
   await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "Map a network" });
+  const dialog = page.getByRole("dialog", { name: "Add a network mapping" });
   await expect(dialog).toBeVisible();
   for (let i = 0; i < 15; i++) {
     await page.keyboard.press("Tab");

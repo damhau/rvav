@@ -122,7 +122,7 @@
     "nobody": "Nobody found.",
     "found_one": "{{count}} person found: press Enter to pick them.",
     "found_other": "{{count}} people found: use the arrow keys, then Enter.",
-    "anyone": "{{label}}: anyone",
+    "anyone": "Anyone",
     "clear": "Clear {{label}}",
     "foundList": "{{label}}: people found"
   },

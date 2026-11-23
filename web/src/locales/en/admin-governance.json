@@ -483,7 +483,7 @@
       "mapped": "{{network}} mapped",
       "removed": "The mapping of {{network}} removed",
       "byHandTitle": "Map {{network}} by hand",
-      "new": "Map a network",
+      "new": "Add a network mapping",
       "sheetLead": "A mapping by hand wins over EfficientIP's until it is removed.",
       "save": "Save mapping",
       "network": "vCenter network",
@@ -501,7 +501,7 @@
         "efficientip": "EfficientIP",
         "rvav": "rvav IP ranges"
       },
-      "add": "Map a network",
+      "add": "Add a network mapping",
       "networkColumn": "Network",
       "via": "via {{gateway}}",
       "dns": "DNS",

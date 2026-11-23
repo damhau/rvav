@@ -14,6 +14,7 @@ import { FilterBar, FilterEmpty, FilterSelect, useAddressFilters } from "@/compo
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Truncate } from "@/components/ui/truncate";
+import { WordBreaks } from "@/components/ui/word-breaks";
 import type { VmListItem, VmPowerState } from "@/lib/api/types";
 import { formatSize } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
@@ -182,12 +183,17 @@ function columnsFor(t: TFunction<"resources">, all: boolean, open: (v: VmListIte
     },
     {
       id: "placement",
-      className: "[overflow-wrap:anywhere]",
       header: t("columns.placement"),
       cell: (v) => (
         <>
-          <div className={mono}>{v.vm.vcenter}</div>
-          {v.vm.cluster && <div className="font-mono text-caption text-muted">{v.vm.cluster}</div>}
+          <div className={mono}>
+            <WordBreaks>{v.vm.vcenter}</WordBreaks>
+          </div>
+          {v.vm.cluster && (
+            <div className="font-mono text-caption text-muted">
+              <WordBreaks>{v.vm.cluster}</WordBreaks>
+            </div>
+          )}
         </>
       ),
     },
@@ -218,12 +224,13 @@ function columnsFor(t: TFunction<"resources">, all: boolean, open: (v: VmListIte
     },
     {
       id: "networks",
-      className: "[overflow-wrap:anywhere]",
       header: t("columns.networks"),
       cell: (v) => (
         <ul className={mono}>
           {[...new Set(v.vm.nics.map((n) => n.network))].map((n) => (
-            <li key={n}>{n}</li>
+            <li key={n}>
+              <WordBreaks>{n}</WordBreaks>
+            </li>
           ))}
         </ul>
       ),

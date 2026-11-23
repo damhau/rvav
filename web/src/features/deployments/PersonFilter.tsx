@@ -57,90 +57,92 @@ export function PersonFilter({
         : t("person.found", { count: people.length });
 
   return (
-    <div className={cn("relative w-52", className)}>
-      <label htmlFor={id} className="sr-only">
+    <span className="flex items-center gap-2">
+      <label htmlFor={id} className="text-secondary text-muted">
         {label}
       </label>
-      <Input
-        id={id}
-        role="combobox"
-        aria-expanded={expanded}
-        aria-controls={listId}
-        aria-autocomplete="list"
-        aria-activedescendant={expanded ? `${listId}-${Math.min(active, people.length - 1)}` : undefined}
-        aria-describedby={`${listId}-status`}
-        value={text ?? person?.name ?? (value && named.isError ? value : "")}
-        placeholder={value && !person && !named.isError ? t("common:loadingEllipsis") : t("person.anyone", { label })}
-        autoComplete="off"
-        className={cn(value && "pr-8")}
-        onChange={(e) => {
-          setText(e.target.value);
-          setOpen(true);
-          setActive(0);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-            e.preventDefault();
+      <div className={cn("relative w-48", className)}>
+        <Input
+          id={id}
+          role="combobox"
+          aria-expanded={expanded}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={expanded ? `${listId}-${Math.min(active, people.length - 1)}` : undefined}
+          aria-describedby={`${listId}-status`}
+          value={text ?? person?.name ?? (value && named.isError ? value : "")}
+          placeholder={value && !person && !named.isError ? t("common:loadingEllipsis") : t("person.anyone")}
+          autoComplete="off"
+          className={cn(value && "pr-8")}
+          onChange={(e) => {
+            setText(e.target.value);
             setOpen(true);
-            if (people.length > 0) {
-              setActive((a) =>
-                e.key === "ArrowDown" ? (a + 1) % people.length : (a - 1 + people.length) % people.length,
-              );
+            setActive(0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              setOpen(true);
+              if (people.length > 0) {
+                setActive((a) =>
+                  e.key === "ArrowDown" ? (a + 1) % people.length : (a - 1 + people.length) % people.length,
+                );
+              }
+            } else if (e.key === "Enter" && expanded) {
+              e.preventDefault();
+              const u = people[Math.min(active, people.length - 1)];
+              if (u) pick(u);
+            } else if (e.key === "Escape" && (open || text !== null)) {
+              e.preventDefault();
+              setOpen(false);
+              setText(null);
             }
-          } else if (e.key === "Enter" && expanded) {
-            e.preventDefault();
-            const u = people[Math.min(active, people.length - 1)];
-            if (u) pick(u);
-          } else if (e.key === "Escape" && (open || text !== null)) {
-            e.preventDefault();
+          }}
+          onBlur={() => {
             setOpen(false);
+            if (text?.trim() === "") {
+              onChange(undefined);
+            }
             setText(null);
-          }
-        }}
-        onBlur={() => {
-          setOpen(false);
-          if (text?.trim() === "") {
-            onChange(undefined);
-          }
-          setText(null);
-        }}
-      />
-      {value && text === null && (
-        <IconButton
-          label={t("person.clear", { label: label.toLowerCase() })}
-          className="absolute top-1/2 right-0.5 size-7 -translate-y-1/2"
-          onClick={() => onChange(undefined)}
-        >
-          <X />
-        </IconButton>
-      )}
-      <ul
-        id={listId}
-        role="listbox"
-        aria-label={t("person.foundList", { label })}
-        hidden={!expanded}
-        className="absolute top-full z-10 mt-1 flex max-h-64 w-72 flex-col overflow-y-auto rounded-md border border-line bg-surface shadow-pop"
-      >
-        {people.map((u, i) => (
-          // The search box takes the keys for the options (aria-activedescendant).
-          // eslint-disable-next-line jsx-a11y/click-events-have-key-events
-          <li
-            key={u.id}
-            id={`${listId}-${i}`}
-            role="option"
-            aria-selected={i === active}
-            tabIndex={-1}
-            className={cn("cursor-pointer px-3 py-1.5 text-body hover:bg-sunken", i === active && "bg-sunken")}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => pick(u)}
+          }}
+        />
+        {value && text === null && (
+          <IconButton
+            label={t("person.clear", { label: label.toLowerCase() })}
+            className="absolute top-1/2 right-0.5 size-7 -translate-y-1/2"
+            onClick={() => onChange(undefined)}
           >
-            {u.name} <span className="text-secondary text-faint">{u.email}</span>
-          </li>
-        ))}
-      </ul>
-      <p id={`${listId}-status`} role="status" className="sr-only">
-        {status}
-      </p>
-    </div>
+            <X />
+          </IconButton>
+        )}
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label={t("person.foundList", { label })}
+          hidden={!expanded}
+          className="absolute top-full z-10 mt-1 flex max-h-64 w-72 flex-col overflow-y-auto rounded-md border border-line bg-surface shadow-pop"
+        >
+          {people.map((u, i) => (
+            // The search box takes the keys for the options (aria-activedescendant).
+            // eslint-disable-next-line jsx-a11y/click-events-have-key-events
+            <li
+              key={u.id}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={i === active}
+              tabIndex={-1}
+              className={cn("cursor-pointer px-3 py-1.5 text-body hover:bg-sunken", i === active && "bg-sunken")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(u)}
+            >
+              {u.name} <span className="text-secondary text-faint">{u.email}</span>
+            </li>
+          ))}
+        </ul>
+        <p id={`${listId}-status`} role="status" className="sr-only">
+          {status}
+        </p>
+      </div>
+    </span>
   );
 }

@@ -47,6 +47,23 @@ describe("the sign-in page", () => {
     expect(screen.getByRole("form", { name: "Local administrator" })).toBeInTheDocument();
   });
 
+  it("says the provider's refusal above single sign-on, and a wrong password in the local form", async () => {
+    const user = userEvent.setup();
+    render(<SignInPage provider problem="refused" />);
+    const sso = screen.getByRole("button", { name: "Sign in with single sign-on" });
+    const local = screen.getByRole("form", { name: "Local administrator" });
+    const refused = screen.getByRole("alert");
+    expect(refused).toHaveTextContent(/^Signing in was refused/);
+    expect(refused.compareDocumentPosition(sso) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(local).queryByRole("alert")).toBeNull();
+
+    await user.type(within(local).getByLabelText("Username"), "admin");
+    await user.type(within(local).getByLabelText("Password"), "wrong");
+    await user.click(within(local).getByRole("button", { name: "Sign in as the local administrator" }));
+    expect(await within(local).findByRole("alert")).toHaveTextContent("The username or password is wrong.");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
   it("says the API isn't answering, not that no provider is set, and offers to try again", async () => {
     const reload = vi.fn();
     vi.stubGlobal("location", { ...globalThis.location, pathname: "/", search: "", assign, reload });

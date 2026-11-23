@@ -8,8 +8,8 @@ approvers. Administrators have [their own guide](admin.md).
 
 You sign in with your organisation's account. If you cancel there, or
 refuse to let rvav read your account, rvav's sign-in page says that
-signing in was refused: to try again, choose **Sign in with single
-sign-on**.
+signing in was refused, above **Sign in with single sign-on**: to try
+again, choose it.
 
 What you see depends on your **project roles**, which come from your
 groups:

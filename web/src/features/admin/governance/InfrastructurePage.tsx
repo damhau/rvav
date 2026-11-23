@@ -820,7 +820,7 @@ function MappingSheet({ mapping, onClose }: { mapping?: S["NetworkMapping"]; onC
       pending={save.isPending}
       title={mapping ? t("infra.networks.byHandTitle", { network: mapping.network }) : t("infra.networks.new")}
       description={t("infra.networks.sheetLead")}
-      submitLabel={save.isPending ? t("infra.saving") : t("infra.networks.save")}
+      submitLabel={save.isPending ? t("infra.saving") : t(mapping ? "infra.networks.save" : "infra.networks.new")}
       submitDisabled={!network}
       onSubmit={() => {
         setErrors({});

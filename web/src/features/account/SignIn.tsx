@@ -97,9 +97,10 @@ export function SignInPage({
   const providerDown = t("signIn.providerDown");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(() =>
+  const [providerError, setProviderError] = useState<string | null>(() =>
     problem === "provider" ? providerDown : problem === "refused" ? t("signIn.refused") : null,
   );
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const wait = useWait();
 
@@ -107,6 +108,7 @@ export function SignInPage({
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setProviderError(null);
     try {
       const { data, error: body, response } = await api.POST("/auth/sign-in", { body: { username, password } });
       if (data) {
@@ -145,12 +147,13 @@ export function SignInPage({
           <RotateCw aria-hidden /> {t("signIn.retry")}
         </Button>
       )}
+      {providerError && <Alert>{providerError}</Alert>}
       {provider && (
         <>
           <Button
             variant={problem === "api" ? "secondary" : "primary"}
             className="w-full"
-            onClick={() => void signInWithProvider(target()).catch(() => setError(providerDown))}
+            onClick={() => void signInWithProvider(target()).catch(() => setProviderError(providerDown))}
           >
             <LogIn aria-hidden /> {t("signIn.sso")}
           </Button>

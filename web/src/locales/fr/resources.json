@@ -42,7 +42,7 @@
     "environment": "Environnement",
     "allEnvironments": "Tous les environnements",
     "power": "Alimentation",
-    "anyPower": "Tout état d'alimentation",
+    "anyPower": "Tous les états d'alimentation",
     "allVcenters": "Tous les vCenter",
     "cluster": "Cluster",
     "allClusters": "Tous les clusters",

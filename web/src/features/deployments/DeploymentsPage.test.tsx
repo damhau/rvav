@@ -115,7 +115,10 @@ describe("the deployments list against the mock API", () => {
     const table = await screen.findByRole("table", { name: "Deployments" }, { timeout: 5000 });
     await within(table).findByText("web-prd-edge");
 
-    await user.type(screen.getByRole("combobox", { name: "Owner" }), "thom");
+    const owner = screen.getByRole("combobox", { name: "Owner" });
+    expect(screen.getByText("Owner", { selector: "label" })).not.toHaveClass("sr-only");
+    expect(owner).toHaveAttribute("placeholder", "Anyone");
+    await user.type(owner, "thom");
     expect(await screen.findByRole("option", { name: /Thomas Nguyen/ })).toBeInTheDocument();
     await user.keyboard("{Enter}");
     await waitFor(() => expect(router.state.location.search).toEqual({ owner: "usr_tnguyen" }));

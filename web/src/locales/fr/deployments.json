@@ -130,7 +130,7 @@
     "found_one": "{{count}} personne trouvée\u00a0: appuyez sur Entrée pour la choisir.",
     "found_many": "{{count}} personnes trouvées\u00a0: utilisez les flèches, puis Entrée.",
     "found_other": "{{count}} personnes trouvées\u00a0: utilisez les flèches, puis Entrée.",
-    "anyone": "{{label}}\u00a0: n'importe qui",
+    "anyone": "N'importe qui",
     "clear": "Effacer le filtre {{label}}",
     "foundList": "{{label}}\u00a0: personnes trouvées"
   },
