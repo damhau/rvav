@@ -31,6 +31,7 @@ blueprint:
   kind: vm
   template: tpl-rhel9.4-2026.10
   guest: { os_family: linux, domain: corp.example }
+  bindings: { vcpu: "2", memory_gb: "4" }
 `;
 
 // Accessible names put a space before a visually hidden span: "Server , step 1 of 3".

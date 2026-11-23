@@ -39,6 +39,7 @@ blueprint:
   kind: vm
   template: tpl-rhel9.4-2026.10
   guest: { os_family: linux, domain: corp.example }
+  bindings: { vcpu: "2", memory_gb: "4" }
 `;
 
 const spoken = (shown: string, hidden: string) => new RegExp(`^${shown} ?, ${hidden}$`);

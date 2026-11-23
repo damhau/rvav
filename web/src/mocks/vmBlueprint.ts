@@ -1,7 +1,8 @@
 // A VM blueprint's checks on save, as the server's checkVMBlueprint
 // (internal/core/blueprint_check.go): its CEL compiled against the variables
 // a request has, its keys, counts, parts, groups and what it is built after.
-// The checks only publish makes (a template, an OS family) are left out.
+// Of the checks only publish makes, the VMs' CPU and memory are here
+// (vmSizeProblems); a template and an OS family are left out.
 
 import type { components } from "@/lib/api/schema";
 import { buildVariables, celRoots, formVariables } from "@/lib/celReads";
@@ -260,4 +261,38 @@ function dependsCycle(comps: Rec[]): string[] | null {
     if (found) return found;
   }
   return null;
+}
+
+const sizeBindings = [
+  {
+    key: "vcpu",
+    missing:
+      "Give the VMs their number of vCPUs: a number, or CEL over the inputs, for example sizes[inputs.size].vcpu.",
+    small: "A VM has at least 1 vCPU: give a whole number, or CEL over the inputs.",
+  },
+  {
+    key: "memory_gb",
+    missing:
+      "Give the VMs their memory in GB: a number, or CEL over the inputs, for example sizes[inputs.size].memory_gb.",
+    small: "A VM has at least 1 GB of memory: give a whole number, or CEL over the inputs.",
+  },
+];
+
+/** As the server's checkSize, to publish: each VM's CPU and memory are bound, a plain number to 1 or more. */
+export function vmSizeProblems(bp: Rec, ptr: string): FieldError[] {
+  if (text(bp.kind) !== "vm") return [];
+  const comps = list(bp.components).map(rec);
+  const owners = comps.length
+    ? comps.map((c, i) => ({ at: `${ptr}/components/${i}`, bindings: { ...rec(bp.bindings), ...rec(c.bindings) } }))
+    : [{ at: ptr, bindings: rec(bp.bindings) }];
+  const errs: FieldError[] = [];
+  for (const { at, bindings } of owners)
+    for (const b of sizeBindings) {
+      const expr = text(bindings[b.key]).trim();
+      const field = `${at}/bindings/${b.key}`;
+      if (!expr) errs.push({ field, code: "required", message: b.missing });
+      else if (/^-?\d+(\.\d+)?$/.test(expr) && (!Number.isInteger(Number(expr)) || Number(expr) < 1))
+        errs.push({ field, code: "out_of_range", message: b.small });
+    }
+  return errs;
 }

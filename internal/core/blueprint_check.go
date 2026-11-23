@@ -158,6 +158,9 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 			}
 			add(at+"/template", "required", "Name "+what+", or take it from an input (bindings.template, for example inputs.template with rvav.templates).")
 		}
+		if publish {
+			errs = append(errs, checkSize(at+"/bindings", c.Bindings)...)
+		}
 		if c.LinkedClone != nil && *c.LinkedClone && c.Library != "" {
 			add(at+"/linked_clone", "invalid", "An item of content library "+c.Library+" is deployed, not cloned: a linked clone needs a vCenter template.")
 		}
@@ -165,6 +168,33 @@ func checkVMBlueprint(b blueprint.Blueprint, ptr string, publish bool) []api.Fie
 	}
 	errs = append(errs, checkReferences(b, ptr)...)
 	errs = append(errs, checkResources(b, ptr)...)
+	return errs
+}
+
+// checkSize checks, to publish, that a VM's CPU and memory can be worked
+// out: each is bound, and a binding that reads nothing is a whole number
+// of one or more. What reads inputs is worked out at request time.
+func checkSize(at string, bindings map[string]string) []api.FieldError {
+	var errs []api.FieldError
+	for _, k := range []struct{ key, missing, small string }{
+		{"vcpu", "Give the VMs their number of vCPUs: a number, or CEL over the inputs, for example sizes[inputs.size].vcpu.",
+			"A VM has at least 1 vCPU: give a whole number, or CEL over the inputs."},
+		{"memory_gb", "Give the VMs their memory in GB: a number, or CEL over the inputs, for example sizes[inputs.size].memory_gb.",
+			"A VM has at least 1 GB of memory: give a whole number, or CEL over the inputs."},
+	} {
+		expr := strings.TrimSpace(bindings[k.key])
+		if expr == "" {
+			errs = append(errs, fieldErr(at+"/"+k.key, "required", k.missing))
+			continue
+		}
+		if rd, err := policy.ReadsOf(expr); err != nil || len(rd.Idents) > 0 || policy.Check(expr) != nil {
+			continue
+		}
+		v, err := policy.Eval(expr, policy.Vars{})
+		if n, ok := wholeNumber(v); err != nil || !ok || n < 1 {
+			errs = append(errs, fieldErr(at+"/"+k.key, "out_of_range", k.small))
+		}
+	}
 	return errs
 }
 

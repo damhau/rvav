@@ -15,6 +15,10 @@ func TestCheckVMBlueprint(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Sized, as every VM item is to be published: TestCheckSize checks sizes.
+		if b.Bindings == nil {
+			b.Bindings = map[string]string{"vcpu": "2", "memory_gb": "4"}
+		}
 		var out []string
 		for _, e := range checkVMBlueprint(b, "/blueprint", publish) {
 			out = append(out, e.Field+" "+*e.Code)
@@ -120,5 +124,42 @@ func TestCheckVMBlueprint(t *testing.T) {
 		"components": [{"key": "web"}, {"key": "db", "template": "rhel9", "linked_clone": true}, {"key": "app", "linked_clone": false}]}`,
 		true); !slices.Equal(got, []string{"/blueprint/components/0/linked_clone invalid"}) {
 		t.Fatalf("linked clones of a library item = %v", got)
+	}
+}
+
+// TestCheckSize: publishing needs each VM's CPU and memory, from the
+// blueprint or its component, a plain number of them 1 or more (#207).
+func TestCheckSize(t *testing.T) {
+	check := func(raw string) []string {
+		t.Helper()
+		b, err := blueprint.Parse(json.RawMessage(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := []string{}
+		for _, e := range checkVMBlueprint(b, "/blueprint", true) {
+			out = append(out, e.Field+" "+*e.Code)
+		}
+		slices.Sort(out)
+		return out
+	}
+	for _, c := range []struct {
+		raw  string
+		want []string
+	}{
+		{`{"kind": "vm", "template": "t", "guest": {"os_family": "linux"}, "bindings": {"vcpu": "2", "memory_gb": "sizes[inputs.size].memory_gb"}}`, []string{}},
+		{`{"kind": "vm", "template": "t", "guest": {"os_family": "linux"}}`, []string{"/blueprint/bindings/memory_gb required", "/blueprint/bindings/vcpu required"}},
+		{`{"kind": "vm", "template": "t", "guest": {"os_family": "linux"}, "bindings": {"vcpu": "0", "memory_gb": "1.5"}}`,
+			[]string{"/blueprint/bindings/memory_gb out_of_range", "/blueprint/bindings/vcpu out_of_range"}},
+		{`{"kind": "vm", "template": "t", "guest": {"os_family": "linux"}, "bindings": {"vcpu": "'4'", "memory_gb": "4 / 0"}}`,
+			[]string{"/blueprint/bindings/memory_gb out_of_range", "/blueprint/bindings/vcpu out_of_range"}},
+		{`{"kind": "vm", "template": "t", "guest": {"os_family": "linux"}, "bindings": {"vcpu": "2", "memory_gb": "inputs.("}}`, []string{"/blueprint/bindings/memory_gb invalid"}},
+		{`{"kind": "vm", "template": "t", "guest": {"os_family": "linux"}, "bindings": {"vcpu": "2"},
+		  "components": [{"key": "web", "bindings": {"memory_gb": "8"}}, {"key": "db", "bindings": {"vcpu": "0"}}]}`,
+			[]string{"/blueprint/components/1/bindings/memory_gb required", "/blueprint/components/1/bindings/vcpu out_of_range"}},
+	} {
+		if got := check(c.raw); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.raw, got, c.want)
+		}
 	}
 }

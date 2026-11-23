@@ -29,6 +29,7 @@ const built = {
   kind: "vm",
   template: "tpl-rhel9.4-2026.10",
   guest: { os_family: "linux", domain: "corp.example" },
+  bindings: { vcpu: "2", memory_gb: "4" },
   components: [
     { key: "web", bindings: { network: '"dvpg-web"' } },
     {
@@ -58,6 +59,9 @@ blueprint:
   guest:
     os_family: linux
     domain: corp.example
+  bindings:
+    vcpu: "2"
+    memory_gb: "4"
   components:
     - key: web
       bindings:

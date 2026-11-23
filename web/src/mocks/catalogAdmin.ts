@@ -10,7 +10,7 @@ import { ownSources } from "@/forms/useFieldValues";
 import { eachStep, parseUrl, readComposite, secretInMessages, variablesRead } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
-import { vmBlueprintProblems } from "./vmBlueprint";
+import { vmBlueprintProblems, vmSizeProblems } from "./vmBlueprint";
 import { constraintWarnings } from "./constraints";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { workflowRegistrations } from "./extensibility";
@@ -283,7 +283,12 @@ function blueprintFor(item: StoredItem): Record<string, unknown> {
   if (item.type === "composite") return { kind: "composite", rollback_on_failure: true, steps: [] };
   if (item.type === "workflow") return { kind: "workflow", workflow: "" };
   return item.type === "vm_blueprint"
-    ? { kind: "vm", template: "tpl-rhel9.4-2026.10", guest: { os_family: "linux", domain: "corp.example" } }
+    ? {
+        kind: "vm",
+        template: "tpl-rhel9.4-2026.10",
+        guest: { os_family: "linux", domain: "corp.example" },
+        bindings: { vcpu: "2", memory_gb: "4" },
+      }
     : { kind: "awx", awx: { title: item.name, job_template: item.source.awx_template_name ?? item.slug } };
 }
 
@@ -1443,6 +1448,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         ...libraryRefProblems(db, v.definition.ui_schema, "/definition", true),
         ...vmStepProblems(db, v.definition.blueprint, "/definition/blueprint"),
         ...variableProblems(db, v.definition.blueprint, "/definition/blueprint"),
+        ...vmSizeProblems(v.definition.blueprint, "/definition/blueprint"),
       ];
       if (incomplete.length) return problem(422, "Some inputs need attention", incomplete);
       if (!body.keep_published)

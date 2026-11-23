@@ -866,8 +866,12 @@ func starterDefinition(itemType, name string) api.CatalogVersionDefinition {
 	d.UiSchema.Layout.Sections = []api.UiSection{{Key: "main", Title: name, Fields: []string{"name"}}}
 	switch itemType {
 	case "vm_blueprint":
+		// A fixed size rather than a size input: a new install offers no
+		// size presets, so rvav.sizes would leave the first request nothing
+		// to choose.
 		d.Blueprint = map[string]any{"kind": blueprint.KindVM, "template": "", "naming": "",
-			"guest": map[string]any{"os_family": "linux", "domain": ""}}
+			"guest":    map[string]any{"os_family": "linux", "domain": ""},
+			"bindings": map[string]any{"vcpu": "2", "memory_gb": "4"}}
 	case "workflow":
 		d.Blueprint = map[string]any{"kind": blueprint.KindWorkflow, "workflow": ""}
 	case "composite":

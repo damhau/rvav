@@ -27,6 +27,7 @@ blueprint:
   kind: vm
   template: tpl-rhel9.4-2026.10
   guest: { os_family: linux, domain: corp.example }
+  bindings: { vcpu: "2", memory_gb: "4" }
 `;
 
 const check = 'params.name.startsWith("app-") ? {} : {"name": "Start the host name with app-."}';

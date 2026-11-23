@@ -1615,6 +1615,14 @@ An item is a form and a blueprint
 - **a composite:** VMs, jobs, custom workflows, custom resources, REST calls and waits for a person, a time or a condition in steps;
 - **a custom workflow**, run by your own worker.
 
+**New item** makes the item's first draft: a form with one **Name** input,
+and a blueprint for its kind. A VM blueprint's VM has 2 vCPUs and 4 GB of
+memory (`bindings.vcpu`, `bindings.memory_gb`): change them on its
+**Definition** tab, or bind them to a size input
+([VM blueprints](../service-catalog.md#vm-blueprints)). To publish a VM
+item, give it its template, and give each VM its CPU and memory: rvav
+refuses one without, or with a plain number below 1, at that binding.
+
 An item's page has its main action in its header: **Publish** the
 draft, or **New draft** from the published version. Publishing waits
 while the form designer saves, or while YAML you typed isn't saved, and
