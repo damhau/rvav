@@ -1126,11 +1126,13 @@ In the mocks, `web-dev-legacy` has more memory and a disk added in vCenter.
 
 **Reports** (`features/reports/ReportsPage.tsx`, [reports.md](reports.md))
 shows how the platform is used, for the projects the user sees.
-- **Filters:** one row above everything: period (7 or 30 days, 13 weeks,
-  12 months), by day, week or month, project and environment. The range
-  starts at the first day of a period (a Monday, the 1st), so the first
-  column counts a whole one. While new figures load, the old ones stay,
-  dimmed.
+- **Filters:** a `FilterBar` above everything, kept in the address:
+  period (`period`: 7 or 30 days, 13 weeks, 12 months), interval (`by`:
+  day, week or month; a new period starts on its own), **All projects**
+  (`project`) and **All environments** (`env`). Left out, each is the
+  default: the last 30 days, by day, everywhere. The range starts at the
+  first day of a period (a Monday, the 1st), so the first column counts a
+  whole one. While new figures load, the old ones stay, dimmed.
 - **Stat tiles:** requests, success rate, provisioning time (median and
   90%), approval lead time, approvals waiting.
 - **Requests chart:** an SVG column chart, stacked by how requests ended.
@@ -1242,8 +1244,8 @@ The notification centre ([ADR-0023](adr/0023-notifications.md)) is in
   redirects to the inbox with that level open (`/approvals?id=`). Links
   in emails and cards keep working.
 - **`/notifications`** has two tabs:
-  - **Notifications:** everything, or unread only, with load more and
-    mark read.
+  - **Notifications:** everything, or **Unread only** (a `FilterCheck`
+    kept in the address as `unread`), with load more and mark read.
   - **Preferences:** a grid of kinds × channels. In the app is always on.
     A channel that can't reach the person is disabled, with the reason
     shown above the grid. The language of what is sent, and **Send me a

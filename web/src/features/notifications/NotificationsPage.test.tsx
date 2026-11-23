@@ -87,3 +87,28 @@ describe("notification preferences", () => {
     expect(row).not.toHaveTextContent("default");
   });
 });
+
+describe("the notification list", () => {
+  it("keeps Unread only in the address, and offers to clear it once nothing is unread", async () => {
+    const user = userEvent.setup();
+    const { router } = renderApp("/notifications?unread=true");
+    const bar = await screen.findByRole("group", { name: "Filters" }, { timeout: 5000 });
+    expect(within(bar).getByRole("checkbox", { name: "Unread only" })).toBeChecked();
+    const list = await screen.findByRole("list", { name: "Notifications" });
+    const unread = within(list).getAllByRole("listitem").length;
+
+    await user.click(screen.getByRole("button", { name: "Mark all read" }));
+    expect(await screen.findByText("Nothing unread")).toBeInTheDocument();
+    const [, clear] = screen.getAllByRole("button", { name: "Clear filters" });
+    await user.click(clear!);
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
+    expect(within(bar).getByRole("checkbox", { name: "Unread only" })).not.toBeChecked();
+    const all = await screen.findByRole("list", { name: "Notifications" });
+    await waitFor(() => expect(within(all).getAllByRole("listitem").length).toBeGreaterThan(unread));
+
+    await user.click(within(bar).getByRole("checkbox", { name: "Unread only" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ unread: true }));
+    await user.click(screen.getByRole("tab", { name: "Preferences" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ unread: true, tab: "preferences" }));
+  });
+});

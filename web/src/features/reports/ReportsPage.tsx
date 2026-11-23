@@ -17,7 +17,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/input";
+import { FilterBar, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { Select } from "@/components/ui/select";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -33,9 +33,22 @@ type S = components["schemas"];
 type Interval = S["Report"]["interval"];
 type Section = "requests" | "approvals" | "quota" | "leases";
 
-const ranges: { value: "7" | "30" | "13w" | "12m"; periods: number; interval: Interval }[] = [
-  { value: "7", periods: 7, interval: "day" },
-  { value: "30", periods: 30, interval: "day" },
+export const reportPeriods = ["7d", "30d", "13w", "12m"] as const;
+export const reportIntervals = ["day", "week", "month"] as const;
+
+/** The report's filters in the address; each left out is its default: 30 days, by day, every project and environment. */
+export interface ReportsSearch {
+  period?: (typeof reportPeriods)[number];
+  by?: Interval;
+  project?: string;
+  env?: string;
+}
+
+const filterKeys = ["period", "by", "project", "env"] as const;
+
+const ranges: { value: (typeof reportPeriods)[number]; periods: number; interval: Interval }[] = [
+  { value: "7d", periods: 7, interval: "day" },
+  { value: "30d", periods: 30, interval: "day" },
   { value: "13w", periods: 13, interval: "week" },
   { value: "12m", periods: 12, interval: "month" },
 ];
@@ -446,35 +459,33 @@ const leaseColumns = (t: TFunction<"reports">, envName: (key: string) => string)
 
 const spanDays: Record<Interval, number> = { day: 1, week: 7, month: 30.4 };
 
-export function ReportsPage() {
+export function ReportsPage({ search }: { search: ReportsSearch }) {
   const { t } = useTranslation("reports");
   const { me } = useCurrentProject();
-  const [range, setRange] = useState("30");
-  const preset = ranges.find((r) => r.value === range)!;
-  const [interval, setInterval] = useState<Interval>(preset.interval);
-  const [project, setProject] = useState("any");
-  const [environment, setEnvironment] = useState("any");
+  const filters = useAddressFilters(search, filterKeys);
+  const preset = ranges.find((r) => r.value === (search.period ?? "30d"))!;
+  const interval = search.by ?? preset.interval;
   const environments = useQuery(q.environments());
   const envName = useEnvName();
   const today = new Date();
-  const filters = {
+  const scope = {
     // Whole periods of the chosen size, as many as the preset's span.
     from: isoDay(
       rangeStart(today, Math.ceil((preset.periods * spanDays[preset.interval]) / spanDays[interval]), interval),
     ),
     to: isoDay(today),
-    project_id: project === "any" ? undefined : project,
-    environment: environment === "any" ? undefined : environment,
+    project_id: search.project,
+    environment: search.env,
   };
   const report = useQuery({
-    queryKey: ["reports", filters, interval],
-    queryFn: ({ signal }) => call(api.GET("/reports", { params: { query: { ...filters, interval } }, signal })),
+    queryKey: ["reports", scope, interval],
+    queryFn: ({ signal }) => call(api.GET("/reports", { params: { query: { ...scope, interval } }, signal })),
     placeholderData: keepPreviousData,
   });
   const exportCsv = useMutation({
     mutationFn: async (section: Section) => {
       const text = await call(
-        api.GET("/reports/export", { params: { query: { ...filters, section } }, parseAs: "text" }),
+        api.GET("/reports/export", { params: { query: { ...scope, section } }, parseAs: "text" }),
       );
       const url = URL.createObjectURL(new Blob([String(text)], { type: "text/csv" }));
       Object.assign(document.createElement("a"), { href: url, download: `rvav-${section}.csv` }).click();
@@ -492,53 +503,39 @@ export function ReportsPage() {
   return (
     <Page>
       <PageHeader title={t("page.title")} meta={t(seesAll ? "page.metaAll" : "page.metaMember")} />
-      <div className="flex flex-wrap items-end gap-2" role="group" aria-label={t("page.filters")}>
-        <Field label={t("page.period")} htmlFor="rp-range" className="w-40">
-          <Select
-            id="rp-range"
-            value={range}
-            onChange={(v) => {
-              setRange(v);
-              setInterval(ranges.find((x) => x.value === v)!.interval);
-            }}
-            options={ranges.map((x) => ({ value: x.value, label: t(`ranges.${x.value}`) }))}
-          />
-        </Field>
-        <Field label={t("page.by")} htmlFor="rp-interval" className="w-28">
-          <Select
-            id="rp-interval"
-            value={interval}
-            onChange={(v) => setInterval(v as Interval)}
-            options={[
-              { value: "day", label: t("page.day") },
-              { value: "week", label: t("page.week") },
-              { value: "month", label: t("page.month") },
-            ]}
-          />
-        </Field>
-        <Field label={t("page.project")} htmlFor="rp-project" className="w-48">
-          <Select
-            id="rp-project"
-            value={project}
-            onChange={setProject}
-            options={[
-              { value: "any", label: t("page.all") },
-              ...me.projects.map((p) => ({ value: p.project.id, label: p.project.name })),
-            ]}
-          />
-        </Field>
-        <Field label={t("page.environment")} htmlFor="rp-env" className="w-36">
-          <Select
-            id="rp-env"
-            value={environment}
-            onChange={setEnvironment}
-            options={[
-              { value: "any", label: t("page.all") },
-              ...(environments.data?.items ?? []).map((e) => ({ value: e.key, label: e.name })),
-            ]}
-          />
-        </Field>
-      </div>
+      <FilterBar filters={filters} label={t("page.filters")}>
+        <Select
+          aria-label={t("page.period")}
+          value={preset.value}
+          onChange={(v) =>
+            filters.set({ period: v === "30d" ? undefined : (v as ReportsSearch["period"]), by: undefined })
+          }
+          options={ranges.map((x) => ({ value: x.value, label: t(`ranges.${x.value}`) }))}
+          className="w-44"
+        />
+        <Select
+          aria-label={t("page.interval")}
+          value={interval}
+          onChange={(v) => filters.set({ by: v === preset.interval ? undefined : (v as Interval) })}
+          options={reportIntervals.map((x) => ({ value: x, label: t(`page.by.${x}`) }))}
+          className="w-36"
+        />
+        <FilterSelect
+          name="project"
+          label={t("page.project")}
+          any={t("page.allProjects")}
+          options={me.projects.map((p) => ({ value: p.project.id, label: p.project.name }))}
+          className="w-48"
+        />
+        <FilterSelect
+          name="env"
+          label={t("page.environment")}
+          any={t("page.allEnvironments")}
+          loading={environments.isPending}
+          options={(environments.data?.items ?? []).map((e) => ({ value: e.key, label: e.name }))}
+          className="w-48"
+        />
+      </FilterBar>
       {report.isPending && <SkeletonRows rows={6} cols={4} />}
       {report.isError && <ErrorState error={report.error} onRetry={() => void report.refetch()} />}
       {r && (

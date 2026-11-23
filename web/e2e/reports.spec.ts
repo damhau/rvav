@@ -33,7 +33,8 @@ test("read the reports, filter them and export a section", async ({ page }) => {
 
   // A year, by month.
   await choose(page, "Period", "Last 12 months");
-  await expect(page.getByRole("combobox", { name: "By" })).toHaveText(/Month/);
+  await expect(page.getByRole("combobox", { name: "Interval" })).toHaveText(/By month/);
+  await expect(page).toHaveURL(/period=12m/);
   await expect(page.getByRole("heading", { name: "Requests by month" })).toBeVisible();
   // Twelve whole months, the first from its 1st: twelve rows and the header.
   await expect(table.getByRole("row")).toHaveCount(13);

@@ -1,7 +1,7 @@
 {
   "ranges": {
-    "7": "Last 7 days",
-    "30": "Last 30 days",
+    "7d": "Last 7 days",
+    "30d": "Last 30 days",
     "13w": "Last 13 weeks",
     "12m": "Last 12 months"
   },
@@ -49,13 +49,16 @@
     "exportFailed": "The export failed",
     "filters": "Report filters",
     "period": "Period",
-    "by": "By",
-    "day": "Day",
-    "week": "Week",
-    "month": "Month",
+    "interval": "Interval",
+    "by": {
+      "day": "By day",
+      "week": "By week",
+      "month": "By month"
+    },
     "project": "Project",
     "environment": "Environment",
-    "all": "All"
+    "allProjects": "All projects",
+    "allEnvironments": "All environments"
   },
   "stats": {
     "requests": "Requests",

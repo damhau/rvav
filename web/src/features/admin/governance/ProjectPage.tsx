@@ -129,25 +129,30 @@ function PropertiesEditor({
   );
 }
 
+const detailsOf = (p: S["AdminProject"]) => ({
+  name: p.name,
+  description: p.description ?? "",
+  cost_center: p.cost_center ?? "",
+  environments: p.environments,
+});
+
+const propertiesOf = (p: S["AdminProject"]): Property[] =>
+  Object.entries(p.properties).map(([key, value]) => ({ key, value }));
+
 function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
   const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const envs = useQuery(q.environments());
   const [archiving, setArchiving] = useState(false);
-  const [f, setF] = useState({
-    name: project.name,
-    description: project.description ?? "",
-    cost_center: project.cost_center ?? "",
-    environments: project.environments,
-  });
-  const [props, setProps] = useState<Property[]>(() =>
-    Object.entries(project.properties).map(([key, value]) => ({ key, value })),
-  );
+  const [f, setF] = useState(() => detailsOf(project));
+  const [props, setProps] = useState<Property[]>(() => propertiesOf(project));
   const [local, setLocal] = useState<Record<number, string>>({});
   const save = useMutation({
     mutationFn: (body: S["AdminProjectUpdate"]) =>
       call(api.PATCH("/admin/projects/{projectId}", { params: { path: { projectId: project.id } }, body })),
     onSuccess: (p) => {
+      setF(detailsOf(p));
+      setProps(propertiesOf(p));
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: ["me"] });
       toast.success(t("project.details.saved", { name: p.name }));
@@ -1368,18 +1373,7 @@ export function ProjectPage({ projectId, tab = "members" }: { projectId: string;
           </TabsContent>
         )}
         <TabsContent value="details" className="pt-4">
-          <Details
-            key={[
-              p.name,
-              p.description,
-              p.cost_center,
-              p.environments.join(),
-              p.archived,
-              JSON.stringify(p.properties),
-            ].join("|")}
-            project={p}
-            isAdmin={can(me, "project.update", p.id)}
-          />
+          <Details key={p.id} project={p} isAdmin={can(me, "project.update", p.id)} />
         </TabsContent>
       </Tabs>
     </Page>

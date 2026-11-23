@@ -1,7 +1,7 @@
 {
   "ranges": {
-    "7": "7 derniers jours",
-    "30": "30 derniers jours",
+    "7d": "7 derniers jours",
+    "30d": "30 derniers jours",
     "13w": "13 dernières semaines",
     "12m": "12 derniers mois"
   },
@@ -52,13 +52,16 @@
     "exportFailed": "L'export a échoué",
     "filters": "Filtres du rapport",
     "period": "Période",
-    "by": "Par",
-    "day": "Jour",
-    "week": "Semaine",
-    "month": "Mois",
+    "interval": "Intervalle",
+    "by": {
+      "day": "Par jour",
+      "week": "Par semaine",
+      "month": "Par mois"
+    },
     "project": "Projet",
     "environment": "Environnement",
-    "all": "Tous"
+    "allProjects": "Tous les projets",
+    "allEnvironments": "Tous les environnements"
   },
   "stats": {
     "requests": "Demandes",

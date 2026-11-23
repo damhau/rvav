@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSaveFocus } from "@/components/ui/opener";
 import { Checkbox } from "@/components/ui/checkbox";
+import { FilterBar, FilterCheck, FilterEmpty, useAddressFilters } from "@/components/ui/filter-bar";
 import { Field, FieldNote } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -61,9 +62,16 @@ function problemsOf(e: unknown, sent: Rule[]): Record<string, string> {
   return out;
 }
 
-function List() {
+/** The notifications' address: the tab, and the filter the list reads. */
+export interface NotificationsSearch {
+  tab?: NotificationsTab;
+  unread?: boolean;
+}
+
+function List({ search }: { search: NotificationsSearch }) {
   const { t } = useTranslation("notifications");
-  const [unread, setUnread] = useState(false);
+  const filters = useAddressFilters(search, ["unread"]);
+  const unread = search.unread === true;
   const list = useInfiniteQuery(q.notifications(unread));
   const markRead = useMarkRead();
   const items = list.data?.pages.flatMap((p) => p.items) ?? [];
@@ -73,22 +81,25 @@ function List() {
       title={count > 0 ? t("unread", { count }) : t("allRead")}
       flush
       actions={
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <label htmlFor="unread-only" className="flex items-center gap-1.5 text-secondary">
-            <Checkbox id="unread-only" checked={unread} onChange={setUnread} />
-            {t("unreadOnly")}
-          </label>
-          <Button size="sm" disabled={count === 0 || markRead.isPending} onClick={() => markRead.mutate({ all: true })}>
-            {t("markAllRead")}
-          </Button>
-        </div>
+        <Button size="sm" disabled={count === 0 || markRead.isPending} onClick={() => markRead.mutate({ all: true })}>
+          {t("markAllRead")}
+        </Button>
       }
     >
+      <div className="border-b border-line px-4 py-2.5">
+        <FilterBar filters={filters}>
+          <FilterCheck name="unread" label={t("unreadOnly")} />
+        </FilterBar>
+      </div>
       {list.isPending && <SkeletonRows rows={4} cols={2} />}
       {list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
-      {list.data && items.length === 0 && (
-        <EmptyState title={t(unread ? "nothingUnread" : "none")} body={t("noneBody")} />
-      )}
+      {list.data &&
+        items.length === 0 &&
+        (unread ? (
+          <FilterEmpty filters={filters} title={t("nothingUnread")} body={t("nothingUnreadBody")} />
+        ) : (
+          <EmptyState title={t("none")} body={t("noneBody")} />
+        ))}
       {items.length > 0 && (
         <ul aria-label={t("title")} className="divide-y divide-line">
           {items.map((n) => (
@@ -321,9 +332,10 @@ function Preferences() {
 export const notificationsTabs = ["all", "preferences"] as const;
 export type NotificationsTab = (typeof notificationsTabs)[number];
 
-export function NotificationsPage({ tab = "all" }: { tab?: NotificationsTab }) {
+export function NotificationsPage({ search }: { search: NotificationsSearch }) {
+  const tab = search.tab ?? "all";
   const { t } = useTranslation("notifications");
-  const navigate = useNavigate();
+  const navigate = useNavigate({ from: "/notifications" });
   return (
     <Page>
       <PageHeader title={t("title")} description={t("lead")} />
@@ -331,8 +343,10 @@ export function NotificationsPage({ tab = "all" }: { tab?: NotificationsTab }) {
         value={tab}
         onValueChange={(next) =>
           void navigate({
-            to: "/notifications",
-            search: { tab: next === "all" ? undefined : (next as NotificationsTab) },
+            search: (s) => ({
+              ...s,
+              tab: next === "all" ? undefined : (next as NotificationsTab),
+            }),
             replace: true,
           })
         }
@@ -342,7 +356,7 @@ export function NotificationsPage({ tab = "all" }: { tab?: NotificationsTab }) {
           <TabsTrigger value="preferences">{t("tabs.preferences")}</TabsTrigger>
         </TabsList>
         <TabsContent value="all" className="pt-4">
-          <List />
+          <List search={search} />
         </TabsContent>
         <TabsContent value="preferences" className="pt-4">
           <Preferences />

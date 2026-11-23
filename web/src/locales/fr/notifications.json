@@ -13,6 +13,7 @@
   "unreadOnly": "Non lues seulement",
   "markAllRead": "Tout marquer comme lu",
   "nothingUnread": "Rien de non lu",
+  "nothingUnreadBody": "Toutes les notifications sont lues.",
   "none": "Aucune notification pour l'instant",
   "noneBody": "Les demandes, les approbations et les baux qui vous concernent s'affichent ici.",
   "markReadOf": "Marquer comme lue\u00a0: {{title}}",

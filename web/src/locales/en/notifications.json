@@ -12,6 +12,7 @@
   "unreadOnly": "Unread only",
   "markAllRead": "Mark all read",
   "nothingUnread": "Nothing unread",
+  "nothingUnreadBody": "Every notification is read.",
   "none": "No notification yet",
   "noneBody": "Requests, approvals and leases that concern you show here.",
   "markReadOf": "Mark read: {{title}}",

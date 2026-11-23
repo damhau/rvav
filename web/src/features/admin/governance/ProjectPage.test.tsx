@@ -291,6 +291,21 @@ describe("a project's placement and quotas", () => {
     expect(screen.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("keeps the focus on Save details once a save goes through, with what was saved", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=details");
+    const details = await screen.findByRole("region", { name: "Details" });
+    const description = within(details).getByRole("textbox", { name: "Description" });
+    await user.clear(description);
+    await user.paste("Checkout and storefront");
+    within(details).getByRole("button", { name: "Save details" }).focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("Web Platform saved")).toBeInTheDocument();
+    await waitFor(() => expect(within(details).getByRole("button", { name: "Save details" })).toHaveFocus());
+    expect(within(details).getByRole("textbox", { name: "Description" })).toHaveValue("Checkout and storefront");
+    expect(db.projects.find((p) => p.id === "prj_web")?.description).toBe("Checkout and storefront");
+  }, 15_000);
+
   it("adds a custom property, says a bad key by its field, and removes one", { timeout: 15_000 }, async () => {
     const user = userEvent.setup();
     renderApp("/admin/projects/prj_web?tab=details");

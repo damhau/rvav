@@ -2,15 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   NotificationsPage,
   notificationsTabs,
-  type NotificationsTab,
+  type NotificationsSearch,
 } from "@/features/notifications/NotificationsPage";
-import { optEnum } from "./-search";
+import { optBool, optEnum } from "./-search";
 
 export const Route = createFileRoute("/notifications")({
-  validateSearch: (s: Record<string, unknown>): { tab?: NotificationsTab } => ({
+  validateSearch: (s: Record<string, unknown>): NotificationsSearch => ({
     tab: optEnum(s.tab, notificationsTabs),
+    unread: optBool(s.unread),
   }),
   component: function NotificationsRoute() {
-    return <NotificationsPage tab={Route.useSearch().tab} />;
+    return <NotificationsPage search={Route.useSearch()} />;
   },
 });
