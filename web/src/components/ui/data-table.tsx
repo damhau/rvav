@@ -85,12 +85,18 @@ export interface DataTableProps<T> {
   className?: string;
 }
 
-const compare = (a: string | number | null | undefined, b: string | number | null | undefined) => {
-  if (a === b) return 0;
-  if (a === null || a === undefined) return 1;
-  if (b === null || b === undefined) return -1;
-  if (typeof a === "number" && typeof b === "number") return a - b;
-  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+type SortValue = string | number | null | undefined;
+
+const none = (v: SortValue) => v === null || v === undefined;
+
+/** Rows without a value come last, whichever way the sort goes. */
+const compare = (a: SortValue, b: SortValue, desc: boolean) => {
+  if (none(a) || none(b)) return Number(none(a)) - Number(none(b));
+  const order =
+    typeof a === "number" && typeof b === "number"
+      ? a - b
+      : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+  return desc ? -order : order;
 };
 
 const interactive = "a, button, input, select, textarea, label, [role=checkbox], [role=menuitem], [role=combobox]";
@@ -144,7 +150,7 @@ export function DataTable<T>({
   const by = sort ? columns.find((c) => c.id === sort.id) : undefined;
   const sorted =
     rows && by?.sortValue && !presorted
-      ? [...rows].sort((a, b) => compare(by.sortValue!(a), by.sortValue!(b)) * (sort?.desc ? -1 : 1))
+      ? [...rows].sort((a, b) => compare(by.sortValue!(a), by.sortValue!(b), Boolean(sort?.desc)))
       : rows;
   const menus = rowMenu && sorted ? new Map(sorted.map((r) => [rowKey(r), rowMenu(r)])) : undefined;
   const wrapper = useRef<HTMLDivElement>(null);
@@ -404,7 +410,7 @@ export function DataTable<T>({
                 className={cn(stacked && "block")}
               >
                 {groups && g.key !== undefined && (
-                  <tr role={role("row")} className={cn(stacked && "block")}>
+                  <tr role={role("row")} data-group-heading className={cn(stacked && "block")}>
                     <th
                       scope="rowgroup"
                       role={role("rowheader")}

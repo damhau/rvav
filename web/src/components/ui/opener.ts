@@ -85,7 +85,7 @@ export function openerOf(el: Element | null): HTMLElement | null {
  */
 export function rowStandIn(table: HTMLElement | null | undefined, index: number): HTMLElement | null {
   if (!table?.isConnected) return null;
-  const rows = [...table.querySelectorAll("tbody tr")];
+  const rows = bodyRows(table);
   for (const row of [rows[index], rows.at(-1)]) {
     const control =
       row?.querySelector<HTMLElement>("[aria-haspopup=menu]") ??
@@ -96,8 +96,11 @@ export function rowStandIn(table: HTMLElement | null | undefined, index: number)
   return table;
 }
 
-/** A row's place among its table's body rows, those of every group and their headings, for `rowStandIn`. */
-export const rowIndex = (table: HTMLElement, row: Element) => [...table.querySelectorAll("tbody tr")].indexOf(row);
+/** A row's place among its table's rows of records, those of every group, for `rowStandIn`. */
+export const rowIndex = (table: HTMLElement, row: Element) => bodyRows(table).indexOf(row);
+
+// A group's heading has no control: the row after it stands in.
+const bodyRows = (table: HTMLElement) => [...table.querySelectorAll("tbody tr:not([data-group-heading])")];
 
 /** The DataTable and row index of a control in a row, for `rowStandIn`. */
 function rowOf(el: HTMLElement | null) {

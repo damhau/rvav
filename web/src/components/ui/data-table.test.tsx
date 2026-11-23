@@ -63,6 +63,29 @@ describe("DataTable", () => {
     expect(names()).toEqual(["db-01", "web-02", "web-10"]);
   });
 
+  it("sorts the rows without a value last, either way", async () => {
+    const user = userEvent.setup();
+    const used: Column<Vm & { used?: number }> = {
+      id: "used",
+      header: "Last used",
+      cell: (v) => v.used ?? "never",
+      sortValue: (v) => v.used,
+    };
+    render(
+      <DataTable
+        label="VMs"
+        columns={[columns[0]!, used]}
+        rows={[{ ...vms[0]!, used: 2 }, vms[1]!, { ...vms[2]!, used: 1 }]}
+        rowKey={(v) => v.name}
+      />,
+    );
+    const header = screen.getByRole("columnheader", { name: "Last used" });
+    await user.click(within(header).getByRole("button", { name: "Last used" }));
+    expect(names()).toEqual(["db-01", "web-02", "web-10"]);
+    await user.click(within(header).getByRole("button", { name: "Last used" }));
+    expect(names()).toEqual(["web-02", "db-01", "web-10"]);
+  });
+
   it("leaves rows the server sorted in their order, a header only asking for another sort", async () => {
     const user = userEvent.setup();
     const onSortChange = vi.fn();
@@ -336,7 +359,7 @@ describe("DataTable", () => {
   it("hands the focus to the row at its place across groups when a row's menu removes it", async () => {
     const user = userEvent.setup();
     function Removing() {
-      const [rows, setRows] = useState(vms);
+      const [rows, setRows] = useState([...vms, { name: "db-03", cpus: 2 }]);
       return (
         <DataTable
           label="VMs"
