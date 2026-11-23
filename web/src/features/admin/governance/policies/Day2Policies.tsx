@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Field, Input, Textarea } from "@/components/ui/input";
+import { Field, FieldNote, Input, Textarea } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
@@ -20,6 +20,7 @@ import { formatList } from "@/lib/format";
 import { roleName } from "@/lib/i18n/names";
 import { adm } from "@/lib/query";
 import { errorAt, failed, fieldErrors, priorityOf, writable } from "../common";
+import { actionName, day2Actions, isBuiltIn } from "./actions";
 import {
   enforcementOptions,
   LevelsEditor,
@@ -43,6 +44,109 @@ const effectTone = { allow: "ok", deny: "bad", approval: "warn" } as const;
 const put = ({ id, set_by_admin: _set, ...body }: Policy) =>
   call(api.PUT("/admin/day2-policies/{id}", { params: { path: { id } }, body }));
 
+const mono = { mono: <span className="font-mono" /> };
+
+/** A policy's actions by name: a built-in one with its key beside it, `*` as every action, another pattern as what it matches. */
+function ActionNames({ actions }: { actions: string[] }) {
+  const { t } = useTranslation("admin-governance");
+  return (
+    <ul className="flex flex-col gap-0.5 text-secondary">
+      {actions.map((a) => (
+        <li key={a}>
+          {a === "*" ? (
+            t("policies.day2.everyAction")
+          ) : a.includes("*") ? (
+            <Trans t={t} i18nKey="policies.day2.matching" values={{ pattern: a }} components={mono} />
+          ) : isBuiltIn(a) ? (
+            <>
+              {actionName(a)} <span className="font-mono text-caption text-faint">{a}</span>
+            </>
+          ) : (
+            <span className="font-mono">{a}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The actions a policy decides: every action, or the built-in ones ticked
+ * and the keys or patterns typed beside them, such as an AWX action's or
+ * `snapshot_*`.
+ */
+function ActionChecks({
+  every,
+  picked,
+  other,
+  onChange,
+  error,
+}: {
+  every: boolean;
+  picked: string[];
+  other: string;
+  onChange: (next: { every?: boolean; picked?: string[]; other?: string }) => void;
+  error?: string;
+}) {
+  const { t } = useTranslation("admin-governance");
+  const note = "d2-actions-note";
+  return (
+    <fieldset className="flex flex-col gap-2" aria-describedby={note}>
+      <legend className="mb-1 text-secondary font-medium text-fg">{t("policies.day2.actions")}</legend>
+      <div className="flex items-center gap-1.5">
+        <Checkbox
+          id="d2-every"
+          checked={every}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? note : undefined}
+          onChange={(on) => onChange({ every: on })}
+        />
+        <label htmlFor="d2-every" className="text-body">
+          {t("policies.day2.everyAction")}
+        </label>
+      </div>
+      {!every && (
+        <>
+          <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
+            {day2Actions.map((a) => (
+              <div key={a} className="flex items-start gap-1.5">
+                <Checkbox
+                  id={`d2-action-${a}`}
+                  className="mt-0.5"
+                  checked={picked.includes(a)}
+                  aria-describedby={`d2-action-${a}-key`}
+                  onChange={(on) => onChange({ picked: on ? [...picked, a] : picked.filter((k) => k !== a) })}
+                />
+                <div className="flex flex-col">
+                  <label htmlFor={`d2-action-${a}`} className="text-body">
+                    {actionName(a)}
+                  </label>
+                  <span id={`d2-action-${a}-key`} className="font-mono text-caption text-faint">
+                    {a}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <Field
+            label={t("policies.day2.otherActions")}
+            htmlFor="d2-other"
+            hint={<Trans t={t} i18nKey="policies.day2.otherActionsHint" components={mono} />}
+          >
+            <Input
+              id="d2-other"
+              className="font-mono text-secondary"
+              value={other}
+              onChange={(e) => onChange({ other: e.target.value })}
+            />
+          </Field>
+        </>
+      )}
+      <FieldNote id={note} error={error} />
+    </fieldset>
+  );
+}
+
 function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }) {
   const { t } = useTranslation("admin-governance");
   const refresh = useRefreshPolicies("day2-policies");
@@ -65,13 +169,22 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
         },
   );
   const [priority, setPriority] = useState(String(f.priority));
-  const [actions, setActions] = useState((f.actions ?? []).join(", "));
+  const [actions, setActions] = useState(() => {
+    const held = f.actions ?? [];
+    return {
+      every: held.includes("*"),
+      picked: held.filter(isBuiltIn),
+      other: held.filter((a) => a !== "*" && !isBuiltIn(a)).join(", "),
+    };
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useMutation({
     mutationFn: () => {
       const body = {
         ...f,
-        actions: list(actions),
+        actions: actions.every
+          ? ["*"]
+          : [...day2Actions.filter((a) => actions.picked.includes(a)), ...list(actions.other)],
         levels: f.effect === "approval" ? f.levels : [],
         enforcement: f.effect === "allow" ? undefined : (f.enforcement ?? "hard"),
         priority: priorityOf(priority),
@@ -148,19 +261,11 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
           />
         </Field>
       )}
-      <Field
-        label={t("policies.day2.actions")}
-        htmlFor="d2-actions"
+      <ActionChecks
+        {...actions}
+        onChange={(next) => setActions({ ...actions, ...next })}
         error={errorAt(errors, "/actions")}
-        hint={t("policies.day2.actionsHint", { example: "snapshot_*, delete" })}
-      >
-        <Input
-          id="d2-actions"
-          className="font-mono text-secondary"
-          value={actions}
-          onChange={(e) => setActions(e.target.value)}
-        />
-      </Field>
+      />
       <RoleChecks
         id="d2-role"
         legend={t("policies.day2.roles")}
@@ -265,7 +370,7 @@ export function Day2Policies({ rights }: { rights: PolicyRights }) {
     {
       id: "actions",
       header: t("policies.day2.actions"),
-      cell: (p) => <span className="font-mono text-secondary">{(p.actions ?? []).join(", ")}</span>,
+      cell: (p) => <ActionNames actions={p.actions ?? []} />,
     },
     {
       id: "who",

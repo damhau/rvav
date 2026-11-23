@@ -28,7 +28,9 @@ async function fillPolicy(page: Page, sheet: Locator) {
     sheet.getByRole("combobox", { name: "Enforcement" }),
     "Soft: it warns, and the requester may go on",
   );
-  await typeInto(page, sheet.getByRole("textbox", { name: "Actions" }), "power_off");
+  await press(page, sheet.getByRole("checkbox", { name: "Every action" }), " ");
+  await press(page, sheet.getByRole("checkbox", { name: "Power off" }), " ");
+  await expect(sheet.getByRole("checkbox", { name: "Power off" })).toBeChecked();
   await typeInto(page, sheet.getByRole("textbox", { name: "Reason people see" }), reason);
   await expect(sheet.getByRole("combobox", { name: "Project" })).toHaveText(/Web Platform/);
 }

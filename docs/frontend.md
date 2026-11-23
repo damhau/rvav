@@ -681,7 +681,10 @@ it.
   `features/admin/governance/policies/`), each kind a table whose row menu
   changes a policy in a side panel and removes it after saying what
   changes: approval and day-2 policies (moved up and down, given a
-  priority or turned off from the row menu; a condition that isn't valid
+  priority or turned off from the row menu; a day-2 policy's actions
+  ticked by name, or **Every action**, with a box for AWX and workflow
+  keys and patterns, and listed by name, their keys aside, from
+  `policies/actions.ts`; a condition that isn't valid
   CEL is refused when saved, under its field). The **Lease** tab has the
   lease policies (an environment's, and projects' overrides) and the
   **Lease rules** above them, tried by priority: a CEL condition, an

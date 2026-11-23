@@ -80,6 +80,66 @@ describe("Policies", () => {
     );
   });
 
+  it(
+    "names a day-2 policy's actions, keeps a pattern and an AWX action's key, and ticks actions by name",
+    { timeout: 15_000 },
+    async () => {
+      adminState(db).day2.push({
+        id: "d2p_mixed",
+        name: "Snapshots and patching",
+        reason: "",
+        priority: 60,
+        actions: ["power_off", "snapshot_*", "awx.patch-os"],
+        roles: [],
+        condition: "true",
+        effect: "deny",
+        project_id: null,
+        enabled: true,
+        set_by_admin: true,
+      });
+      const user = userEvent.setup();
+      renderApp("/admin/policies?tab=day2");
+      const region = await screen.findByRole("region", { name: "Day-2 policies" });
+      const row = await within(region).findByRole("row", { name: /Snapshots and patching/ });
+      expect(
+        within(row)
+          .getAllByRole("listitem")
+          .map((li) => li.textContent),
+      ).toEqual(["Power off power_off", "Every action matching snapshot_*", "awx.patch-os"]);
+      expect(within(region).getByRole("row", { name: /^Administrators/ })).toHaveTextContent("Every action");
+
+      await user.click(within(row).getByRole("button", { name: "Actions for Snapshots and patching" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+      const sheet = await screen.findByRole("dialog", { name: "Change Snapshots and patching" });
+      const actions = within(sheet).getByRole("group", { name: "Actions" });
+      expect(within(actions).getByRole("checkbox", { name: "Every action" })).not.toBeChecked();
+      const powerOff = within(actions).getByRole("checkbox", { name: "Power off" });
+      expect(powerOff).toBeChecked();
+      expect(powerOff).toHaveAccessibleDescription("power_off");
+      expect(within(actions).getByRole("textbox", { name: "Other actions or patterns" })).toHaveValue(
+        "snapshot_*, awx.patch-os",
+      );
+      await user.click(within(actions).getByRole("checkbox", { name: "Delete" }));
+      await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+      await waitFor(() =>
+        expect(adminState(db).day2.find((p) => p.id === "d2p_mixed")?.actions).toEqual([
+          "power_off",
+          "delete",
+          "snapshot_*",
+          "awx.patch-os",
+        ]),
+      );
+
+      await user.click(within(row).getByRole("button", { name: "Actions for Snapshots and patching" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+      const again = await screen.findByRole("dialog", { name: "Change Snapshots and patching" });
+      await user.click(within(again).getByRole("checkbox", { name: "Every action" }));
+      expect(within(again).queryByRole("checkbox", { name: "Power off" })).toBeNull();
+      await user.click(within(again).getByRole("button", { name: "Save policy" }));
+      await waitFor(() => expect(adminState(db).day2.find((p) => p.id === "d2p_mixed")?.actions).toEqual(["*"]));
+    },
+  );
+
   it("removes an approval policy after saying what changes", async () => {
     const user = userEvent.setup();
     renderApp("/admin/policies");
@@ -349,7 +409,7 @@ describe("Policies as a project admin", () => {
     expect(within(region).getByRole("row", { name: /Web leavers/ })).toHaveTextContent("usr_gone");
   });
 
-  it("writes a soft day-2 policy for their project, and only reads every project's", async () => {
+  it("writes a soft day-2 policy for their project, and only reads every project's", { timeout: 15_000 }, async () => {
     localStorage.setItem("rvav.mock.as", "project-admin");
     resetDb();
     const user = userEvent.setup();
@@ -372,9 +432,8 @@ describe("Policies as a project admin", () => {
     await user.click(await screen.findByRole("option", { name: "Deny" }));
     await user.click(within(sheet).getByRole("combobox", { name: "Enforcement" }));
     await user.click(await screen.findByRole("option", { name: "Soft: it warns, and the requester may go on" }));
-    const actions = within(sheet).getByRole("textbox", { name: "Actions" });
-    await user.clear(actions);
-    await user.type(actions, "power_off");
+    await user.click(within(sheet).getByRole("checkbox", { name: "Every action" }));
+    await user.click(within(sheet).getByRole("checkbox", { name: "Power off" }));
     await user.type(within(sheet).getByRole("textbox", { name: "Reason people see" }), "Tell the on-call team.");
     await user.click(within(sheet).getByRole("combobox", { name: "Project" }));
     expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Web Platform"]);
@@ -384,6 +443,7 @@ describe("Policies as a project admin", () => {
 
     const row = await within(region).findByRole("row", { name: /Powering off web VMs/ });
     expect(row).toHaveTextContent("Soft: warns");
+    expect(row).toHaveTextContent("Power off power_off");
     await user.click(within(row).getByRole("button", { name: "Actions for Powering off web VMs" }));
     const up = await screen.findByRole("menuitem", { name: /^Move up/ });
     expect(up).toHaveAttribute("aria-disabled", "true");

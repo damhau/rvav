@@ -240,7 +240,7 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   // What applies to a delete in production.
   await page.getByRole("tab", { name: "What applies here" }).click();
   await choose(page, "Environment", "Production");
-  await choose(page, "Day-2 action", "delete");
+  await choose(page, "Day-2 action", "Delete");
   await page.getByRole("button", { name: "Explain" }).click();
   // An administrator: the first policy that matches allows it.
   await expect(page.getByRole("region", { name: "Day-2" })).toContainText("delete: allow");
