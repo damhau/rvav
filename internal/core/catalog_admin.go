@@ -182,7 +182,9 @@ func (s *Service) UpdateCatalogItem(ctx context.Context, p *auth.Principal, idOr
 		errs = append(errs, fieldErr("/summary", "required", "Say in a line what the item gives."))
 	}
 	if u.Category != nil {
-		if ok, err := s.Store.CategoryExists(ctx, *u.Category); err != nil {
+		if *u.Category == "" {
+			errs = append(errs, fieldErr("/category", "required", "Choose a category."))
+		} else if ok, err := s.Store.CategoryExists(ctx, *u.Category); err != nil {
 			return api.AdminCatalogItem{}, err
 		} else if !ok {
 			errs = append(errs, fieldErr("/category", "unknown", fmt.Sprintf("There is no category %q.", *u.Category)))

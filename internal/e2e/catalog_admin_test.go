@@ -244,6 +244,13 @@ func TestCatalogEntitlementsCategoriesYAML(t *testing.T) {
 			t.Fatalf("icons = %v", icons.Items)
 		}
 		h.json("PATCH", "/api/v1/admin/catalog/items/linux-small", admin, api.CatalogItemUpdate{Icon: new("upload:evil")}, 422, nil)
+		// Saved without a category: refused at the field, as a new item is.
+		var cleared struct{ Errors []api.FieldError }
+		h.json("PATCH", "/api/v1/admin/catalog/items/linux-small", admin, api.CatalogItemUpdate{Category: new("")}, 422, &cleared)
+		if len(cleared.Errors) != 1 || cleared.Errors[0].Field != "/category" || deref(cleared.Errors[0].Code) != "required" ||
+			cleared.Errors[0].Message != "Choose a category." {
+			t.Fatalf("an item saved without a category = %+v", cleared.Errors)
+		}
 		h.json("POST", "/api/v1/admin/catalog/categories", admin, api.AdminCatalogCategory{Key: "storage", Name: "Storage"}, 201, nil)
 		h.json("POST", "/api/v1/admin/catalog/categories", admin, api.AdminCatalogCategory{Key: "storage", Name: "Again"}, 409, nil)
 		h.json("PATCH", "/api/v1/admin/catalog/categories/storage", admin, api.AdminCatalogCategoryUpdate{Name: new("Storage and backup")}, 200, nil)

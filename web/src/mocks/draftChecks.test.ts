@@ -3,7 +3,8 @@
 // it, and the CPU and memory publishing needs, at the binding; what its
 // bindings are and read (blueprint_inputs.go); what its custom resources
 // bind (custom_resources.go); a request nothing names refused, and the
-// version that names nothing warned of it (#216).
+// version that names nothing warned of it (#216); an item saved without a
+// category refused at the field, as a new one is (catalog_admin.go).
 import { describe, expect, it } from "vitest";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -129,6 +130,22 @@ describe("the mocks' VM item drafts", () => {
     );
     expect(unnamed(await bare())).toEqual([]);
     await call(api.DELETE("/admin/naming-policies/{id}", { params: { path: { id: policy.id } } }));
+  });
+
+  it("refuse an item saved without a category at the field, as a new one", async () => {
+    const { item } = await newVmItem("uncategorised-vm");
+    const saved = (category: string) =>
+      call(
+        api.PATCH("/admin/catalog/items/{itemId}", { params: { path: { itemId: item.id } }, body: { category } }),
+      ).catch((e: { status: number; fieldErrors: S["FieldError"][] }) => ({ status: e.status, errors: e.fieldErrors }));
+    expect(await saved("")).toEqual({
+      status: 422,
+      errors: [{ field: "/category", code: "required", message: "Choose a category." }],
+    });
+    expect(await saved("nope")).toEqual({
+      status: 422,
+      errors: [{ field: "/category", code: "unknown", message: 'There is no category "nope".' }],
+    });
   });
 
   it("warn of VMs only a naming policy names, unless one applies everywhere", async () => {

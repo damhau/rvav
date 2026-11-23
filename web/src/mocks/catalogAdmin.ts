@@ -1407,7 +1407,8 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         errors.push({ field: "/name", code: "required", message: "Give the item a name." });
       if (u.summary !== undefined && !u.summary.trim())
         errors.push({ field: "/summary", code: "required", message: "Say in a line what the item gives." });
-      if (u.category !== undefined && !db.categories.some((c) => c.key === u.category))
+      if (u.category === "") errors.push({ field: "/category", code: "required", message: "Choose a category." });
+      else if (u.category !== undefined && !db.categories.some((c) => c.key === u.category))
         errors.push({ field: "/category", code: "unknown", message: `There is no category "${u.category}".` });
       if (u.icon !== undefined && !iconSet.includes(u.icon))
         errors.push({ field: "/icon", code: "unknown", message: `"${u.icon}" is not one of rvav's icons.` });
