@@ -22,6 +22,15 @@ export function projectsWith(me: Me, permission: string): ProjectRef[] | "all" {
   return me.projects.filter((p) => p.permissions.includes(permission)).map((p) => p.project);
 }
 
+/** The permissions that open a project's administration page: reading its settings, or changing one of its parts. */
+export const projectPagePermissions = [
+  "project.settings.read",
+  "placement.manage",
+  "project.quotas.manage",
+  "project.members.manage",
+  "project.update",
+];
+
 /** The projects where the caller holds one of these permissions, or "all" when one is held for all of rvav. */
 export function projectsWithAny(me: Me, permissions: string[]): ProjectRef[] | "all" {
   if (permissions.some((p) => me.permissions.includes(p))) return "all";

@@ -75,10 +75,21 @@ func checkProperties(props map[string]string, ptr string) []api.FieldError {
 	return errs
 }
 
-// AdminProjects lists projects for those who read every project's
-// settings or placement.
+// projectPages are the permissions that open a project's administration
+// page: reading its settings, or changing one of its parts, so that a role
+// made for that part alone reaches its tab (#212, #217).
+var projectPages = []auth.Permission{auth.ProjectSettingsRead, auth.PlacementManage, auth.ProjectQuotasManage,
+	auth.ProjectMembersManage, auth.ProjectUpdate}
+
+// opensProject says whether p opens a project's administration page,
+// every project's for "".
+func opensProject(p *auth.Principal, projectID string) bool {
+	return slices.ContainsFunc(projectPages, func(perm auth.Permission) bool { return p.In(perm, projectID) })
+}
+
+// AdminProjects lists projects for those who open every project's page.
 func (s *Service) AdminProjects(ctx context.Context, p *auth.Principal, search string, archived bool) ([]api.AdminProject, error) {
-	if !seesPlacement(p, "") {
+	if !opensProject(p, "") {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.AdminProjects(ctx, search, archived)
@@ -116,8 +127,7 @@ func (s *Service) ProjectNames(ctx context.Context, p *auth.Principal, archived 
 	return out, nil
 }
 
-// AdminProject is one project for those who see its administration
-// (project.settings.read).
+// AdminProject is one project for those who open its page.
 func (s *Service) AdminProject(ctx context.Context, p *auth.Principal, id string) (api.AdminProject, error) {
 	pr, err := s.Store.GetAdminProject(ctx, id)
 	if errors.Is(err, store.ErrNotFound) || err == nil && !p.In(auth.ProjectSee, pr.ID) {
@@ -126,8 +136,7 @@ func (s *Service) AdminProject(ctx context.Context, p *auth.Principal, id string
 	if err != nil {
 		return api.AdminProject{}, err
 	}
-	// The page that holds a project's placement is this project's.
-	if !seesPlacement(p, pr.ID) {
+	if !opensProject(p, pr.ID) {
 		return api.AdminProject{}, ErrForbidden
 	}
 	return presentAdminProject(pr, p), nil

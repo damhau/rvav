@@ -30,12 +30,19 @@ var (
 
 // ── Quotas ──────────────────────────────────────────────────────────────
 
+// seesQuotas says whether p reads a project's quotas, rvav's for "": those
+// who read its settings, and those who set them, whose save replaces every
+// line (#217).
+func seesQuotas(p *auth.Principal, projectID string) bool {
+	return p.In(auth.ProjectSettingsRead, projectID) || p.In(auth.ProjectQuotasManage, projectID)
+}
+
 func (s *Service) ProjectQuotas(ctx context.Context, p *auth.Principal, projectID string) ([]api.QuotaLimit, error) {
 	proj, err := s.visibleProject(ctx, p, projectID)
 	if err != nil {
 		return nil, err
 	}
-	if !p.In(auth.ProjectSettingsRead, proj.ID) {
+	if !seesQuotas(p, proj.ID) {
 		return nil, ErrForbidden
 	}
 	return s.projectQuotas(ctx, proj.ID)

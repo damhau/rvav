@@ -1056,11 +1056,22 @@ says in words what you chose. `POST /api/v1/admin/roles` does the same.
 - A role holding a permission that exists only for all of rvav, such as
   `policies.read`, can only be given for all of rvav.
 - A role given in a project must hold `project.see`.
-- A role that holds `placement.manage` without `project.settings.read`
-  opens the project's page in **Administration › Projects**: its
-  **Placement** tab, to change the placement rules and OUs, and its
-  **Members** and **Details** tabs, read only unless the role holds their
-  permissions too. It shows no **Quotas** tab.
+- A role that changes one part of a project, without
+  `project.settings.read`, opens the project's page in **Administration ›
+  Projects**, with that part's tab and the **Members** and **Details**
+  tabs, read only unless the role holds their permissions too:
+  - `placement.manage`: the **Placement** tab, to change the placement
+    rules and OUs.
+  - `project.quotas.manage`: the **Quotas** tab, to set the project's
+    quotas and each member's.
+  - `project.members.manage`: the **Members** tab, to add and remove
+    members, change their roles and who sees the project's deployments.
+    It offers only the roles whose permissions its holder has.
+  - `project.update`: the **Details** tab, to change the project's
+    details and environments.
+
+  It shows no other tab: the project's quotas and placement stay their
+  readers'. Held for all of rvav, the role lists every project.
 - Pages that pick or name projects list every project by name to whoever
   holds the page's permission for all of rvav, without
   `project.settings.read`: offers in **Templates and networks** and
@@ -1230,7 +1241,8 @@ Who sets each level:
   panel says how much it allows. They read, but don't change, the lines
   an administrator set.
 - The **Quotas** tab of **Administration › Policies** shows to those who
-  read every project's settings (`project.settings.read`).
+  read every project's settings (`project.settings.read`), or set rvav's
+  (`project.quotas.manage` for all of rvav).
 
 ### Deployment limits
 

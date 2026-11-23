@@ -141,8 +141,9 @@ export function createDb(now = Date.now()): Db {
   // project admin shared Web Platform's deployments with their owners only
   // and wrote a soft day-2 policy), or names a custom role of A1's
   // acceptance: "vm-operator" in Web Platform, "compliance-auditor" for all
-  // of rvav, or "placement-manager" in Web Platform (#212). An auditor holds
-  // no role in a project, as the server's seed gives none.
+  // of rvav, or a role changing one part of Web Platform: "placement-manager"
+  // (#212), "quota-manager", "member-manager" or "project-editor" (#217). An
+  // auditor holds no role in a project, as the server's seed gives none.
   let as: string | null = null;
   try {
     as = localStorage.getItem("rvav.mock.as");
@@ -152,7 +153,7 @@ export function createDb(now = Date.now()): Db {
   const persona = as ? personaRoles[as] : undefined;
   const roles = { customRoles: persona ? [persona] : [] } as unknown as Db;
   const auditing = as === "auditor" || as === "compliance-auditor";
-  const inWebOnly = as === "vm-operator" || as === "placement-manager";
+  const inWebOnly = Boolean(persona) && as !== "compliance-auditor";
   const rvav =
     as === "project-admin" || inWebOnly || as === "member"
       ? ["user"]
@@ -1582,6 +1583,27 @@ const personaRoles: Record<string, MockRole> = {
     name: "Placement manager",
     description: "Places the project's VMs: its placement rules and OUs.",
     permissions: ["placement.manage", "project.see"],
+    built_in: false,
+  },
+  "quota-manager": {
+    key: "quota-manager",
+    name: "Quota manager",
+    description: "Sets the project's quotas and each member's.",
+    permissions: ["project.quotas.manage", "project.see"],
+    built_in: false,
+  },
+  "member-manager": {
+    key: "member-manager",
+    name: "Member manager",
+    description: "Adds and removes the project's members.",
+    permissions: ["project.members.manage", "project.see"],
+    built_in: false,
+  },
+  "project-editor": {
+    key: "project-editor",
+    name: "Project editor",
+    description: "Changes the project's details and environments.",
+    permissions: ["project.see", "project.update"],
     built_in: false,
   },
 };

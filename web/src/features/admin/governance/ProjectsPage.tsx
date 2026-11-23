@@ -27,7 +27,7 @@ import type { components } from "@/lib/api/schema";
 import type { UserRef } from "@/lib/api/types";
 import { useEnvName } from "@/lib/environments";
 import { adm, q } from "@/lib/query";
-import { can, projectsWithAny } from "@/lib/can";
+import { can, projectPagePermissions, projectsWithAny } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { cn } from "@/lib/utils";
 import { AdminWarning, Refusal, refused } from "../access/refusal";
@@ -271,14 +271,14 @@ function ProjectsPanel() {
   const [creating, setCreating] = useState(false);
   const [archiving, setArchiving] = useState<S["AdminProject"] | null>(null);
   const { me } = useCurrentProject();
-  const scope = projectsWithAny(me, ["project.settings.read", "placement.manage"]);
+  const scope = projectsWithAny(me, projectPagePermissions);
   const projects = useQuery({
     ...adm.projects(search.q ?? "", Boolean(search.archived)),
     enabled: scope === "all",
     placeholderData: keepPreviousData,
   });
   if (scope !== "all") {
-    // The projects whose settings or placement the caller sees: a project admin's own.
+    // The projects whose page the caller opens: a project admin's own, or those a role changes a part of.
     return (
       <Panel title={t("projects.list.yours")}>
         <ul className="flex flex-col gap-1 text-body">

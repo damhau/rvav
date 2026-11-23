@@ -40,7 +40,7 @@
       "id": "project.members.manage",
       "scope": "project",
       "area": "Projects",
-      "summary": "Add and remove the project's members, and change their roles."
+      "summary": "Open the project's page, and add and remove its members and change their roles there."
     },
     {
       "id": "project.settings.read",
@@ -52,13 +52,13 @@
       "id": "project.update",
       "scope": "project",
       "area": "Projects",
-      "summary": "Change the project's details and environments, or archive it."
+      "summary": "Open the project's page, and change its details and environments or archive it there."
     },
     {
       "id": "project.quotas.manage",
       "scope": "project",
       "area": "Projects",
-      "summary": "Set the project's quotas."
+      "summary": "See and set the project's quotas and each member's, on its page; for all of rvav, rvav's own too."
     },
     {
       "id": "placement.manage",

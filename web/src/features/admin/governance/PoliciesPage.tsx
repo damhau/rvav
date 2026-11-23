@@ -28,8 +28,8 @@ export function PoliciesPage({ tab = "approval" }: { tab?: PoliciesTab }) {
   const rights = usePolicyRights();
   // Project admins write their projects' own policies; naming policies stay the administrators'.
   const naming = can(me, "policies.read");
-  // rvav's quota is for all of it: those who read every project's settings (ADR-0047).
-  const quotas = me.permissions.includes("project.settings.read");
+  // rvav's quota is for all of it: those who read every project's settings, or set rvav's (ADR-0047).
+  const quotas = can(me, "project.settings.read") || can(me, "project.quotas.manage");
   const shown = (tab === "naming" && !naming) || (tab === "quotas" && !quotas) ? "approval" : tab;
   return (
     <Page>

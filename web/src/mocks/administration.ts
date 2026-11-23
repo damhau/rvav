@@ -5,6 +5,7 @@
 // the UI shows them.
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
+import { projectPagePermissions } from "@/lib/can";
 import { adminItemOf } from "./catalogAdmin";
 import { celCheck } from "./cel";
 import { audited, auditTargetNames, policyNameTooLong } from "./governance";
@@ -631,6 +632,16 @@ function holdsIn(db: Db, projectId: string, permission: string): boolean {
 /** Says whether the mock user reads a project's placement, every project's for "", as the server's seesPlacement. */
 function seesPlacement(db: Db, projectId: string): boolean {
   return holdsIn(db, projectId, "project.settings.read") || holdsIn(db, projectId, "placement.manage");
+}
+
+/** Says whether the mock user opens a project's page, every project's for "", as the server's opensProject. */
+function opensProject(db: Db, projectId: string): boolean {
+  return projectPagePermissions.some((p) => holdsIn(db, projectId, p));
+}
+
+/** Says whether the mock user reads a project's quotas, rvav's for "", as the server's seesQuotas. */
+function seesQuotas(db: Db, projectId: string): boolean {
+  return holdsIn(db, projectId, "project.settings.read") || holdsIn(db, projectId, "project.quotas.manage");
 }
 
 /** Says whether the mock user may give a role in a project, or take it away, as the server's mayGive. */
@@ -1314,7 +1325,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     }),
     http.get(`${base}/admin/projects`, async ({ request }) => {
       await wait();
-      if (!seesPlacement(db, "")) return forbidden("you may not read every project's settings");
+      if (!opensProject(db, "")) return forbidden("you may not read every project's settings");
       const url = new URL(request.url);
       const q = (url.searchParams.get("q") ?? "").toLowerCase();
       const archived = url.searchParams.get("archived") === "true";
@@ -1359,12 +1370,13 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       await wait();
       const p = project(String(params.id));
       if (!p || !holdsIn(db, p.id, "project.see")) return problem(404, "Not found");
-      if (!seesPlacement(db, p.id)) return forbidden("you may not read its settings");
+      if (!opensProject(db, p.id)) return forbidden("you may not read its settings");
       return HttpResponse.json(adminProject(p));
     }),
     http.patch(`${base}/admin/projects/:id`, async ({ params, request }) => {
       await wait();
       const p = project(String(params.id));
+      if (!holdsIn(db, p?.id ?? "", "project.update")) return forbidden("you may not change it");
       if (!p) return problem(404, "Not found");
       const u = (await request.json()) as S["AdminProjectUpdate"];
       const errors = [
@@ -2162,12 +2174,16 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
     // ── Quotas and policies ──
     http.get(`${base}/admin/projects/:id/quotas`, async ({ params }) => {
       await wait();
-      return HttpResponse.json({ items: st().quotas[String(params.id)] ?? [] });
+      const p = project(String(params.id));
+      if (!p || !holdsIn(db, p.id, "project.see")) return problem(404, "Not found");
+      if (!seesQuotas(db, p.id)) return forbidden("you may not read its quotas");
+      return HttpResponse.json({ items: st().quotas[p.id] ?? [] });
     }),
     http.put(`${base}/admin/projects/:id/quotas`, async ({ params, request }) => {
       await wait();
       const { items } = (await request.json()) as S["QuotaLimitList"];
       const p = project(String(params.id));
+      if (!holdsIn(db, p?.id ?? "", "project.quotas.manage")) return forbidden("you may not set its quotas");
       if (!p) return problem(404, "Not found");
       const errors: S["FieldError"][] = [];
       items.forEach((q, i) => {

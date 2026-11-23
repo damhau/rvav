@@ -42,7 +42,7 @@ func (s *Service) UserQuotas(ctx context.Context, p *auth.Principal, projectID s
 	if err != nil {
 		return nil, err
 	}
-	if !p.In(auth.ProjectSettingsRead, proj.ID) {
+	if !seesQuotas(p, proj.ID) {
 		return nil, ErrForbidden
 	}
 	list, err := s.Store.UserQuotas(ctx, s.Store.Pool, &proj.ID)
@@ -124,7 +124,7 @@ func looserUserQuota(ptr string, proj store.Project, project []store.QuotaLimit,
 
 // GlobalQuotas are what all of rvav, and each user across it, may hold.
 func (s *Service) GlobalQuotas(ctx context.Context, p *auth.Principal) ([]api.GlobalQuota, error) {
-	if !p.Everywhere(auth.ProjectSettingsRead) {
+	if !seesQuotas(p, "") {
 		return nil, ErrForbidden
 	}
 	return s.globalQuotas(ctx)

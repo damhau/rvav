@@ -16150,14 +16150,16 @@ type ClientInterface interface {
 	// `policies.read`, `policies.manage`, `extensibility.read`,
 	// `extensibility.manage` or `import.manage`. Listing projects with
 	// their settings (`listAdminProjects`) takes `project.settings.read`
-	// or `placement.manage`.
+	// or a permission that changes a part of every project.
 	//
 	// Corresponds with GET /admin/project-names (the `ListProjectNames` operationId).
 	ListProjectNames(ctx context.Context, params *ListProjectNamesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAdminProjects Every project, archived ones on request, with member counts
 	//
-	// With `project.settings.read` or `placement.manage` for all of rvav.
+	// With `project.settings.read`, `placement.manage`,
+	// `project.quotas.manage`, `project.members.manage` or `project.update`
+	// for all of rvav.
 	//
 	// Corresponds with GET /admin/projects (the `ListAdminProjects` operationId).
 	ListAdminProjects(ctx context.Context, params *ListAdminProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16178,8 +16180,10 @@ type ClientInterface interface {
 
 	// GetAdminProject A project with its settings
 	//
-	// With `project.settings.read` or `placement.manage` in the project:
-	// the page of its placement is the project's.
+	// With `project.settings.read` in the project, or a permission there
+	// that changes one of its parts: `placement.manage`,
+	// `project.quotas.manage`, `project.members.manage` or
+	// `project.update`. The page of each part is the project's.
 	//
 	// Corresponds with GET /admin/projects/{projectId} (the `GetAdminProject` operationId).
 	GetAdminProject(ctx context.Context, projectId ProjectIdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16206,6 +16210,8 @@ type ClientInterface interface {
 
 	// GetProjectQuotas A project's quota limits, per environment or for all
 	//
+	// With `project.settings.read` or `project.quotas.manage` in the project.
+	//
 	// Corresponds with GET /admin/projects/{projectId}/quotas (the `GetProjectQuotas` operationId).
 	GetProjectQuotas(ctx context.Context, projectId ProjectIdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -16225,10 +16231,10 @@ type ClientInterface interface {
 
 	// GetProjectUserQuotas What each member of a project may take there
 	//
-	// With `project.settings.read` in the project. A line limits what each
-	// member owns in the project, their deployments and running requests,
-	// those made for them included. It applies besides the project's own
-	// quota and rvav's (ADR-0047).
+	// With `project.settings.read` or `project.quotas.manage` in the
+	// project. A line limits what each member owns in the project, their
+	// deployments and running requests, those made for them included. It
+	// applies besides the project's own quota and rvav's (ADR-0047).
 	//
 	// Corresponds with GET /admin/projects/{projectId}/user-quotas (the `GetProjectUserQuotas` operationId).
 	GetProjectUserQuotas(ctx context.Context, projectId ProjectIdPath, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16317,7 +16323,7 @@ type ClientInterface interface {
 
 	// GetGlobalQuotas The quota of all of rvav, and of each user across it
 	//
-	// With `project.settings.read` for all of rvav (ADR-0047).
+	// With `project.settings.read` or `project.quotas.manage` for all of rvav (ADR-0047).
 	//
 	// Corresponds with GET /admin/quotas (the `GetGlobalQuotas` operationId).
 	GetGlobalQuotas(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -22279,7 +22285,7 @@ func (c *Client) ListProcesses(ctx context.Context, reqEditors ...RequestEditorF
 // `policies.read`, `policies.manage`, `extensibility.read`,
 // `extensibility.manage` or `import.manage`. Listing projects with
 // their settings (`listAdminProjects`) takes `project.settings.read`
-// or `placement.manage`.
+// or a permission that changes a part of every project.
 //
 // Corresponds with GET /admin/project-names (the `ListProjectNames` operationId).
 func (c *Client) ListProjectNames(ctx context.Context, params *ListProjectNamesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22296,7 +22302,9 @@ func (c *Client) ListProjectNames(ctx context.Context, params *ListProjectNamesP
 
 // ListAdminProjects Every project, archived ones on request, with member counts
 //
-// With `project.settings.read` or `placement.manage` for all of rvav.
+// With `project.settings.read`, `placement.manage`,
+// `project.quotas.manage`, `project.members.manage` or `project.update`
+// for all of rvav.
 //
 // Corresponds with GET /admin/projects (the `ListAdminProjects` operationId).
 func (c *Client) ListAdminProjects(ctx context.Context, params *ListAdminProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22347,8 +22355,10 @@ func (c *Client) CreateProject(ctx context.Context, body CreateProjectJSONReques
 
 // GetAdminProject A project with its settings
 //
-// With `project.settings.read` or `placement.manage` in the project:
-// the page of its placement is the project's.
+// With `project.settings.read` in the project, or a permission there
+// that changes one of its parts: `placement.manage`,
+// `project.quotas.manage`, `project.members.manage` or
+// `project.update`. The page of each part is the project's.
 //
 // Corresponds with GET /admin/projects/{projectId} (the `GetAdminProject` operationId).
 func (c *Client) GetAdminProject(ctx context.Context, projectId ProjectIdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22405,6 +22415,8 @@ func (c *Client) UpdateProject(ctx context.Context, projectId ProjectIdPath, bod
 
 // GetProjectQuotas A project's quota limits, per environment or for all
 //
+// With `project.settings.read` or `project.quotas.manage` in the project.
+//
 // Corresponds with GET /admin/projects/{projectId}/quotas (the `GetProjectQuotas` operationId).
 func (c *Client) GetProjectQuotas(ctx context.Context, projectId ProjectIdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProjectQuotasRequest(c.Server, projectId)
@@ -22454,10 +22466,10 @@ func (c *Client) SetProjectQuotas(ctx context.Context, projectId ProjectIdPath, 
 
 // GetProjectUserQuotas What each member of a project may take there
 //
-// With `project.settings.read` in the project. A line limits what each
-// member owns in the project, their deployments and running requests,
-// those made for them included. It applies besides the project's own
-// quota and rvav's (ADR-0047).
+// With `project.settings.read` or `project.quotas.manage` in the
+// project. A line limits what each member owns in the project, their
+// deployments and running requests, those made for them included. It
+// applies besides the project's own quota and rvav's (ADR-0047).
 //
 // Corresponds with GET /admin/projects/{projectId}/user-quotas (the `GetProjectUserQuotas` operationId).
 func (c *Client) GetProjectUserQuotas(ctx context.Context, projectId ProjectIdPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22646,7 +22658,7 @@ func (c *Client) UpdatePropertyGroup(ctx context.Context, key string, body Updat
 
 // GetGlobalQuotas The quota of all of rvav, and of each user across it
 //
-// With `project.settings.read` for all of rvav (ADR-0047).
+// With `project.settings.read` or `project.quotas.manage` for all of rvav (ADR-0047).
 //
 // Corresponds with GET /admin/quotas (the `GetGlobalQuotas` operationId).
 func (c *Client) GetGlobalQuotas(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -42641,7 +42653,7 @@ type ClientWithResponsesInterface interface {
 	// `policies.read`, `policies.manage`, `extensibility.read`,
 	// `extensibility.manage` or `import.manage`. Listing projects with
 	// their settings (`listAdminProjects`) takes `project.settings.read`
-	// or `placement.manage`.
+	// or a permission that changes a part of every project.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -42650,7 +42662,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListAdminProjectsWithResponse Every project, archived ones on request, with member counts
 	//
-	// With `project.settings.read` or `placement.manage` for all of rvav.
+	// With `project.settings.read`, `placement.manage`,
+	// `project.quotas.manage`, `project.members.manage` or `project.update`
+	// for all of rvav.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -42673,8 +42687,10 @@ type ClientWithResponsesInterface interface {
 
 	// GetAdminProjectWithResponse A project with its settings
 	//
-	// With `project.settings.read` or `placement.manage` in the project:
-	// the page of its placement is the project's.
+	// With `project.settings.read` in the project, or a permission there
+	// that changes one of its parts: `placement.manage`,
+	// `project.quotas.manage`, `project.members.manage` or
+	// `project.update`. The page of each part is the project's.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -42703,6 +42719,8 @@ type ClientWithResponsesInterface interface {
 
 	// GetProjectQuotasWithResponse A project's quota limits, per environment or for all
 	//
+	// With `project.settings.read` or `project.quotas.manage` in the project.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /admin/projects/{projectId}/quotas (the `GetProjectQuotas` operationId).
@@ -42724,10 +42742,10 @@ type ClientWithResponsesInterface interface {
 
 	// GetProjectUserQuotasWithResponse What each member of a project may take there
 	//
-	// With `project.settings.read` in the project. A line limits what each
-	// member owns in the project, their deployments and running requests,
-	// those made for them included. It applies besides the project's own
-	// quota and rvav's (ADR-0047).
+	// With `project.settings.read` or `project.quotas.manage` in the
+	// project. A line limits what each member owns in the project, their
+	// deployments and running requests, those made for them included. It
+	// applies besides the project's own quota and rvav's (ADR-0047).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -42824,7 +42842,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetGlobalQuotasWithResponse The quota of all of rvav, and of each user across it
 	//
-	// With `project.settings.read` for all of rvav (ADR-0047).
+	// With `project.settings.read` or `project.quotas.manage` for all of rvav (ADR-0047).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -68300,7 +68318,7 @@ func (c *ClientWithResponses) ListProcessesWithResponse(ctx context.Context, req
 // `policies.read`, `policies.manage`, `extensibility.read`,
 // `extensibility.manage` or `import.manage`. Listing projects with
 // their settings (`listAdminProjects`) takes `project.settings.read`
-// or `placement.manage`.
+// or a permission that changes a part of every project.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -68315,7 +68333,9 @@ func (c *ClientWithResponses) ListProjectNamesWithResponse(ctx context.Context, 
 
 // ListAdminProjectsWithResponse Every project, archived ones on request, with member counts
 //
-// With `project.settings.read` or `placement.manage` for all of rvav.
+// With `project.settings.read`, `placement.manage`,
+// `project.quotas.manage`, `project.members.manage` or `project.update`
+// for all of rvav.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -68356,8 +68376,10 @@ func (c *ClientWithResponses) CreateProjectWithResponse(ctx context.Context, bod
 
 // GetAdminProjectWithResponse A project with its settings
 //
-// With `project.settings.read` or `placement.manage` in the project:
-// the page of its placement is the project's.
+// With `project.settings.read` in the project, or a permission there
+// that changes one of its parts: `placement.manage`,
+// `project.quotas.manage`, `project.members.manage` or
+// `project.update`. The page of each part is the project's.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -68404,6 +68426,8 @@ func (c *ClientWithResponses) UpdateProjectWithResponse(ctx context.Context, pro
 
 // GetProjectQuotasWithResponse A project's quota limits, per environment or for all
 //
+// With `project.settings.read` or `project.quotas.manage` in the project.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /admin/projects/{projectId}/quotas (the `GetProjectQuotas` operationId).
@@ -68443,10 +68467,10 @@ func (c *ClientWithResponses) SetProjectQuotasWithResponse(ctx context.Context, 
 
 // GetProjectUserQuotasWithResponse What each member of a project may take there
 //
-// With `project.settings.read` in the project. A line limits what each
-// member owns in the project, their deployments and running requests,
-// those made for them included. It applies besides the project's own
-// quota and rvav's (ADR-0047).
+// With `project.settings.read` or `project.quotas.manage` in the
+// project. A line limits what each member owns in the project, their
+// deployments and running requests, those made for them included. It
+// applies besides the project's own quota and rvav's (ADR-0047).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -68603,7 +68627,7 @@ func (c *ClientWithResponses) UpdatePropertyGroupWithResponse(ctx context.Contex
 
 // GetGlobalQuotasWithResponse The quota of all of rvav, and of each user across it
 //
-// With `project.settings.read` for all of rvav (ADR-0047).
+// With `project.settings.read` or `project.quotas.manage` for all of rvav (ADR-0047).
 //
 // Returns a wrapper object for the known response body format(s).
 //

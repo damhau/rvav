@@ -586,8 +586,8 @@ ones they may use, in groups (see [Navigation](#navigation)); auditors see
 them read only. A page that picks or
 names projects lists them with `adm.projectNames()`
 (`GET /admin/project-names`), which its own permission is enough for;
-`adm.projects()` takes `project.settings.read`, so only **Projects** uses
-it.
+`adm.projects()` takes a permission that opens a project's page
+(`projectPagePermissions` in `lib/can.ts`), so only **Projects** uses it.
 
 - **Setup** (`features/admin/SetupPage.tsx`, ADR-0030): the setup
   checklist, from `GET /admin/setup`, read again each time it opens. Each
@@ -609,7 +609,10 @@ it.
   and the identity provider groups (any role, for all of rvav or in one
   project, as the role can be given; a role with `access.manage` warns
   that the group's members are administrators in all but name). Project
-  admins see their own projects only.
+  admins see their own projects only. A role that changes one part of a
+  project (placement, quotas, members or details) opens it with that
+  part's tab, **Members** and **Details**; a tab the address names that
+  the role doesn't see opens **Members**.
 - **Roles** (`access.read`), in tabs, with **New role** as the page's
   primary action: **Roles**, a table of the built-in and custom roles,
   where each can be given and how often it is, whose rows open the role
@@ -698,8 +701,9 @@ it.
   has the deployment limit policies: deployments per user and per
   project, and vCPU and memory per deployment, for a project and an
   environment or for all ([ADR-0047](adr/0047-user-and-global-quotas.md)).
-  The **Quotas** tab, shown with `project.settings.read`, has **All of
-  rvav** and **Each user across rvav** (`RvavQuotas`, on `QuotaLines`).
+  The **Quotas** tab, shown with `project.settings.read` or
+  `project.quotas.manage`, has **All of rvav** and **Each user across
+  rvav** (`RvavQuotas`, on `QuotaLines`).
   Then naming policies (template, counter, where offered, and a preview of
   the next names with the ones skipped because they are taken) and **What
   applies here**, which says which policy decides the approval, day-2

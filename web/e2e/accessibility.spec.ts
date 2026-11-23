@@ -141,6 +141,15 @@ for (const theme of ["light", "dark"] as const) {
       await scan(page, "/admin/integrations (not allowed)");
     });
 
+    // A project's page for a role that sets its quotas only: its tabs are fewer (#217).
+    test("axe: a project's page for a role that sets its quotas", async ({ page }) => {
+      await page.addInitScript(() => localStorage.setItem("rvav.mock.as", "quota-manager"));
+      await page.goto("/admin/projects/prj_web?tab=quotas");
+      await expect(page.getByRole("region", { name: "Each member's quota" })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Placement" })).toBeHidden();
+      await scanAll(page, "/admin/projects/prj_web (quota manager)");
+    });
+
     // A connection's saved settings applying, then applied (ADR-0030).
     test("axe: a connection's settings applying", async ({ page }) => {
       await page.goto("/admin/integrations/awx");

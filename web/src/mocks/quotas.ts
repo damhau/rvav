@@ -252,7 +252,8 @@ export function quotaHandlers(db: Db, base: string, wait: () => Promise<void>) {
       await wait();
       const p = project(String(params.id));
       if (!p) return problem(404, "Not found");
-      if (!holdsIn(db, p.id, "project.settings.read")) return problem(403, "Not allowed");
+      if (!holdsIn(db, p.id, "project.settings.read") && !holdsIn(db, p.id, "project.quotas.manage"))
+        return problem(403, "Not allowed");
       return HttpResponse.json({ items: st().perUser[p.id] ?? [] });
     }),
     http.put(`${base}/admin/projects/:id/user-quotas`, async ({ params, request }) => {
@@ -293,7 +294,8 @@ export function quotaHandlers(db: Db, base: string, wait: () => Promise<void>) {
     }),
     http.get(`${base}/admin/quotas`, async () => {
       await wait();
-      if (!db.me.permissions.includes("project.settings.read")) return problem(403, "Not allowed");
+      if (!holdsIn(db, "", "project.settings.read") && !holdsIn(db, "", "project.quotas.manage"))
+        return problem(403, "Not allowed");
       return HttpResponse.json({ items: st().global });
     }),
     http.put(`${base}/admin/quotas`, async ({ request }) => {

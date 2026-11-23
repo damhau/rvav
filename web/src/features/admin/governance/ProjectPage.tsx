@@ -1315,9 +1315,16 @@ export function ProjectPage({ projectId, tab = "members" }: { projectId: string;
       </Page>
     );
   const p = project.data;
-  // A role that only places the project's VMs opens it for its Placement tab; its quotas are its settings'.
-  const tabs = projectTabs.filter((v) => v !== "quotas" || can(me, "project.settings.read", p.id));
-  const shown = tabs.includes(tab) ? tab : "members";
+  // A role that changes one part of the project opens it for that part's tab; the others are its settings'.
+  const reads = (permission: string) => can(me, "project.settings.read", p.id) || can(me, permission, p.id);
+  const allowed: Record<ProjectTab, boolean> = {
+    members: true,
+    placement: reads("placement.manage"),
+    quotas: reads("project.quotas.manage"),
+    details: true,
+  };
+  const tabs = projectTabs.filter((v) => allowed[v]);
+  const shown = allowed[tab] ? tab : "members";
   return (
     <Page>
       <PageHeader
@@ -1358,11 +1365,13 @@ export function ProjectPage({ projectId, tab = "members" }: { projectId: string;
           <DeploymentSharing project={p} canManage={can(me, "project.members.manage", p.id)} />
           <Members project={p} canManage={can(me, "project.members.manage", p.id)} />
         </TabsContent>
-        <TabsContent value="placement" className="flex flex-col gap-4 pt-4">
-          <Placement project={p} isAdmin={can(me, "placement.manage", p.id)} />
-          <DirectoryPlacements project={p} canManage={can(me, "placement.manage", p.id)} />
-        </TabsContent>
-        {tabs.includes("quotas") && (
+        {allowed.placement && (
+          <TabsContent value="placement" className="flex flex-col gap-4 pt-4">
+            <Placement project={p} isAdmin={can(me, "placement.manage", p.id)} />
+            <DirectoryPlacements project={p} canManage={can(me, "placement.manage", p.id)} />
+          </TabsContent>
+        )}
+        {allowed.quotas && (
           <TabsContent value="quotas" className="flex flex-col gap-4 pt-4">
             <Quotas project={p} isAdmin={can(me, "project.quotas.manage", p.id)} />
             <MemberQuotas

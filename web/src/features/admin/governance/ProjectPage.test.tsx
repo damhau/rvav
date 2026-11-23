@@ -145,80 +145,88 @@ describe("a project's placement and quotas", () => {
     expect(anyRows).toHaveLength(1);
   });
 
-  it("gives the project an OU in Active Directory for an environment, with groups (ADR-0064)", async () => {
-    const user = userEvent.setup();
-    renderApp("/admin/projects/prj_web?tab=placement");
-    const directory = await screen.findByRole("region", { name: "Active Directory" });
-    const table = await within(directory).findByRole("table", { name: "Active Directory OUs of Web Platform" });
-    expect(await within(table).findByRole("row", { name: /^Any environment/ })).toHaveTextContent(
-      "OU=Web,OU=Servers,DC=corp,DC=example",
-    );
-    // Every project's, shown and changed elsewhere.
-    const shared = within(table).getByRole("row", { name: /^Every project in Production/ });
-    expect(shared).toHaveTextContent("Set in Projects › Environments");
+  it(
+    "gives the project an OU in Active Directory for an environment, with groups (ADR-0064)",
+    { timeout: 15_000 },
+    async () => {
+      const user = userEvent.setup();
+      renderApp("/admin/projects/prj_web?tab=placement");
+      const directory = await screen.findByRole("region", { name: "Active Directory" });
+      const table = await within(directory).findByRole("table", { name: "Active Directory OUs of Web Platform" });
+      expect(await within(table).findByRole("row", { name: /^Any environment/ })).toHaveTextContent(
+        "OU=Web,OU=Servers,DC=corp,DC=example",
+      );
+      // Every project's, shown and changed elsewhere.
+      const shared = within(table).getByRole("row", { name: /^Every project in Production/ });
+      expect(shared).toHaveTextContent("Set in Projects › Environments");
 
-    await user.click(within(directory).getByRole("button", { name: "New OU" }));
-    const sheet = await screen.findByRole("dialog", { name: "New Active Directory OU for Web Platform" });
-    await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
-    await user.click(await screen.findByRole("option", { name: "Development" }));
-    await user.type(within(sheet).getByLabelText("OU"), "Servers");
-    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
-    expect(await within(sheet).findByText(/"Servers" is not a DN/)).toBeInTheDocument();
+      await user.click(within(directory).getByRole("button", { name: "New OU" }));
+      const sheet = await screen.findByRole("dialog", { name: "New Active Directory OU for Web Platform" });
+      await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
+      await user.click(await screen.findByRole("option", { name: "Development" }));
+      await user.type(within(sheet).getByLabelText("OU"), "Servers");
+      await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
+      expect(await within(sheet).findByText(/"Servers" is not a DN/)).toBeInTheDocument();
 
-    await user.clear(within(sheet).getByLabelText("OU"));
-    await user.type(within(sheet).getByLabelText("OU"), "OU=Dev,OU=Web");
-    await user.type(within(sheet).getByLabelText("Groups"), "CN=Web servers,OU=Groups{Enter}CN=Dev,OU=Groups");
-    await user.click(within(sheet).getByLabelText(/Blueprints may choose their OU/));
-    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
-    expect(await screen.findByText("OU saved")).toBeInTheDocument();
-    const saved = adminState(db).adPlacements.find((r) => r.project_id === "prj_web" && r.environment === "dev")!;
-    expect(saved).toMatchObject({
-      ou_dn: "OU=Dev,OU=Web,DC=corp,DC=example",
-      groups: ["CN=Web servers,OU=Groups", "CN=Dev,OU=Groups"],
-      allow_blueprint_ou: true,
-    });
-    const row = await within(table).findByRole("row", { name: /^In Development/ });
-    expect(row).toHaveTextContent("May choose their OU");
+      await user.clear(within(sheet).getByLabelText("OU"));
+      await user.type(within(sheet).getByLabelText("OU"), "OU=Dev,OU=Web");
+      await user.type(within(sheet).getByLabelText("Groups"), "CN=Web servers,OU=Groups{Enter}CN=Dev,OU=Groups");
+      await user.click(within(sheet).getByLabelText(/Blueprints may choose their OU/));
+      await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
+      expect(await screen.findByText("OU saved")).toBeInTheDocument();
+      const saved = adminState(db).adPlacements.find((r) => r.project_id === "prj_web" && r.environment === "dev")!;
+      expect(saved).toMatchObject({
+        ou_dn: "OU=Dev,OU=Web,DC=corp,DC=example",
+        groups: ["CN=Web servers,OU=Groups", "CN=Dev,OU=Groups"],
+        allow_blueprint_ou: true,
+      });
+      const row = await within(table).findByRole("row", { name: /^In Development/ });
+      expect(row).toHaveTextContent("May choose their OU");
 
-    await user.click(within(row).getByRole("button", { name: /^Actions for the OU/ }));
-    await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
-    const confirm = await screen.findByRole("alertdialog", {
-      name: "Stop making computer objects in OU=Dev,OU=Web,DC=corp,DC=example?",
-    });
-    expect(confirm).toHaveTextContent("Objects already made stay");
-    await user.click(within(confirm).getByRole("button", { name: "Remove OU" }));
-    expect(await screen.findByText("OU removed")).toBeInTheDocument();
-  });
+      await user.click(within(row).getByRole("button", { name: /^Actions for the OU/ }));
+      await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
+      const confirm = await screen.findByRole("alertdialog", {
+        name: "Stop making computer objects in OU=Dev,OU=Web,DC=corp,DC=example?",
+      });
+      expect(confirm).toHaveTextContent("Objects already made stay");
+      await user.click(within(confirm).getByRole("button", { name: "Remove OU" }));
+      expect(await screen.findByText("OU removed")).toBeInTheDocument();
+    },
+  );
 
-  it("keeps a role placing VMs in this project only to what every project's OU delegates, by the field", async () => {
-    asProjectAdmin();
-    db.me.projects = db.me.projects.map((p) =>
-      p.project.id === "prj_web" ? { ...p, permissions: [...p.permissions, "placement.manage"] } : p,
-    );
-    const user = userEvent.setup();
-    renderApp("/admin/projects/prj_web?tab=placement");
-    const directory = await screen.findByRole("region", { name: "Active Directory" });
-    await user.click(await within(directory).findByRole("button", { name: "New OU" }));
-    const sheet = await screen.findByRole("dialog", { name: "New Active Directory OU for Web Platform" });
-    await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
-    await user.click(await screen.findByRole("option", { name: "Production" }));
-    await user.type(within(sheet).getByLabelText("OU"), "OU=Web,OU=Servers");
-    await user.type(within(sheet).getByLabelText("Groups"), "CN=Admins,OU=Groups");
-    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
-    expect(
-      await within(sheet).findByText(/its OU goes under OU=Production,OU=Servers, the one set/),
-    ).toBeInTheDocument();
-    expect(within(sheet).getByLabelText("Groups")).toHaveAccessibleDescription(
-      /CN=Admins,OU=Groups is not under the project's OU\./,
-    );
+  it(
+    "keeps a role placing VMs in this project only to what every project's OU delegates, by the field",
+    { timeout: 15_000 },
+    async () => {
+      asProjectAdmin();
+      db.me.projects = db.me.projects.map((p) =>
+        p.project.id === "prj_web" ? { ...p, permissions: [...p.permissions, "placement.manage"] } : p,
+      );
+      const user = userEvent.setup();
+      renderApp("/admin/projects/prj_web?tab=placement");
+      const directory = await screen.findByRole("region", { name: "Active Directory" });
+      await user.click(await within(directory).findByRole("button", { name: "New OU" }));
+      const sheet = await screen.findByRole("dialog", { name: "New Active Directory OU for Web Platform" });
+      await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
+      await user.click(await screen.findByRole("option", { name: "Production" }));
+      await user.type(within(sheet).getByLabelText("OU"), "OU=Web,OU=Servers");
+      await user.type(within(sheet).getByLabelText("Groups"), "CN=Admins,OU=Groups");
+      await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
+      expect(
+        await within(sheet).findByText(/its OU goes under OU=Production,OU=Servers, the one set/),
+      ).toBeInTheDocument();
+      expect(within(sheet).getByLabelText("Groups")).toHaveAccessibleDescription(
+        /CN=Admins,OU=Groups is not under the project's OU\./,
+      );
 
-    await user.clear(within(sheet).getByLabelText("OU"));
-    await user.type(within(sheet).getByLabelText("OU"), "OU=Web,OU=Production,OU=Servers");
-    await user.clear(within(sheet).getByLabelText("Groups"));
-    await user.type(within(sheet).getByLabelText("Groups"), "CN=Web,OU=Web,OU=Production,OU=Servers");
-    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
-    expect(await screen.findByText("OU saved")).toBeInTheDocument();
-  });
+      await user.clear(within(sheet).getByLabelText("OU"));
+      await user.type(within(sheet).getByLabelText("OU"), "OU=Web,OU=Production,OU=Servers");
+      await user.clear(within(sheet).getByLabelText("Groups"));
+      await user.type(within(sheet).getByLabelText("Groups"), "CN=Web,OU=Web,OU=Production,OU=Servers");
+      await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
+      expect(await screen.findByText("OU saved")).toBeInTheDocument();
+    },
+  );
 
   it("opens the Placement tab for a role that only places the project's VMs, and no Quotas tab (#212)", async () => {
     localStorage.setItem("rvav.mock.as", "placement-manager");
@@ -392,5 +400,87 @@ describe("a project's deployment sharing", () => {
     });
     expect(choice).toHaveTextContent("Owners only");
     expect(choice).toHaveFocus();
+  });
+});
+
+// A custom role that changes one part of Web Platform opens its page from
+// Administration › Projects, with that part's tab and the tabs everyone
+// there reads (#217).
+describe("a project's page for a role that changes one part of it", () => {
+  async function openAs(persona: string) {
+    localStorage.setItem("rvav.mock.as", persona);
+    resetDb();
+    const user = userEvent.setup();
+    renderApp("/");
+    const nav = await screen.findByRole("navigation", { name: "Main" }, { timeout: 5000 });
+    const admin = within(nav).getByRole("group", { name: "Administration" });
+    await user.click(within(admin).getByRole("link", { name: "Projects" }));
+    const yours = await screen.findByRole("region", { name: "Your projects" });
+    expect(
+      within(yours)
+        .getAllByRole("link")
+        .map((l) => l.textContent),
+    ).toEqual(["Web Platform"]);
+    await user.click(within(yours).getByRole("link", { name: "Web Platform" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Web Platform" })).toBeInTheDocument();
+    const tabs = screen.getByRole("tablist", { name: "Project sections" });
+    const shown = within(tabs)
+      .getAllByRole("tab")
+      .map((t) => t.textContent);
+    return { user, tabs, shown };
+  }
+
+  it(
+    "shows a role setting its quotas the Quotas tab, to change them and each member's",
+    { timeout: 15_000 },
+    async () => {
+      const { user, tabs, shown } = await openAs("quota-manager");
+      expect(shown).toEqual(["Members", "Quotas", "Details"]);
+      expect(within(screen.getByRole("region", { name: "Members" })).queryByLabelText("Add someone")).toBeNull();
+      await user.click(within(tabs).getByRole("tab", { name: "Quotas" }));
+      const quotas = await screen.findByRole("region", { name: "Quotas" });
+      expect(await within(quotas).findByRole("row", { name: /^vCPU/ })).toHaveTextContent("112 of 160");
+      expect(within(quotas).getByRole("button", { name: "Add a limit" })).toBeEnabled();
+      expect(await screen.findByRole("region", { name: "Each member's quota" })).toBeInTheDocument();
+      await user.click(within(tabs).getByRole("tab", { name: "Details" }));
+      expect(await screen.findByRole("textbox", { name: "Name" })).toBeDisabled();
+    },
+  );
+
+  it(
+    "shows a role managing its members the Members and Details tabs, to add someone",
+    { timeout: 15_000 },
+    async () => {
+      const { user, tabs, shown } = await openAs("member-manager");
+      expect(shown).toEqual(["Members", "Details"]);
+      const members = screen.getByRole("region", { name: "Members" });
+      expect(await within(members).findByLabelText("Add someone")).toBeEnabled();
+      expect(await within(members).findByRole("button", { name: "Actions for Thomas Nguyen" })).toBeInTheDocument();
+      await user.click(within(tabs).getByRole("tab", { name: "Details" }));
+      expect(await screen.findByRole("textbox", { name: "Name" })).toBeDisabled();
+      expect(screen.queryByRole("button", { name: "Save details" })).toBeNull();
+    },
+  );
+
+  it("shows a role changing its details the Members and Details tabs, to save them", { timeout: 15_000 }, async () => {
+    const { user, tabs, shown } = await openAs("project-editor");
+    expect(shown).toEqual(["Members", "Details"]);
+    expect(within(screen.getByRole("region", { name: "Members" })).queryByLabelText("Add someone")).toBeNull();
+    await user.click(within(tabs).getByRole("tab", { name: "Details" }));
+    const details = await screen.findByRole("region", { name: "Details" });
+    const description = within(details).getByRole("textbox", { name: "Description" });
+    await user.clear(description);
+    await user.paste("Storefront");
+    await user.click(within(details).getByRole("button", { name: "Save details" }));
+    expect(await screen.findByText("Web Platform saved")).toBeInTheDocument();
+  });
+
+  it("opens Members for a tab the address names that the role doesn't see", async () => {
+    localStorage.setItem("rvav.mock.as", "member-manager");
+    resetDb();
+    renderApp("/admin/projects/prj_web?tab=quotas");
+    expect(await screen.findByRole("tab", { name: "Members" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("tab", { name: "Quotas" })).toBeNull();
+    expect(await screen.findByRole("region", { name: "Members" })).toBeInTheDocument();
   });
 });

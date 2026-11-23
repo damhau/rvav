@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import type { LinkProps } from "@tanstack/react-router";
 import type { Me } from "@/lib/api/types";
-import { can, canAnywhere } from "@/lib/can";
+import { can, canAnywhere, projectPagePermissions } from "@/lib/can";
 import { i18n } from "@/lib/i18n";
 import type shell from "@/locales/en/shell.json";
 
@@ -146,7 +146,7 @@ export const adminGroups: AdminGroup[] = [
         to: "/admin/projects",
         key: "projects",
         icon: Folders,
-        show: (me) => canAnywhere(me, "project.settings.read") || canAnywhere(me, "placement.manage"),
+        show: (me) => projectPagePermissions.some((p) => canAnywhere(me, p)),
       },
       {
         to: "/admin/roles",

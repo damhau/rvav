@@ -57,10 +57,10 @@ used, with the built-in roles unchanged.
 | `request.manage` | P | Cancel, retry and roll back anyone's request in the project; the requester and the owner always may their own. | admin, project-admin |
 | `deployments.read_all` | P | See every deployment and request of the project when its deployments show to their owners only (ADR-0045). | admin, auditor, project-admin, supervisor |
 | `approval.project` | P (in the project only) | Be asked with the project's admins, as when a lease is extended beyond its policy. | project-admin (admin's isn't counted) |
-| `project.members.manage` | P | Add and remove the project's members and change their roles. | admin, project-admin |
+| `project.members.manage` | P | Open the project's page, and add and remove its members and change their roles there (#217). | admin, project-admin |
 | `project.settings.read` | P | See the project's administration: placement, quotas, the policies that apply; for all of rvav, every project's. | admin, auditor, project-admin |
-| `project.update` | P | Change the project's details and environments, or archive it. | admin |
-| `project.quotas.manage` | P | Set the project's quotas. | admin |
+| `project.update` | P | Open the project's page, and change its details and environments or archive it there (#217). | admin |
+| `project.quotas.manage` | P | See and set the project's quotas and each member's, on its page; for all of rvav, rvav's own too (#217). | admin |
 | `placement.manage` | P | See and change the project's placement rules and OUs, on its page (#212). | admin |
 | `audit.read` | P | Read the audit log: the project's events, or for all of rvav every event. | admin, auditor, project-admin |
 | `day2.<group>`, `day2.<group>:<action>` | P | Run the day-2 action when no policy decides it (below). | none |

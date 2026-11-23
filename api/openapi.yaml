@@ -3299,7 +3299,10 @@ paths:
       tags: [admin]
       operationId: listAdminProjects
       summary: Every project, archived ones on request, with member counts
-      description: With `project.settings.read` or `placement.manage` for all of rvav.
+      description: |
+        With `project.settings.read`, `placement.manage`,
+        `project.quotas.manage`, `project.members.manage` or `project.update`
+        for all of rvav.
       parameters:
         - { $ref: "#/components/parameters/Search" }
         - name: archived
@@ -3342,8 +3345,10 @@ paths:
       operationId: getAdminProject
       summary: A project with its settings
       description: |
-        With `project.settings.read` or `placement.manage` in the project:
-        the page of its placement is the project's.
+        With `project.settings.read` in the project, or a permission there
+        that changes one of its parts: `placement.manage`,
+        `project.quotas.manage`, `project.members.manage` or
+        `project.update`. The page of each part is the project's.
       responses:
         "200":
           description: OK
@@ -3390,7 +3395,7 @@ paths:
         `policies.read`, `policies.manage`, `extensibility.read`,
         `extensibility.manage` or `import.manage`. Listing projects with
         their settings (`listAdminProjects`) takes `project.settings.read`
-        or `placement.manage`.
+        or a permission that changes a part of every project.
       parameters:
         - name: archived
           in: query
@@ -4422,6 +4427,7 @@ paths:
       tags: [admin]
       operationId: getProjectQuotas
       summary: A project's quota limits, per environment or for all
+      description: With `project.settings.read` or `project.quotas.manage` in the project.
       responses:
         "200":
           description: OK
@@ -4459,10 +4465,10 @@ paths:
       operationId: getProjectUserQuotas
       summary: What each member of a project may take there
       description: |
-        With `project.settings.read` in the project. A line limits what each
-        member owns in the project, their deployments and running requests,
-        those made for them included. It applies besides the project's own
-        quota and rvav's (ADR-0047).
+        With `project.settings.read` or `project.quotas.manage` in the
+        project. A line limits what each member owns in the project, their
+        deployments and running requests, those made for them included. It
+        applies besides the project's own quota and rvav's (ADR-0047).
       responses:
         "200":
           description: OK
@@ -4505,7 +4511,7 @@ paths:
       tags: [admin]
       operationId: getGlobalQuotas
       summary: The quota of all of rvav, and of each user across it
-      description: With `project.settings.read` for all of rvav (ADR-0047).
+      description: With `project.settings.read` or `project.quotas.manage` for all of rvav (ADR-0047).
       responses:
         "200":
           description: OK

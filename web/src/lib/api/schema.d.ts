@@ -2579,7 +2579,9 @@ export interface paths {
         };
         /**
          * Every project, archived ones on request, with member counts
-         * @description With `project.settings.read` or `placement.manage` for all of rvav.
+         * @description With `project.settings.read`, `placement.manage`,
+         *     `project.quotas.manage`, `project.members.manage` or `project.update`
+         *     for all of rvav.
          */
         get: operations["listAdminProjects"];
         put?: never;
@@ -2602,8 +2604,10 @@ export interface paths {
         };
         /**
          * A project with its settings
-         * @description With `project.settings.read` or `placement.manage` in the project:
-         *     the page of its placement is the project's.
+         * @description With `project.settings.read` in the project, or a permission there
+         *     that changes one of its parts: `placement.manage`,
+         *     `project.quotas.manage`, `project.members.manage` or
+         *     `project.update`. The page of each part is the project's.
          */
         get: operations["getAdminProject"];
         put?: never;
@@ -2636,7 +2640,7 @@ export interface paths {
          *     `policies.read`, `policies.manage`, `extensibility.read`,
          *     `extensibility.manage` or `import.manage`. Listing projects with
          *     their settings (`listAdminProjects`) takes `project.settings.read`
-         *     or `placement.manage`.
+         *     or a permission that changes a part of every project.
          */
         get: operations["listProjectNames"];
         put?: never;
@@ -3393,7 +3397,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** A project's quota limits, per environment or for all */
+        /**
+         * A project's quota limits, per environment or for all
+         * @description With `project.settings.read` or `project.quotas.manage` in the project.
+         */
         get: operations["getProjectQuotas"];
         /** Replace a project's quota limits */
         put: operations["setProjectQuotas"];
@@ -3415,10 +3422,10 @@ export interface paths {
         };
         /**
          * What each member of a project may take there
-         * @description With `project.settings.read` in the project. A line limits what each
-         *     member owns in the project, their deployments and running requests,
-         *     those made for them included. It applies besides the project's own
-         *     quota and rvav's (ADR-0047).
+         * @description With `project.settings.read` or `project.quotas.manage` in the
+         *     project. A line limits what each member owns in the project, their
+         *     deployments and running requests, those made for them included. It
+         *     applies besides the project's own quota and rvav's (ADR-0047).
          */
         get: operations["getProjectUserQuotas"];
         /**
@@ -3447,7 +3454,7 @@ export interface paths {
         };
         /**
          * The quota of all of rvav, and of each user across it
-         * @description With `project.settings.read` for all of rvav (ADR-0047).
+         * @description With `project.settings.read` or `project.quotas.manage` for all of rvav (ADR-0047).
          */
         get: operations["getGlobalQuotas"];
         /**
