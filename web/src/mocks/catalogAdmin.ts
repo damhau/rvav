@@ -1327,10 +1327,16 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       const item = find(String(params.id));
       if (!item) return problem(404, "Not found");
       const u = (await request.json()) as S["CatalogItemUpdate"];
-      if (u.icon && !iconSet.includes(u.icon))
-        return problem(422, "Some inputs need attention", [
-          { field: "/icon", code: "unknown", message: `"${u.icon}" is not one of rvav's icons.` },
-        ]);
+      const errors: S["FieldError"][] = [];
+      if (u.name !== undefined && !u.name.trim())
+        errors.push({ field: "/name", code: "required", message: "Give the item a name." });
+      if (u.summary !== undefined && !u.summary.trim())
+        errors.push({ field: "/summary", code: "required", message: "Say in a line what the item gives." });
+      if (u.category !== undefined && !db.categories.some((c) => c.key === u.category))
+        errors.push({ field: "/category", code: "unknown", message: `There is no category "${u.category}".` });
+      if (u.icon !== undefined && !iconSet.includes(u.icon))
+        errors.push({ field: "/icon", code: "unknown", message: `"${u.icon}" is not one of rvav's icons.` });
+      if (errors.length) return problem(422, "Some inputs need attention", errors);
       Object.assign(item, Object.fromEntries(Object.entries(u).filter(([, v]) => v !== undefined)));
       markGit(db, item);
       return HttpResponse.json(adminItem(db, item));

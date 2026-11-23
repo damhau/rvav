@@ -4,12 +4,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Server } from "lucide-react";
 import type { TFunction } from "i18next";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useSaveFocus } from "@/components/ui/opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -95,6 +96,9 @@ function VCenterSheet({ vc, onClose }: { vc?: VCenter; onClose: () => void }) {
       failed(e, t("integrations.testDidntRun"));
     },
   });
+  const form = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const saveFocus = useSaveFocus(form, save.isPending, () => submit.current);
   // A test result describes the settings it ran with: changed, it goes.
   const setF = (next: typeof f) => {
     setFNow(next);
@@ -119,18 +123,23 @@ function VCenterSheet({ vc, onClose }: { vc?: VCenter; onClose: () => void }) {
           <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
             {test.isPending ? t("integrations.testing") : t("integrations.testConnection")}
           </Button>
-          <Button type="submit" form={formId} variant="primary" disabled={save.isPending}>
+          <Button ref={submit} type="submit" form={formId} variant="primary" disabled={save.isPending}>
             {save.isPending ? t("integrations.saving") : t(vc ? "vcenters.save" : "vcenters.addSubmit")}
           </Button>
         </>
       }
     >
       <form
+        ref={form}
         id={formId}
         className="flex flex-col gap-4"
+        onKeyDownCapture={saveFocus.interacted}
+        onPointerDownCapture={saveFocus.interacted}
         onSubmit={(e) => {
           e.preventDefault();
+          if (save.isPending) return;
           setErrors({});
+          saveFocus.submitted();
           save.mutate();
         }}
       >

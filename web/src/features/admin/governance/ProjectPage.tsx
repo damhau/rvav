@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Gauge, Plus, Route as RouteIcon, UserRound, X } from "lucide-react";
 import type { TFunction } from "i18next";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
@@ -12,12 +12,13 @@ import { Page } from "@/components/common/page";
 import { Badge } from "@/components/ui/badge";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
+import { useSaveFocus } from "@/components/ui/opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { MenuItem, MenuSeparator } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Field, Input } from "@/components/ui/input";
+import { Field, FieldNote, Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -153,6 +154,10 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
     onError: (e) => failed(e, t("projects.notSaved")),
   });
   const errors = fieldErrors(save.error);
+  const envError = errorAt(errors, "/environments");
+  const form = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const saveFocus = useSaveFocus(form, save.isPending, () => submit.current);
   return (
     <Panel
       title={t("project.details.title")}
@@ -162,7 +167,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
             <Button variant={project.archived ? "secondary" : "danger"} onClick={() => setArchiving(true)}>
               {project.archived ? t("projects.archive.restore") : t("projects.archive.archive")}
             </Button>
-            <Button type="submit" form="project-details" variant="primary" disabled={save.isPending}>
+            <Button ref={submit} type="submit" form="project-details" variant="primary" disabled={save.isPending}>
               {save.isPending ? t("projects.saving") : t("project.details.save")}
             </Button>
           </>
@@ -170,10 +175,15 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
       }
     >
       <form
+        ref={form}
         id="project-details"
         className="grid max-w-2xl grid-cols-1 gap-3 md:grid-cols-2"
+        onKeyDownCapture={saveFocus.interacted}
+        onPointerDownCapture={saveFocus.interacted}
         onSubmit={(e) => {
           e.preventDefault();
+          if (save.isPending) return;
+          saveFocus.submitted();
           const problems = keyProblems(props, (p) => p.value === "", t("project.properties.keyless"));
           setLocal(problems);
           if (Object.keys(problems).length > 0) return;
@@ -183,7 +193,7 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
           });
         }}
       >
-        <Field label={t("projects.name")} htmlFor="p-name">
+        <Field label={t("projects.name")} htmlFor="p-name" error={errors["/name"]}>
           <Input
             id="p-name"
             value={f.name}
@@ -207,7 +217,11 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
             onChange={(e) => setF({ ...f, description: e.target.value })}
           />
         </Field>
-        <fieldset className="flex flex-wrap gap-3 md:col-span-2">
+        <fieldset
+          className="flex flex-wrap gap-3 md:col-span-2"
+          aria-invalid={envError ? true : undefined}
+          aria-describedby={envError ? "p-env-note" : undefined}
+        >
           <legend className="mb-1 text-secondary font-medium">{t("projects.environmentsLegend")}</legend>
           {(envs.data?.items ?? []).map((e) => (
             <label key={e.key} htmlFor={`p-env-${e.key}`} className="flex items-center gap-1.5 text-body">
@@ -225,6 +239,11 @@ function Details({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: bo
               {e.name}
             </label>
           ))}
+          {envError && (
+            <div className="w-full">
+              <FieldNote id="p-env-note" error={envError} />
+            </div>
+          )}
         </fieldset>
         <PropertiesEditor
           value={props}

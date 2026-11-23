@@ -4,12 +4,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Network } from "lucide-react";
 import type { TFunction } from "i18next";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/feedback";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useSaveFocus } from "@/components/ui/opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -54,7 +55,7 @@ function VCenterChoice({
   const servedBy = (vc: string) => managers.find((m) => m.name !== self && m.vcenters.includes(vc))?.name;
   const names = vcenters.data?.items.map((v) => v.name) ?? [];
   return (
-    <fieldset className="flex flex-col gap-2" aria-describedby={`${id}-note`}>
+    <fieldset className="flex flex-col gap-2" aria-describedby={`${id}-note`} aria-invalid={error ? true : undefined}>
       <legend className="mb-1 text-secondary font-medium">{t("nsxManagers.served")}</legend>
       {vcenters.isError && <ErrorState error={vcenters.error} onRetry={() => void vcenters.refetch()} />}
       <div className="flex flex-col gap-1.5">
@@ -127,6 +128,9 @@ function ManagerSheet({ m, managers, onClose }: { m?: Manager; managers: Manager
       failed(e, t("integrations.testDidntRun"));
     },
   });
+  const form = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const saveFocus = useSaveFocus(form, save.isPending, () => submit.current);
   // A test result describes the settings it ran with: changed, it goes.
   const setF = (next: typeof f) => {
     setFNow(next);
@@ -151,18 +155,23 @@ function ManagerSheet({ m, managers, onClose }: { m?: Manager; managers: Manager
           <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
             {test.isPending ? t("integrations.testing") : t("integrations.testConnection")}
           </Button>
-          <Button type="submit" form={formId} variant="primary" disabled={save.isPending}>
+          <Button ref={submit} type="submit" form={formId} variant="primary" disabled={save.isPending}>
             {save.isPending ? t("integrations.saving") : t(m ? "nsxManagers.save" : "nsxManagers.addSubmit")}
           </Button>
         </>
       }
     >
       <form
+        ref={form}
         id={formId}
         className="flex flex-col gap-4"
+        onKeyDownCapture={saveFocus.interacted}
+        onPointerDownCapture={saveFocus.interacted}
         onSubmit={(e) => {
           e.preventDefault();
+          if (save.isPending) return;
           setErrors({});
+          saveFocus.submitted();
           save.mutate();
         }}
       >

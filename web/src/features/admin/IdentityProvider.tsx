@@ -13,6 +13,7 @@ import { CopyText } from "@/components/common/misc";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useSaveFocus } from "@/components/ui/opener";
 import { Field, Input } from "@/components/ui/input";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -136,6 +137,9 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
     setWaiting(true);
   };
 
+  const form = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const saveFocus = useSaveFocus(form, save.isPending, () => submit.current);
   const canTry = tested === key && values.issuer.trim() !== "" && values.client_id.trim() !== "";
   return (
     <Panel
@@ -150,18 +154,23 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
           <Button type="button" disabled={!canTry || waiting || trial.isPending} onClick={startTrial}>
             <ExternalLink aria-hidden /> {waiting ? t("identityProvider.signingIn") : t("identityProvider.try")}
           </Button>
-          <Button type="submit" form="oidc-settings" variant="primary" disabled={save.isPending}>
+          <Button ref={submit} type="submit" form="oidc-settings" variant="primary" disabled={save.isPending}>
             {save.isPending ? t("integrations.saving") : t("integrations.saveSettings")}
           </Button>
         </>
       }
     >
       <form
+        ref={form}
         id="oidc-settings"
         className="flex flex-col gap-4"
+        onKeyDownCapture={saveFocus.interacted}
+        onPointerDownCapture={saveFocus.interacted}
         onSubmit={(e) => {
           e.preventDefault();
+          if (save.isPending) return;
           setErrors({});
+          saveFocus.submitted();
           save.mutate();
         }}
       >

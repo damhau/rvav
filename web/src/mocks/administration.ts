@@ -1335,7 +1335,15 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       const p = project(String(params.id));
       if (!p) return problem(404, "Not found");
       const u = (await request.json()) as S["AdminProjectUpdate"];
-      const errors = propertyProblems(u.properties ?? {});
+      const errors = [
+        ...(u.name !== undefined && !u.name.trim() ? [err("/name", "Give the project a name.", "required")] : []),
+        ...(u.environments ?? []).flatMap((k, i) =>
+          db.environments.some((e) => e.key === k)
+            ? []
+            : [err(`/environments/${i}`, `"${k}" is not an environment.`, "unknown")],
+        ),
+        ...propertyProblems(u.properties ?? {}),
+      ];
       if (errors.length) return invalid(errors);
       if (u.properties) st().extra[p.id]!.properties = u.properties;
       if (u.name !== undefined) p.name = u.name;

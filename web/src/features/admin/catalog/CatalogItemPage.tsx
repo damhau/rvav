@@ -15,12 +15,13 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
+import { useSaveFocus } from "@/components/ui/opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Field, Input, Textarea } from "@/components/ui/input";
+import { Field, FieldNote, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
@@ -30,6 +31,7 @@ import { adm, keys, q } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { formatList, relative } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
+import { fieldErrors } from "@/features/admin/governance/common";
 import { GitBadge, ItemGitTab } from "./GitPanels";
 import { SharingTab } from "./SharingTab";
 import { ItemChangeDialog, requestableIn } from "./ItemsPanel";
@@ -646,28 +648,37 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
     onError: (e) => toastError(e, t("item.savingFailed")),
   });
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD((x) => ({ ...x, [k]: v }));
+  const errors = fieldErrors(save.error);
+  const form = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const saveFocus = useSaveFocus(form, save.isPending, () => submit.current);
   return (
     <Panel
       title={t("item.details.title")}
       description={t("item.details.lead")}
       footer={
-        <Button type="submit" form="item-details" variant="primary" disabled={save.isPending}>
+        <Button ref={submit} type="submit" form="item-details" variant="primary" disabled={save.isPending}>
           {save.isPending ? t("item.saving") : t("item.details.save")}
         </Button>
       }
     >
       <form
+        ref={form}
         id="item-details"
         className="grid max-w-3xl grid-cols-1 gap-3 md:grid-cols-2"
+        onKeyDownCapture={saveFocus.interacted}
+        onPointerDownCapture={saveFocus.interacted}
         onSubmit={(e) => {
           e.preventDefault();
+          if (save.isPending) return;
+          saveFocus.submitted();
           save.mutate();
         }}
       >
-        <Field label={t("item.details.name")} htmlFor="item-name">
+        <Field label={t("item.details.name")} htmlFor="item-name" error={errors["/name"]}>
           <Input id="item-name" value={d.name} onChange={(e) => set("name", e.target.value)} maxLength={80} />
         </Field>
-        <Field label={t("item.details.category")} htmlFor="item-category">
+        <Field label={t("item.details.category")} htmlFor="item-category" error={errors["/category"]}>
           <Select
             id="item-category"
             value={d.category}
@@ -675,7 +686,12 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
             options={(categories.data?.items ?? []).map((c) => ({ value: c.key, label: c.name }))}
           />
         </Field>
-        <Field label={t("item.details.summary")} htmlFor="item-summary" className="md:col-span-2">
+        <Field
+          label={t("item.details.summary")}
+          htmlFor="item-summary"
+          error={errors["/summary"]}
+          className="md:col-span-2"
+        >
           <Input id="item-summary" value={d.summary} onChange={(e) => set("summary", e.target.value)} maxLength={200} />
         </Field>
         <Field label={t("item.details.description")} htmlFor="item-description" className="md:col-span-2">
@@ -694,7 +710,13 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
         </div>
         <fieldset className="md:col-span-2">
           <legend className="mb-1.5 text-secondary font-medium">{t("item.details.icon")}</legend>
-          <div role="radiogroup" aria-label={t("item.details.icon")} className="flex flex-wrap gap-1.5">
+          <div
+            role="radiogroup"
+            aria-label={t("item.details.icon")}
+            aria-invalid={errors["/icon"] ? true : undefined}
+            aria-describedby={errors["/icon"] ? "item-icon-note" : undefined}
+            className="flex flex-wrap gap-1.5"
+          >
             {Object.keys(icons).map((name, i, names) => (
               <button
                 key={name}
@@ -720,6 +742,7 @@ function DetailsTab({ item }: { item: AdminCatalogItem }) {
               </button>
             ))}
           </div>
+          <FieldNote id="item-icon-note" error={errors["/icon"]} />
         </fieldset>
       </form>
     </Panel>

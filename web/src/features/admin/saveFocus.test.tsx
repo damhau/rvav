@@ -107,3 +107,88 @@ describe("saving with the keyboard", () => {
     },
   );
 });
+
+// A refusal is heard with its field: the focus reaches it once it is marked invalid.
+async function refusedAt(field: HTMLElement, message: RegExp | string) {
+  await waitFor(() => expect(field).toHaveFocus());
+  expect(field).toBeInvalid();
+  expect(field).toHaveAccessibleDescription(message);
+}
+
+describe("a save refused with the keyboard goes to the field it names", () => {
+  it("in the identity provider's settings", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/integrations/oidc");
+    const p = await screen.findByRole("region", { name: "Provider settings" });
+    const scopes = within(p).getByLabelText("Scopes");
+    await replace(user, scopes, "profile email");
+    await press(user, within(p).getByRole("button", { name: "Save settings" }));
+    await refusedAt(scopes, "The scopes must include openid.");
+  });
+
+  it("in an integration's settings", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/integrations/awx");
+    const awx = await screen.findByRole("region", { name: "AWX connection" });
+    const every = within(awx).getByRole("textbox", { name: "Sync interval" });
+    await replace(user, every, "10s");
+    await press(user, within(awx).getByRole("button", { name: "Save settings" }));
+    await refusedAt(every, "A duration from 30s to 24h, for example 5m or 1h30m.");
+  });
+
+  it("in the AWX inventory's token", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/integrations/awx");
+    const panel = await screen.findByRole("region", { name: "Inventory token" });
+    const address = within(panel).getByRole("textbox", { name: "rvav's address, as AWX reaches it" });
+    await replace(user, address, "ftp://rvav.corp.example");
+    await press(user, within(panel).getByRole("button", { name: "Create a token and put it in AWX" }));
+    await refusedAt(address, /such as https:\/\/rvav.corp.example/);
+  });
+
+  it("in an NSX Manager's sheet", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/integrations/nsx");
+    const region = await screen.findByRole("region", { name: "NSX Managers" });
+    await press(user, within(region).getByRole("button", { name: "Add an NSX Manager" }));
+    const sheet = await screen.findByRole("dialog", { name: "Add an NSX Manager" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "nsx02.corp.example");
+    await user.type(within(sheet).getByRole("textbox", { name: "Address" }), "https://nsx02.corp.example");
+    await user.type(within(sheet).getByRole("textbox", { name: "Account" }), "svc-rvav");
+    await press(user, within(sheet).getByRole("button", { name: "Add NSX Manager" }));
+    await refusedAt(within(sheet).getByLabelText("Password"), "Give the account's password.");
+  });
+
+  it("in a vCenter's sheet", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/integrations/vcenter");
+    const region = await screen.findByRole("region", { name: "vCenters" });
+    await press(user, within(region).getByRole("button", { name: "Add a vCenter" }));
+    const sheet = await screen.findByRole("dialog", { name: "Add a vCenter" });
+    await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "vc02.corp.example");
+    await user.type(within(sheet).getByRole("textbox", { name: "SDK address" }), "https://vc02.corp.example/sdk");
+    await user.type(within(sheet).getByRole("textbox", { name: "Account" }), "svc-rvav@vsphere.local");
+    await press(user, within(sheet).getByRole("button", { name: "Add vCenter" }));
+    await refusedAt(within(sheet).getByLabelText("Password"), "Give the account's password.");
+  });
+
+  it("in a project's details", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/projects/prj_web?tab=details");
+    const details = await screen.findByRole("region", { name: "Details" });
+    const name = within(details).getByRole("textbox", { name: "Name" });
+    await user.clear(name);
+    await press(user, within(details).getByRole("button", { name: "Save details" }));
+    await refusedAt(name, "Give the project a name.");
+  });
+
+  it("in a catalog item's details", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/catalog-items/itm_rhel9?tab=details");
+    const details = await screen.findByRole("region", { name: "Details" });
+    const summary = within(details).getByRole("textbox", { name: "Summary" });
+    await user.clear(summary);
+    await press(user, within(details).getByRole("button", { name: "Save details" }));
+    await refusedAt(summary, "Say in a line what the item gives.");
+  });
+});

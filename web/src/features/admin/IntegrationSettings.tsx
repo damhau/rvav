@@ -8,12 +8,13 @@
 // Trusted certificates (U1.4).
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Lock } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useSaveFocus } from "@/components/ui/opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -683,6 +684,9 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
       failed(e, t("integrations.testDidntRun"));
     },
   });
+  const form = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const saveFocus = useSaveFocus(form, save.isPending, () => submit.current);
   // Trust this certificate: its SHA-256 in the form, with TLS checks on.
   const pinField = def.settings.find((f) => f.name === "cert_sha256");
   const trustIt = pinField
@@ -719,18 +723,23 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
           <Button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
             {test.isPending ? t("integrations.testing") : (def.test ?? t("integrations.testConnection"))}
           </Button>
-          <Button type="submit" form={formId} variant="primary" disabled={save.isPending}>
+          <Button ref={submit} type="submit" form={formId} variant="primary" disabled={save.isPending}>
             {save.isPending ? t("integrations.saving") : t("integrations.saveSettings")}
           </Button>
         </>
       }
     >
       <form
+        ref={form}
         id={formId}
         className="flex flex-col gap-4"
+        onKeyDownCapture={saveFocus.interacted}
+        onPointerDownCapture={saveFocus.interacted}
         onSubmit={(e) => {
           e.preventDefault();
+          if (save.isPending) return;
           setErrors({});
+          saveFocus.submitted();
           save.mutate();
         }}
       >

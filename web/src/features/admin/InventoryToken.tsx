@@ -4,13 +4,14 @@
 // before and syncs the source. RVAV_INVENTORY_TOKEN locks it.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { Panel } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useSaveFocus } from "@/components/ui/opener";
 import { Field, Input } from "@/components/ui/input";
 import { api, call } from "@/lib/api/client";
 import { adm } from "@/lib/query";
@@ -40,6 +41,9 @@ export function InventoryToken() {
       failed(e, t("inventoryToken.noneMadeToast"));
     },
   });
+  const form = useRef<HTMLFormElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const saveFocus = useSaveFocus(form, make.isPending, () => submit.current);
   if (q.isPending) return <Skeleton className="h-40" />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
   const st = q.data;
@@ -57,10 +61,15 @@ export function InventoryToken() {
       }
     >
       <form
+        ref={form}
         className="flex max-w-3xl flex-col gap-3"
+        onKeyDownCapture={saveFocus.interacted}
+        onPointerDownCapture={saveFocus.interacted}
         onSubmit={(e) => {
           e.preventDefault();
+          if (make.isPending) return;
           setErrors({});
+          saveFocus.submitted();
           make.mutate();
         }}
       >
@@ -107,7 +116,7 @@ export function InventoryToken() {
               />
             </Field>
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="submit" disabled={make.isPending || !st.source_set}>
+              <Button ref={submit} type="submit" disabled={make.isPending || !st.source_set}>
                 {make.isPending
                   ? t("inventoryToken.making")
                   : token
