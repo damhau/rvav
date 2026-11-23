@@ -85,7 +85,7 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
   await page.getByRole("link", { name: "Web" }).click();
   await page.getByRole("tab", { name: "Placement" }).click();
   await page.getByRole("button", { name: "New rule" }).click();
-  const rule = page.getByRole("dialog", { name: "New placement rule for Web in dev" });
+  const rule = page.getByRole("dialog", { name: "New placement rule for Web in Development" });
   await rule.getByRole("textbox", { name: "Datastores" }).fill("vsan-*");
   await rule.getByRole("textbox", { name: "Networks" }).fill("dvpg-app-dev-*");
   await rule.getByRole("button", { name: "Create rule" }).click();

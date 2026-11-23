@@ -10,6 +10,7 @@ import { Field, Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { components } from "@/lib/api/schema";
 import { i18n } from "@/lib/i18n";
+import { useEnvName } from "@/lib/environments";
 import { adm, q } from "@/lib/query";
 import { keyProblems } from "../governance/common";
 
@@ -146,6 +147,7 @@ export function TargetFields({
   const set = (patch: Partial<Target>) => onChange({ ...t, ...patch });
   const projects = useQuery(adm.projectNames());
   const project = useQuery({ ...q.project(t.project), enabled: t.project !== "" });
+  const envName = useEnvName();
   const members = useQuery({ ...adm.members(t.project), enabled: t.project !== "" && t.into !== "existing" });
   // Owners run the actions on their deployments: members who may request
   // there. Without the roles to read, every member is offered; the server
@@ -216,7 +218,7 @@ export function TargetFields({
                 disabled={!t.project}
                 loading={project.isFetching}
                 onChange={(v) => set({ environment: v })}
-                options={(project.data?.environments ?? []).map((env) => ({ value: env, label: env }))}
+                options={(project.data?.environments ?? []).map((env) => ({ value: env, label: envName(env) }))}
               />
             </Field>
             <Field

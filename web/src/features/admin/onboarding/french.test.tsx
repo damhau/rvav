@@ -36,8 +36,10 @@ describe("onboarding plans' helpers, in French", () => {
       "nom ou adresse erp, dans /GVA/app, avec le tag app/erp, éteintes",
     );
     expect(filterText({})).toBe("Toutes les VM");
-    expect(targetText(plan, project)).toBe("Chacune dans son propre déploiement, dans Web Platform prd, comme VM web");
-    expect(targetText({ ...plan, target: { ...plan.target, deployment_id: "d1" } }, project)).toBe(
+    expect(targetText(plan, project, () => "Production")).toBe(
+      "Chacune dans son propre déploiement, dans Web Platform, en Production, comme VM web",
+    );
+    expect(targetText({ ...plan, target: { ...plan.target, deployment_id: "d1" } }, project, String)).toBe(
       "Dans un déploiement supprimé depuis, comme VM web",
     );
     expect(scheduleText(plan)).toBe("Quand on le lance à la main");
@@ -80,7 +82,7 @@ describe("an onboarding plan, in French", () => {
     expect(await within(sheet).findByText("12 VM que rvav ne gère pas correspondent maintenant.")).toBeInTheDocument();
     await choose(user, "Projet", "Web Platform");
     await choose(user, "Où elles vont", "Toutes dans un nouveau déploiement");
-    await choose(user, "Environnement", "prd");
+    await choose(user, "Environnement", "Production");
     await choose(user, "Propriétaire", "Thomas Nguyen");
     await choose(user, "Élément de catalogue", "RHEL 9 server");
     await user.type(within(sheet).getByRole("textbox", { name: "Nom du déploiement" }), "erp-prd");
@@ -90,7 +92,7 @@ describe("an onboarding plan, in French", () => {
     const crumbs = screen.getByRole("navigation", { name: "Fil d'Ariane" });
     expect(within(crumbs).getByRole("link", { name: "Intégration de l'existant" })).toBeInTheDocument();
     expect(screen.getByText("12 VM qu'il trouve et qu'aucun déploiement n'a")).toBeInTheDocument();
-    expect(screen.getByText("Dans erp-prd, un seul déploiement, dans Web Platform prd")).toBeInTheDocument();
+    expect(screen.getByText("Dans erp-prd, un seul déploiement, dans Web Platform, en Production")).toBeInTheDocument();
     expect(await screen.findByText("Jamais lancé")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Lancer maintenant" }));
     const runs = await screen.findByRole("table", { name: "Exécutions" });

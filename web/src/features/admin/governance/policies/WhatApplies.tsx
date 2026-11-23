@@ -9,7 +9,8 @@ import { Select } from "@/components/ui/select";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { q } from "@/lib/query";
-import { limitLabel, useEnvName } from "@/features/requests/limits";
+import { limitLabel } from "@/features/requests/limits";
+import { useEnvName } from "@/lib/environments";
 import { quotaLabel, quotaWhere } from "@/features/requests/quota";
 import { failed } from "../common";
 import { useProjects } from "./shared";
@@ -114,6 +115,7 @@ export function WhatApplies() {
   const { t } = useTranslation("admin-governance");
   const projects = useProjects();
   const envs = useQuery(q.environments());
+  const envName = useEnvName();
   const [f, setF] = useState({ project: "", environment: "", item: "none", action: "none", inputs: "" });
   const [inputsError, setInputsError] = useState<string>();
   // Counts the explains refused for their inputs: each moves the focus to the field, once its note says why.
@@ -229,7 +231,7 @@ export function WhatApplies() {
                   <li key={`${l.resource}-${l.level}`}>
                     {t(l.enforcement === "soft" ? "policies.explain.quotaLineSoft" : "policies.explain.quotaLine", {
                       name: quotaLabel[l.resource][0],
-                      where: quotaWhere(l) || t("policies.explain.quotaProject"),
+                      where: quotaWhere(l, envName) || t("policies.explain.quotaProject"),
                       taken: l.used + l.reserved,
                       limit: l.limit ?? t("policies.explain.quotaNoLimit"),
                     })}

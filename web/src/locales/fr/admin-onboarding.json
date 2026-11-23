@@ -44,10 +44,10 @@
     "target": {
       "into": "Dans {{name}}",
       "intoAs": "Dans {{name}}, comme VM {{component}}",
-      "one": "Dans {{name}}, un seul déploiement, dans {{project}} {{environment}}",
-      "oneAs": "Dans {{name}}, un seul déploiement, dans {{project}} {{environment}}, comme VM {{component}}",
-      "each": "Chacune dans son propre déploiement, dans {{project}} {{environment}}",
-      "eachAs": "Chacune dans son propre déploiement, dans {{project}} {{environment}}, comme VM {{component}}",
+      "one": "Dans {{name}}, un seul déploiement, dans {{project}}, en {{environment}}",
+      "oneAs": "Dans {{name}}, un seul déploiement, dans {{project}}, en {{environment}}, comme VM {{component}}",
+      "each": "Chacune dans son propre déploiement, dans {{project}}, en {{environment}}",
+      "eachAs": "Chacune dans son propre déploiement, dans {{project}}, en {{environment}}, comme VM {{component}}",
       "deleted": "un déploiement supprimé depuis"
     },
     "byHand": "Quand on le lance à la main",

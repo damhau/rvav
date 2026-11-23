@@ -283,8 +283,8 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
         label={t("toolbar.environment")}
         any={t("toolbar.allEnvironments")}
         options={[
-          ...envKeys.map((k) => ({ value: k, label: envName(k), meta: k })),
-          ...(envs.length > 1 ? [{ value: search.env!, label: envs.join(", ") }] : []),
+          ...envKeys.map((k) => ({ value: k, label: envName(k) })),
+          ...(envs.length > 1 ? [{ value: search.env!, label: envs.map(envName).join(", ") }] : []),
         ]}
         className="w-44"
       />

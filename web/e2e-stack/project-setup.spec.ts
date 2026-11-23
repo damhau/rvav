@@ -50,13 +50,13 @@ test("a project set up in the browser requests a VM", async ({ page }) => {
   // Placement: bronze clusters by vCenter tag, the vSAN datastores, the dev app networks.
   await page.getByRole("tab", { name: "Placement" }).click();
   await page.getByRole("button", { name: "New rule" }).click();
-  const rule = page.getByRole("dialog", { name: `New placement rule for ${name} in dev` });
+  const rule = page.getByRole("dialog", { name: `New placement rule for ${name} in Development` });
   await rule.getByRole("textbox", { name: "Clusters" }).fill("");
   await rule.getByRole("textbox", { name: "Cluster tags" }).fill("rvav-tier/bronze");
   await rule.getByRole("textbox", { name: "Datastores" }).fill("vsan-*");
   await rule.getByRole("textbox", { name: "Networks" }).fill("dvpg-app-dev-*");
   await rule.getByRole("button", { name: "Create rule" }).click();
-  const preview = page.getByRole("region", { name: `What ${name} gets in dev` });
+  const preview = page.getByRole("region", { name: `What ${name} gets in Development` });
   await expect(preview).toContainText("Clusters: GVA-DEV-CL01");
   await expect(preview).toContainText("Datastores: vsan-gva-dev-cl01");
   await expect(preview).toContainText("dvpg-app-dev-vl310 10.31.10.0/24");
@@ -66,7 +66,7 @@ test("a project set up in the browser requests a VM", async ({ page }) => {
   await page.getByRole("region", { name: "Quotas", exact: true }).getByRole("button", { name: "Add a limit" }).click();
   const limit = page.getByRole("dialog", { name: "Add a limit" });
   await choose(page, "Resource", "VMs");
-  await choose(page, "In", "dev");
+  await choose(page, "In", "Development");
   await limit.getByRole("spinbutton", { name: "Limit" }).fill("1");
   await limit.getByRole("button", { name: "Add limit" }).click();
   await expect(page.getByText("Limit saved")).toBeVisible();

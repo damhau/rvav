@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { useEnvName } from "@/lib/environments";
 import { i18n } from "@/lib/i18n";
 import { adm, q } from "@/lib/query";
 import { failed, fieldErrors, writable } from "../common";
@@ -204,9 +205,10 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
   const refresh = useRefreshPolicies("leases");
   const leases = useQuery(adm.leases());
   const projects = useProjects();
+  const envName = useEnvName();
   const [editing, setEditing] = useState<Lease | "new" | null>(null);
   const [removing, setRemoving] = useState<Lease | null>(null);
-  const where = (l: Lease) => `${l.environment}${l.project_id ? `, ${projects.name(l.project_id)}` : ""}`;
+  const where = (l: Lease) => `${envName(l.environment)}${l.project_id ? `, ${projects.name(l.project_id)}` : ""}`;
   const remove = useMutation({
     mutationFn: (l: Lease) =>
       call(
@@ -233,7 +235,7 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
       sortValue: (l) => where(l),
       cell: (l) => (
         <>
-          <span className="font-medium">{l.environment}</span>
+          <span className="font-medium">{envName(l.environment)}</span>
           <div className="text-secondary text-muted">
             {l.project_id ? projects.name(l.project_id) : t("policies.everyProject")}
           </div>
@@ -313,9 +315,9 @@ export function LeasePolicies({ rights }: { rights: PolicyRights }) {
           title={t("policies.lease.removeTitle", { where: where(removing) })}
           description={t("policies.lease.removeLead", {
             project: projects.name(removing.project_id ?? ""),
-            environment: removing.environment,
+            environment: envName(removing.environment),
           })}
-          consequences={t("policies.lease.removeConsequences", { environment: removing.environment })}
+          consequences={t("policies.lease.removeConsequences", { environment: envName(removing.environment) })}
           confirmLabel={t("policies.lease.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing, { onSuccess: () => setRemoving(null) })}

@@ -47,8 +47,8 @@ describe("the request form's helpers, in French", () => {
   it("names quotas, limits and where they count, read in the language shown", () => {
     expect(quotaLabel.memory_gb).toEqual(["Mémoire", "GB"]);
     expect(limitLabel.deployments_per_user).toEqual(["Déploiements par utilisateur", ""]);
-    expect(quotaWhere({ level: "environment", environment: "dev" })).toBe(" en dev");
-    expect(quotaWhere({ level: "global_user" })).toBe(" · par utilisateur, tout rvav");
+    expect(quotaWhere({ level: "environment", environment: "dev" }, () => "Développement")).toBe(" en Développement");
+    expect(quotaWhere({ level: "global_user" }, String)).toBe(" · par utilisateur, tout rvav");
   });
 
   it("says the vCenters a template isn't in, and who chose the cluster", () => {

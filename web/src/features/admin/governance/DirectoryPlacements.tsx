@@ -19,6 +19,7 @@ import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { useEnvName } from "@/lib/environments";
 import { adm } from "@/lib/query";
 import { errorAt, failed, fieldErrors } from "./common";
 
@@ -31,8 +32,13 @@ const ouExample = "OU=Servers,OU=Web";
 const groupExample = "CN=Web servers,OU=Groups";
 
 /** Where a row applies, in words. */
-function scope(t: TFunction<"admin-governance">, r: S["AdPlacement"], inProject: boolean): string {
-  const environment = r.environment;
+function scope(
+  t: TFunction<"admin-governance">,
+  r: S["AdPlacement"],
+  inProject: boolean,
+  envName: (key: string) => string,
+): string {
+  const environment = r.environment && envName(r.environment);
   if (r.project_id && inProject)
     return environment ? t("placements.scope.inEnvironment", { environment }) : t("placements.scope.anyEnvironment");
   if (r.project_id)
@@ -54,6 +60,7 @@ function PlacementSheet({
   onClose: () => void;
 }) {
   const { t } = useTranslation("admin-governance");
+  const envName = useEnvName();
   const qc = useQueryClient();
   const [f, setF] = useState({
     environment: row?.environment ?? ANY,
@@ -116,7 +123,7 @@ function PlacementSheet({
           onChange={(environment) => setF({ ...f, environment })}
           options={[
             { value: ANY, label: t("placements.scope.anyEnvironment") },
-            ...environments.map((e) => ({ value: e, label: e })),
+            ...environments.map((e) => ({ value: e, label: envName(e) })),
           ]}
         />
       </Field>
@@ -164,6 +171,7 @@ export function DirectoryPlacements({ project, canManage }: { project?: S["Admin
   const qc = useQueryClient();
   const rows = useQuery(adm.adPlacements(project?.id));
   const envs = useQuery({ ...adm.environments(), enabled: !project });
+  const envName = useEnvName();
   const [editing, setEditing] = useState<S["AdPlacement"] | "new" | null>(null);
   const [removing, setRemoving] = useState<S["AdPlacement"] | null>(null);
   const remove = useMutation({
@@ -184,7 +192,7 @@ export function DirectoryPlacements({ project, canManage }: { project?: S["Admin
       header: t("placements.appliesTo"),
       cell: (r) => (
         <div className="flex flex-col">
-          <span>{scope(t, r, Boolean(project))}</span>
+          <span>{scope(t, r, Boolean(project), envName)}</span>
           {project && !mine(r) && <span className="text-caption text-faint">{t("placements.setElsewhere")}</span>}
         </div>
       ),
@@ -279,7 +287,7 @@ export function DirectoryPlacements({ project, canManage }: { project?: S["Admin
           open
           onOpenChange={(o) => !o && setRemoving(null)}
           title={t("placements.removeTitle", { ou: removing.ou_dn })}
-          description={t("placements.removeLead", { scope: scope(t, removing, Boolean(project)) })}
+          description={t("placements.removeLead", { scope: scope(t, removing, Boolean(project), envName) })}
           consequences={t("placements.removeConsequences")}
           confirmLabel={t("placements.removeConfirm")}
           pending={remove.isPending}

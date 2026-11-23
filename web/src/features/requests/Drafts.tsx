@@ -10,12 +10,14 @@ import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, call, isApiError } from "@/lib/api/client";
+import { useEnvName } from "@/lib/environments";
 import { q } from "@/lib/query";
 
 export function Drafts() {
   const { t } = useTranslation("requests");
   const qc = useQueryClient();
   const drafts = useQuery(q.drafts());
+  const envName = useEnvName();
   const [discarding, setDiscarding] = useState<{ id: string; name: string } | null>(null);
   const discard = useMutation({
     mutationFn: (id: string) => call(api.DELETE("/me/drafts/{id}", { params: { path: { id } } })),
@@ -36,7 +38,7 @@ export function Drafts() {
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">{d.name}</span>
               <span className="text-secondary text-muted">
-                {d.catalog_item.name} · {d.project.name} · {d.draft.environment}
+                {d.catalog_item.name} · {d.project.name} · {envName(d.draft.environment)}
                 {d.on_behalf_of ? ` · ${t("drafts.for", { name: d.on_behalf_of.name })}` : ""} ·{" "}
                 <Trans t={t} i18nKey="drafts.saved" components={{ time: <Time iso={d.updated_at} /> }} />
               </span>

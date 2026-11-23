@@ -41,6 +41,7 @@ import type {
   UpdateDraft,
   UpdatePreview,
 } from "@/lib/api/types";
+import { useEnvName } from "@/lib/environments";
 import { formatNumber, formatSize } from "@/lib/format";
 import { useDebounced } from "@/lib/hooks";
 import { i18n } from "@/lib/i18n";
@@ -119,6 +120,7 @@ function Summary({
   holding?: string;
 }) {
   const { t } = useTranslation("deployments");
+  const envName = useEnvName();
   const blocked = !preview || !preview.allowed || preview.refused.length > 0 || preview.unchanged;
   return (
     <div className="lg:sticky lg:top-4" aria-busy={fetching}>
@@ -208,7 +210,7 @@ function Summary({
                   return (
                     <Meter
                       key={l.resource}
-                      label={`${name}${quotaWhere(l)}${frees ? ` · ${freed}` : ""}${soft ? ` · ${t("update.overSoft")}` : ""}`}
+                      label={`${name}${quotaWhere(l, envName)}${frees ? ` · ${freed}` : ""}${soft ? ` · ${t("update.overSoft")}` : ""}`}
                       unit={unit}
                       used={frees ? l.used + l.adding : l.used}
                       adding={frees ? 0 : l.adding}

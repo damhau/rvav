@@ -222,7 +222,7 @@ function ApprovalFacts({ a }: { a: Approval }) {
     <>
       <div className="flex flex-wrap items-center gap-1.5 text-secondary text-muted">
         <span className="font-mono">{a.request.number}</span> · {a.requester.name} · {a.project.name} ·{" "}
-        <Time iso={a.submitted_at} /> <EnvBadge env={a.environment} production={a.environment === "prd"} />
+        <Time iso={a.submitted_at} /> <EnvBadge env={a.environment} />
       </div>
       {a.step_key ? (
         <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-body">

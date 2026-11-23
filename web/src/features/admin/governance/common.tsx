@@ -189,13 +189,17 @@ export function OfferEditor({
 }
 
 /** Says where something is offered, in words. */
-export function offersText(offers: Offer[], projectName: (id: string) => string): string {
+export function offersText(
+  offers: Offer[],
+  projectName: (id: string) => string,
+  envName: (key: string) => string,
+): string {
   const t = i18n.getFixedT(null, "admin-governance");
   if (offers.length === 0) return t("common.offers.nobody");
   return offers
     .map((o) => {
       const where = o.project_id ? projectName(o.project_id) : t("common.offers.allProjects");
-      return o.environment ? t("common.offers.inEnvironment", { where, environment: o.environment }) : where;
+      return o.environment ? t("common.offers.inEnvironment", { where, environment: envName(o.environment) }) : where;
     })
     .join(t("common.offers.separator"));
 }

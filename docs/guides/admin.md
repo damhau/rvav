@@ -1248,8 +1248,8 @@ that sets the same limit holds too, each counting in its own environment
 or in all, and a request must fit all of them. So a project's policy,
 hard or soft, tightens a hard global limit and never loosens it. For
 example, with a global limit of 1 deployment per user and a project's
-limit of 1 per user in `dev`, a user who has a deployment in `tst` can't
-request one in `dev`. A soft global policy gives way to a project's
+limit of 1 per user in Development, a user who has a deployment in Test
+can't request one in Development. A soft global policy gives way to a project's
 policy tried before it. To tighten a limit, give the project's policy a
 lower priority than the global one: a project's policy tried after the
 one that decides doesn't apply. **What applies here** lists each limit

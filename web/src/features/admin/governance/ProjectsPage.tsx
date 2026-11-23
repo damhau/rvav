@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import type { UserRef } from "@/lib/api/types";
+import { useEnvName } from "@/lib/environments";
 import { adm, q } from "@/lib/query";
 import { can, projectsWith } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
@@ -264,6 +265,7 @@ function QuotaUse({ projectId }: { projectId: string }) {
 function ProjectsPanel() {
   const { t } = useTranslation("admin-governance");
   const navigate = useNavigate();
+  const envName = useEnvName();
   const search: ProjectsSearch = useSearch({ from: "/admin/projects/" });
   const filters = useAddressFilters(search, ["q", "archived"]);
   const [creating, setCreating] = useState(false);
@@ -313,7 +315,11 @@ function ProjectsPanel() {
     {
       id: "environments",
       header: t("projects.list.environments"),
-      cell: (p) => <span className="text-secondary text-muted">{p.environments.join(", ") || t("projects.none")}</span>,
+      cell: (p) => (
+        <span className="text-secondary text-muted">
+          {p.environments.map(envName).join(", ") || t("projects.none")}
+        </span>
+      ),
     },
     {
       id: "members",

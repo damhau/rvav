@@ -54,7 +54,7 @@ describe("Onboarding", () => {
     const sheet = await screen.findByRole("dialog", { name: "Adopt 2 VMs" });
     expect(within(sheet).getByRole("list", { name: "VMs to adopt" })).toHaveTextContent(/app-old01.*app-old02/);
     await choose(user, "Project", "Web Platform");
-    await choose(user, "Environment", "dev");
+    await choose(user, "Environment", "Development");
     await choose(user, "Owner", "Léa Martin");
     await choose(user, "Catalog item", "RHEL 9 server");
     await user.click(within(sheet).getByRole("button", { name: "Adopt 2 VMs" }));
@@ -78,7 +78,7 @@ describe("Onboarding", () => {
     await user.click(screen.getByRole("button", { name: "Adopt 1 VM…" }));
     const sheet = await screen.findByRole("dialog", { name: "Adopt 1 VM" });
     await choose(user, "Project", "Web Platform");
-    await choose(user, "Environment", "dev");
+    await choose(user, "Environment", "Development");
     await choose(user, "Owner", "Léa Martin");
     await choose(user, "Catalog item", "RHEL 9 server");
     // Named by its label, its hint describing it.
@@ -190,7 +190,7 @@ describe("Onboarding plans", () => {
     await user.paste("app/erp");
     expect(await within(sheet).findByText("12 VMs rvav doesn't manage match now.")).toBeInTheDocument();
     await choose(user, "Project", "Web Platform");
-    await choose(user, "Environment", "prd");
+    await choose(user, "Environment", "Production");
     await choose(user, "Owner", "Thomas Nguyen");
     await choose(user, "Catalog item", "RHEL 9 server");
     await user.click(within(sheet).getByRole("button", { name: "Create plan" }));
@@ -223,7 +223,7 @@ describe("Onboarding plans", () => {
     await user.paste("app/erp");
     await choose(user, "Project", "Web Platform");
     await choose(user, "Where they go", "All into one new deployment");
-    await choose(user, "Environment", "prd");
+    await choose(user, "Environment", "Production");
     await choose(user, "Owner", "Thomas Nguyen");
     await choose(user, "Catalog item", "RHEL 9 server");
     await user.type(within(sheet).getByRole("textbox", { name: "Deployment name" }), "erp-prd");
@@ -233,7 +233,7 @@ describe("Onboarding plans", () => {
     await user.click(within(sheet).getByRole("button", { name: "Create plan" }));
 
     expect(await screen.findByRole("heading", { name: "ERP servers", level: 1 })).toBeInTheDocument();
-    expect(screen.getByText("Into erp-prd, one deployment in Web Platform prd")).toBeInTheDocument();
+    expect(screen.getByText("Into erp-prd, one deployment in Web Platform, in Production")).toBeInTheDocument();
     expect(screen.getByText("role=erp")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Run now" }));
     const runs = await screen.findByRole("table", { name: "Runs" });
@@ -277,7 +277,7 @@ describe("Onboarding plans", () => {
     await user.click(within(sheet).getByRole("textbox", { name: /^Tag/ }));
     await user.paste(`app/${"x".repeat(200)}`);
     await choose(user, "Project", "Web Platform");
-    await choose(user, "Environment", "prd");
+    await choose(user, "Environment", "Production");
     await choose(user, "Owner", "Thomas Nguyen");
     await choose(user, "Catalog item", "RHEL 9 server");
     await user.click(within(sheet).getByRole("button", { name: "Create plan" }));

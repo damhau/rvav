@@ -61,9 +61,9 @@ rvav's server, such as why a request was refused, which are in English.
    and what it builds: its VMs, networks and groups, or a composite's steps
    in the order they run. **Request** opens the form. If your roles in the
    project don't let you request, the page says so.
-3. **The form:** environment first (dev, tst, prd), then what the item
-   asks. When the item offers more than one version, **Version** comes
-   before the environment, set to the newest. To request an earlier one,
+3. **The form:** environment first (Development, Test, Production), then
+   what the item asks. When the item offers more than one version,
+   **Version** comes before the environment, set to the newest. To request an earlier one,
    pick it there: the form changes to that version's and keeps what you
    typed in the fields it has too. The request and its deployments keep
    the version you picked. If an administrator retires that version

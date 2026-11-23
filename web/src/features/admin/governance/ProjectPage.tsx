@@ -26,6 +26,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { useEnvName } from "@/lib/environments";
 import { adm, q } from "@/lib/query";
 import { can } from "@/lib/can";
 import { formatList, formatNumber } from "@/lib/format";
@@ -632,6 +633,7 @@ function RuleSheet({
   onClose: () => void;
 }) {
   const { t } = useTranslation("admin-governance");
+  const envName = useEnvName();
   const qc = useQueryClient();
   const [f, setF] = useState({
     clusters: rule?.clusters.join(", ") ?? `GVA-${env.toUpperCase()}-*`,
@@ -728,7 +730,7 @@ function RuleSheet({
       pending={save.isPending}
       title={t(rule ? "project.rule.changeTitle" : "project.rule.newTitle", {
         project: project.name,
-        environment: env,
+        environment: envName(env),
       })}
       description={t("project.rule.lead")}
       submitLabel={save.isPending ? t("projects.saving") : t(rule ? "project.rule.save" : "project.rule.create")}
@@ -797,6 +799,7 @@ const strategyLabel = (t: T, v: S["PlacementStrategy"] | undefined) => (v ? t(`p
 
 function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
   const { t } = useTranslation("admin-governance");
+  const envName = useEnvName();
   const qc = useQueryClient();
   const [env, setEnv] = useState(project.environments[0] ?? "dev");
   const [editing, setEditing] = useState<S["PlacementRule"] | "new" | null>(null);
@@ -895,17 +898,17 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
           id="placement-env"
           value={env}
           onChange={setEnv}
-          options={project.environments.map((e) => ({ value: e, label: e }))}
+          options={project.environments.map((e) => ({ value: e, label: envName(e) }))}
         />
       </Field>
       <Panel
         title={t("project.placement.title")}
-        description={t("project.placement.lead", { project: project.name, environment: env })}
+        description={t("project.placement.lead", { project: project.name, environment: envName(env) })}
         flush
         actions={here?.length ? add : undefined}
       >
         <DataTable
-          label={t("project.placement.label", { environment: env })}
+          label={t("project.placement.label", { environment: envName(env) })}
           columns={columns}
           rows={here}
           rowKey={(r) => r.id}
@@ -917,7 +920,7 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
             <EmptyState
               icon={RouteIcon}
               title={t("project.placement.emptyTitle")}
-              body={t("project.placement.emptyBody", { project: project.name, environment: env })}
+              body={t("project.placement.emptyBody", { project: project.name, environment: envName(env) })}
               action={add || undefined}
             />
           }
@@ -937,7 +940,7 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
           }
         />
       </Panel>
-      <Panel title={t("project.placement.previewTitle", { project: project.name, environment: env })}>
+      <Panel title={t("project.placement.previewTitle", { project: project.name, environment: envName(env) })}>
         {preview.isPending && <Skeleton className="h-24" />}
         {preview.isError && <ErrorState error={preview.error} onRetry={() => void preview.refetch()} />}
         {preview.data && (
@@ -996,11 +999,11 @@ function Placement({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: 
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && setRemoving(null)}
-          title={t("project.placement.removeTitle", { priority: removing.priority, environment: env })}
-          description={t("project.placement.removeLead", { project: project.name, environment: env })}
+          title={t("project.placement.removeTitle", { priority: removing.priority, environment: envName(env) })}
+          description={t("project.placement.removeLead", { project: project.name, environment: envName(env) })}
           consequences={
             (here?.length ?? 0) <= 1
-              ? t("project.placement.onlyRule", { project: project.name, environment: env })
+              ? t("project.placement.onlyRule", { project: project.name, environment: envName(env) })
               : t("project.placement.othersStay", { count: (here?.length ?? 1) - 1 })
           }
           confirmLabel={t("project.placement.removeConfirm")}
@@ -1063,6 +1066,7 @@ function LimitSheet({
   onClose: () => void;
 }) {
   const { t } = useTranslation("admin-governance");
+  const envName = useEnvName();
   const save = useSaveQuotas(project);
   const existing = editing === undefined ? undefined : limits.find((l) => limitKey(l) === editing);
   const [f, setF] = useState(() => ({
@@ -1121,7 +1125,7 @@ function LimitSheet({
           onChange={(v) => setF({ ...f, environment: v === "all" ? "" : v })}
           options={[
             { value: "all", label: t("project.quotas.wholeProject") },
-            ...project.environments.map((e) => ({ value: e, label: e })),
+            ...project.environments.map((e) => ({ value: e, label: envName(e) })),
           ]}
         />
       </Field>
@@ -1165,6 +1169,7 @@ function LimitUse({ project, limit }: { project: S["AdminProject"]; limit: S["Qu
 
 function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boolean }) {
   const { t } = useTranslation("admin-governance");
+  const envName = useEnvName();
   const quotas = useQuery(adm.quotas(project.id));
   const save = useSaveQuotas(project);
   // Limits go by their resource and environment, not their place: a refetch may reorder them.
@@ -1173,7 +1178,7 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
   const limits = quotas.data?.items ?? [];
   const where = (l: S["QuotaLimit"]) =>
     l.environment
-      ? t("project.quotas.inEnvironment", { environment: l.environment })
+      ? t("project.quotas.inEnvironment", { environment: envName(l.environment) })
       : t("project.quotas.inWholeProject");
   const columns: Column<S["QuotaLimit"]>[] = [
     {
@@ -1185,8 +1190,12 @@ function Quotas({ project, isAdmin }: { project: S["AdminProject"]; isAdmin: boo
     {
       id: "in",
       header: t("project.quotas.in"),
-      sortValue: (l) => l.environment,
-      cell: (l) => <span className="text-secondary">{l.environment || t("project.quotas.wholeProject")}</span>,
+      sortValue: (l) => (l.environment ? envName(l.environment) : ""),
+      cell: (l) => (
+        <span className="text-secondary">
+          {l.environment ? envName(l.environment) : t("project.quotas.wholeProject")}
+        </span>
+      ),
     },
     {
       id: "limit",

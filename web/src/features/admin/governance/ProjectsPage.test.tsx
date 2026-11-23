@@ -89,7 +89,7 @@ describe("environments", () => {
     renderApp("/admin/projects?tab=environments");
     const directory = await screen.findByRole("region", { name: "Active Directory" });
     const table = await within(directory).findByRole("table", { name: "Active Directory OUs of every project" });
-    expect(await within(table).findByRole("row", { name: /^Every project in prd/ })).toHaveTextContent(
+    expect(await within(table).findByRole("row", { name: /^Every project in Production/ })).toHaveTextContent(
       "OU=Production,OU=Servers,DC=corp,DC=example",
     );
     expect(within(table).queryByText(/OU=Web/)).toBeNull();
@@ -97,7 +97,7 @@ describe("environments", () => {
     await user.click(within(directory).getByRole("button", { name: "New OU" }));
     let sheet = await screen.findByRole("dialog", { name: "New Active Directory OU" });
     await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
-    await user.click(await screen.findByRole("option", { name: "prd" }));
+    await user.click(await screen.findByRole("option", { name: "Production" }));
     await user.type(within(sheet).getByLabelText("OU"), "OU=Prod");
     await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(await screen.findByText("There is already an OU for every project in prd.")).toBeInTheDocument();

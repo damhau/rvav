@@ -22,6 +22,7 @@ import { Select } from "@/components/ui/select";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
+import { useEnvName } from "@/lib/environments";
 import { useCurrentProject } from "@/lib/project";
 import { q } from "@/lib/query";
 import { cn } from "@/lib/utils";
@@ -342,11 +343,12 @@ const resourceUnit: Record<S["QuotaResource"], "GB" | undefined> = {
 
 function Quota({ lines }: { lines: S["ReportQuotaLine"][] }) {
   const { t } = useTranslation(["reports", "common"]);
+  const envName = useEnvName();
   if (lines.length === 0) return <EmptyState title={t("quota.none")} body={t("quota.noneBody")} />;
   // One block per project and scope.
   const groups = new Map<string, S["ReportQuotaLine"][]>();
   for (const l of lines) {
-    const key = `${l.project.name}${l.environment ? ` · ${l.environment}` : ""}`;
+    const key = `${l.project.name}${l.environment ? ` · ${envName(l.environment)}` : ""}`;
     groups.set(key, [...(groups.get(key) ?? []), l]);
   }
   return (
@@ -385,6 +387,7 @@ export function ReportsPage() {
   const [project, setProject] = useState("any");
   const [environment, setEnvironment] = useState("any");
   const environments = useQuery(q.environments());
+  const envName = useEnvName();
   const today = new Date();
   const filters = {
     // Whole periods of the chosen size, as many as the preset's span.
@@ -598,7 +601,7 @@ export function ReportsPage() {
                           </Link>
                         </th>
                         <td className={td + " text-muted"}>
-                          {l.project.name} · {l.environment}
+                          {l.project.name} · {envName(l.environment)}
                         </td>
                         <td className={td}>{l.owner.name}</td>
                         <td className={td + " tnum"}>{fullDate(l.expires_at)}</td>

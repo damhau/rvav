@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { requestStatusLabel } from "@/components/common/status";
 import { useOpener } from "@/components/ui/opener";
 import { useCurrentProject } from "@/lib/project";
+import { useEnvName } from "@/lib/environments";
 import { q } from "@/lib/query";
 import { useTheme } from "@/lib/theme";
 import { adminKeywords, adminLabel, adminMenu, groupLabel, mainLabel, mainPages } from "./nav";
@@ -38,7 +39,7 @@ function Group({ heading, entries }: { heading: string; entries: Entry[] }) {
             <span className="truncate">{e.label}</span>
             {e.meta && <span className="truncate font-mono text-caption text-faint">{e.meta}</span>}
           </span>
-          {e.hint && <span className="font-mono text-badge text-faint">{e.hint}</span>}
+          {e.hint && <span className="text-badge whitespace-nowrap text-faint">{e.hint}</span>}
         </Command.Item>
       ))}
     </Command.Group>
@@ -49,6 +50,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const { t } = useTranslation("shell");
   const navigate = useNavigate();
   const { projectId, me } = useCurrentProject();
+  const envName = useEnvName();
   const { setTheme } = useTheme();
   const [search, setSearch] = useState("");
   const term = useDeferredValue(search.trim());
@@ -102,7 +104,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         id: `dep-${d.id}`,
         label: d.name,
         meta: [d.primary_address?.ip, t("palette.vmCount", { count: d.vm_count })].filter(Boolean).join(" · "),
-        hint: d.environment,
+        hint: envName(d.environment),
         icon: Server,
         run: go("/deployments/$deploymentId", { deploymentId: d.id }),
       }))

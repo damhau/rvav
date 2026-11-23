@@ -84,7 +84,9 @@ describe("a project's placement and quotas", () => {
     const menus = await within(rules).findAllByRole("button", { name: /^Actions for the rule of priority/ });
     await user.click(menus[0]!);
     await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
-    const confirm = await screen.findByRole("alertdialog", { name: /^Remove the rule of priority \d+ in dev\?$/ });
+    const confirm = await screen.findByRole("alertdialog", {
+      name: /^Remove the rule of priority \d+ in Development\?$/,
+    });
     expect(confirm).toHaveTextContent(/nowhere to go|other rules? stay/);
     await user.click(within(confirm).getByRole("button", { name: "Remove rule" }));
     expect(await screen.findByText("Placement rule removed")).toBeInTheDocument();
@@ -97,7 +99,7 @@ describe("a project's placement and quotas", () => {
     const menus = await within(rules).findAllByRole("button", { name: /^Actions for the rule of priority/ });
     await user.click(menus[0]!);
     await user.click(await screen.findByRole("menuitem", { name: "Change" }));
-    const sheet = await screen.findByRole("dialog", { name: "Change placement rule for Web Platform in dev" });
+    const sheet = await screen.findByRole("dialog", { name: "Change placement rule for Web Platform in Development" });
     expect(within(sheet).getByRole("combobox", { name: "Strategy" })).toHaveTextContent("Most free memory");
     await user.type(within(sheet).getByLabelText("Resource pool"), "/rvav/dev/");
     await user.type(within(sheet).getByLabelText("Hosts"), "esx-gva-dev-0*");
@@ -133,7 +135,7 @@ describe("a project's placement and quotas", () => {
     expect(environment).toHaveTextContent("Any environment");
     expect(environment).not.toHaveAttribute("data-placeholder");
     await user.click(environment);
-    await user.click(await screen.findByRole("option", { name: "dev" }));
+    await user.click(await screen.findByRole("option", { name: "Development" }));
     await user.click(environment);
     await user.click(await screen.findByRole("option", { name: "Any environment" }));
     expect(environment).toHaveTextContent("Any environment");
@@ -152,13 +154,13 @@ describe("a project's placement and quotas", () => {
       "OU=Web,OU=Servers,DC=corp,DC=example",
     );
     // Every project's, shown and changed elsewhere.
-    const shared = within(table).getByRole("row", { name: /^Every project in prd/ });
+    const shared = within(table).getByRole("row", { name: /^Every project in Production/ });
     expect(shared).toHaveTextContent("Set in Projects › Environments");
 
     await user.click(within(directory).getByRole("button", { name: "New OU" }));
     const sheet = await screen.findByRole("dialog", { name: "New Active Directory OU for Web Platform" });
     await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
-    await user.click(await screen.findByRole("option", { name: "dev" }));
+    await user.click(await screen.findByRole("option", { name: "Development" }));
     await user.type(within(sheet).getByLabelText("OU"), "Servers");
     await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(await within(sheet).findByText(/"Servers" is not a DN/)).toBeInTheDocument();
@@ -175,7 +177,7 @@ describe("a project's placement and quotas", () => {
       groups: ["CN=Web servers,OU=Groups", "CN=Dev,OU=Groups"],
       allow_blueprint_ou: true,
     });
-    const row = await within(table).findByRole("row", { name: /^In dev/ });
+    const row = await within(table).findByRole("row", { name: /^In Development/ });
     expect(row).toHaveTextContent("May choose their OU");
 
     await user.click(within(row).getByRole("button", { name: /^Actions for the OU/ }));
@@ -199,7 +201,7 @@ describe("a project's placement and quotas", () => {
     await user.click(await within(directory).findByRole("button", { name: "New OU" }));
     const sheet = await screen.findByRole("dialog", { name: "New Active Directory OU for Web Platform" });
     await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
-    await user.click(await screen.findByRole("option", { name: "prd" }));
+    await user.click(await screen.findByRole("option", { name: "Production" }));
     await user.type(within(sheet).getByLabelText("OU"), "OU=Web,OU=Servers");
     await user.type(within(sheet).getByLabelText("Groups"), "CN=Admins,OU=Groups");
     await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
@@ -226,7 +228,7 @@ describe("a project's placement and quotas", () => {
     await user.click(await within(directory).findByRole("button", { name: "New OU" }));
     const sheet = await screen.findByRole("dialog", { name: "New Active Directory OU for Web Platform" });
     await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
-    await user.click(await screen.findByRole("option", { name: "dev" }));
+    await user.click(await screen.findByRole("option", { name: "Development" }));
     await user.type(within(sheet).getByLabelText("OU"), "OU=Dev,OU=Web");
     await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(await screen.findByText("Active Directory did not answer")).toBeInTheDocument();
@@ -243,7 +245,7 @@ describe("a project's placement and quotas", () => {
     const sheet = await screen.findByRole("dialog", { name: "Add a limit" });
     // Every resource has a project-wide limit: it opens on the first place free.
     expect(within(sheet).getByRole("combobox", { name: "Resource" })).toHaveTextContent("vCPU");
-    expect(within(sheet).getByRole("combobox", { name: "In" })).toHaveTextContent("dev");
+    expect(within(sheet).getByRole("combobox", { name: "In" })).toHaveTextContent("Development");
     const twin = "This resource has a limit there already: change that one.";
     expect(within(sheet).queryByText(twin)).toBeNull();
     await user.click(within(sheet).getByRole("combobox", { name: "In" }));
@@ -251,11 +253,11 @@ describe("a project's placement and quotas", () => {
     expect(within(sheet).getByText(twin)).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "Add limit" })).toBeDisabled();
     await user.click(within(sheet).getByRole("combobox", { name: "In" }));
-    await user.click(await screen.findByRole("option", { name: "dev" }));
+    await user.click(await screen.findByRole("option", { name: "Development" }));
     await user.type(within(sheet).getByRole("spinbutton", { name: "Limit" }), "16");
     await user.click(within(sheet).getByRole("button", { name: "Add limit" }));
     expect(await screen.findByText("Limit saved")).toBeInTheDocument();
-    expect(await within(quotas).findByRole("row", { name: /^vCPU dev 16/ })).toBeInTheDocument();
+    expect(await within(quotas).findByRole("row", { name: /^vCPU Development 16/ })).toBeInTheDocument();
   });
 
   it("opens the tab the address names", async () => {

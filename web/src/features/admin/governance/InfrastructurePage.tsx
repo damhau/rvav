@@ -27,6 +27,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { useEnvName } from "@/lib/environments";
 import { adm } from "@/lib/query";
 import { can } from "@/lib/can";
 import { formatList, formatNumber } from "@/lib/format";
@@ -431,6 +432,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
   const { t } = useTranslation("admin-governance");
   const templates = useQuery(adm.templates());
   const projectName = useProjectName();
+  const envName = useEnvName();
   const [editing, setEditing] = useState<S["VmTemplate"] | "new" | null>(null);
   const [removing, setRemoving] = useState<S["VmTemplate"] | null>(null);
   const remove = useRemove(["admin", "templates"], (key) =>
@@ -504,7 +506,7 @@ function Templates({ canEdit }: { canEdit: boolean }) {
     {
       id: "offers",
       header: t("infra.offeredTo"),
-      cell: (tpl) => <span className="text-secondary text-muted">{offersText(tpl.offers, projectName)}</span>,
+      cell: (tpl) => <span className="text-secondary text-muted">{offersText(tpl.offers, projectName, envName)}</span>,
     },
   ];
   return (
@@ -558,7 +560,9 @@ function Templates({ canEdit }: { canEdit: boolean }) {
               components={{ mono: <span className="font-mono" /> }}
             />
           }
-          consequences={t("infra.templates.removeConsequences", { offers: offersText(removing.offers, projectName) })}
+          consequences={t("infra.templates.removeConsequences", {
+            offers: offersText(removing.offers, projectName, envName),
+          })}
           confirmLabel={t("infra.templates.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() =>
@@ -659,6 +663,7 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
   const { t } = useTranslation("admin-governance");
   const sizes = useQuery(adm.sizes());
   const projectName = useProjectName();
+  const envName = useEnvName();
   const [editing, setEditing] = useState<S["SizePreset"] | "new" | null>(null);
   const [removing, setRemoving] = useState<S["SizePreset"] | null>(null);
   const remove = useRemove(["admin", "sizes"], (key) =>
@@ -698,7 +703,7 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
     {
       id: "offers",
       header: t("infra.offeredTo"),
-      cell: (z) => <span className="text-secondary text-muted">{offersText(z.offers, projectName)}</span>,
+      cell: (z) => <span className="text-secondary text-muted">{offersText(z.offers, projectName, envName)}</span>,
     },
   ];
   return (
@@ -752,7 +757,9 @@ function Sizes({ canEdit }: { canEdit: boolean }) {
               components={{ mono: <span className="font-mono" /> }}
             />
           }
-          consequences={t("infra.sizes.removeConsequences", { offers: offersText(removing.offers, projectName) })}
+          consequences={t("infra.sizes.removeConsequences", {
+            offers: offersText(removing.offers, projectName, envName),
+          })}
           confirmLabel={t("infra.sizes.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() =>

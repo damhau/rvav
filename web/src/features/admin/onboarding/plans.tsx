@@ -22,6 +22,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { useDebounced } from "@/lib/hooks";
 import { i18n } from "@/lib/i18n";
+import { useEnvName } from "@/lib/environments";
 import { adm } from "@/lib/query";
 import { fullDate, relative } from "@/lib/format";
 import { failed, fieldErrors } from "../governance/common";
@@ -51,9 +52,13 @@ export function filterText(f: S["OnboardingFilter"]): string {
   );
 }
 
-export function targetText(p: Plan, projectName: (id: string) => string): string {
+export function targetText(p: Plan, projectName: (id: string) => string, envName: (key: string) => string): string {
   const t = p.target;
-  const values = { project: projectName(t.project_id), environment: t.environment ?? "", component: t.component };
+  const values = {
+    project: projectName(t.project_id),
+    environment: t.environment ? envName(t.environment) : "",
+    component: t.component,
+  };
   const as = t.component ? "As" : "";
   if (t.deployment_id)
     return tx(`plans.target.into${as}`, { ...values, name: p.deployment?.name ?? tx("plans.target.deleted") });
@@ -338,6 +343,7 @@ export function PlansTab({
   const [deleting, setDeleting] = useState<Plan | null>(null);
   const runNow = useRunNow();
   const projectName = useProjectName();
+  const envName = useEnvName();
   const columns: Column<Plan>[] = [
     {
       id: "name",
@@ -369,7 +375,7 @@ export function PlansTab({
     {
       id: "target",
       header: t("target.where"),
-      cell: (p) => <span className="text-secondary">{targetText(p, projectName)}</span>,
+      cell: (p) => <span className="text-secondary">{targetText(p, projectName, envName)}</span>,
     },
     {
       id: "last",

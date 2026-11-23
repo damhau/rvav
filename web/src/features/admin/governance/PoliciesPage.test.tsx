@@ -127,7 +127,7 @@ describe("Policies", () => {
     const user = userEvent.setup();
     renderApp("/admin/policies?tab=lease");
     const region = await screen.findByRole("region", { name: "Lease policies" });
-    await user.click(await within(region).findByRole("button", { name: "Actions for the lease in dev" }));
+    await user.click(await within(region).findByRole("button", { name: "Actions for the lease in Development" }));
     expect(await screen.findByRole("menuitem", { name: "Change" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Remove" })).toBeNull();
     await user.keyboard("{Escape}");
@@ -139,9 +139,11 @@ describe("Policies", () => {
     await user.click(within(sheet).getByRole("button", { name: "Create lease policy" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    await user.click(await within(region).findByRole("button", { name: "Actions for the lease in dev, Web Platform" }));
+    await user.click(
+      await within(region).findByRole("button", { name: "Actions for the lease in Development, Web Platform" }),
+    );
     await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
-    const confirm = await screen.findByRole("alertdialog", { name: "Remove the lease in dev, Web Platform?" });
+    const confirm = await screen.findByRole("alertdialog", { name: "Remove the lease in Development, Web Platform?" });
     expect(confirm).toHaveTextContent("Deployments keep the lease they have.");
     await user.click(within(confirm).getByRole("button", { name: "Remove lease policy" }));
     await waitFor(() => expect(within(region).queryByRole("row", { name: /Web Platform/ })).toBeNull());
@@ -381,7 +383,7 @@ describe("Policies as a project admin", () => {
 
     await user.click(screen.getByRole("tab", { name: "Lease" }));
     const leases = await screen.findByRole("region", { name: "Lease policies" });
-    const override = await within(leases).findByRole("row", { name: /tst.*Web Platform/ });
+    const override = await within(leases).findByRole("row", { name: /Test.*Web Platform/ });
     expect(override).toHaveTextContent("Set by an administrator");
     expect(within(override).queryByRole("button", { name: /^Actions for/ })).toBeNull();
 

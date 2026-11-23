@@ -93,7 +93,7 @@ describe("projects, in French", () => {
     const directory = await screen.findByRole("region", { name: "Active Directory" });
     const table = await within(directory).findByRole("table", { name: "OU Active Directory de Web Platform" });
     expect(await within(table).findByRole("row", { name: /^Tout environnement/ })).toBeInTheDocument();
-    expect(within(table).getByRole("row", { name: /^Tous les projets dans prd/ })).toHaveTextContent(
+    expect(within(table).getByRole("row", { name: /^Tous les projets dans Production/ })).toHaveTextContent(
       "Définie dans Projets › Environnements",
     );
   });

@@ -382,8 +382,8 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
     ? (environments.data?.items.map((e) => e.key) ?? facets.data?.environments ?? [])
     : (ownProject.data?.environments ?? facets.data?.environments ?? []);
   const envOptions = [
-    ...envKeys.map((k) => ({ value: k, label: envName(k), meta: k })),
-    ...(envs.length > 1 ? [{ value: search.env!, label: envs.join(", ") }] : []),
+    ...envKeys.map((k) => ({ value: k, label: envName(k) })),
+    ...(envs.length > 1 ? [{ value: search.env!, label: envs.map(envName).join(", ") }] : []),
   ];
   const templates = facets.data?.templates ?? [];
 

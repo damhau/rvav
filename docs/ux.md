@@ -259,6 +259,10 @@ Every text a person reads is in English and in French
   **Créer** and **Ajouter**: **Nouveau projet**, **Créer le projet**,
   **Ajouter un champ**. A button that does something other than store a
   form says what it does: **Import**, **Adopt 12 VMs**, **Request**.
+- **Environments by name.** A page says **Production**, not `prd`: in its
+  badges, lists, sheet titles, options and sentences. The key shows only
+  where an administrator types or reads it: the environment's own form and
+  list, and CEL conditions (`environment == "prd"`).
 - **Room to grow.** French is up to a third longer: labels wrap rather than
   truncate, and every page still reflows at 320 px.
 - **Each language in its own words:** the language menu lists English and

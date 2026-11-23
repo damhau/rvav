@@ -42,7 +42,7 @@ for (const theme of ["light", "dark"] as const) {
     await directory.getByRole("button", { name: "New OU" }).click();
     const sheet = page.getByRole("dialog", { name: "New Active Directory OU for Web Platform" });
     await sheet.getByRole("combobox", { name: "Environment" }).click();
-    await page.getByRole("option", { name: "dev" }).click();
+    await page.getByRole("option", { name: "Development" }).click();
     await sheet.getByRole("textbox", { name: "OU", exact: true }).fill("Servers");
     await sheet.getByRole("button", { name: "Create OU" }).click();
     await expect(sheet.getByText(/"Servers" is not a DN/)).toBeVisible();
@@ -52,14 +52,16 @@ for (const theme of ["light", "dark"] as const) {
     await sheet.getByRole("textbox", { name: "Groups" }).fill("CN=Web servers,OU=Groups\nCN=Dev,OU=Groups");
     await sheet.getByRole("button", { name: "Create OU" }).click();
     await expect(sheet).toBeHidden();
-    await expect(directory.getByRole("row", { name: /^In dev/ })).toContainText("CN=Dev,OU=Groups");
+    await expect(directory.getByRole("row", { name: /^In Development/ })).toContainText("CN=Dev,OU=Groups");
     await toastsGone(page);
     await check("a project's OUs");
 
     await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Projects" }).click();
     await page.getByRole("tab", { name: "Environments" }).click();
     const shared = page.getByRole("region", { name: "Active Directory" });
-    await expect(shared.getByRole("row", { name: /^Every project in prd/ })).toContainText("OU=Production,OU=Servers");
+    await expect(shared.getByRole("row", { name: /^Every project in Production/ })).toContainText(
+      "OU=Production,OU=Servers",
+    );
     await check("every project's OUs");
   });
 }

@@ -38,10 +38,13 @@ export function tightest(lines: QuotaImpact[]): QuotaImpact[] {
 }
 
 /** Where a quota line counts, after the resource's name: "" for the project's own. */
-export function quotaWhere(l: { level: QuotaLevel; environment?: string; scope?: string }): string {
+export function quotaWhere(
+  l: { level: QuotaLevel; environment?: string; scope?: string },
+  envName: (key: string) => string,
+): string {
   switch (l.level) {
     case "environment":
-      return ` ${i18n.t("requests:quotaWhere.environment", { environment: l.environment ?? l.scope ?? "" })}`;
+      return ` ${i18n.t("requests:quotaWhere.environment", { environment: envName(l.environment ?? l.scope ?? "") })}`;
     case "project_user":
       return ` · ${i18n.t("requests:quotaWhere.member")}`;
     case "global":

@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Sheet } from "@/components/ui/sheet";
 import type { components } from "@/lib/api/schema";
+import { useEnvName } from "@/lib/environments";
 import { adm } from "@/lib/query";
 import { fullDate, relative } from "@/lib/format";
 import {
@@ -205,6 +206,7 @@ export function PlanPage({ planId }: { planId: string }) {
   const [deleting, setDeleting] = useState(false);
   const runNow = useRunNow();
   const projectName = useProjectName();
+  const envName = useEnvName();
   const p = plan.data;
   // A run that ended adopted VMs: the lists that show them change.
   const wasRunning = useRef(false);
@@ -273,7 +275,7 @@ export function PlanPage({ planId }: { planId: string }) {
                   label: t("target.where"),
                   value: p.deployment ? (
                     <>
-                      {targetText(p, projectName)}{" "}
+                      {targetText(p, projectName, envName)}{" "}
                       <Link
                         to="/deployments/$deploymentId"
                         params={{ deploymentId: p.deployment.id }}
@@ -283,7 +285,7 @@ export function PlanPage({ planId }: { planId: string }) {
                       </Link>
                     </>
                   ) : (
-                    targetText(p, projectName)
+                    targetText(p, projectName, envName)
                   ),
                 },
                 ...(p.target.inputs && Object.keys(p.target.inputs).length > 0

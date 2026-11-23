@@ -29,10 +29,11 @@ describe("the tightest quota", () => {
   });
 
   it("names where each level counts", () => {
-    expect(quotaWhere({ level: "project" })).toBe("");
-    expect(quotaWhere({ level: "environment", environment: "dev" })).toBe(" in dev");
-    expect(quotaWhere({ level: "project_user" })).toBe(" · per member");
-    expect(quotaWhere({ level: "global" })).toBe(" · all of rvav");
-    expect(quotaWhere({ level: "global_user" })).toBe(" · per user, all of rvav");
+    const envName = (key: string) => ({ dev: "Development" })[key] ?? key;
+    expect(quotaWhere({ level: "project" }, envName)).toBe("");
+    expect(quotaWhere({ level: "environment", environment: "dev" }, envName)).toBe(" in Development");
+    expect(quotaWhere({ level: "project_user" }, envName)).toBe(" · per member");
+    expect(quotaWhere({ level: "global" }, envName)).toBe(" · all of rvav");
+    expect(quotaWhere({ level: "global_user" }, envName)).toBe(" · per user, all of rvav");
   });
 });

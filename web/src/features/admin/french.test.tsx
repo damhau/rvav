@@ -215,7 +215,7 @@ describe("onboarding, AWX's templates and day-2 actions, in French", () => {
     const sheet = await screen.findByRole("dialog", { name: "Intégrer 2 VM" });
     expect(within(sheet).getByRole("list", { name: "VM à intégrer" })).toHaveTextContent(/app-old01.*app-old02/);
     await choose(user, "Projet", "Web Platform");
-    await choose(user, "Environnement", "dev");
+    await choose(user, "Environnement", "Development");
     await choose(user, "Propriétaire", "Léa Martin");
     await choose(user, "Élément de catalogue", "RHEL 9 server");
     await user.click(within(sheet).getByRole("button", { name: "Intégrer 2 VM" }));

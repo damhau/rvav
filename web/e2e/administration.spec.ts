@@ -61,7 +61,7 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   await rule.getByRole("textbox", { name: "Networks" }).fill("dvpg-*-dev-*");
   await rule.getByRole("button", { name: "Create rule" }).click();
   await expect(page.getByText("Placement rule saved")).toBeVisible();
-  const preview = page.getByRole("region", { name: "What Payments gets in dev" });
+  const preview = page.getByRole("region", { name: "What Payments gets in Development" });
   await expect(preview).toContainText("GVA-DEV-CL01");
   await expect(preview).toContainText("dvpg-app-dev-vl310 10.31.10.0/24");
 
@@ -70,10 +70,12 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   await page.getByRole("region", { name: "Quotas", exact: true }).getByRole("button", { name: "Add a limit" }).click();
   const limit = page.getByRole("dialog", { name: "Add a limit" });
   await limit.getByRole("spinbutton", { name: "Limit" }).fill("16");
-  await choose(page, "In", "dev");
+  await choose(page, "In", "Development");
   await limit.getByRole("button", { name: "Add limit" }).click();
   await expect(page.getByText("Limit saved")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Quotas" }).getByRole("row", { name: /^vCPU dev 16/ })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Quotas" }).getByRole("row", { name: /^vCPU Development 16/ }),
+  ).toBeVisible();
 
   // Archive it: the list hides it until archived ones are asked for.
   await page.getByRole("tab", { name: "Details" }).click();
@@ -194,13 +196,13 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await lease.getByRole("button", { name: "Create lease policy" }).click();
   await expect(page.getByText("Lease policy saved")).toBeVisible();
   const leases = page.getByRole("region", { name: "Lease policies" });
-  await leases.getByRole("button", { name: "Actions for the lease in dev", exact: true }).click();
+  await leases.getByRole("button", { name: "Actions for the lease in Development", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: "Remove" })).toBeHidden();
   await page.keyboard.press("Escape");
-  await leases.getByRole("button", { name: "Actions for the lease in dev, Web Platform" }).click();
+  await leases.getByRole("button", { name: "Actions for the lease in Development, Web Platform" }).click();
   await page.getByRole("menuitem", { name: "Remove" }).click();
   await page
-    .getByRole("alertdialog", { name: "Remove the lease in dev, Web Platform?" })
+    .getByRole("alertdialog", { name: "Remove the lease in Development, Web Platform?" })
     .getByRole("button", { name: "Remove lease policy" })
     .click();
   await expect(leases.getByRole("row", { name: /Web Platform/ })).toBeHidden();
@@ -461,7 +463,9 @@ test("what a project admin and an auditor see", async ({ page }) => {
   await page.getByRole("region", { name: "Your projects" }).getByRole("link", { name: "Web Platform" }).click();
   await expect(page.getByRole("textbox", { name: "Add someone" })).toBeVisible();
   await page.getByRole("tab", { name: "Placement" }).click();
-  await expect(page.getByRole("region", { name: "What Web Platform gets in dev" })).toContainText("GVA-DEV-CL01");
+  await expect(page.getByRole("region", { name: "What Web Platform gets in Development" })).toContainText(
+    "GVA-DEV-CL01",
+  );
   await expect(page.getByRole("button", { name: "New rule" })).toBeHidden();
   await page.getByRole("tab", { name: "Quotas" }).click();
   // Each member's share of the project's quota is theirs to write (ADR-0047).

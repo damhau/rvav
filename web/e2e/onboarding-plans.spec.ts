@@ -18,7 +18,7 @@ async function fillPlan(page: Page, sheet: Locator) {
   await typeInto(page, sheet.getByRole("textbox", { name: /^Tag/ }), "app/erp");
   await expect(sheet.getByText("12 VMs rvav doesn't manage match now.")).toBeVisible();
   await chooseIn(page, sheet.getByRole("combobox", { name: "Project" }), "Web Platform");
-  await chooseIn(page, sheet.getByRole("combobox", { name: "Environment" }), "prd");
+  await chooseIn(page, sheet.getByRole("combobox", { name: "Environment" }), "Production");
   await chooseIn(page, sheet.getByRole("combobox", { name: "Owner" }), "Thomas Nguyen");
   await chooseIn(page, sheet.getByRole("combobox", { name: "Catalog item" }), "RHEL 9 server");
   await typeInto(page, sheet.getByRole("spinbutton", { name: /^Run every/ }), "24");

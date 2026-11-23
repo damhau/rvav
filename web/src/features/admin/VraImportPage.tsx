@@ -27,6 +27,7 @@ import { StepMark, type StepState, stepNow } from "@/components/ui/step-mark";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { useEnvName } from "@/lib/environments";
 import { adm } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { failed } from "./governance/common";
@@ -730,6 +731,7 @@ function FormLibrary({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => voi
 
 function DeploymentsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => void }) {
   const { t } = useTranslation("admin");
+  const envName = useEnvName();
   const columns: Column<S["VraDeploymentPlan"]>[] = [
     {
       id: "deployment",
@@ -740,7 +742,7 @@ function DeploymentsTab({ plan, onNotes }: { plan: Plan; onNotes: (n: Noted) => 
           <span className="font-medium">{d.name}</span>
           <div className="text-caption text-faint">
             {d.vra_project}
-            {d.environment ? ` · ${d.environment}` : ""}
+            {d.environment ? ` · ${envName(d.environment)}` : ""}
             {d.rvav_name && d.rvav_name !== d.name ? ` · ${t("vra.deployments.inRvav", { name: d.rvav_name })}` : ""}
           </div>
         </>

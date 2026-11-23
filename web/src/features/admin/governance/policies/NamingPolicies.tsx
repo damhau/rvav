@@ -16,7 +16,8 @@ import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { i18n } from "@/lib/i18n";
-import { adm } from "@/lib/query";
+import { useEnvName } from "@/lib/environments";
+import { adm, q } from "@/lib/query";
 import { errorAt, failed, fieldErrors, OfferEditor, offersText, writable } from "../common";
 import { useProjects } from "./shared";
 
@@ -40,6 +41,7 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
   const { t } = useTranslation("admin-governance");
   const qc = useQueryClient();
   const projects = useProjects();
+  const envs = useQuery(q.environments());
   const [f, setF] = useState<S["NamingPolicyWrite"]>(
     policy
       ? writable(policy, "id")
@@ -54,7 +56,8 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
   );
   // As typed: a number box cleared is NaN, which JSON sends as null.
   const [counts, setCounts] = useState({ start: String(f.start ?? 1), increment: String(f.increment ?? 1) });
-  const [sample, setSample] = useState({ project: "", environment: "dev", role: "app" });
+  const [sample, setSample] = useState({ project: "", environment: "", role: "app" });
+  const sampleEnv = sample.environment || envs.data?.items[0]?.key || "dev";
   const [errors, setErrors] = useState<Record<string, string>>({});
   const counted = () => {
     const problems: Record<string, string> = {};
@@ -75,7 +78,7 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
             increment: body.increment,
             policy_id: policy?.id,
             project_id: sample.project || projects.items[0]?.id || "",
-            environment: sample.environment,
+            environment: sampleEnv,
             inputs: { role: sample.role },
             count: 3,
           },
@@ -186,10 +189,14 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
             onChange={(v) => setSample({ ...sample, project: v })}
             options={projects.items.map((p) => ({ value: p.id, label: p.name }))}
           />
-          <Input
+          <Select
             aria-label={t("policies.naming.previewEnvironment")}
-            value={sample.environment}
-            onChange={(e) => setSample({ ...sample, environment: e.target.value })}
+            value={sampleEnv}
+            onChange={(environment) => setSample({ ...sample, environment })}
+            options={(envs.data?.items ?? [{ key: sampleEnv, name: sampleEnv }]).map((e) => ({
+              value: e.key,
+              label: e.name,
+            }))}
           />
           <Input
             aria-label={t("policies.naming.previewRole")}
@@ -237,6 +244,7 @@ export function NamingPolicies({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const policies = useQuery(adm.naming());
   const projects = useProjects();
+  const envName = useEnvName();
   const [editing, setEditing] = useState<Policy | "new" | null>(null);
   const [removing, setRemoving] = useState<Policy | null>(null);
   const remove = useMutation({
@@ -273,7 +281,7 @@ export function NamingPolicies({ canEdit }: { canEdit: boolean }) {
     {
       id: "offers",
       header: t("policies.naming.offeredTo"),
-      cell: (p) => <span className="text-secondary text-muted">{offersText(p.offers, projects.name)}</span>,
+      cell: (p) => <span className="text-secondary text-muted">{offersText(p.offers, projects.name, envName)}</span>,
     },
   ];
   return (
@@ -328,7 +336,9 @@ export function NamingPolicies({ canEdit }: { canEdit: boolean }) {
               components={{ mono: <span className="font-mono" /> }}
             />
           }
-          consequences={t("policies.naming.removeConsequences", { offers: offersText(removing.offers, projects.name) })}
+          consequences={t("policies.naming.removeConsequences", {
+            offers: offersText(removing.offers, projects.name, envName),
+          })}
           confirmLabel={t("policies.naming.removeConfirm")}
           pending={remove.isPending}
           onConfirm={() => remove.mutate(removing, { onSuccess: () => setRemoving(null) })}

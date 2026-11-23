@@ -39,13 +39,13 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   // Placement: bronze clusters by vCenter tag, the vSAN datastores, the dev app networks.
   await page.getByRole("tab", { name: "Placement" }).click();
   await page.getByRole("button", { name: "New rule" }).click();
-  const rule = page.getByRole("dialog", { name: "New placement rule for Payments in dev" });
+  const rule = page.getByRole("dialog", { name: "New placement rule for Payments in Development" });
   await rule.getByRole("textbox", { name: "Clusters" }).fill("");
   await rule.getByRole("textbox", { name: "Cluster tags" }).fill("rvav-tier/bronze");
   await rule.getByRole("textbox", { name: "Datastores" }).fill("vsan-*");
   await rule.getByRole("textbox", { name: "Networks" }).fill("dvpg-app-dev-*");
   await rule.getByRole("button", { name: "Create rule" }).click();
-  const preview = page.getByRole("region", { name: "What Payments gets in dev" });
+  const preview = page.getByRole("region", { name: "What Payments gets in Development" });
   await expect(preview).toContainText("Clusters: GVA-DEV-CL01");
   await expect(preview).toContainText("Datastores: vsan-gva-dev-cl01");
 

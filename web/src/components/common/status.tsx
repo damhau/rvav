@@ -1,5 +1,6 @@
 import { Ban, CircleCheck, CircleDashed, CircleSlash, CircleX, Clock3, LoaderCircle, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useEnvironments } from "@/lib/environments";
 import { i18n } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import type { DeploymentStatus, RequestStatus } from "@/lib/api/types";
@@ -55,16 +56,17 @@ export function DeploymentStatusBadge({ status }: { status: DeploymentStatus }) 
   );
 }
 
-export function EnvBadge({ env, production }: { env: string; production?: boolean }) {
-  const prd = production ?? env === "prd";
+/** An environment by its name, outlined in red when it is production. */
+export function EnvBadge({ env }: { env: string }) {
+  const envs = useEnvironments();
   return (
     <span
       className={cn(
-        "inline-flex h-[18px] items-center rounded-sm border px-1 font-mono text-badge font-medium uppercase",
-        prd ? "border-bad/50 text-bad" : env === "tst" ? "border-warn/50 text-warn" : "border-line-strong text-muted",
+        "inline-flex h-[18px] items-center rounded-sm border px-1 text-badge font-medium whitespace-nowrap",
+        envs.production(env) ? "border-bad/50 text-bad" : "border-line-strong text-muted",
       )}
     >
-      {env}
+      {envs.name(env)}
     </span>
   );
 }

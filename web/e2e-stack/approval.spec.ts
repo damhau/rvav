@@ -19,7 +19,7 @@ test("an infrastructure lead lowers a production VM to 32 GB and approves it", a
   await page.getByRole("button", { name: /^Project/ }).click();
   await page.getByRole("menuitem", { name: /^Web Platform/ }).click();
   await expect(page.getByRole("button", { name: /^Project/ })).toContainText("Web Platform");
-  await page.getByRole("radio", { name: "prd" }).click();
+  await page.getByRole("radio", { name: "Production" }).click();
   await page.getByRole("textbox", { name: "Role" }).fill(role);
   await page.getByRole("radio", { name: /^X-Large/ }).check();
   await expect(page.getByText("Needs approval from Infrastructure leads")).toBeVisible();

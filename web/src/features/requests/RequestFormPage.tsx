@@ -45,6 +45,7 @@ import type {
 } from "@/lib/api/types";
 import { useDebounced } from "@/lib/hooks";
 import { can } from "@/lib/can";
+import { useEnvName } from "@/lib/environments";
 import { useCurrentProject } from "@/lib/project";
 import { keys, q } from "@/lib/query";
 import { cn, localInput, newIdempotencyKey } from "@/lib/utils";
@@ -277,14 +278,13 @@ function EnvironmentPicker({
               type="button"
               role="radio"
               aria-checked={active}
-              title={e.name}
               onClick={() => onChange(e.key)}
               className={cn(
-                "h-8 flex-1 border-l border-line-strong font-mono text-secondary uppercase first:border-l-0",
+                "h-8 min-w-0 flex-1 truncate border-l border-line-strong px-2 text-secondary first:border-l-0",
                 active ? "bg-fg font-medium text-bg" : "bg-surface text-muted hover:bg-sunken",
               )}
             >
-              {e.key}
+              {e.name}
             </button>
           );
         })}
@@ -344,6 +344,7 @@ function Summary({
   holding?: string;
 }) {
   const { t } = useTranslation(["requests", "common"]);
+  const envName = useEnvName();
   const approval = preview?.approval;
   const post = Array.isArray(values.post_config) && !oneDeployment ? (values.post_config as string[]) : [];
   const single = !oneDeployment;
@@ -493,7 +494,7 @@ function Summary({
                 {tightest(preview.quota).map((l) => (
                   <Meter
                     key={l.resource}
-                    label={`${quotaLabel[l.resource][0]}${quotaWhere(l)}${
+                    label={`${quotaLabel[l.resource][0]}${quotaWhere(l, envName)}${
                       l.exceeds && l.enforcement === "soft" ? ` · ${t("limit.overSoft")}` : ""
                     }`}
                     unit={quotaLabel[l.resource][1]}

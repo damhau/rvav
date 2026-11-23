@@ -1,9 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Meter } from "@/components/common/meter";
 import type { components } from "@/lib/api/schema";
+import { useEnvName } from "@/lib/environments";
 import { i18n } from "@/lib/i18n";
-import { q } from "@/lib/query";
 
 type S = components["schemas"];
 type Kind = S["DeploymentLimitKind"];
@@ -31,11 +30,6 @@ export const limitLabel: Record<Kind, [string, string]> = {
     return [i18n.t("requests:limit.kind.memory_gb_per_deployment"), "GB"];
   },
 };
-
-export function useEnvName() {
-  const envs = useQuery(q.environments());
-  return (key: string) => envs.data?.items.find((e) => e.key === key)?.name ?? key;
-}
 
 /**
  * A summary's deployment limits: what the owner or the project would have,

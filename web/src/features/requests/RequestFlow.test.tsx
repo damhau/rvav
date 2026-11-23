@@ -111,7 +111,7 @@ describe("request form against the mock API", () => {
   it("shows the approval path for production", async () => {
     const user = userEvent.setup();
     await openForm();
-    await user.click(screen.getByRole("radio", { name: "prd" }));
+    await user.click(screen.getByRole("radio", { name: "Production" }));
     expect(await screen.findByText("Needs approval from Infrastructure leads")).toBeInTheDocument();
     expect(screen.getByText(/^Production VMs need sign-off\./)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Submit for approval" })).toBeInTheDocument();

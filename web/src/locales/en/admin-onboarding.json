@@ -44,10 +44,10 @@
     "target": {
       "into": "Into {{name}}",
       "intoAs": "Into {{name}}, as {{component}} VMs",
-      "one": "Into {{name}}, one deployment in {{project}} {{environment}}",
-      "oneAs": "Into {{name}}, one deployment in {{project}} {{environment}}, as {{component}} VMs",
-      "each": "Each into a deployment of its own in {{project}} {{environment}}",
-      "eachAs": "Each into a deployment of its own in {{project}} {{environment}}, as {{component}} VMs",
+      "one": "Into {{name}}, one deployment in {{project}}, in {{environment}}",
+      "oneAs": "Into {{name}}, one deployment in {{project}}, in {{environment}}, as {{component}} VMs",
+      "each": "Each into a deployment of its own in {{project}}, in {{environment}}",
+      "eachAs": "Each into a deployment of its own in {{project}}, in {{environment}}, as {{component}} VMs",
       "deleted": "a deployment since deleted"
     },
     "byHand": "When run by hand",

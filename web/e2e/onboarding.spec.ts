@@ -24,7 +24,7 @@ test("adopt twelve existing VMs, each into its own deployment", async ({ page })
 
   const dialog = page.getByRole("dialog", { name: "Adopt 12 VMs" });
   await choose(page, "Project", "Web Platform");
-  await choose(page, "Environment", "prd");
+  await choose(page, "Environment", "Production");
   await choose(page, "Catalog item", "RHEL 9 server");
   // Without an owner, the server says why.
   await dialog.getByRole("button", { name: "Adopt 12 VMs" }).click();
@@ -56,7 +56,7 @@ test("several VMs into one deployment", async ({ page }) => {
   await page.getByRole("button", { name: "Adopt 2 VMs…" }).click();
   const dialog = page.getByRole("dialog", { name: "Adopt 2 VMs" });
   await choose(page, "Project", "Web Platform");
-  await choose(page, "Environment", "dev");
+  await choose(page, "Environment", "Development");
   await choose(page, "Owner", "Léa Martin");
   await choose(page, "Catalog item", "RHEL 9 server");
   await choose(page, "Where they go", "All into one new deployment");

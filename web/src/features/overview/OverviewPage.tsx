@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import type { ServiceRequest } from "@/lib/api/types";
 import { can } from "@/lib/can";
+import { useEnvName } from "@/lib/environments";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q } from "@/lib/query";
 import { leaseLabel, roughDuration } from "@/lib/format";
@@ -128,7 +129,7 @@ function Attention() {
 
 type OpenRequest = ServiceRequest;
 
-const openColumns = (t: TFunction<"overview">): Column<OpenRequest>[] => [
+const openColumns = (t: TFunction<"overview">, envName: (key: string) => string): Column<OpenRequest>[] => [
   {
     id: "request",
     header: t("open.request"),
@@ -142,7 +143,7 @@ const openColumns = (t: TFunction<"overview">): Column<OpenRequest>[] => [
           {r.title}
         </Link>
         <span className="text-caption text-muted">
-          <span className="font-mono">{r.number}</span> · {r.environment} · {r.requester.name}
+          <span className="font-mono">{r.number}</span> · {envName(r.environment)} · {r.requester.name}
         </span>
       </div>
     ),
@@ -171,13 +172,14 @@ const openColumns = (t: TFunction<"overview">): Column<OpenRequest>[] => [
 function OpenRequests() {
   const { t } = useTranslation("overview");
   const { projectId } = useCurrentProject();
+  const envName = useEnvName();
   const open = useInfiniteQuery(
     q.requests({ projectId, status: ["running", "queued", "pending_approval", "scheduled", "cancelling"], limit: 8 }),
   );
   return (
     <DataTable
       label={t("open.title")}
-      columns={openColumns(t)}
+      columns={openColumns(t, envName)}
       rows={open.data?.pages[0]?.items}
       rowKey={(r) => r.id}
       rowLinks

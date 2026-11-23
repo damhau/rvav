@@ -144,7 +144,7 @@ test("an onboarding plan saved, run and shown, in French", async ({ page }) => {
   await expect(sheet.getByText("12 VM que rvav ne gère pas correspondent maintenant.")).toBeVisible();
   await pick(page, sheet, "Projet", "Web Platform");
   await pick(page, sheet, "Où elles vont", "Toutes dans un nouveau déploiement");
-  await pick(page, sheet, "Environnement", "prd");
+  await pick(page, sheet, "Environnement", "Production");
   await pick(page, sheet, "Propriétaire", "Thomas Nguyen");
   await pick(page, sheet, "Élément de catalogue", "RHEL 9 server");
   await sheet.getByRole("textbox", { name: "Nom du déploiement", exact: true }).fill("erp-prd");
@@ -152,7 +152,7 @@ test("an onboarding plan saved, run and shown, in French", async ({ page }) => {
   await sheet.getByRole("button", { name: "Créer le plan" }).click();
 
   await expect(page.getByRole("heading", { name: "ERP servers", level: 1 })).toBeVisible();
-  await expect(page.getByText("Dans erp-prd, un seul déploiement, dans Web Platform prd")).toBeVisible();
+  await expect(page.getByText("Dans erp-prd, un seul déploiement, dans Web Platform, en Production")).toBeVisible();
   await expect(page.getByText("Jamais lancé")).toBeVisible();
   await bothThemes(page, "a French onboarding plan");
 
