@@ -19,6 +19,7 @@ import { Select } from "@/components/ui/select";
 import { Truncate } from "@/components/ui/truncate";
 import type { Day2Action, Deployment, DeploymentStatusFilter } from "@/lib/api/types";
 import { can } from "@/lib/can";
+import { useEnvName } from "@/lib/environments";
 import { i18n } from "@/lib/i18n";
 import { useCurrentProject } from "@/lib/project";
 import { q, type DeploymentSort } from "@/lib/query";
@@ -346,6 +347,7 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const scope = all ? "" : projectId;
   const layout = search.layout ?? rememberedLayout("deployments", me.user.id);
   const environments = useQuery(q.environments());
+  const envName = useEnvName();
   const ownProject = useQuery({ ...q.project(projectId), enabled: !all && Boolean(projectId) });
   const facets = useQuery(q.deploymentFacets(scope));
   const envs = (search.env ?? "").split(",").filter(Boolean);
@@ -377,7 +379,6 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const on = shown.reduce((n, d) => n + d.vms_powered_on, 0);
   const expiring = shown.filter((d) => d.lease.expires_at && daysUntil(d.lease.expires_at) <= 7).length;
   const visibleSelected = layout === "table" ? shown.filter((d) => selected.has(d.id)) : [];
-  const envName = (key: string) => environments.data?.items.find((e) => e.key === key)?.name ?? key;
   const envKeys = all
     ? (environments.data?.items.map((e) => e.key) ?? facets.data?.environments ?? [])
     : (ownProject.data?.environments ?? facets.data?.environments ?? []);

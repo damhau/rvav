@@ -2331,6 +2331,17 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         if (kind === "day2" && w.enforcement === "soft" && w.effect === "allow")
           errors.push(err("/enforcement", "Only a deny or an approval policy can be soft: it warns instead."));
         if (typeof w.name !== "string" || !w.name.trim()) errors.push(err("/name", "Give the policy a name."));
+        if (kind === "day2")
+          ((w.roles ?? []) as string[]).forEach((k, i) => {
+            if (k === "owner" || day2BuiltinRoles.includes(k) || roleOf(db, k)?.built_in === false) return;
+            errors.push(
+              err(
+                `/roles/${i}`,
+                "owner, viewer, member, project-admin, supervisor, admin or a custom role's key.",
+                "enum",
+              ),
+            );
+          });
         checkCel(w.condition as string, "/condition", errors);
         if (kind === "approval") checkCel(w.auto_approve as string, "/auto_approve", errors);
         const levels = (w.levels ?? []) as S["ApprovalLevel"][];

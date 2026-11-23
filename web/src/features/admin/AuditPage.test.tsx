@@ -105,6 +105,37 @@ describe("Audit log", () => {
     expect(sheet).toHaveTextContent("itm_rhel9");
   });
 
+  it("opens a deployment or a request from its event only for who sees all of its project's", async () => {
+    resetDb();
+    const dep = db.deployments.find((d) => d.project.id === "prj_web")!;
+    const req = db.requests.find((r) => r.request.project.id === "prj_web")!.request;
+    audited(db, "action.run", "deployment", dep.id);
+    audited(db, "request.cancel", "request", req.id);
+    const { unmount } = renderApp("/admin/audit");
+    const table = await screen.findByRole("table", { name: "Audit events" });
+    expect(await within(table).findByRole("link", { name: dep.name })).toHaveAttribute(
+      "href",
+      `/deployments/${dep.id}`,
+    );
+    expect(within(table).getByRole("link", { name: req.number })).toHaveAttribute("href", `/requests/${req.id}`);
+    unmount();
+
+    const readsAll = (ps: string[]) => ps.filter((p) => p !== "deployments.read_all");
+    db.me = {
+      ...db.me,
+      permissions: readsAll(db.me.permissions),
+      projects: db.me.projects.map((p) => ({ ...p, permissions: readsAll(p.permissions) })),
+    };
+    renderApp("/admin/audit");
+    const refused = await screen.findByRole("table", { name: "Audit events" });
+    const ran = (await within(refused).findByText("action.run")).closest("tr")!;
+    expect(ran).toHaveTextContent(`deployment ${dep.name}`);
+    expect(within(ran).queryByRole("link")).toBeNull();
+    const cancelled = within(refused).getByText("request.cancel").closest("tr")!;
+    expect(cancelled).toHaveTextContent(`request ${req.number}`);
+    expect(within(cancelled).queryByRole("link")).toBeNull();
+  });
+
   it("says nothing is recorded on a fresh install", async () => {
     localStorage.setItem("rvav.mock.fresh", "1");
     resetDb();

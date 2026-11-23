@@ -140,6 +140,54 @@ describe("Policies", () => {
     },
   );
 
+  it("keeps a day-2 policy's role no list names ticked by its key, and marks the roles when one is refused", async () => {
+    const user = userEvent.setup();
+    const members = adminState(db).day2.find((p) => p.id === "d2p_members")!;
+    members.roles = ["member", "retired-role"];
+    renderApp("/admin/policies?tab=day2");
+    const region = await screen.findByRole("region", { name: "Day-2 policies" });
+    await user.click(await within(region).findByRole("button", { name: `Actions for ${members.name}` }));
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+    const sheet = await screen.findByRole("dialog", { name: `Change ${members.name}` });
+    const roles = within(sheet).getByRole("group", { name: "Roles" });
+    expect(within(roles).getByRole("checkbox", { name: "Member" })).toBeChecked();
+    expect(within(roles).getByRole("checkbox", { name: "retired-role" })).toBeChecked();
+    const first = within(roles).getAllByRole("checkbox")[0]!;
+    expect(first).not.toHaveAttribute("aria-invalid");
+
+    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(first).toHaveAttribute("aria-invalid", "true");
+    expect(first).toHaveAccessibleDescription(
+      "owner, viewer, member, project-admin, supervisor, admin or a custom role's key.",
+    );
+    expect(within(roles).getByRole("checkbox", { name: "retired-role" })).not.toHaveAttribute("aria-invalid");
+
+    await user.click(within(roles).getByRole("checkbox", { name: "retired-role" }));
+    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    expect(await screen.findByText(`${members.name} saved`)).toBeInTheDocument();
+    expect(adminState(db).day2.find((p) => p.id === "d2p_members")!.roles).toEqual(["member"]);
+  });
+
+  it("marks a level's roles when one is no longer given in projects", async () => {
+    const user = userEvent.setup();
+    const prd = adminState(db).approvals.find((p) => p.id === "pol_prd_vm")!;
+    prd.levels = [{ ...prd.levels[0]!, roles: ["retired-role"] }];
+    renderApp("/admin/policies");
+    const region = await screen.findByRole("region", { name: "Approval policies" });
+    await user.click(await within(region).findByRole("button", { name: "Actions for Production VMs" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Change" }));
+    const sheet = await screen.findByRole("dialog", { name: "Change Production VMs" });
+    const roles = within(sheet).getByRole("group", { name: "Project roles" });
+    expect(within(roles).getByRole("checkbox", { name: "retired-role" })).toBeChecked();
+
+    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    const first = within(roles).getAllByRole("checkbox")[0]!;
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(first).toHaveAttribute("aria-invalid", "true");
+    expect(first).toHaveAccessibleDescription("There is no role retired-role given in projects.");
+  });
+
   it("removes an approval policy after saying what changes", async () => {
     const user = userEvent.setup();
     renderApp("/admin/policies");

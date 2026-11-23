@@ -12,8 +12,11 @@ export function renderWithQuery(ui: ReactNode, client = testQueryClient()) {
   return { client, ...render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>) };
 }
 
-/** Render the whole app (shell, providers, routes) at a path, against the mock API. */
-export function renderApp(path: string, client = testQueryClient()) {
+/**
+ * Render the whole app (shell, providers, routes) at a path, against the mock API. `strict` renders it in
+ * StrictMode, as main.tsx does, for effects that must run once.
+ */
+export function renderApp(path: string, client = testQueryClient(), { strict = false }: { strict?: boolean } = {}) {
   const router = createAppRouter(client, path);
   return {
     client,
@@ -22,6 +25,7 @@ export function renderApp(path: string, client = testQueryClient()) {
       <QueryClientProvider client={client}>
         <RouterProvider router={router} />
       </QueryClientProvider>,
+      { reactStrictMode: strict },
     ),
   };
 }

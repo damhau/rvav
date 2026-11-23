@@ -22,6 +22,7 @@ import { q, type VmSort } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { SavedViewsMenu, ScopeToggle, toQuery, type ListQuery } from "@/features/deployments/listing";
 import { VmPropertiesSheet } from "@/features/deployments/VmProperties";
+import { useEnvName } from "@/lib/environments";
 
 const filterKeys = ["env", "power", "vcenter", "cluster", "network", "q"] as const;
 
@@ -247,6 +248,7 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
   const all = search.project === "all";
   const scope = all ? "" : projectId;
   const environments = useQuery(q.environments());
+  const envName = useEnvName();
   const ownProject = useQuery({ ...q.project(projectId), enabled: !all && Boolean(projectId) });
   const facets = useQuery(q.vmFacets(scope));
   const envs = (search.env ?? "").split(",").filter(Boolean);
@@ -269,7 +271,6 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
   const items = list.data?.pages.flatMap((p) => p.items);
   const rows = items ?? [];
   const on = rows.filter((v) => v.vm.power_state === "on").length;
-  const envName = (key: string) => environments.data?.items.find((e) => e.key === key)?.name ?? key;
   const envKeys = all ? (environments.data?.items.map((e) => e.key) ?? []) : (ownProject.data?.environments ?? []);
   const vcenters = facets.data?.vcenters ?? [];
   const clusters = [

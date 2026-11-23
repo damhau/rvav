@@ -642,7 +642,10 @@ it.
   it in a side panel with its detail. **Export CSV** is the header's
   action. **What** filters sign-ins and failed sign-ins; **Who** says
   **Unknown** for a sign-in rvav couldn't tie to anyone, and shows the
-  address a sign-in came from.
+  address a sign-in came from. A target rvav still keeps links to its
+  page when the reader may open it: a deployment or a request only for
+  who holds `project.see` and `deployments.read_all` in its project, as
+  any other reader may be refused one by the project's sharing.
 - **Branding** (`features/admin/BrandingPage.tsx`): the portal's name
   and accent colour, checked as it is typed (`POST
   /admin/branding/accent-check`, debounced): a refused colour offers

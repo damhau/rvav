@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { useEnvName } from "@/lib/environments";
 import { adm, q } from "@/lib/query";
 import { failed, fieldErrors, priorityOf, writable } from "../common";
 import { LeaseSummary, LeaseTermsFields } from "./LeasePolicies";
@@ -146,13 +147,12 @@ export function LeaseRules({ rights }: { rights: PolicyRights }) {
   const { t } = useTranslation("admin-governance");
   const refresh = useRefreshPolicies("lease-rules");
   const rules = useQuery(adm.leaseRules());
-  const envs = useQuery(q.environments());
+  const envName = useEnvName();
   const projects = useProjects();
   const [editing, setEditing] = useState<Rule | "new" | null>(null);
   const [fromEmpty, setFromEmpty] = useState(false);
   const addRef = useRef<HTMLButtonElement>(null);
   const [removing, setRemoving] = useState<Rule | null>(null);
-  const envName = (key: string) => envs.data?.items.find((e) => e.key === key)?.name ?? key;
   const remove = useMutation({
     mutationFn: (r: Rule) => call(api.DELETE("/admin/lease-rules/{id}", { params: { path: { id: r.id } } })),
     onSuccess: (_, r) => {

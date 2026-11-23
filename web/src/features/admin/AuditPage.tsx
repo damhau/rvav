@@ -20,7 +20,8 @@ import { Panel } from "@/components/ui/panel";
 import { Sheet } from "@/components/ui/sheet";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { projectsWith } from "@/lib/can";
+import type { Me } from "@/lib/api/types";
+import { can, projectsWith } from "@/lib/can";
 import { useCurrentProject } from "@/lib/project";
 import { adm, q, type AuditFilters } from "@/lib/query";
 import { fullDate } from "@/lib/format";
@@ -118,6 +119,11 @@ export const targetTypeLabel = (type: string) =>
 
 const linkClass = "text-fg hover:text-accent";
 
+// Both see every deployment of the project and every request in it, whatever
+// its sharing (ADR-0045); any other reader may be refused one.
+const seesProjectWork = (me: Me, projectId?: string) =>
+  can(me, "project.see", projectId) && can(me, "deployments.read_all", projectId);
+
 /** The target's name, a link to its page when rvav keeps it and the viewer may open that page. */
 function TargetName({ e, name }: { e: AuditEvent; name: string }) {
   const { me } = useCurrentProject();
@@ -126,12 +132,14 @@ function TargetName({ e, name }: { e: AuditEvent; name: string }) {
   if (e.target_exists !== true) return <>{name}</>;
   switch (e.target_type) {
     case "deployment":
+      if (!seesProjectWork(me, e.project?.id)) break;
       return (
         <Link to="/deployments/$deploymentId" params={{ deploymentId: id }} className={linkClass}>
           {name}
         </Link>
       );
     case "request":
+      if (!seesProjectWork(me, e.project?.id)) break;
       return (
         <Link to="/requests/$requestId" params={{ requestId: id }} className={linkClass}>
           {name}

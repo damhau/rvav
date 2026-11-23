@@ -85,6 +85,13 @@ function answered(db: Db, e: S["AuditEvent"]): S["AuditEvent"] {
   };
 }
 
+/** The project of a deployment's or a request's event, as the server records it. */
+function projectOf(db: Db, type: string, id: string): S["ProjectRef"] | null {
+  if (type === "deployment") return db.deployments.find((d) => d.id === id)?.project ?? null;
+  if (type === "request") return db.requests.find((r) => r.request.id === id)?.request.project ?? null;
+  return null;
+}
+
 /** Records a change in the mock audit log, as the server does. `name` names a target already gone. */
 export function audited(
   db: Db,
@@ -107,7 +114,7 @@ export function audited(
     target_type: targetType,
     target_id: targetId,
     ...(named ? { target_name: named } : {}),
-    project: null,
+    project: projectOf(db, targetType, targetId),
     detail,
   });
 }
