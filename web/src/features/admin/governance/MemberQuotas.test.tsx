@@ -15,10 +15,10 @@ describe("each member's quota", () => {
     renderApp("/admin/projects/prj_web?tab=quotas");
     const panel = await screen.findByRole("region", { name: "Each member's quota" });
     await user.click(await within(panel).findByRole("button", { name: "Add a limit" }));
-    const sheet = await screen.findByRole("dialog", { name: "New limit" });
+    const sheet = await screen.findByRole("dialog", { name: "Add a limit" });
     expect(within(sheet).getByText("Empty for no limit.")).toBeInTheDocument();
     await user.type(within(sheet).getByRole("spinbutton", { name: "Limit" }), "8");
-    await user.click(within(sheet).getByRole("button", { name: "Save limit" }));
+    await user.click(within(sheet).getByRole("button", { name: "Add limit" }));
     expect(await screen.findByText("Limit saved")).toBeInTheDocument();
     const row = await within(panel).findByRole("row", { name: /^vCPU/ });
     expect(row).toHaveTextContent("Set by an administrator");
@@ -41,12 +41,12 @@ describe("each member's quota", () => {
     expect(within(panel).queryByRole("button", { name: "Actions for the vCPU limit" })).toBeNull();
 
     await user.click(within(panel).getByRole("button", { name: "Add a limit" }));
-    const sheet = await screen.findByRole("dialog", { name: "New limit" });
+    const sheet = await screen.findByRole("dialog", { name: "Add a limit" });
     expect(within(sheet).getByRole("combobox", { name: "Resource" })).toHaveTextContent("Memory (GB)");
     await waitFor(() => expect(within(sheet).getByText("At most 640: Web Platform's own limit.")).toBeInTheDocument());
     const limit = within(sheet).getByRole("spinbutton", { name: "Limit" });
     await user.type(limit, "1000");
-    await user.click(within(sheet).getByRole("button", { name: "Save limit" }));
+    await user.click(within(sheet).getByRole("button", { name: "Add limit" }));
     await waitFor(() =>
       expect(limit).toHaveAccessibleDescription(
         /Web Platform has 640 GB of memory in all: each member's limit can't be more\./,
@@ -55,7 +55,7 @@ describe("each member's quota", () => {
     await waitFor(() => expect(limit).toHaveFocus());
     await user.clear(limit);
     await user.type(limit, "64");
-    await user.click(within(sheet).getByRole("button", { name: "Save limit" }));
+    await user.click(within(sheet).getByRole("button", { name: "Add limit" }));
     expect(await screen.findByText("Limit saved")).toBeInTheDocument();
     expect(quotaState(db).perUser.prj_web).toEqual([
       { resource: "memory_gb", limit: 64, enforcement: "hard", set_by_admin: false },
@@ -82,14 +82,14 @@ describe("each member's quota", () => {
     const panel = await screen.findByRole("region", { name: "Each member's quota" });
     await within(panel).findByRole("row", { name: /^vCPU/ });
     await user.click(within(panel).getByRole("button", { name: "Add a limit" }));
-    const sheet = await screen.findByRole("dialog", { name: "New limit" });
+    const sheet = await screen.findByRole("dialog", { name: "Add a limit" });
     await user.type(within(sheet).getByRole("spinbutton", { name: "Limit" }), "64");
-    await user.click(within(sheet).getByRole("button", { name: "Save limit" }));
+    await user.click(within(sheet).getByRole("button", { name: "Add limit" }));
     expect(await within(sheet).findByRole("alert")).toHaveTextContent(
       "The vCPU limit: It can't be more than the project's 4.",
     );
     expect(within(sheet).getByRole("spinbutton", { name: "Limit" })).not.toHaveAttribute("aria-invalid");
-    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Save limit" })).toHaveFocus());
+    await waitFor(() => expect(within(sheet).getByRole("button", { name: "Add limit" })).toHaveFocus());
   });
 
   it("tells an auditor there is no limit, not to add one", async () => {
@@ -108,9 +108,9 @@ describe("rvav's quota", () => {
     renderApp("/admin/policies?tab=quotas");
     const each = await screen.findByRole("region", { name: "Each user across rvav" });
     await user.click(await within(each).findByRole("button", { name: "Add a limit" }));
-    const sheet = await screen.findByRole("dialog", { name: "New limit" });
+    const sheet = await screen.findByRole("dialog", { name: "Add a limit" });
     await user.type(within(sheet).getByRole("spinbutton", { name: "Limit" }), "32");
-    await user.click(within(sheet).getByRole("button", { name: "Save limit" }));
+    await user.click(within(sheet).getByRole("button", { name: "Add limit" }));
     expect(await within(each).findByRole("row", { name: /^vCPU 32/ })).toBeInTheDocument();
     expect(quotaState(db).global).toEqual([{ resource: "vcpu", limit: 32, enforcement: "hard", per_user: true }]);
     expect(within(screen.getByRole("region", { name: "All of rvav" })).getByText("No limit")).toBeInTheDocument();

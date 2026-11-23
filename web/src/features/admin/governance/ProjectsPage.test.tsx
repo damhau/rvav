@@ -77,7 +77,7 @@ describe("the projects list", () => {
     expect(within(sheet).getByRole("textbox", { name: "Code" })).toHaveFocus();
     await user.type(within(sheet).getByRole("textbox", { name: "Code" }), "pay");
     await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Payments");
-    await user.click(within(sheet).getByRole("button", { name: "Create" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create project" }));
     await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/admin\/projects\/prj_/));
     expect(await screen.findByRole("heading", { name: "Payments", level: 1 })).toBeInTheDocument();
   });
@@ -99,18 +99,18 @@ describe("environments", () => {
     await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
     await user.click(await screen.findByRole("option", { name: "prd" }));
     await user.type(within(sheet).getByLabelText("OU"), "OU=Prod");
-    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(await screen.findByText("There is already an OU for every project in prd.")).toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
 
     await user.click(within(directory).getByRole("button", { name: "New OU" }));
     sheet = await screen.findByRole("dialog", { name: "New Active Directory OU" });
     await user.type(within(sheet).getByLabelText("OU"), "OU=Servers,DC=other,DC=example");
-    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(await within(sheet).findByText(/is not under the directory's base DN/)).toBeInTheDocument();
     await user.clear(within(sheet).getByLabelText("OU"));
     await user.type(within(sheet).getByLabelText("OU"), "OU=Servers");
-    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(await within(table).findByRole("row", { name: /^Every project, any environment/ })).toHaveTextContent(
       "OU=Servers,DC=corp,DC=example",
     );
@@ -124,7 +124,7 @@ describe("environments", () => {
     const sheet = await screen.findByRole("dialog", { name: "New environment" });
     await user.type(within(sheet).getByRole("textbox", { name: "Key" }), "qa");
     await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Quality");
-    await user.click(within(sheet).getByRole("button", { name: "Add environment" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create environment" }));
     expect(await screen.findByText("Quality added")).toBeInTheDocument();
     expect(await within(envs).findByRole("row", { name: /Quality/ })).toHaveTextContent("0 projects, 0 deployments");
 

@@ -139,7 +139,7 @@ function VariableSheet({ existing, onClose }: { existing?: Variable; onClose: ()
       pending={save.isPending}
       title={existing ? t("variables.change", { ref: refOf(existing) }) : t("variables.new")}
       description={t("variables.sheetDescription")}
-      submitLabel={save.isPending ? t("variables.saving") : existing ? t("variables.save") : t("variables.add")}
+      submitLabel={save.isPending ? t("variables.saving") : existing ? t("variables.save") : t("variables.create")}
       submitDisabled={!group || !name}
       onSubmit={() => {
         const p = parsed(kind, text);

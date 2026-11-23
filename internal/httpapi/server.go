@@ -266,7 +266,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			return
 		case snow && !p.Holds(auth.ServiceNowRequest):
 			s.problem(w, r, http.StatusForbidden, "forbidden", "Only ServiceNow's token is taken here",
-				"Make it in Administration › Integrations › ServiceNow, and give it to ServiceNow.", nil)
+				"Create it in Administration › Integrations › ServiceNow, and give it to ServiceNow.", nil)
 			return
 		case snow && !s.Core.ServiceNowSourceAllowed(r.Context()):
 			s.problem(w, r, http.StatusForbidden, "forbidden", "Not from ServiceNow's addresses",

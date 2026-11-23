@@ -84,7 +84,7 @@ describe("an onboarding plan, in French", () => {
     await choose(user, "Propriétaire", "Thomas Nguyen");
     await choose(user, "Élément de catalogue", "RHEL 9 server");
     await user.type(within(sheet).getByRole("textbox", { name: "Nom du déploiement" }), "erp-prd");
-    await user.click(within(sheet).getByRole("button", { name: "Enregistrer le plan" }));
+    await user.click(within(sheet).getByRole("button", { name: "Créer le plan" }));
 
     expect(await screen.findByRole("heading", { name: "ERP servers", level: 1 })).toBeInTheDocument();
     const crumbs = screen.getByRole("navigation", { name: "Fil d'Ariane" });

@@ -289,7 +289,7 @@ async function designed(page: Page, slug: string, yaml = builtYaml) {
   await create.getByRole("textbox", { name: "Summary" }).fill("A web tier and its database.");
   await create.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: "VM blueprint" }).click();
-  await create.getByRole("button", { name: "Create" }).click();
+  await create.getByRole("button", { name: "Create item" }).click();
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: new RegExp(`^Definition of ${item}`) });
   await editor.click();

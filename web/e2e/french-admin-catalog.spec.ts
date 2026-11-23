@@ -171,7 +171,7 @@ test("a composite with a person, a branch and a signal, on the canvas and in its
   await dialog.getByRole("textbox", { name: "Résumé" }).fill("Attend le demandeur, puis un signal.");
   await dialog.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: /composite/i }).click();
-  await dialog.getByRole("button", { name: "Créer" }).click();
+  await dialog.getByRole("button", { name: "Créer l'élément" }).click();
   await expect(page.getByRole("heading", { name: "Mise en service", level: 1 })).toBeVisible();
   await tab(page, "Définition");
   const editor = page.getByRole("textbox", { name: /^Définition de Mise en service/ });
@@ -256,7 +256,7 @@ test("categories, secrets, variables, property groups and the form library, in F
   await page.getByRole("button", { name: "Nouvelle variable" }).first().click();
   const sheet = page.getByRole("dialog", { name: "Nouvelle variable" });
   await expect(sheet.getByRole("textbox", { name: "Groupe" })).toBeVisible();
-  await expect(sheet.getByRole("button", { name: "Ajouter" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Créer la variable" })).toBeVisible();
   // The sheet is modal: the theme menu is out of reach until it closes.
   await scan(page, "a new variable, light");
   await page.keyboard.press("Escape");

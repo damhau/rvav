@@ -45,12 +45,12 @@ describe("saving with the keyboard", () => {
       await user.click(within(sheet).getByRole("combobox", { name: "Signing secret" }));
       await user.click(await screen.findByRole("option", { name: "webhook-signing" }));
 
-      await press(user, within(sheet).getByRole("button", { name: "Save destination" }));
+      await press(user, within(sheet).getByRole("button", { name: "Create destination" }));
       await waitFor(() => expect(url).toHaveFocus());
       expect(url).toHaveAccessibleDescription(/is not one of the hosts webhooks may call/);
 
       await replace(user, url, "https://hooks.corp.example/splunk");
-      await press(user, within(sheet).getByRole("button", { name: "Save destination" }));
+      await press(user, within(sheet).getByRole("button", { name: "Create destination" }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       expect(add).toHaveFocus();
     },

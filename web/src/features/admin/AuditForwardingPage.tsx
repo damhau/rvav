@@ -166,7 +166,9 @@ function DestinationSheet({ dest, onClose }: { dest?: Destination; onClose: () =
       pending={save.isPending}
       title={dest ? t("auditForwarding.change", { name: dest.name }) : t("auditForwarding.new")}
       description={t("auditForwarding.sheetDescription")}
-      submitLabel={save.isPending ? t("integrations.saving") : t("auditForwarding.save")}
+      submitLabel={
+        save.isPending ? t("integrations.saving") : t(dest ? "auditForwarding.save" : "auditForwarding.create")
+      }
       onSubmit={() => {
         if (d.kind === "syslog" && d.port.trim() && !/^\d{1,5}$/.test(d.port.trim())) {
           setErrors({ "/syslog/port": t("auditForwarding.portRange") });

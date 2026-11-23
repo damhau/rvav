@@ -77,13 +77,13 @@ test("roles and what someone may do, in French", async ({ page }) => {
 
   await roles.getByRole("link", { name: "Auditeur", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Auditeur", level: 1 })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Créer un rôle à partir de celui-ci" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Nouveau rôle à partir de celui-ci" })).toBeVisible();
   const allows = page.getByRole("region", { name: "Ce qu'il permet" });
   await expect(allows).toContainText("Lire le journal d'audit");
   await expect(allows).not.toContainText("Read the audit log");
   await bothThemes(page, "a built-in role");
 
-  await page.getByRole("link", { name: "Créer un rôle à partir de celui-ci" }).click();
+  await page.getByRole("link", { name: "Nouveau rôle à partir de celui-ci" }).click();
   await expect(page.getByRole("heading", { name: "Nouveau rôle", level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Créer le rôle" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Clé" })).toBeVisible();
@@ -182,7 +182,7 @@ test("policies, in French", async ({ page }) => {
 
   await approval.getByRole("button", { name: "Nouvelle politique d'approbation" }).click();
   const sheet = page.getByRole("dialog", { name: "Nouvelle politique d'approbation" });
-  await expect(sheet.getByRole("button", { name: "Enregistrer la politique" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Créer la politique" })).toBeVisible();
   await sheet.getByRole("button", { name: "Annuler" }).click();
   await expect(sheet).toBeHidden();
 
@@ -211,7 +211,7 @@ test("templates and networks, in French", async ({ page }) => {
 
   await templates.getByRole("button", { name: "Nouveau modèle" }).click();
   const sheet = page.getByRole("dialog", { name: "Nouveau modèle de VM" });
-  await expect(sheet.getByRole("button", { name: "Enregistrer le modèle" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Créer le modèle" })).toBeVisible();
   await scan(page, "French new template");
   await sheet.getByRole("button", { name: "Annuler" }).click();
   await expect(sheet).toBeHidden();

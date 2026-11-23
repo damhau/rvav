@@ -21,7 +21,7 @@ test("an approval level asks project roles and the requester's manager", async (
   const sheet = page.getByRole("dialog", { name: "New approval policy" });
   await expect(sheet.getByRole("textbox", { name: "Name" })).toBeFocused();
   await page.keyboard.type("Nobody");
-  await press(page, sheet.getByRole("button", { name: "Save policy" }));
+  await press(page, sheet.getByRole("button", { name: "Create policy" }));
   await expect(
     sheet.getByText("Give an OIDC group, approvers, project roles or the requester's manager."),
   ).toBeVisible();
@@ -38,7 +38,7 @@ test("an approval level asks project roles and the requester's manager", async (
   await expect(manager).toHaveAccessibleDescription(/Without one, the level asks only its other approvers/);
   await press(page, manager, "Space");
   await expect(manager).toBeChecked();
-  await press(page, sheet.getByRole("button", { name: "Save policy" }));
+  await press(page, sheet.getByRole("button", { name: "Create policy" }));
   await expect(page.getByText("Supervised saved")).toBeVisible();
   await expect(region.getByRole("row", { name: /Supervised/ })).toContainText("Supervisor, the requester's manager");
 

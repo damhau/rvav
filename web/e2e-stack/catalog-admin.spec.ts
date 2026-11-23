@@ -30,7 +30,7 @@ test("an Ubuntu item with a REST dropdown, from YAML to roll back", async ({ pag
   const secretDialog = page.getByRole("dialog", { name: "New secret" });
   await secretDialog.getByRole("textbox", { name: "Name" }).fill(secret);
   await secretDialog.getByLabel("Value").fill("backup-token");
-  await secretDialog.getByRole("button", { name: "Store" }).click();
+  await secretDialog.getByRole("button", { name: "Create secret" }).click();
   await expect(page.getByText(`${secret} stored`)).toBeVisible();
   await page.getByRole("tab", { name: "Items" }).click();
 

@@ -108,7 +108,9 @@ function NamingSheet({ policy, onClose }: { policy?: Policy; onClose: () => void
       pending={save.isPending}
       title={policy ? t("policies.changeNamed", { name: policy.name }) : t("policies.naming.new")}
       description={t("policies.naming.sheetLead")}
-      submitLabel={save.isPending ? t("policies.saving") : t("policies.naming.save")}
+      submitLabel={
+        save.isPending ? t("policies.saving") : t(policy ? "policies.naming.save" : "policies.naming.create")
+      }
       onSubmit={() => {
         if (counted()) save.mutate();
       }}

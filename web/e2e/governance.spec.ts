@@ -9,7 +9,7 @@ test("make an API token, see it once, revoke it", async ({ page }) => {
   await page.getByRole("menuitem", { name: "API tokens" }).click();
   await expect(page.getByRole("heading", { name: "API tokens" })).toBeVisible();
   await page.getByRole("textbox", { name: "What it is for" }).fill("Terraform");
-  await page.getByRole("button", { name: "Make a token" }).click();
+  await page.getByRole("button", { name: "Create token" }).click();
   const shown = page.getByRole("region", { name: "Your new token" });
   await expect(shown.getByRole("status")).toHaveText("Copy it now: it won't be shown again.");
   await expect(shown).toContainText("rvav_pat_");

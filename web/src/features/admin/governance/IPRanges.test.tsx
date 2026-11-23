@@ -49,7 +49,7 @@ describe("IP ranges", () => {
     await user.type(box("Last address"), "10.22.30.126");
     await user.type(box("DNS servers"), "10.22.30.110");
     await user.type(box("DNS domain"), "prd.corp.example.");
-    const save = () => user.click(within(sheet).getByRole("button", { name: "Save range" }));
+    const save = () => user.click(within(sheet).getByRole("button", { name: "Create range" }));
     await save();
     expect(await within(sheet).findByText("Without the final dot: prd.corp.example.")).toBeInTheDocument();
 
@@ -88,7 +88,7 @@ describe("IP ranges", () => {
     await user.type(within(sheet).getByRole("textbox", { name: "First address" }), "10.22.30.200");
     await user.type(within(sheet).getByRole("textbox", { name: "Last address" }), "10.22.30.120");
     await user.type(within(sheet).getByRole("textbox", { name: "Excluded addresses" }), "10.22.30.100-10.22.30.90");
-    await user.click(within(sheet).getByRole("button", { name: "Save range" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create range" }));
     expect(await within(sheet).findByText("The start must be in the subnet 10.22.30.0/25.")).toBeInTheDocument();
     expect(within(sheet).getByRole("textbox", { name: "Excluded addresses" })).toHaveAccessibleDescription(
       "An IPv4 address, or two joined by a dash such as 10.51.0.50-10.51.0.59.",
@@ -99,7 +99,7 @@ describe("IP ranges", () => {
     await user.clear(within(sheet).getByRole("textbox", { name: "Excluded addresses" }));
     await user.type(within(sheet).getByRole("textbox", { name: "Excluded addresses" }), "10.22.30.110");
     await user.type(within(sheet).getByRole("textbox", { name: "DNS servers" }), "10.22.30.53, 10.22.30.54");
-    await user.click(within(sheet).getByRole("button", { name: "Save range" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create range" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     const row = await within(region).findByRole("row", { name: /Prod lab/ });
     expect(row).toHaveTextContent("20 free0 / 20");

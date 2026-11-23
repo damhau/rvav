@@ -142,6 +142,7 @@
     "sheet": {
       "lead": "Ce dont il est informé, et qui est prévenu.",
       "save": "Enregistrer l'abonnement",
+      "create": "Créer l'abonnement",
       "condition": "Seulement si (CEL)",
       "conditionHint": "Sur les données de l'événement\u00a0; vide pour chaque événement. Par exemple environment == \"prd\" && item.slug == \"rhel9-server\"",
       "sample": "Un exemple d'événement {{topic}}",
@@ -213,6 +214,7 @@
       "new": "Nouveau type de ressource",
       "lead": "Les blueprints et les étapes composites créent ses ressources\u00a0; les déploiements les affichent comme des VM, et supprimer un déploiement les supprime.",
       "save": "Enregistrer le type de ressource",
+      "create": "Créer le type de ressource",
       "keySet": "Fixée à sa définition",
       "keyHint": "Son nom dans les blueprints\u00a0: load-balancer",
       "life": "Son cycle de vie",
@@ -258,9 +260,10 @@
     "days_other": "{{days}} jours",
     "hours": "{{hours}} h",
     "sheet": {
-      "register": "Déclarer un workflow",
+      "add": "Ajouter un workflow",
       "lead": "Ses propres workers l'exécutent dans Temporal\u00a0; rvav le lance avec le formulaire que décrit son schéma d'entrée.",
       "save": "Enregistrer le workflow",
+      "addSubmit": "Ajouter le workflow",
       "keySet": "Fixée à sa déclaration",
       "keyHint": "Son nom dans rvav",
       "type": "Type de workflow",
@@ -291,7 +294,7 @@
     "lead": "Des workflows Temporal écrits par vos équipes et exécutés par leurs propres workers\u00a0; rvav les lance, affiche leurs étapes et demande leurs approbations.",
     "registered": "Workflows déclarés",
     "none": "Aucun workflow personnalisé pour l'instant",
-    "noneBody": "Déclarez-en un pour le proposer dans le catalogue, sur les déploiements ou aux abonnements.",
+    "noneBody": "Ajoutez-en un pour le proposer dans le catalogue, sur les déploiements ou aux abonnements.",
     "remove": {
       "body": "rvav oublie sa déclaration\u00a0: il ne le lance plus. Ses workers et Temporal ne changent pas.",
       "consequences": "Il n'est plus proposé comme {{usages}}. Si des demandes l'ont exécuté, le retrait est refusé\u00a0: désactivez-le plutôt.",

@@ -67,7 +67,7 @@ test("subscriptions and a subscription's runs, in French", async ({ page }) => {
   const sheet = page.getByRole("dialog", { name: "Nouvel abonnement" });
   await pick(page, sheet, "Sujet", "network.configure");
   await expect(sheet.getByRole("checkbox", { name: /^Bloquant/ })).toBeEnabled();
-  await expect(sheet.getByRole("button", { name: "Enregistrer l'abonnement" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Créer l'abonnement" })).toBeVisible();
   await scan(page, "French new subscription");
   await sheet.getByRole("button", { name: "Annuler" }).click();
   await expect(sheet).toBeHidden();
@@ -105,7 +105,7 @@ test("resource types and custom workflows, in French, and back to English withou
   await page.getByRole("button", { name: "Nouveau type de ressource" }).first().click();
   const sheet = page.getByRole("dialog", { name: "Nouveau type de ressource" });
   await expect(sheet.getByRole("group", { name: "Le crée" })).toBeVisible();
-  await expect(sheet.getByRole("button", { name: "Enregistrer le type de ressource" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Créer le type de ressource" })).toBeVisible();
   await scan(page, "French new resource type");
   await sheet.getByRole("button", { name: "Annuler" }).click();
   await expect(sheet).toBeHidden();
@@ -113,9 +113,9 @@ test("resource types and custom workflows, in French, and back to English withou
   await open(page, "Workflows personnalisés");
   await expect(page.getByRole("table", { name: "Workflows déclarés" })).toBeVisible();
   await bothThemes(page, "French custom workflows");
-  await page.getByRole("button", { name: "Déclarer un workflow" }).first().click();
-  const register = page.getByRole("dialog", { name: "Déclarer un workflow" });
-  await expect(register.getByRole("button", { name: "Enregistrer le workflow" })).toBeVisible();
+  await page.getByRole("button", { name: "Ajouter un workflow" }).first().click();
+  const register = page.getByRole("dialog", { name: "Ajouter un workflow" });
+  await expect(register.getByRole("button", { name: "Ajouter le workflow" })).toBeVisible();
   await scan(page, "French workflow registration");
   await register.getByRole("button", { name: "Annuler" }).click();
   await expect(register).toBeHidden();
@@ -124,7 +124,7 @@ test("resource types and custom workflows, in French, and back to English withou
   await page.getByRole("menuitem", { name: "English" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("heading", { name: "Custom workflows", level: 1 })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Register a workflow" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add a workflow" }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -149,7 +149,7 @@ test("an onboarding plan saved, run and shown, in French", async ({ page }) => {
   await pick(page, sheet, "Élément de catalogue", "RHEL 9 server");
   await sheet.getByRole("textbox", { name: "Nom du déploiement", exact: true }).fill("erp-prd");
   await scan(page, "a French plan's sheet");
-  await sheet.getByRole("button", { name: "Enregistrer le plan" }).click();
+  await sheet.getByRole("button", { name: "Créer le plan" }).click();
 
   await expect(page.getByRole("heading", { name: "ERP servers", level: 1 })).toBeVisible();
   await expect(page.getByText("Dans erp-prd, un seul déploiement, dans Web Platform prd")).toBeVisible();

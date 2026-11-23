@@ -92,7 +92,7 @@ test("integrations, in French, and back to English without a reload", async ({ p
   await bothThemes(page, "vCenter");
   await vcenters.getByRole("button", { name: "Ajouter un vCenter" }).click();
   const sheet = page.getByRole("dialog", { name: "Ajouter un vCenter" });
-  await expect(sheet.getByRole("button", { name: "Enregistrer le vCenter" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Ajouter le vCenter" })).toBeVisible();
   await expect(sheet.getByRole("textbox", { name: "Adresse du SDK" })).toBeVisible();
   await scan(page, "a new vCenter");
   await sheet.getByRole("button", { name: "Annuler" }).click();
@@ -177,7 +177,7 @@ test("setup, branding, the audit log and the system, in French", async ({ page }
   await bothThemes(page, "audit forwarding");
   await page.getByRole("button", { name: "Nouvelle destination" }).click();
   const destination = page.getByRole("dialog", { name: "Nouvelle destination" });
-  await expect(destination.getByRole("button", { name: "Enregistrer la destination" })).toBeVisible();
+  await expect(destination.getByRole("button", { name: "Créer la destination" })).toBeVisible();
   await scan(page, "a new audit destination");
   await destination.getByRole("button", { name: "Annuler" }).click();
   await expect(destination).toBeHidden();
@@ -220,14 +220,14 @@ test("an audit destination and the branding, refused then saved from the keyboar
   const url = sheet.getByRole("textbox", { name: "URL" });
   await retype(page, url, "https://splunk.example.org/hec");
   await chooseIn(page, sheet.getByRole("combobox", { name: "Secret de signature" }), "webhook-signing");
-  await press(page, sheet.getByRole("button", { name: "Enregistrer la destination" }));
+  await press(page, sheet.getByRole("button", { name: "Créer la destination" }));
   await expect(url).toBeFocused();
   await expect(url).toHaveAttribute("aria-invalid", "true");
   await expect(url).toHaveAccessibleDescription(/is not one of the hosts webhooks may call/);
   await scan(page, "a refused destination, dark");
 
   await retype(page, url, "https://hooks.corp.example/splunk");
-  await press(page, sheet.getByRole("button", { name: "Enregistrer la destination" }));
+  await press(page, sheet.getByRole("button", { name: "Créer la destination" }));
   await expect(sheet).toBeHidden();
   await expect(add).toBeFocused();
   const destinations = page.getByRole("region", { name: "Destinations" });

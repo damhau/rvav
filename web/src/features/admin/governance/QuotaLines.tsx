@@ -95,7 +95,7 @@ function LineSheet({
       returnFocus={returnFocus}
       title={title}
       description={t("quota.sheetLead")}
-      submitLabel={save.isPending ? t("quota.saving") : t("quota.save")}
+      submitLabel={save.isPending ? t("quota.saving") : t(existing ? "quota.save" : "quota.addSubmit")}
       submitDisabled={twin || !valid}
       onSubmit={() =>
         save.mutate(items, {

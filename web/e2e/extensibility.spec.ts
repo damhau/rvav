@@ -23,10 +23,10 @@ test("a webhook subscription: checked, saved, tested; a failed run tried again",
   await expect(dialog.getByRole("checkbox", { name: /Blocking/ })).toBeDisabled();
   await dialog.getByRole("textbox", { name: "URL" }).fill("https://example.org/hook");
   await pick(page, dialog, "Signing secret", "webhook-signing");
-  await dialog.getByRole("button", { name: "Save subscription" }).click();
+  await dialog.getByRole("button", { name: "Create subscription" }).click();
   await expect(dialog.getByText(/^example\.org is not one of the hosts webhooks may call/)).toBeVisible();
   await dialog.getByRole("textbox", { name: "URL" }).fill("https://hooks.corp.example/rvav");
-  await dialog.getByRole("button", { name: "Save subscription" }).click();
+  await dialog.getByRole("button", { name: "Create subscription" }).click();
   await expect(page.getByText("Inventory feed saved")).toBeVisible();
 
   // Tested with the topic's sample event.
@@ -60,18 +60,18 @@ test("register a custom workflow; one still running can't be removed", async ({ 
   await expect(page.getByRole("heading", { name: "Custom workflows" })).toBeVisible();
   await expect(page.getByRole("row", { name: /Decommission an application/ })).toContainText("wf.decommission");
 
-  await page.getByRole("button", { name: "Register a workflow" }).click();
-  const dialog = page.getByRole("dialog", { name: "Register a workflow" });
+  await page.getByRole("button", { name: "Add a workflow" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a workflow" });
   await dialog.getByRole("textbox", { name: "Key" }).fill("cmdb-sync");
   await dialog.getByRole("textbox", { name: "Title" }).fill("CMDB sync");
   await dialog.getByRole("textbox", { name: "Workflow type" }).fill("cmdbsync");
   await dialog.getByRole("textbox", { name: "Task queue" }).fill("platform-workflows");
   await dialog.getByRole("checkbox", { name: "Catalog item" }).click();
   await dialog.getByRole("checkbox", { name: "Subscription target" }).click();
-  await dialog.getByRole("button", { name: "Save workflow" }).click();
+  await dialog.getByRole("button", { name: "Add workflow" }).click();
   await expect(dialog.getByText("The type ends with its major version")).toBeVisible();
   await dialog.getByRole("textbox", { name: "Workflow type" }).fill("cmdb.sync.v1");
-  await dialog.getByRole("button", { name: "Save workflow" }).click();
+  await dialog.getByRole("button", { name: "Add workflow" }).click();
   await expect(page.getByText("CMDB sync saved")).toBeVisible();
   await expect(page.getByRole("row", { name: /CMDB sync/ })).toContainText("Subscription target");
 
@@ -148,7 +148,7 @@ test("a composite item's steps, checked while edited and when saved", async ({ p
   await dialog.getByRole("textbox", { name: "Slug" }).fill("vm-db-user");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("A VM, its database user and monitoring.");
   await pick(page, dialog, "Type", "Composite");
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create item" }).click();
 
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: "Definition of VM with a database user 1.0" });

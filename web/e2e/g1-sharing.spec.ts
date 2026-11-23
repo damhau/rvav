@@ -78,7 +78,7 @@ test("a project admin shares Web Platform's deployments with their owners, and w
   await press(page, region.getByRole("button", { name: "New day-2 policy" }));
   await fillPolicy(page, sheet);
   await scan(page, "a project admin's new day-2 policy, light");
-  await press(page, sheet.getByRole("button", { name: "Save policy" }));
+  await press(page, sheet.getByRole("button", { name: "Create policy" }));
   await expect(sheet).toHaveCount(0);
 
   const row = region.getByRole("row", { name: /Powering off web VMs/ });

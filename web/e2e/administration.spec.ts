@@ -28,13 +28,13 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   await dialog.getByRole("textbox", { name: "Code" }).fill("Pay");
   await dialog.getByRole("textbox", { name: "Name" }).fill("Payments");
   await dialog.getByRole("checkbox", { name: "Test" }).check();
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create project" }).click();
   await expect(dialog.getByText("2 to 8 lower-case letters")).toBeVisible();
   await dialog.getByRole("textbox", { name: "Code" }).fill("pay");
   await dialog.getByRole("textbox", { name: "Project admins" }).fill("Sophie");
   await dialog.getByRole("button", { name: /Sophie Brunner/ }).click();
   await expect(dialog.getByRole("list", { name: "Chosen project admins" })).toContainText("Sophie Brunner");
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create project" }).click();
   await expect(page.getByRole("heading", { name: "Payments", level: 1 })).toBeVisible();
 
   // Members: the only project admin can't be removed.
@@ -56,10 +56,10 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   await expect(page.getByText("No placement rule for Payments in dev")).toBeVisible();
   await page.getByRole("button", { name: "New rule" }).click();
   const rule = page.getByRole("dialog", { name: /New placement rule/ });
-  await rule.getByRole("button", { name: "Save rule" }).click();
+  await rule.getByRole("button", { name: "Create rule" }).click();
   await expect(rule.getByText("Name the networks VMs may connect to.")).toBeVisible();
   await rule.getByRole("textbox", { name: "Networks" }).fill("dvpg-*-dev-*");
-  await rule.getByRole("button", { name: "Save rule" }).click();
+  await rule.getByRole("button", { name: "Create rule" }).click();
   await expect(page.getByText("Placement rule saved")).toBeVisible();
   const preview = page.getByRole("region", { name: "What Payments gets in dev" });
   await expect(preview).toContainText("GVA-DEV-CL01");
@@ -68,10 +68,10 @@ test("set a project up: create it, add a member, place it and give it quotas", a
   // Quotas.
   await page.getByRole("tab", { name: "Quotas" }).click();
   await page.getByRole("region", { name: "Quotas", exact: true }).getByRole("button", { name: "Add a limit" }).click();
-  const limit = page.getByRole("dialog", { name: "New limit" });
+  const limit = page.getByRole("dialog", { name: "Add a limit" });
   await limit.getByRole("spinbutton", { name: "Limit" }).fill("16");
   await choose(page, "In", "dev");
-  await limit.getByRole("button", { name: "Save limit" }).click();
+  await limit.getByRole("button", { name: "Add limit" }).click();
   await expect(page.getByText("Limit saved")).toBeVisible();
   await expect(page.getByRole("region", { name: "Quotas" }).getByRole("row", { name: /^vCPU dev 16/ })).toBeVisible();
 
@@ -99,7 +99,7 @@ test("environments and identity provider groups", async ({ page }) => {
   const env = page.getByRole("dialog", { name: "New environment" });
   await env.getByRole("textbox", { name: "Key" }).fill("qa");
   await env.getByRole("textbox", { name: "Name" }).fill("Quality");
-  await env.getByRole("button", { name: "Add environment" }).click();
+  await env.getByRole("button", { name: "Create environment" }).click();
   await expect(envs.getByRole("row", { name: /Quality/ })).toBeVisible();
   await envs.getByRole("button", { name: "Actions for Production" }).click();
   await expect(page.getByRole("menuitem", { name: "Remove: projects deploy to it" })).toBeDisabled();
@@ -141,17 +141,17 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await ap.getByRole("textbox", { name: "Name" }).fill("Big VMs");
   await ap.getByRole("textbox", { name: "Applies when (CEL)" }).fill("inputs.cpu_count >");
   await ap.getByRole("textbox", { name: "OIDC group" }).fill("rvav-capacity");
-  await ap.getByRole("button", { name: "Save policy" }).click();
+  await ap.getByRole("button", { name: "Create policy" }).click();
   await expect(ap.getByText(/not valid CEL/)).toBeVisible();
   await expect(ap.getByRole("textbox", { name: "Applies when (CEL)" })).toHaveAttribute("aria-invalid", "true");
   await ap.getByRole("textbox", { name: "Applies when (CEL)" }).fill("inputs.cpu_count > 8");
   await expect(ap.getByRole("combobox", { name: "Then" })).toBeDisabled();
   await ap.getByRole("textbox", { name: "Time-out" }).fill("48h");
   await choose(page, "Then", "Escalate");
-  await ap.getByRole("button", { name: "Save policy" }).click();
+  await ap.getByRole("button", { name: "Create policy" }).click();
   await expect(ap.getByText(/Say whom to escalate to/)).toBeVisible();
   await ap.getByRole("textbox", { name: "Escalate to OIDC group" }).fill("rvav-infra-heads");
-  await ap.getByRole("button", { name: "Save policy" }).click();
+  await ap.getByRole("button", { name: "Create policy" }).click();
   await expect(page.getByText("Big VMs saved")).toBeVisible();
   const approvals = page.getByRole("region", { name: "Approval policies" });
   // Both at priority 100: moving the first down still swaps them.
@@ -188,10 +188,10 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   const lease = page.getByRole("dialog", { name: "New lease policy" });
   await choose(page, "Project", "Web Platform");
   await lease.getByRole("spinbutton", { name: "Lease, in days" }).fill("120");
-  await lease.getByRole("button", { name: "Save lease policy" }).click();
+  await lease.getByRole("button", { name: "Create lease policy" }).click();
   await expect(lease.getByText("The default can't be longer than the maximum.")).toBeVisible();
   await lease.getByRole("spinbutton", { name: "Lease, in days" }).fill("14");
-  await lease.getByRole("button", { name: "Save lease policy" }).click();
+  await lease.getByRole("button", { name: "Create lease policy" }).click();
   await expect(page.getByText("Lease policy saved")).toBeVisible();
   const leases = page.getByRole("region", { name: "Lease policies" });
   await leases.getByRole("button", { name: "Actions for the lease in dev", exact: true }).click();
@@ -213,12 +213,12 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await rule.getByRole("textbox", { name: "Applies when (CEL)" }).fill('inputs.size == "S"');
   await choose(page, "Environment", "Development");
   await rule.getByRole("spinbutton", { name: "Lifetime, in days" }).fill("20");
-  await rule.getByRole("button", { name: "Save lease rule" }).click();
+  await rule.getByRole("button", { name: "Create lease rule" }).click();
   await expect(rule.getByRole("spinbutton", { name: "Lifetime, in days" })).toHaveAccessibleDescription(
     "The maximum can't be longer than the lifetime.",
   );
   await rule.getByRole("spinbutton", { name: "Lifetime, in days" }).fill("60");
-  await rule.getByRole("button", { name: "Save lease rule" }).click();
+  await rule.getByRole("button", { name: "Create lease rule" }).click();
   await expect(rules.getByRole("row", { name: /Small VMs/ })).toContainText("Lives 60 days at most");
 
   // Naming: preview the next names, then save.
@@ -230,7 +230,7 @@ test("approval, day-2, lease and naming policies, and what applies", async ({ pa
   await expect(naming.getByText("web-dev-app002, web-dev-app003, web-dev-app004")).toBeVisible();
   await expect(naming.getByText("taken in vcenter")).toBeVisible();
   await naming.getByRole("button", { name: "Add an offer" }).click();
-  await naming.getByRole("button", { name: "Save naming policy" }).click();
+  await naming.getByRole("button", { name: "Create naming policy" }).click();
   await expect(
     page.getByRole("region", { name: "Naming policies" }).getByRole("cell", { name: "Web names", exact: true }),
   ).toBeVisible();
@@ -255,7 +255,7 @@ test("deployment limits, and what applies here names the policy deciding each", 
   await sheet.getByRole("textbox", { name: "Name" }).fill("rvav limits");
   await sheet.getByRole("spinbutton", { name: "Deployments per user" }).fill("10");
   await sheet.getByRole("spinbutton", { name: "Memory per deployment (GB)" }).fill("64");
-  await sheet.getByRole("button", { name: "Save policy" }).click();
+  await sheet.getByRole("button", { name: "Create policy" }).click();
   const row = region.getByRole("row", { name: /rvav limits/ });
   await expect(row).toContainText("Deployments per user: 10");
   await expect(row).toContainText("Memory per deployment: 64 GB");
@@ -275,12 +275,12 @@ test("templates, sizes and network mappings", async ({ page }) => {
   await tpl.getByRole("textbox", { name: "Key" }).fill("ubuntu24");
   await tpl.getByRole("textbox", { name: "Label" }).fill("Ubuntu 24.04");
   await tpl.getByRole("textbox", { name: "Template", exact: true }).fill("library:ubuntu-24.04");
-  await tpl.getByRole("button", { name: "Save template" }).click();
+  await tpl.getByRole("button", { name: "Create template" }).click();
   await expect(tpl.getByText(/its library in Content library/)).toBeVisible();
   // An item of a content library (S12.5).
   await tpl.getByRole("textbox", { name: "Template", exact: true }).fill("ubuntu-24.04");
   await tpl.getByRole("textbox", { name: "Content library" }).fill("rvav-templates");
-  await tpl.getByRole("button", { name: "Save template" }).click();
+  await tpl.getByRole("button", { name: "Create template" }).click();
   const templates = page.getByRole("region", { name: "VM templates" });
   await expect(templates.getByRole("row", { name: /Ubuntu 24.04/ })).toContainText("rvav-templates / ubuntu-24.04");
 
@@ -528,14 +528,14 @@ test("several vCenters: added, tested and removed (S12.6)", async ({ page }) => 
   await add.getByRole("textbox", { name: "Name" }).fill("vc02.corp.example");
   await add.getByRole("textbox", { name: "SDK address" }).fill("http://vc02.corp.example/sdk");
   await add.getByRole("textbox", { name: "Account" }).fill("svc-rvav@vsphere.local");
-  await add.getByRole("button", { name: "Save vCenter" }).click();
+  await add.getByRole("button", { name: "Add vCenter" }).click();
   await expect(add.getByText("Its SDK address over HTTPS, for example https://vc02.corp.example/sdk.")).toBeVisible();
   await expect(add.getByText("Give the account's password.")).toBeVisible();
   await add.getByRole("textbox", { name: "SDK address" }).fill("https://vc02.corp.example/sdk");
   await add.getByLabel("Password").fill("s3cret");
   await add.getByRole("button", { name: "Test connection" }).click();
   await expect(add.getByRole("list", { name: "Test" })).toContainText("Signed in to https://vc02.corp.example/sdk");
-  await add.getByRole("button", { name: "Save vCenter" }).click();
+  await add.getByRole("button", { name: "Add vCenter" }).click();
   await expect(add).toBeHidden();
   const row = vcenters.getByRole("row", { name: /vc02\.corp\.example/ });
   await expect(row).toContainText("svc-rvav@vsphere.local");

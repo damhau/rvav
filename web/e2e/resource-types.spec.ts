@@ -57,7 +57,7 @@ test("an administrator defines a resource type; one deployments have can't be re
   await page.getByRole("button", { name: "New resource type" }).click();
   const dialog = page.getByRole("dialog", { name: "New resource type" });
   await dialog.getByRole("textbox", { name: "Key" }).fill("dns-record");
-  await dialog.getByRole("button", { name: "Save resource type" }).click();
+  await dialog.getByRole("button", { name: "Create resource type" }).click();
   await expect(dialog.getByText("Give it a title.")).toBeVisible();
   await expect(dialog.getByText("Name the custom workflow or the AWX template.")).toHaveCount(2);
   await scan(page, "A new resource type's field errors");
@@ -67,7 +67,7 @@ test("an administrator defines a resource type; one deployments have can't be re
   await pick(page, deletes, "Run", "AWX template");
   await pick(page, deletes, "Job template", "delete-load-balancer");
   await dialog.getByRole("checkbox", { name: /Drain/ }).click();
-  await dialog.getByRole("button", { name: "Save resource type" }).click();
+  await dialog.getByRole("button", { name: "Create resource type" }).click();
   await expect(page.getByText("DNS record saved")).toBeVisible();
   await expect(page.getByRole("row", { name: /DNS record/ })).toContainText("AWX · delete-load-balancer");
   // A toast under the pointer stays: Sonner pauses it while hovered.

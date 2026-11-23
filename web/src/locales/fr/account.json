@@ -58,7 +58,7 @@
     "inventoryOnly": "Inventaire Ansible seulement",
     "everything": "Tout ce que vous pouvez faire",
     "making": "Création…",
-    "make": "Créer un jeton",
+    "make": "Créer le jeton",
     "revoked": "Jeton révoqué",
     "notRevoked": "Non révoqué",
     "new": "Nouveau jeton",

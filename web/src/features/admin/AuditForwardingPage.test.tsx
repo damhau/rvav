@@ -65,7 +65,7 @@ describe("Audit forwarding", () => {
       await user.click(within(sheet).getByRole("textbox", { name: "Client certificate" }));
       await user.paste("-----BEGIN CERTIFICATE-----\nMIIC\n-----END CERTIFICATE-----");
       await user.click(within(sheet).getByRole("checkbox", { name: "Sign-ins and sign-outs" }));
-      await user.click(within(sheet).getByRole("button", { name: "Save destination" }));
+      await user.click(within(sheet).getByRole("button", { name: "Create destination" }));
       expect(
         await within(sheet).findByText("A host name or an IP address, such as siem.corp.example."),
       ).toBeInTheDocument();
@@ -80,7 +80,7 @@ describe("Audit forwarding", () => {
       await user.clear(within(sheet).getByRole("textbox", { name: "Port" }));
       await choose(user, sheet, "Facility", "audit");
       await choose(user, sheet, "Client key", "webhook-signing");
-      await user.click(within(sheet).getByRole("button", { name: "Save destination" }));
+      await user.click(within(sheet).getByRole("button", { name: "Create destination" }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       const row = await within(region).findByRole("row", { name: /Lab syslog/ });
       expect(row).toHaveTextContent("syslog.lab.example:6514");
@@ -108,14 +108,14 @@ describe("Audit forwarding", () => {
       await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Splunk");
       await user.type(within(sheet).getByRole("textbox", { name: "URL" }), "https://splunk.example.org/hec");
       await choose(user, sheet, "Signing secret", "webhook-signing");
-      await user.click(within(sheet).getByRole("button", { name: "Save destination" }));
+      await user.click(within(sheet).getByRole("button", { name: "Create destination" }));
       expect(
         await within(sheet).findByText(/splunk\.example\.org is not one of the hosts webhooks may call/),
       ).toBeInTheDocument();
 
       await user.clear(within(sheet).getByRole("textbox", { name: "URL" }));
       await user.type(within(sheet).getByRole("textbox", { name: "URL" }), "https://hooks.corp.example/splunk");
-      await user.click(within(sheet).getByRole("button", { name: "Save destination" }));
+      await user.click(within(sheet).getByRole("button", { name: "Create destination" }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       const row = await within(region).findByRole("row", { name: /Splunk/ });
       expect(row).toHaveTextContent("https://hooks.corp.example/splunk");

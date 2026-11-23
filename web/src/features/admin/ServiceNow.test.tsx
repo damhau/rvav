@@ -18,12 +18,12 @@ describe("ServiceNow's integration", () => {
     expect(await within(panel).findByText(/ServiceNow last called rvav/)).toBeInTheDocument();
     expect(within(panel).getByText(/any address/)).toBeInTheDocument();
     // ServiceNow's calls fail from then on: asked first.
-    await user.click(within(panel).getByRole("button", { name: "Make a new token" }));
-    const renew = await screen.findByRole("alertdialog", { name: "Make a new token?" });
+    await user.click(within(panel).getByRole("button", { name: "Create a new token" }));
+    const renew = await screen.findByRole("alertdialog", { name: "Create a new token?" });
     expect(renew).toHaveTextContent(
       "ServiceNow's calls fail until you put the new token in the API Key credential of its rvav alias.",
     );
-    await user.click(within(renew).getByRole("button", { name: "Make a new token" }));
+    await user.click(within(renew).getByRole("button", { name: "Create a new token" }));
     const made = await within(panel).findByRole("region", { name: "ServiceNow's token made" });
     expect(within(made).getByText(/^rvav_pat_/)).toBeInTheDocument();
     expect(within(made).getByText("The token made before is revoked.")).toBeInTheDocument();
@@ -35,10 +35,10 @@ describe("ServiceNow's integration", () => {
     expect(await within(panel).findByText("None made: ServiceNow can't call rvav.")).toBeInTheDocument();
     expect(within(panel).queryByRole("region", { name: "ServiceNow's token made" })).not.toBeInTheDocument();
     // The Revoke button went with the token: the focus goes to the one that makes the next.
-    expect(within(panel).getByRole("button", { name: "Make a token" })).toHaveFocus();
+    expect(within(panel).getByRole("button", { name: "Create a token" })).toHaveFocus();
 
     // None to revoke: made at once.
-    await user.click(within(panel).getByRole("button", { name: "Make a token" }));
+    await user.click(within(panel).getByRole("button", { name: "Create a token" }));
     expect(await within(panel).findByRole("region", { name: "ServiceNow's token made" })).toBeInTheDocument();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   }, 20_000);

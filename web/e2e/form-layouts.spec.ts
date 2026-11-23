@@ -47,7 +47,7 @@ test("a form as tabs and as a wizard, built in the designer and requested by key
   await dialog.getByRole("textbox", { name: "Name" }).fill("Database server");
   await dialog.getByRole("textbox", { name: "Slug" }).fill("database-server");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("A server, with a database if you want one.");
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create item" }).click();
 
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: "Definition of Database server 1.0" });

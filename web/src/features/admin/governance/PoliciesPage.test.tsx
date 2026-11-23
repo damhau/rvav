@@ -83,7 +83,7 @@ describe("Policies", () => {
     expect(within(sheet).getByRole("textbox", { name: "Name" })).toHaveFocus();
     await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Big VMs");
     await user.type(within(sheet).getByRole("textbox", { name: "OIDC group" }), "rvav-capacity");
-    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
     expect(await screen.findByText("Big VMs saved")).toBeInTheDocument();
     expect(await within(region).findByRole("row", { name: /Big VMs/ })).toHaveTextContent("rvav-capacity");
   });
@@ -103,7 +103,7 @@ describe("Policies", () => {
     await user.click(within(roles).getByRole("checkbox", { name: "Project admin" }));
     await user.click(within(roles).getByRole("checkbox", { name: "Project admin" }));
     await user.click(within(sheet).getByRole("checkbox", { name: "The requester's manager" }));
-    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
     expect(await screen.findByText("Supervised saved")).toBeInTheDocument();
     expect(await within(region).findByRole("row", { name: /Supervised/ })).toHaveTextContent(
       "Supervisor, the requester's manager",
@@ -117,7 +117,7 @@ describe("Policies", () => {
     await user.click(await within(region).findByRole("button", { name: "New approval policy" }));
     const sheet = await screen.findByRole("dialog", { name: "New approval policy" });
     await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Nobody");
-    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
     expect(
       await within(sheet).findByText("Give an OIDC group, approvers, project roles or the requester's manager."),
     ).toBeInTheDocument();
@@ -136,7 +136,7 @@ describe("Policies", () => {
     const sheet = await screen.findByRole("dialog", { name: "New lease policy" });
     await user.click(within(sheet).getByRole("combobox", { name: "Project" }));
     await user.click(await screen.findByRole("option", { name: "Web Platform" }));
-    await user.click(within(sheet).getByRole("button", { name: "Save lease policy" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create lease policy" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     await user.click(await within(region).findByRole("button", { name: "Actions for the lease in dev, Web Platform" }));
@@ -164,13 +164,13 @@ describe("Policies", () => {
       await user.click(await screen.findByRole("option", { name: "Development" }));
       const lifetime = within(sheet).getByRole("spinbutton", { name: "Lifetime, in days" });
       await user.type(lifetime, "20");
-      await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
+      await user.click(within(sheet).getByRole("button", { name: "Create lease rule" }));
       await waitFor(() =>
         expect(lifetime).toHaveAccessibleDescription("The maximum can't be longer than the lifetime."),
       );
       await user.clear(lifetime);
       await user.type(lifetime, "60");
-      await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
+      await user.click(within(sheet).getByRole("button", { name: "Create lease rule" }));
       expect(await screen.findByText("Small VMs saved")).toBeInTheDocument();
 
       const row = await within(region).findByRole("row", { name: /Small VMs/ });
@@ -249,7 +249,7 @@ describe("Policies", () => {
       await user.paste("10");
       await user.click(within(sheet).getByRole("button", { name: "Preview names" }));
       expect(await within(sheet).findByText("web-dev-app110, web-dev-app120, web-dev-app130")).toBeInTheDocument();
-      await user.click(within(sheet).getByRole("button", { name: "Save naming policy" }));
+      await user.click(within(sheet).getByRole("button", { name: "Create naming policy" }));
       expect(await screen.findByText("Hundreds saved")).toBeInTheDocument();
       expect(await within(region).findByRole("row", { name: /Hundreds/ })).toHaveTextContent("From 100, by 10");
     },
@@ -270,7 +270,7 @@ describe("Policies", () => {
     await user.clear(start);
     await user.click(within(sheet).getByRole("button", { name: "Preview names" }));
     expect(start).toHaveAccessibleDescription(/Enter a whole number, such as 1\./);
-    await user.click(within(sheet).getByRole("button", { name: "Save naming policy" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create naming policy" }));
     expect(start).toHaveAccessibleDescription(/Enter a whole number, such as 1\./);
     expect(sent).toEqual([]);
     server.events.removeAllListeners();
@@ -335,7 +335,7 @@ describe("Policies as a project admin", () => {
     await user.click(within(sheet).getByRole("combobox", { name: "Project" }));
     expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Web Platform"]);
     await user.keyboard("{Escape}");
-    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
     expect(await screen.findByText("Powering off web VMs saved")).toBeInTheDocument();
 
     const row = await within(region).findByRole("row", { name: /Powering off web VMs/ });
@@ -396,7 +396,7 @@ describe("Policies as a project admin", () => {
     await fill("Grace, in days", "30");
     await user.click(within(sheet).getByRole("combobox", { name: "When it expires" }));
     await user.click(await screen.findByRole("option", { name: "Only tell the owner" }));
-    await user.click(within(sheet).getByRole("button", { name: "Save lease policy" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create lease policy" }));
     expect(await within(sheet).findByText("Development allows 2 extensions at most.")).toBeInTheDocument();
     expect(within(sheet).getByText("Development gives 7 grace days at most.")).toBeInTheDocument();
     expect(within(sheet).getByText("Development's leases end with power off then delete.")).toBeInTheDocument();
@@ -440,12 +440,12 @@ describe("Policies as a project admin", () => {
     const max = within(sheet).getByRole("spinbutton", { name: "At most, in days" });
     await user.clear(max);
     await user.type(max, "120");
-    await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create lease rule" }));
     expect(await within(sheet).findByText("Development allows 90 days at most.")).toBeInTheDocument();
     await waitFor(() => expect(max).toHaveFocus());
     await user.clear(max);
     await user.type(max, "60");
-    await user.click(within(sheet).getByRole("button", { name: "Save lease rule" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create lease rule" }));
     expect(await screen.findByText("Long builds saved")).toBeInTheDocument();
     const mine = await within(region).findByRole("row", { name: /Long builds/ });
     expect(mine).not.toHaveTextContent("Set by an administrator");

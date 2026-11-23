@@ -142,6 +142,7 @@
     "sheet": {
       "lead": "What it hears about, and what is told.",
       "save": "Save subscription",
+      "create": "Create subscription",
       "condition": "Only when (CEL)",
       "conditionHint": "Over the event's data; empty for every event. For example environment == \"prd\" && item.slug == \"rhel9-server\"",
       "sample": "A sample {{topic}} event",
@@ -213,6 +214,7 @@
       "new": "New resource type",
       "lead": "Blueprints and composite steps make its resources; deployments show them like VMs, and deleting a deployment deletes them.",
       "save": "Save resource type",
+      "create": "Create resource type",
       "keySet": "Set when defined",
       "keyHint": "Its name in blueprints: load-balancer",
       "life": "Its life",
@@ -256,9 +258,10 @@
     "days_other": "{{days}} days",
     "hours": "{{hours}} h",
     "sheet": {
-      "register": "Register a workflow",
+      "add": "Add a workflow",
       "lead": "Its own workers run it in Temporal; rvav starts it with the form its input schema describes.",
       "save": "Save workflow",
+      "addSubmit": "Add workflow",
       "keySet": "Set when registered",
       "keyHint": "Its name in rvav",
       "type": "Workflow type",
@@ -289,7 +292,7 @@
     "lead": "Temporal workflows your teams write, run by their own workers; rvav starts them, shows their steps and asks for their approvals.",
     "registered": "Registered workflows",
     "none": "No custom workflow yet",
-    "noneBody": "Register one to offer it in the catalog, on deployments or to subscriptions.",
+    "noneBody": "Add one to offer it in the catalog, on deployments or to subscriptions.",
     "remove": {
       "body": "rvav forgets its registration: it no longer starts it. Its workers and Temporal aren't changed.",
       "consequences": "It is no longer offered as {{usages}}. If requests ran it, it is refused: turn it off instead.",

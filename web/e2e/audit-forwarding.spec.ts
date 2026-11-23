@@ -83,7 +83,7 @@ test("an administrator forwards the audit log to a syslog server and tests it", 
   await sheet.getByRole("textbox", { name: "Name", exact: true }).fill("Lab syslog");
   await sheet.getByRole("textbox", { name: "Host" }).fill("not a host");
   await sheet.getByRole("textbox", { name: "Client certificate" }).fill("-----BEGIN CERTIFICATE-----\nMIIC\n-----END CERTIFICATE-----"); // prettier-ignore
-  await sheet.getByRole("button", { name: "Save destination" }).click();
+  await sheet.getByRole("button", { name: "Create destination" }).click();
   await expect(sheet.getByText("A host name or an IP address, such as siem.corp.example.")).toBeVisible();
   await expect(sheet.getByText("Give the client certificate with the stored secret that holds its key.")).toBeVisible();
   await quiet(page);
@@ -93,7 +93,7 @@ test("an administrator forwards the audit log to a syslog server and tests it", 
   await pick(page, sheet, "Facility", "audit");
   await pick(page, sheet, "Client key", "webhook-signing");
   await sheet.getByRole("checkbox", { name: "Sign-ins and sign-outs" }).check();
-  await sheet.getByRole("button", { name: "Save destination" }).click();
+  await sheet.getByRole("button", { name: "Create destination" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const lab = destinations.getByRole("row", { name: /Lab syslog/ });
   await expect(lab).toContainText("syslog.lab.example:6514");

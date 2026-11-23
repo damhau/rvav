@@ -65,7 +65,7 @@ test("an operator who only powers VMs, and an auditor who changes nothing", asyn
   await page.getByRole("textbox", { name: "Name" }).fill(operator);
   for (const box of ["project.see", "Power on", "Power off"])
     await page.getByRole("checkbox", { name: box, exact: true }).check();
-  await page.getByRole("button", { name: "Make role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
   await expect(page.getByRole("heading", { name: operator, level: 1 })).toBeVisible();
 
   // A VM of Marc's in Infra Core, built for real.
@@ -125,11 +125,11 @@ test("an operator who only powers VMs, and an auditor who changes nothing", asyn
   // Marc makes an auditor from the built-in one and gives it to Thomas for all of rvav.
   await signInAs(page, "marc");
   await openRole(page, "Auditor");
-  await page.getByRole("link", { name: "Make a role from it" }).click();
+  await page.getByRole("link", { name: "New role from it" }).click();
   await expect(page.getByText("Starting from what Auditor allows.")).toBeVisible();
   await page.getByRole("textbox", { name: "Key" }).fill(`aud-${suffix}`);
   await page.getByRole("textbox", { name: "Name" }).fill(auditor);
-  await page.getByRole("button", { name: "Make role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
   await expect(page.getByRole("heading", { name: auditor, level: 1 })).toBeVisible();
   await nav(page, "Roles");
   await page.getByRole("tab", { name: "For all of rvav" }).click();

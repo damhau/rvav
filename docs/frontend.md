@@ -609,12 +609,12 @@ it.
   (`GET /admin/access/explain`,
   `features/admin/access/AccessExplained.tsx`). A role's page (`/admin/roles/<key>`)
   says what it allows in the catalogue's sentences (`GET /permissions`)
-  and where it can be given. A built-in role is read only, with **Make a
-  role from it** (`/admin/roles/new?from=<key>`) in its header. With
+  and where it can be given. A built-in role is read only, with **New role
+  from it** (`/admin/roles/new?from=<key>`) in its header. With
   `access.manage`, a custom role's page is its editor: key fixed once
   made, name, description, permissions by area, day-2 ones by group or
   single action, and a warning when `access.manage` is chosen. Its header
-  has **Save role** (**Make role** for a new one) and a menu with
+  has **Save role** (**Create role** for a new one) and a menu with
   **Delete role**. Deleting asks in a `ConfirmDialog`; while the role is
   given or named by a day-2 policy, **Delete** is disabled and says why
   (`cantDelete`), in the row menu too. The server's refusals show where

@@ -160,14 +160,14 @@ describe("a project's placement and quotas", () => {
     await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
     await user.click(await screen.findByRole("option", { name: "dev" }));
     await user.type(within(sheet).getByLabelText("OU"), "Servers");
-    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(await within(sheet).findByText(/"Servers" is not a DN/)).toBeInTheDocument();
 
     await user.clear(within(sheet).getByLabelText("OU"));
     await user.type(within(sheet).getByLabelText("OU"), "OU=Dev,OU=Web");
     await user.type(within(sheet).getByLabelText("Groups"), "CN=Web servers,OU=Groups{Enter}CN=Dev,OU=Groups");
     await user.click(within(sheet).getByLabelText(/Blueprints may choose their OU/));
-    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(await screen.findByText("OU saved")).toBeInTheDocument();
     const saved = adminState(db).adPlacements.find((r) => r.project_id === "prj_web" && r.environment === "dev")!;
     expect(saved).toMatchObject({
@@ -202,7 +202,7 @@ describe("a project's placement and quotas", () => {
     await user.click(await screen.findByRole("option", { name: "prd" }));
     await user.type(within(sheet).getByLabelText("OU"), "OU=Web,OU=Servers");
     await user.type(within(sheet).getByLabelText("Groups"), "CN=Admins,OU=Groups");
-    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(
       await within(sheet).findByText(/its OU goes under OU=Production,OU=Servers, the one set/),
     ).toBeInTheDocument();
@@ -214,7 +214,7 @@ describe("a project's placement and quotas", () => {
     await user.type(within(sheet).getByLabelText("OU"), "OU=Web,OU=Production,OU=Servers");
     await user.clear(within(sheet).getByLabelText("Groups"));
     await user.type(within(sheet).getByLabelText("Groups"), "CN=Web,OU=Web,OU=Production,OU=Servers");
-    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(await screen.findByText("OU saved")).toBeInTheDocument();
   });
 
@@ -228,7 +228,7 @@ describe("a project's placement and quotas", () => {
     await user.click(within(sheet).getByRole("combobox", { name: "Environment" }));
     await user.click(await screen.findByRole("option", { name: "dev" }));
     await user.type(within(sheet).getByLabelText("OU"), "OU=Dev,OU=Web");
-    await user.click(within(sheet).getByRole("button", { name: "Save OU" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create OU" }));
     expect(await screen.findByText("Active Directory did not answer")).toBeInTheDocument();
     expect(within(sheet).getByLabelText("OU")).not.toHaveAttribute("aria-invalid", "true");
   });
@@ -240,7 +240,7 @@ describe("a project's placement and quotas", () => {
     const vcpu = await within(quotas).findByRole("row", { name: /^vCPU/ });
     await waitFor(() => expect(vcpu).toHaveTextContent("112 of 160"));
     await user.click(within(quotas).getByRole("button", { name: "Add a limit" }));
-    const sheet = await screen.findByRole("dialog", { name: "New limit" });
+    const sheet = await screen.findByRole("dialog", { name: "Add a limit" });
     // Every resource has a project-wide limit: it opens on the first place free.
     expect(within(sheet).getByRole("combobox", { name: "Resource" })).toHaveTextContent("vCPU");
     expect(within(sheet).getByRole("combobox", { name: "In" })).toHaveTextContent("dev");
@@ -249,11 +249,11 @@ describe("a project's placement and quotas", () => {
     await user.click(within(sheet).getByRole("combobox", { name: "In" }));
     await user.click(await screen.findByRole("option", { name: "The whole project" }));
     expect(within(sheet).getByText(twin)).toBeInTheDocument();
-    expect(within(sheet).getByRole("button", { name: "Save limit" })).toBeDisabled();
+    expect(within(sheet).getByRole("button", { name: "Add limit" })).toBeDisabled();
     await user.click(within(sheet).getByRole("combobox", { name: "In" }));
     await user.click(await screen.findByRole("option", { name: "dev" }));
     await user.type(within(sheet).getByRole("spinbutton", { name: "Limit" }), "16");
-    await user.click(within(sheet).getByRole("button", { name: "Save limit" }));
+    await user.click(within(sheet).getByRole("button", { name: "Add limit" }));
     expect(await screen.findByText("Limit saved")).toBeInTheDocument();
     expect(await within(quotas).findByRole("row", { name: /^vCPU dev 16/ })).toBeInTheDocument();
   });

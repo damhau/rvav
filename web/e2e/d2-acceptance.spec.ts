@@ -91,7 +91,7 @@ async function designed(page: Page, yaml = definition) {
   await create.getByRole("textbox", { name: "Summary" }).fill("Asks the requester which backup policy a VM needs.");
   await create.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: "Composite" }).click();
-  await create.getByRole("button", { name: "Create" }).click();
+  await create.getByRole("button", { name: "Create item" }).click();
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: new RegExp(`^Definition of ${item}`) });
   await editor.click();
@@ -159,7 +159,7 @@ test("rebuilt on the canvas with the keyboard only: the requester asked, the ans
   await page.keyboard.type("Asks for a backup policy.");
   await tabTo(page, create.getByRole("combobox", { name: "Type" }));
   await choose(page, "Composite");
-  await tabTo(page, create.getByRole("button", { name: "Create" }), "Tab");
+  await tabTo(page, create.getByRole("button", { name: "Create item" }), "Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: item })).toBeVisible();
   await selectTab(page, "Definition", "ArrowRight");

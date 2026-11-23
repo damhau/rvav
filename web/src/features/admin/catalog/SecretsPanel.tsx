@@ -94,7 +94,7 @@ function SecretSheet({
       pending={save.isPending}
       title={existing ? t("secrets.replaceTitle", { name: existing.name }) : t("secrets.new")}
       description={t("secrets.sheetDescription", { userData: '{{ secret "name" }}', awx: "${secret.name}" })}
-      submitLabel={save.isPending ? t("secrets.storing") : existing ? t("secrets.replace") : t("secrets.store")}
+      submitLabel={save.isPending ? t("secrets.storing") : existing ? t("secrets.replace") : t("secrets.create")}
       submitDisabled={!w.name || !w.value}
       onSubmit={() => {
         setErrors({});

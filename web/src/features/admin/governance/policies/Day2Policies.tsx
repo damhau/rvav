@@ -97,7 +97,7 @@ function Day2Sheet({ policy, onClose }: { policy?: Policy; onClose: () => void }
       title={policy ? t("policies.changeNamed", { name: policy.name }) : t("policies.day2.new")}
       description={t("policies.day2.sheetLead")}
       className="w-[min(640px,100vw)]"
-      submitLabel={save.isPending ? t("policies.saving") : t("policies.savePolicy")}
+      submitLabel={save.isPending ? t("policies.saving") : t(policy ? "policies.savePolicy" : "policies.createPolicy")}
       onSubmit={() => {
         setErrors({});
         save.mutate();

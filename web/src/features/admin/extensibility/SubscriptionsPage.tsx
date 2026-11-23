@@ -236,7 +236,9 @@ export function SubscriptionSheet({ sub, onClose }: { sub?: Subscription; onClos
       title={sub ? t("shared.changeName", { name: sub.name }) : t("subscriptions.new")}
       description={t("subscriptions.sheet.lead")}
       className="w-[min(720px,100vw)]"
-      submitLabel={save.isPending ? t("shared.saving") : t("subscriptions.sheet.save")}
+      submitLabel={
+        save.isPending ? t("shared.saving") : t(sub ? "subscriptions.sheet.save" : "subscriptions.sheet.create")
+      }
       onSubmit={() => {
         setErrors({});
         save.mutate();

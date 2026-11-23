@@ -107,8 +107,8 @@ describe("project pickers for who holds a page's permissions alone", () => {
   it("Custom workflows offers a workflow to any project", async () => {
     holding("extensibility.read", "extensibility.manage");
     renderApp("/admin/workflows");
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Register a workflow" }));
-    const dialog = await screen.findByRole("dialog", { name: "Register a workflow" });
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Add a workflow" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a workflow" });
     for (const name of every) expect(await within(dialog).findByRole("checkbox", { name })).toBeInTheDocument();
     expect(within(dialog).queryByRole("checkbox", { name: "Old Platform" })).toBeNull();
     expect(refused).toEqual([]);

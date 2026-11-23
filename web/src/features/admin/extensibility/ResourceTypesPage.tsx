@@ -217,7 +217,9 @@ function ResourceTypeSheet({ type, onClose }: { type?: ResourceType; onClose: ()
       title={type ? t("shared.changeName", { name: type.title }) : t("resourceTypes.sheet.new")}
       description={t("resourceTypes.sheet.lead")}
       className="w-[min(760px,100vw)]"
-      submitLabel={save.isPending ? t("shared.saving") : t("resourceTypes.sheet.save")}
+      submitLabel={
+        save.isPending ? t("shared.saving") : t(type ? "resourceTypes.sheet.save" : "resourceTypes.sheet.create")
+      }
       onSubmit={() => {
         setErrors({});
         save.mutate();

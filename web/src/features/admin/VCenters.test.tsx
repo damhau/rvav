@@ -18,7 +18,7 @@ describe("the vCenters rvav manages", () => {
     await user.type(within(sheet).getByRole("textbox", { name: "SDK address" }), "https://vc02.corp.example/sdk");
     await user.type(within(sheet).getByRole("textbox", { name: "Account" }), "svc-rvav@vsphere.local");
     await user.type(within(sheet).getByLabelText("Password"), "s3cret");
-    await user.click(within(sheet).getByRole("button", { name: "Save vCenter" }));
+    await user.click(within(sheet).getByRole("button", { name: "Add vCenter" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await within(region).findByRole("row", { name: /vc02\.corp\.example/ })).toHaveTextContent("Not synced yet");
 

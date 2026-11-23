@@ -611,7 +611,7 @@ To add an NSX Manager for other vCenters, such as those of another site:
    to this one: the sheet says so before you save.
 6. Click **Test connection**. The test signs in, shows the certificate,
    and reads the Tier-1 gateways, segments and groups.
-7. Click **Save NSX Manager**.
+7. Click **Add NSX Manager**.
 
 To change which vCenters an NSX Manager serves, the integration's
 included, open its **Actions** menu and select **Link vCenters**. To change
@@ -674,7 +674,7 @@ To add a range:
    the DNS domain that they're named in, without its final dot. Without a
    domain, VMs take the blueprint's. A DNS server inside the range must be
    excluded.
-8. Click **Save range**.
+8. Click **Create range**.
 
 rvav refuses a range that would give an address a VM already holds: one
 that EfficientIP gave a deployment's VM, or one that vCenter reports for
@@ -770,7 +770,7 @@ To give a project an OU:
 6. Optional: select **Blueprints may choose their OU**, to let a
    blueprint's `active_directory` name another OU, or none. Otherwise
    rvav ignores it.
-7. Click **Save OU**. rvav checks that the directory has the OU and the
+7. Click **Create OU**. rvav checks that the directory has the OU and the
    groups. If the directory can't be reached, the OU isn't saved: try
    again once it is.
 
@@ -906,7 +906,7 @@ may have changed.
 To take requests from ServiceNow:
 
 1. In **Integrations › ServiceNow**, under **ServiceNow's token**, click
-   **Make a token**. Copy the token: rvav shows it once.
+   **Create a token**. Copy the token: rvav shows it once.
 2. Optional: in **Allowed sources**, enter the instance's outbound
    addresses or networks, or its MID server's, separated by commas. rvav
    then refuses the token from anywhere else. To let ServiceNow submit
@@ -1030,11 +1030,11 @@ or only for all of rvav. The built-in roles can't be changed:
 | Supervisor | In a project | Seeing it, all its deployments included (`deployments.read_all`), and approving: it is one of the project's approvers (`approval.project`), asked when a lease is extended beyond its policy, and wherever a level names it ([Who approves](#who-approves)). It doesn't request or run day-2 actions. |
 | User | To everyone | Nothing. |
 
-To give someone less, or a mix, make a role of your own in
+To give someone less, or a mix, create a role of your own in
 **Administration › Roles** (`access.manage`, which only administrators
-hold). Select **New role**, or open a built-in role and select **Make a
+hold). Select **New role**, or open a built-in role and select **New
 role from it** to start from what it allows. Choose its key, fixed once
-made, its name and its permissions, grouped by area; **What it allows**
+created, its name and its permissions, grouped by area; **What it allows**
 says in words what you chose. `POST /api/v1/admin/roles` does the same.
 - Whoever holds `access.manage` can give themselves any permission: a
   role with it makes its holders administrators in all but name.
@@ -1105,7 +1105,7 @@ To let someone power a project's VMs on and off, and nothing else:
 3. Select `project.see`, then **Power on** and **Power off** among the
    power day-2 actions. **What it allows** says "Run the power day-2
    actions Power on and Power off."
-4. Select **Make role**.
+4. Select **Create role**.
 5. On the project's page, under **Members**, choose **VM operator** in
    **As** and add the person. To give it to a team, map their OIDC group
    to it in **Projects › Identity provider groups**, with the project.
@@ -1119,11 +1119,11 @@ on deployments the operator doesn't own.
 
 To let someone see everything and change nothing, under a name of your
 own:
-1. In **Administration › Roles**, open **Auditor** and select **Make a
+1. In **Administration › Roles**, open **Auditor** and select **New
    role from it**.
 2. Enter the key `compliance-auditor` and the name `Compliance auditor`,
    and keep the permissions as they are.
-3. Select **Make role**. It holds permissions for all of rvav only, so it
+3. Select **Create role**. It holds permissions for all of rvav only, so it
    can only be given for all of rvav.
 4. In **For all of rvav**, choose **Compliance auditor** in **The role**,
    then the person in **Give someone**.
@@ -2092,7 +2092,7 @@ To add an entry:
    form of a project would run it, choose the **Project** and the
    **Environment**: the entry then reads `project` and `environment`, and a
    REST call opens the project's secret of that name before the global one.
-7. Select **Add**.
+7. Select **Create entry**.
 
 To change an entry, open its row's menu and select **Change or test**.
 Saving makes the entry's next version; the versions before it don't
@@ -2278,7 +2278,7 @@ let one decide:
    **Tell a recovery target when it fails** and choose the recovery
    target. If it answers with an outcome, that decides instead of the
    previous setting.
-6. Select **Save subscription**.
+6. Select **Create subscription**.
 
 rvav checks each change again before building, and refuses:
 
@@ -2378,7 +2378,7 @@ templates. To define a type:
    them by their `title`.
 5. Under **Day-2 actions on its resources**, select the actions to offer
    on its resources.
-6. Select **Save resource type**.
+6. Select **Create resource type**.
 
 What each step gets and returns:
 
@@ -2473,7 +2473,7 @@ of the type or an item version names it.
      a VM, and the next runs add to it.
   4. Optionally, set **Run every (hours)**, from 1 to 168. Without it, the
      plan runs only when you select **Run now**.
-  5. Select **Save plan**. Its page opens.
+  5. Select **Create plan**. Its page opens.
 
   Each run adopts, one VM at a time, the matching VMs no deployment has,
   and skips those a deployment has already, so no VM is adopted twice.
@@ -2698,7 +2698,7 @@ their delivery without changing them.
      the value empty. A value isn't kept for a URL with another host.
 5. Under **Events**, tick the categories to send, such as **Sign-ins and
    sign-outs**. To send every event, tick none.
-6. Click **Save destination**.
+6. Click **Create destination**.
 7. To check it, click the destination's **⋯** menu, then **Send a test
    event**. The dialog says what the server answered.
 

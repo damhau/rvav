@@ -120,10 +120,10 @@ function WorkflowSheet({ wf, onClose }: { wf?: Registration; onClose: () => void
       open
       onOpenChange={(o) => !o && onClose()}
       pending={save.isPending}
-      title={wf ? t("shared.changeName", { name: wf.title }) : t("workflows.sheet.register")}
+      title={wf ? t("shared.changeName", { name: wf.title }) : t("workflows.sheet.add")}
       description={t("workflows.sheet.lead")}
       className="w-[min(760px,100vw)]"
-      submitLabel={save.isPending ? t("shared.saving") : t("workflows.sheet.save")}
+      submitLabel={save.isPending ? t("shared.saving") : t(wf ? "workflows.sheet.save" : "workflows.sheet.addSubmit")}
       onSubmit={() => {
         setErrors({});
         save.mutate();
@@ -384,7 +384,7 @@ export function WorkflowsPage() {
   });
   const register = canEdit && (
     <Button variant="primary" onClick={() => setEditing("new")}>
-      {t("workflows.sheet.register")}
+      {t("workflows.sheet.add")}
     </Button>
   );
   return (

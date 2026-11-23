@@ -111,7 +111,7 @@ describe("Form library", () => {
     await user.click(within(sheet).getByRole("button", { name: "Add parameter" }));
     await user.click(within(sheet).getByRole("button", { name: "Add parameter" }));
     await user.type(within(sheet).getByLabelText("Name", { selector: "#fl-prm-1-name" }), "env");
-    await user.click(within(sheet).getByRole("button", { name: "Add" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create entry" }));
     const second = within(sheet).getByLabelText("Label", { selector: "#fl-prm-1-label" });
     await waitFor(() => expect(second).toHaveAccessibleDescription(/label/i));
     expect(second).toHaveAttribute("aria-invalid", "true");
@@ -179,7 +179,7 @@ describe("Form library", () => {
     await user.click(within(sheet).getByRole("button", { name: "Run test" }));
     expect(await within(sheet).findByText("It passes.")).toBeInTheDocument();
 
-    await user.click(within(sheet).getByRole("button", { name: "Add" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create entry" }));
     expect(await screen.findByText("Short name saved as version 1")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await within(table).findByRole("row", { name: /Short name/ })).toHaveTextContent("CEL expression");

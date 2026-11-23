@@ -74,7 +74,7 @@ test("a form library validation refuses a request on its input, then lets it thr
   await typeInto(tryIt.getByRole("textbox", { name: "Host name" }), "app-01");
   await tryIt.getByRole("button", { name: "Run test" }).press("Enter");
   await expect(tryIt).toContainText("It passes.");
-  await sheet.getByRole("button", { name: "Add", exact: true }).press("Enter");
+  await sheet.getByRole("button", { name: "Create entry", exact: true }).press("Enter");
   await expect(page.getByText("Host prefix saved as version 1")).toBeVisible();
   const table = page.getByRole("table", { name: "Form library entries" });
   await expect(table).toContainText("hostPrefix");
@@ -105,7 +105,7 @@ test("a form library validation refuses a request on its input, then lets it thr
   await typeInto(dialog.getByRole("textbox", { name: "Name" }), "App host");
   await typeInto(dialog.getByRole("textbox", { name: "Slug" }), "app-host");
   await typeInto(dialog.getByRole("textbox", { name: "Summary" }), "A host whose name starts with app-.");
-  await dialog.getByRole("button", { name: "Create" }).press("Enter");
+  await dialog.getByRole("button", { name: "Create item" }).press("Enter");
   await page.getByRole("tab", { name: "Definition" }).press("Enter");
   const editor = page.getByRole("textbox", { name: "Definition of App host 1.0" });
   await expect(editor).toContainText("form_schema:");

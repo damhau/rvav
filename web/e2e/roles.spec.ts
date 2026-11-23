@@ -27,7 +27,7 @@ async function makeRole(page: Page, key: string, name: string, boxes: string[]) 
   await page.getByRole("textbox", { name: "Key" }).fill(key);
   await page.getByRole("textbox", { name: "Name" }).fill(name);
   for (const b of boxes) await page.getByRole("checkbox", { name: b, exact: true }).check();
-  await page.getByRole("button", { name: "Make role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
   await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
 }
 
@@ -50,13 +50,13 @@ test("make a custom role, change it and delete it", async ({ page }) => {
   await expect(allows).toContainText("Run the power day-2 actions Power on and Power off.");
 
   // Refused where the problem is: the key, then the permissions.
-  await page.getByRole("button", { name: "Make role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
   await expect(page.getByRole("textbox", { name: "Key" })).toHaveAccessibleDescription(/not a built-in role's key/);
   await page.getByRole("textbox", { name: "Key" }).fill("vm-operator");
-  await page.getByRole("button", { name: "Make role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
   await expect(page.getByRole("region", { name: "Permissions" }).getByRole("alert")).toContainText("Add project.see");
   await page.getByRole("checkbox", { name: "project.see" }).check();
-  await page.getByRole("button", { name: "Make role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
   await expect(page.getByRole("heading", { name: "VM operator", level: 1 })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Key" })).toBeDisabled();
 
@@ -79,7 +79,7 @@ test("make a custom role, change it and delete it", async ({ page }) => {
   await page.getByRole("textbox", { name: "Key" }).fill("vm-operator");
   await page.getByRole("textbox", { name: "Name" }).fill("Again");
   await page.getByRole("checkbox", { name: "project.see" }).check();
-  await page.getByRole("button", { name: "Make role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
   await expect(page.getByRole("textbox", { name: "Key" })).toHaveAccessibleDescription(
     "A role has the key vm-operator.",
   );
@@ -105,14 +105,14 @@ test("a built-in role can't be changed: a role of your own starts from it", asyn
   await expect(page.getByText("Built in: it can't be changed or deleted.")).toBeVisible();
   await expect(page.getByRole("checkbox")).toHaveCount(0);
   await expect(page.getByRole("list", { name: "Its permissions" })).toContainText("audit.read");
-  await page.getByRole("link", { name: "Make a role from it" }).click();
+  await page.getByRole("link", { name: "New role from it" }).click();
   await expect(page.getByRole("heading", { name: "New role", level: 1 })).toBeVisible();
   await expect(page.getByText("Starting from what Auditor allows.")).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "audit.read" })).toBeChecked();
   await page.getByRole("checkbox", { name: "access.read" }).uncheck();
   await page.getByRole("textbox", { name: "Key" }).fill("reader");
   await page.getByRole("textbox", { name: "Name" }).fill("Reader");
-  await page.getByRole("button", { name: "Make role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
   await expect(page.getByRole("heading", { name: "Reader", level: 1 })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "access.read" })).not.toBeChecked();
 });

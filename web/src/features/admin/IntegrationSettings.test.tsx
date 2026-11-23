@@ -68,10 +68,10 @@ describe("integration settings", () => {
     expect(within(panel).getByText(/rvav hasn't made one/)).toBeInTheDocument();
     const address = within(panel).getByRole("textbox", { name: "rvav's address, as AWX reaches it" });
     await user.type(address, "ftp://rvav.corp.example");
-    await user.click(within(panel).getByRole("button", { name: "Make a token and put it in AWX" }));
+    await user.click(within(panel).getByRole("button", { name: "Create a token and put it in AWX" }));
     expect(await within(panel).findByText(/such as https:\/\/rvav.corp.example/)).toBeInTheDocument();
     await user.clear(address);
-    await user.click(within(panel).getByRole("button", { name: "Make a token and put it in AWX" }));
+    await user.click(within(panel).getByRole("button", { name: "Create a token and put it in AWX" }));
     const made = await within(panel).findByRole("region", { name: "Inventory token made" });
     expect(made).toHaveTextContent(
       "In AWX's credential rvav API, now set on the inventory source, reading rvav at https://rvav.corp.example.",
@@ -80,7 +80,7 @@ describe("integration settings", () => {
     expect(await within(panel).findByText(/not read yet/)).toBeInTheDocument();
     // Again, at the address in the cluster: the one before is revoked.
     await user.type(address, "http://rvav-api.rvav.svc:8080");
-    await user.click(within(panel).getByRole("button", { name: "Make a new token and put it in AWX" }));
+    await user.click(within(panel).getByRole("button", { name: "Create a new token and put it in AWX" }));
     expect(await within(panel).findByText("The token made before is revoked.")).toBeInTheDocument();
     expect(within(panel).getByRole("region", { name: "Inventory token made" })).toHaveTextContent(
       "In AWX's credential rvav API, reading rvav at http://rvav-api.rvav.svc:8080.",

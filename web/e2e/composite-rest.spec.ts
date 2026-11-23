@@ -166,7 +166,7 @@ test("an item of only REST calls, requested and run to its end", async ({ page }
   await dialog.getByRole("textbox", { name: "Summary" }).fill("A configuration item in the CMDB.");
   await dialog.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: /composite/i }).click();
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByRole("heading", { name: "CMDB entry" })).toBeVisible();
   await page.getByRole("tab", { name: "Definition" }).click();
 

@@ -152,7 +152,7 @@ function ManagerSheet({ m, managers, onClose }: { m?: Manager; managers: Manager
             {test.isPending ? t("integrations.testing") : t("integrations.testConnection")}
           </Button>
           <Button type="submit" form={formId} variant="primary" disabled={save.isPending}>
-            {save.isPending ? t("integrations.saving") : t("nsxManagers.save")}
+            {save.isPending ? t("integrations.saving") : t(m ? "nsxManagers.save" : "nsxManagers.addSubmit")}
           </Button>
         </>
       }

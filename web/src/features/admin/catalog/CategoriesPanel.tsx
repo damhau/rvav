@@ -74,7 +74,7 @@ function CategorySheet({
       pending={save.isPending}
       title={existing ? t("categories.change", { name: existing.name }) : t("categories.new")}
       description={t("categories.sheetDescription")}
-      submitLabel={save.isPending ? t("categories.saving") : existing ? t("categories.save") : t("categories.add")}
+      submitLabel={save.isPending ? t("categories.saving") : existing ? t("categories.save") : t("categories.create")}
       submitDisabled={!key || !name}
       onSubmit={() => {
         setErrors({});

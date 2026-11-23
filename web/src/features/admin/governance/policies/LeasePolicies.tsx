@@ -163,7 +163,7 @@ function LeaseSheet({ lease, onClose }: { lease?: Lease; onClose: () => void }) 
       pending={save.isPending}
       title={lease ? t("policies.lease.change") : t("policies.lease.new")}
       description={t("policies.lease.sheetLead")}
-      submitLabel={save.isPending ? t("policies.saving") : t("policies.lease.save")}
+      submitLabel={save.isPending ? t("policies.saving") : t(lease ? "policies.lease.save" : "policies.lease.create")}
       onSubmit={() => {
         setErrors({});
         save.mutate();

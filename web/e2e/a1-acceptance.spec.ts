@@ -39,7 +39,7 @@ test("an administrator makes the operator and the auditor, and gives them", asyn
   await expect(page.getByRole("region", { name: "What it allows" })).toContainText(
     "Run the power day-2 actions Power on and Power off.",
   );
-  await page.getByRole("button", { name: "Make role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
   await expect(page.getByRole("heading", { name: "VM operator", level: 1 })).toBeVisible();
 
   // Given in Web Platform: to Claire, and to whoever is in rvav-operators.
@@ -65,11 +65,11 @@ test("an administrator makes the operator and the auditor, and gives them", asyn
   // The auditor: the built-in auditor's permissions, given for all of rvav.
   await nav(page, "Roles");
   await page.getByRole("region", { name: "Roles" }).getByRole("link", { name: "Auditor" }).click();
-  await page.getByRole("link", { name: "Make a role from it" }).click();
+  await page.getByRole("link", { name: "New role from it" }).click();
   await expect(page.getByText("Starting from what Auditor allows.")).toBeVisible();
   await page.getByRole("textbox", { name: "Key" }).fill("compliance-auditor");
   await page.getByRole("textbox", { name: "Name" }).fill("Compliance auditor");
-  await page.getByRole("button", { name: "Make role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
   await expect(page.getByRole("heading", { name: "Compliance auditor", level: 1 })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "audit.read" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "policies.manage", exact: true })).not.toBeChecked();
@@ -177,7 +177,7 @@ test("the compliance auditor reads the administration and can change nothing", a
   await expect(page.getByRole("checkbox")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save role" })).toBeHidden();
   await expect(page.getByRole("button", { name: /^More actions for/ })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Make a role from it" })).toBeHidden();
+  await expect(page.getByRole("link", { name: "New role from it" })).toBeHidden();
   await nav(page, "Roles");
   await page.getByRole("tab", { name: "For all of rvav" }).click();
   const rvav = page.getByRole("region", { name: "Given for all of rvav" });

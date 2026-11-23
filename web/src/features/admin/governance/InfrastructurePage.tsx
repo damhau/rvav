@@ -279,7 +279,7 @@ function TemplateSheet({ template, onClose }: { template?: S["VmTemplate"]; onCl
       pending={save.isPending}
       title={template ? t("infra.changeNamed", { name: template.label }) : t("infra.templates.new")}
       description={t("infra.templates.sheetLead")}
-      submitLabel={save.isPending ? t("infra.saving") : t("infra.templates.save")}
+      submitLabel={save.isPending ? t("infra.saving") : t(template ? "infra.templates.save" : "infra.templates.create")}
       submitDisabled={!f.key}
       onSubmit={() => {
         setErrors({});
@@ -620,7 +620,7 @@ function SizeSheet({ size, onClose }: { size?: S["SizePreset"]; onClose: () => v
       pending={save.isPending}
       title={size ? t("infra.changeNamed", { name: size.label }) : t("infra.sizes.new")}
       description={t("infra.sizes.sheetLead")}
-      submitLabel={save.isPending ? t("infra.saving") : t("infra.sizes.save")}
+      submitLabel={save.isPending ? t("infra.saving") : t(size ? "infra.sizes.save" : "infra.sizes.create")}
       submitDisabled={!f.key}
       onSubmit={() => {
         setErrors({});

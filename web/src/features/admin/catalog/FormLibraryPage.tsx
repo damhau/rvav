@@ -338,7 +338,7 @@ function EntrySheet({ existing, onClose }: { existing?: Entry; onClose: () => vo
       pending={save.isPending}
       title={existing ? t("library.change", { name: existing.name }) : t("library.new")}
       description={existing ? t("library.changeLead", { version: next }) : t("library.newLead")}
-      submitLabel={save.isPending ? t("library.saving") : existing ? t("library.saveVersion") : t("library.add")}
+      submitLabel={save.isPending ? t("library.saving") : existing ? t("library.saveVersion") : t("library.create")}
       submitDisabled={!name.trim() || (!existing && !key)}
       onSubmit={() => {
         setErrors({});

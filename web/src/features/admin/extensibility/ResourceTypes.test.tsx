@@ -48,7 +48,7 @@ describe("Resource types", () => {
     expect((await screen.findAllByRole("option")).map((o) => o.textContent)).not.toContain("configure-vm");
     await user.click(screen.getByRole("option", { name: "delete-load-balancer" }));
     await user.click(within(sheet).getByRole("checkbox", { name: /Drain/ }));
-    await user.click(within(sheet).getByRole("button", { name: "Save resource type" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create resource type" }));
 
     expect(await screen.findByText("DNS record saved")).toBeInTheDocument();
     const row = await screen.findByRole("row", { name: /DNS record/ });
@@ -67,7 +67,7 @@ describe("Resource types", () => {
     await user.clear(schema);
     await user.click(schema);
     await user.paste('{"type": "array"}');
-    await user.click(within(sheet).getByRole("button", { name: "Save resource type" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create resource type" }));
 
     expect(await within(sheet).findByText(/2 to 41 lower-case letters/)).toBeInTheDocument();
     expect(within(sheet).getByText("Give it a title.")).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe("Resource types", () => {
     await user.clear(schema);
     await user.click(schema);
     await user.paste("{ not json");
-    await user.click(within(sheet).getByRole("button", { name: "Save resource type" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create resource type" }));
     expect(await within(sheet).findByText("This is not valid JSON.")).toBeInTheDocument();
   });
 
@@ -90,7 +90,7 @@ describe("Resource types", () => {
     await user.type(within(sheet).getByLabelText("Title"), "Another");
     await choose(user, "Creates it", "Workflow", "DNS alias");
     await choose(user, "Deletes it", "Workflow", "DNS alias");
-    await user.click(within(sheet).getByRole("button", { name: "Save resource type" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create resource type" }));
     expect(await screen.findByText("A resource type is defined as load-balancer.")).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "New resource type" })).toBeInTheDocument();
   });

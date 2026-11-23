@@ -147,7 +147,7 @@ function RangeSheet({ range, onClose }: { range?: S["IpRange"]; onClose: () => v
       pending={save.isPending}
       title={range ? t("infra.changeNamed", { name: range.name }) : t("ipRanges.new")}
       description={t("ipRanges.sheetLead")}
-      submitLabel={save.isPending ? t("infra.saving") : t("ipRanges.save")}
+      submitLabel={save.isPending ? t("infra.saving") : t(range ? "ipRanges.save" : "ipRanges.create")}
       submitDisabled={!f.name || !f.network}
       onSubmit={() => {
         setErrors({});

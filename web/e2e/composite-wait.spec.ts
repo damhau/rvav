@@ -19,7 +19,7 @@ async function newItem(page: Page, name: string, slug: string) {
   await dialog.getByRole("textbox", { name: "Summary" }).fill("Waits.");
   await dialog.getByRole("combobox", { name: "Type" }).click();
   await page.getByRole("option", { name: /composite/i }).click();
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByRole("heading", { name })).toBeVisible();
   await page.getByRole("tab", { name: "Definition" }).click();
 }

@@ -77,7 +77,7 @@ test("revoking a token asks first, and Escape gives the focus back to Revoke", a
   await page.goto("/tokens");
   await expect(page.getByRole("heading", { name: "API tokens" })).toBeVisible();
   await page.getByRole("textbox", { name: "What it is for" }).fill("Backups");
-  await page.getByRole("button", { name: "Make a token" }).click();
+  await page.getByRole("button", { name: "Create token" }).click();
   await page.getByRole("region", { name: "Your new token" }).getByRole("button", { name: "Done" }).click();
   const revoke = page.getByRole("region", { name: "Your tokens" }).getByRole("button", { name: "Revoke Backups" });
   await revoke.focus();
@@ -98,7 +98,7 @@ test("a refused save in a sheet moves the focus to the field, and the first limi
   await expect(panel.getByText("No limit")).toBeVisible();
   await panel.getByRole("button", { name: "Add a limit" }).focus();
   await page.keyboard.press("Enter");
-  const sheet = page.getByRole("dialog", { name: "New limit" });
+  const sheet = page.getByRole("dialog", { name: "Add a limit" });
   await expect(sheet.getByRole("combobox", { name: "Resource" })).toBeFocused();
   await expect(sheet.getByText("At most 160: Web Platform's own limit.")).toBeVisible();
   await page.keyboard.press("Tab");

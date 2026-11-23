@@ -325,7 +325,7 @@ function GroupSheet({ existing, onClose }: { existing?: Group; onClose: () => vo
       description={
         existing ? t("groups.changeLead", { version: Math.max(...existing.versions) + 1 }) : t("groups.newLead")
       }
-      submitLabel={save.isPending ? t("groups.saving") : existing ? t("groups.saveVersion") : t("groups.add")}
+      submitLabel={save.isPending ? t("groups.saving") : existing ? t("groups.saveVersion") : t("groups.create")}
       submitDisabled={!name.trim() || (!existing && !key)}
       onSubmit={() => {
         setErrors({});

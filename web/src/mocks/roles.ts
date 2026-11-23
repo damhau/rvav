@@ -216,7 +216,11 @@ export function rolesHandlers(db: Db, base: string, wait: () => Promise<void>, u
       const r = roleOf(db, String(params.key));
       if (!r) return problem(404, "Not found");
       if (r.built_in)
-        return problem(409, "Conflict", `${r.name} is built in: it can't be changed. Make a role of your own instead.`);
+        return problem(
+          409,
+          "Conflict",
+          `${r.name} is built in: it can't be changed. Create a role of your own instead.`,
+        );
       const u = (await request.json()) as S["RoleUpdate"];
       if (u.name !== undefined && !u.name.trim()) return invalid("/name", "required", "Give the role a name.");
       const perms = u.permissions ? [...new Set(u.permissions)] : r.permissions;

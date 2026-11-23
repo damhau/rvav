@@ -44,13 +44,13 @@ for (const theme of ["light", "dark"] as const) {
     await sheet.getByRole("combobox", { name: "Environment" }).click();
     await page.getByRole("option", { name: "dev" }).click();
     await sheet.getByRole("textbox", { name: "OU", exact: true }).fill("Servers");
-    await sheet.getByRole("button", { name: "Save OU" }).click();
+    await sheet.getByRole("button", { name: "Create OU" }).click();
     await expect(sheet.getByText(/"Servers" is not a DN/)).toBeVisible();
     await toastsGone(page);
     await check("a project's new OU, refused");
     await sheet.getByRole("textbox", { name: "OU", exact: true }).fill("OU=Dev,OU=Web");
     await sheet.getByRole("textbox", { name: "Groups" }).fill("CN=Web servers,OU=Groups\nCN=Dev,OU=Groups");
-    await sheet.getByRole("button", { name: "Save OU" }).click();
+    await sheet.getByRole("button", { name: "Create OU" }).click();
     await expect(sheet).toBeHidden();
     await expect(directory.getByRole("row", { name: /^In dev/ })).toContainText("CN=Dev,OU=Groups");
     await toastsGone(page);

@@ -712,7 +712,7 @@ function RuleSheet({
         environment: env,
       })}
       description={t("project.rule.lead")}
-      submitLabel={save.isPending ? t("projects.saving") : t("project.rule.save")}
+      submitLabel={save.isPending ? t("projects.saving") : t(rule ? "project.rule.save" : "project.rule.create")}
       onSubmit={() => {
         setErrors({});
         save.mutate();
@@ -1065,7 +1065,7 @@ function LimitSheet({
       pending={save.isPending}
       title={existing ? t("quota.changeTitle") : t("quota.newTitle")}
       description={t("quota.sheetLead")}
-      submitLabel={save.isPending ? t("quota.saving") : t("quota.save")}
+      submitLabel={save.isPending ? t("quota.saving") : t(existing ? "quota.save" : "quota.addSubmit")}
       submitDisabled={twin || !valid}
       onSubmit={() => {
         const row: S["QuotaLimit"] = {

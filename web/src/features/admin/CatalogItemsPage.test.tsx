@@ -66,7 +66,7 @@ describe("Catalog items", () => {
     await u.type(within(sheet).getByRole("textbox", { name: "Name" }), "Team share");
     await u.type(within(sheet).getByRole("textbox", { name: "Slug" }), "team-share");
     await u.type(within(sheet).getByRole("textbox", { name: "Summary" }), "A file share for a team.");
-    await u.click(within(sheet).getByRole("button", { name: "Create" }));
+    await u.click(within(sheet).getByRole("button", { name: "Create item" }));
     expect(await screen.findByText("Team share created, with a draft 1.0")).toBeInTheDocument();
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/catalog-items/team-share"));
   });
@@ -99,7 +99,7 @@ describe("Categories and secrets", () => {
     const sheet = await screen.findByRole("dialog", { name: "New category" });
     await u.type(within(sheet).getByRole("textbox", { name: "Key" }), "storage");
     await u.type(within(sheet).getByRole("textbox", { name: "Name" }), "Storage");
-    await u.click(within(sheet).getByRole("button", { name: "Add category" }));
+    await u.click(within(sheet).getByRole("button", { name: "Create category" }));
     expect(await within(region).findByRole("row", { name: /Storage/ })).toHaveTextContent("storage");
   });
 
@@ -122,7 +122,7 @@ describe("Categories and secrets", () => {
     const sheet = await screen.findByRole("dialog", { name: "New secret" });
     await u.type(within(sheet).getByRole("textbox", { name: "Name" }), "cmdb");
     await u.type(within(sheet).getByLabelText("Value"), "cmdb-token");
-    await u.click(within(sheet).getByRole("button", { name: "Store" }));
+    await u.click(within(sheet).getByRole("button", { name: "Create secret" }));
     expect(await screen.findByText("cmdb stored")).toBeInTheDocument();
 
     await u.click(await within(region).findByRole("button", { name: "Actions for cmdb" }));
@@ -147,7 +147,7 @@ describe("Categories and secrets", () => {
       }
       await u.click(within(sheet).getByLabelText("Value"));
       await u.paste("token");
-      await u.click(within(sheet).getByRole("button", { name: "Store" }));
+      await u.click(within(sheet).getByRole("button", { name: "Create secret" }));
       await waitFor(() => expect(screen.queryByRole("dialog", { name: "New secret" })).toBeNull());
     };
     await store();

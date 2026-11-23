@@ -91,6 +91,7 @@
     "lead": "Les VM qu'il intègre, où elles vont et quand il s'exécute. Chaque exécution intègre les VM qu'il trouve et qu'aucun déploiement n'a.",
     "saving": "Enregistrement…",
     "save": "Enregistrer le plan",
+    "create": "Créer le plan",
     "name": "Nom",
     "description": "Description",
     "which": "Quelles VM",

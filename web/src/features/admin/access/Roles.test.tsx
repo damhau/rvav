@@ -31,7 +31,7 @@ describe("Roles", () => {
     const { router } = renderApp("/admin/roles");
     await user.click(await screen.findByRole("button", { name: "Actions for Auditor" }));
     expect(screen.queryByRole("menuitem", { name: /^Delete/ })).toBeNull();
-    await user.click(screen.getByRole("menuitem", { name: "Make a role from it" }));
+    await user.click(screen.getByRole("menuitem", { name: "New role from it" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/roles/new"));
     expect(router.state.location.search).toEqual({ from: "auditor" });
     expect(await screen.findByText("Starting from what Auditor allows.")).toBeInTheDocument();
@@ -80,7 +80,7 @@ describe("A role's page", () => {
 
   it("offers a built-in role's copy as its primary action, and no menu", async () => {
     renderApp("/admin/roles/auditor");
-    expect(await screen.findByRole("link", { name: "Make a role from it" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "New role from it" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^More actions for/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Save role" })).toBeNull();
   });
@@ -91,7 +91,7 @@ describe("A role's page", () => {
     await user.type(await screen.findByRole("textbox", { name: "Key" }), "reader");
     await user.type(screen.getByRole("textbox", { name: "Name" }), "Reader");
     await user.click(screen.getByRole("checkbox", { name: "project.see" }));
-    await user.click(screen.getByRole("button", { name: "Make role" }));
+    await user.click(screen.getByRole("button", { name: "Create role" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/roles/reader"));
     expect(await screen.findByText("Reader made")).toBeInTheDocument();
   });

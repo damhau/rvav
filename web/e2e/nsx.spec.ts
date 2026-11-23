@@ -136,7 +136,7 @@ async function managersFlow(page: Page, check: (where: string) => Promise<void>)
   await add.getByRole("textbox", { name: "Name" }).fill("nsx02.corp.example");
   await add.getByRole("textbox", { name: "Address" }).fill("http://nsx02.corp.example");
   await add.getByRole("textbox", { name: "Account" }).fill("svc-rvav");
-  await add.getByRole("button", { name: "Save NSX Manager" }).click();
+  await add.getByRole("button", { name: "Add NSX Manager" }).click();
   await expect(add.getByText("Its address over HTTPS, for example https://nsx02.corp.example.")).toBeVisible();
   await expect(add.getByText("Give the account's password.")).toBeVisible();
   await add.getByRole("textbox", { name: "Address" }).fill("https://nsx02.corp.example");
@@ -148,7 +148,7 @@ async function managersFlow(page: Page, check: (where: string) => Promise<void>)
   await expect(add.getByRole("list", { name: "Test" })).toContainText("Tier-1 gateways");
   await toastsGone(page);
   await check("an NSX Manager added, tested");
-  await add.getByRole("button", { name: "Save NSX Manager" }).click();
+  await add.getByRole("button", { name: "Add NSX Manager" }).click();
   await expect(add).toBeHidden();
   const added = managers.getByRole("row", { name: /nsx02\.corp\.example/ });
   await expect(added).toContainText("vc01.corp.example");

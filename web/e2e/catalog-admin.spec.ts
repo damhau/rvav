@@ -63,7 +63,7 @@ test("create an item and a category", async ({ page }) => {
   await dialog.getByRole("textbox", { name: "Name" }).fill("Ubuntu mini");
   await dialog.getByRole("textbox", { name: "Slug" }).fill("ubuntu-mini");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("A small Ubuntu VM.");
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByRole("heading", { name: "Ubuntu mini" })).toBeVisible();
   await expect(page.getByText("Draft 1.0").first()).toBeVisible();
   await expect(page.getByText("Not published").first()).toBeVisible();
@@ -75,7 +75,7 @@ test("create an item and a category", async ({ page }) => {
   const sheet = page.getByRole("dialog", { name: "New category" });
   await sheet.getByRole("textbox", { name: "Key" }).fill("storage");
   await sheet.getByRole("textbox", { name: "Name" }).fill("Storage");
-  await sheet.getByRole("button", { name: "Add category" }).click();
+  await sheet.getByRole("button", { name: "Create category" }).click();
   await expect(page.getByText("Storage added")).toBeVisible();
   await expect(categories.getByText("storage", { exact: true })).toBeVisible();
 });
@@ -89,7 +89,7 @@ test("build a small form in the designer", async ({ page }) => {
   await dialog.getByRole("textbox", { name: "Name" }).fill("Team share");
   await dialog.getByRole("textbox", { name: "Slug" }).fill("team-share");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("A file share for a team.");
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create item" }).click();
   await page.getByRole("tab", { name: "Form designer" }).click();
 
   const fields = page.getByRole("region", { name: "Fields" });
@@ -157,7 +157,7 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   const secret = page.getByRole("dialog", { name: "New secret" });
   await secret.getByRole("textbox", { name: "Name" }).fill("cmdb");
   await secret.getByLabel("Value").fill("cmdb-token");
-  await secret.getByRole("button", { name: "Store" }).click();
+  await secret.getByRole("button", { name: "Create secret" }).click();
   await expect(page.getByText("cmdb stored")).toBeVisible();
 
   await page.getByRole("tab", { name: "Items" }).click();
@@ -166,7 +166,7 @@ test("an Ubuntu item from draft to roll back", async ({ page }) => {
   await dialog.getByRole("textbox", { name: "Name" }).fill("Ubuntu web");
   await dialog.getByRole("textbox", { name: "Slug" }).fill("ubuntu-web");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("Ubuntu with nginx and a backup policy.");
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create item" }).click();
 
   // A dropdown from the CMDB, tested as a member of Web Platform.
   await page.getByRole("tab", { name: "Form designer" }).click();
@@ -319,7 +319,7 @@ test("a property group, changed as a new version", async ({ page }) => {
   await sheet.getByRole("button", { name: "Add constant" }).click();
   await sheet.locator("#pg-const-0-key").fill("dns_domain");
   await sheet.locator("#pg-const-0-value").fill("corp.example");
-  await sheet.getByRole("button", { name: "Add", exact: true }).click();
+  await sheet.getByRole("button", { name: "Create property group", exact: true }).click();
   await expect(page.getByText("Network saved as version 1")).toBeVisible();
   const row = table.getByRole("row", { name: /Network/ });
   await expect(row).toContainText("zone");
@@ -377,7 +377,7 @@ test("a project's own secret, opened instead of the global one", async ({ page }
       await page.getByRole("option", { name: new RegExp(project) }).click();
     }
     await sheet.locator("#secret-value").fill("s3cret");
-    await sheet.getByRole("button", { name: "Store" }).click();
+    await sheet.getByRole("button", { name: "Create secret" }).click();
     await expect(sheet).toHaveCount(0);
   };
   await store();

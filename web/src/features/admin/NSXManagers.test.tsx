@@ -29,12 +29,12 @@ describe("the NSX Managers rvav manages", () => {
     expect(vc01).toHaveAccessibleName("vc01.corp.example Served by nsx.corp.example");
     await user.click(vc01);
     expect(vc01).toHaveAccessibleName("vc01.corp.example Moves here from nsx.corp.example");
-    await user.click(within(sheet).getByRole("button", { name: "Save NSX Manager" }));
+    await user.click(within(sheet).getByRole("button", { name: "Add NSX Manager" }));
     expect(await within(sheet).findByText("Give the account's password.")).toBeInTheDocument();
     await user.type(within(sheet).getByLabelText("Password"), "s3cret-nsx-pass");
     await user.click(within(sheet).getByRole("button", { name: "Test connection" }));
     expect(await within(sheet).findByRole("list", { name: "Test" })).toHaveTextContent("Tier-1 gateways:");
-    await user.click(within(sheet).getByRole("button", { name: "Save NSX Manager" }));
+    await user.click(within(sheet).getByRole("button", { name: "Add NSX Manager" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(await within(region).findByRole("row", { name: /nsx02\.corp\.example/ })).toHaveTextContent(
       "vc01.corp.example",

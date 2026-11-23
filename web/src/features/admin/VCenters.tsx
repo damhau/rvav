@@ -120,7 +120,7 @@ function VCenterSheet({ vc, onClose }: { vc?: VCenter; onClose: () => void }) {
             {test.isPending ? t("integrations.testing") : t("integrations.testConnection")}
           </Button>
           <Button type="submit" form={formId} variant="primary" disabled={save.isPending}>
-            {save.isPending ? t("integrations.saving") : t("vcenters.save")}
+            {save.isPending ? t("integrations.saving") : t(vc ? "vcenters.save" : "vcenters.addSubmit")}
           </Button>
         </>
       }

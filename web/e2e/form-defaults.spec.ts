@@ -54,7 +54,7 @@ test("a default set in the designer fills a field until the requester changes it
   await dialog.getByRole("textbox", { name: "Name" }).fill("App server");
   await dialog.getByRole("textbox", { name: "Slug" }).fill("app-server");
   await dialog.getByRole("textbox", { name: "Summary" }).fill("A server named after its application.");
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create item" }).click();
 
   await page.getByRole("tab", { name: "Definition" }).click();
   const editor = page.getByRole("textbox", { name: "Definition of App server 1.0" });

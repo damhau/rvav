@@ -193,7 +193,7 @@ describe("Onboarding plans", () => {
     await choose(user, "Environment", "prd");
     await choose(user, "Owner", "Thomas Nguyen");
     await choose(user, "Catalog item", "RHEL 9 server");
-    await user.click(within(sheet).getByRole("button", { name: "Save plan" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create plan" }));
 
     // Saved, its page opens.
     expect(await screen.findByRole("heading", { name: "ERP servers", level: 1 })).toBeInTheDocument();
@@ -230,7 +230,7 @@ describe("Onboarding plans", () => {
     await user.click(within(sheet).getByRole("button", { name: "Add input" }));
     await user.type(within(sheet).getByRole("textbox", { name: "Input" }), "role");
     await user.type(within(sheet).getByRole("textbox", { name: "Value" }), "erp");
-    await user.click(within(sheet).getByRole("button", { name: "Save plan" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create plan" }));
 
     expect(await screen.findByRole("heading", { name: "ERP servers", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("Into erp-prd, one deployment in Web Platform prd")).toBeInTheDocument();
@@ -251,7 +251,7 @@ describe("Onboarding plans", () => {
     ).toBeInTheDocument();
     await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Everything");
     await choose(user, "Project", "Web Platform");
-    await user.click(within(sheet).getByRole("button", { name: "Save plan" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create plan" }));
     expect(
       await within(sheet).findByText(
         "Give the filter a criterion at least: without one, the plan would adopt every VM rvav doesn't manage.",
@@ -280,7 +280,7 @@ describe("Onboarding plans", () => {
     await choose(user, "Environment", "prd");
     await choose(user, "Owner", "Thomas Nguyen");
     await choose(user, "Catalog item", "RHEL 9 server");
-    await user.click(within(sheet).getByRole("button", { name: "Save plan" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create plan" }));
     const tag = within(sheet).getByRole("textbox", { name: /^Tag/ });
     await waitFor(() => expect(tag).toHaveAccessibleDescription("200 characters at most."));
     expect(tag).toHaveAttribute("aria-invalid", "true");

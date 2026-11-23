@@ -47,11 +47,11 @@ async function serviceNowFlow(page: Page, check: (where: string) => Promise<void
   await expect(cmdb.getByRole("table", { name: "CIs rvav no longer has" })).toContainText("web-dev-old001");
   await check("ServiceNow's page");
 
-  await token.getByRole("button", { name: "Make a new token" }).click();
-  const renew = page.getByRole("alertdialog", { name: "Make a new token?" });
+  await token.getByRole("button", { name: "Create a new token" }).click();
+  const renew = page.getByRole("alertdialog", { name: "Create a new token?" });
   await expect(renew).toContainText("The token it has now is revoked at once.");
   await check("asking before a new token");
-  await renew.getByRole("button", { name: "Make a new token" }).click();
+  await renew.getByRole("button", { name: "Create a new token" }).click();
   const made = token.getByRole("region", { name: "ServiceNow's token made" });
   await expect(made).toContainText("The token made before is revoked.");
   await check("ServiceNow's token made");
@@ -62,7 +62,7 @@ async function serviceNowFlow(page: Page, check: (where: string) => Promise<void
   await ask.getByRole("button", { name: "Revoke token" }).click();
   await expect(token).toContainText("None made: ServiceNow can't call rvav.");
   // Revoke went with the token: the focus goes to the button that makes the next one.
-  await expect(token.getByRole("button", { name: "Make a token" })).toBeFocused();
+  await expect(token.getByRole("button", { name: "Create a token" })).toBeFocused();
   await expect(cmdb).toContainText("0 deployments; 1 refused, to be tried again");
 
   await cmdb.getByRole("button", { name: "Reconcile now" }).click();

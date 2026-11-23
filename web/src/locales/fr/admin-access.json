@@ -84,7 +84,7 @@
     "times_many": "{{count}} fois",
     "times_other": "{{count}} fois",
     "actionsFor": "Actions pour {{name}}",
-    "makeFrom": "Créer un rôle à partir de celui-ci",
+    "makeFrom": "Nouveau rôle à partir de celui-ci",
     "delete": "Supprimer",
     "cantDeleteGiven_one": "Supprimer\u00a0: donné {{count}} fois",
     "cantDeleteGiven_many": "Supprimer\u00a0: donné {{count}} fois",

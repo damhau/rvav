@@ -71,13 +71,13 @@ async function rangesFlow(page: Page, check: (where: string) => Promise<void>) {
   await add.getByRole("textbox", { name: "Gateway" }).fill("10.22.30.1");
   await add.getByRole("textbox", { name: "First address" }).fill("10.22.30.200");
   await add.getByRole("textbox", { name: "Last address" }).fill("10.22.30.120");
-  await add.getByRole("button", { name: "Save range" }).click();
+  await add.getByRole("button", { name: "Create range" }).click();
   await expect(add.getByText("The start must be in the subnet 10.22.30.0/25.")).toBeVisible();
   await toastsGone(page);
   await check("a range refused");
   await add.getByRole("textbox", { name: "First address" }).fill("10.22.30.100");
   await add.getByRole("textbox", { name: "Excluded addresses" }).fill("10.22.30.110");
-  await add.getByRole("button", { name: "Save range" }).click();
+  await add.getByRole("button", { name: "Create range" }).click();
   await expect(add).toBeHidden();
   await expect(ranges.getByRole("row", { name: /Prod lab/ })).toContainText("20 free");
 

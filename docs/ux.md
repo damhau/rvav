@@ -247,6 +247,18 @@ Every text a person reads is in English and in French
 - **Left as they are:** names (rvav, vCenter, AWX), identifiers (REQ-12, a
   VM's name), what people typed, and the server's messages, which are in
   English until the API speaks the person's language (ADR-0061).
+- **One set of verbs for making things.** Three verbs, each with one job:
+
+  | Verb | What it does | Examples |
+  |---|---|---|
+  | **New** *thing* | Opens the form for something rvav keeps on its own. The form has the same title. | **New project**, **New VM template**, **New token**, **New role from it**, **New draft** |
+  | **Create** *thing* | Confirms that form. A form for something that exists says **Save** *thing* instead. | **Create project**, **Create template**, **Create token**; **Save template** in **Change RHEL 9** |
+  | **Add** *thing* | Puts a part into what you edit, or connects something that exists elsewhere. Its form, if it has one, is titled and confirmed with **Add**. | **Add a field**, **Add a step**, **Add a level**, **Add someone**, **Add a limit**, **Add a vCenter**, **Add a workflow** |
+
+  Never Make, Register or Generate. French says **Nouveau** or **Nouvelle**,
+  **Créer** and **Ajouter**: **Nouveau projet**, **Créer le projet**,
+  **Ajouter un champ**. A button that does something other than store a
+  form says what it does: **Import**, **Adopt 12 VMs**, **Request**.
 - **Room to grow.** French is up to a third longer: labels wrap rather than
   truncate, and every page still reflows at 320 px.
 - **Each language in its own words:** the language menu lists English and

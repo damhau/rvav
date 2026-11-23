@@ -29,7 +29,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   await create.getByRole("textbox", { name: "Cost centre" }).fill("CC-4400");
   await create.getByRole("textbox", { name: "Project admins" }).fill("Léa");
   await create.getByRole("button", { name: /Léa Martin/ }).click();
-  await create.getByRole("button", { name: "Create" }).click();
+  await create.getByRole("button", { name: "Create project" }).click();
   await expect(page.getByRole("heading", { name: "Payments", level: 1 })).toBeVisible();
   const members = page.getByRole("region", { name: "Members" });
   await members.getByRole("textbox", { name: "Add someone" }).fill("Thomas");
@@ -44,7 +44,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   await rule.getByRole("textbox", { name: "Cluster tags" }).fill("rvav-tier/bronze");
   await rule.getByRole("textbox", { name: "Datastores" }).fill("vsan-*");
   await rule.getByRole("textbox", { name: "Networks" }).fill("dvpg-app-dev-*");
-  await rule.getByRole("button", { name: "Save rule" }).click();
+  await rule.getByRole("button", { name: "Create rule" }).click();
   const preview = page.getByRole("region", { name: "What Payments gets in dev" });
   await expect(preview).toContainText("Clusters: GVA-DEV-CL01");
   await expect(preview).toContainText("Datastores: vsan-gva-dev-cl01");
@@ -52,10 +52,10 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   // A quota of one VM.
   await page.getByRole("tab", { name: "Quotas" }).click();
   await page.getByRole("region", { name: "Quotas", exact: true }).getByRole("button", { name: "Add a limit" }).click();
-  const limit = page.getByRole("dialog", { name: "New limit" });
+  const limit = page.getByRole("dialog", { name: "Add a limit" });
   await choose(page, "Resource", "VMs");
   await limit.getByRole("spinbutton", { name: "Limit" }).fill("1");
-  await limit.getByRole("button", { name: "Save limit" }).click();
+  await limit.getByRole("button", { name: "Add limit" }).click();
   await expect(page.getByText("Limit saved")).toBeVisible();
 
   // Its own naming policy.
@@ -67,7 +67,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   await naming.getByRole("textbox", { name: "Template" }).fill("{project}{environment}{role}{seq:02}");
   await naming.getByRole("button", { name: "Add an offer" }).click();
   await choose(page, "Offer 1: project", "Payments");
-  await naming.getByRole("button", { name: "Save naming policy" }).click();
+  await naming.getByRole("button", { name: "Create naming policy" }).click();
   await expect(page.getByText("Payments names saved")).toBeVisible();
 
   // A template offered to it.
@@ -78,7 +78,7 @@ test("a project set up from the UI requests a VM", async ({ page }) => {
   await tpl.getByRole("textbox", { name: "Label" }).fill("Ubuntu 24.04");
   await tpl.getByRole("textbox", { name: "Template", exact: true }).fill("tpl-ubuntu24.04-2026.10");
   await choose(page, "Offer 1: project", "Payments");
-  await tpl.getByRole("button", { name: "Save template" }).click();
+  await tpl.getByRole("button", { name: "Create template" }).click();
   await expect(
     page.getByRole("region", { name: "VM templates" }).getByRole("row", { name: /Ubuntu 24.04/ }),
   ).toContainText("Payments");

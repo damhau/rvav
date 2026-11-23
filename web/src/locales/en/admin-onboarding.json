@@ -88,6 +88,7 @@
     "lead": "Which VMs it adopts, where they go, and when it runs. Each run adopts the VMs it matches that no deployment has.",
     "saving": "Saving…",
     "save": "Save plan",
+    "create": "Create plan",
     "name": "Name",
     "description": "Description",
     "which": "Which VMs",

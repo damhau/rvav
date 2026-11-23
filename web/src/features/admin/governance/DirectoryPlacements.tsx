@@ -102,7 +102,7 @@ function PlacementSheet({
           : t(row ? "placements.change" : "placements.new")
       }
       description={t("placements.sheetLead")}
-      submitLabel={save.isPending ? t("projects.saving") : t("placements.save")}
+      submitLabel={save.isPending ? t("projects.saving") : t(row ? "placements.save" : "placements.create")}
       submitDisabled={!f.ou.trim()}
       onSubmit={() => {
         setErrors({});

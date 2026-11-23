@@ -49,7 +49,7 @@ test("a plan saved by keyboard adopts what it matches, then skips it", async ({ 
   await press(page, page.getByRole("button", { name: "New plan" }));
   await fillPlan(page, sheet);
   await scan(page, "a new onboarding plan, light");
-  await press(page, sheet.getByRole("button", { name: "Save plan" }));
+  await press(page, sheet.getByRole("button", { name: "Create plan" }));
 
   await expect(page.getByRole("heading", { name: "ERP servers", level: 1 })).toBeVisible();
   await expect(page.getByText("12 VMs it matches no deployment has")).toBeVisible();
@@ -110,13 +110,13 @@ test("a plan into an existing deployment refuses what its item doesn't have", as
   await expect(sheet.getByRole("combobox", { name: "Owner" })).toHaveCount(0);
   await chooseIn(page, sheet.getByRole("combobox", { name: "Deployment" }), "web-prd-cache");
   await typeInto(page, sheet.getByRole("textbox", { name: /^Component/ }), "web");
-  await press(page, sheet.getByRole("button", { name: "Save plan" }));
+  await press(page, sheet.getByRole("button", { name: "Create plan" }));
   await expect(sheet.getByText("RHEL 9 server's blueprint has no components: leave the component out.")).toBeVisible();
   await expect(sheet.getByRole("textbox", { name: /^Component/ })).toBeFocused();
   await scan(page, "an onboarding plan refused");
 
   await typeInto(page, sheet.getByRole("textbox", { name: /^Component/ }), "");
-  await press(page, sheet.getByRole("button", { name: "Save plan" }));
+  await press(page, sheet.getByRole("button", { name: "Create plan" }));
   await expect(page.getByRole("heading", { name: "Old apps", level: 1 })).toBeVisible();
   await press(page, page.getByRole("button", { name: "Run now" }));
   const runs = page.getByRole("table", { name: "Runs" });

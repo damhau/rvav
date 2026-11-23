@@ -280,7 +280,7 @@ func (s *Service) UpdateRole(ctx context.Context, p *auth.Principal, key string,
 		return api.Role{}, err
 	}
 	if st.BuiltIn {
-		return api.Role{}, &ConflictError{Msg: st.Name + " is built in: it can't be changed. Make a role of your own instead."}
+		return api.Role{}, &ConflictError{Msg: st.Name + " is built in: it can't be changed. Create a role of your own instead."}
 	}
 	var errs []api.FieldError
 	if u.Name != nil {

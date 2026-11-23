@@ -115,7 +115,7 @@ function PolicySheet({
       title={policy ? t("policies.changeNamed", { name: policy.name }) : t("policies.limits.new")}
       description={t("policies.limits.sheetLead")}
       className="w-[min(640px,100vw)]"
-      submitLabel={save.isPending ? t("policies.saving") : t("policies.savePolicy")}
+      submitLabel={save.isPending ? t("policies.saving") : t(policy ? "policies.savePolicy" : "policies.createPolicy")}
       onSubmit={() => {
         setErrors({});
         save.mutate();

@@ -184,7 +184,7 @@ export function PlanSheet({ plan, onClose }: { plan?: Plan; onClose: () => void 
       title={plan ? t("sheet.change", { name: plan.name }) : t("plans.new")}
       description={t("sheet.lead")}
       className="w-[min(720px,100vw)]"
-      submitLabel={save.isPending ? t("sheet.saving") : t("sheet.save")}
+      submitLabel={save.isPending ? t("sheet.saving") : t(plan ? "sheet.save" : "sheet.create")}
       onSubmit={() => {
         setErrors({});
         const problems = inputProblems(target);

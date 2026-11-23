@@ -102,7 +102,7 @@ describe("A blocking subscription on a VM's topic", () => {
     await user.paste("https://evil.example/x");
     await user.click(within(recovery).getByRole("combobox", { name: "Recovery signing secret" }));
     await user.click(await screen.findByRole("option", { name: "webhook-signing" }));
-    await user.click(within(sheet).getByRole("button", { name: "Save subscription" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create subscription" }));
     expect(
       await within(recovery).findByText(/evil\.example is not one of the hosts webhooks may call/),
     ).toBeInTheDocument();
@@ -111,7 +111,7 @@ describe("A blocking subscription on a VM's topic", () => {
     await user.clear(url);
     await user.click(url);
     await user.paste("https://hooks.corp.example/rvav/ipam-down");
-    await user.click(within(sheet).getByRole("button", { name: "Save subscription" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create subscription" }));
     expect(await screen.findByText("IPAM address saved")).toBeInTheDocument();
   }, 15_000);
 

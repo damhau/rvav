@@ -112,7 +112,7 @@
       "id": "access.manage",
       "scope": "rvav",
       "area": "Access",
-      "summary": "Make roles, and give them to users and groups: whoever holds it can give themselves any permission."
+      "summary": "Create roles, and give them to users and groups: whoever holds it can give themselves any permission."
     },
     {
       "id": "catalog.manage",
@@ -136,7 +136,7 @@
       "id": "integrations.manage",
       "scope": "rvav",
       "area": "Integrations",
-      "summary": "See, set and test the identity provider and every connection, and make the inventory token and ServiceNow's."
+      "summary": "See, set and test the identity provider and every connection, and create the inventory token and ServiceNow's."
     },
     {
       "id": "policies.read",

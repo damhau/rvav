@@ -33,7 +33,7 @@ describe("deployment limits", () => {
     await user.click(await within(region).findByRole("button", { name: "New deployment limit policy" }));
     const sheet = await screen.findByRole("dialog", { name: "New deployment limit policy" });
     await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Small deployments");
-    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
     expect(
       await within(sheet).findByText(
         "Set at least one limit: deployments per user or per project, or vCPU or memory per deployment.",
@@ -42,7 +42,7 @@ describe("deployment limits", () => {
 
     await user.type(within(sheet).getByRole("spinbutton", { name: "vCPU per deployment" }), "8");
     await user.type(within(sheet).getByRole("spinbutton", { name: "Deployments per user" }), "5");
-    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
     expect(await screen.findByText("Small deployments saved")).toBeInTheDocument();
     const row = await within(region).findByRole("row", { name: /Small deployments/ });
     await waitFor(() =>
@@ -93,7 +93,7 @@ describe("deployment limits", () => {
     await user.click(within(sheet).getByRole("combobox", { name: "Enforcement" }));
     await user.click(await screen.findByRole("option", { name: "Soft: it warns, and the requester may go on" }));
     await user.type(within(sheet).getByRole("spinbutton", { name: "Deployments per project" }), "20");
-    await user.click(within(sheet).getByRole("button", { name: "Save policy" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create policy" }));
     expect(await screen.findByText("Web count saved")).toBeInTheDocument();
     const mine = await within(region).findByRole("row", { name: /Web count/ });
     expect(mine).toHaveTextContent("Soft: warns");

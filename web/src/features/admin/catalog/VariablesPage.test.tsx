@@ -47,10 +47,10 @@ describe("Variables", () => {
     await chooseType(user, "List or object (JSON)");
     await user.click(within(sheet).getByLabelText("Value"));
     await user.paste('["web", "db"');
-    await user.click(within(sheet).getByRole("button", { name: "Add" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create variable" }));
     expect(within(sheet).getByLabelText("Value")).toHaveAccessibleDescription(/^Not JSON/);
     await user.paste("]");
-    await user.click(within(sheet).getByRole("button", { name: "Add" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create variable" }));
     expect(await screen.findByText("vars.monitoring.targets added")).toBeInTheDocument();
     const row = await screen.findByRole("row", { name: /vars\.monitoring\.targets/ });
     expect(row).toHaveTextContent("web, db");
@@ -77,7 +77,7 @@ describe("Variables", () => {
     await user.type(within(sheet).getByLabelText("Group"), "cmdb");
     await user.type(within(sheet).getByLabelText("Name"), "admin_password");
     await user.type(within(sheet).getByLabelText("Value"), "hunter2");
-    await user.click(within(sheet).getByRole("button", { name: "Add" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create variable" }));
     await waitFor(() =>
       expect(within(sheet).getByLabelText("Name")).toHaveAccessibleDescription(
         /store a password, a token or a key as a secret/,

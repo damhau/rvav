@@ -67,7 +67,7 @@
       "rvav": "For all of rvav",
       "explain": "What someone may do"
     },
-    "panelLead": "A role's page says, in words, what it allows. A built-in role can't be changed: make one of your own from it.",
+    "panelLead": "A role's page says, in words, what it allows. A built-in role can't be changed: create one of your own from it.",
     "role": "Role",
     "given": "Given",
     "permissions": "Permissions",
@@ -81,7 +81,7 @@
     "times_one": "{{count}} time",
     "times_other": "{{count}} times",
     "actionsFor": "Actions for {{name}}",
-    "makeFrom": "Make a role from it",
+    "makeFrom": "New role from it",
     "delete": "Delete",
     "cantDeleteGiven_one": "Delete: given {{count}} time",
     "cantDeleteGiven_other": "Delete: given {{count}} times",
@@ -147,13 +147,13 @@
     "allows": "What it allows",
     "itsPermissions": "Its permissions",
     "builtInNote": "Built in: it can't be changed or deleted.",
-    "makeYourOwn": "To give someone a little more or less, make a role of your own from it.",
+    "makeYourOwn": "To give someone a little more or less, create a role of your own from it.",
     "saving": "Saving…",
     "moreActions": "More actions for {{name}}",
     "save": "Save role",
     "newTitle": "New role",
     "startingFrom": "Starting from what {{name}} allows.",
     "choose": "Choose what it allows.",
-    "make": "Make role"
+    "make": "Create role"
   }
 }

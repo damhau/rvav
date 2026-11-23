@@ -46,7 +46,7 @@ describe("Property groups", () => {
     await user.type(within(sheet).getByLabelText("Name", { selector: "#pg-const-0-key" }), "dns_domain");
     await user.type(within(sheet).getByLabelText("Value"), "corp.example");
     expect(within(sheet).getByText("propgroup.network.<name>")).toBeInTheDocument();
-    await user.click(within(sheet).getByRole("button", { name: "Add" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create property group" }));
 
     expect(await screen.findByText("Network saved as version 1")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -203,7 +203,7 @@ describe("Property groups", () => {
     await user.click(
       within(sheet).getByLabelText("A host variable in the AWX inventory", { selector: "#pg-input-1-inventory" }),
     );
-    await user.click(within(sheet).getByRole("button", { name: "Add" }));
+    await user.click(within(sheet).getByRole("button", { name: "Create property group" }));
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect((sent[0] as { inputs: unknown }).inputs).toEqual([

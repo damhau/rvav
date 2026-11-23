@@ -55,8 +55,8 @@
     "expiresIn": "Expires in",
     "inventoryOnly": "Ansible inventory only",
     "everything": "Everything you may do",
-    "making": "Making…",
-    "make": "Make a token",
+    "making": "Creating…",
+    "make": "Create token",
     "revoked": "Token revoked",
     "notRevoked": "Not revoked",
     "new": "New token",
@@ -71,7 +71,7 @@
     "yours": "Your tokens",
     "everyone": "Everyone's",
     "none": "No tokens",
-    "noneBody": "Make one above for a script or a pipeline.",
+    "noneBody": "Create one above for a script or a pipeline.",
     "token": "Token",
     "owner": "Owner",
     "lastUsed": "Last used",
@@ -82,7 +82,7 @@
     "revokeName": "Revoke {{name}}",
     "revoke": "Revoke",
     "revokeTitle": "Revoke {{name}}?",
-    "revokeBody": "The token stops working at once. This can't be undone: make a new token to replace it.",
+    "revokeBody": "The token stops working at once. This can't be undone: create a new token to replace it.",
     "revokeConsequences": "Scripts and pipelines that call rvav with it are refused from now on.",
     "revokeConfirm": "Revoke token"
   }

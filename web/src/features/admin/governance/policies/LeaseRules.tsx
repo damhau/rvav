@@ -83,7 +83,7 @@ function RuleSheet({
       title={rule ? t("policies.changeNamed", { name: rule.name }) : t("policies.rules.new")}
       description={t("policies.rules.sheetLead")}
       className="w-[min(640px,100vw)]"
-      submitLabel={save.isPending ? t("policies.saving") : t("policies.rules.save")}
+      submitLabel={save.isPending ? t("policies.saving") : t(rule ? "policies.rules.save" : "policies.rules.create")}
       onSubmit={() => {
         setErrors({});
         save.mutate();

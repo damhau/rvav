@@ -482,7 +482,7 @@ function EnvironmentSheet({
           ? t("projects.saving")
           : existing
             ? t("projects.environments.save")
-            : t("projects.environments.add")
+            : t("projects.environments.create")
       }
       submitDisabled={!f.key || !f.name || !whole}
       onSubmit={() => {

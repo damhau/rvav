@@ -66,7 +66,7 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
   const env = page.getByRole("dialog", { name: "New environment" });
   await env.getByRole("textbox", { name: "Key" }).fill("dev");
   await env.getByRole("textbox", { name: "Name" }).fill("Development");
-  await env.getByRole("button", { name: "Add environment" }).click();
+  await env.getByRole("button", { name: "Create environment" }).click();
   await expect(envs.getByRole("row", { name: /Development/ })).toBeVisible();
   await page.getByRole("tab", { name: "Projects", exact: true }).click();
   await page.getByRole("button", { name: "New project" }).click();
@@ -74,7 +74,7 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
   await dialog.getByRole("textbox", { name: "Code" }).fill("web");
   await dialog.getByRole("textbox", { name: "Name" }).fill("Web");
   await dialog.getByRole("checkbox", { name: "Development" }).check();
-  await dialog.getByRole("button", { name: "Create" }).click();
+  await dialog.getByRole("button", { name: "Create project" }).click();
   await expect(page.getByRole("heading", { name: "Web", level: 1 })).toBeVisible();
   // Where its VMs go: without a placement rule it can't request any.
   await checklist(page);
@@ -88,7 +88,7 @@ test("a new install opens on the setup checklist, whose steps are followed", asy
   const rule = page.getByRole("dialog", { name: "New placement rule for Web in dev" });
   await rule.getByRole("textbox", { name: "Datastores" }).fill("vsan-*");
   await rule.getByRole("textbox", { name: "Networks" }).fill("dvpg-app-dev-*");
-  await rule.getByRole("button", { name: "Save rule" }).click();
+  await rule.getByRole("button", { name: "Create rule" }).click();
   await expect(rule).toBeHidden();
 
   // vCenter, on its page: nothing set by the environment here.
