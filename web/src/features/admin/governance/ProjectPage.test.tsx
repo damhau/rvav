@@ -206,7 +206,9 @@ describe("a project's placement and quotas", () => {
     expect(
       await within(sheet).findByText(/its OU goes under OU=Production,OU=Servers, the one set/),
     ).toBeInTheDocument();
-    expect(within(sheet).getByLabelText("Groups")).toHaveAccessibleDescription(/a group goes under the project's OU\./);
+    expect(within(sheet).getByLabelText("Groups")).toHaveAccessibleDescription(
+      /CN=Admins,OU=Groups is not under the project's OU\./,
+    );
 
     await user.clear(within(sheet).getByLabelText("OU"));
     await user.type(within(sheet).getByLabelText("OU"), "OU=Web,OU=Production,OU=Servers");

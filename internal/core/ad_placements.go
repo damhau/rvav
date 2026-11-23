@@ -254,9 +254,9 @@ func projectPlacement(delegated, was *store.ADPlacement, ou string, groups []str
 		if under(g, ou) || had(g, delegated.Groups) || was != nil && had(g, was.Groups) {
 			continue
 		}
-		msg := "Your role manages this project's placement only: a group goes under the project's OU"
+		msg := "Your role manages this project's placement only: " + ad.Resolve(g, base) + " is not under the project's OU"
 		if len(delegated.Groups) > 0 {
-			msg += ", or is one of those set for every project: " + strings.Join(delegated.Groups, "; ")
+			msg += ", nor one of the groups set for every project: " + strings.Join(delegated.Groups, "; ")
 		}
 		errs = append(errs, fieldErr(fmt.Sprintf("/groups/%d", i), "not_allowed", msg+"."))
 	}

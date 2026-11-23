@@ -1742,12 +1742,12 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
               const had = (of: string[]) => of.some((x) => same(x, g));
               if (under(g, ou) || had(delegated.groups) || (was && had(was.groups))) return;
               const among = delegated.groups.length
-                ? `, or is one of those set for every project: ${delegated.groups.join("; ")}`
+                ? `, nor one of the groups set for every project: ${delegated.groups.join("; ")}`
                 : "";
               errors.push(
                 err(
                   `/groups/${i}`,
-                  `Your role manages this project's placement only: a group goes under the project's OU${among}.`,
+                  `Your role manages this project's placement only: ${g} is not under the project's OU${among}.`,
                   "not_allowed",
                 ),
               );
