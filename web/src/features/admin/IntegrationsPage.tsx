@@ -235,6 +235,8 @@ function Reconcile() {
   const { t } = useTranslation("admin");
   const [run, setRun] = useState(false);
   const report = useQuery({ ...q.ipamReconcile(), enabled: run });
+  // A check that failed shows only its error: the report before it is out of date.
+  const shown = report.isError ? undefined : report.data;
   return (
     <Panel
       title={t("integrations.reconcile.title")}
@@ -249,23 +251,23 @@ function Reconcile() {
         >
           {report.isFetching
             ? t("integrations.reconcile.checking")
-            : report.data
+            : shown
               ? t("integrations.reconcile.again")
               : t("integrations.reconcile.run")}
         </Button>
       }
     >
       <p role="status" className="sr-only">
-        {report.data &&
+        {shown &&
           !report.isFetching &&
-          (toReconcile(report.data)
-            ? t("integrations.reconcile.found", { count: toReconcile(report.data) })
+          (toReconcile(shown)
+            ? t("integrations.reconcile.found", { count: toReconcile(shown) })
             : t("integrations.reconcile.foundNone"))}
       </p>
       {!run && <p className="px-4 py-3 text-secondary text-muted">{t("integrations.reconcile.about")}</p>}
       {run && report.isPending && <SkeletonRows rows={3} cols={4} />}
       {report.isError && <ErrorState error={report.error} onRetry={() => void report.refetch()} />}
-      {report.data && <Report report={report.data} />}
+      {shown && <Report report={shown} />}
     </Panel>
   );
 }

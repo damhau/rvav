@@ -153,6 +153,7 @@
     "save": "Save role",
     "newTitle": "New role",
     "startingFrom": "Starting from what {{name}} allows.",
+    "noSource": "There is no role {{key}} to start from: choose one in the list, or start with New role.",
     "choose": "Choose what it allows.",
     "make": "Create role"
   }

@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { adminState } from "@/mocks/administration";
@@ -48,5 +48,22 @@ describe("what someone may do", () => {
     await user.click(screen.getByRole("option", { name: "QA" }));
     expect(within(panel).getByRole("combobox", { name: "Where" })).toHaveTextContent("QA");
     expect((await within(panel).findAllByText(/in QA/)).length).toBeGreaterThan(0);
+  });
+
+  it("keeps who and where chosen across the page's tabs", async () => {
+    const user = userEvent.setup();
+    const { router } = renderApp("/admin/roles?tab=explain&project=prj_web");
+    const panel = await screen.findByRole("region", { name: "What someone may do" });
+    await waitFor(() =>
+      expect(within(panel).getByRole("combobox", { name: "Where" })).toHaveTextContent("Web Platform"),
+    );
+    await user.click(screen.getByRole("tab", { name: "Roles" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ tab: "roles", project: "prj_web" }));
+    await user.click(screen.getByRole("tab", { name: "What someone may do" }));
+    const again = await screen.findByRole("region", { name: "What someone may do" });
+    await waitFor(() =>
+      expect(within(again).getByRole("combobox", { name: "Where" })).toHaveTextContent("Web Platform"),
+    );
+    expect(router.state.location.search).toEqual({ tab: "explain", project: "prj_web" });
   });
 });

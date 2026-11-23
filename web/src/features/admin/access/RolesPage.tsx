@@ -348,7 +348,9 @@ export function RolesPage({ tab, user, project }: RolesSearch) {
       />
       <Tabs
         value={tab ?? "roles"}
-        onValueChange={(v) => void navigate({ to: "/admin/roles", search: { tab: v as RolesTab }, replace: true })}
+        onValueChange={(v) =>
+          void navigate({ to: "/admin/roles", search: (s) => ({ ...s, tab: v as RolesTab }), replace: true })
+        }
       >
         <TabsList aria-label={t("roles.sections")}>
           <TabsTrigger value="roles">{t("roles.tabs.roles")}</TabsTrigger>

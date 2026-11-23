@@ -159,6 +159,7 @@
     "save": "Enregistrer le rôle",
     "newTitle": "Nouveau rôle",
     "startingFrom": "À partir de ce que {{name}} permet.",
+    "noSource": "Il n'y a pas de rôle {{key}} dont partir\u00a0: choisissez-en un dans la liste, ou partez de Nouveau rôle.",
     "choose": "Choisissez ce qu'il permet.",
     "make": "Créer le rôle"
   }

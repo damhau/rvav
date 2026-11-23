@@ -37,6 +37,13 @@ describe("Roles", () => {
     expect(await screen.findByText("Starting from what Auditor allows.")).toBeInTheDocument();
   });
 
+  it("goes back to the roles, saying so, when the role to start from doesn't exist", async () => {
+    const { router } = renderApp("/admin/roles/new?from=no-such-role");
+    expect(await screen.findByText(/There is no role no-such-role to start from/)).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/admin/roles"));
+    expect(await screen.findByRole("tab", { name: "Roles", selected: true })).toBeInTheDocument();
+  });
+
   it("deletes a custom role given to nobody once confirmed, and says why one given can't be", async () => {
     withOperator(false);
     const user = userEvent.setup();

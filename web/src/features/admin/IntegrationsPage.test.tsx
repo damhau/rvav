@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
+import { server } from "@/mocks/node";
 import { renderApp } from "@/test/render";
 
 describe("Integrations", () => {
@@ -55,6 +57,28 @@ describe("Integrations", () => {
     );
     await user.click(within(panel).getByRole("link", { name: "Reconcile them on the IP ranges tab" }));
     expect(await screen.findByRole("region", { name: "Reconcile the IP ranges" })).toBeInTheDocument();
+  });
+
+  it("shows only the error when the check fails again, not the report before it", async () => {
+    const user = userEvent.setup();
+    renderApp("/admin/integrations?tab=checks");
+    const panel = await screen.findByRole("region", { name: "EfficientIP reconcile" });
+    await user.click(within(panel).getByRole("button", { name: "Run the check" }));
+    expect(await within(panel).findByRole("table", { name: "Addresses no deployment owns" })).toBeInTheDocument();
+
+    server.use(
+      http.get("*/api/v1/admin/ipam/reconcile", () =>
+        HttpResponse.json(
+          { type: "about:blank", title: "EfficientIP didn't answer", status: 502, request_id: "req_test" },
+          { status: 502, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      ),
+    );
+    await user.click(within(panel).getByRole("button", { name: "Check again" }));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("EfficientIP didn't answer");
+    expect(within(panel).queryByRole("table", { name: "Addresses no deployment owns" })).toBeNull();
+    expect(within(panel).getByRole("status")).toBeEmptyDOMElement();
+    expect(panel).not.toHaveTextContent("rvav's IP ranges:");
   });
 
   it("says when there is no such integration", async () => {

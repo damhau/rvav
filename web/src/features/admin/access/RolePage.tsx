@@ -3,7 +3,7 @@
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Ellipsis, TriangleAlert } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
@@ -530,10 +530,17 @@ export function RolePage({ roleKey }: { roleKey: string }) {
 
 export function NewRolePage({ from }: { from?: string }) {
   const { t } = useTranslation("admin-access");
+  const navigate = useNavigate();
   const formId = useId();
   const source = useQuery({ ...adm.role(from ?? ""), enabled: Boolean(from) });
   const catalogue = useQuery(adm.permissions());
-  const ready = catalogue.data && (!from || source.data || source.isError);
+  const unknown = source.isError && isApiError(source.error) && source.error.status === 404;
+  useEffect(() => {
+    if (!unknown) return;
+    toast.error(t("role.noSource", { key: from }));
+    void navigate({ to: "/admin/roles", replace: true });
+  }, [unknown, from, navigate, t]);
+  const ready = catalogue.data && (!from || source.data);
   return (
     <Page>
       <PageHeader
@@ -542,8 +549,9 @@ export function NewRolePage({ from }: { from?: string }) {
         description={source.data ? t("role.startingFrom", { name: roleName(source.data) }) : t("role.choose")}
         actions={ready && <SaveButton formId={formId} label={t("role.make")} />}
       />
-      {!ready && !catalogue.isError && <Skeleton className="h-64" />}
+      {!ready && !catalogue.isError && !source.isError && <Skeleton className="h-64" />}
       {catalogue.isError && <ErrorState error={catalogue.error} onRetry={() => void catalogue.refetch()} />}
+      {source.isError && !unknown && <ErrorState error={source.error} onRetry={() => void source.refetch()} />}
       {ready && <RoleForm formId={formId} catalogue={catalogue.data} start={source.data?.permissions} />}
     </Page>
   );

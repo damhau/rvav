@@ -205,8 +205,9 @@ sentence case.
   a box for a value of its own, such as a day or a folder, has its label
   beside it. The filters live in the address, so a filtered list can be
   shared and Back leaves the page. **Clear filters** keeps the tab, sort
-  and layout, and puts the focus on the search box. A list that nothing
-  matches says so and offers **Clear filters**.
+  and layout, and puts the focus on the search box; changing the tab
+  keeps what is chosen in the address, for the tab that reads it. A list
+  that nothing matches says so and offers **Clear filters**.
 - **Empty states give a next step.** An empty list says what goes there and
   offers the step that adds it, such as "New template".
 - **Removing asks first.** The confirmation names what goes and what depends
@@ -218,7 +219,11 @@ sentence case.
   that needs a selection appears with the selection, in a bar above the
   table.
 - **Failures offer a retry.** A list, a panel or a menu that couldn't load
-  says so and offers **Try again**.
+  says so and offers **Try again**. A check run again that fails shows
+  only its error, not the result before it.
+- **An address naming nothing goes back to the list.** A page opened from
+  an address naming something that doesn't exist, such as a new role
+  started from a role that doesn't, goes back to the list and says so.
 - **Phones get cards, not a sideways page.** On a phone, a list's rows
   stack as cards: the first column as the title, the others as label and
   value, the checkbox and ⋯ menu at the top, and the sort and **Select
