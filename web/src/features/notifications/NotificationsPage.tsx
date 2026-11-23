@@ -10,7 +10,7 @@ import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { ScrollRegion } from "@/components/ui/scroll-region";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSaveFocus } from "@/components/ui/opener";
@@ -194,6 +194,48 @@ function Preferences() {
   const toggle = (kind: string, ch: Channel, on: boolean) => {
     setRules((r) => ({ ...r, [kind]: on ? [...(r[kind] ?? []), ch] : (r[kind] ?? []).filter((x) => x !== ch) }));
   };
+  const columns: Column<S["NotificationPreferences"]["rules"][number]>[] = [
+    {
+      id: "when",
+      header: t("prefs.when"),
+      cell: (r) => (
+        <>
+          <span className="font-medium">{kindLabel(r.kind).label}</span>
+          {!differs(r.kind, rules[r.kind] ?? []) && (
+            <span className="ml-2 text-caption text-faint">{t("prefs.default")}</span>
+          )}
+          <div className="text-secondary text-muted">{kindLabel(r.kind).hint}</div>
+          <FieldNote id={`notif-${r.kind}-note`} error={errors[r.kind]} />
+        </>
+      ),
+    },
+    {
+      id: "app",
+      header: t("prefs.app"),
+      cell: (r) => (
+        <Checkbox
+          checked
+          disabled
+          aria-label={t("prefs.inAppOf", { kind: kindLabel(r.kind).label })}
+          onChange={() => {}}
+        />
+      ),
+    },
+    ...channels.map((ch): Column<S["NotificationPreferences"]["rules"][number]> => ({
+      id: ch,
+      header: channelLabel(ch),
+      cell: (r) => (
+        <Checkbox
+          aria-label={t("prefs.by", { kind: kindLabel(r.kind).label, channel: channelLabel(ch) })}
+          aria-invalid={errors[`${r.kind}/${ch}`] ? true : undefined}
+          aria-describedby={errors[`${r.kind}/${ch}`] ? `notif-${r.kind}-note` : undefined}
+          disabled={!reach[ch]?.available}
+          checked={(rules[r.kind] ?? []).includes(ch)}
+          onChange={(on) => toggle(r.kind, ch, on)}
+        />
+      ),
+    })),
+  ];
   return (
     <div className="flex flex-col gap-4">
       <Panel title={t("prefs.reach")}>
@@ -257,62 +299,14 @@ function Preferences() {
               options={locales.map((l) => ({ value: l, label: localeNames[l] }))}
             />
           </Field>
-          <ScrollRegion label={t("prefs.where")}>
-            <table className="w-full min-w-[620px] border-collapse text-body">
-              <thead>
-                <tr className="label text-left">
-                  <th scope="col" className="border-b border-line py-2 pr-3 font-medium">
-                    {t("prefs.when")}
-                  </th>
-                  <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-                    {t("prefs.app")}
-                  </th>
-                  {channels.map((ch) => (
-                    <th key={ch} scope="col" className="border-b border-line px-3 py-2 font-medium">
-                      {channelLabel(ch)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {prefs.data.rules.map((r) => {
-                  const kind = kindLabel(r.kind);
-                  return (
-                    <tr key={r.kind}>
-                      <th scope="row" className="border-b border-line py-2 pr-3 text-left font-normal">
-                        <span className="font-medium">{kind.label}</span>
-                        {!differs(r.kind, rules[r.kind] ?? []) && (
-                          <span className="ml-2 text-caption text-faint">{t("prefs.default")}</span>
-                        )}
-                        <div className="text-secondary text-muted">{kind.hint}</div>
-                        <FieldNote id={`notif-${r.kind}-note`} error={errors[r.kind]} />
-                      </th>
-                      <td className="border-b border-line px-3 py-2">
-                        <Checkbox
-                          checked
-                          disabled
-                          aria-label={t("prefs.inAppOf", { kind: kind.label })}
-                          onChange={() => {}}
-                        />
-                      </td>
-                      {channels.map((ch) => (
-                        <td key={ch} className="border-b border-line px-3 py-2">
-                          <Checkbox
-                            aria-label={t("prefs.by", { kind: kind.label, channel: channelLabel(ch) })}
-                            aria-invalid={errors[`${r.kind}/${ch}`] ? true : undefined}
-                            aria-describedby={errors[`${r.kind}/${ch}`] ? `notif-${r.kind}-note` : undefined}
-                            disabled={!reach[ch]?.available}
-                            checked={(rules[r.kind] ?? []).includes(ch)}
-                            onChange={(on) => toggle(r.kind, ch, on)}
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </ScrollRegion>
+          <DataTable
+            label={t("prefs.where")}
+            columns={columns}
+            rows={prefs.data.rules}
+            rowKey={(r) => r.kind}
+            minWidth={620}
+            className="-mx-4"
+          />
           <div className="flex justify-end">
             <Button ref={submit} type="submit" variant="primary" disabled={save.isPending}>
               {t("prefs.save")}

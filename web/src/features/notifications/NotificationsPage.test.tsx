@@ -1,6 +1,6 @@
 // Notification preferences refused by the server: the focus goes to what the
 // refusal names, once it says so, for a keyboard user to hear it there.
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
@@ -66,5 +66,24 @@ describe("notification preferences refused", () => {
     await waitFor(() => expect(language).toHaveFocus());
     expect(language).toBeInvalid();
     expect(language).toHaveAccessibleDescription(/en or fr\./);
+  });
+});
+
+describe("notification preferences", () => {
+  it("lay out a row per kind, a column per channel, and mark the kinds left as they were", async () => {
+    const user = userEvent.setup();
+    renderApp("/notifications?tab=preferences");
+    const table = await screen.findByRole("table", { name: "What comes where" }, { timeout: 5000 });
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((h) => h.textContent),
+    ).toEqual(["When", "App", "Email", "Teams", "Slack"]);
+    const row = within(table).getByRole("row", { name: /^Request submitted/ });
+    expect(row).toHaveTextContent(/^Request submitteddefault/);
+    expect(within(row).getByRole("checkbox", { name: "Request submitted in the app" })).toBeDisabled();
+    expect(within(row).getByRole("checkbox", { name: "Request submitted by Teams" })).toBeDisabled();
+    await user.click(within(row).getByRole("checkbox", { name: "Request submitted by Email" }));
+    expect(row).not.toHaveTextContent("default");
   });
 });

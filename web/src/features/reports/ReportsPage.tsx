@@ -15,7 +15,7 @@ import { Page } from "@/components/common/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { ScrollRegion } from "@/components/ui/scroll-region";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -134,6 +134,32 @@ function bars(r: S["Report"]): Bar[] {
     submitted: p.submitted,
   }));
 }
+
+/** The chart's figures as a table: a row per period. */
+const chartColumns = (t: TFunction<"reports">, interval: Interval): Column<Bar>[] => [
+  {
+    id: "period",
+    header: t("chart.period"),
+    sortValue: (d) => d.period,
+    cell: (d) => periodLabel(d.period, interval, true),
+  },
+  {
+    id: "requests",
+    header: t("chart.requests"),
+    align: "end",
+    className: "tnum",
+    sortValue: (d) => d.submitted,
+    cell: (d) => d.submitted,
+  },
+  ...series(t).map((s): Column<Bar> => ({
+    id: s.key,
+    header: s.label,
+    align: "end",
+    className: "tnum",
+    sortValue: (d) => d[s.key],
+    cell: (d) => d[s.key],
+  })),
+];
 
 /** Requests per period, stacked by how they ended. */
 function RequestsChart({ report }: { report: S["Report"] }) {
@@ -295,39 +321,14 @@ function RequestsChart({ report }: { report: S["Report"] }) {
       </div>
       <details className="text-secondary">
         <summary className="cursor-pointer text-muted">{t("chart.showTable")}</summary>
-        <div className="mt-2 max-h-64 overflow-y-auto">
-          <table className="w-full border-collapse text-secondary" aria-label={t("chart.table")}>
-            <thead>
-              <tr className="label text-left">
-                <th scope="col" className="py-1 pr-3 font-medium">
-                  {t("chart.period")}
-                </th>
-                <th scope="col" className="py-1 pr-3 text-right font-medium">
-                  {t("chart.requests")}
-                </th>
-                {lines.map((s) => (
-                  <th key={s.key} scope="col" className="py-1 pr-3 text-right font-medium">
-                    {s.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((d) => (
-                <tr key={d.period} className="border-t border-line">
-                  <th scope="row" className="py-1 pr-3 text-left font-normal">
-                    {periodLabel(d.period, report.interval, true)}
-                  </th>
-                  <td className="tnum py-1 pr-3 text-right">{d.submitted}</td>
-                  {lines.map((s) => (
-                    <td key={s.key} className="tnum py-1 pr-3 text-right">
-                      {d[s.key]}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="-mx-4 mt-2 max-h-64 overflow-y-auto">
+          <DataTable
+            label={t("chart.table")}
+            columns={chartColumns(t, report.interval)}
+            rows={data}
+            rowKey={(d) => d.period}
+            stack={false}
+          />
         </div>
       </details>
     </div>
@@ -373,8 +374,75 @@ function Quota({ lines }: { lines: S["ReportQuotaLine"][] }) {
   );
 }
 
-const th = "border-b border-line px-4 py-2 text-left font-medium";
-const td = "border-b border-line px-4 py-2";
+const itemColumns = (t: TFunction<"reports">): Column<S["ReportItem"]>[] => [
+  {
+    id: "item",
+    header: t("panels.item"),
+    sortValue: (it) => it.item.name,
+    cell: (it) => <span className="font-medium">{it.item.name}</span>,
+  },
+  {
+    id: "requests",
+    header: t("panels.requests"),
+    align: "end",
+    className: "tnum",
+    sortValue: (it) => it.submitted,
+    cell: (it) => it.submitted,
+  },
+  {
+    id: "success",
+    header: t("panels.successRate"),
+    align: "end",
+    className: "tnum",
+    sortValue: (it) => it.success_rate,
+    cell: (it) => percent(it.success_rate),
+  },
+  {
+    id: "build",
+    header: t("panels.buildTime"),
+    align: "end",
+    className: "tnum",
+    sortValue: (it) => it.provisioning.p50_seconds,
+    cell: (it) => seconds(it.provisioning.p50_seconds),
+  },
+];
+
+const leaseColumns = (t: TFunction<"reports">, envName: (key: string) => string): Column<S["ReportLease"]>[] => [
+  {
+    id: "deployment",
+    header: t("panels.deployment"),
+    sortValue: (l) => l.deployment.name,
+    cell: (l) => (
+      <Link to="/deployments/$deploymentId" params={{ deploymentId: l.deployment.id }} className="font-medium">
+        {l.deployment.name}
+      </Link>
+    ),
+  },
+  {
+    id: "project",
+    header: t("panels.project"),
+    className: "text-muted",
+    sortValue: (l) => `${l.project.name} ${envName(l.environment)}`,
+    cell: (l) => (
+      <>
+        {l.project.name} · {envName(l.environment)}
+      </>
+    ),
+  },
+  {
+    id: "owner",
+    header: t("panels.owner"),
+    sortValue: (l) => l.owner.name,
+    cell: (l) => l.owner.name,
+  },
+  {
+    id: "ends",
+    header: t("panels.ends"),
+    className: "tnum",
+    sortValue: (l) => Date.parse(l.expires_at),
+    cell: (l) => fullDate(l.expires_at),
+  },
+];
 
 const spanDays: Record<Interval, number> = { day: 1, week: 7, month: 30.4 };
 
@@ -516,38 +584,13 @@ export function ReportsPage() {
               {r.requests.by_item.length === 0 ? (
                 <EmptyState title={t("panels.nothingRequested")} body={t("panels.nothingRequestedBody")} />
               ) : (
-                <ScrollRegion label={t("panels.mostRequested")}>
-                  <table className="w-full min-w-[420px] border-collapse text-body">
-                    <thead>
-                      <tr className="label">
-                        <th scope="col" className={th}>
-                          {t("panels.item")}
-                        </th>
-                        <th scope="col" className={th + " text-right"}>
-                          {t("panels.requests")}
-                        </th>
-                        <th scope="col" className={th + " text-right"}>
-                          {t("panels.successRate")}
-                        </th>
-                        <th scope="col" className={th + " text-right"}>
-                          {t("panels.buildTime")}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {r.requests.by_item.map((it) => (
-                        <tr key={it.item.id}>
-                          <th scope="row" className={td + " text-left font-medium"}>
-                            {it.item.name}
-                          </th>
-                          <td className={td + " tnum text-right"}>{it.submitted}</td>
-                          <td className={td + " tnum text-right"}>{percent(it.success_rate)}</td>
-                          <td className={td + " tnum text-right"}>{seconds(it.provisioning.p50_seconds)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </ScrollRegion>
+                <DataTable
+                  label={t("panels.mostRequested")}
+                  columns={itemColumns(t)}
+                  rows={r.requests.by_item}
+                  rowKey={(it) => it.item.id}
+                  minWidth={420}
+                />
               )}
             </Panel>
             <Panel title={t("panels.approvals")} actions={csv("approvals")} className="min-w-0 flex-[1_1_260px]">
@@ -574,42 +617,14 @@ export function ReportsPage() {
             {r.leases.length === 0 ? (
               <EmptyState title={t("panels.noLeases")} body={t("panels.noLeasesBody")} />
             ) : (
-              <ScrollRegion label={t("panels.leases")}>
-                <table className="w-full min-w-[560px] border-collapse text-body">
-                  <thead>
-                    <tr className="label">
-                      <th scope="col" className={th}>
-                        {t("panels.deployment")}
-                      </th>
-                      <th scope="col" className={th}>
-                        {t("panels.project")}
-                      </th>
-                      <th scope="col" className={th}>
-                        {t("panels.owner")}
-                      </th>
-                      <th scope="col" className={th}>
-                        {t("panels.ends")}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {r.leases.map((l) => (
-                      <tr key={l.deployment.id}>
-                        <th scope="row" className={td + " text-left font-medium"}>
-                          <Link to="/deployments/$deploymentId" params={{ deploymentId: l.deployment.id }}>
-                            {l.deployment.name}
-                          </Link>
-                        </th>
-                        <td className={td + " text-muted"}>
-                          {l.project.name} · {envName(l.environment)}
-                        </td>
-                        <td className={td}>{l.owner.name}</td>
-                        <td className={td + " tnum"}>{fullDate(l.expires_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </ScrollRegion>
+              <DataTable
+                label={t("panels.leases")}
+                columns={leaseColumns(t, envName)}
+                rows={r.leases}
+                rowKey={(l) => l.deployment.id}
+                rowLinks
+                minWidth={560}
+              />
             )}
           </Panel>
         </div>
