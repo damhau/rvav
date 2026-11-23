@@ -13,6 +13,7 @@ const badgeVariants = cva(
         bad: "bg-bad-soft text-bad",
         run: "bg-run-soft text-run",
         outline: "border border-line text-muted",
+        "bad-outline": "border border-bad/50 text-bad",
       },
     },
     defaultVariants: { tone: "neutral" },

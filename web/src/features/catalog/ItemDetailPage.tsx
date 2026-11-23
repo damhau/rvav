@@ -9,6 +9,7 @@ import { Markdown } from "@/components/common/markdown";
 import { ItemIcon, itemTypeLabel, Time } from "@/components/common/misc";
 import { KeyValues, Page } from "@/components/common/page";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -33,9 +34,7 @@ function BuildsList({ graph }: { graph: CanvasGraph }) {
       {nodes.map((n) => (
         <li key={n.id} className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            {n.badge && (
-              <span className="rounded-sm bg-sunken px-1.5 py-px text-badge font-medium text-muted">{n.badge}</span>
-            )}
+            {n.badge && <Badge>{n.badge}</Badge>}
             <span className="font-medium">{n.title}</span>
             {n.subtitle && <span className="font-mono text-secondary text-muted">{n.subtitle}</span>}
           </div>

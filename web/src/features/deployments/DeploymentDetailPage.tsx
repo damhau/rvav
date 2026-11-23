@@ -8,6 +8,7 @@ import { CopyText, Time } from "@/components/common/misc";
 import { KeyValues, Page } from "@/components/common/page";
 import { DeploymentStatusBadge, EnvBadge, PowerDot, RequestStatusBadge } from "@/components/common/status";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -855,9 +856,7 @@ export function DeploymentDetailPage({ deploymentId, tab }: { deploymentId: stri
               <DeploymentStatusBadge status={d.status} />
               <EnvBadge env={d.environment} />
               {d.sync_state !== "in_sync" && (
-                <span className="rounded-sm bg-warn-soft px-1.5 py-px text-caption font-medium text-warn">
-                  {d.sync_state === "drifted" ? t("drift.title") : t("detail.missing")}
-                </span>
+                <Badge tone="warn">{d.sync_state === "drifted" ? t("drift.title") : t("detail.missing")}</Badge>
               )}
               <span>{t("detail.owner", { name: d.owner.name })}</span>
             </>

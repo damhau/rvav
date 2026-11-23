@@ -59,15 +59,14 @@ export function DeploymentStatusBadge({ status }: { status: DeploymentStatus }) 
 /** An environment by its name, outlined in red when it is production. */
 export function EnvBadge({ env }: { env: string }) {
   const envs = useEnvironments();
+  const production = envs.production(env);
   return (
-    <span
-      className={cn(
-        "inline-flex h-[18px] items-center rounded-sm border px-1 text-badge font-medium whitespace-nowrap",
-        envs.production(env) ? "border-bad/50 text-bad" : "border-line-strong text-muted",
-      )}
+    <Badge
+      tone={production ? "bad-outline" : "outline"}
+      className={cn("h-[18px] px-1 py-0 text-badge", !production && "border-line-strong")}
     >
       {envs.name(env)}
-    </span>
+    </Badge>
   );
 }
 

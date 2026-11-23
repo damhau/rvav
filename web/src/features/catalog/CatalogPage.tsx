@@ -5,6 +5,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { ErrorState, Skeleton } from "@/components/common/feedback";
 import { ItemIcon, itemTypeLabel } from "@/components/common/misc";
 import { Page } from "@/components/common/page";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar, FilterEmpty, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
@@ -54,11 +55,7 @@ function Card({ item, mayRequest }: { item: CatalogItem; mayRequest: boolean }) 
             <span>{duration}</span>
           </>
         )}
-        {item.approval !== "never" && (
-          <span className="rounded-sm bg-warn-soft px-1.5 py-px font-medium text-warn">
-            {approvalHint(item.approval)}
-          </span>
-        )}
+        {item.approval !== "never" && <Badge tone="warn">{approvalHint(item.approval)}</Badge>}
         {mayRequest && (
           <Button asChild size="sm" className="relative z-10 ml-auto">
             <Link to="/catalog/$itemId/request" params={{ itemId: item.slug }}>

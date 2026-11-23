@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { ErrorState } from "./feedback";
 import { Meter } from "./meter";
-import { DeploymentStatusBadge, PowerDot, RequestStatusBadge } from "./status";
+import { renderWithQuery } from "@/test/render";
+import { DeploymentStatusBadge, EnvBadge, PowerDot, RequestStatusBadge } from "./status";
 import { Timeline } from "./timeline";
 
 describe("status badges", () => {
@@ -27,6 +28,18 @@ describe("status badges", () => {
     );
     expect(screen.getByText("Provisioning")).toBeInTheDocument();
     expect(screen.getByText("Powered off")).toBeInTheDocument();
+  });
+
+  it("outline production in red and the other environments in grey", async () => {
+    renderWithQuery(
+      <>
+        <EnvBadge env="prd" />
+        <EnvBadge env="dev" />
+      </>,
+    );
+    expect(await screen.findByText("Production")).toHaveClass("border", "border-bad/50", "text-bad", "text-badge");
+    expect(screen.getByText("Development")).toHaveClass("border", "border-line-strong", "text-muted", "text-badge");
+    expect(screen.getByText("Development")).not.toHaveClass("border-line");
   });
 });
 
