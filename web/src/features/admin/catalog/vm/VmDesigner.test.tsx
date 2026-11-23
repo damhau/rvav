@@ -367,6 +367,34 @@ describe("the VM designer", longTests, () => {
     expect(component("pg").anti_affinity).toBe(true);
   });
 
+  it("edits a VM's vCPUs and memory, a component's blank taking the blueprint's", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderWithQuery(<Harness initial={starter} />);
+    fireEvent.click(node(/^VM Virtual machine\./));
+    const vcpus = screen.getByRole("textbox", { name: "vCPUs" });
+    await user.type(vcpus, "0{Enter}");
+    expect(
+      screen.getByText("A VM has at least 1 vCPU: give a whole number, or CEL over the inputs."),
+    ).toBeInTheDocument();
+    expect(blueprint().bindings).toBeUndefined();
+    await user.clear(vcpus);
+    await user.type(vcpus, "4{Enter}");
+    await user.type(screen.getByRole("textbox", { name: "Memory in GB" }), "16{Enter}");
+    expect(blueprint().bindings).toEqual({ vcpu: "4", memory_gb: "16" });
+    unmount();
+
+    renderWithQuery(
+      <Harness
+        initial={definition({ kind: "vm", bindings: { vcpu: "2", memory_gb: "4" }, components: [{ key: "web" }] })}
+      />,
+    );
+    fireEvent.click(vm("web"));
+    const memory = screen.getByRole("textbox", { name: "Memory in GB" });
+    expect(memory).toHaveAttribute("placeholder", "4");
+    await user.type(memory, "8{Enter}");
+    expect(component("web").bindings).toEqual({ memory_gb: "8" });
+  });
+
   it("opens the dialog of a part dropped on the canvas, connected to the VM it was dropped on", async () => {
     renderWithQuery(<Harness initial={twoVms} />);
     const dataTransfer = { types: [partType], getData: (t: string) => (t === partType ? "disk" : "") };

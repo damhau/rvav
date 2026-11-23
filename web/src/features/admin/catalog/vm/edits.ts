@@ -552,6 +552,19 @@ function checkSize(size: number | string) {
   } else if (!size.trim()) throw new EditError(tr("vmDesign.edit.noSize"));
 }
 
+/** A VM's vCPUs or memory: CEL in a string, a plain number of them whole and 1 or more, as publishing needs. */
+function checkVmSize(field: string, value: unknown) {
+  if (typeof value !== "string" || !value) return;
+  if (/^-?\d+(\.\d+)?$/.test(value)) {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 1)
+      throw new EditError(tr(field === "bindings.vcpu" ? "vmDesign.edit.vcpuRange" : "vmDesign.edit.memoryRange"));
+    return;
+  }
+  const unknown = undeclared(value);
+  if (unknown !== undefined) throw new EditError(tr("vmDesign.edit.sizeReads", { name: unknown }));
+}
+
 // ---- Connecting ----------------------------------------------------------
 
 function adapter(doc: Document, bp: YAMLMap, c: Comp, expr: string): string {
@@ -1093,6 +1106,7 @@ export function setField(
         if (apart && fewerThanTwo(count))
           throw new EditError(tr(field === "count" ? "vmDesign.edit.apartCount" : "vmDesign.edit.apartOne"));
       }
+      if (field === "bindings.vcpu" || field === "bindings.memory_gb") checkVmSize(field, value);
       break;
     }
     case "disk":

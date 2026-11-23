@@ -1444,6 +1444,9 @@
       "nsxFormat": "Un ID de groupe NSX\u00a0: lettres, chiffres, points, tirets et soulignés.",
       "sizeRange": "Une taille de 1 à 65536 Go.",
       "noSize": "Donnez la taille du disque en Go, ou du CEL sur les entrées.",
+      "vcpuRange": "Une VM a au moins 1 vCPU\u00a0: donnez un nombre entier, ou du CEL sur les entrées.",
+      "memoryRange": "Une VM a au moins 1 Go de mémoire\u00a0: donnez un nombre entier, ou du CEL sur les entrées.",
+      "sizeReads": "Ceci lit {{name}}, que le CEL ne connaît pas ici\u00a0: donnez un nombre, ou du CEL sur les entrées et les tailles, comme sizes[inputs.size].vcpu.",
       "noType": "Nommez le type de ressource.",
       "resourceSingle": "Seul un élément à composants a des ressources personnalisées\u00a0: ajoutez d'abord une deuxième VM.",
       "alreadyOn": "{{name}} a déjà une carte réseau sur {{network}}.",
@@ -1542,7 +1545,11 @@
       "antiAffinity": "Garder ses VM sur des hôtes différents",
       "antiAffinityOne": "Demande deux VM ou plus\u00a0: donnez au composant un nombre de deux ou plus, ou du CEL sur les entrées.",
       "policy": "Stratégie de stockage",
-      "datastore": "Datastore"
+      "datastore": "Datastore",
+      "vcpu": "vCPU",
+      "vcpuHint": "Un nombre, ou du CEL sur les entrées, comme sizes[inputs.size].vcpu.",
+      "memory": "Mémoire en Go",
+      "memoryHint": "Un nombre, ou du CEL sur les entrées, comme sizes[inputs.size].memory_gb."
     },
     "panel": {
       "remove": "Retirer",

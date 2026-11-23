@@ -335,6 +335,99 @@ test("the item built requested with the keyboard only, and followed to Ready", a
   expect(errors).toEqual([]);
 });
 
+test("a new item's VM sized in its details, refused to publish without its vCPUs, then published and requested, with the keyboard only", async ({
+  page,
+}) => {
+  test.slow();
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const name = "Sized VM";
+  await page.goto("/admin/catalog-items");
+  await skipToContent(page);
+  await tabTo(page, page.getByRole("button", { name: "New item" }));
+  await page.keyboard.press("Enter");
+  const create = page.getByRole("dialog", { name: "New item" });
+  await tabTo(page, create.getByRole("textbox", { name: "Name" }), "Tab");
+  await page.keyboard.type(name);
+  await tabTo(page, create.getByRole("textbox", { name: "Slug" }));
+  await page.keyboard.type("sized-vm");
+  await tabTo(page, create.getByRole("textbox", { name: "Summary" }));
+  await page.keyboard.type("One VM, sized in the designer.");
+  await tabTo(page, create.getByRole("combobox", { name: "Type" }));
+  await choose(page, "VM blueprint");
+  await tabTo(page, create.getByRole("button", { name: "Create" }), "Tab");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
+  await selectTab(page, "Definition", "ArrowRight");
+  const topology = page.getByRole("region", { name: `Topology of ${name}` });
+  await tabTo(page, topology.locator(".react-flow__node[tabindex='0']"));
+  await arrowTo(page, topology.getByRole("button", { name: /^VM Virtual machine\./ }), { home: true });
+  await page.keyboard.press("Enter");
+  const details = page.getByRole("region", { name: "Selected: Virtual machine" });
+  const vcpus = details.getByRole("textbox", { name: "vCPUs" });
+  const memory = details.getByRole("textbox", { name: "Memory in GB" });
+  await expect(vcpus).toHaveValue("2");
+  await expect(memory).toHaveValue("4");
+  const sizeOf = async () => (await blueprintOf(page)).bindings;
+
+  // Without its vCPUs, the draft is saved but not published: the VM says why.
+  await tabTo(page, vcpus);
+  await page.keyboard.press("Control+A");
+  await page.keyboard.press("Delete");
+  await page.keyboard.press("Enter");
+  await expect.poll(sizeOf).toEqual({ memory_gb: "4" });
+  const save = async () => {
+    await tabTo(page, page.getByRole("button", { name: "Save draft" }));
+    await page.keyboard.press("Enter");
+    await expect(page.getByText(/^Draft [\d.]+ saved$/)).toBeVisible();
+  };
+  await save();
+  const publish = page.getByRole("button", { name: /^Publish [\d.]+$/ });
+  await tabTo(page, publish, "Shift+Tab");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/^[\d.]+ not published$/)).toBeVisible();
+  await expect(details.getByRole("list", { name: "Problems" })).toContainText(
+    "Give the VMs their number of vCPUs: a number, or CEL over the inputs, for example sizes[inputs.size].vcpu.",
+  );
+
+  // 4 vCPUs and 8 GB, written into the YAML as CEL strings.
+  await tabTo(page, vcpus);
+  await page.keyboard.type("4");
+  await page.keyboard.press("Enter");
+  await tabTo(page, memory);
+  await page.keyboard.press("Control+A");
+  await page.keyboard.type("8");
+  await page.keyboard.press("Enter");
+  await expect.poll(sizeOf).toEqual({ vcpu: "4", memory_gb: "8" });
+  expect(await yamlOf(page)).toMatch(/vcpu: "4"/);
+  await save();
+
+  // Offered to Web Platform, published, and requested.
+  await tabTo(page, page.getByRole("tab", { name: "Definition" }), "Shift+Tab");
+  await selectTab(page, "Sharing", "ArrowRight");
+  await tabTo(page, page.getByRole("checkbox", { name: "Web Platform" }));
+  await page.keyboard.press("Space");
+  await tabTo(page, page.getByRole("button", { name: "Save projects" }));
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Projects saved")).toBeVisible();
+  await tabTo(page, publish, "Shift+Tab");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/^[\d.]+ published$/)).toBeVisible();
+
+  await tabTo(page, page.getByRole("link", { name: "Catalog", exact: true }), "Shift+Tab");
+  await page.keyboard.press("Enter");
+  await skipToContent(page);
+  await tabTo(page, page.getByRole("link", { name: new RegExp(`^Request ${name}`) }));
+  await page.keyboard.press("Enter");
+  await tabTo(page, page.getByRole("textbox", { name: "Name", exact: true }));
+  await page.keyboard.type("sized-01");
+  await tabTo(page, page.getByRole("button", { name: "Submit request" }));
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/requests\/REQ-\d+$/);
+  await expect(page.getByText("Succeeded", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+  expect(errors).toEqual([]);
+});
+
 test("the canvas follows the YAML: a title typed keeps the node where it was, a VM typed is drawn, and YAML it can't tell apart leaves it read-only", async ({
   page,
 }) => {

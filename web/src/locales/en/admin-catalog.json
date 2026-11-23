@@ -1425,6 +1425,9 @@
       "nsxFormat": "An NSX group ID: letters, digits, dots, dashes and underscores.",
       "sizeRange": "A size from 1 to 65536 GB.",
       "noSize": "Give the disk's size in GB, or CEL over the inputs.",
+      "vcpuRange": "A VM has at least 1 vCPU: give a whole number, or CEL over the inputs.",
+      "memoryRange": "A VM has at least 1 GB of memory: give a whole number, or CEL over the inputs.",
+      "sizeReads": "This reads {{name}}, which CEL doesn't know here: give a number, or CEL over the inputs and sizes, as sizes[inputs.size].vcpu.",
       "noType": "Name the resource type.",
       "resourceSingle": "Only an item with components has custom resources: add a second VM first.",
       "alreadyOn": "{{name}} has an adapter on {{network}} already.",
@@ -1523,7 +1526,11 @@
       "antiAffinity": "Keep its VMs on different hosts",
       "antiAffinityOne": "Takes two VMs or more: give the component a count of two or more, or CEL over the inputs.",
       "policy": "Storage policy",
-      "datastore": "Datastore"
+      "datastore": "Datastore",
+      "vcpu": "vCPUs",
+      "vcpuHint": "A number, or CEL over the inputs, as sizes[inputs.size].vcpu.",
+      "memory": "Memory in GB",
+      "memoryHint": "A number, or CEL over the inputs, as sizes[inputs.size].memory_gb."
     },
     "panel": {
       "remove": "Remove",

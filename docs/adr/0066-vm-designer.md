@@ -92,13 +92,17 @@ true})`), attached to its VMs; elsewhere disks stay lines on their VM.
 
 ### Details and the server's problems
 The selected node's details edit its fields: a component's key, title,
-count (a number or CEL), template, naming and anti-affinity; the single VM's
-template, naming and OS family; a network's or an NSX group's expression;
+count (a number or CEL), template, naming, vCPUs, memory and anti-affinity;
+the single VM's template, naming, vCPUs, memory and OS family; a network's
+or an NSX group's expression;
 a segment's or a group's key and title; a disk's key, size, storage policy
 and datastore; a resource's key, type and title. A key renamed is renamed
 where it is read (`depends_on`, adapters, groups, rules, `components.<key>`
-in CEL). Fields the details don't hold (guest settings, rules' services, a
-resource's inputs) are written in the YAML. The server's refusal of a save,
+in CEL). The vCPUs and the memory are `bindings.vcpu` and
+`bindings.memory_gb`, written as CEL strings (`"4"`): a plain number must be
+whole and 1 or more, as publishing needs (#207), and a component's blank
+takes the blueprint's. Fields the details don't hold (guest settings, rules'
+services, a resource's inputs) are written in the YAML. The server's refusal of a save,
 kept while the text is the one it refused, goes on the node its pointer
 falls in, beside the canvas's own problems.
 

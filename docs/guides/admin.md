@@ -1785,13 +1785,18 @@ An item's tabs:
     YAML; bind a custom resource's inputs to a component's, such as
     `components.web.addresses`, to make it after that component.
   - A selected node's details edit its fields: a blueprint's one VM's
-    template, naming and OS family; a component's key, title, count (a
-    number, or CEL over the inputs), template, naming and anti-affinity;
-    a network's CEL; a disk's key, size, storage policy and datastore; a
-    segment's, a group's or a resource's key and title. When you rename a
-    key, what reads it follows (`depends_on`, adapters, groups, rules and
-    CEL). The other guest settings, a rule's services and a resource's
-    inputs stay in the YAML.
+    template, naming, vCPUs, memory and OS family; a component's key,
+    title, count (a number, or CEL over the inputs), template, naming,
+    vCPUs, memory and anti-affinity; a network's CEL; a disk's key, size,
+    storage policy and datastore; a segment's, a group's or a resource's
+    key and title. When you rename a key, what reads it follows
+    (`depends_on`, adapters, groups, rules and CEL). The other guest
+    settings, a rule's services and a resource's inputs stay in the YAML.
+  - **vCPUs** and **Memory in GB** write `bindings.vcpu` and
+    `bindings.memory_gb`: a whole number of 1 or more, or CEL over the
+    inputs, such as `sizes[inputs.size].vcpu` for a size the requester
+    picks. A component's blank takes the blueprint's, shown in the field.
+    Publishing needs both for every VM, and says so on the VM's node.
   - **Disconnect**, beside each of a node's connections, removes what
     writes it. **Remove** removes the node and what names it: a network's
     adapters, a group's members and rules, a VM's place in the others'

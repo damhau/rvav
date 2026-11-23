@@ -663,6 +663,27 @@ function AntiAffinity({ at }: { at: PropsCtx }) {
   );
 }
 
+/** A VM's vCPUs and memory: its bindings, CEL in strings; a component's blank takes the blueprint's. */
+function SizeProps({ at, shared }: { at: PropsCtx; shared?: Raw }) {
+  const { t } = useTranslation("admin-catalog");
+  const size = (field: "vcpu" | "memory_gb", label: string, hint: string) => (
+    <Prop
+      at={at}
+      field={`bindings.${field}`}
+      label={label}
+      hint={shared ? `${hint} ${t("vmDesign.field.shared")}` : hint}
+      placeholder={shared ? shown(shared[field]) : undefined}
+      mono
+    />
+  );
+  return (
+    <>
+      {size("vcpu", t("vmDesign.field.vcpu"), t("vmDesign.field.vcpuHint"))}
+      {size("memory_gb", t("vmDesign.field.memory"), t("vmDesign.field.memoryHint"))}
+    </>
+  );
+}
+
 function Properties({
   node,
   ctx,
@@ -689,6 +710,7 @@ function Properties({
         <>
           <Prop at={at} field="template" label={t("vmDesign.field.template")} mono />
           <Prop at={at} field="naming" label={t("vmDesign.field.naming")} mono />
+          <SizeProps at={at} />
           <Field label={t("vmDesign.field.osFamily")} htmlFor="vd-guest-os_family">
             <Select
               id="vd-guest-os_family"
@@ -730,6 +752,7 @@ function Properties({
             placeholder={str(bp.naming)}
             mono
           />
+          <SizeProps at={at} shared={obj(bp.bindings)} />
           <AntiAffinity at={at} />
         </>
       );

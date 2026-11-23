@@ -39,7 +39,7 @@ const graphOf = (text: string) => vmGraph(blueprint(text), "/definition/blueprin
 const edgeIds = (text: string) => graphOf(text).edges.map((e) => e.id);
 const nodeIds = (text: string) => graphOf(text).nodes.map((n) => n.id);
 
-// A new VM item's draft, as the server starts it.
+// A VM item's draft with its one VM and nothing bound.
 const starter = definition({ kind: "vm", template: "", naming: "", guest: { os_family: "linux", domain: "" } });
 
 /** Refused: the error says why, and nothing is written (the text given back is never made). */
@@ -341,6 +341,26 @@ describe("properties", () => {
     const single = setField(starter, "component:vm", "guest.os_family", "windows");
     expect(blueprint(single).guest).toEqual({ os_family: "windows", domain: "" });
     refused(() => setField(text, "component:web", "count", 21), /A count from 0 to 20/);
+  });
+
+  it("binds a VM's vCPUs and memory as CEL strings, refusing what publishing would", () => {
+    const sized = setField(
+      setField(starter, "component:vm", "bindings.vcpu", "4"),
+      "component:vm",
+      "bindings.memory_gb",
+      "sizes[inputs.size].memory_gb",
+    );
+    expect(blueprint(sized).bindings).toEqual({ vcpu: "4", memory_gb: "sizes[inputs.size].memory_gb" });
+    expect(sized).toContain('vcpu: "4"');
+    expect(blueprint(setField(sized, "component:vm", "bindings.vcpu", "")).bindings).toEqual({
+      memory_gb: "sizes[inputs.size].memory_gb",
+    });
+    const web = setField(twoVms, "component:web", "bindings.memory_gb", "8");
+    expect(component(web, "web")).toEqual({ key: "web", bindings: { memory_gb: "8" } });
+    expect(component(setField(web, "component:web", "bindings.memory_gb", ""), "web")).toEqual({ key: "web" });
+    refused(() => setField(starter, "component:vm", "bindings.vcpu", "0"), /at least 1 vCPU/);
+    refused(() => setField(twoVms, "component:db", "bindings.memory_gb", "1.5"), /at least 1 GB of memory/);
+    refused(() => setField(starter, "component:vm", "bindings.vcpu", "large"), /reads large, which CEL doesn't know/);
   });
 
   it("keeps VMs apart only for a count that can give two or more, as the server does", () => {
