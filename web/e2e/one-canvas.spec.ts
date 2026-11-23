@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { arrowTo, choose, selectTab, skipToContent, tabTo } from "./keyboard";
+import { arrowTo, choose, focused, selectTab, skipToContent, tabTo } from "./keyboard";
 
 // D1's acceptance in the browser (D1.5, ADR-0032), on the mock backend and
 // with the keyboard only: the seeded PostgreSQL cluster gets a step on the
@@ -138,8 +138,10 @@ test("a failed composite request retried and followed to its end, with the keybo
   await expect(node(/^Done\. Done\./)).toBeVisible({ timeout: 15_000 });
   for (const name of [/^Item Database nodes\. Done\./, /^Item The database's owner\. Done\./, /^AWX Backups\. Done\./])
     await expect(node(name)).toBeVisible();
-  // Its last step's details, from the keyboard: back up to the graph from Retry, gone, where it was left, End, then Enter.
-  await tabTo(page, node(/^AWX Backups/), "Shift+Tab");
+  // Its last step's details, from the keyboard: from the request's status, where Retry left the focus (#201),
+  // to the graph where it was left, End, then Enter.
+  await expect.poll(() => focused(page)).toMatch(/^span "(In progress|Succeeded)"$/);
+  await tabTo(page, node(/^AWX Backups/));
   await page.keyboard.press("End");
   await expect(node(/^Done\. Done\./)).toBeFocused();
   await page.keyboard.press("Enter");

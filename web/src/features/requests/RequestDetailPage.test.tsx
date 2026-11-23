@@ -1,4 +1,5 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { Step } from "@/lib/api/types";
 import { i18n } from "@/lib/i18n";
@@ -131,5 +132,54 @@ describe("a request's AWX job output", () => {
     ).toBeVisible();
     expect(screen.getByRole("region", { name: "Ce qui a été demandé" })).toBeVisible();
     expect(screen.queryByText("Sortie du job AWX")).not.toBeInTheDocument();
+  });
+});
+
+describe("where the focus goes after a failed request's Retry or Roll back", () => {
+  const failure = "The VM could not join IdM: DNS discovery failed for idm.corp.example.";
+  const open = async () => {
+    renderApp("/requests/REQ-10482");
+    await screen.findByRole("button", { name: "Retry from the failed step" }, { timeout: 5000 });
+    return screen.getByRole("heading", { level: 1 }).closest("header")!;
+  };
+
+  it("Retry takes the failure away: the focus goes to the request's status, and the toast says it runs", async () => {
+    const user = userEvent.setup();
+    const header = await open();
+    screen.getByRole("button", { name: "Retry from the failed step" }).focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("REQ-10482: running again from the failed step")).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+    const now = document.activeElement as HTMLElement;
+    expect(header).toContainElement(now);
+    expect(now).toHaveTextContent(/^(Queued|In progress)$/);
+    expect(screen.queryByText(failure)).not.toBeInTheDocument();
+  });
+
+  it("Roll back leaves it failed: the focus comes back to the failure, which says it was rolled back", async () => {
+    const user = userEvent.setup();
+    await open();
+    const box = screen.getByText(failure).closest<HTMLElement>('[role="alert"]')!;
+    within(box).getByRole("button", { name: "Roll back" }).focus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("alertdialog", { name: "Roll back REQ-10482?" });
+    within(dialog).getByRole("button", { name: "Roll back" }).focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(box).toHaveTextContent("It was rolled back"));
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    expect(within(box).queryByRole("button", { name: "Roll back" })).not.toBeInTheDocument();
+    expect(within(box).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("Keep it closes the confirmation: the focus goes back to Roll back", async () => {
+    const user = userEvent.setup();
+    await open();
+    const rollBack = screen.getByRole("button", { name: "Roll back" });
+    rollBack.focus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("alertdialog", { name: "Roll back REQ-10482?" });
+    within(dialog).getByRole("button", { name: "Keep it" }).focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(rollBack).toHaveFocus());
   });
 });

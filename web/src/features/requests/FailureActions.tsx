@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { catchFocus } from "@/components/ui/opener";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { Me, ServiceRequest, Step } from "@/lib/api/types";
 import { can } from "@/lib/can";
@@ -20,6 +21,11 @@ import { failedRollbackOf, rollbackOf, vmsMade } from "./run";
  * when it mounts: a page that moves it (a run's, with the selection) has it
  * read once. Without `mayAct` (an auditor's), it says only what failed.
  *
+ * A retry takes the box away with the failure: the focus goes to `standIn`,
+ * what stays (the request's status), and the toast says what runs. A
+ * rollback leaves it failed: the focus comes back to the box, which says
+ * once it is done that it was rolled back, its Roll back gone.
+ *
  * What a rollback deletes is named for a VM item: its VMs and what its steps
  * made for them. A composite makes more than its VMs (custom resources, NSX
  * objects), and a request that made no VM can't say: what it created.
@@ -27,11 +33,13 @@ import { failedRollbackOf, rollbackOf, vmsMade } from "./run";
 export function FailureActions({
   request,
   steps,
+  standIn,
   announce = true,
   mayAct = true,
 }: {
   request: ServiceRequest;
   steps: Step[];
+  standIn?: () => HTMLElement | null | undefined;
   announce?: boolean;
   mayAct?: boolean;
 }) {
@@ -48,13 +56,17 @@ export function FailureActions({
           ? t("failure.made.vmsAddresses", { count: vms.vms })
           : t("failure.made.vms", { count: vms.vms });
   const [alert] = useState(announce);
+  const box = useRef<HTMLDivElement>(null);
+  // Read as the dialog closes: the mutation's own success comes a render later.
+  const rolledBack = useRef(false);
   const qc = useQueryClient();
   const [confirmRollback, setConfirmRollback] = useState(false);
   const done = (r: ServiceRequest, what: string) => {
     qc.setQueryData(keys.requests.detail(r.number), r);
-    void qc.invalidateQueries({ queryKey: keys.requests.steps(r.id) });
+    const refetched = qc.invalidateQueries({ queryKey: keys.requests.steps(r.id) });
     if (r.deployment_ids?.[0]) void qc.invalidateQueries({ queryKey: keys.deployments.detail(r.deployment_ids[0]) });
     toast.success(t("failure.toast", { number: r.number, what }));
+    return refetched;
   };
   const failed = (e: unknown) =>
     toast.error(isApiError(e) ? e.problem.title : t("failure.didNotWork"), {
@@ -63,22 +75,28 @@ export function FailureActions({
   const params = { params: { path: { requestId: request.id } } };
   const retry = useMutation({
     mutationFn: () => call(api.POST("/requests/{requestId}/retry", params)),
-    onSuccess: (r) => done(r, undone ? t("failure.runningAgain") : t("failure.runningAgainFromFailed")),
+    onSuccess: (r) =>
+      void catchFocus(done(r, undone ? t("failure.runningAgain") : t("failure.runningAgainFromFailed")), () =>
+        standIn?.(),
+      ),
     onError: failed,
   });
   const rollback = useMutation({
     mutationFn: () => call(api.POST("/requests/{requestId}/rollback", params)),
     onSuccess: (r) => {
+      rolledBack.current = true;
       setConfirmRollback(false);
-      done(r, t("failure.rollingBack"));
+      void done(r, t("failure.rollingBack"));
     },
     onError: failed,
   });
   return (
     <div
+      ref={box}
       role={alert ? "alert" : "group"}
       aria-label={alert ? undefined : t("failure.failed", { number: request.number })}
-      className="mt-1 flex flex-col gap-2 rounded-lg border border-bad bg-bad-soft px-3.5 py-3"
+      tabIndex={-1}
+      className="mt-1 flex flex-col gap-2 rounded-lg border border-bad bg-bad-soft px-3.5 py-3 outline-none focus-visible:ring-2 focus-visible:ring-accent"
     >
       <span lang="en" className="font-semibold text-bad">
         {request.error?.message}
@@ -100,7 +118,14 @@ export function FailureActions({
             </Button>
             {request.kind === "provision" && !undone && (
               <>
-                <Button size="sm" variant="danger" onClick={() => setConfirmRollback(true)}>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => {
+                    rolledBack.current = false;
+                    setConfirmRollback(true);
+                  }}
+                >
                   {t("failure.rollBack")}
                 </Button>
                 <ConfirmDialog
@@ -112,6 +137,7 @@ export function FailureActions({
                   cancelLabel={t("failure.keep")}
                   pending={rollback.isPending}
                   onConfirm={() => rollback.mutate()}
+                  returnFocus={() => (rolledBack.current ? box.current : null)}
                 />
               </>
             )}

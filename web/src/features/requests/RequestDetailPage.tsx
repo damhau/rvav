@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Braces, ExternalLink, SquareTerminal } from "lucide-react";
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { blueprintGraph } from "@/components/canvas/blueprint";
@@ -132,6 +132,8 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
   }, [topology.data, i18n.language]);
   // The node selected: at first, the one the request failed at.
   const [chosenNode, setChosenNode] = useState<string | null | undefined>(undefined);
+  const status = useRef<HTMLSpanElement>(null);
+  const toStatus = () => status.current;
 
   if (request.isError) {
     return (
@@ -179,7 +181,13 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
         meta={
           r && (
             <>
-              <RequestStatusBadge status={r.status} />
+              <span
+                ref={status}
+                tabIndex={-1}
+                className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <RequestStatusBadge status={r.status} />
+              </span>
               <span className="font-mono">{r.number}</span>
               <span className="flex items-center gap-1.5">
                 {r.project.name} <EnvBadge env={r.environment} />
@@ -329,6 +337,7 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 dataStep={dataStep?.id ?? null}
                 onOpenData={openData}
                 mayAct={mayActOnFailure(me, r)}
+                standIn={toStatus}
               />
             </Suspense>
           ) : (
@@ -341,7 +350,12 @@ export function RequestDetailPage({ requestKey }: { requestKey: string }) {
                 selectedDataStep={dataStep?.id ?? null}
               />
               {r?.status === "failed" && r.error && (
-                <FailureActions request={r} steps={steps.data.items} mayAct={mayActOnFailure(me, r)} />
+                <FailureActions
+                  request={r}
+                  steps={steps.data.items}
+                  mayAct={mayActOnFailure(me, r)}
+                  standIn={toStatus}
+                />
               )}
             </>
           )}

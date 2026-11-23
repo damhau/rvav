@@ -32,6 +32,8 @@ export interface RequestRunProps {
   onOpenData?: (step: Step) => void;
   /** Whether the reader may retry or roll back a failure (mayActOnFailure). */
   mayAct?: boolean;
+  /** Where the focus goes once a retry has taken the failure away (FailureActions). */
+  standIn?: () => HTMLElement | null | undefined;
 }
 
 export default function RequestRun({
@@ -45,6 +47,7 @@ export default function RequestRun({
   dataStep,
   onOpenData,
   mayAct,
+  standIn,
 }: RequestRunProps) {
   const { t } = useTranslation("requests");
   const [view, setView] = useState<CanvasView>("graph");
@@ -62,7 +65,13 @@ export default function RequestRun({
     announced.current = failureKey;
   }, [failureKey]);
   const failure = failureKey ? (
-    <FailureActions request={request} steps={steps} announce={announced.current !== failureKey} mayAct={mayAct} />
+    <FailureActions
+      request={request}
+      steps={steps}
+      standIn={standIn}
+      announce={announced.current !== failureKey}
+      mayAct={mayAct}
+    />
   ) : null;
 
   return (

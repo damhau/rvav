@@ -304,7 +304,8 @@ routes.
   and a sheet's first field, `focusInvalid` and `fieldControl` do. What
   a save removes or replaces hands the
   focus to what stands in for it: the field a suggestion filled, a
-  template's status line.
+  template's status line, a request's status once Retry has taken its
+  failure away (`catchFocus`), the failure's box once Roll back has.
 - A failed load says so and offers **Try again**, in a menu too: never an
   empty list or a skeleton that stays.
 - Toasts for results, inline messages for validation, never `alert()`.
