@@ -11034,6 +11034,12 @@ export interface components {
             /** @example Sign in */
             name: string;
             ok: boolean;
+            /**
+             * @description What the check found. A date in it, such as a certificate's
+             *     end of validity, is RFC 3339 with its zone
+             *     (`2031-01-15T12:00:00Z`), for a client to show in its reader's
+             *     time zone.
+             */
             message: string;
         };
         ServiceNowCmdb: {

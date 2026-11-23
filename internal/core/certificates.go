@@ -114,7 +114,8 @@ func (s *Service) checkCertificate(ctx context.Context, rawURL string, o trust.O
 	if c.Problem != "" {
 		out.Problem = &c.Problem
 	}
-	about := fmt.Sprintf("%s, issued by %s, until %s", c.Subject, c.Issuer, c.NotAfter.Format("2 January 2006"))
+	// RFC 3339 with its zone: a client shows it in its reader's time zone.
+	about := fmt.Sprintf("%s, issued by %s, until %s", c.Subject, c.Issuer, c.NotAfter.UTC().Format(time.RFC3339))
 	switch {
 	case o.Insecure:
 		check("Certificate", nil, "Not checked: TLS checks are off. "+about+".")
@@ -153,7 +154,7 @@ func testTrust(bundle string, check checkFunc) {
 		if !c.IsCA {
 			what = "A server's own certificate"
 		}
-		until := c.NotAfter.Format("2 January 2006")
+		until := c.NotAfter.UTC().Format(time.RFC3339)
 		var err error
 		if time.Now().After(c.NotAfter) {
 			err = fmt.Errorf("expired on %s: it vouches for nothing now; SHA-256 %s", until, trust.Fingerprint(c))

@@ -151,8 +151,8 @@ page:
 rvav checks the certificate of every server it connects to against the
 system's CAs and those of the **CA bundle** (**Integrations › Trusted
 certificates**). A connection's test shows its server's certificate
-first: who it was issued to and by, until when, its SHA-256, and whether
-rvav trusts it. When it doesn't, the test stops there and offers:
+first: who it was issued to and by, until when (in your browser's time
+zone), its SHA-256, and whether rvav trusts it. When it doesn't, the test stops there and offers:
 - **Trust this certificate** (vCenter, the vCenters added, AWX,
   EfficientIP, NSX, the NSX Managers added, vRA,
   Active Directory): its SHA-256 goes in the

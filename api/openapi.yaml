@@ -14325,7 +14325,13 @@ components:
       properties:
         name: { type: string, examples: [Sign in] }
         ok: { type: boolean }
-        message: { type: string }
+        message:
+          type: string
+          description: |
+            What the check found. A date in it, such as a certificate's
+            end of validity, is RFC 3339 with its zone
+            (`2031-01-15T12:00:00Z`), for a client to show in its reader's
+            time zone.
     ServiceNowCmdb:
       type: object
       required: [enabled, class, data_source, projects, kept, retired, queued, failing, failures, orphans, orphans_total]

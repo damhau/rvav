@@ -6844,6 +6844,10 @@ type Integration struct {
 
 // IntegrationCheck defines model for IntegrationCheck.
 type IntegrationCheck struct {
+	// Message What the check found. A date in it, such as a certificate's
+	// end of validity, is RFC 3339 with its zone
+	// (`2031-01-15T12:00:00Z`), for a client to show in its reader's
+	// time zone.
 	Message string `json:"message"`
 
 	// Name Examples: Sign in

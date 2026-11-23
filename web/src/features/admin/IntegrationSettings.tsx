@@ -20,7 +20,7 @@ import { Field, FieldNote, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { formatList, fullDate, relative } from "@/lib/format";
+import { formatList, fullDate, longDay, relative } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
 import { Applying } from "./Applying";
 import { failed, fieldErrors } from "./governance/common";
@@ -612,14 +612,16 @@ export function settingErrors(e: unknown, qc: QueryClient, envOf: (field: string
   return out;
 }
 
-/** One test check: its name, and the server's message. */
+const instant = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})/g;
+
+/** One test check: its name, and the server's message, its dates (RFC 3339) in the reader's time zone. */
 export function CheckLine({ name, message }: { name: string; message: string }) {
   const { t } = useTranslation("admin");
   return (
     <Trans
       t={t}
       i18nKey="integrations.checkLine"
-      values={{ name, message }}
+      values={{ name, message: message.replace(instant, (iso) => longDay(iso)) }}
       components={{ name: <span className="font-medium" /> }}
     />
   );

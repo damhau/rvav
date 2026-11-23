@@ -2,9 +2,11 @@ package e2e
 
 import (
 	"context"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
@@ -147,7 +149,7 @@ func TestTrustedCertificates(t *testing.T) {
 			t.Fatalf("the bundle's save audited as %.40q by %q: %v", audited, by, err)
 		}
 		h.json("POST", "/api/v1/admin/integrations/trust/test", admin, nil, 200, &test)
-		if !test.Ok || len(test.Checks) != 2 || !strings.HasPrefix(test.Checks[0].Message, "A CA, until ") ||
+		if !test.Ok || len(test.Checks) != 2 || !untilRFC3339.MatchString(test.Checks[0].Message) ||
 			!strings.Contains(test.Checks[0].Message, cert.Sha256) || !strings.Contains(test.Checks[1].Message, idpCert.Sha256) {
 			t.Fatalf("bundle = %+v", test)
 		}
@@ -156,7 +158,8 @@ func TestTrustedCertificates(t *testing.T) {
 			"cert_sha256": ""})}, 200, nil)
 		h.json("POST", "/api/v1/admin/integrations/vcenter/test", admin, nil, 200, &test)
 		if !test.Ok || len(test.Checks) != 4 || test.Certificate == nil || !test.Certificate.Trusted || test.Certificate.Pinned ||
-			!strings.HasSuffix(test.Checks[0].Message, "a CA rvav trusts vouches for it.") {
+			!strings.HasSuffix(test.Checks[0].Message, "a CA rvav trusts vouches for it.") ||
+			!strings.Contains(test.Checks[0].Message, ", until "+test.Certificate.NotAfter.UTC().Format(time.RFC3339)+":") {
 			t.Fatalf("trusted through the bundle = %+v", test)
 		}
 		// The provider's discovery and keys are read trusting it too.
@@ -166,3 +169,7 @@ func TestTrustedCertificates(t *testing.T) {
 		}
 	})
 }
+
+// untilRFC3339 is a bundle CA's check: its end of validity as RFC 3339, for
+// the page to show in its reader's time zone (#211).
+var untilRFC3339 = regexp.MustCompile(`^A CA, until \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z; SHA-256 `)

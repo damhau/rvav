@@ -843,9 +843,6 @@ function pemBlocks(bundle: string): { subjects: string[]; problem?: string } {
   return { subjects };
 }
 
-const longDate = (iso: string) =>
-  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-
 /** The certificate check of a connection's test, and whether the test goes on. */
 function certificateCheck(
   bundle: string,
@@ -885,8 +882,8 @@ function certificateCheck(
     subject: host,
     issuer: selfSigned ? host : "Corp Issuing CA 2",
     names: [host],
-    not_before: "2026-01-15T00:00:00Z",
-    not_after: "2027-01-15T00:00:00Z",
+    not_before: "2026-01-15T12:00:00Z",
+    not_after: "2027-01-15T12:00:00Z",
     sha256,
     trusted,
     pinned,
@@ -897,7 +894,7 @@ function certificateCheck(
     anchor_subject: anchor,
     anchor_is_leaf: selfSigned,
   };
-  const about = `${host}, issued by ${certificate.issuer}, until ${longDate(certificate.not_after)}`;
+  const about = `${host}, issued by ${certificate.issuer}, until ${certificate.not_after}`;
   if (!checked)
     return {
       certificate,
@@ -2939,7 +2936,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             ? subjects.map((name) => ({
                 name,
                 ok: true,
-                message: `A CA, until 15 January 2031; SHA-256 ${fingerprint(name)}.`,
+                message: `A CA, until 2031-01-15T12:00:00Z; SHA-256 ${fingerprint(name)}.`,
               }))
             : [{ name: "CA bundle", ok: true, message: "Empty: only the system's CAs are trusted." }],
         });
