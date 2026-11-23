@@ -295,6 +295,81 @@ describe("DataTable", () => {
     expect(onChange).toHaveBeenCalledWith("w");
   });
 
+  it("puts rows under their group's heading, in the order the groups come, sorted within each", async () => {
+    const user = userEvent.setup();
+    const rows = [...vms, { name: "db-00", cpus: 1 }];
+    render(
+      <DataTable
+        label="VMs"
+        columns={columns}
+        rows={rows}
+        rowKey={(v) => v.name}
+        groups={{ by: (v) => v.name.slice(0, -3), label: (key, list) => `${key} · ${list.length} VMs` }}
+      />,
+    );
+    const web = screen.getByRole("rowheader", { name: "web · 2 VMs" });
+    expect(web).toHaveAttribute("scope", "rowgroup");
+    expect(web).toHaveAttribute("colspan", "2");
+    expect(screen.getByRole("rowheader", { name: "db · 2 VMs" })).toBeInTheDocument();
+    const order = () => screen.getAllByRole("row").map((r) => r.textContent);
+    expect(order().slice(1)).toEqual(["web · 2 VMs", "web-024", "web-102", "db · 2 VMs", "db-018", "db-001"]);
+
+    const header = screen.getByRole("columnheader", { name: "vCPU" });
+    await user.click(within(header).getByRole("button", { name: "vCPU" }));
+    expect(order().slice(1)).toEqual(["web · 2 VMs", "web-102", "web-024", "db · 2 VMs", "db-001", "db-018"]);
+  });
+
+  it("gives rows without a group no heading", () => {
+    render(
+      <DataTable
+        label="VMs"
+        columns={columns}
+        rows={vms}
+        rowKey={(v) => v.name}
+        groups={{ by: () => undefined, label: () => "None" }}
+      />,
+    );
+    expect(screen.queryByRole("rowheader")).toBeNull();
+    expect(names()).toEqual(["web-02", "web-10", "db-01"]);
+  });
+
+  it("hands the focus to the row at its place across groups when a row's menu removes it", async () => {
+    const user = userEvent.setup();
+    function Removing() {
+      const [rows, setRows] = useState(vms);
+      return (
+        <DataTable
+          label="VMs"
+          columns={columns}
+          rows={rows}
+          rowKey={(v) => v.name}
+          groups={{ by: (v) => v.name.slice(0, -3), label: (key) => key }}
+          rowMenuLabel={(v) => `Actions for ${v.name}`}
+          rowMenu={(v) => (
+            <MenuItem danger onSelect={() => setRows((r) => r.filter((x) => x !== v))}>
+              Remove
+            </MenuItem>
+          )}
+        />
+      );
+    }
+    render(<Removing />);
+    await user.click(screen.getByRole("button", { name: "Actions for web-10" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Actions for db-01" })).toHaveFocus());
+  });
+
+  it("names a column of buttons for screen readers only", () => {
+    const remove: Column<Vm> = {
+      id: "remove",
+      header: "Remove",
+      hideHeader: true,
+      cell: (v) => <button type="button">Remove {v.name}</button>,
+    };
+    render(<DataTable label="VMs" columns={[...columns, remove]} rows={vms} rowKey={(v) => v.name} />);
+    expect(screen.getByRole("columnheader", { name: "Remove" }).firstElementChild).toHaveClass("sr-only");
+  });
+
   it("shows what failed instead of the rows", () => {
     render(
       <DataTable
@@ -389,6 +464,33 @@ describe("DataTable on a phone", () => {
     );
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.getByText("No VMs")).toBeInTheDocument();
+  });
+
+  it("stacks a group's heading above its cards", () => {
+    render(
+      <DataTable
+        label="VMs"
+        columns={columns}
+        rows={vms}
+        rowKey={(v) => v.name}
+        groups={{ by: (v) => v.name.slice(0, -3), label: (key) => key }}
+      />,
+    );
+    const heading = screen.getByRole("rowheader", { name: "db" });
+    expect(heading.closest("[role=rowgroup]")).toHaveTextContent(/^dbdb-01vCPU8$/);
+  });
+
+  it("leaves a column's hidden header off its cards", () => {
+    const remove: Column<Vm> = {
+      id: "remove",
+      header: "Remove",
+      hideHeader: true,
+      cell: (v) => <button type="button">Remove {v.name}</button>,
+    };
+    render(<DataTable label="VMs" columns={[...columns, remove]} rows={vms} rowKey={(v) => v.name} />);
+    const cells = within(screen.getAllByRole("row")[1]!).getAllByRole("cell");
+    expect(cells[2]).toHaveTextContent(/^Remove web-02$/);
+    expect(within(cells[2]!).queryByText("Remove", { exact: true })).toBeNull();
   });
 
   it("keeps the columns side by side when asked not to stack", () => {

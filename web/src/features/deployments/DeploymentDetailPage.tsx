@@ -11,7 +11,7 @@ import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { ScrollRegion } from "@/components/ui/scroll-region";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tip } from "@/components/ui/tooltip";
 import { Truncate } from "@/components/ui/truncate";
@@ -68,6 +68,71 @@ function Usage({ label, pct, on }: { label: string; pct?: number; on: boolean })
   );
 }
 
+function VmActions({
+  deploymentId,
+  vm: r,
+  actions,
+  onPick,
+}: {
+  deploymentId: string;
+  vm: VmResource;
+  actions: Day2Action[];
+  onPick: Pick;
+}) {
+  const { t } = useTranslation("deployments");
+  const { id, name, vm } = r;
+  const on = vm.power_state === "on";
+  const mine = actions.filter((a) => a.resource_id === id);
+  const powerBtn = powerAction(mine, on);
+  const consoleAction = mine.find((a) => a.key === "console");
+  return (
+    <span className="inline-flex gap-1">
+      <Tip content={powerBtn?.enabled ? day2Name(powerBtn) : (powerBtn?.disabled_reason ?? t("vms.power"))}>
+        <span>
+          <Button
+            size="icon"
+            aria-label={t("vms.powerLabel", {
+              action: powerBtn ? day2Name(powerBtn) : t("vms.power"),
+              name,
+            })}
+            disabled={!powerBtn?.enabled}
+            onClick={() => powerBtn && onPick(powerBtn)}
+          >
+            <Power />
+          </Button>
+        </span>
+      </Tip>
+      {on && consoleAction?.enabled ? (
+        <Tip content={t("vms.console")}>
+          <Button size="icon" asChild>
+            <Link
+              to="/deployments/$deploymentId/console/$resourceId"
+              params={{ deploymentId, resourceId: id }}
+              aria-label={t("vms.openConsole", { name })}
+            >
+              <SquareTerminal />
+            </Link>
+          </Button>
+        </Tip>
+      ) : (
+        <Tip content={consoleAction?.disabled_reason ?? (on ? t("vms.console") : t("vms.poweredOff"))}>
+          <span>
+            <Button size="icon" aria-label={t("vms.openConsole", { name })} disabled>
+              <SquareTerminal />
+            </Button>
+          </span>
+        </Tip>
+      )}
+      <ActionsMenu
+        actions={mine}
+        label={t("moreActionsFor", { name })}
+        onPick={onPick}
+        consoleLink={{ deploymentId, resourceId: id }}
+      />
+    </span>
+  );
+}
+
 function VmTable({
   deploymentId,
   vms,
@@ -82,160 +147,103 @@ function VmTable({
   onOpen: Open;
 }) {
   const { t } = useTranslation("deployments");
-  if (vms.length === 0) {
-    return <p className="px-4 py-6 text-secondary text-muted">{t("vms.none")}</p>;
-  }
-  // By component, in the order they come; one group without components.
-  const groups: [string | undefined, VmResource[]][] = [];
-  for (const v of vms) {
-    const key = isMulti(vms) ? v.vm.component : undefined;
-    const last = groups[groups.length - 1];
-    if (last && last[0] === key) last[1].push(v);
-    else groups.push([key, [v]]);
-  }
-  return (
-    <ScrollRegion label={t("detail.vms")}>
-      <table className="w-full min-w-[760px] border-collapse" aria-label={t("detail.vms")}>
-        <thead>
-          <tr className="label text-left">
-            <th scope="col" className="border-b border-line px-4 py-2 font-medium">
-              {t("vms.name")}
-            </th>
-            <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-              {t("vms.address")}
-            </th>
-            <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-              {t("vms.size")}
-            </th>
-            <th scope="col" className="border-b border-line px-3 py-2 font-medium">
-              {t("vms.usage")}
-            </th>
-            <th scope="col" className="border-b border-line px-4 py-2 text-right font-medium">
-              {t("vms.actions")}
-            </th>
-          </tr>
-        </thead>
-        {/* A multi-VM deployment's VMs, a row group per component (ADR-0024). */}
-        {groups.map(([component, list]) => (
-          <tbody key={component ?? "vms"}>
-            {component && (
-              <tr>
-                <th
-                  scope="rowgroup"
-                  colSpan={5}
-                  className="border-b border-line bg-sunken px-4 py-1.5 text-left text-caption font-medium text-muted"
-                >
-                  {t("vms.group", { component, count: list.length })}
-                </th>
-              </tr>
+  const columns: Column<VmResource>[] = [
+    {
+      id: "name",
+      header: t("vms.name"),
+      cell: (r) => {
+        const { name, vm } = r;
+        const on = vm.power_state === "on";
+        return (
+          <span className="flex items-center gap-2">
+            <PowerDot on={on} />
+            <span className="flex flex-col">
+              <button
+                type="button"
+                className="self-start text-left font-medium whitespace-nowrap hover:text-accent hover:underline"
+                onClick={() => onOpen(r)}
+                aria-label={t("vms.properties", { name })}
+              >
+                {name}
+              </button>
+              <span className="font-mono text-caption text-faint">
+                {vm.moref} ·{" "}
+                {on
+                  ? t(vm.guest_state === "running" ? "vms.state.toolsRunning" : "vms.state.toolsNotRunning")
+                  : t(vm.power_state === "suspended" ? "vms.state.suspended" : "vms.state.off")}
+              </span>
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      id: "address",
+      header: t("vms.address"),
+      cell: ({ vm }) => {
+        const ip = vm.nics.flatMap((n) => n.ip_addresses ?? [])[0];
+        return (
+          <>
+            {ip ? <CopyText value={ip} /> : <span className="text-faint">{t("vms.waitingForIp")}</span>}
+            {vm.fqdn && (
+              <Truncate mono className="max-w-40 text-caption text-faint sm:max-w-56">
+                {vm.fqdn}
+              </Truncate>
             )}
-            {list.map((r) => {
-              const { id, name, vm } = r;
-              const on = vm.power_state === "on";
-              const disk = vm.disks.reduce((n, d) => n + d.capacity_gb, 0);
-              const ip = vm.nics.flatMap((n) => n.ip_addresses ?? [])[0];
-              const mine = actions.filter((a) => a.resource_id === id);
-              const powerBtn = powerAction(mine, on);
-              const consoleAction = mine.find((a) => a.key === "console");
-              return (
-                <tr key={id} className="hover:bg-sunken">
-                  <td className="border-b border-line px-4 py-2.5">
-                    <span className="flex items-center gap-2">
-                      <PowerDot on={on} />
-                      <span className="flex flex-col">
-                        <button
-                          type="button"
-                          className="self-start text-left font-medium whitespace-nowrap hover:text-accent hover:underline"
-                          onClick={() => onOpen(r)}
-                          aria-label={t("vms.properties", { name })}
-                        >
-                          {name}
-                        </button>
-                        <span className="font-mono text-caption text-faint">
-                          {vm.moref} ·{" "}
-                          {on
-                            ? t(vm.guest_state === "running" ? "vms.state.toolsRunning" : "vms.state.toolsNotRunning")
-                            : t(vm.power_state === "suspended" ? "vms.state.suspended" : "vms.state.off")}
-                        </span>
-                      </span>
-                    </span>
-                  </td>
-                  <td className="border-b border-line px-3 py-2.5">
-                    {ip ? <CopyText value={ip} /> : <span className="text-faint">{t("vms.waitingForIp")}</span>}
-                    {vm.fqdn && (
-                      <Truncate mono className="max-w-40 text-caption text-faint sm:max-w-56">
-                        {vm.fqdn}
-                      </Truncate>
-                    )}
-                  </td>
-                  <td className="tnum border-b border-line px-3 py-2.5">
-                    {t("vms.sizeValue", {
-                      cpu: vm.cpu_count,
-                      memory: formatSize(Math.round(vm.memory_mb / 1024), "GB"),
-                      disk: formatSize(disk, "GB"),
-                    })}
-                  </td>
-                  <td className="border-b border-line px-3 py-2.5">
-                    <div className="tnum grid grid-cols-[30px_72px_32px] items-center gap-x-1.5 gap-y-0.5 text-caption text-faint">
-                      <Usage label="CPU" pct={vm.usage?.cpu_pct} on={on} />
-                      <Usage label={t("vms.mem")} pct={vm.usage?.memory_pct} on={on} />
-                    </div>
-                  </td>
-                  <td className="border-b border-line px-4 py-2.5 text-right whitespace-nowrap">
-                    <span className="inline-flex gap-1">
-                      <Tip
-                        content={powerBtn?.enabled ? day2Name(powerBtn) : (powerBtn?.disabled_reason ?? t("vms.power"))}
-                      >
-                        <span>
-                          <Button
-                            size="icon"
-                            aria-label={t("vms.powerLabel", {
-                              action: powerBtn ? day2Name(powerBtn) : t("vms.power"),
-                              name,
-                            })}
-                            disabled={!powerBtn?.enabled}
-                            onClick={() => powerBtn && onPick(powerBtn)}
-                          >
-                            <Power />
-                          </Button>
-                        </span>
-                      </Tip>
-                      {on && consoleAction?.enabled ? (
-                        <Tip content={t("vms.console")}>
-                          <Button size="icon" asChild>
-                            <Link
-                              to="/deployments/$deploymentId/console/$resourceId"
-                              params={{ deploymentId, resourceId: id }}
-                              aria-label={t("vms.openConsole", { name })}
-                            >
-                              <SquareTerminal />
-                            </Link>
-                          </Button>
-                        </Tip>
-                      ) : (
-                        <Tip content={consoleAction?.disabled_reason ?? (on ? t("vms.console") : t("vms.poweredOff"))}>
-                          <span>
-                            <Button size="icon" aria-label={t("vms.openConsole", { name })} disabled>
-                              <SquareTerminal />
-                            </Button>
-                          </span>
-                        </Tip>
-                      )}
-                      <ActionsMenu
-                        actions={mine}
-                        label={t("moreActionsFor", { name })}
-                        onPick={onPick}
-                        consoleLink={{ deploymentId, resourceId: id }}
-                      />
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        ))}
-      </table>
-    </ScrollRegion>
+          </>
+        );
+      },
+    },
+    {
+      id: "size",
+      header: t("vms.size"),
+      className: "tnum",
+      cell: ({ vm }) =>
+        t("vms.sizeValue", {
+          cpu: vm.cpu_count,
+          memory: formatSize(Math.round(vm.memory_mb / 1024), "GB"),
+          disk: formatSize(
+            vm.disks.reduce((n, d) => n + d.capacity_gb, 0),
+            "GB",
+          ),
+        }),
+    },
+    {
+      id: "usage",
+      header: t("vms.usage"),
+      cell: ({ vm }) => {
+        const on = vm.power_state === "on";
+        return (
+          <div className="tnum grid grid-cols-[30px_72px_32px] items-center gap-x-1.5 gap-y-0.5 text-caption text-faint">
+            <Usage label="CPU" pct={vm.usage?.cpu_pct} on={on} />
+            <Usage label={t("vms.mem")} pct={vm.usage?.memory_pct} on={on} />
+          </div>
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: t("vms.actions"),
+      align: "end",
+      className: "whitespace-nowrap",
+      cell: (r) => <VmActions deploymentId={deploymentId} vm={r} actions={actions} onPick={onPick} />,
+    },
+  ];
+  return (
+    <DataTable
+      label={t("detail.vms")}
+      columns={columns}
+      rows={vms}
+      rowKey={(r) => r.id}
+      minWidth={760}
+      // A multi-VM deployment's VMs, a group per component (ADR-0024).
+      groups={
+        isMulti(vms)
+          ? { by: (v) => v.vm.component, label: (component, list) => t("vms.group", { component, count: list.length }) }
+          : undefined
+      }
+      empty={<p className="px-4 py-6 text-secondary text-muted">{t("vms.none")}</p>}
+    />
   );
 }
 
@@ -575,14 +583,24 @@ function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Actio
   const { t } = useTranslation("deployments");
   const drifted = vms.filter((v) => v.sync_state === "drifted" && v.drift?.length);
   if (drifted.length === 0) return null;
+  const columns: Column<NonNullable<VmResource["drift"]>[number]>[] = [
+    { id: "what", header: t("drift.what"), cell: (x) => x.label },
+    { id: "asLeft", header: t("drift.asLeft"), className: "tnum text-muted", cell: (x) => x.rvav ?? t("drift.none") },
+    {
+      id: "inVcenter",
+      header: t("drift.inVcenter"),
+      className: "tnum font-medium",
+      cell: (x) => x.vcenter ?? t("drift.removed"),
+    },
+  ];
   return (
     <Panel title={t("drift.title")} flush className="border-warn/40">
       <p className="px-4 pt-2.5 text-secondary text-muted">{t("drift.lead", { count: drifted.length })}</p>
       {drifted.map((v) => {
         const accept = actions.find((a) => a.key === "accept_changes" && a.resource_id === v.id);
         return (
-          <div key={v.id} className="border-b border-line px-4 py-2.5 last:border-0">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div key={v.id} className="border-b border-line last:border-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-2.5 pb-1">
               <span className="font-medium">{v.name}</span>
               {accept && (
                 <Tip content={accept.enabled ? t("drift.take") : (accept.disabled_reason ?? t("drift.notNow"))}>
@@ -594,35 +612,12 @@ function Drift({ vms, actions, onPick }: { vms: VmResource[]; actions: Day2Actio
                 </Tip>
               )}
             </div>
-            <table
-              className="mt-1.5 w-full border-collapse text-secondary"
-              aria-label={t("drift.how", { name: v.name })}
-            >
-              <thead>
-                <tr className="label text-left">
-                  <th scope="col" className="py-1 pr-3 font-medium">
-                    {t("drift.what")}
-                  </th>
-                  <th scope="col" className="py-1 pr-3 font-medium">
-                    {t("drift.asLeft")}
-                  </th>
-                  <th scope="col" className="py-1 font-medium">
-                    {t("drift.inVcenter")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {v.drift!.map((x) => (
-                  <tr key={x.property + x.label}>
-                    <th scope="row" className="py-1 pr-3 text-left font-normal">
-                      {x.label}
-                    </th>
-                    <td className="tnum py-1 pr-3 text-muted">{x.rvav ?? t("drift.none")}</td>
-                    <td className="tnum py-1 font-medium">{x.vcenter ?? t("drift.removed")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable
+              label={t("drift.how", { name: v.name })}
+              columns={columns}
+              rows={v.drift}
+              rowKey={(x) => x.property + x.label}
+            />
           </div>
         );
       })}

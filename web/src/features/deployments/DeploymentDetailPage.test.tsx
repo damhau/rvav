@@ -236,6 +236,59 @@ describe("a deployment's page against the mock API", () => {
   });
 });
 
+describe("a deployment's VMs and what changed in vCenter", () => {
+  const vmsOf = (name: string) =>
+    db.deployments.find((d) => d.name === name)!.resources.filter((r) => r.type === "vsphere.vm");
+
+  it("lists a multi-VM deployment's VMs under their component, each row with its actions", async () => {
+    const user = userEvent.setup();
+    const [first, second, third] = vmsOf("web-prd-front");
+    if (first?.type !== "vsphere.vm" || second?.type !== "vsphere.vm" || third?.type !== "vsphere.vm")
+      throw new Error("no VMs");
+    first.vm.component = third.vm.component = "web";
+    second.vm.component = "db";
+    renderApp(`/deployments/${idOf("web-prd-front")}`);
+    const table = await screen.findByRole("table", { name: "Virtual machines" }, { timeout: 5000 });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(
+      rows.map(
+        (r) =>
+          within(r).queryByRole("rowheader")?.textContent ??
+          within(r).getByRole("button", { name: / properties$/ }).textContent,
+      ),
+    ).toEqual(["web · 2 VMs", "web-prd-front001", "web-prd-front003", "db · 1 VM", "web-prd-front002"]);
+    expect(await within(rows[1]!).findByRole("button", { name: /^Shut down .*web-prd-front001$/ })).toBeEnabled();
+    await user.click(within(rows[1]!).getByRole("button", { name: "More actions for web-prd-front001" }));
+    expect(await screen.findByRole("menuitem", { name: /^Take a snapshot/ })).toBeVisible();
+    await user.keyboard("{Escape}");
+    await user.click(within(rows[4]!).getByRole("button", { name: "web-prd-front002 properties" }));
+    expect(await screen.findByRole("dialog", { name: /web-prd-front002/ })).toBeVisible();
+  });
+
+  it("says when vCenter hasn't made the VMs yet", async () => {
+    const dep = db.deployments.find((d) => d.name === "web-dev-api")!;
+    dep.resources = dep.resources.filter((r) => r.type !== "vsphere.vm");
+    renderApp(`/deployments/${dep.id}`);
+    const panel = await screen.findByRole("region", { name: "Virtual machines" }, { timeout: 5000 });
+    expect(within(panel).getByText("No VMs yet. They appear here as soon as vCenter creates them.")).toBeVisible();
+    expect(within(panel).queryByRole("table")).toBeNull();
+  });
+
+  it("shows how a VM differs from how rvav left it, and accepts the changes", async () => {
+    const user = userEvent.setup();
+    renderApp(`/deployments/${idOf("web-dev-legacy")}`);
+    const drift = await screen.findByRole("region", { name: "Changed outside rvav" }, { timeout: 5000 });
+    const table = within(drift).getByRole("table", { name: "How web-dev-legacy001 differs" });
+    expect(
+      within(table)
+        .getAllByRole("row")
+        .map((r) => r.textContent),
+    ).toEqual(["WhatAs rvav left itIn vCenter", "Memory16 GB32 GB", "Hard disk 2none200 GB"]);
+    await user.click(await within(drift).findByRole("button", { name: "Accept the changes" }));
+    await waitFor(() => expect(db.requests[0]?.request.action?.key).toBe("accept_changes"));
+  });
+});
+
 // The "member" persona: Web Platform shares its deployments with their
 // owners only, and a soft policy of its own warns before a VM powers off
 // (ADR-0045).

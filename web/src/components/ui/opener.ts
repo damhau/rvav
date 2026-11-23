@@ -96,11 +96,14 @@ export function rowStandIn(table: HTMLElement | null | undefined, index: number)
   return table;
 }
 
+/** A row's place among its table's body rows, those of every group and their headings, for `rowStandIn`. */
+export const rowIndex = (table: HTMLElement, row: Element) => [...table.querySelectorAll("tbody tr")].indexOf(row);
+
 /** The DataTable and row index of a control in a row, for `rowStandIn`. */
 function rowOf(el: HTMLElement | null) {
   const row = el?.closest("tr");
   const table = row?.closest<HTMLElement>("[data-table]");
-  return row && table ? { table, index: [...row.parentElement!.children].indexOf(row) } : null;
+  return row && table ? { table, index: rowIndex(table, row) } : null;
 }
 
 /**

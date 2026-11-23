@@ -5,7 +5,7 @@ import { IconButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Menu, MenuContent, MenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { rowStandIn } from "@/components/ui/opener";
+import { rowIndex, rowStandIn } from "@/components/ui/opener";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,15 @@ export interface Column<T> {
   align?: "start" | "end";
   /** Classes for the column's cells, such as a width or whitespace-nowrap. */
   className?: string;
+  /** Shows the header to screen readers only, such as over a column of buttons that each name their row. */
+  hideHeader?: boolean;
+}
+
+export interface Groups<T> {
+  /** The row's group; rows without one go under no heading. */
+  by: (row: T) => string | undefined;
+  /** The group's heading, such as "web · 3 VMs". */
+  label: (key: string, rows: T[]) => React.ReactNode;
 }
 
 export interface Sort {
@@ -59,6 +68,12 @@ export interface DataTableProps<T> {
   onSortChange?: (sort: Sort | null) => void;
   /** The rows come in the sort's order (the server sorts the whole list): a header only changes the sort. */
   presorted?: boolean;
+  /**
+   * Rows under headings, such as a multi-VM deployment's VMs by component:
+   * the groups in the order their first rows come, a sort ordering the rows
+   * within each.
+   */
+  groups?: Groups<T>;
   /** The width under which the table scrolls sideways, such as 720. */
   minWidth?: number;
   /**
@@ -87,6 +102,13 @@ export const PHONE = "(width < 40rem)";
 const asValue = (className?: string) =>
   cn(className, "w-auto max-w-none min-w-0 [overflow-wrap:anywhere] whitespace-normal");
 
+/** The rows by group, in the order each group's first row is given, each group's rows as sorted. */
+function grouped<T>(given: T[], sorted: T[], by?: (row: T) => string | undefined) {
+  if (!by) return [{ key: undefined, rows: sorted }];
+  const order = [...new Set(given.map(by))];
+  return order.map((key) => ({ key, rows: sorted.filter((r) => by(r) === key) }));
+}
+
 /** A list of records: sortable columns, a row menu, a toolbar, and its loading, empty and failed states. */
 export function DataTable<T>({
   label,
@@ -105,6 +127,7 @@ export function DataTable<T>({
   sort: sortProp,
   onSortChange,
   presorted,
+  groups,
   minWidth,
   stack = true,
   className,
@@ -163,6 +186,98 @@ export function DataTable<T>({
       }}
     />
   );
+
+  const bodyRow = (row: T) => {
+    const key = rowKey(row);
+    const menu = menus?.get(key);
+    return (
+      <tr
+        key={key}
+        role={role("row")}
+        // The row's menu too: it is portalled out of the row, its focus bubbling here.
+        onFocus={(e) => {
+          focusedRow.current = { key, index: rowIndex(wrapper.current!, e.currentTarget) };
+        }}
+        className={cn(
+          "border-b border-line last:border-b-0",
+          stacked && "grid gap-x-3 gap-y-1 px-4 py-3",
+          selection?.selected.has(key) && "bg-accent-soft/40",
+          rowLinks && "cursor-pointer hover:bg-sunken/60",
+        )}
+        style={stacked ? { gridTemplateColumns: cardColumns } : undefined}
+        onClick={
+          rowLinks
+            ? (e) => {
+                // The row menu is portalled out of the row, but React still bubbles its clicks here.
+                if (!e.currentTarget.contains(e.target as Node)) return;
+                if ((e.target as Element).closest(interactive)) return;
+                const link = e.currentTarget.querySelector<HTMLAnchorElement>("a[href]");
+                // What it opens gives the focus back to the link, not to the page.
+                link?.focus({ preventScroll: true });
+                link?.click();
+              }
+            : undefined
+        }
+      >
+        {selection && (
+          <td
+            role={role("cell")}
+            className={stacked ? "pt-0.5" : "w-px py-2.5 pr-1 pl-4 align-middle"}
+            style={stacked ? { gridRow: 1, gridColumn: 1 } : undefined}
+          >
+            <Checkbox
+              aria-label={selection.label(row)}
+              checked={selection.selected.has(key)}
+              onChange={(on) => {
+                const next = new Set(selection.selected);
+                if (on) next.add(key);
+                else next.delete(key);
+                selection.onChange(next);
+              }}
+            />
+          </td>
+        )}
+        {columns.map((c, i) =>
+          stacked ? (
+            <StackedCell key={c.id} column={c} first={i === 0} indent={Boolean(selection)}>
+              {c.cell(row)}
+            </StackedCell>
+          ) : (
+            <td
+              key={c.id}
+              className={cn(
+                "px-3 py-2.5 align-middle",
+                i === 0 && !selection && "pl-4",
+                i === columns.length - 1 && !hasMenu && "pr-4",
+                c.align === "end" && "text-right",
+                c.className,
+              )}
+            >
+              {c.cell(row)}
+            </td>
+          ),
+        )}
+        {hasMenu && (
+          <td
+            role={role("cell")}
+            className={stacked ? "-my-1 -mr-1.5 self-start" : "w-px py-1.5 pr-3 pl-1 text-right align-middle"}
+            style={stacked ? { gridRow: 1, gridColumn: -2 } : undefined}
+          >
+            {menu ? (
+              <Menu>
+                <MenuTrigger asChild>
+                  <IconButton label={rowMenuLabel?.(row) ?? t("table.actions")}>
+                    <Ellipsis />
+                  </IconButton>
+                </MenuTrigger>
+                <MenuContent>{menu}</MenuContent>
+              </Menu>
+            ) : null}
+          </td>
+        )}
+      </tr>
+    );
+  };
 
   let body: React.ReactNode;
   if (error) body = error;
@@ -228,7 +343,9 @@ export function DataTable<T>({
                         {t("table.sortBy")}
                       </span>
                     )}
-                    {c.sortValue ? (
+                    {c.hideHeader ? (
+                      <span className="sr-only">{c.header}</span>
+                    ) : c.sortValue ? (
                       <button
                         type="button"
                         onClick={() => setSort(active && sort.desc ? null : { id: c.id, desc: active })}
@@ -258,121 +375,54 @@ export function DataTable<T>({
               )}
             </tr>
           </thead>
-          <tbody role={role("rowgroup")} className={cn(stacked && "block")}>
-            {loading && !sorted?.length
-              ? [0, 1, 2].map((r) => (
-                  <tr
-                    key={r}
-                    aria-hidden
-                    className={cn(stacked && "block border-b border-line px-4 py-3 last:border-b-0")}
-                  >
-                    {Array.from({ length: stacked ? 2 : width }, (_, c) => (
-                      <td
-                        key={c}
-                        className={cn(stacked ? "block py-1" : "border-b border-line px-3 py-3 first:pl-4 last:pr-4")}
-                      >
-                        <span
-                          className={cn("block h-3 animate-pulse rounded-sm bg-sunken", c === 0 ? "w-3/4" : "w-1/2")}
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              : sorted?.map((row) => {
-                  const key = rowKey(row);
-                  const menu = menus?.get(key);
-                  return (
-                    <tr
-                      key={key}
-                      role={role("row")}
-                      // The row's menu too: it is portalled out of the row, its focus bubbling here.
-                      onFocus={(e) => {
-                        const row = e.currentTarget;
-                        focusedRow.current = { key, index: [...row.parentElement!.children].indexOf(row) };
-                      }}
-                      className={cn(
-                        "border-b border-line last:border-b-0",
-                        stacked && "grid gap-x-3 gap-y-1 px-4 py-3",
-                        selection?.selected.has(key) && "bg-accent-soft/40",
-                        rowLinks && "cursor-pointer hover:bg-sunken/60",
-                      )}
-                      style={stacked ? { gridTemplateColumns: cardColumns } : undefined}
-                      onClick={
-                        rowLinks
-                          ? (e) => {
-                              // The row menu is portalled out of the row, but React still bubbles its clicks here.
-                              if (!e.currentTarget.contains(e.target as Node)) return;
-                              if ((e.target as Element).closest(interactive)) return;
-                              const link = e.currentTarget.querySelector<HTMLAnchorElement>("a[href]");
-                              // What it opens gives the focus back to the link, not to the page.
-                              link?.focus({ preventScroll: true });
-                              link?.click();
-                            }
-                          : undefined
-                      }
+          {loading && !sorted?.length ? (
+            <tbody role={role("rowgroup")} className={cn(stacked && "block")}>
+              {[0, 1, 2].map((r) => (
+                <tr
+                  key={r}
+                  aria-hidden
+                  className={cn(stacked && "block border-b border-line px-4 py-3 last:border-b-0")}
+                >
+                  {Array.from({ length: stacked ? 2 : width }, (_, c) => (
+                    <td
+                      key={c}
+                      className={cn(stacked ? "block py-1" : "border-b border-line px-3 py-3 first:pl-4 last:pr-4")}
                     >
-                      {selection && (
-                        <td
-                          role={role("cell")}
-                          className={stacked ? "pt-0.5" : "w-px py-2.5 pr-1 pl-4 align-middle"}
-                          style={stacked ? { gridRow: 1, gridColumn: 1 } : undefined}
-                        >
-                          <Checkbox
-                            aria-label={selection.label(row)}
-                            checked={selection.selected.has(key)}
-                            onChange={(on) => {
-                              const next = new Set(selection.selected);
-                              if (on) next.add(key);
-                              else next.delete(key);
-                              selection.onChange(next);
-                            }}
-                          />
-                        </td>
+                      <span
+                        className={cn("block h-3 animate-pulse rounded-sm bg-sunken", c === 0 ? "w-3/4" : "w-1/2")}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          ) : (
+            grouped(rows ?? [], sorted ?? [], groups?.by).map((g, i) => (
+              <tbody
+                key={g.key === undefined ? "rows" : `group-${g.key}`}
+                role={role("rowgroup")}
+                className={cn(stacked && "block")}
+              >
+                {groups && g.key !== undefined && (
+                  <tr role={role("row")} className={cn(stacked && "block")}>
+                    <th
+                      scope="rowgroup"
+                      role={role("rowheader")}
+                      colSpan={width}
+                      className={cn(
+                        "border-b border-line bg-sunken px-4 py-1.5 text-left text-caption font-medium text-muted",
+                        i > 0 && "border-t",
+                        stacked && "block",
                       )}
-                      {columns.map((c, i) =>
-                        stacked ? (
-                          <StackedCell key={c.id} column={c} first={i === 0} indent={Boolean(selection)}>
-                            {c.cell(row)}
-                          </StackedCell>
-                        ) : (
-                          <td
-                            key={c.id}
-                            className={cn(
-                              "px-3 py-2.5 align-middle",
-                              i === 0 && !selection && "pl-4",
-                              i === columns.length - 1 && !hasMenu && "pr-4",
-                              c.align === "end" && "text-right",
-                              c.className,
-                            )}
-                          >
-                            {c.cell(row)}
-                          </td>
-                        ),
-                      )}
-                      {hasMenu && (
-                        <td
-                          role={role("cell")}
-                          className={
-                            stacked ? "-my-1 -mr-1.5 self-start" : "w-px py-1.5 pr-3 pl-1 text-right align-middle"
-                          }
-                          style={stacked ? { gridRow: 1, gridColumn: -2 } : undefined}
-                        >
-                          {menu ? (
-                            <Menu>
-                              <MenuTrigger asChild>
-                                <IconButton label={rowMenuLabel?.(row) ?? t("table.actions")}>
-                                  <Ellipsis />
-                                </IconButton>
-                              </MenuTrigger>
-                              <MenuContent>{menu}</MenuContent>
-                            </Menu>
-                          ) : null}
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-          </tbody>
+                    >
+                      {groups.label(g.key, g.rows)}
+                    </th>
+                  </tr>
+                )}
+                {g.rows.map(bodyRow)}
+              </tbody>
+            ))
+          )}
         </table>
         {loading && !sorted?.length && (
           <span role="status" className="sr-only">
@@ -413,7 +463,8 @@ function StackedCell<T>({
   indent: boolean;
   children: React.ReactNode;
 }) {
-  const labelled = !first && column.header !== "" && column.header !== null && column.header !== undefined;
+  const labelled =
+    !first && !column.hideHeader && column.header !== "" && column.header !== null && column.header !== undefined;
   return (
     <td
       // eslint-disable-next-line jsx-a11y/no-interactive-element-to-noninteractive-role -- see role() in DataTable

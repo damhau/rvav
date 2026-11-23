@@ -90,8 +90,8 @@ test("a list's rows stack as cards, sorted, selected and acted on as on a deskto
 test("a VM's FQDN cut short shows whole in a tooltip on keyboard focus", async ({ page }) => {
   await page.goto("/deployments/dep_s1");
   await loaded(page);
-  const vms = page.getByRole("group", { name: "Virtual machines, scrolls sideways" });
-  await expect(vms).toHaveAttribute("tabindex", "0");
+  const vms = page.getByRole("table", { name: "Virtual machines" });
+  await expect(vms).toHaveAttribute("data-stacked", "true");
   const fqdn = vms.getByText("web-prd-front001.corp.example", { exact: true });
   await fqdn.focus();
   await expect(page.getByRole("tooltip")).toHaveText("web-prd-front001.corp.example");
