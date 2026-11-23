@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { bothThemes } from "./axe";
 
 // A multi-VM item against the mock backend (S12.2, ADR-0024): the form says
 // what each component builds, and the request makes one deployment whose
@@ -29,12 +30,19 @@ test("a web application: its components, then one deployment", async ({ page }) 
   await page.getByRole("link", { name: "Open deployment" }).click();
   await expect(page.getByRole("heading", { name: "web-dev-shop" })).toBeVisible();
   const vms = page.getByRole("table");
-  await expect(vms.getByRole("rowheader", { name: "web · 3 VMs" })).toBeVisible();
-  await expect(vms.getByRole("rowheader", { name: "db · 1 VM" })).toBeVisible();
+  await expect(vms.getByRole("rowheader", { name: "Web servers · 3 VMs web" })).toBeVisible();
+  await expect(vms.getByRole("rowheader", { name: "Database · 1 VM db" })).toBeVisible();
+  await bothThemes(page, "a deployment's VMs under their components' titles");
   await expect(vms).toContainText("web-dev-shopdb001");
   const apart = page.getByRole("list", { name: "Kept on separate hosts" });
   await expect(apart).toContainText(
     "web on separate hosts: web-dev-shopweb001, web-dev-shopweb002, web-dev-shopweb003",
   );
+
+  // On a phone, the VMs are cards, still under their component's heading.
+  await page.setViewportSize({ width: 375, height: 800 });
+  const cards = page.getByRole("table", { name: "Virtual machines" });
+  await expect(cards).toHaveAttribute("data-stacked", "true");
+  await expect(cards.getByRole("rowheader", { name: "Web servers · 3 VMs web" })).toBeVisible();
   expect(errors).toEqual([]);
 });

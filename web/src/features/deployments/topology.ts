@@ -21,6 +21,7 @@ import type {
 import { celCode, dependsOn } from "@/lib/dependsOn";
 import { formatSize } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
+import { componentTitles } from "./componentTitles";
 import { labelledProperties } from "./properties";
 
 /**
@@ -94,15 +95,6 @@ function resourcesAfter(topology: unknown): Map<string, string[]> {
       [...new Set(read)].filter((k) => k && k !== key),
     );
   }
-  return out;
-}
-
-/** Each component's title in the request's topology. */
-function titles(topology: unknown): Map<string, string> {
-  const out = new Map<string, string>();
-  const components = obj(topology).components;
-  if (Array.isArray(components))
-    for (const c of components.map(obj)) if (str(c.key)) out.set(str(c.key), str(c.title) || str(c.key));
   return out;
 }
 
@@ -203,7 +195,7 @@ export function deploymentGraph(d: DeploymentDetail, topology?: unknown): Canvas
 
   const byComponent = vmsByComponent(d);
   const framed = byComponent.size > 1;
-  const titled = titles(topology);
+  const titled = componentTitles(topology);
   /** What each component is drawn as (its node, or the frame around its VMs), and each VM's node. */
   const drawnAs = new Map<string, { id: string; title: string }>();
   const nodeOfVm = new Map<string, CanvasNode>();

@@ -272,6 +272,27 @@ describe("a deployment's VMs and what changed in vCenter", () => {
     expect(await screen.findByRole("dialog", { name: /web-prd-front002/ })).toBeVisible();
   });
 
+  it("heads a component's VMs with its title from the creating request, its key beside it", async () => {
+    const [first, second, third] = vmsOf("web-prd-front");
+    if (first?.type !== "vsphere.vm" || second?.type !== "vsphere.vm" || third?.type !== "vsphere.vm")
+      throw new Error("no VMs");
+    first.vm.component = third.vm.component = "web";
+    second.vm.component = "db";
+    server.use(
+      http.get("*/api/v1/requests/:id/topology", () =>
+        HttpResponse.json({ topology: { components: [{ key: "web", title: "Web servers" }, { key: "db" }] } }),
+      ),
+    );
+    renderApp(`/deployments/${idOf("web-prd-front")}`);
+    const table = await screen.findByRole("table", { name: "Virtual machines" }, { timeout: 5000 });
+    const web = await within(table).findByRole("rowheader", { name: "Web servers · 2 VMs web" });
+    expect(web.tagName).toBe("TH");
+    expect(web).toHaveAttribute("scope", "rowgroup");
+    expect(within(web).getByText("web")).toHaveClass("font-mono");
+    // A component with no title keeps its key, with no caption.
+    expect(within(table).getByRole("rowheader", { name: "db · 1 VM" })).toBeInTheDocument();
+  });
+
   it("says when vCenter hasn't made the VMs yet", async () => {
     const dep = db.deployments.find((d) => d.name === "web-dev-api")!;
     dep.resources = dep.resources.filter((r) => r.type !== "vsphere.vm");

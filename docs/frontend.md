@@ -1111,8 +1111,11 @@ A blueprint with components builds one deployment
   graph's model (`components/canvas/blueprint`), so React Flow stays out
   of the other pages.
 - **Deployment page:** the VMs are grouped by component (a row heading
-  per component), the placement panel gives each cluster, datastore and
-  network once, and the DRS rules keeping VMs apart.
+  per component, its title from the creating request's topology,
+  `q.requestTopology` as on the Topology tab, with its key as a caption;
+  the key alone when the component has no title or the request can't be
+  read), the placement panel gives each cluster, datastore and network
+  once, and the DRS rules keeping VMs apart.
 - **Mocks:** the **Web application** item (`mocks/components.ts`) builds
   web servers kept apart and a database server on the request's network;
   the **Three-tier application** item, N1's acceptance item, web,

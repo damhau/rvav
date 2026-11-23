@@ -392,7 +392,9 @@ checkboxes: power them on or off, shut down their guests, take a snapshot,
 or delete them. A deployment's page shows its status and owner at the top,
 and:
 - **Overview:** its VMs, their addresses and DNS records, and their state
-  in vCenter, live; its details, lease and placement. A VM whose address
+  in vCenter, live; its details, lease and placement. When it has several
+  components, its VMs are listed under a heading for each, such as **Web
+  servers · 3 VMs**, with the component's key beside it. A VM whose address
   comes from DHCP shows the address it reports, once it has one, and a VM
   with an IPv6 address lists it beside its IPv4 one. Under **Custom
   resources**, what its item's resource types made, such as a load

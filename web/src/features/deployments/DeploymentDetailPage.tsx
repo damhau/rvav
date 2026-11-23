@@ -35,6 +35,7 @@ import { formatPercent, formatSize, fullDate, leaseLabel } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
 import { q } from "@/lib/query";
 import { ActionDialog, ActionsMenu, DeploymentActionsMenu, actionFailed, runsDirectly, useRunAction } from "./actions";
+import { componentTitles } from "./componentTitles";
 import { CustomResourcesPanel } from "./CustomResources";
 import { RemoteAccessPanel } from "./RemoteAccess";
 import { VmPropertiesSheet } from "./VmProperties";
@@ -137,12 +138,15 @@ function VmActions({
 function VmTable({
   deploymentId,
   vms,
+  titles,
   actions,
   onPick,
   onOpen,
 }: {
   deploymentId: string;
   vms: VmResource[];
+  /** Each component's title, by key. */
+  titles: Map<string, string>;
   actions: Day2Action[];
   onPick: Pick;
   onOpen: Open;
@@ -242,7 +246,23 @@ function VmTable({
       // A multi-VM deployment's VMs, a group per component (ADR-0024).
       groups={
         isMulti(vms)
-          ? { by: (v) => v.vm.component, label: (component, list) => t("vms.group", { component, count: list.length }) }
+          ? {
+              by: (v) => v.vm.component,
+              label: (component, list) => {
+                const title = titles.get(component) ?? component;
+                return (
+                  <>
+                    {t("vms.group", { component: title, count: list.length })}
+                    {title !== component && (
+                      <>
+                        {" "}
+                        <span className="ms-1 font-mono font-normal text-faint">{component}</span>
+                      </>
+                    )}
+                  </>
+                );
+              },
+            }
           : undefined
       }
       empty={<p className="px-4 py-6 text-secondary text-muted">{t("vms.none")}</p>}
@@ -702,6 +722,14 @@ function Overview({
   const { t } = useTranslation("deployments");
   const vms = d.resources.filter((r): r is VmResource => r.type === "vsphere.vm");
   const rules = d.resources.filter((r): r is DrsRuleResource => r.type === "vsphere.drs_rule");
+  const request = d.created_by_request_id;
+  // The same query as the Topology tab's: the creating request's topology titles the components.
+  const topology = useQuery({
+    ...q.requestTopology(request ?? ""),
+    enabled: Boolean(request) && isMulti(vms),
+    retry: false,
+  });
+  const titles = componentTitles(topology.data?.topology);
   if (isMulti(vms)) {
     // By component, in the order they first appear.
     const order = [...new Set(vms.map((v) => v.vm.component))];
@@ -719,7 +747,7 @@ function Overview({
       <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-4">
         <Drift vms={vms} actions={actions} onPick={onPick} />
         <Panel title={t("detail.vms")} description={t("detail.vmsLead")} flush>
-          <VmTable deploymentId={d.id} vms={vms} actions={actions} onPick={onPick} onOpen={onOpen} />
+          <VmTable deploymentId={d.id} vms={vms} titles={titles} actions={actions} onPick={onPick} onOpen={onOpen} />
         </Panel>
         <CustomResourcesPanel
           resources={d.resources.filter((r): r is CustomResource => r.type === "custom")}

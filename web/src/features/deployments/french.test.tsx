@@ -1,7 +1,9 @@
 import { screen, within } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { i18n } from "@/lib/i18n";
+import { server } from "@/mocks/node";
 import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 import { deploymentCount } from "./DeploymentsPage";
@@ -25,6 +27,25 @@ describe("the deployments count", () => {
 describe("the deployments, in French", () => {
   beforeEach(() => {
     db.me.locale = "fr";
+  });
+
+  it("heads a component's VMs with its title, its key beside it", async () => {
+    await i18n.changeLanguage("fr");
+    const front = db.deployments.find((d) => d.name === "web-prd-front")!;
+    const [first, second, third] = front.resources.filter((r) => r.type === "vsphere.vm");
+    if (first?.type !== "vsphere.vm" || second?.type !== "vsphere.vm" || third?.type !== "vsphere.vm")
+      throw new Error("no VMs");
+    first.vm.component = third.vm.component = "web";
+    second.vm.component = "db";
+    server.use(
+      http.get("*/api/v1/requests/:id/topology", () =>
+        HttpResponse.json({ topology: { components: [{ key: "web", title: "Web servers" }, { key: "db" }] } }),
+      ),
+    );
+    renderApp(`/deployments/${front.id}`);
+    const table = await screen.findByRole("table", { name: "Machines virtuelles" }, { timeout: 5000 });
+    expect(await within(table).findByRole("rowheader", { name: "Web servers · 2 VM web" })).toBeInTheDocument();
+    expect(within(table).getByRole("rowheader", { name: "db · 1 VM" })).toBeInTheDocument();
   });
 
   it("lists them with French headings and counts", async () => {
