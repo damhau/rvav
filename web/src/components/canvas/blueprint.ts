@@ -566,7 +566,11 @@ export function vmGraph(bp: Raw, prefix = "/definition/blueprint", options: Grap
         label: t("lines.disks"),
         text: [
           t("vm.system"),
-          ...disks.map((d) => sizeText(d.size_gb) + (str(d.storage_policy) ? ` (${str(d.storage_policy)})` : "")),
+          ...disks.map(
+            (d) =>
+              [str(d.key), sizeText(d.size_gb)].filter(Boolean).join(" ") +
+              (str(d.storage_policy) ? ` (${str(d.storage_policy)})` : ""),
+          ),
         ].join(", "),
       });
     if (c.anti_affinity === true) lines.push({ text: t("vm.separateHosts") });

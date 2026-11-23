@@ -148,6 +148,32 @@ function present(st: RangeState, r: RangeState["ranges"][number]): S["IpRange"] 
   return { ...r, size, used, taken, free: Math.max(0, size - used - taken) };
 }
 
+/**
+ * The next n addresses a network's IP ranges would give, after those hinted
+ * already, as the server's hintsInRanges: fewer when they are full,
+ * undefined for a network without ranges.
+ */
+export function rangeHints(db: Db, network: string, n: number, hinted: Set<string>): string[] | undefined {
+  const st = rangeState(db);
+  const rs = st.ranges.filter((r) => r.network === network && r.vcenter === VCENTER);
+  if (rs.length === 0) return undefined;
+  const held = new Set(st.allocations.map((a) => a.address));
+  const out: string[] = [];
+  for (const r of rs) {
+    const ok = usable(r);
+    const taken = new Set(takenIn(st, r).map((h) => h.address));
+    const start = toInt(r.start_address) ?? 0;
+    const end = toInt(r.end_address) ?? -1;
+    for (let a = start; a <= end && out.length < n; a++) {
+      const ip = toAddr(a);
+      if (!ok(a) || held.has(ip) || taken.has(ip) || hinted.has(`${r.id} ${ip}`)) continue;
+      hinted.add(`${r.id} ${ip}`);
+      out.push(ip);
+    }
+  }
+  return out;
+}
+
 /** The networks with ranges, once per vCenter, as the network mappings list shows them. */
 export function rangeMappings(db: Db): S["NetworkMapping"][] {
   const seen = new Set<string>();

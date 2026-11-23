@@ -113,6 +113,32 @@ describe("the IP range mock", () => {
       source: "rvav",
     });
   });
+
+  it("hints each VM a request adds its own next address of the network's ranges, across components (#209)", async () => {
+    const form = await call(
+      api.GET("/catalog/items/{itemId}/form", {
+        params: { path: { itemId: "web-app" }, query: { project_id: "prj_web" } },
+      }),
+    );
+    const inputs = { ...form.initial_values, app: "shop", web_nodes: 2, network: "dvpg-app-tst-vl410" };
+    const preview = await call(
+      api.POST("/requests/preview", {
+        body: {
+          catalog_item_id: form.item_id,
+          version_id: form.version_id,
+          project_id: "prj_web",
+          environment: "tst",
+          count: 1,
+          inputs,
+        },
+      }),
+    );
+    // 10.41.10.200 to .202 and .205 are given.
+    expect(preview.components?.map((c) => c.nics[0])).toMatchObject([
+      { ipam: "ip_range", address: "10.41.10.203", addresses: ["10.41.10.203", "10.41.10.204"] },
+      { ipam: "ip_range", address: "10.41.10.206", addresses: ["10.41.10.206"] },
+    ]);
+  });
 });
 
 describe("the Active Directory OU mock", () => {

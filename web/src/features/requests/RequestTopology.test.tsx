@@ -7,7 +7,8 @@ import { seededBlueprint, topologyOf } from "@/mocks/blueprints";
 import { renderApp } from "@/test/render";
 import { withPreview } from "./RequestTopology";
 
-const preview = (key: string, count: number, names: string[]) => ({ key, count, names }) as PreviewComponent;
+const preview = (key: string, count: number, names: string[]) =>
+  ({ key, count, names, disks: [] as PreviewComponent["disks"] }) as PreviewComponent;
 
 const nodeNames = (region: HTMLElement) =>
   within(region)
@@ -53,6 +54,25 @@ describe("withPreview", () => {
     // The preview says nothing of it: as drawn.
     expect(drawn.nodes.find((n) => n.id === "component:app")).toBe(graph.nodes.find((n) => n.id === "component:app"));
     expect(withPreview(graph, undefined)).toBe(graph);
+  });
+
+  it("gives a component's disks the preview's sizes, an added one beside the system disk (#209)", () => {
+    const graph = blueprintGraph({
+      kind: "vm",
+      components: [{ key: "db", title: "Database", disks: [{ key: "data", size_gb: 100 }] }],
+    })!;
+    const disks = (drawn: typeof graph) =>
+      drawn.nodes.find((n) => n.id === "component:db")!.lines.find((l) => l.label === "Disks")?.text;
+    expect(disks(graph)).toBe("system, data 100 GB");
+    const db = (over: Partial<PreviewComponent>): PreviewComponent => ({ ...preview("db", 1, ["db01"]), ...over });
+    expect(disks(withPreview(graph, [db({ disks: [{ size_gb: 40 }, { key: "data", size_gb: 100 }] })]))).toBe(
+      "system 40 GB, data 100 GB",
+    );
+    expect(
+      disks(
+        withPreview(graph, [db({ disks: [{ size_gb: 0 }, { key: "data", size_gb: 100, storage_policy: "gold" }] })]),
+      ),
+    ).toBe("system, data 100 GB (gold)");
   });
 
   it("says what a composite's step builds", () => {

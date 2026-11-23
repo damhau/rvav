@@ -610,6 +610,8 @@ describe("vmGraph", () => {
       ],
     };
     expect(node(vmGraph(bp), "component:web").lines).toEqual([{ label: "Disks", text: "system, 20 GB" }]);
+    // An added disk with a key says it beside the system disk (#209).
+    expect(node(vmGraph(bp), "component:db").lines).toEqual([{ label: "Disks", text: "system, data 100 GB (gold)" }]);
     const g = vmGraph(bp, "/definition/blueprint", { designed: true });
     expect(ids(g).filter((id) => id.startsWith("disk"))).toEqual(["disk@0", "disk:db:0"]);
     expect(node(g, "component:web").lines).toEqual([]);

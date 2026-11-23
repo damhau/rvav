@@ -342,7 +342,7 @@ const stepRefs = refs(/\bsteps\.[a-z][a-z0-9_]*/g);
 
 const bindings = fields({ network: cel(true), groups: cel(true), template: cel(true), post_config: cel(true) });
 const guestOS = fields({ os_family: asIs });
-const disks = each(fields({ size_gb: cel(), storage_policy: asIs }));
+const disks = each(fields({ key: asIs, size_gb: cel(), storage_policy: asIs }));
 const nics = each(fields({ key: asIs, network: cel(true), ipam: asIs }));
 const vmTopology = fields({
   kind: asIs,

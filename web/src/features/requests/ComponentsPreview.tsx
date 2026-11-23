@@ -28,6 +28,43 @@ export function placedAt(p?: ComponentPlacement): string {
     .join(" · ");
 }
 
+type Disk = PreviewComponent["disks"][number];
+
+const gb = (d: Disk) => formatSize(d.size_gb, "GB");
+const addedDisk = (d: Disk) => (d.key ? `${d.key} ${gb(d)}` : gb(d));
+
+/** A VM's disks one by one, the system disk first: its size, unless the template keeps its own. */
+export function diskParts([system, ...added]: Disk[]): string[] {
+  if (!system) return [];
+  const label = i18n.t("requests:preview.system");
+  return [system.size_gb > 0 ? `${label} ${gb(system)}` : label, ...added.map(addedDisk)];
+}
+
+/** A VM's disks added up, then one by one; the template's disk keeps its size, which the preview doesn't know. */
+function disksText([system, ...added]: Disk[]): string {
+  if (!system) return "";
+  if (added.length === 0)
+    return system.size_gb > 0
+      ? i18n.t("requests:preview.disk", { size: gb(system) })
+      : i18n.t("requests:preview.templateDisk");
+  const sum = added.reduce((n, d) => n + d.size_gb, 0);
+  if (system.size_gb === 0)
+    return i18n.t("requests:preview.disksOnTemplate", {
+      total: formatSize(sum, "GB"),
+      parts: added.map(addedDisk).join(" + "),
+    });
+  return i18n.t("requests:preview.disks", {
+    total: formatSize(system.size_gb + sum, "GB"),
+    parts: diskParts([system, ...added]).join(" + "),
+  });
+}
+
+/** An adapter's network, subnet and next free addresses: one for each VM it adds from IP ranges. */
+function nicText(n: PreviewComponent["nics"][number]): string {
+  const addresses = n.ipam === "dhcp" ? "DHCP" : (n.addresses ?? (n.address ? [n.address] : [])).join(", ");
+  return [n.network, n.subnet, addresses].filter(Boolean).join(" ");
+}
+
 /** Who chose the cluster, when rvav did: a strategy other than the default says its name. */
 export function chosenBy(p?: ComponentPlacement): string {
   if (!p?.chosen) return "";
@@ -72,7 +109,7 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
       <span className="label">{t("preview.builds", { count: total })}</span>
       <ul className="flex flex-col gap-3">
         {components.map((c) => {
-          const disks = c.disks.map((d) => formatSize(d.size_gb, "GB")).join(" + ");
+          const disks = disksText(c.disks);
           const where = placedAt(c.placement);
           const by = chosenBy(c.placement);
           return (
@@ -96,11 +133,7 @@ export function ComponentsPreview({ components }: { components: PreviewComponent
                     {by ? ` (${by})` : ""}
                   </span>
                   <span className="font-mono text-caption break-words text-faint">
-                    {c.nics
-                      .map((n) =>
-                        [n.network, n.subnet, n.ipam === "dhcp" ? "DHCP" : n.address].filter(Boolean).join(" "),
-                      )
-                      .join(" · ")}
+                    {c.nics.map(nicText).join(" · ")}
                   </span>
                   <PlacedBy constraints={c.placement?.constraints} image={c.placement?.image} />
                   {c.tags && c.tags.length > 0 && (

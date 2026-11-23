@@ -940,7 +940,8 @@ export function preview(
     fields,
     names,
     ...(named.names ? { deployment_names: named.names } : {}),
-    addresses: next ? [next.ip] : [],
+    // As the server: its first component's first adapter's.
+    addresses: components ? (components[0]?.nics[0]?.addresses ?? []) : next ? [next.ip] : [],
     placement:
       vms > 0 && item.type === "vm_blueprint"
         ? {

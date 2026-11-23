@@ -6,6 +6,7 @@
 import type { EnvironmentKey, PreviewComponent, Project } from "@/lib/api/types";
 import { placedBy } from "./constraints";
 import { clusters, networks, sizes, templates, type SizeKey } from "./inventory";
+import { rangeHints } from "./ipRanges";
 import { nextFreeIp, vmNames } from "./logic";
 import type { Db, StoredItem } from "./seed";
 
@@ -26,6 +27,8 @@ export interface Part {
   nsxGroups?: string[];
   /** The key of the NSX segment made for the deployment its VMs are on. */
   segment?: string;
+  /** The disks it adds to the template's, as its blueprint does. */
+  disks?: { key?: string; size_gb: number; storage_policy?: string }[];
 }
 
 const text = (v: unknown, fallback = "") => (typeof v === "string" && v ? v : fallback);
@@ -81,7 +84,10 @@ export function threeTierParts(inputs: Inputs): Part[] {
   return [
     tier("web", "Web", nodes, "M", ["Web (new)"]),
     tier("app", "Application", 1, "M", ["Application (new)"]),
-    tier("db", "Database", 1, "L", ["Database (new)", "grp-backup-clients"]),
+    {
+      ...tier("db", "Database", 1, "L", ["Database (new)", "grp-backup-clients"]),
+      disks: [{ size_gb: 200, storage_policy: "gold" }],
+    },
   ];
 }
 
@@ -112,6 +118,8 @@ export function previewComponents(
 ): PreviewComponent[] {
   const network = text(inputs.network);
   const next = network ? nextFreeIp(db, network) : null;
+  // Each VM a component adds from IP ranges gets its own next address, across components.
+  const hinted = new Set<string>();
   const cluster = text(inputs.cluster) || clusters.find((c) => c.env === env)?.name;
   const datastore = text(inputs.datastore) || undefined;
   const parts: Part[] =
@@ -154,6 +162,8 @@ export function previewComponents(
         ]);
   return parts.map((p) => {
     const size = sizes[p.size] ?? sizes.M;
+    const ranged = network && !p.segment ? rangeHints(db, network, p.count, hinted) : undefined;
+    const addresses = ranged ?? (next ? [next.ip] : []);
     return {
       key: p.key,
       title: p.title,
@@ -173,16 +183,16 @@ export function previewComponents(
           network: p.segment ? undefined : network || undefined,
         }),
       },
-      disks: [{ size_gb: size.diskGb, datastore }],
+      disks: [{ size_gb: size.diskGb, datastore }, ...(p.disks ?? []).map((d) => ({ ...d, datastore }))],
       nics: [
         p.segment
           ? { key: "nic1", network: `A new NSX segment (${p.segment})`, ipam: "efficientip" as const }
           : {
               key: "nic1",
               network,
-              ipam: "efficientip" as const,
+              ipam: ranged ? ("ip_range" as const) : ("efficientip" as const),
               subnet: networks.find((n) => n.name === network)?.subnet,
-              address: next?.ip,
+              ...(addresses.length > 0 ? { address: addresses[0], addresses } : {}),
             },
       ],
       tags: [],

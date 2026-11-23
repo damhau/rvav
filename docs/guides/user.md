@@ -77,7 +77,15 @@ rvav's server, such as why a request was refused, which are in English.
      project, would have, and how large the largest deployment would be,
      against the deployment limits that apply;
    - whether someone must approve it, and who;
-   - the lease, and the placement.
+   - the lease, and the placement;
+   - each VM's disks, added up: the system disk, then each disk the item
+     adds, with its name and size. When the item doesn't size the system
+     disk, the VM keeps the template's disk, whose size the summary
+     doesn't show;
+   - the next free addresses, as a hint: on a network with rvav's IP
+     ranges, one for each VM you add, none twice. rvav reserves them as
+     it builds the VMs, which it builds at the same time, so which VM
+     gets which address isn't known until then.
 
    For an item that builds more than one VM, or runs several steps, the
    **Topology** under the fields draws what it builds: its servers and

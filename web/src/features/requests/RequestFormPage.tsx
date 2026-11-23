@@ -399,8 +399,8 @@ function Summary({
       : null,
     single && preview?.addresses?.length
       ? {
-          label: t("form.summary.address"),
-          value: t("form.summary.nextFree", { address: preview.addresses[0] }),
+          label: preview.addresses.length > 1 ? t("form.summary.addresses") : t("form.summary.address"),
+          value: t("form.summary.nextFree", { address: preview.addresses.join(", ") }),
           mono: true,
         }
       : null,

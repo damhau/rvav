@@ -98,4 +98,29 @@ describe("ComponentsPreview", () => {
     });
     expect(lines).toHaveTextContent("RHEL 9.4: no template in vCenter vc02.corp.example, ruled out");
   });
+
+  it("adds up a VM's disks, each added one beside the system disk, and gives each VM its range address (#209)", () => {
+    const ranged: PreviewComponent["nics"][number] = {
+      key: "nic1",
+      network: "dvpg-lab",
+      subnet: "10.32.20.0/24",
+      ipam: "ip_range",
+      address: "10.32.20.26",
+      addresses: ["10.32.20.26", "10.32.20.27"],
+    };
+    render(
+      <ComponentsPreview
+        components={[
+          { ...db, count: 2, disks: [{ size_gb: 40 }, { key: "data", size_gb: 100 }], nics: [ranged] },
+          { ...db, key: "app", title: "App", disks: [{ size_gb: 0 }, { key: "logs", size_gb: 20 }, { size_gb: 5 }] },
+          { ...db, key: "web", title: "Web", disks: [{ size_gb: 0 }] },
+        ]}
+      />,
+    );
+    const item = (name: string) => screen.getByRole("listitem", { name });
+    expect(item("Database")).toHaveTextContent("8 vCPU · 32 GB · disks 140 GB (system 40 GB + data 100 GB)");
+    expect(item("Database")).toHaveTextContent("dvpg-lab 10.32.20.0/24 10.32.20.26, 10.32.20.27");
+    expect(item("App")).toHaveTextContent("the template's disk + 25 GB (logs 20 GB + 5 GB)");
+    expect(item("Web")).toHaveTextContent("8 vCPU · 32 GB · the template's disk");
+  });
 });
