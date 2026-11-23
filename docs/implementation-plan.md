@@ -558,9 +558,23 @@ ignoreChanges missing.
 | [E1 Extensibility](https://github.com/damhau/rvav/milestone/23) | More topics, subscriptions that change the request, forms for custom day-2 actions, custom resource types, richer composites | D1, D2, D4, D8, D9, D11, B19, C27 |
 | [O1 Platform and tooling](https://github.com/damhau/rvav/milestone/24) | A command line, a Terraform provider and a PowerShell module, the UI in French, audit to syslog, notification templates and branding, FIPS | D18, D19, D21, A31–A33 |
 | [I1 Infrastructure gaps](https://github.com/damhau/rvav/milestone/25) | Several NSX Managers, rvav's own IP ranges, Active Directory computer objects, VM items drawn on the canvas, ServiceNow | C2, C11, C16, C31, D27 |
+| [V2 UI follow-ups](https://github.com/damhau/rvav/milestone/26) | One filter toolbar kept in the address, grouped tables, names instead of IDs in the audit log, refused saves at their field, two reviews of V2 | none |
+| [G2 Limits, sharing and enforcement](https://github.com/damhau/rvav/milestone/27) | Storage and per-VM limits with conditions, sharing a category or the AWX source, soft approval policies, a switch for custom forms, a request timeout, version warnings | A14, A27, A28, A29, C6, D21 |
+| [E2 Extensibility 2](https://github.com/damhau/rvav/milestone/28) | Files in shared variables, composites inside composites, a debugger for draft composites, triggers from webhooks, AMQP and SNMP | D4, D8, D9, D11 |
+| [T2 Templates, disks and tags](https://github.com/damhau/rvav/milestone/29) | Property groups in cloud-init, naming for deployments, segments, groups and disks, disk IO settings, first-class disks, a Tags page, disks and networks in Resources | B3, C7, C13, C14, C25 |
+| [X2 Updates and network day-2](https://github.com/damhau/rvav/milestone/30) | Updates that change in place, move or rebuild a VM, EfficientIP for added adapters, moving the first adapter, `ignore_changes` | B14, B15, C30 |
+| [O2 Server text in French](https://github.com/damhau/rvav/milestone/31) | The API's answers, day-2 forms, policy reasons, run steps, notifications and refusals in the person's language | A33 |
+
+G2 to O2 are the second round, decided on 2026-11-23 from the rows
+still Partial after I1. They run in this order: G2 and E2 side by side,
+then T2, X2 and O2. That page should count 93% after O2, and 94% once
+the release attaches rvav's command line, provider and module (D18).
 
 Still left out: Puppet and Salt (C21; AWX runs configuration
-management), vROps (C32), and what section 3 decided out.
+management), vROps (C32), what section 3 decided out, and five rows
+kept Partial for now: limits per zone (C5), on-demand NAT networks
+(C10), OVF from a URL and NSX gateways (C19), packages of
+subscriptions and policies (D10), and converting vRO content (D30).
 
 ## 7. Dependencies
 
