@@ -33,6 +33,10 @@ func (n namingSpec) counterKey(prefix string) string {
 	return prefix
 }
 
+// errNoNaming: no naming policy applies, and the blueprint has no naming
+// of its own (publishing allows that, as a policy may supply one).
+var errNoNaming = errors.New("no naming policy applies, and the blueprint has no naming")
+
 func (s *Service) namingFor(ctx context.Context, projectID, environment, blueprintNaming string) (namingSpec, error) {
 	spec := namingSpec{Counter: "prefix"}
 	raw := blueprintNaming
@@ -42,6 +46,9 @@ func (s *Service) namingFor(ctx context.Context, projectID, environment, bluepri
 		raw, spec.PolicyID, spec.Name, spec.Counter = pol.Template, pol.ID, pol.Name, pol.Counter
 	case !errors.Is(err, store.ErrNotFound):
 		return spec, err
+	}
+	if raw == "" {
+		return spec, errNoNaming
 	}
 	spec.Template, err = naming.Parse(raw)
 	if pol.ID != "" {

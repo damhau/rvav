@@ -1162,7 +1162,7 @@ and an environment, which policies would apply to a request and why.
 | **Lease** | Default and longest leases per environment or project, extensions, the lifetime, the end (power off then delete, delete, or only tell the owner), and the enforcement. Lease rules give another lease to the deployments a condition matches (see [Lease rules and lifetime](#lease-rules-and-lifetime)). |
 | **Day-2** | Who may run which action, where, which need approval (deleting in production, by default), and the enforcement. You tick **Roles** by name: **Owner** for the deployment's owner, the built-in roles a day-2 action is given to, and the custom roles. With none ticked, the policy applies to anyone. |
 | **Limits** | How many deployments each user or each project may have, and how much vCPU and memory each deployment may take (see [Deployment limits](#deployment-limits)). |
-| **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment, with where the counter starts and how much it moves (**Start at** 100 and **Increment** 10 give 100, 110, 120). A counter in use goes on from its last number, and jumps to the start when you raise it past that number. Names are never given twice, and are checked free in vCenter and DNS. |
+| **Naming** | Name templates (`{project}-{environment}-{inputs.role}{seq:03}`), offered by item, project or environment, with where the counter starts and how much it moves (**Start at** 100 and **Increment** 10 give 100, 110, 120). A counter in use goes on from its last number, and jumps to the start when you raise it past that number. Names are never given twice, and are checked free in vCenter and DNS. A policy wins over the item's own naming; where none applies, the item's names its VMs, and a request for an item without one is refused. |
 | **Quotas** | What all of rvav may hold, and what each user may hold across rvav (see [Quotas](#quotas)). |
 
 Each tab is a list. To add a policy, select **New approval policy** (or
@@ -1642,6 +1642,14 @@ In the YAML, `memory_gb: 4` and `memory_gb: "4"` mean the same. Saving a
 draft refuses, at its field, a binding that is a list, and CEL that reads
 an input the form doesn't have, such as `inputs.zone` without a `zone`
 input.
+
+A VM blueprint's VMs are named `{project}-{environment}-{component}{seq:03}`
+(`naming`): `web-dev-001` for its one VM, `web-dev-db001` for a `db`
+component's. A naming policy that applies to the project and environment
+wins over it ([Policies](#policies)). You can publish a VM item without a
+naming, for VMs a naming policy names, but where no policy applies, a
+request for it is refused and asks the requester to have you check the
+item.
 
 An item's page has its main action in its header: **Publish** the
 draft, or **New draft** from the published version. Publishing waits

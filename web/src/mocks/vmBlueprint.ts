@@ -342,6 +342,17 @@ export function vmSizeProblems(bp: Rec, ptr: string): FieldError[] {
 }
 
 /**
+ * The VMs a VM blueprint gives no naming, as the server's components take
+ * the blueprint's: "" for its one VM, else each such component's title or key.
+ */
+export function unnamedVMs(bp: Rec | undefined): string[] {
+  if (!bp || text(bp.kind) !== "vm" || text(bp.naming)) return [];
+  const comps = list(bp.components).map(rec);
+  if (comps.length === 0) return [""];
+  return comps.filter((c) => !text(c.naming)).map((c) => text(c.title) || text(c.key));
+}
+
+/**
  * As the server's checkInputReads: a VM blueprint's CEL reads only the
  * form's inputs, its property groups' among them; a request would fail on
  * another.

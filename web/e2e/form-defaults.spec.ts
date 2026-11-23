@@ -37,6 +37,7 @@ ui_schema:
       value_source: { kind: cel, params: { value: 'environment == "prd" ? 8 : 2' } }
 blueprint:
   kind: vm
+  naming: "{project}-{environment}-{seq}"
   template: tpl-rhel9.4-2026.10
   guest: { os_family: linux, domain: corp.example }
   bindings: { vcpu: "2", memory_gb: "4" }

@@ -617,7 +617,12 @@ number needs it to be whole and 1 or more. The refusal is at the binding,
 such as `/blueprint/components/1/bindings/memory_gb`. CEL that reads the
 inputs is worked out when the item is requested, and a request whose
 inputs give no size is refused. A VM item made with **New item** starts
-with `vcpu: "2"` and `memory_gb: "4"`.
+with `vcpu: "2"` and `memory_gb: "4"`, and with
+`naming: "{project}-{environment}-{component}{seq:03}"`: `web-dev-001`,
+or `web-dev-db001` for a `db` component's VMs. A VM item without a
+naming is published, as a naming policy may name its VMs; a request for
+it is refused (422, `no_naming`) where no policy applies, and asks the
+requester to have a catalog admin check the item.
 
 Without `components` the blueprint builds one VM, and a request for
 several makes one deployment per VM; with them, one deployment holding
@@ -1769,6 +1774,9 @@ warnings it went on despite, and the audit log has them.
 - Counter: one per name prefix (`web-prd-app`, `web-prd-db`…) or one for the
   whole policy, with where it starts and how much it moves (**Start at** 100
   and **Increment** 10 give 100, 110, 120). Uniqueness checked in vCenter and DNS.
+- The most specific policy wins over the blueprint's `naming`; where none
+  applies, the blueprint's names the VMs. A request for VMs neither names
+  is refused (422, `no_naming`), never left to fail.
 
 ## 6. Deployments
 

@@ -286,6 +286,7 @@ function blueprintFor(item: StoredItem): Record<string, unknown> {
   return item.type === "vm_blueprint"
     ? {
         kind: "vm",
+        naming: "{project}-{environment}-{component}{seq:03}",
         template: "tpl-rhel9.4-2026.10",
         guest: { os_family: "linux", domain: "corp.example" },
         bindings: { vcpu: "2", memory_gb: "4" },
@@ -1094,6 +1095,17 @@ export const itemBlueprints = (db: Db) =>
       blueprint: v.definition.blueprint,
     })),
   );
+
+/** The blueprint of the version a request names, the item's default when it names none. */
+export function versionBlueprint(
+  db: Db,
+  item: StoredItem,
+  versionId: string | undefined,
+): Record<string, unknown> | undefined {
+  const id = versionId || item.version.id;
+  const v = (state(db).versions[item.id] ?? []).find((x) => x.id === id);
+  return v?.definition.blueprint ?? seededBlueprint(item.slug);
+}
 
 /** The blueprint of the item's published version. */
 export function publishedBlueprint(db: Db, item: StoredItem): Record<string, unknown> | undefined {

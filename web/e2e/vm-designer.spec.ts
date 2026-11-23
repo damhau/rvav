@@ -27,6 +27,7 @@ const item = "Web shop";
 /** What the build gives, as the designer writes it. */
 const built = {
   kind: "vm",
+  naming: "{project}-{environment}-{component}{seq:03}",
   template: "tpl-rhel9.4-2026.10",
   guest: { os_family: "linux", domain: "corp.example" },
   bindings: { vcpu: "2", memory_gb: "4" },
@@ -55,6 +56,7 @@ ui_schema:
 initial_values: {}
 blueprint:
   kind: vm
+  naming: "{project}-{environment}-{component}{seq:03}"
   template: tpl-rhel9.4-2026.10
   guest:
     os_family: linux

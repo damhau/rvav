@@ -719,6 +719,11 @@ func (s *Service) evaluatePart(ctx context.Context, ev *Evaluation, pl *placemen
 
 	part.ad, part.adDir = computerOf(ev, part.guest, add), ev.adDir
 	spec, err := s.namingFor(ctx, ev.Project.ID, ev.Env.Key, c.Naming)
+	if errors.Is(err, errNoNaming) {
+		add("", "no_naming", fmt.Sprintf("No naming policy applies to %s in %s, and the item gives the VMs no naming of its own. Ask a catalog admin to check this item.",
+			ev.Project.Name, ev.Env.Name))
+		return part, nil
+	}
 	if err != nil {
 		return part, err
 	}

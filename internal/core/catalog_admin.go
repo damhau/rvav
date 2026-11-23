@@ -880,8 +880,9 @@ func starterDefinition(itemType, name string) api.CatalogVersionDefinition {
 	case "vm_blueprint":
 		// A fixed size rather than a size input: a new install offers no
 		// size presets, so rvav.sizes would leave the first request nothing
-		// to choose.
-		d.Blueprint = map[string]any{"kind": blueprint.KindVM, "template": "", "naming": "",
+		// to choose. A naming of its own, as a new install has no naming
+		// policy either; {component} names components apart once it has some.
+		d.Blueprint = map[string]any{"kind": blueprint.KindVM, "template": "", "naming": "{project}-{environment}-{component}{seq:03}",
 			"guest":    map[string]any{"os_family": "linux", "domain": ""},
 			"bindings": map[string]any{"vcpu": "2", "memory_gb": "4"}}
 	case "workflow":

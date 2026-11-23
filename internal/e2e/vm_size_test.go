@@ -76,9 +76,6 @@ func TestNewVMItemSize(t *testing.T) {
 		save(def, 200, nil)
 		h.json("POST", "/api/v1/admin/catalog/items/starter-vm/versions/"+item.DraftVersion.Id+"/publish", admin, nil, 200, nil)
 		h.json("PUT", "/api/v1/admin/catalog/items/starter-vm/entitlements", admin, api.CatalogEntitlements{ProjectIds: []string{web}}, 200, nil)
-		// The starter names no VMs: the project's naming policy does.
-		h.json("POST", "/api/v1/admin/naming-policies", "mkeller", api.NamingPolicyWrite{Name: "Web names",
-			Template: "{project}-{environment}-vm{seq:02}", Offers: &[]api.Offer{{ProjectId: new(web)}}}, 201, nil)
 		var req api.Request
 		h.json("POST", "/api/v1/requests", "tnguyen", api.RequestDraft{CatalogItemId: item.Id, VersionId: item.DraftVersion.Id,
 			ProjectId: web, Environment: "dev", Inputs: map[string]any{"name": "first"}}, 202, &req, "Idempotency-Key", uuid.NewString())

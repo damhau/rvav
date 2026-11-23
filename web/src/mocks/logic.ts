@@ -30,6 +30,8 @@ import { celBool, celEval } from "./cel";
 import { warning } from "./warnings";
 import { multiParts, partVMs, previewComponents } from "./components";
 import { requestedNames } from "./deploymentNames";
+import { versionBlueprint } from "./catalogAdmin";
+import { unnamedVMs } from "./vmBlueprint";
 import { quotaAfter, quotaCheck } from "./quotas";
 import { limitCheck } from "./limits";
 import { roleRefs } from "./roles";
@@ -905,6 +907,19 @@ export function preview(
     item.type === "vm_blueprint" || item.slug === "postgres-cluster"
       ? previewComponents(db, item, project, draft.environment, inputs, count)
       : undefined;
+  // As the server's namingFor: a VM no naming policy names takes its
+  // blueprint's naming, and is refused without one (#216).
+  const unnamed =
+    item.type === "vm_blueprint" && !namingTemplate(db, project.id, draft.environment)
+      ? unnamedVMs(versionBlueprint(db, item, draft.version_id))
+      : [];
+  for (const vm of unnamed)
+    errors.push({
+      field: "",
+      code: "no_naming",
+      message: `${vm ? `${vm}: ` : ""}No naming policy applies to ${project.name} in ${where.name}, and the item gives the VMs no naming of its own. Ask a catalog admin to check this item.`,
+    });
+  if (unnamed.length > 0) for (const c of components ?? []) c.names = [];
   const names = components
     ? components.flatMap((c) => c.names)
     : vms > 0

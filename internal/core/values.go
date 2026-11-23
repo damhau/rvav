@@ -483,6 +483,9 @@ func (s *Service) builtinValues(ctx context.Context, p *auth.Principal, proj sto
 			return out, err
 		}
 		spec, err := s.namingFor(ctx, proj.ID, env, bp.Naming)
+		if errors.Is(err, errNoNaming) {
+			return out, nil // the request's preview says why
+		}
 		if err != nil {
 			return out, err
 		}

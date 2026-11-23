@@ -25,6 +25,7 @@ ui_schema:
     owner: { widget: text, label: Owner }
 blueprint:
   kind: vm
+  naming: "{project}-{environment}-{seq}"
   template: tpl-rhel9.4-2026.10
   guest: { os_family: linux, domain: corp.example }
   bindings: { vcpu: "2", memory_gb: "4" }

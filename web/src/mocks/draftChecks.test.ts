@@ -1,8 +1,8 @@
 // The mocks check a VM item's draft and publish it as the server does
-// (internal/core/blueprint_check.go): the size New item gives it, and the
-// CPU and memory publishing needs, at the binding; what its bindings are
-// and read (blueprint_inputs.go); what its custom resources bind
-// (custom_resources.go).
+// (internal/core/blueprint_check.go): the size and naming New item gives
+// it, and the CPU and memory publishing needs, at the binding; what its
+// bindings are and read (blueprint_inputs.go); what its custom resources
+// bind (custom_resources.go); a request nothing names refused (#216).
 import { describe, expect, it } from "vitest";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -27,6 +27,7 @@ async function newVmItem(slug: string) {
   const at = { params: { path: { itemId: item.id, versionId: item.draft_version!.id } } };
   const draft = await call(api.GET("/admin/catalog/items/{itemId}/versions/{versionId}", at));
   return {
+    item,
     def: draft.definition,
     save: (definition: Def) =>
       call(api.PUT("/admin/catalog/items/{itemId}/versions/{versionId}", { ...at, body: { definition } })),
@@ -62,6 +63,67 @@ describe("the mocks' VM item drafts", () => {
 
     await save(def);
     expect((await publish()).published_version).toBeDefined();
+  });
+
+  it("name a new VM item's VMs, and refuse a request for one nothing names until a naming policy does", async () => {
+    const published = async (slug: string, naming?: string) => {
+      const { item, def, save, publish } = await newVmItem(slug);
+      const bp = def.blueprint as Record<string, unknown>;
+      expect(bp.naming).toBe("{project}-{environment}-{component}{seq:03}");
+      if (naming !== undefined) await save(withBlueprint(def, { ...bp, naming }));
+      await publish();
+      await call(
+        api.PUT("/admin/catalog/items/{itemId}/entitlements", {
+          params: { path: { itemId: item.id } },
+          body: { all_projects: false, project_ids: ["prj_web"] },
+        }),
+      );
+      return () =>
+        call(
+          api.POST("/requests/preview", {
+            body: {
+              catalog_item_id: item.id,
+              version_id: item.draft_version!.id,
+              project_id: "prj_web",
+              environment: "dev",
+              inputs: { name: "first" },
+              count: 1,
+            },
+          }),
+        );
+    };
+    const unnamed = (p: S["RequestPreview"]) => p.errors.filter((e) => e.code === "no_naming");
+
+    const starter = await published("named-vm");
+    expect(unnamed(await starter())).toEqual([]);
+
+    const bare = await published("unnamed-vm", "");
+    const refused = await bare();
+    expect(refused.valid).toBe(false);
+    expect(refused.names).toEqual([]);
+    expect(unnamed(refused)).toEqual([
+      {
+        field: "",
+        code: "no_naming",
+        message:
+          "No naming policy applies to Web Platform in Development, and the item gives the VMs no naming of its own. Ask a catalog admin to check this item.",
+      },
+    ]);
+
+    const policy = await call(
+      api.POST("/admin/naming-policies", {
+        body: {
+          name: "Web names",
+          template: "{project}-{environment}-pol{seq:02}",
+          counter: "prefix",
+          start: 1,
+          increment: 1,
+          offers: [{ project_id: "prj_web" }],
+        },
+      }),
+    );
+    expect(unnamed(await bare())).toEqual([]);
+    await call(api.DELETE("/admin/naming-policies/{id}", { params: { path: { id: policy.id } } }));
   });
 
   it("take a number for a binding as its constant, and refuse a list or an input the form hasn't, at the field", async () => {
