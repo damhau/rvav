@@ -343,7 +343,7 @@ function check(st: RangeState, w: S["IpRangeWrite"], id?: string): S["FieldError
         err(
           "/network",
           "in_use",
-          `VMs hold ${given.length} addresses from this range: its vCenter, network, subnet and gateway can't change.`,
+          `${given.length === 1 ? "A VM holds 1 address" : `VMs hold ${given.length} addresses`} from this range: its vCenter, network, subnet and gateway can't change.`,
         ),
       );
     const ok = usable({ ...r, cidr: subnet });

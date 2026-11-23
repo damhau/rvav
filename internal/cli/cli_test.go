@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -272,5 +273,21 @@ func TestOutput(t *testing.T) {
 	}
 	if (&app{output: "yaml"}).checkOutput() == nil {
 		t.Fatal("-o yaml should fail")
+	}
+}
+
+func TestRangeSkips(t *testing.T) {
+	var out bytes.Buffer
+	a := &app{Env: Env{Out: &out}, output: "table"}
+	rg := rvavclient.IpRange{Id: "ipr_1", Name: "Lab", Network: "dvpg-lab", Vcenter: "vc01", Cidr: "10.0.0.0/24", Gateway: "10.0.0.1",
+		StartAddress: "10.0.0.10", EndAddress: "10.0.0.13", Size: 4, Free: 3, Taken: 1}
+	if err := a.printIPRange(rg, nil); err != nil ||
+		!regexp.MustCompile(`\nSkipped: +1 address: a VM holds it that the range didn't give it to, or a DNS server is on it\n`).MatchString(out.String()) {
+		t.Fatalf("one skipped = %q, %v", out.String(), err)
+	}
+	out.Reset()
+	rg.Taken, rg.Free = 0, 4
+	if err := a.printIPRange(rg, nil); err != nil || strings.Contains(out.String(), "Skipped") {
+		t.Fatalf("none skipped = %q, %v", out.String(), err)
 	}
 }

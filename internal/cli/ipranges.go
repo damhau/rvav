@@ -130,11 +130,21 @@ func (a *app) ipRangesShowCmd() *cobra.Command {
 	}
 }
 
+func skipped(n int) string {
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return "1 address: a VM holds it that the range didn't give it to, or a DNS server is on it"
+	}
+	return fmt.Sprintf("%d addresses: VMs hold them that the range didn't give them to, or DNS servers are on them", n)
+}
+
 func (a *app) printIPRange(x rvavclient.IpRange, given []rvavclient.IpAllocation) error {
 	if err := details(a.Out, "Range", x.Name+" ("+x.Id+")", "Description", str(x.Description),
 		"Network", x.Network+" in "+x.Vcenter, "Subnet", x.Cidr+" via "+x.Gateway,
 		"Addresses", x.StartAddress+" to "+x.EndAddress, "Excluded", strings.Join(x.Excluded, ", "),
-		"Free", fmt.Sprintf("%d of %d", x.Free, x.Size), "DNS servers", strings.Join(x.DnsServers, ", "),
+		"Free", fmt.Sprintf("%d of %d", x.Free, x.Size), "Skipped", skipped(x.Taken), "DNS servers", strings.Join(x.DnsServers, ", "),
 		"Search domains", strings.Join(x.DnsSearchDomains, ", "), "DNS domain", x.DnsDomain,
 		"DNS records", "none: rvav writes no DNS records for its ranges"); err != nil {
 		return err

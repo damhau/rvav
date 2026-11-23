@@ -227,7 +227,11 @@ func checkIPRange(r store.IPRange, rg iprange.Range, old *store.IPRange, others 
 		return errs
 	}
 	if old.VCenter != r.VCenter || old.Network != r.Network || old.CIDR != r.CIDR || old.Gateway != r.Gateway {
-		bad("/network", "in_use", "VMs hold %d addresses from this range: its vCenter, network, subnet and gateway can't change.", len(given))
+		holders := fmt.Sprintf("VMs hold %d addresses", len(given))
+		if len(given) == 1 {
+			holders = "A VM holds 1 address"
+		}
+		bad("/network", "in_use", "%s from this range: its vCenter, network, subnet and gateway can't change.", holders)
 	}
 	for _, g := range given {
 		a, err := netip.ParseAddr(g)

@@ -311,7 +311,7 @@ for all of rvav. Administrators set ranges up in the web app or with
 | Command | What it does |
 |---|---|
 | `rvavctl ip-ranges list` | The ranges, with their network and free addresses. `--network dvpg-lab-vl510` for one network's. |
-| `rvavctl ip-ranges show Lab` | A range, by name or ID, and each address it gave: the VM, its adapter and its deployment. |
+| `rvavctl ip-ranges show Lab` | A range, by name or ID, how many addresses it skips because a VM or a DNS server holds them without the range having given them, and each address it gave: the VM, its adapter and its deployment. |
 | `rvavctl ip-ranges release Lab 10.51.0.12` | Gives back an address of a VM rvav no longer has, such as an unregistered VM's, so that the range can give it again. Needs the right to manage the infrastructure. |
 
 rvav refuses to give back an address that a deployment's VM holds:
