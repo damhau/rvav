@@ -327,7 +327,7 @@ func (s *Service) DeleteSubscription(ctx context.Context, p *auth.Principal, id 
 	if err := s.Store.DeleteSubscription(ctx, id); err != nil {
 		return err
 	}
-	s.audit(ctx, p, "subscription.delete", "subscription", id, nil, map[string]any{"name": sub.Name, "topic": sub.Topic})
+	s.auditGone(ctx, p, "subscription.delete", "subscription", id, sub.Name, nil, map[string]any{"name": sub.Name, "topic": sub.Topic})
 	return nil
 }
 

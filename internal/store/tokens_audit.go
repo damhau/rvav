@@ -44,7 +44,8 @@ func (s *Store) RevokeAPIToken(ctx context.Context, id string) error {
 	return err
 }
 
-// AuditRow is an audit event with its actor's and project's names.
+// AuditRow is an audit event with its actor's, target's and project's
+// names.
 type AuditRow struct {
 	ID          int64           `db:"id"`
 	At          time.Time       `db:"at"`
@@ -57,6 +58,12 @@ type AuditRow struct {
 	ProjectCode *string         `db:"project_code"`
 	ProjectName *string         `db:"project_name"`
 	Detail      json.RawMessage `db:"detail"`
+	// TargetName is the name recorded with the event, or for an older one,
+	// the target's own now.
+	TargetName *string `db:"target_name"`
+	// TargetExists says whether the target is still kept, nil for a type
+	// that isn't a record of its own.
+	TargetExists *bool `db:"target_exists"`
 }
 
 // AuditFilter narrows the audit log. Projects, when not nil, limits it to
@@ -72,18 +79,18 @@ type AuditFilter struct {
 // AuditEvents lists events newest first. An action ending in "." is a
 // prefix (catalog.).
 func (s *Store) AuditEvents(ctx context.Context, f AuditFilter) ([]AuditRow, error) {
-	rows, _ := s.Pool.Query(ctx, `select a.id, a.at, a.actor_id, u.name as actor_name, a.action, a.target_type, a.target_id,
-		a.project_id, p.code as project_code, p.name as project_name, a.detail
-		from audit_events a left join users u on u.id = a.actor_id left join projects p on p.id = a.project_id
+	rows, _ := s.Pool.Query(ctx, `select `+auditRowColumns+`
+		from (select a.* from audit_events a left join users u on u.id = a.actor_id
 		where ($1 = '' or a.action ilike '%' || $1 || '%' or a.target_id ilike '%' || $1 || '%' or u.name ilike '%' || $1 || '%'
-		       or a.detail::text ilike '%' || $1 || '%')
+		       or a.target_name ilike '%' || $1 || '%' or a.detail::text ilike '%' || $1 || '%')
 		  and ($2 = '' or a.actor_id = $2)
 		  and ($3 = '' or a.action = $3 or (right($3, 1) = '.' and starts_with(a.action, $3)))
 		  and ($4 = '' or a.project_id = $4)
 		  and ($5::text[] is null or a.project_id = any($5))
 		  and ($6::timestamptz is null or a.at >= $6) and ($7::timestamptz is null or a.at < $7)
 		  and ($8 = 0 or a.id < $8)
-		order by a.id desc limit $9`,
+		order by a.id desc limit $9) a `+auditRowJoins+`
+		order by a.id desc`,
 		f.Search, f.ActorID, f.Action, f.ProjectID, f.Projects, f.From, f.To, f.Before, f.Limit)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[AuditRow])
 }

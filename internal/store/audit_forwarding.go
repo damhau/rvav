@@ -188,11 +188,10 @@ func (s *Store) SweepAuditDeliveries(ctx context.Context) (int64, error) {
 // AuditBacklog is the oldest events waiting for a destination after the
 // event after (0 for all), oldest first, without those set aside.
 func (s *Store) AuditBacklog(ctx context.Context, destinationID string, after int64, limit int) ([]AuditRow, error) {
-	rows, _ := s.Pool.Query(ctx, `select a.id, a.at, a.actor_id, u.name as actor_name, a.action, a.target_type, a.target_id,
-		a.project_id, p.code as project_code, p.name as project_name, a.detail
-		from audit_deliveries q join audit_events a on a.id = q.event_id
-		left join users u on u.id = a.actor_id left join projects p on p.id = a.project_id
-		where q.destination_id = $1 and q.set_aside_at is null and q.event_id > $3 order by a.id limit $2`, destinationID, limit, after)
+	rows, _ := s.Pool.Query(ctx, `select `+auditRowColumns+`
+		from (select a.* from audit_deliveries q join audit_events a on a.id = q.event_id
+		where q.destination_id = $1 and q.set_aside_at is null and q.event_id > $3 order by a.id limit $2) a `+auditRowJoins+`
+		order by a.id`, destinationID, limit, after)
 	return pgx.CollectRows(rows, pgx.RowToStructByName[AuditRow])
 }
 

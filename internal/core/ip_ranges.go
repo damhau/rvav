@@ -339,7 +339,7 @@ func (s *Service) DeleteIPRange(ctx context.Context, p *auth.Principal, id strin
 	case err != nil:
 		return err
 	}
-	s.audit(ctx, p, "ip_range.delete", "ip_range", id, nil, map[string]string{"name": r.Name, "network": r.Network, "vcenter": r.VCenter})
+	s.auditGone(ctx, p, "ip_range.delete", "ip_range", id, r.Name, nil, map[string]string{"name": r.Name, "network": r.Network, "vcenter": r.VCenter})
 	return nil
 }
 

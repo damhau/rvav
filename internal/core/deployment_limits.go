@@ -139,7 +139,7 @@ func (s *Service) DeleteDeploymentLimitPolicy(ctx context.Context, p *auth.Princ
 	} else if err != nil {
 		return err
 	}
-	s.audit(ctx, p, "policy.limit.delete", "deployment_limit_policy", id, old.ProjectID, nil)
+	s.auditGone(ctx, p, "policy.limit.delete", "deployment_limit_policy", id, old.Name, old.ProjectID, nil)
 	return nil
 }
 

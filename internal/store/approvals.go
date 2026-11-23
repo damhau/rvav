@@ -461,6 +461,9 @@ type AuditEvent struct {
 	TargetID   string
 	ProjectID  *string
 	Detail     any
+	// TargetName names a target already gone when its event is written,
+	// such as a deleted role; others are named from their own row.
+	TargetName string
 }
 
 // Audit records an event and queues it, in the same statement, for each
@@ -470,11 +473,11 @@ func (s *Store) Audit(ctx context.Context, db DB, e AuditEvent) error {
 	if err != nil || e.Detail == nil {
 		detail = []byte("{}")
 	}
-	_, err = db.Exec(ctx, `with e as (insert into audit_events (actor_id, action, target_type, target_id, project_id, detail)
-			values ($1, $2, $3, $4, $5, $6) returning id)
+	_, err = db.Exec(ctx, `with e as (insert into audit_events (actor_id, action, target_type, target_id, project_id, detail, target_name)
+			values ($1, $2, $3, $4, $5, $6, `+auditNameAtWrite+`) returning id)
 		insert into audit_deliveries (destination_id, event_id)
 		select d.id, e.id from e, audit_destinations d where d.enabled and (cardinality(d.categories) = 0 or $7 = any(d.categories))`,
-		e.ActorID, e.Action, e.TargetType, e.TargetID, e.ProjectID, detail, AuditCategory(e.Action))
+		e.ActorID, e.Action, e.TargetType, e.TargetID, e.ProjectID, detail, AuditCategory(e.Action), e.TargetName)
 	return err
 }
 

@@ -820,7 +820,7 @@ func TestTokensAndAudit(t *testing.T) {
 		}
 		code, csv, hdr := h.do("GET", "/api/v1/audit?format=csv&q=cdubois", admin, nil)
 		if code != 200 || !strings.HasPrefix(hdr.Get("Content-Type"), "text/csv") ||
-			!strings.HasPrefix(string(csv), "at,actor,action,target_type,target_id,project,detail\n") || !strings.Contains(string(csv), "member.set") {
+			!strings.HasPrefix(string(csv), "at,actor,action,target_type,target_id,project,detail,target_name\n") || !strings.Contains(string(csv), "member.set") {
 			t.Fatalf("CSV %d %s:\n%s", code, hdr.Get("Content-Type"), csv)
 		}
 	})

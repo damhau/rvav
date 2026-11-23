@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/can";
 import { celCheck } from "./cel";
-import { audited } from "./governance";
+import { audited, auditTargetNames } from "./governance";
 import { typesUsingWorkflow } from "./resourceTypes";
 import type { Db } from "./seed";
 import { unknownField } from "./strict";
@@ -257,6 +257,9 @@ function problem(status: number, title: string, errors?: S["FieldError"][], deta
     { status, headers: { "Content-Type": "application/problem+json" } },
   );
 }
+
+auditTargetNames("subscription", (db, id) => state(db).subs.find((s) => s.id === id)?.name);
+auditTargetNames("workflow", (db, key) => state(db).workflows.find((w) => w.key === key)?.title);
 
 function state(db: Db): ExtState {
   const d = db as Db & { extensibility?: ExtState };
@@ -803,7 +806,7 @@ export function extensibilityHandlers(db: Db, base: string, wait: () => Promise<
       if (i < 0) return notFound();
       const gone = st.subs.splice(i, 1)[0]!;
       st.runs = st.runs.filter((r) => r.subscription_id !== gone.id);
-      audited(db, "subscription.deleted", "subscription", gone.id, { name: gone.name });
+      audited(db, "subscription.deleted", "subscription", gone.id, { name: gone.name }, gone.name);
       return new HttpResponse(null, { status: 204 });
     }),
     http.post(`${base}/admin/subscriptions/:id/test`, async ({ params }) => {

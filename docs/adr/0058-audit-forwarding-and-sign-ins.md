@@ -7,7 +7,7 @@
   administrator of [ADR-0030](0030-settings-and-local-administrator.md),
   the stored secrets of [ADR-0038](0038-names-groups-secrets-properties.md)
   and rvavctl's sign-in of [ADR-0051](0051-command-line.md). O1.4 (#170),
-  vRA parity D19; amended by O1.7 (#173).
+  vRA parity D19; amended by O1.7 (#173) and V2.4 (#184).
 
 ## Context
 vRA sends its audit log to syslog (Log Insight) and records who signed
@@ -145,9 +145,14 @@ itself is audited.
   private enterprise number from IANA, which rvav doesn't have;
 - MSG is the event as the webhook has it, in JSON: `id`, `at`,
   `category`, `action` (whole), `actor`, `target_type`, `target_id`,
-  `project`, `detail`, after a byte order mark when it isn't all ASCII
-  (RFC 5424's MSG-UTF8). A UDP datagram over 8 KiB goes with
-  `{"truncated": true}` as its detail.
+  `target_name`, `project`, `detail`, after a byte order mark when it
+  isn't all ASCII (RFC 5424's MSG-UTF8). A UDP datagram over 8 KiB goes
+  with `{"truncated": true}` as its detail.
+- `target_name` (V2.4) is what the target was called when the event was
+  recorded, left out when rvav has no name for it: a setting, an
+  integration, or a target deleted before rvav kept names. It is a field
+  added to `rvav.audit.v1`, not a new contract: a receiver reads the
+  fields it knows by name and ignores the others.
 
 ### Sign-ins
 The API records what it sees, and the clients report what only they see:

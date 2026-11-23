@@ -11259,6 +11259,21 @@ export interface components {
             action: string;
             target_type: string;
             target_id: string;
+            /**
+             * @description What the target was called when the event was recorded, so a
+             *     target renamed or deleted since keeps the name it had; for an
+             *     event recorded before rvav kept names, what it is called now.
+             *     Left out when rvav has no name for it: a setting, an
+             *     integration, or a target deleted before rvav kept names.
+             */
+            target_name?: string;
+            /**
+             * @description Whether rvav still keeps the target, so its page opens. A deleted
+             *     deployment is kept, with its history. Left out for a target rvav
+             *     doesn't keep as a record of its own, such as a setting, and for
+             *     an event on none, such as a failed sign-in by nobody known.
+             */
+            target_exists?: boolean;
             project?: components["schemas"]["ProjectRef"] | null;
             /**
              * @description What the action changed, or how it went. The `auth.*` events'
@@ -20278,7 +20293,11 @@ export interface operations {
                 project_id?: components["parameters"]["ProjectIdQuery"];
                 from?: string;
                 to?: string;
-                /** @description csv answers every matching event as a CSV file. */
+                /**
+                 * @description csv answers every matching event as a CSV file, with the columns
+                 *     `at`, `actor`, `action`, `target_type`, `target_id`, `project`,
+                 *     `detail` and `target_name`.
+                 */
                 format?: "json" | "csv";
                 limit?: components["parameters"]["Limit"];
                 /** @description The `next_cursor` from the previous page. */

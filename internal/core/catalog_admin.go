@@ -217,7 +217,7 @@ func (s *Service) DeleteCatalogItem(ctx context.Context, p *auth.Principal, idOr
 	} else if err != nil {
 		return err
 	}
-	s.auditCatalog(ctx, p, "catalog.item.delete", it.ID, map[string]any{"slug": it.Slug, "name": it.Name})
+	s.auditGone(ctx, p, "catalog.item.delete", "catalog_item", it.ID, it.Name, nil, map[string]any{"slug": it.Slug, "name": it.Name})
 	// Its file is removed from the repository.
 	if fileErr == nil && s.gitTracks(it) {
 		if err := s.Store.MarkGitRemove(ctx, file.Path, p.User.ID, "Remove "+it.Slug); err != nil {

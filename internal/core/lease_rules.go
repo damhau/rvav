@@ -247,7 +247,7 @@ func (s *Service) DeleteLeaseRule(ctx context.Context, p *auth.Principal, id str
 	} else if err != nil {
 		return err
 	}
-	s.audit(ctx, p, "policy.lease_rule.delete", "lease_rule", id, old.ProjectID, nil)
+	s.auditGone(ctx, p, "policy.lease_rule.delete", "lease_rule", id, old.Name, old.ProjectID, nil)
 	return nil
 }
 

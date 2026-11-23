@@ -507,7 +507,9 @@ func (s *Server) SearchUsers(w http.ResponseWriter, r *http.Request, params api.
 // writeAuditCSV writes audit events as CSV, the detail as JSON.
 func writeAuditCSV(w http.ResponseWriter, items []api.AuditEvent) {
 	c := csv.NewWriter(w)
-	_ = c.Write([]string{"at", "actor", "action", "target_type", "target_id", "project", "detail"})
+	// target_name comes last: readers that take the columns by position
+	// keep finding the others where they were.
+	_ = c.Write([]string{"at", "actor", "action", "target_type", "target_id", "project", "detail", "target_name"})
 	for _, e := range items {
 		actor, project := "rvav", ""
 		if e.Actor != nil {
@@ -518,7 +520,7 @@ func writeAuditCSV(w http.ResponseWriter, items []api.AuditEvent) {
 		}
 		detail, _ := json.Marshal(e.Detail)
 		_ = c.Write([]string{e.At.UTC().Format(time.RFC3339), csvCell(actor), csvCell(e.Action), csvCell(e.TargetType),
-			csvCell(e.TargetId), csvCell(project), string(detail)})
+			csvCell(e.TargetId), csvCell(project), string(detail), csvCell(deref(e.TargetName))})
 	}
 	c.Flush()
 }

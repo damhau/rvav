@@ -342,7 +342,7 @@ func (s *Service) DeleteAuditDestination(ctx context.Context, p *auth.Principal,
 	if err := s.Store.DeleteAuditDestination(ctx, id); err != nil {
 		return err
 	}
-	s.audit(ctx, p, "settings.audit_destination.delete", "audit_destination", id, nil, map[string]any{"name": d.Name,
+	s.auditGone(ctx, p, "settings.audit_destination.delete", "audit_destination", id, d.Name, nil, map[string]any{"name": d.Name,
 		"kind": d.Kind, "dropped": d.Backlog + d.SetAside})
 	return nil
 }

@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
-import { resetDb } from "@/mocks/seed";
+import { audited } from "@/mocks/governance";
+import { customRoles } from "@/mocks/roles";
+import { db, resetDb } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
 afterEach(() => localStorage.removeItem("rvav.mock.fresh"));
@@ -64,6 +66,43 @@ describe("Audit log", () => {
     expect(sheet).toHaveTextContent("Léa Martin");
     expect(sheet).toHaveTextContent("Web Platform");
     expect(sheet).toHaveTextContent("usr_tnguyen");
+  });
+
+  it("names what each event was on, opens what rvav still keeps, and says what it doesn't", async () => {
+    const user = userEvent.setup();
+    resetDb();
+    const roles = customRoles(db);
+    roles.push({
+      key: "vm-operator",
+      name: "VM operator",
+      description: "",
+      permissions: ["project.see"],
+      built_in: false,
+    });
+    audited(db, "role.create", "role", "vm-operator");
+    roles.splice(0, roles.length);
+    audited(db, "role.delete", "role", "vm-operator", {}, "VM operator");
+    renderApp("/admin/audit");
+    const table = await screen.findByRole("table", { name: "Audit events" });
+    const row = async (action: string) => (await within(table).findByText(action)).closest("tr")!;
+
+    const published = await row("catalog.version.publish");
+    expect(within(published).getByRole("link", { name: "RHEL 9 server" })).toHaveAttribute(
+      "href",
+      "/admin/catalog-items/itm_rhel9",
+    );
+    expect(published).not.toHaveTextContent("itm_rhel9");
+    const created = await row("role.create");
+    expect(created).toHaveTextContent("role VM operator (no longer exists)");
+    expect(within(created).queryByRole("link")).toBeNull();
+    expect(await row("role.delete")).toHaveTextContent("role VM operator (no longer exists)");
+    expect(await row("token.create")).toHaveTextContent("API token GitLab pipeline");
+    expect(await row("approval.timeout")).toHaveTextContent("approval apr_17");
+
+    await user.click(within(published).getByRole("button", { name: /^Open the event from/ }));
+    const sheet = await screen.findByRole("dialog", { name: "catalog.version.publish" });
+    expect(sheet).toHaveTextContent("catalog item RHEL 9 server");
+    expect(sheet).toHaveTextContent("itm_rhel9");
   });
 
   it("says nothing is recorded on a fresh install", async () => {

@@ -4674,11 +4674,24 @@ type AuditEvent struct {
 	//   `sessions_ended` and `tokens_revoked`;
 	//   `auth.local_admin_created`: `password`, `generated` or
 	//   `RVAV_ADMIN_PASSWORD`.
-	Detail     map[string]interface{} `json:"detail"`
-	Id         string                 `json:"id"`
-	Project    *ProjectRef            `json:"project,omitempty"`
-	TargetId   string                 `json:"target_id"`
-	TargetType string                 `json:"target_type"`
+	Detail  map[string]interface{} `json:"detail"`
+	Id      string                 `json:"id"`
+	Project *ProjectRef            `json:"project,omitempty"`
+
+	// TargetExists Whether rvav still keeps the target, so its page opens. A deleted
+	// deployment is kept, with its history. Left out for a target rvav
+	// doesn't keep as a record of its own, such as a setting, and for
+	// an event on none, such as a failed sign-in by nobody known.
+	TargetExists *bool  `json:"target_exists,omitempty"`
+	TargetId     string `json:"target_id"`
+
+	// TargetName What the target was called when the event was recorded, so a
+	// target renamed or deleted since keeps the name it had; for an
+	// event recorded before rvav kept names, what it is called now.
+	// Left out when rvav has no name for it: a setting, an
+	// integration, or a target deleted before rvav kept names.
+	TargetName *string `json:"target_name,omitempty"`
+	TargetType string  `json:"target_type"`
 }
 
 // AuditEventPage defines model for AuditEventPage.
@@ -12462,7 +12475,9 @@ type ListAuditEventsParams struct {
 	From      *time.Time      `form:"from,omitempty" json:"from,omitempty"`
 	To        *time.Time      `form:"to,omitempty" json:"to,omitempty"`
 
-	// Format csv answers every matching event as a CSV file.
+	// Format csv answers every matching event as a CSV file, with the columns
+	// `at`, `actor`, `action`, `target_type`, `target_id`, `project`,
+	// `detail` and `target_name`.
 	Format *ListAuditEventsParamsFormat `form:"format,omitempty" json:"format,omitempty"`
 	Limit  *Limit                       `form:"limit,omitempty" json:"limit,omitempty"`
 

@@ -291,7 +291,7 @@ func (s *Service) DeleteOnboardingPlan(ctx context.Context, p *auth.Principal, i
 			return err
 		}
 		return s.Store.Audit(ctx, tx, store.AuditEvent{ActorID: &p.User.ID, Action: "onboarding_plan.deleted",
-			TargetType: "onboarding_plan", TargetID: id, Detail: map[string]any{"name": pl.Name}})
+			TargetType: "onboarding_plan", TargetID: id, TargetName: pl.Name, Detail: map[string]any{"name": pl.Name}})
 	})
 }
 

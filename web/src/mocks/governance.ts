@@ -46,15 +46,51 @@ function state(db: Db): GovernanceState {
   return d.governance;
 }
 
-/** Records a change in the mock audit log, as the server does. */
+type TargetName = (db: Db, id: string) => string | undefined;
+
+/** The targets the mocks name, as the server's audit_targets.go: what each is called now, undefined once gone. */
+const targetNames = new Map<string, TargetName>([
+  ["deployment", (db, id) => db.deployments.find((d) => d.id === id)?.name],
+  ["request", (db, id) => db.requests.find((r) => r.request.id === id)?.request.number],
+  ["project", (db, id) => db.projects.find((p) => p.id === id)?.name],
+  ["catalog_item", (db, id) => db.items.find((i) => i.id === id)?.name],
+  ["user", (db, id) => db.users.find((u) => u.id === id)?.name],
+  ["environment", (db, id) => db.environments.find((e) => e.key === id)?.name],
+  ["api_token", (db, id) => state(db).tokens.find((t) => t.id === id)?.name],
+]);
+
+/** Names the targets of a type a mock module keeps, for the audit log. */
+export function auditTargetNames(type: string, name: TargetName) {
+  targetNames.set(type, name);
+}
+
+const liveName = (db: Db, type: string, id: string) => (id ? targetNames.get(type)?.(db, id) : undefined);
+
+/** An event as the server answers it: an event recorded unnamed takes its target's name now. */
+function answered(db: Db, e: S["AuditEvent"]): S["AuditEvent"] {
+  const live = liveName(db, e.target_type, e.target_id);
+  const name = e.target_name ?? live;
+  return {
+    ...e,
+    ...(name !== undefined ? { target_name: name } : {}),
+    ...(targetNames.has(e.target_type) && e.target_id ? { target_exists: live !== undefined } : {}),
+  };
+}
+
+/** Records a change in the mock audit log, as the server does. `name` names a target already gone. */
 export function audited(
   db: Db,
   action: string,
   targetType: string,
   targetId: string,
   detail: Record<string, unknown> = {},
+  name?: string,
 ) {
   const st = state(db);
+  const named =
+    name ||
+    liveName(db, targetType, targetId) ||
+    st.audit.find((e) => e.target_type === targetType && e.target_id === targetId && e.target_name)?.target_name;
   st.audit.unshift({
     id: String(++st.seq),
     at: now(),
@@ -62,6 +98,7 @@ export function audited(
     action,
     target_type: targetType,
     target_id: targetId,
+    ...(named ? { target_name: named } : {}),
     project: null,
     detail,
   });
@@ -117,7 +154,7 @@ export function governanceHandlers(db: Db, base: string, wait: () => Promise<voi
       const i = st.tokens.findIndex((t) => t.id === params.id);
       if (i < 0) return problem(404, "Not found");
       const [t] = st.tokens.splice(i, 1);
-      audited(db, "token.revoke", "api_token", t!.id, { name: t!.name });
+      audited(db, "token.revoke", "api_token", t!.id, { name: t!.name }, t!.name);
       return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/audit`, async ({ request }) => {
@@ -128,14 +165,16 @@ export function governanceHandlers(db: Db, base: string, wait: () => Promise<voi
       const project = p.get("project_id");
       const from = p.get("from");
       const to = p.get("to");
-      const items = state(db).audit.filter(
-        (e) =>
-          (!search || JSON.stringify(e).toLowerCase().includes(search)) &&
-          (!action || (action.endsWith(".") ? e.action.startsWith(action) : e.action === action)) &&
-          (!project || e.project?.id === project) &&
-          (!from || e.at >= from) &&
-          (!to || e.at < to),
-      );
+      const items = state(db)
+        .audit.map((e) => answered(db, e))
+        .filter(
+          (e) =>
+            (!search || JSON.stringify(e).toLowerCase().includes(search)) &&
+            (!action || (action.endsWith(".") ? e.action.startsWith(action) : e.action === action)) &&
+            (!project || e.project?.id === project) &&
+            (!from || e.at >= from) &&
+            (!to || e.at < to),
+        );
       if (p.get("format") === "csv") {
         const rows = items.map((e) =>
           [
@@ -146,13 +185,17 @@ export function governanceHandlers(db: Db, base: string, wait: () => Promise<voi
             e.target_id,
             e.project?.code ?? "",
             JSON.stringify(e.detail),
+            e.target_name ?? "",
           ]
             .map((v) => (/[",\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v))
             .join(","),
         );
-        return new HttpResponse(["at,actor,action,target_type,target_id,project,detail", ...rows].join("\n") + "\n", {
-          headers: { "Content-Type": "text/csv" },
-        });
+        return new HttpResponse(
+          ["at,actor,action,target_type,target_id,project,detail,target_name", ...rows].join("\n") + "\n",
+          {
+            headers: { "Content-Type": "text/csv" },
+          },
+        );
       }
       return HttpResponse.json({ items, next_cursor: null });
     }),

@@ -542,7 +542,7 @@ func (s *Service) DeleteApprovalPolicy(ctx context.Context, p *auth.Principal, i
 	} else if err != nil {
 		return err
 	}
-	s.audit(ctx, p, "policy.approval.delete", "approval_policy", id, old.ProjectID, nil)
+	s.auditGone(ctx, p, "policy.approval.delete", "approval_policy", id, old.Name, old.ProjectID, nil)
 	return nil
 }
 

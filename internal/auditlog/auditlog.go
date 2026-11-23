@@ -27,13 +27,16 @@ const Contract = "rvav.audit.v1"
 
 // Event is an audit event as a destination gets it.
 type Event struct {
-	ID         string          `json:"id"`
-	At         time.Time       `json:"at"`
-	Category   string          `json:"category"`
-	Action     string          `json:"action"`
-	Actor      *api.UserRef    `json:"actor"`
-	TargetType string          `json:"target_type"`
-	TargetID   string          `json:"target_id"`
+	ID         string       `json:"id"`
+	At         time.Time    `json:"at"`
+	Category   string       `json:"category"`
+	Action     string       `json:"action"`
+	Actor      *api.UserRef `json:"actor"`
+	TargetType string       `json:"target_type"`
+	TargetID   string       `json:"target_id"`
+	// TargetName is what the target was called when the event was recorded;
+	// left out when rvav has no name for it.
+	TargetName string          `json:"target_name,omitempty"`
 	Project    *api.ProjectRef `json:"project"`
 	Detail     json.RawMessage `json:"detail"`
 }
@@ -42,6 +45,9 @@ type Event struct {
 func FromRow(r store.AuditRow) Event {
 	e := Event{ID: strconv.FormatInt(r.ID, 10), At: r.At.UTC(), Category: store.AuditCategory(r.Action), Action: r.Action,
 		TargetType: r.TargetType, TargetID: r.TargetID, Detail: r.Detail}
+	if r.TargetName != nil {
+		e.TargetName = *r.TargetName
+	}
 	if len(e.Detail) == 0 {
 		e.Detail = json.RawMessage(`{}`)
 	}

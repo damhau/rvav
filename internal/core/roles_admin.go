@@ -405,7 +405,7 @@ func (s *Service) DeleteRole(ctx context.Context, p *auth.Principal, key string)
 	} else if err != nil {
 		return err
 	}
-	s.audit(ctx, p, "role.delete", "role", key, nil, map[string]any{"name": st.Name})
+	s.auditGone(ctx, p, "role.delete", "role", key, st.Name, nil, map[string]any{"name": st.Name})
 	return nil
 }
 

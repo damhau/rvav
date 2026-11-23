@@ -441,7 +441,7 @@ export function ipRangeHandlers(db: Db, base: string, wait: () => Promise<void>)
           `VMs hold addresses from ${r.name}: delete them, or move their adapters, first.`,
         );
       st().ranges.splice(st().ranges.indexOf(r), 1);
-      audited(db, "ip_range.delete", "ip_range", r.id, { name: r.name });
+      audited(db, "ip_range.delete", "ip_range", r.id, { name: r.name }, r.name);
       return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/admin/ip-ranges/:id/allocations`, async ({ params }) => {

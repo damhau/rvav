@@ -109,7 +109,7 @@ func (s *Service) RevokeAPIToken(ctx context.Context, p *auth.Principal, id stri
 	if err := s.Store.RevokeAPIToken(ctx, id); err != nil {
 		return err
 	}
-	s.audit(ctx, p, "token.revoke", "api_token", id, nil, map[string]any{"name": t.Name, "user_id": t.UserID})
+	s.auditGone(ctx, p, "token.revoke", "api_token", id, t.Name, nil, map[string]any{"name": t.Name, "user_id": t.UserID})
 	return nil
 }
 
@@ -143,7 +143,7 @@ func (s *Service) AuditEvents(ctx context.Context, p *auth.Principal, q AuditQue
 	out := make([]api.AuditEvent, len(rows))
 	for i, r := range rows {
 		e := api.AuditEvent{Id: strconv.FormatInt(r.ID, 10), At: r.At, Action: r.Action, TargetType: r.TargetType,
-			TargetId: r.TargetID, Detail: map[string]any{}}
+			TargetId: r.TargetID, TargetName: r.TargetName, TargetExists: r.TargetExists, Detail: map[string]any{}}
 		_ = json.Unmarshal(r.Detail, &e.Detail)
 		if e.Detail == nil {
 			e.Detail = map[string]any{}

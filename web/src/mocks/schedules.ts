@@ -384,7 +384,7 @@ export function scheduleHandlers(
       if (s instanceof Response) return s;
       const list = state(db);
       list.splice(list.indexOf(s), 1);
-      audited(db, "schedule.delete", "schedule", s.id, { name: s.name });
+      audited(db, "schedule.delete", "schedule", s.id, { name: s.name }, s.name);
       return new HttpResponse(null, { status: 204 });
     }),
   ];

@@ -4,7 +4,7 @@
 import { http, HttpResponse } from "msw";
 import type { components } from "@/lib/api/schema";
 import { catalogue as day2Actions } from "./day2";
-import { audited } from "./governance";
+import { audited, auditTargetNames } from "./governance";
 import fixture from "./roles.json";
 import type { Db } from "./seed";
 
@@ -38,6 +38,8 @@ export function customRoles(db: Db): MockRole[] {
 export function roleOf(db: Db | null, key: string): MockRole | undefined {
   return builtinRoles.find((r) => r.key === key) ?? (db ? customRoles(db).find((r) => r.key === key) : undefined);
 }
+
+auditTargetNames("role", (db, key) => roleOf(db, key)?.name);
 
 /** Says whether a permission is one rvav knows: in the catalogue, or a day-2 group's or action's. */
 export function knownPermission(p: string): boolean {
@@ -269,7 +271,7 @@ export function rolesHandlers(db: Db, base: string, wait: () => Promise<void>, u
       if (holders > 0)
         return problem(409, "Conflict", `${r.name} is given ${holders} times, to users or groups: take it away first.`);
       customRoles(db).splice(customRoles(db).indexOf(r), 1);
-      audited(db, "role.delete", "role", r.key, { name: r.name });
+      audited(db, "role.delete", "role", r.key, { name: r.name }, r.name);
       return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/admin/role-assignments`, async ({ request }) => {

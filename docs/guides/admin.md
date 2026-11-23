@@ -2639,6 +2639,16 @@ the **Settings, secrets, integrations** events.
   project and dates; the address keeps the filters, so you can bookmark a
   search. Select an event's time to see its detail in a side panel.
   **Export CSV** keeps it for the archive.
+- **What an event was on:** **On** names the target as it was called
+  when the event was recorded, so a role renamed or deleted since keeps
+  the name it had. The name opens the target's page when rvav still keeps
+  it and you may open that page; a target deleted since says **(no longer
+  exists)**. A deleted deployment keeps its page, with its history. A
+  target without a name, such as a setting or an integration, shows its
+  ID, and the side panel shows the ID under the name. Events recorded
+  before rvav kept names take the target's name now, and show the ID once
+  the target is deleted. The CSV export ends each row with a
+  `target_name` column, after `detail`.
 - **Secrets:** stored secrets (domain-join accounts, webhook signing
   secrets, credentials for value sources) are sealed with the secrets key.
   They are written, never read back.
@@ -2735,8 +2745,8 @@ What a destination receives:
   over TLS (RFC 5425) or TCP, or one per datagram over UDP. HOSTNAME is
   the host of rvav's address, MSGID the event's action cut at a dot to
   32 characters, and MSG the event in JSON: `id`, `at`, `category`,
-  `action`, `actor`, `target_type`, `target_id`, `project` and
-  `detail`. Failed sign-ins have the warning severity, other events
+  `action`, `actor`, `target_type`, `target_id`, `target_name` when
+  rvav has a name for the target, `project` and `detail`. Failed sign-ins have the warning severity, other events
   notice. Use TCP and UDP for labs only: they send in clear.
 - **Webhook:** a POST of `{"contract": "rvav.audit.v1", "events": [...]}`
   with up to 100 events, the oldest first, signed in `X-Rvav-Signature`

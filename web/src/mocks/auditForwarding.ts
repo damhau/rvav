@@ -349,7 +349,7 @@ export function auditForwardingHandlers(db: Db, base: string, wait: () => Promis
       if (i < 0) return problem(404, "Not found");
       const [d] = list.splice(i, 1);
       sealed(db).delete(d!.id);
-      audited(db, "settings.audit_destination.delete", "audit_destination", d!.id, { name: d!.name });
+      audited(db, "settings.audit_destination.delete", "audit_destination", d!.id, { name: d!.name }, d!.name);
       return new HttpResponse(null, { status: 204 });
     }),
     http.post(`${base}/admin/audit-destinations/:id/test`, async ({ params }) => {

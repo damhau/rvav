@@ -2,7 +2,7 @@
 // searched and exported as CSV. Administrators and auditors see all of it,
 // project admins their projects' events.
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
-import { useSearch } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { Download, ScrollText } from "lucide-react";
 import { useState } from "react";
@@ -12,6 +12,7 @@ import { ErrorState } from "@/components/common/feedback";
 import { KeyValues, Page } from "@/components/common/page";
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { adminPageAt } from "@/components/shell/nav";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar, FilterEmpty, FilterInput, FilterSelect, useAddressFilters } from "@/components/ui/filter-bar";
 import { PageHeader } from "@/components/ui/page-header";
@@ -115,12 +116,70 @@ const isTargetType = (type: string): type is TargetType => (targetTypes as reado
 export const targetTypeLabel = (type: string) =>
   isTargetType(type) ? i18n.t(`admin:audit.target.${type}`) : type.replaceAll("_", " ");
 
-const target = (e: AuditEvent) => (
-  <>
-    <span className="text-faint">{targetTypeLabel(e.target_type)}</span>{" "}
-    <span className="font-mono">{e.target_id}</span>
-  </>
-);
+const linkClass = "text-fg hover:text-accent";
+
+/** The target's name, a link to its page when rvav keeps it and the viewer may open that page. */
+function TargetName({ e, name }: { e: AuditEvent; name: string }) {
+  const { me } = useCurrentProject();
+  const opens = (to: string) => adminPageAt(to)?.show(me) ?? false;
+  const id = e.target_id;
+  if (e.target_exists !== true) return <>{name}</>;
+  switch (e.target_type) {
+    case "deployment":
+      return (
+        <Link to="/deployments/$deploymentId" params={{ deploymentId: id }} className={linkClass}>
+          {name}
+        </Link>
+      );
+    case "request":
+      return (
+        <Link to="/requests/$requestId" params={{ requestId: id }} className={linkClass}>
+          {name}
+        </Link>
+      );
+    case "project":
+      if (!opens("/admin/projects")) break;
+      return (
+        <Link to="/admin/projects/$projectId" params={{ projectId: id }} className={linkClass}>
+          {name}
+        </Link>
+      );
+    case "catalog_item":
+      if (!opens("/admin/catalog-items")) break;
+      return (
+        <Link to="/admin/catalog-items/$itemId" params={{ itemId: id }} className={linkClass}>
+          {name}
+        </Link>
+      );
+    case "role":
+      if (!opens("/admin/roles")) break;
+      return (
+        <Link to="/admin/roles/$roleKey" params={{ roleKey: id }} className={linkClass}>
+          {name}
+        </Link>
+      );
+    case "subscription":
+      if (!opens("/admin/subscriptions")) break;
+      return (
+        <Link to="/admin/subscriptions/$subscriptionId" params={{ subscriptionId: id }} className={linkClass}>
+          {name}
+        </Link>
+      );
+  }
+  return <>{name}</>;
+}
+
+/** What an event was on: its type, and its name when rvav has one, else its ID. */
+function Target({ e }: { e: AuditEvent }) {
+  const { t } = useTranslation("admin");
+  return (
+    <>
+      <span className="text-faint">{targetTypeLabel(e.target_type)}</span>{" "}
+      {e.target_name ? <TargetName e={e} name={e.target_name} /> : <span className="font-mono">{e.target_id}</span>}
+      {e.target_exists === false && <span className="text-faint"> {t("audit.gone")}</span>}
+    </>
+  );
+}
 
 const detailCount = (e: AuditEvent) => Object.keys(e.detail).length;
 
@@ -150,7 +209,15 @@ function EventSheet({ e, onClose }: { e: AuditEvent; onClose: () => void }) {
             value: !e.actor ? who(e) : e.actor.email ? `${e.actor.name} (${e.actor.email})` : e.actor.name,
           },
           { label: t("audit.what"), value: <span className="font-mono">{e.action}</span> },
-          { label: t("audit.on"), value: target(e) },
+          {
+            label: t("audit.on"),
+            value: (
+              <>
+                <Target e={e} />
+                {e.target_name && e.target_id && <span className="block font-mono text-muted">{e.target_id}</span>}
+              </>
+            ),
+          },
           { label: t("audit.project"), value: e.project?.name ?? t("audit.none") },
           { label: t("audit.event"), value: <span className="font-mono">{e.id}</span> },
         ]}
@@ -195,7 +262,15 @@ const columns = (t: TFunction<"admin">, open: (e: AuditEvent) => void): Column<A
     ),
   },
   { id: "what", header: t("audit.what"), cell: (e) => <span className="font-mono text-secondary">{e.action}</span> },
-  { id: "on", header: t("audit.on"), cell: (e) => <span className="text-secondary">{target(e)}</span> },
+  {
+    id: "on",
+    header: t("audit.on"),
+    cell: (e) => (
+      <span className="text-secondary">
+        <Target e={e} />
+      </span>
+    ),
+  },
   {
     id: "project",
     header: t("audit.project"),

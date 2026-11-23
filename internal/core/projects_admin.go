@@ -36,6 +36,15 @@ func (s *Service) audit(ctx context.Context, p *auth.Principal, action, targetTy
 	}
 }
 
+// auditGone audits the deletion of a record already gone, under the name it
+// had: the event can't read it from the row.
+func (s *Service) auditGone(ctx context.Context, p *auth.Principal, action, targetType, targetID, name string, projectID *string, detail any) {
+	if err := s.Store.Audit(ctx, s.Store.Pool, store.AuditEvent{ActorID: &p.User.ID, Action: action, TargetType: targetType,
+		TargetID: targetID, TargetName: name, ProjectID: projectID, Detail: detail}); err != nil {
+		s.Log.Error("audit", "action", action, "err", err)
+	}
+}
+
 func presentAdminProject(pr store.AdminProject, p *auth.Principal) api.AdminProject {
 	base := present.Project(pr.Project, p.PermissionsIn(pr.ID))
 	return api.AdminProject{Id: base.Id, Code: base.Code, Name: base.Name, Description: base.Description, CostCenter: base.CostCenter,
