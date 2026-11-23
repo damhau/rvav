@@ -166,6 +166,12 @@
     "showOutput": "Afficher la sortie de {{title}}"
   },
   "list": {
+    "count_one": "{{count}} demande",
+    "count_many": "{{count}} demandes",
+    "count_other": "{{count}} demandes",
+    "shown_one": "{{count}} affichée",
+    "shown_many": "{{count}} affichées",
+    "shown_other": "{{count}} affichées",
     "filter": {
       "open": "Ouvertes",
       "pending_approval": "En attente d'approbation",

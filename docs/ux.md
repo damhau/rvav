@@ -200,14 +200,20 @@ sentence case.
   panel header keeps the action that adds one.
 - **One filter toolbar.** A list's search and filters sit in one row above
   it, a group named **Filters**: the search box first, then the filters,
-  then **Clear filters** once one is set, and the count at the far end
-  where the list has one. A select reads "All …" when it filters nothing;
+  then **Clear filters** once one is set, and at the far end how many
+  rows the filters leave, "12 deployments", or "50 shown" while more pages
+  remain; a screen reader hears it change. A select reads "All …" when it
+  filters nothing;
   a box for a value of its own, such as a day or a folder, has its label
   beside it. The filters live in the address, so a filtered list can be
   shared and Back leaves the page. **Clear filters** keeps the tab, sort
   and layout, and puts the focus on the search box; changing the tab
   keeps what is chosen in the address, for the tab that reads it. A list
-  that nothing matches says so and offers **Clear filters**.
+  that nothing matches says so and offers **Clear filters**. Narrower
+  than 640 px, the bar shows the search, then a **Filters** button that
+  says how many are set, "Filters (2)", and shows or hides the rest; it
+  says whether they show (`aria-expanded`), and the focus stays on it.
+  **Clear filters** and the count stay in view.
 - **Empty states give a next step.** An empty list says what goes there and
   offers the step that adds it, such as "New template".
 - **Removing asks first.** The confirmation names what goes and what depends

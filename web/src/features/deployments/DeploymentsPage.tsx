@@ -321,7 +321,7 @@ function DeploymentCards({
   );
 }
 
-/** The count above the list: the deployments loaded, said as such while more pages remain. */
+/** The count in the list's toolbar: the deployments loaded, said as such while more pages remain. */
 export function deploymentCount(n: number, vms: number, on: number, expiring: number, more: boolean) {
   const t = i18n.getFixedT(null, "deployments");
   const counts = {
@@ -388,7 +388,11 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
   const templates = facets.data?.templates ?? [];
 
   const toolbar = (
-    <FilterBar filters={filters} search={{ label: t("list.search"), placeholder: t("list.searchPlaceholder") }}>
+    <FilterBar
+      filters={filters}
+      search={{ label: t("list.search"), placeholder: t("list.searchPlaceholder") }}
+      end={items ? deploymentCount(shown.length, vms, on, expiring, list.hasNextPage) : ""}
+    >
       <FilterSelect
         name="status"
         label={t("list.statusFilter")}
@@ -464,7 +468,6 @@ export function DeploymentsPage({ search }: { search: DeploymentsSearch }) {
       <PageHeader
         title={t("list.title")}
         description={all ? t("list.leadAll") : t("list.leadProject", { project: project.name })}
-        meta={items && deploymentCount(shown.length, vms, on, expiring, list.hasNextPage)}
         actions={
           <>
             {(me.projects.length > 1 || all) && (

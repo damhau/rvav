@@ -44,7 +44,8 @@
   },
   "filters": {
     "label": "Filters",
-    "clear": "Clear filters"
+    "clear": "Clear filters",
+    "counted": "Filters ({{n}})"
   },
   "breadcrumb": "Breadcrumb",
   "blocked": {

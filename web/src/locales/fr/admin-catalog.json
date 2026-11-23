@@ -1,5 +1,8 @@
 {
   "items": {
+    "count_one": "{{count}} élément",
+    "count_many": "{{count}} éléments",
+    "count_other": "{{count}} éléments",
     "openTo": {
       "every": "Tous les projets",
       "none": "Aucun projet",

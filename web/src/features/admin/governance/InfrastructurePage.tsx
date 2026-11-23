@@ -1204,6 +1204,7 @@ function Inventory() {
           <FilterBar
             filters={filters}
             search={{ label: t("infra.inventory.search"), placeholder: t("infra.inventory.searchPlaceholder") }}
+            end={rows ? t("infra.inventory.count", { count: rows.length }) : ""}
           >
             <FilterSelect
               name="kind"

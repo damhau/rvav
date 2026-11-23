@@ -159,6 +159,10 @@
     "showOutput": "Show the output of {{title}}"
   },
   "list": {
+    "count_one": "{{count}} request",
+    "count_other": "{{count}} requests",
+    "shown_one": "{{count}} shown",
+    "shown_other": "{{count}} shown",
     "filter": {
       "open": "Open",
       "pending_approval": "Awaiting approval",

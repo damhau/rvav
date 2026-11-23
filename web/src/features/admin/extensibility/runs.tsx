@@ -213,6 +213,7 @@ export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string
   const filters = useAddressFilters(search, ["status"]);
   const [open, setOpen] = useState<string | null>(null);
   const runs = useInfiniteQuery(adm.subscriptionRuns(subscriptionId, search.status ?? "any"));
+  const rows = runs.data?.pages.flatMap((p) => p.items);
   const columns: Column<S["SubscriptionRun"]>[] = [
     {
       id: "when",
@@ -290,13 +291,16 @@ export function RunsPanel({ subscriptionId, canRetry }: { subscriptionId: string
       <DataTable
         label={t("runs.title")}
         columns={columns}
-        rows={runs.data?.pages.flatMap((p) => p.items)}
+        rows={rows}
         rowKey={(r) => r.id}
         minWidth={720}
         loading={runs.isPending}
         error={runs.isError && <ErrorState error={runs.error} onRetry={() => void runs.refetch()} />}
         toolbar={
-          <FilterBar filters={filters}>
+          <FilterBar
+            filters={filters}
+            end={rows ? t(runs.hasNextPage ? "runs.shown" : "runs.count", { count: rows.length }) : ""}
+          >
             <FilterSelect
               name="status"
               label={t("shared.status")}

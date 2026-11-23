@@ -1,14 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
-import { SearchX } from "lucide-react";
-import { createContext, useContext, useId, useRef } from "react";
+import { SearchX, SlidersHorizontal } from "lucide-react";
+import { Children, createContext, useContext, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { TableSearch } from "@/components/ui/data-table";
+import { PHONE, TableSearch } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Select, type Option } from "@/components/ui/select";
-import { useSearchBox } from "@/lib/hooks";
+import { useMediaQuery, useSearchBox } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 type Values = Record<string, unknown>;
@@ -19,6 +19,8 @@ export interface Filters<S extends object = Values> {
   set: (patch: Partial<S>) => void;
   /** Some filter is set. */
   filtered: boolean;
+  /** How many filters are set, the search left out: a phone's Filters button says it. */
+  count: number;
   /** Removes every filter, leaves the rest of the address, and focuses the bar's first control. */
   clear: () => void;
   bar: React.RefObject<HTMLDivElement | null>;
@@ -38,6 +40,7 @@ export function useAddressFilters<S extends object>(values: S, keys: readonly (k
   return {
     values,
     filtered: keys.some((k) => isSet(values[k])),
+    count: keys.filter((k) => k !== "q" && isSet(values[k])).length,
     set: (patch) => go((s) => ({ ...s, ...patch })),
     clear: () => {
       go((s) => Object.fromEntries(Object.entries(s).filter(([k]) => !(keys as readonly string[]).includes(k))));
@@ -60,7 +63,8 @@ function useFilters(): Filters {
  * A list's toolbar: a search box, its filters, and Clear once one is set. A
  * control's name says what it filters; a select shows "All …" when it
  * filters nothing, and a box that holds a value of its own (a date, a path)
- * shows its label beside it.
+ * shows its label beside it. On a phone the filters fold behind a
+ * "Filters (n)" button; the search, Clear and `end` stay in view.
  */
 export function FilterBar<S extends object>({
   filters,
@@ -82,6 +86,10 @@ export function FilterBar<S extends object>({
   className?: string;
 }) {
   const { t } = useTranslation();
+  const phone = useMediaQuery(PHONE);
+  const [open, setOpen] = useState(false);
+  const panel = useId();
+  const folded = phone && Children.toArray(children).length > 0;
   return (
     <Ctx.Provider value={filters as unknown as Filters}>
       <div
@@ -91,13 +99,27 @@ export function FilterBar<S extends object>({
         className={cn("flex w-full flex-wrap items-center gap-2", className)}
       >
         {search && <SearchBox {...search} />}
-        {children}
+        {folded && (
+          <Button aria-expanded={open} aria-controls={panel} onClick={() => setOpen((o) => !o)}>
+            <SlidersHorizontal aria-hidden />
+            {filters.count > 0 ? t("filters.counted", { n: filters.count }) : t("filters.label")}
+          </Button>
+        )}
+        {/* Folded, the filters stay mounted: a box being typed in keeps its text. */}
+        <div
+          id={panel}
+          hidden={folded && !open}
+          className={folded ? "flex w-full flex-wrap items-center gap-2" : "contents"}
+        >
+          {children}
+        </div>
         {filters.filtered && (
           <Button variant="quiet" onClick={filters.clear}>
             {t("filters.clear")}
           </Button>
         )}
-        {end && (
+        {/* There from the start, so that a count which comes later is heard. */}
+        {end !== undefined && (
           <span className="ml-auto text-secondary text-muted" aria-live="polite">
             {end}
           </span>

@@ -230,7 +230,7 @@ function columnsFor(t: TFunction<"resources">, all: boolean, open: (v: VmListIte
   ];
 }
 
-/** The count above the table: the rows loaded, said as such while more pages remain. */
+/** The count in the table's toolbar: the rows loaded, said as such while more pages remain. */
 export function vmCount(n: number, on: number, more: boolean) {
   const t = i18n.getFixedT(null, "resources");
   return more
@@ -277,7 +277,11 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
   ].sort();
 
   const toolbar = (
-    <FilterBar filters={filters} search={{ label: t("toolbar.search"), placeholder: t("toolbar.searchPlaceholder") }}>
+    <FilterBar
+      filters={filters}
+      search={{ label: t("toolbar.search"), placeholder: t("toolbar.searchPlaceholder") }}
+      end={items ? vmCount(rows.length, on, list.hasNextPage) : ""}
+    >
       <FilterSelect
         name="env"
         label={t("toolbar.environment")}
@@ -325,7 +329,6 @@ export function ResourcesPage({ search }: { search: ResourcesSearch }) {
       <PageHeader
         title={t("page.title")}
         description={all ? t("page.leadAll") : t("page.leadProject", { project: project.name })}
-        meta={items && vmCount(rows.length, on, list.hasNextPage)}
         actions={
           <>
             {(me.projects.length > 1 || all) && (

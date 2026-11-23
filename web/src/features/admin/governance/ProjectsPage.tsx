@@ -367,6 +367,7 @@ function ProjectsPanel() {
           <FilterBar
             filters={filters}
             search={{ label: t("projects.list.search"), placeholder: t("projects.list.searchPlaceholder") }}
+            end={projects.data ? t("projects.list.count", { count: projects.data.items.length }) : ""}
           >
             <FilterCheck name="archived" label={t("projects.list.archivedToo")} />
           </FilterBar>

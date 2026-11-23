@@ -124,6 +124,12 @@
     "testTitle": "Livraison de test"
   },
   "runs": {
+    "count_one": "{{count}} exécution",
+    "count_many": "{{count}} exécutions",
+    "count_other": "{{count}} exécutions",
+    "shown_one": "{{count}} affichée",
+    "shown_many": "{{count}} affichées",
+    "shown_other": "{{count}} affichées",
     "when": "Quand",
     "open": "Ouvrir l'exécution lancée",
     "test": "Test",

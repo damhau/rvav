@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { scan, theme } from "./axe";
+import { chooseIn, press } from "./keyboard";
 
 // On a phone (V2.1): the top bar holds one row, its search and project
 // switcher behind buttons; a list's rows stack as cards; a name too long for
@@ -85,6 +86,34 @@ test("a list's rows stack as cards, sorted, selected and acted on as on a deskto
   await page.keyboard.press("Escape");
   await expect(card.getByRole("button", { name: /^Actions for/ })).toBeFocused();
   await scan(page, "/deployments on a phone");
+});
+
+test("a list's filters fold behind Filters, worked from the keyboard alone", async ({ page }) => {
+  await page.goto("/deployments");
+  await loaded(page);
+  const bar = page.getByRole("group", { name: "Filters" });
+  const toggle = bar.getByRole("button", { name: /^Filters( \(\d+\))?$/ });
+  const status = bar.getByRole("combobox", { name: "Status" });
+  await expect(bar.getByRole("searchbox", { name: "Search deployments" })).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(status).toBeHidden();
+  await expect(bar.getByText(/^\d+ deployments · \d+ VMs/)).toBeVisible();
+
+  await press(page, toggle);
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(toggle).toBeFocused();
+  await chooseIn(page, status, "Failed");
+  await expect(page).toHaveURL(/status=failed/);
+  await expect(toggle).toHaveAccessibleName("Filters (1)");
+  await press(page, toggle);
+  await expect(status).toBeHidden();
+  await expect(toggle).toBeFocused();
+  await scan(page, "a list's filters folded on a phone");
+
+  await press(page, bar.getByRole("button", { name: "Clear filters" }));
+  await expect(page).not.toHaveURL(/status=/);
+  await expect(bar.getByRole("searchbox", { name: "Search deployments" })).toBeFocused();
+  await expect(toggle).toHaveAccessibleName("Filters");
 });
 
 test("a VM's FQDN cut short shows whole in a tooltip on keyboard focus", async ({ page }) => {

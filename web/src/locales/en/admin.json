@@ -951,6 +951,10 @@
     "logosDescription": "PNG, JPEG or SVG, 256 KB and 2048 pixels a side at most. An SVG with scripts, links or external pictures is refused. Emails show the light theme's logo when it is a PNG or a JPEG."
   },
   "audit": {
+    "count_one": "{{count}} event",
+    "count_other": "{{count}} events",
+    "shown_one": "{{count}} shown",
+    "shown_other": "{{count}} shown",
     "target": {
       "ad_placement": "AD placement",
       "api_token": "API token",

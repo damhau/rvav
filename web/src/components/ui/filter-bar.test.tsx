@@ -8,8 +8,9 @@ import {
 } from "@tanstack/react-router";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { optBool, optString } from "@/routes/-search";
+import { PHONE } from "./data-table";
 import { FilterBar, FilterCheck, FilterEmpty, FilterInput, FilterSelect, useAddressFilters } from "./filter-bar";
 
 interface ListSearch {
@@ -171,5 +172,71 @@ describe("FilterBar", () => {
     expect(screen.getByRole("searchbox", { name: "Search requests" })).toHaveFocus();
     await act(() => new Promise((r) => setTimeout(r, 300)));
     expect(search(router)).toEqual({});
+  });
+});
+
+describe("FilterBar on a phone", () => {
+  beforeEach(() => {
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === PHONE,
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }) as unknown as MediaQueryList,
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("shows the search and a Filters button that says how many are set, and keeps Clear in view", async () => {
+    const user = userEvent.setup();
+    const router = renderList("/list?q=web&status=failed&mine=true");
+    const bar = await screen.findByRole("group", { name: "Filters" });
+    expect(within(bar).getByRole("searchbox", { name: "Search requests" })).toHaveValue("web");
+    const toggle = within(bar).getByRole("button", { name: "Filters (2)" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(bar).queryByRole("combobox", { name: "Status" })).toBeNull();
+    expect(within(bar).queryByRole("checkbox", { name: "Only mine" })).toBeNull();
+    expect(barClear()).toBeVisible();
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveFocus();
+    expect(within(bar).getByRole("combobox", { name: "Status" })).toHaveTextContent("Failed");
+    await user.click(within(bar).getByRole("checkbox", { name: "Only mine" }));
+    await waitFor(() => expect(search(router)).toEqual({ q: "web", status: "failed" }));
+    expect(toggle).toHaveAccessibleName("Filters (1)");
+
+    await user.click(barClear());
+    await waitFor(() => expect(search(router)).toEqual({}));
+    expect(toggle).toHaveAccessibleName("Filters");
+    expect(within(bar).getByRole("searchbox", { name: "Search requests" })).toHaveFocus();
+  });
+
+  it("is worked from the keyboard: the search, Filters, what it shows, then Clear", async () => {
+    const user = userEvent.setup();
+    renderList("/list?folder=Prod");
+    await screen.findByRole("searchbox", { name: "Search requests" });
+
+    await user.tab();
+    expect(screen.getByRole("searchbox", { name: "Search requests" })).toHaveFocus();
+    await user.tab();
+    const toggle = screen.getByRole("button", { name: "Filters (1)" });
+    expect(toggle).toHaveFocus();
+    await user.tab();
+    expect(barClear()).toHaveFocus();
+
+    await user.tab({ shift: true });
+    await user.keyboard("{Enter}");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("combobox", { name: "Status" })).toHaveFocus();
+    await user.tab({ shift: true });
+    await user.keyboard(" ");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveFocus();
+    expect(screen.queryByRole("textbox", { name: "Folder" })).toBeNull();
   });
 });

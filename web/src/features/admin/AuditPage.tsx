@@ -358,6 +358,7 @@ export function AuditPage() {
             <FilterBar
               filters={bar}
               search={{ label: t("audit.search"), placeholder: t("audit.searchPlaceholder"), className: "w-56" }}
+              end={list ? t(events.hasNextPage ? "audit.shown" : "audit.count", { count: list.length }) : ""}
             >
               <FilterSelect
                 name="kind"

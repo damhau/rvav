@@ -372,7 +372,11 @@ export function ItemsPanel() {
         loading={items.isPending}
         error={items.isError && <ErrorState error={items.error} onRetry={() => void items.refetch()} />}
         toolbar={
-          <FilterBar filters={filters} search={{ label: t("items.search"), placeholder: t("items.searchPlaceholder") }}>
+          <FilterBar
+            filters={filters}
+            search={{ label: t("items.search"), placeholder: t("items.searchPlaceholder") }}
+            end={rows ? t("items.count", { count: rows.length }) : ""}
+          >
             <FilterSelect
               name="kind"
               label={t("items.kind")}

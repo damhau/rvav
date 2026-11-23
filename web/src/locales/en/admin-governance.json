@@ -517,6 +517,8 @@
       "removeConfirm": "Remove mapping"
     },
     "inventory": {
+      "count_one": "{{count}} object",
+      "count_other": "{{count}} objects",
       "kind": {
         "cluster": "Cluster",
         "host": "Host",
@@ -723,6 +725,8 @@
       "noProjectWide": "No project-wide limit"
     },
     "list": {
+      "count_one": "{{count}} project",
+      "count_other": "{{count}} projects",
       "yours": "Your projects",
       "project": "Project",
       "archived": "Archived",

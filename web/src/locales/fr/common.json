@@ -45,7 +45,8 @@
   },
   "filters": {
     "label": "Filtres",
-    "clear": "Effacer les filtres"
+    "clear": "Effacer les filtres",
+    "counted": "Filtres ({{n}})"
   },
   "breadcrumb": "Fil d'Ariane",
   "blocked": {

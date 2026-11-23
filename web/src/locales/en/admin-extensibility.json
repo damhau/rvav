@@ -124,6 +124,10 @@
     "testTitle": "Test delivery"
   },
   "runs": {
+    "count_one": "{{count}} run",
+    "count_other": "{{count}} runs",
+    "shown_one": "{{count}} shown",
+    "shown_other": "{{count}} shown",
     "when": "When",
     "open": "Open the run from",
     "test": "Test",

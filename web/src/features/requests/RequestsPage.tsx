@@ -97,6 +97,7 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
       q: search.q,
     }),
   );
+  const rows = list.data?.pages.flatMap((p) => p.items);
 
   return (
     <Page>
@@ -132,14 +133,18 @@ export function RequestsPage({ search }: { search: RequestsSearch }) {
         <DataTable
           label={t("list.table")}
           columns={columnsFor(t)}
-          rows={list.data?.pages.flatMap((p) => p.items)}
+          rows={rows}
           rowKey={(r) => r.id}
           rowLinks
           minWidth={880}
           loading={list.isPending}
           error={list.isError && <ErrorState error={list.error} onRetry={() => void list.refetch()} />}
           toolbar={
-            <FilterBar filters={filters} search={{ label: t("list.search"), placeholder: t("list.searchPlaceholder") }}>
+            <FilterBar
+              filters={filters}
+              search={{ label: t("list.search"), placeholder: t("list.searchPlaceholder") }}
+              end={rows ? t(list.hasNextPage ? "list.shown" : "list.count", { count: rows.length }) : ""}
+            >
               <FilterSelect
                 name="status"
                 label={t("list.status")}

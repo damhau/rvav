@@ -522,6 +522,9 @@
       "removeConfirm": "Retirer la correspondance"
     },
     "inventory": {
+      "count_one": "{{count}} objet",
+      "count_many": "{{count}} objets",
+      "count_other": "{{count}} objets",
       "kind": {
         "cluster": "Cluster",
         "host": "Hôte",
@@ -737,6 +740,9 @@
       "noProjectWide": "Aucune limite sur tout le projet"
     },
     "list": {
+      "count_one": "{{count}} projet",
+      "count_many": "{{count}} projets",
+      "count_other": "{{count}} projets",
       "yours": "Vos projets",
       "project": "Projet",
       "archived": "Archivé",

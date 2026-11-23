@@ -981,6 +981,12 @@
     "logosDescription": "PNG, JPEG ou SVG, 256 Ko et 2048 pixels de côté au plus. Un SVG avec des scripts, des liens ou des images externes est refusé. Les e-mails affichent le logo du thème clair quand c'est un PNG ou un JPEG."
   },
   "audit": {
+    "count_one": "{{count}} événement",
+    "count_many": "{{count}} événements",
+    "count_other": "{{count}} événements",
+    "shown_one": "{{count}} affiché",
+    "shown_many": "{{count}} affichés",
+    "shown_other": "{{count}} affichés",
     "target": {
       "ad_placement": "placement AD",
       "api_token": "jeton d'API",
