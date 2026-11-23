@@ -1649,7 +1649,9 @@ component's. A naming policy that applies to the project and environment
 wins over it ([Policies](#policies)). You can publish a VM item without a
 naming, for VMs a naming policy names, but where no policy applies, a
 request for it is refused and asks the requester to have you check the
-item.
+item. Its **Definition** tab warns of it under the YAML, at `naming`, or
+at a component that has none when others have one, unless a naming
+policy applies everywhere.
 
 An item's page has its main action in its header: **Publish** the
 draft, or **New draft** from the published version. Publishing waits

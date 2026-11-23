@@ -10,10 +10,11 @@ import { ownSources } from "@/forms/useFieldValues";
 import { eachStep, parseUrl, readComposite, secretInMessages, variablesRead } from "@/lib/composite";
 import { seededBlueprint, topologyOf } from "./blueprints";
 import { celCheck } from "./cel";
-import { vmBlueprintProblems, vmInputProblems, vmSizeProblems } from "./vmBlueprint";
+import { namingWarnings, vmBlueprintProblems, vmInputProblems, vmSizeProblems } from "./vmBlueprint";
 import { constraintWarnings } from "./constraints";
 import { draftDiscarded, gitOf, markGit } from "./catalogGit";
 import { workflowRegistrations } from "./extensibility";
+import { namingTemplate } from "./administration";
 import { resourceTypesOf } from "./resourceTypes";
 import { fileProblems, imageProblem } from "./files";
 import {
@@ -363,8 +364,12 @@ const summary = (v: Version): S["CatalogItemVersion"] => {
 };
 
 /** A version as served, with the tags its constraints name that vCenter doesn't have (ADR-0035). */
-const served = (v: Version): Version => {
-  const warnings = constraintWarnings(v.definition.blueprint, "/definition/blueprint");
+const served = (db: Db, v: Version): Version => {
+  const bp = v.definition.blueprint;
+  const warnings = [
+    ...constraintWarnings(bp, "/definition/blueprint"),
+    ...namingWarnings(bp, "/definition/blueprint", namingTemplate(db, "", "") !== undefined),
+  ];
   return warnings.length > 0 ? { ...v, warnings } : v;
 };
 
@@ -1449,13 +1454,13 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
         definition: structuredClone(c.definition ?? from!.definition),
       };
       versions.unshift(v);
-      return HttpResponse.json(served(v), { status: 201 });
+      return HttpResponse.json(served(db, v), { status: 201 });
     }),
     http.get(`${base}/admin/catalog/items/:id/versions/:vid`, async ({ params }) => {
       await wait();
       const item = find(String(params.id));
       const v = item && versionsOf(item).find((x) => x.id === params.vid);
-      return v ? HttpResponse.json(served(v)) : problem(404, "Not found");
+      return v ? HttpResponse.json(served(db, v)) : problem(404, "Not found");
     }),
     http.put(`${base}/admin/catalog/items/:id/versions/:vid`, async ({ params, request }) => {
       await wait();
@@ -1484,7 +1489,7 @@ export function catalogAdminHandlers(db: Db, base: string, wait: () => Promise<v
       v.revision += 1;
       if (u.number) v.number = u.number;
       if (u.changelog !== undefined) v.changelog = u.changelog;
-      return HttpResponse.json(served(v));
+      return HttpResponse.json(served(db, v));
     }),
     http.delete(`${base}/admin/catalog/items/:id/versions/:vid`, async ({ params }) => {
       await wait();

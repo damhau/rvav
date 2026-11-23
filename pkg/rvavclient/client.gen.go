@@ -5242,7 +5242,7 @@ type CatalogItemVersionDetail struct {
 	Revision int                           `json:"revision"`
 	State    CatalogItemVersionDetailState `json:"state"`
 
-	// Warnings What may not work as meant, without stopping a save or a publish: a blueprint's constraint naming a tag (`unknown_tag`) that no cluster, datastore or network of the inventory carries (ADR-0035). Pointers as in a validation error's.
+	// Warnings What may not work as meant, without stopping a save or a publish: a blueprint's constraint naming a tag (`unknown_tag`) that no cluster, datastore or network of the inventory carries (ADR-0035); VMs the blueprint gives no naming (`no_naming`, at its `naming`, or a component's when others have one), named only by a naming policy, so that a request for them is refused where none applies, unless a policy applies everywhere. Pointers as in a validation error's.
 	Warnings *[]FieldError `json:"warnings,omitempty"`
 }
 

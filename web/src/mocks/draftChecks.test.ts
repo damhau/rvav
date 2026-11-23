@@ -2,7 +2,8 @@
 // (internal/core/blueprint_check.go): the size and naming New item gives
 // it, and the CPU and memory publishing needs, at the binding; what its
 // bindings are and read (blueprint_inputs.go); what its custom resources
-// bind (custom_resources.go); a request nothing names refused (#216).
+// bind (custom_resources.go); a request nothing names refused, and the
+// version that names nothing warned of it (#216).
 import { describe, expect, it } from "vitest";
 import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -32,6 +33,10 @@ async function newVmItem(slug: string) {
     save: (definition: Def) =>
       call(api.PUT("/admin/catalog/items/{itemId}/versions/{versionId}", { ...at, body: { definition } })),
     publish: () => call(api.POST("/admin/catalog/items/{itemId}/versions/{versionId}/publish", { ...at, body: {} })),
+    warnings: async () =>
+      ((await call(api.GET("/admin/catalog/items/{itemId}/versions/{versionId}", at))).warnings ?? []).filter(
+        (w) => w.code === "no_naming",
+      ),
   };
 }
 
@@ -124,6 +129,56 @@ describe("the mocks' VM item drafts", () => {
     );
     expect(unnamed(await bare())).toEqual([]);
     await call(api.DELETE("/admin/naming-policies/{id}", { params: { path: { id: policy.id } } }));
+  });
+
+  it("warn of VMs only a naming policy names, unless one applies everywhere", async () => {
+    const { def, save, warnings } = await newVmItem("warned-vm");
+    const bp = def.blueprint as Record<string, unknown>;
+    expect(await warnings()).toEqual([]);
+    const needs =
+      "its requests need a naming policy, and are refused in a project and environment no policy applies to.";
+
+    await save(withBlueprint(def, { ...bp, naming: "" }));
+    expect(await warnings()).toEqual([
+      {
+        field: "/definition/blueprint/naming",
+        code: "no_naming",
+        message: `The item gives its VMs no naming: ${needs}`,
+      },
+    ]);
+
+    await save(
+      withBlueprint(def, {
+        ...bp,
+        naming: "",
+        components: [
+          { key: "web", naming: "{project}-{environment}-web{seq:02}" },
+          { key: "db", title: "Database" },
+        ],
+      }),
+    );
+    expect(await warnings()).toEqual([
+      {
+        field: "/definition/blueprint/components/1/naming",
+        code: "no_naming",
+        message: `Database has no naming, and the item gives its VMs none: ${needs}`,
+      },
+    ]);
+
+    const everywhere = await call(
+      api.POST("/admin/naming-policies", {
+        body: {
+          name: "All names",
+          template: "{project}-{environment}-{seq}",
+          counter: "prefix",
+          start: 1,
+          increment: 1,
+          offers: [{}],
+        },
+      }),
+    );
+    expect(await warnings()).toEqual([]);
+    await call(api.DELETE("/admin/naming-policies/{id}", { params: { path: { id: everywhere.id } } }));
   });
 
   it("take a number for a binding as its constant, and refuse a list or an input the form hasn't, at the field", async () => {

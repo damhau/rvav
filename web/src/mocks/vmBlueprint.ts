@@ -343,13 +343,27 @@ export function vmSizeProblems(bp: Rec, ptr: string): FieldError[] {
 
 /**
  * The VMs a VM blueprint gives no naming, as the server's components take
- * the blueprint's: "" for its one VM, else each such component's title or key.
+ * the blueprint's: its one VM, else each such component, by index and title.
  */
-export function unnamedVMs(bp: Rec | undefined): string[] {
+export function unnamedVMs(bp: Rec | undefined): { at?: number; title: string }[] {
   if (!bp || text(bp.kind) !== "vm" || text(bp.naming)) return [];
   const comps = list(bp.components).map(rec);
-  if (comps.length === 0) return [""];
-  return comps.filter((c) => !text(c.naming)).map((c) => text(c.title) || text(c.key));
+  if (comps.length === 0) return [{ title: "" }];
+  return comps.flatMap((c, at) => (text(c.naming) ? [] : [{ at, title: text(c.title) || text(c.key) }]));
+}
+
+/** As the server's namingWarnings: VMs only a naming policy names, unless one applies everywhere. */
+export function namingWarnings(bp: Rec | undefined, ptr: string, everywhere: boolean): FieldError[] {
+  const unnamed = unnamedVMs(bp);
+  if (unnamed.length === 0 || everywhere) return [];
+  const needs = "its requests need a naming policy, and are refused in a project and environment no policy applies to.";
+  if (unnamed.length === Math.max(1, list(bp?.components).length))
+    return [{ field: `${ptr}/naming`, code: "no_naming", message: `The item gives its VMs no naming: ${needs}` }];
+  return unnamed.map(({ at, title }) => ({
+    field: `${ptr}/components/${at}/naming`,
+    code: "no_naming",
+    message: `${title} has no naming, and the item gives its VMs none: ${needs}`,
+  }));
 }
 
 /**

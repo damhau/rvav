@@ -267,10 +267,51 @@ func (s *Service) CatalogItemVersion(ctx context.Context, p *auth.Principal, idO
 		return out, err
 	}
 	warnings, err := s.constraintWarnings(ctx, out.Definition, "/definition/blueprint")
-	if len(warnings) > 0 {
+	if err != nil {
+		return out, err
+	}
+	unnamed, err := s.namingWarnings(ctx, out.Definition, "/definition/blueprint")
+	if warnings = append(warnings, unnamed...); len(warnings) > 0 {
 		out.Warnings = &warnings
 	}
 	return out, err
+}
+
+// namingWarnings: VMs a VM blueprint gives no naming are named only by a
+// naming policy. Publishing doesn't refuse them, as policies are chosen
+// for each request's project and environment and may be added later, but
+// a request is refused where none applies (#216).
+func (s *Service) namingWarnings(ctx context.Context, def api.CatalogVersionDefinition, ptr string) ([]api.FieldError, error) {
+	raw, _ := json.Marshal(def.Blueprint)
+	b, err := blueprint.Parse(raw)
+	if err != nil || b.Kind != blueprint.KindVM || b.Naming != "" {
+		return nil, nil
+	}
+	var unnamed []int
+	for i, c := range b.Components {
+		if c.Naming == "" {
+			unnamed = append(unnamed, i)
+		}
+	}
+	if b.Multi() && len(unnamed) == 0 {
+		return nil, nil
+	}
+	if _, err := s.Store.NamingPolicyFor(ctx, "", ""); err == nil {
+		return nil, nil // a policy applies everywhere
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
+	const needs = "its requests need a naming policy, and are refused in a project and environment no policy applies to."
+	if len(unnamed) == len(b.Components) {
+		return []api.FieldError{fieldErr(ptr+"/naming", "no_naming", "The item gives its VMs no naming: "+needs)}, nil
+	}
+	out := make([]api.FieldError, 0, len(unnamed))
+	for _, i := range unnamed {
+		c := b.Components[i]
+		out = append(out, fieldErr(fmt.Sprintf("%s/components/%d/naming", ptr, i), "no_naming",
+			fmt.Sprintf("%s has no naming, and the item gives its VMs none: %s", cmp.Or(c.Title, c.Key), needs)))
+	}
+	return out, nil
 }
 
 // CreateCatalogItemVersion starts a draft: a copy of a version (the

@@ -913,11 +913,11 @@ export function preview(
     item.type === "vm_blueprint" && !namingTemplate(db, project.id, draft.environment)
       ? unnamedVMs(versionBlueprint(db, item, draft.version_id))
       : [];
-  for (const vm of unnamed)
+  for (const { title } of unnamed)
     errors.push({
       field: "",
       code: "no_naming",
-      message: `${vm ? `${vm}: ` : ""}No naming policy applies to ${project.name} in ${where.name}, and the item gives the VMs no naming of its own. Ask a catalog admin to check this item.`,
+      message: `${title ? `${title}: ` : ""}No naming policy applies to ${project.name} in ${where.name}, and the item gives the VMs no naming of its own. Ask a catalog admin to check this item.`,
     });
   if (unnamed.length > 0) for (const c of components ?? []) c.names = [];
   const names = components

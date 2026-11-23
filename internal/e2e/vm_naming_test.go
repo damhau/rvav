@@ -17,9 +17,9 @@ import (
 
 // TestNewVMItemNaming: the VM item New item makes names its VMs where no
 // naming policy applies, and a policy still wins over it; a VM item with
-// no naming is refused at request with a 422 that sends the requester to
-// a catalog admin, never a 500, while a policy may still name its VMs
-// (#216).
+// no naming is published with a warning, and refused at request with a
+// 422 that sends the requester to a catalog admin, never a 500, while a
+// policy may still name its VMs (#216).
 func TestNewVMItemNaming(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end test")
@@ -101,6 +101,43 @@ func TestNewVMItemNaming(t *testing.T) {
 		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "unnamed-vm", Name: "Unnamed VM",
 			Summary: "No naming of its own.", Category: "compute", Type: api.VmBlueprint, Definition: &unnamed}, 201, &bare)
 		publish("unnamed-vm", bare.DraftVersion.Id, unnamed)
+		warned := func(slug, versionID string) []string {
+			t.Helper()
+			var v api.CatalogItemVersionDetail
+			h.json("GET", "/api/v1/admin/catalog/items/"+slug+"/versions/"+versionID, admin, nil, 200, &v)
+			out := []string{}
+			if v.Warnings == nil {
+				return out
+			}
+			for _, w := range *v.Warnings {
+				if deref(w.Code) == "no_naming" {
+					out = append(out, w.Field+" "+w.Message)
+				}
+			}
+			return out
+		}
+		const needs = "its requests need a naming policy, and are refused in a project and environment no policy applies to."
+		if got := warned("unnamed-vm", bare.DraftVersion.Id); !slices.Equal(got, []string{
+			"/definition/blueprint/naming The item gives its VMs no naming: " + needs}) {
+			t.Fatalf("the warnings of the item without a naming = %q", got)
+		}
+		if got := warned("starter-named", starter.DraftVersion.Id); len(got) > 0 {
+			t.Fatalf("the starter's warnings = %q", got)
+		}
+		// A component without a naming, beside one with: at that component.
+		half := unnamed
+		half.Blueprint = maps.Clone(unnamed.Blueprint)
+		half.Blueprint["components"] = []any{
+			map[string]any{"key": "web", "naming": "{project}-{environment}-web{seq:02}"},
+			map[string]any{"key": "db", "title": "Database"},
+		}
+		var halfNamed api.AdminCatalogItem
+		h.json("POST", "/api/v1/admin/catalog/items", admin, api.CatalogItemCreate{Slug: "half-named", Name: "Half named",
+			Summary: "One component named.", Category: "compute", Type: api.VmBlueprint, Definition: &half}, 201, &halfNamed)
+		if got := warned("half-named", halfNamed.DraftVersion.Id); !slices.Equal(got, []string{
+			"/definition/blueprint/components/1/naming Database has no naming, and the item gives its VMs none: " + needs}) {
+			t.Fatalf("the warnings of a component without a naming = %q", got)
+		}
 		const refusal = "No naming policy applies to Web Platform in Development, and the item gives the VMs no naming of its own. Ask a catalog admin to check this item."
 		refused := func(errs []api.FieldError) bool {
 			return slices.ContainsFunc(errs, func(e api.FieldError) bool {
@@ -144,6 +181,17 @@ func TestNewVMItemNaming(t *testing.T) {
 		h.json("POST", "/api/v1/requests", member, requestOf(bare), 202, &req, "Idempotency-Key", uuid.NewString())
 		if got := planned(req.Id); got != "web-dev-pol01" {
 			t.Fatalf("the VM planned under the policy = %q", got)
+		}
+
+		// A policy for one project leaves the warning, one for everywhere
+		// doesn't.
+		if got := warned("unnamed-vm", bare.DraftVersion.Id); len(got) != 1 {
+			t.Fatalf("the warnings under Web Platform's policy = %q", got)
+		}
+		h.json("POST", "/api/v1/admin/naming-policies", "mkeller", api.NamingPolicyWrite{Name: "All names",
+			Template: "{project}-{environment}-all{seq:02}", Offers: &[]api.Offer{{}}}, 201, nil)
+		if got := warned("unnamed-vm", bare.DraftVersion.Id); len(got) > 0 {
+			t.Fatalf("the warnings under a policy for everywhere = %q", got)
 		}
 	})
 }

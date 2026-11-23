@@ -622,7 +622,10 @@ with `vcpu: "2"` and `memory_gb: "4"`, and with
 or `web-dev-db001` for a `db` component's VMs. A VM item without a
 naming is published, as a naming policy may name its VMs; a request for
 it is refused (422, `no_naming`) where no policy applies, and asks the
-requester to have a catalog admin check the item.
+requester to have a catalog admin check the item. Its version warns of
+it (`warnings`, `no_naming`), at `/definition/blueprint/naming`, or at a
+component without a naming when others have one, unless a naming policy
+applies everywhere.
 
 Without `components` the blueprint builds one VM, and a request for
 several makes one deployment per VM; with them, one deployment holding
