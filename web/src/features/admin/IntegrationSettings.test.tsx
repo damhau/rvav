@@ -1,6 +1,8 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { adminState } from "@/mocks/administration";
+import { db } from "@/mocks/seed";
 import { renderApp } from "@/test/render";
 
 // The settings moved into Administration with U1.4 (ADR-0030), against the
@@ -13,6 +15,31 @@ function open(kind: string) {
 }
 
 describe("integration settings", () => {
+  it("says at the field that an environment variable set it since the page read it, then locks it", async () => {
+    const user = open("nsx");
+    const nsx = await screen.findByRole("region", { name: "NSX connection" });
+    const url = within(nsx).getByRole("textbox", { name: "URL" });
+    await user.clear(url);
+    await user.type(url, "https://nsx-lab.corp.example");
+    adminState(db).environment = { ...adminState(db).environment, nsx: { url: "RVAV_NSX_URL" } };
+    await user.click(within(nsx).getByRole("button", { name: "Save settings" }));
+    const refused = "Set by RVAV_NSX_URL, an environment variable of rvav's processes: change it there.";
+    await waitFor(() => expect(url).toHaveAccessibleDescription(refused));
+    await waitFor(() => expect(url).toBeDisabled());
+    expect(url).toHaveValue("https://nsx.corp.example");
+    expect(adminState(db).integrations.nsx!.settings.url).toBe("https://nsx.corp.example");
+  });
+
+  it("saves nothing when nothing changed, and says so", async () => {
+    const user = open("awx");
+    const awx = await screen.findByRole("region", { name: "AWX connection" });
+    const revision = adminState(db).revision;
+    await user.click(within(awx).getByRole("button", { name: "Save settings" }));
+    expect(await screen.findByText("AWX settings unchanged")).toBeInTheDocument();
+    expect(screen.getByText("They're the ones rvav runs with: nothing restarts.")).toBeInTheDocument();
+    expect(adminState(db).revision).toBe(revision);
+  });
+
   it("has the console's panel on vCenter's page", async () => {
     const user = open("vcenter");
     const vcenter = await screen.findByRole("region", { name: "vCenter connection" });

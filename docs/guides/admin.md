@@ -83,13 +83,22 @@ opening by itself once every step is done.
 ### Saved settings apply
 
 No process is restarted by hand (ADR-0030):
-- the identity provider, the console, vRA, email, Teams, Slack, the
-  allowed hosts and the sync intervals apply on next use, within seconds;
+- the identity provider, the console, vRA, Active Directory, ServiceNow,
+  email, Teams, Slack, the allowed hosts and the sync intervals apply on
+  next use, within seconds;
 - a connection (vCenter, AWX, EfficientIP, NSX, Git) applies as each of
   rvav's processes finishes its running work, exits and is started again
   with it. The panel lists the processes: running with the earlier
   settings, finishing their work, then applied. A VM being provisioned
   meanwhile finishes, its next steps with the new connection.
+
+A save that changes nothing rvav runs with saves nothing: no process
+restarts, and the page says the settings are unchanged.
+
+A field that an environment variable sets shows the variable's value and
+is locked: change it in the environment of rvav's processes. If the
+variable was set after you opened the page, saving is refused at that
+field, which then shows the variable's name and value.
 
 Settings saved within a few seconds of each other apply together. With a
 single API (Compose, a VM), the page is unavailable for the few seconds it

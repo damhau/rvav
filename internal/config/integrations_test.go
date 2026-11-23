@@ -156,3 +156,59 @@ func TestConsolePasswordFromTheEnvironment(t *testing.T) {
 		t.Errorf("both set by the environment: %s, %q", c.VCenter.URL, c.ConsolePassword)
 	}
 }
+
+// A locked field sent back as a client read it is unchanged, however it is
+// written; the variable that locks it is named (#211).
+func TestUnchangedLockedValue(t *testing.T) {
+	pin := "AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89"
+	for _, c := range []struct {
+		kind, name     string
+		given, current any
+		want           bool
+	}{
+		{"nsx", "url", "https://nsx01.corp.example ", "https://nsx01.corp.example", true},
+		{"nsx", "url", "https://nsx02.corp.example", "https://nsx01.corp.example", false},
+		{"nsx", "url", nil, "", true},
+		{"nsx", "url", 1.0, "1", false},
+		{"nsx", "insecure", false, false, true},
+		{"nsx", "insecure", true, false, false},
+		{"nsx", "insecure", "false", false, false},
+		{"smtp", "port", 587.0, 587, true},
+		{"smtp", "port", 25.0, 587, false},
+		{"awx", "catalog_labels", []any{" catalog", ""}, []string{"catalog"}, true},
+		{"awx", "catalog_labels", nil, []string(nil), true},
+		{"awx", "catalog_labels", []any{}, []string{"catalog"}, false},
+		{"awx", "catalog_labels", []any{1.0}, []string{"1"}, false},
+		{"vcenter", "sync_interval", "120s", "2m", true},
+		{"vcenter", "sync_interval", "5m", "2m", false},
+		{"nsx", "cert_sha256", strings.ReplaceAll(strings.ToLower(pin), ":", ""), pin, true},
+		{"nsx", "cert_sha256", "", pin, false},
+		{"awx", "fake", true, true, true},
+		{"awx", "fake", false, true, false},
+	} {
+		if got := Unchanged(c.kind, c.name, c.given, c.current); got != c.want {
+			t.Errorf("%s %s: %#v over %#v unchanged = %v, want %v", c.kind, c.name, c.given, c.current, got, c.want)
+		}
+	}
+	t.Setenv("RVAV_VRA_TOKEN", "")
+	t.Setenv("RVAV_VRA_PASSWORD", "s3cret")
+	t.Setenv("RVAV_NSX_URL", "https://nsx01.corp.example")
+	for _, c := range [][3]string{{"vra", "credential", "RVAV_VRA_PASSWORD"}, {"nsx", "url", "RVAV_NSX_URL"}, {"nsx", "username", ""},
+		{"awx", "fake", "RVAV_FAKE_AWX"}} {
+		if got := LockedBy(c[0], c[1]); got != c[2] {
+			t.Errorf("%s %s locked by %q, want %q", c[0], c[1], got, c[2])
+		}
+	}
+}
+
+// Saved text is read trimmed: a page that trims what it sends saves what
+// rvav runs with (#211).
+func TestStoredTextTrimmed(t *testing.T) {
+	t.Setenv("RVAV_CA_BUNDLE", "")
+	var a, b Config
+	a.ApplyStored("trust", Stored{Settings: map[string]any{"ca_bundle": "-----BEGIN CERTIFICATE-----\nAA==\n-----END CERTIFICATE-----\n\n"}})
+	b.ApplyStored("trust", Stored{Settings: map[string]any{"ca_bundle": "-----BEGIN CERTIFICATE-----\nAA==\n-----END CERTIFICATE-----"}})
+	if a.CABundle != b.CABundle {
+		t.Errorf("CA bundles %q and %q", a.CABundle, b.CABundle)
+	}
+}

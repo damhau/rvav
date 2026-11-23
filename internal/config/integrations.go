@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"net/mail"
@@ -270,6 +271,109 @@ func Locked(kind string) []string {
 	return out
 }
 
+// LockedBy is the environment variable that sets an integration's field,
+// "" when none does. A fake is set by its variable only.
+func LockedBy(kind, name string) string {
+	if name == "fake" {
+		return map[string]string{"awx": "RVAV_FAKE_AWX", "efficientip": "RVAV_FAKE_EFFICIENTIP"}[kind]
+	}
+	for _, f := range Fields[kind] {
+		if f.Name != name {
+			continue
+		}
+		for _, env := range append([]string{f.Env}, alsoLockedBy[kind][name]...) {
+			if v, ok := os.LookupEnv(env); ok && v != "" {
+				return env
+			}
+		}
+	}
+	return ""
+}
+
+// Unchanged says whether a value given for an integration's field is the
+// one it has, as rvav reads them: text trimmed, a list's items trimmed, a
+// duration or a certificate's SHA-256 however written.
+func Unchanged(kind, name string, given, current any) bool {
+	typ := "bool"
+	for _, f := range Fields[kind] {
+		if f.Name == name {
+			typ = f.Type
+		}
+	}
+	text := func(v any) (string, bool) {
+		if v == nil {
+			return "", true
+		}
+		s, ok := v.(string)
+		return strings.TrimSpace(s), ok
+	}
+	switch typ {
+	case "bool":
+		g, ok := given.(bool)
+		c, _ := current.(bool)
+		return ok && g == c
+	case "int":
+		g, ok := given.(float64)
+		var c float64
+		switch n := current.(type) {
+		case int:
+			c = float64(n)
+		case float64:
+			c = n
+		}
+		return ok && g == c
+	case "list":
+		g, gok := listItems(given)
+		c, cok := listItems(current)
+		return gok && cok && slices.Equal(g, c)
+	case "duration":
+		g, gok := text(given)
+		c, _ := text(current)
+		gd, gerr := time.ParseDuration(cmp.Or(g, "0s"))
+		cd, cerr := time.ParseDuration(cmp.Or(c, "0s"))
+		return gok && gerr == nil && cerr == nil && gd == cd
+	}
+	g, gok := text(given)
+	c, _ := text(current)
+	if name == "cert_sha256" {
+		if n, ok := trust.NormalFingerprint(g); ok {
+			g = n
+		}
+		if n, ok := trust.NormalFingerprint(c); ok {
+			c = n
+		}
+	}
+	return gok && g == c
+}
+
+// listItems are a list's items trimmed, the empty ones left out; false
+// when it isn't a list of text.
+func listItems(v any) ([]string, bool) {
+	var raw []string
+	switch l := v.(type) {
+	case nil:
+	case []string:
+		raw = l
+	case []any:
+		for _, x := range l {
+			s, ok := x.(string)
+			if !ok {
+				return nil, false
+			}
+			raw = append(raw, s)
+		}
+	default:
+		return nil, false
+	}
+	out := []string{}
+	for _, s := range raw {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out, true
+}
+
 // Fake says whether the integration is a fake in this process.
 func Fake(kind string) bool {
 	switch kind {
@@ -294,9 +398,11 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 	for _, name := range Locked(kind) {
 		locked[name] = true
 	}
+	// Trimmed: a page that trims what it sends saves what rvav already
+	// runs with, and nothing restarts for it.
 	str := func(name string, dst *string) {
-		if v, ok := s.Settings[name].(string); ok && v != "" && !locked[name] {
-			*dst = v
+		if v, ok := s.Settings[name].(string); ok && strings.TrimSpace(v) != "" && !locked[name] {
+			*dst = strings.TrimSpace(v)
 		}
 	}
 	flag := func(name string, dst *bool) {
@@ -476,7 +582,7 @@ func (c *Config) ApplyStored(kind string, s Stored) {
 	case "trust":
 		// Cleared in the UI, the system's CAs only.
 		if v, ok := s.Settings["ca_bundle"].(string); ok && !locked["ca_bundle"] {
-			c.CABundle = v
+			c.CABundle = strings.TrimSpace(v)
 		}
 	case "hosts":
 		strs("rest_source_hosts", &c.RESTSourceHosts)
@@ -521,8 +627,8 @@ func (c Config) Settings(kind string) map[string]any {
 	case "console":
 		return map[string]any{"username": c.ConsoleUsername, "sdk_urls": nonNil(c.WMKSSDKURLs)}
 	case "awx":
-		return map[string]any{"url": c.AWX.URL, "organization": c.AWX.Organization, "catalog_labels": c.AWX.CatalogLabels,
-			"action_labels": c.AWX.ActionLabels, "inventory_source_id": c.AWX.InventorySourceID, "insecure": c.AWX.Insecure,
+		return map[string]any{"url": c.AWX.URL, "organization": c.AWX.Organization, "catalog_labels": nonNil(c.AWX.CatalogLabels),
+			"action_labels": nonNil(c.AWX.ActionLabels), "inventory_source_id": c.AWX.InventorySourceID, "insecure": c.AWX.Insecure,
 			"cert_sha256": c.AWX.CertSHA256,
 			"fake":        c.AWX.Fake, "sync_interval": FormatDuration(c.AWX.SyncInterval)}
 	case "efficientip":

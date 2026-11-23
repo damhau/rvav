@@ -94,7 +94,7 @@ func ConnectionsOf(c config.Config) config.Config {
 	c.SMTP, c.Teams, c.Slack = config.SMTPConfig{}, config.TeamsConfig{}, config.SlackConfig{}
 	c.RESTSourceHosts, c.WebhookHosts = nil, nil
 	c.ConsoleUsername, c.ConsolePassword, c.WMKSSDKURLs = "", "", nil
-	c.VRA = config.VRAConfig{}
+	c.VRA, c.AD, c.ServiceNow = config.VRAConfig{}, config.ADConfig{}, config.ServiceNowConfig{}
 	c.SyncInterval, c.IPAMSyncInterval, c.AWX.SyncInterval, c.Git.Interval = 0, 0, 0, 0
 	return c
 }

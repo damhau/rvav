@@ -69,6 +69,8 @@ interface AdminState {
     string,
     { settings: Record<string, unknown>; secret: boolean; signing?: boolean; updated_at?: string; revision?: number }
   >;
+  /** The integrations' fields an environment variable sets, with its name: they win and are locked (ADR-0020). */
+  environment: Record<string, Record<string, string>>;
   /** vCenters added besides the integration's (ADR-0024). */
   vcenters: S["VCenter"][];
   /** NSX Managers added besides the integration's (ADR-0062), without their vCenters. */
@@ -502,6 +504,7 @@ export function adminState(db: Db): AdminState {
       hosts: { settings: { rest_source_hosts: ["cmdb.corp.example"], webhook_hosts: ["hooks.corp.example"] }, secret: false },
       trust: { settings: { ca_bundle: "" }, secret: false },
     }, // prettier-ignore
+    environment: db.fresh ? {} : { vcenter: { url: "RVAV_VCENTER_URL" } },
     setupHidden: false,
   };
   if (db.fresh) {
@@ -754,6 +757,16 @@ export function namingTemplate(db: Db, projectId: string, env: string): string |
   }
   return best?.template;
 }
+
+/** A setting as the server reads it: text trimmed, a list's items trimmed and the empty ones left out. */
+const settingValue = (v: unknown): unknown =>
+  typeof v === "string"
+    ? v.trim()
+    : Array.isArray(v)
+      ? (v as unknown[]).map((x) => (typeof x === "string" ? x.trim() : x)).filter((x) => x !== "")
+      : (v ?? "");
+
+const sameSetting = (a: unknown, b: unknown) => JSON.stringify(settingValue(a)) === JSON.stringify(settingValue(b));
 
 /** As the server: a saved secret only goes to the address it was given for. */
 function secretMoves(current: Record<string, unknown>, given: Record<string, unknown>, secret: string | undefined) {
@@ -2751,7 +2764,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
             settings: it.settings,
             secret_set: it.secret,
             ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
-            locked: kind === "vcenter" && !db.fresh ? ["url"] : [],
+            locked: Object.keys(st().environment[kind] ?? {}),
             ...applyingOf(kind, it.revision ?? 0),
             ...(it.updated_at
               ? { updated_at: it.updated_at, updated_by: { id: db.me.user.id, name: db.me.user.name } }
@@ -2764,22 +2777,49 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       await wait();
       const kind = String(params.kind);
       const w = (await request.json()) as S["IntegrationWrite"];
+      const it = st().integrations[kind]!;
+      // As the server: a field an environment variable sets may be sent as
+      // it is, and is left out; changed, the save is refused at it.
+      const env = st().environment[kind] ?? {};
+      const locked = Object.keys(env);
+      const changedLocked = locked.filter((k) => k in w.settings && !sameSetting(w.settings[k], it.settings[k]));
+      if (changedLocked.length)
+        return invalid(
+          changedLocked.map((k) =>
+            err(
+              `/settings/${k}`,
+              `Set by ${env[k]}, an environment variable of rvav's processes: change it there.`,
+              "locked",
+            ),
+          ),
+        );
+      w.settings = Object.fromEntries(Object.entries(w.settings).filter(([k]) => !locked.includes(k)));
+      // A save that changes nothing writes nothing: no revision, no restart.
+      const unchanged =
+        !w.secret &&
+        !w.signing_secret &&
+        Object.entries(w.settings).every(([k, v]) =>
+          k === "cert_sha256"
+            ? normalFingerprint(text(v)) === normalFingerprint(text(it.settings[k]))
+            : sameSetting(v, it.settings[k]),
+        );
       if (kind === "oidc") {
         const bad = providerErrors(w.settings);
         if (bad.length) return invalid(bad);
-        const it = st().integrations.oidc!;
-        it.settings = { ...it.settings, ...w.settings };
-        it.updated_at = now();
-        it.revision = saved(kind);
-        audited(db, "settings.integration.oidc", "integration", "oidc");
+        if (!unchanged) {
+          it.settings = { ...it.settings, ...w.settings };
+          it.updated_at = now();
+          it.revision = saved(kind);
+          audited(db, "settings.integration.oidc", "integration", "oidc");
+        }
         return HttpResponse.json({
           kind,
           configured: Boolean(it.settings.issuer),
           settings: it.settings,
           secret_set: false,
-          locked: [],
-          ...applyingOf(kind, it.revision),
-          updated_at: it.updated_at,
+          locked,
+          ...applyingOf(kind, it.revision ?? 0),
+          ...(it.updated_at ? { updated_at: it.updated_at } : {}),
         });
       }
       const url = w.settings.url;
@@ -2848,21 +2888,16 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
       if (untrusted.length) return invalid(untrusted);
       if (typeof w.settings.cert_sha256 === "string")
         w.settings.cert_sha256 = normalFingerprint(w.settings.cert_sha256);
-      const it = st().integrations[kind]!;
-      // RVAV_VCENTER_URL in the mock's environment, not a new install's.
-      const locked = kind === "vcenter" && !db.fresh ? ["url"] : [];
-      const given = Object.fromEntries(Object.entries(w.settings).filter(([k]) => !locked.includes(k)));
-      const moved = it.secret ? secretMoves(it.settings, given, w.secret) : null;
+      const moved = it.secret ? secretMoves(it.settings, w.settings, w.secret) : null;
       if (moved) return moved;
-      it.settings = {
-        ...it.settings,
-        ...Object.fromEntries(Object.entries(w.settings).filter(([k]) => !locked.includes(k))),
-      };
-      if (w.secret) it.secret = true;
-      if (w.signing_secret) it.signing = true;
-      it.updated_at = now();
-      it.revision = saved(kind);
-      audited(db, `settings.integration.${kind}`, "integration", kind);
+      if (!unchanged) {
+        it.settings = { ...it.settings, ...w.settings };
+        if (w.secret) it.secret = true;
+        if (w.signing_secret) it.signing = true;
+        it.updated_at = now();
+        it.revision = saved(kind);
+        audited(db, `settings.integration.${kind}`, "integration", kind);
+      }
       return HttpResponse.json({
         kind,
         configured: configuredOf(kind, it),
@@ -2870,8 +2905,8 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         secret_set: it.secret,
         ...(kind === "slack" ? { signing_secret_set: it.signing === true } : {}),
         locked,
-        ...applyingOf(kind, it.revision),
-        updated_at: it.updated_at,
+        ...applyingOf(kind, it.revision ?? 0),
+        ...(it.updated_at ? { updated_at: it.updated_at } : {}),
       });
     }),
     http.post(`${base}/admin/integrations/:kind/test`, async ({ params, request }) => {
@@ -2888,7 +2923,7 @@ export function administrationHandlers(db: Db, base: string, wait: () => Promise
         );
       }
       const editable = Object.fromEntries(
-        Object.entries(body?.settings ?? {}).filter(([k]) => !(kind === "vcenter" && k === "url")),
+        Object.entries(body?.settings ?? {}).filter(([k]) => !(k in (st().environment[kind] ?? {}))),
       );
       const untrusted = trustErrors(kind, editable);
       if (untrusted.length) return invalid(untrusted);

@@ -16,15 +16,22 @@ the code reads, and only those.
   it reads them, secrets hidden.
 - **Integrations › …**: on that page of **Administration › Integrations**
   too, where the environment variable, when set, still wins and locks its
-  field. An install can leave them all out and set them from the UI.
+  field. An install can leave them all out and set them from the UI. A
+  save (`PUT /admin/integrations/{kind}`) may send a locked field with the
+  value the variable gives it; with another value, or with a password or
+  token the environment sets, it is refused with `422`, code `locked`, at
+  that field.
 
 Saved in Administration, a setting applies without a restart by hand:
-the identity provider, the console's account and SDK, vRA, email, Teams,
-Slack, the allowed hosts and the sync intervals on next use; a connection
+the identity provider, the console's account and SDK, vRA, Active
+Directory, ServiceNow, email, Teams, Slack, the allowed hosts and the sync
+intervals on next use; a connection
 (vCenter, AWX, EfficientIP, NSX, Git) once each process has drained (no
 new work, running work finished, within `RVAV_DRAIN_TIMEOUT`), exited with
 status 3 and been started again by its supervisor: Kubernetes, Compose's
 `restart` policy, or systemd. Run rvav's processes under one of those.
+A save that changes nothing rvav runs with writes nothing: no revision, no
+audit event, no restart.
 
 **Secret** marks a value to keep in the Secret (or a vault that fills it),
 never in the ConfigMap or a file in Git. Durations are Go durations (`90s`,

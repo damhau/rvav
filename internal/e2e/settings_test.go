@@ -300,8 +300,10 @@ func TestMovedSettings(t *testing.T) {
 		if got := srv2.WMKSNow(ctx); !slices.Equal(got, []string{"/env/wmks.js"}) {
 			t.Errorf("WebMKS scripts with the variable set: %v", got)
 		}
-		// A locked field given is left as the variable sets it.
-		it := save(api2, "hosts", map[string]any{"rest_source_hosts": []string{cmdb.URL}, "webhook_hosts": []string{"other.example"}}, "", 200)
+		// A locked field given changed is refused (#211); as the variable
+		// sets it, the save goes on and leaves it so.
+		save(api2, "hosts", map[string]any{"rest_source_hosts": []string{cmdb.URL}, "webhook_hosts": []string{"other.example"}}, "", 422)
+		it := save(api2, "hosts", map[string]any{"rest_source_hosts": []string{cmdb.URL}, "webhook_hosts": []string{" hooks.corp.example"}}, "", 200)
 		if hosts, _ := it.Settings["webhook_hosts"].([]any); len(hosts) != 1 || hosts[0] != "hooks.corp.example" {
 			t.Errorf("webhook hosts after a save with the variable set: %v", it.Settings["webhook_hosts"])
 		}

@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -187,8 +189,6 @@ func checkIntegrationKind(kind string) error {
 	return nil
 }
 
-// SetIntegration saves an integration's settings; fields an environment
-// variable sets are left out. The secret, when given, is sealed.
 // nsxNameTaken is why the NSX integration can't have this address: its
 // host names an NSX Manager added besides it, and the API would know both
 // by that name (ADR-0062); "" when it can.
@@ -206,6 +206,10 @@ func (s *Service) nsxNameTaken(ctx context.Context, raw string) (string, error) 
 	return fmt.Sprintf("%s is an NSX Manager added besides the integration: remove it from NSX Managers first, or give the integration another.", host), nil
 }
 
+// SetIntegration saves an integration's settings. A field an environment
+// variable sets may be sent as it is, and is left out; changed, it is
+// refused. The secret, when given, is sealed. A save that changes nothing
+// rvav runs with writes nothing, so no process restarts for it.
 func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind string, w api.IntegrationWrite) (api.Integration, error) {
 	if !p.Everywhere(auth.IntegrationsManage) {
 		return api.Integration{}, ErrForbidden
@@ -216,14 +220,16 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 	if err := noSecretFor(kind, &w); err != nil {
 		return api.Integration{}, err
 	}
-	locked := config.Locked(kind)
-	settings := map[string]any{}
-	for k, v := range w.Settings {
-		if !slices.Contains(locked, k) && k != "fake" && k != config.ConsoleForKey {
-			settings[k] = v
-		}
+	stored, err := s.Store.StoredIntegrations(ctx)
+	if err != nil {
+		return api.Integration{}, err
 	}
-	var errs []api.FieldError
+	var row *store.IntegrationSettings
+	if r, ok := stored[kind]; ok {
+		row = &r
+	}
+	current := s.pendingSettings(ctx, kind, row)
+	settings, errs := withoutLocked(kind, w, s.environment().Settings(kind))
 	bad := config.CheckSettings(kind, settings)
 	if u, ok := settings["url"].(string); ok && u != "" && kind == "git" {
 		if err := gitrepo.CheckURL(u); err != nil {
@@ -255,18 +261,11 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 		errs = append(errs, fieldErr("/settings/"+field, "invalid", msg))
 	}
 	if len(errs) > 0 {
+		slices.SortFunc(errs, func(a, b api.FieldError) int { return strings.Compare(a.Field, b.Field) })
 		return api.Integration{}, &ValidationError{Errors: errs}
 	}
 	if v, ok := settings["cert_sha256"].(string); ok && v != "" {
 		settings["cert_sha256"], _ = trust.NormalFingerprint(v)
-	}
-	stored, err := s.Store.StoredIntegrations(ctx)
-	if err != nil {
-		return api.Integration{}, err
-	}
-	var row *store.IntegrationSettings
-	if r, ok := stored[kind]; ok {
-		row = &r
 	}
 	hasSecret := s.Config.SecretSet(kind) || row != nil && row.SecretCiphertext != nil
 	if kind == "console" {
@@ -282,7 +281,7 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 			}
 		}
 	}
-	if err := secretGoesWhereGiven(kind, s.pendingSettings(ctx, kind, row), settings, w.Secret != nil && *w.Secret != "", hasSecret); err != nil {
+	if err := secretGoesWhereGiven(kind, current, settings, w.Secret != nil && *w.Secret != "", hasSecret); err != nil {
 		return api.Integration{}, err
 	}
 	var sealed *store.Sealed
@@ -311,10 +310,12 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 		sealed = &store.Sealed{KeyID: keyID, Nonce: nonce, Ciphertext: ct}
 	}
 	raw, _ := json.Marshal(settings)
-	if _, err := s.Store.SaveIntegration(ctx, kind, raw, sealed, p.User.ID); err != nil {
-		return api.Integration{}, err
+	if !s.savesNothing(stored, kind, raw, sealed) {
+		if _, err := s.Store.SaveIntegration(ctx, kind, raw, sealed, p.User.ID); err != nil {
+			return api.Integration{}, err
+		}
+		s.audit(ctx, p, "settings.integration."+kind, "integration", kind, nil, map[string]any{"settings": settings, "secret_changed": sealed != nil})
 	}
-	s.audit(ctx, p, "settings.integration."+kind, "integration", kind, nil, map[string]any{"settings": settings, "secret_changed": sealed != nil})
 	list, err := s.Integrations(ctx, p)
 	if err != nil {
 		return api.Integration{}, err
@@ -325,6 +326,73 @@ func (s *Service) SetIntegration(ctx context.Context, p *auth.Principal, kind st
 		}
 	}
 	return api.Integration{}, ErrNotFound
+}
+
+// withoutLocked are the settings given but those an environment variable
+// sets: one given as the environment has it is left out, so what a client
+// read can be sent back; one changed is refused at its field, as a password
+// or token given for one the environment sets is.
+func withoutLocked(kind string, w api.IntegrationWrite, env map[string]any) (map[string]any, []api.FieldError) {
+	locked := config.Locked(kind)
+	_, hasFake := env["fake"]
+	settings := map[string]any{}
+	var errs []api.FieldError
+	refuse := func(at, name string) {
+		errs = append(errs, fieldErr(at, "locked", fmt.Sprintf("Set by %s, an environment variable of rvav's processes: change it there.",
+			config.LockedBy(kind, name))))
+	}
+	for k, v := range w.Settings {
+		switch {
+		case k == config.ConsoleForKey, k == "fake" && !hasFake:
+		case slices.Contains(locked, k), k == "fake":
+			if !config.Unchanged(kind, k, v, env[k]) {
+				refuse("/settings/"+k, k)
+			}
+		default:
+			settings[k] = v
+		}
+	}
+	for _, f := range config.Fields[kind] {
+		given, at := w.Secret, "/secret"
+		if kind == "slack" && f.Name == "signing_secret" {
+			given, at = w.SigningSecret, "/signing_secret"
+		}
+		if f.Secret && slices.Contains(locked, f.Name) && given != nil && *given != "" {
+			refuse(at, f.Name)
+		}
+	}
+	return settings, errs
+}
+
+// savesNothing says whether saving these settings and secret leaves what
+// rvav's processes run with as it is: then nothing is written, and no
+// revision tells them to apply anything.
+func (s *Service) savesNothing(stored map[string]store.IntegrationSettings, kind string, settings json.RawMessage, sealed *store.Sealed) bool {
+	base := s.environment()
+	next := maps.Clone(stored)
+	row := next[kind]
+	row.Kind, row.Settings = kind, settings
+	if sealed != nil {
+		row.SecretKeyID, row.SecretNonce, row.SecretCiphertext = sealed.KeyID, sealed.Nonce, sealed.Ciphertext
+	}
+	next[kind] = row
+	before, after := base, base
+	if _, err := ApplyStored(&before, stored, s.Secrets, nil); err != nil {
+		return false
+	}
+	if _, err := ApplyStored(&after, next, s.Secrets, nil); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(before, after)
+}
+
+// environment is what rvav's processes run with before the settings saved
+// in Administration: the environment variables' and the defaults.
+func (s *Service) environment() config.Config {
+	if s.Live != nil {
+		return s.Live.Base
+	}
+	return s.Config
 }
 
 // TestIntegration connects with the settings given over the saved ones

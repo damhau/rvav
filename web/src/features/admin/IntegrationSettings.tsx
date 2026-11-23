@@ -6,7 +6,7 @@
 // own; the console's is on vCenter's page. A connection's test shows
 // its server's certificate, pinned here or trusted through the CA bundle of
 // Trusted certificates (U1.4).
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleX, Lock } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -16,9 +16,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSaveFocus } from "@/components/ui/opener";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, Input, Textarea } from "@/components/ui/input";
+import { Field, FieldNote, Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { api, call } from "@/lib/api/client";
+import { api, call, isApiError } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { formatList, fullDate, relative } from "@/lib/format";
 import { i18n } from "@/lib/i18n";
@@ -598,6 +598,20 @@ const text = (v: unknown, type: Setting["type"]) =>
       ? String(v)
       : "";
 
+/** A save's field errors, one refused for an environment variable's field said in the page's language. */
+export function settingErrors(e: unknown, qc: QueryClient, envOf: (field: string) => string | undefined) {
+  const out = fieldErrors(e);
+  if (!isApiError(e) || !e.fieldErrors.some((f) => f.code === "locked")) return out;
+  for (const f of e.fieldErrors) {
+    const env = f.code === "locked" ? envOf(f.field) : undefined;
+    if (env) out[f.field] = i18n.t("admin:integrations.lockedRefused", { env });
+  }
+  // Set since the page read the settings: read again, its field is locked
+  // and the next save leaves it out.
+  void qc.invalidateQueries({ queryKey: ["admin", "integrations"] });
+  return out;
+}
+
 /** One test check: its name, and the server's message. */
 export function CheckLine({ name, message }: { name: string; message: string }) {
   const { t } = useTranslation("admin");
@@ -655,6 +669,14 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
     ...(def.secret && secret.trim() ? { secret: def.secret.multiline ? secret.trim() : secret } : {}),
     ...(signing ? { signing_secret: signing } : {}),
   });
+  const shownErrors = (e: unknown) =>
+    settingErrors(e, qc, (field) =>
+      field === "/secret"
+        ? def.secret?.env
+        : field === "/signing_secret"
+          ? def.signing?.env
+          : def.settings.find((s) => `/settings/${s.name}` === field)?.env,
+    );
   const save = useMutation({
     mutationFn: () =>
       call(api.PUT("/admin/integrations/{kind}", { params: { path: { kind: it.kind } }, body: body() })),
@@ -662,6 +684,13 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
       void qc.invalidateQueries({ queryKey: ["admin", "integrations"] });
       setSecret("");
       setSigning("");
+      // The server writes nothing for a save that changes nothing: the time stays.
+      if (saved.updated_at === it.updated_at) {
+        toast.success(t("integrations.unchangedToast", { title: def.title }), {
+          description: t("integrations.unchanged"),
+        });
+        return;
+      }
       const nextUse = onNextUse[it.kind];
       toast.success(t("integrations.savedToast", { title: def.title }), {
         description: nextUse
@@ -672,7 +701,7 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
       });
     },
     onError: (e) => {
-      setErrors(fieldErrors(e));
+      setErrors(shownErrors(e));
       failed(e, t("integrations.notSaved"));
     },
   });
@@ -680,7 +709,7 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
     mutationFn: () =>
       call(api.POST("/admin/integrations/{kind}/test", { params: { path: { kind: it.kind } }, body: body() })),
     onError: (e) => {
-      setErrors(fieldErrors(e));
+      setErrors(shownErrors(e));
       failed(e, t("integrations.testDidntRun"));
     },
   });
@@ -750,6 +779,8 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
             const id = `${it.kind}-${f.name}`;
             const error = errors[`/settings/${f.name}`];
             const hint = locked ? lockedHint(f) : f.hint;
+            // A locked field shows what the environment sets, even typed over before it was locked.
+            const value = locked ? text(it.settings[f.name], f.type) : String(values[f.name] ?? "");
             if (f.type === "bool")
               return (
                 <div key={f.name} className="flex flex-col gap-1 self-end">
@@ -757,12 +788,18 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
                     <Checkbox
                       id={id}
                       disabled={locked}
-                      checked={values[f.name] === true}
+                      checked={locked ? it.settings[f.name] === true : values[f.name] === true}
                       onChange={(on) => setValues({ ...values, [f.name]: on })}
+                      aria-describedby={error ? `${id}-note` : undefined}
+                      aria-invalid={error ? true : undefined}
                     />
                     {f.label}
                   </label>
-                  {locked && <span className="text-secondary text-faint">{lockedHint(f)}</span>}
+                  {error ? (
+                    <FieldNote id={`${id}-note`} error={error} />
+                  ) : (
+                    locked && <span className="text-secondary text-faint">{lockedHint(f)}</span>
+                  )}
                   {f.warn && values[f.name] === true && (
                     <span role="status" className="text-secondary text-warn">
                       {f.warn}
@@ -777,7 +814,7 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
                     id={id}
                     disabled={locked}
                     listLabel={f.label}
-                    value={String(values[f.name] ?? "")}
+                    value={value}
                     onChange={(v) => setValues({ ...values, [f.name]: v })}
                     options={f.choices.map((c) => ({ value: c, label: c }))}
                   />
@@ -799,7 +836,7 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
                     spellCheck={false}
                     className="font-mono text-secondary"
                     disabled={locked}
-                    value={String(values[f.name] ?? "")}
+                    value={value}
                     onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
                   />
                 </Field>
@@ -811,7 +848,7 @@ export function Integration({ it }: { it: S["Integration"] & { kind: Kind } }) {
                   className={f.type === "string" && f.name !== "username" ? "font-mono text-secondary" : undefined}
                   inputMode={f.type === "int" ? "numeric" : undefined}
                   disabled={locked}
-                  value={String(values[f.name] ?? "")}
+                  value={value}
                   onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
                 />
               </Field>

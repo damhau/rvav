@@ -197,10 +197,17 @@ func TestIdentityProvider(t *testing.T) {
 			t.Fatalf("options once cleared: %+v", opts.Provider)
 		}
 
-		// RVAV_OIDC_ISSUER wins, and its field is locked.
+		// RVAV_OIDC_ISSUER wins, and its field is locked: changed, the save
+		// is refused at it; sent as it is, the save goes on (#211).
 		t.Setenv("RVAV_OIDC_ISSUER", idp.issuer)
 		live.Base.Auth.OIDCIssuer = idp.issuer
-		h.json("PUT", "/api/v1/admin/integrations/oidc", admin, api.IntegrationWrite{Settings: map[string]any{"issuer": idp2.issuer, "client_id": "rvav"}}, 200, &it)
+		var problem api.Problem
+		h.json("PUT", "/api/v1/admin/integrations/oidc", admin, api.IntegrationWrite{Settings: map[string]any{"issuer": idp2.issuer, "client_id": "rvav"}}, 422, &problem)
+		if problem.Errors == nil || len(*problem.Errors) != 1 || (*problem.Errors)[0].Field != "/settings/issuer" ||
+			deref((*problem.Errors)[0].Code) != "locked" {
+			t.Fatalf("the issuer the environment sets, changed: %+v", problem)
+		}
+		h.json("PUT", "/api/v1/admin/integrations/oidc", admin, api.IntegrationWrite{Settings: map[string]any{"issuer": idp.issuer, "client_id": "rvav"}}, 200, &it)
 		if !slices.Contains(it.Locked, "issuer") || it.Settings["issuer"] != idp.issuer {
 			t.Fatalf("the issuer set by the environment: %+v", it)
 		}

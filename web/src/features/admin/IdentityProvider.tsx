@@ -19,7 +19,7 @@ import { api, call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { TRIAL_CHANNEL, type TrialMessage, openTrial, webOverrides } from "@/lib/auth";
 import { failed, fieldErrors } from "./governance/common";
-import { CheckLine, SavedBy } from "./IntegrationSettings";
+import { CheckLine, SavedBy, settingErrors } from "./IntegrationSettings";
 import { ServerCertificate } from "./ServerCertificate";
 
 type S = components["schemas"];
@@ -81,7 +81,7 @@ export function IdentityProvider({ it }: { it: S["Integration"] }) {
       });
     },
     onError: (e) => {
-      setErrors(fieldErrors(e));
+      setErrors(settingErrors(e, qc, (field) => settings.find((s) => `/settings/${s.name}` === field)?.env));
       failed(e, t("integrations.notSaved"));
     },
   });

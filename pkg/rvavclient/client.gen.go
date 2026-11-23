@@ -6299,7 +6299,7 @@ type FieldError struct {
 	// Code Stable machine code, for example `required`, `maximum`,
 	// `too_long`, `taken`, `naming`, `no_deployment`,
 	// `quota_exceeded`, `limit_exceeded`, `looser`, `stale_version`,
-	// `not_member`.
+	// `not_member`, `locked`.
 	Code *string `json:"code,omitempty"`
 
 	// Field JSON pointer into the submitted inputs, for example `/inputs/memory_gb`. Empty for form-level errors.
@@ -6780,8 +6780,8 @@ type InstallSetting struct {
 type Integration struct {
 	// Applying A process still runs with earlier settings: it drains (takes no
 	// new task, lets those running finish), exits and is started again
-	// with these (ADR-0030). Never for oidc, console, vra, smtp,
-	// teams, slack and hosts, read on next use.
+	// with these (ADR-0030). Never for oidc, console, vra, ad,
+	// servicenow, smtp, teams, slack and hosts, read on next use.
 	Applying   bool            `json:"applying"`
 	Configured bool            `json:"configured"`
 	Kind       IntegrationKind `json:"kind"`
@@ -15432,7 +15432,13 @@ type ClientInterface interface {
 
 	// SetIntegrationWithBody Save a connection's settings
 	//
-	// Fields set by environment variables can't be changed here (ADR-0020).
+	// Fields set by environment variables can't be changed here (ADR-0020):
+	// one of `locked` may be sent with the value it has, as read, and is
+	// left out; with another value, the save is refused with the code
+	// `locked` at that field (`/settings/<name>`; `/secret` or
+	// `/signing_secret` for a password or token, which can't be given).
+	// A save that changes nothing rvav runs with writes nothing: no new
+	// revision, no audit event, no process restarts.
 	// Saved settings apply without a restart by hand (ADR-0030): the
 	// identity provider and notifications on next use; a connection when
 	// each process holding it has drained and been started again by its
@@ -15445,7 +15451,13 @@ type ClientInterface interface {
 
 	// SetIntegration Save a connection's settings
 	//
-	// Fields set by environment variables can't be changed here (ADR-0020).
+	// Fields set by environment variables can't be changed here (ADR-0020):
+	// one of `locked` may be sent with the value it has, as read, and is
+	// left out; with another value, the save is refused with the code
+	// `locked` at that field (`/settings/<name>`; `/secret` or
+	// `/signing_secret` for a password or token, which can't be given).
+	// A save that changes nothing rvav runs with writes nothing: no new
+	// revision, no audit event, no process restarts.
 	// Saved settings apply without a restart by hand (ADR-0030): the
 	// identity provider and notifications on next use; a connection when
 	// each process holding it has drained and been started again by its
@@ -20759,7 +20771,13 @@ func (c *Client) MakeServiceNowToken(ctx context.Context, reqEditors ...RequestE
 
 // SetIntegrationWithBody Save a connection's settings
 //
-// Fields set by environment variables can't be changed here (ADR-0020).
+// Fields set by environment variables can't be changed here (ADR-0020):
+// one of `locked` may be sent with the value it has, as read, and is
+// left out; with another value, the save is refused with the code
+// `locked` at that field (`/settings/<name>`; `/secret` or
+// `/signing_secret` for a password or token, which can't be given).
+// A save that changes nothing rvav runs with writes nothing: no new
+// revision, no audit event, no process restarts.
 // Saved settings apply without a restart by hand (ADR-0030): the
 // identity provider and notifications on next use; a connection when
 // each process holding it has drained and been started again by its
@@ -20782,7 +20800,13 @@ func (c *Client) SetIntegrationWithBody(ctx context.Context, kind IntegrationKin
 
 // SetIntegration Save a connection's settings
 //
-// Fields set by environment variables can't be changed here (ADR-0020).
+// Fields set by environment variables can't be changed here (ADR-0020):
+// one of `locked` may be sent with the value it has, as read, and is
+// left out; with another value, the save is refused with the code
+// `locked` at that field (`/settings/<name>`; `/secret` or
+// `/signing_secret` for a password or token, which can't be given).
+// A save that changes nothing rvav runs with writes nothing: no new
+// revision, no audit event, no process restarts.
 // Saved settings apply without a restart by hand (ADR-0030): the
 // identity provider and notifications on next use; a connection when
 // each process holding it has drained and been started again by its
@@ -41837,7 +41861,13 @@ type ClientWithResponsesInterface interface {
 
 	// SetIntegrationWithBodyWithResponse Save a connection's settings
 	//
-	// Fields set by environment variables can't be changed here (ADR-0020).
+	// Fields set by environment variables can't be changed here (ADR-0020):
+	// one of `locked` may be sent with the value it has, as read, and is
+	// left out; with another value, the save is refused with the code
+	// `locked` at that field (`/settings/<name>`; `/secret` or
+	// `/signing_secret` for a password or token, which can't be given).
+	// A save that changes nothing rvav runs with writes nothing: no new
+	// revision, no audit event, no process restarts.
 	// Saved settings apply without a restart by hand (ADR-0030): the
 	// identity provider and notifications on next use; a connection when
 	// each process holding it has drained and been started again by its
@@ -41850,7 +41880,13 @@ type ClientWithResponsesInterface interface {
 
 	// SetIntegrationWithResponse Save a connection's settings
 	//
-	// Fields set by environment variables can't be changed here (ADR-0020).
+	// Fields set by environment variables can't be changed here (ADR-0020):
+	// one of `locked` may be sent with the value it has, as read, and is
+	// left out; with another value, the save is refused with the code
+	// `locked` at that field (`/settings/<name>`; `/secret` or
+	// `/signing_secret` for a password or token, which can't be given).
+	// A save that changes nothing rvav runs with writes nothing: no new
+	// revision, no audit event, no process restarts.
 	// Saved settings apply without a restart by hand (ADR-0030): the
 	// identity provider and notifications on next use; a connection when
 	// each process holding it has drained and been started again by its
@@ -67010,7 +67046,13 @@ func (c *ClientWithResponses) MakeServiceNowTokenWithResponse(ctx context.Contex
 
 // SetIntegrationWithBodyWithResponse Save a connection's settings
 //
-// Fields set by environment variables can't be changed here (ADR-0020).
+// Fields set by environment variables can't be changed here (ADR-0020):
+// one of `locked` may be sent with the value it has, as read, and is
+// left out; with another value, the save is refused with the code
+// `locked` at that field (`/settings/<name>`; `/secret` or
+// `/signing_secret` for a password or token, which can't be given).
+// A save that changes nothing rvav runs with writes nothing: no new
+// revision, no audit event, no process restarts.
 // Saved settings apply without a restart by hand (ADR-0030): the
 // identity provider and notifications on next use; a connection when
 // each process holding it has drained and been started again by its
@@ -67029,7 +67071,13 @@ func (c *ClientWithResponses) SetIntegrationWithBodyWithResponse(ctx context.Con
 
 // SetIntegrationWithResponse Save a connection's settings
 //
-// Fields set by environment variables can't be changed here (ADR-0020).
+// Fields set by environment variables can't be changed here (ADR-0020):
+// one of `locked` may be sent with the value it has, as read, and is
+// left out; with another value, the save is refused with the code
+// `locked` at that field (`/settings/<name>`; `/secret` or
+// `/signing_secret` for a password or token, which can't be given).
+// A save that changes nothing rvav runs with writes nothing: no new
+// revision, no audit event, no process restarts.
 // Saved settings apply without a restart by hand (ADR-0030): the
 // identity provider and notifications on next use; a connection when
 // each process holding it has drained and been started again by its
