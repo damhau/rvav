@@ -10058,7 +10058,7 @@ type ServiceNowCmdb struct {
 	// Retired CIs rvav retired, their VM gone.
 	Retired int `json:"retired"`
 
-	// Servicenow CIs of rvav's data source ServiceNow has, not retired, at the last reconcile.
+	// Servicenow CIs of rvav's data source ServiceNow has, not retired, at the last reconcile; absent when it couldn't read them (reconcile_error).
 	Servicenow *int `json:"servicenow,omitempty"`
 }
 

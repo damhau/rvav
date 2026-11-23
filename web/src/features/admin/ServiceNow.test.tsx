@@ -1,6 +1,9 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { api, call } from "@/lib/api/client";
+import { server } from "@/mocks/node";
 import { renderApp } from "@/test/render";
 
 // ServiceNow's page (I1.5, ADR-0065) against the mock API: the token
@@ -62,6 +65,23 @@ describe("ServiceNow's integration", () => {
     expect(changed).toHaveAttribute("datetime", "2026-10-28T09:14:52Z");
     await user.click(within(cmdb).getByRole("button", { name: "Reconcile now" }));
     expect(await screen.findByText("rvav reconciles within seconds")).toBeInTheDocument();
+  });
+
+  it("says neither how many CIs ServiceNow has nor which rvav no longer has when it couldn't read them", async () => {
+    const cmdb = await call(api.GET("/admin/integrations/servicenow/cmdb"));
+    const error = "ServiceNow GET /api/now/table/cmdb_ci_vmware_instance: lookup corp.service-now.com: no such host";
+    server.use(
+      http.get("*/api/v1/admin/integrations/servicenow/cmdb", () =>
+        HttpResponse.json({ ...cmdb, servicenow: undefined, orphans: [], orphans_total: 0, reconcile_error: error }),
+      ),
+    );
+    open();
+    const region = await screen.findByRole("region", { name: "CMDB" });
+    expect(await within(region).findByRole("alert")).toHaveTextContent(`ServiceNow's CIs couldn't be read: ${error}`);
+    expect(within(region).getByText("Reconciled")).toBeInTheDocument();
+    expect(within(region).queryByText(/ServiceNow has/)).not.toBeInTheDocument();
+    expect(within(region).queryByRole("heading", { name: "CIs rvav no longer has" })).not.toBeInTheDocument();
+    expect(within(region).queryByText(/^None: every CI/)).not.toBeInTheDocument();
   });
 
   it("refuses an allowed source that isn't an address and a rate out of range", async () => {

@@ -11030,7 +11030,7 @@ export interface components {
             reconciled_at?: string;
             /** Format: date-time */
             next_reconcile_at?: string;
-            /** @description CIs of rvav's data source ServiceNow has, not retired, at the last reconcile. */
+            /** @description CIs of rvav's data source ServiceNow has, not retired, at the last reconcile; absent when it couldn't read them (reconcile_error). */
             servicenow?: number;
             /** @description CIs of rvav's data source, not retired, that rvav doesn't keep (at most 500). */
             orphans: components["schemas"]["ServiceNowOrphan"][];

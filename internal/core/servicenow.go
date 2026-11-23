@@ -59,10 +59,11 @@ func (s *Service) ServiceNowCmdb(ctx context.Context, p *auth.Principal) (api.Se
 	if st.ReconciledAt != nil && json.Unmarshal(st.Report, &r) == nil {
 		out.ReconciledAt = st.ReconciledAt
 		out.NextReconcileAt = new(st.ReconciledAt.Add(c.SyncInterval))
-		out.Servicenow = new(r.ServiceNow)
 		out.OrphansTotal = r.Orphaned
 		if r.Error != "" {
 			out.ReconcileError = new(r.Error)
+		} else {
+			out.Servicenow = new(r.ServiceNow)
 		}
 		for _, o := range r.Orphans {
 			out.Orphans = append(out.Orphans, api.ServiceNowOrphan{SysId: o.SysID, Name: o.Name, InstanceUuid: nonEmpty(o.InstanceUUID),

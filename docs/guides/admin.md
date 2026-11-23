@@ -875,7 +875,8 @@ keeps and has retired, and lists:
   each again, from 10 seconds to 15 minutes apart.
 - **CIs rvav no longer has**: CIs of rvav's discovery source, not
   retired, with no VM in rvav, such as a VM deleted while the CMDB was
-  off. rvav doesn't retire them: decide in ServiceNow.
+  off. rvav doesn't retire them: decide in ServiceNow. When rvav can't
+  read ServiceNow's CIs, the panel shows why instead of this list.
 
 rvav reconciles every **Sync interval**, 30 minutes by default. To
 reconcile within seconds, click **Reconcile now**.

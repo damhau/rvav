@@ -71,6 +71,7 @@ func TestServiceNowCMDB(t *testing.T) {
 		var cmdb api.ServiceNowCmdb
 		report := func() api.ServiceNowCmdb {
 			t.Helper()
+			cmdb = api.ServiceNowCmdb{}
 			h.json("GET", "/api/v1/admin/integrations/servicenow/cmdb", admin, nil, 200, &cmdb)
 			return cmdb
 		}
@@ -80,6 +81,14 @@ func TestServiceNowCMDB(t *testing.T) {
 			t.Fatalf("before any VM = %+v", r)
 		}
 		h.json("GET", "/api/v1/admin/integrations/servicenow/cmdb", "tnguyen", nil, 403, nil)
+		// ServiceNow's CIs unread: neither how many it has nor which rvav no longer keeps.
+		snow.FailOn("/api/now/table/"+servicenow.DefaultClass, http.StatusServiceUnavailable)
+		h.json("POST", "/api/v1/admin/integrations/servicenow/cmdb/reconcile", admin, nil, 202, nil)
+		pass()
+		if r := report(); r.ReconcileError == nil || r.Servicenow != nil || r.OrphansTotal != 0 || len(r.Orphans) != 0 {
+			t.Fatalf("with ServiceNow's CIs unread = %+v", r)
+		}
+		snow.FailOn("/api/now/table/"+servicenow.DefaultClass, 0)
 
 		d := buildVM(h, model)
 		vm := d.vm()

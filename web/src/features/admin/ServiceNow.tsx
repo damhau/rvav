@@ -300,7 +300,7 @@ export function ServiceNowCmdb() {
             />
           </Section>
         )}
-        {c.reconciled_at && (
+        {c.reconciled_at && !c.reconcile_error && (
           <Section title={t("serviceNow.cmdb.orphans")} level={3}>
             <p className="text-secondary text-muted">
               {c.orphans_total === 0

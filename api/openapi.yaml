@@ -14337,7 +14337,7 @@ components:
           format: date-time
         servicenow:
           type: integer
-          description: CIs of rvav's data source ServiceNow has, not retired, at the last reconcile.
+          description: CIs of rvav's data source ServiceNow has, not retired, at the last reconcile; absent when it couldn't read them (reconcile_error).
         orphans:
           type: array
           description: CIs of rvav's data source, not retired, that rvav doesn't keep (at most 500).
