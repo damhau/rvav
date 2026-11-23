@@ -124,6 +124,11 @@ vcsim:
   do (#187). It then restarts empty, without the layout and the VMs rvav
   made. `rvav-vcsim` runs clones into one folder one at a time, and refuses
   a second VM of the same name in a folder, as vCenter does.
+- **Live watch:** stock vcsim can hang for good when it makes a VM while a
+  client, such as rvav's sync, waits for updates on a container view. A
+  request with `count: 2` then never finishes cloning, and only a restart
+  of vcsim frees it (#206). `rvav-vcsim` doesn't make new VMs wait for the
+  watch's property filter.
 - **Guest IPs:** vcsim reports a guest IP only for VMs set up through guest
   customization. VMs set up through guestinfo (cloud-init, cloudbase-init)
   never get one, and their requests wait at "Power on and wait for guest

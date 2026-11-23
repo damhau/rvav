@@ -63,6 +63,7 @@ func serve(ctx context.Context, addr string, ready func(*url.URL)) error {
 		return fmt.Errorf("create model: %w", err)
 	}
 	vcsim.SerialClones(model.Map())
+	vcsim.NonBlockingFilters(model.Map())
 	vcsim.CloudInitGuests(model.Map())
 	var made atomic.Bool
 	model.Service.HandleFunc(readyPath, func(w http.ResponseWriter, _ *http.Request) {
